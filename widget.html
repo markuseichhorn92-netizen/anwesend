@@ -11,16 +11,16 @@
   *{box-sizing:border-box;}
   html,body{margin:0;}
   body{
-    min-height:100dvh; background:#063540;
+    height:100dvh; overflow:hidden; background:#063540;
     font-family:'Archivo', system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     -webkit-font-smoothing:antialiased;
   }
   @keyframes blink{0%,100%{opacity:1;}50%{opacity:.18;}}
 
-  /* Fluider Vollbild-Rahmen; Größen skalieren mit der Container-Breite (cqw) */
+  /* Statischer Vollbild-Rahmen (kein Scrollen); Größen skalieren mit cqw */
   .screen{
     container-type:inline-size;
-    width:100%; min-height:100dvh;
+    width:100%; height:100dvh; overflow:hidden;
     display:flex; flex-direction:column;
     background:linear-gradient(165deg,#0e6072 0%,#063540 100%);
     color:#fff; position:relative;
@@ -56,11 +56,21 @@
   .load-label{font-weight:900; font-size:clamp(14px,4.3cqw,17px); letter-spacing:.03em;}
 
   /* Drawer – sitzt unten im Fluss, volle Breite */
-  .drawer{background:#fff; border-radius:28px 28px 0 0;
+  .drawer{position:relative; background:#fff; border-radius:28px 28px 0 0;
     padding:18px clamp(16px,5vw,22px) calc(18px + env(safe-area-inset-bottom,0px));
     color:#15171B; box-shadow:0 -10px 32px rgba(4,33,40,.18);}
 
-  .hours-panel{display:none; border:1px solid #e6eef0; border-radius:16px; overflow:hidden; margin-bottom:14px;}
+  /* Öffnungszeiten als Overlay, das nach oben über den Ring aufklappt */
+  .hours-panel{
+    position:absolute; left:clamp(16px,5vw,22px); right:clamp(16px,5vw,22px);
+    bottom:calc(100% - 6px); z-index:5;
+    max-height:72vh; overflow-y:auto; -webkit-overflow-scrolling:touch;
+    background:#fff; border:1px solid #e6eef0; border-radius:16px;
+    box-shadow:0 -14px 34px rgba(4,33,40,.28);
+    opacity:0; transform:translateY(12px); visibility:hidden; pointer-events:none;
+    transition:opacity .22s ease, transform .24s cubic-bezier(.22,1,.36,1), visibility .24s;
+  }
+  .hours-panel.open{opacity:1; transform:none; visibility:visible; pointer-events:auto;}
   .hrow{display:flex; align-items:center; justify-content:space-between; padding:10px 15px;}
   .hrow .d{font-size:13px;} .hrow .t{font-weight:600; font-size:12px;}
 
@@ -122,7 +132,7 @@
       </svg>
       <div class="ring-center">
         <div class="count" id="count">–</div>
-        <div class="cap-label">von <span id="capacity">25</span> Plätzen</div>
+        <div class="cap-label">von <span id="capacity">25</span> Personen</div>
       </div>
     </div>
 
@@ -559,7 +569,7 @@
   var hoursOpen = false;
   el.hoursToggle.addEventListener('click', function(){
     hoursOpen = !hoursOpen;
-    el.hoursPanel.style.display = hoursOpen ? 'block' : 'none';
+    el.hoursPanel.classList.toggle('open', hoursOpen);
     el.chevron.style.transform = hoursOpen ? 'rotate(180deg)' : 'rotate(0deg)';
   });
 
