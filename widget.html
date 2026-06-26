@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fit-Inn Trier · Live-Auslastung</title>
+<style>
+  /* ═══════════════════════════════════════════════════════════════════
+     Fit-Inn Live-Auslastung · self-contained Widget
+     Zum Einbetten reicht der <style>-Block + das .fi-auslastung-Element
+     (oder die ganze Datei per <iframe>). Markenfarben oben anpassen.
+     ═══════════════════════════════════════════════════════════════════ */
+  .fi-auslastung {
+    /* — Theme — */
+    --fi-card:   #14171c;
+    --fi-card-2: #1b1f26;
+    --fi-border: #272c34;
+    --fi-text:   #f5f6f8;
+    --fi-muted:  #9aa1ab;
+    --fi-green:  #2fbf71;
+    --fi-amber:  #f5a623;
+    --fi-red:    #e5484d;
+    --fi-radius: 20px;
+    --fi-accent: var(--fi-green);
+
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 420px;
+    margin: 0 auto;
+    padding: 28px 28px 22px;
+    background:
+      radial-gradient(120% 80% at 100% 0%, color-mix(in srgb, var(--fi-accent) 12%, transparent) 0%, transparent 60%),
+      var(--fi-card);
+    border: 1px solid var(--fi-border);
+    border-radius: var(--fi-radius);
+    color: var(--fi-text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .fi-auslastung *, .fi-auslastung *::before, .fi-auslastung *::after { box-sizing: border-box; }
+
+  .fi-au__top {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 22px;
+  }
+  .fi-au__live {
+    display: inline-flex; align-items: center; gap: 7px;
+    font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+    color: var(--fi-muted);
+  }
+  .fi-au__dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--fi-accent);
+    animation: fi-pulse 2s infinite;
+  }
+  @keyframes fi-pulse {
+    0%   { box-shadow: 0 0 0 0 color-mix(in srgb, var(--fi-accent) 55%, transparent); }
+    70%  { box-shadow: 0 0 0 9px transparent; }
+    100% { box-shadow: 0 0 0 0 transparent; }
+  }
+  .fi-au__title { font-size: 13px; font-weight: 600; color: var(--fi-muted); }
+
+  .fi-au__count { display: flex; align-items: baseline; gap: 10px; margin-bottom: 18px; }
+  .fi-au__num {
+    font-size: 64px; font-weight: 800; line-height: 1;
+    font-variant-numeric: tabular-nums; letter-spacing: -.02em;
+  }
+  .fi-au__of { font-size: 16px; color: var(--fi-muted); font-weight: 600; }
+
+  .fi-au__bar {
+    position: relative; height: 12px; border-radius: 99px;
+    background: var(--fi-card-2); overflow: hidden; margin-bottom: 18px;
+    border: 1px solid var(--fi-border);
+  }
+  .fi-au__fill {
+    height: 100%; width: 0%; border-radius: 99px;
+    background: linear-gradient(90deg, color-mix(in srgb, var(--fi-accent) 65%, #000), var(--fi-accent));
+    transition: width .8s cubic-bezier(.22,1,.36,1), background .4s ease;
+  }
+
+  .fi-au__status { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 18px; }
+  .fi-au__badge { margin-top: 3px; flex: 0 0 auto; width: 10px; height: 10px; border-radius: 50%; background: var(--fi-accent); }
+  .fi-au__status-main { font-size: 17px; font-weight: 700; line-height: 1.2; }
+  .fi-au__status-sub  { font-size: 13px; color: var(--fi-muted); margin-top: 2px; }
+
+  .fi-au__foot {
+    display: flex; align-items: center; justify-content: space-between;
+    padding-top: 16px; border-top: 1px solid var(--fi-border);
+    font-size: 12px; color: var(--fi-muted);
+  }
+  .fi-au__preview {
+    font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+    color: var(--fi-amber); border: 1px solid color-mix(in srgb, var(--fi-amber) 40%, transparent);
+    padding: 2px 7px; border-radius: 99px;
+  }
+
+  /* Ampel-Farben je Status */
+  .fi-auslastung[data-status="low"]    { --fi-accent: var(--fi-green); }
+  .fi-auslastung[data-status="medium"] { --fi-accent: var(--fi-amber); }
+  .fi-auslastung[data-status="high"]   { --fi-accent: var(--fi-red);   }
+  .fi-auslastung[data-status="error"]  { --fi-accent: var(--fi-muted); }
+  .fi-auslastung[data-status="error"] .fi-au__num { font-size: 30px; color: var(--fi-muted); }
+  .fi-auslastung[data-status="error"] .fi-au__dot { animation: none; }
+
+  /* Signage-Modus: Klasse fi-auslastung--signage ergänzen */
+  .fi-auslastung--signage { max-width: 680px; padding: 48px; --fi-radius: 28px; }
+  .fi-auslastung--signage .fi-au__num { font-size: 110px; }
+  .fi-auslastung--signage .fi-au__status-main { font-size: 26px; }
+  .fi-auslastung--signage .fi-au__status-sub  { font-size: 16px; }
+  .fi-auslastung--signage .fi-au__bar { height: 18px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .fi-au__dot { animation: none; }
+    .fi-au__fill { transition: none; }
+  }
+</style>
+</head>
+<body style="margin:0;background:#0c0e12;padding:40px 16px;min-height:100vh;display:flex;align-items:center;justify-content:center;">
+
+  <div class="fi-auslastung" id="fiAuslastung" data-status="low" role="group" aria-label="Aktuelle Studio-Auslastung">
+    <div class="fi-au__top">
+      <span class="fi-au__live"><span class="fi-au__dot"></span> Live</span>
+      <span class="fi-au__title">Aktuelle Auslastung</span>
+    </div>
+
+    <div class="fi-au__count">
+      <span class="fi-au__num" id="fiNum" aria-live="polite">–</span>
+      <span class="fi-au__of">von <span id="fiMax">80</span> Personen</span>
+    </div>
+
+    <div class="fi-au__bar" role="img" aria-label="Auslastungsbalken">
+      <div class="fi-au__fill" id="fiFill"></div>
+    </div>
+
+    <div class="fi-au__status">
+      <span class="fi-au__badge"></span>
+      <div>
+        <div class="fi-au__status-main" id="fiStatusMain">Lädt …</div>
+        <div class="fi-au__status-sub" id="fiStatusSub">Einen Moment</div>
+      </div>
+    </div>
+
+    <div class="fi-au__foot">
+      <span id="fiUpdated">Aktualisiere …</span>
+      <span class="fi-au__preview" id="fiPreview" hidden>Vorschau</span>
+    </div>
+  </div>
+
+<script>
+(function () {
+  // ═══ KONFIGURATION ═══════════════════════════════════════════════════
+  var CONFIG = {
+    // Deine Proxy-URL eintragen, z.B. 'https://auslastung.fit-inn-trier.de/api/auslastung'
+    // Leer lassen = Vorschau-Modus (Demo-Daten, kein Netzwerk).
+    endpoint: '',
+    refreshMs: 45000,
+    maxDemo: 80
+  };
+
+  var STATES = {
+    low:    { main: 'Viel Platz',                sub: 'Perfekt zum Trainieren' },
+    medium: { main: 'Gut besucht',               sub: 'Angenehme Auslastung' },
+    high:   { main: 'Stark besucht',             sub: 'Etwas mehr los als sonst' },
+    error:  { main: 'Momentan nicht verfügbar',  sub: 'Bitte später erneut versuchen' }
+  };
+
+  var el = {
+    root:       document.getElementById('fiAuslastung'),
+    num:        document.getElementById('fiNum'),
+    max:        document.getElementById('fiMax'),
+    fill:       document.getElementById('fiFill'),
+    statusMain: document.getElementById('fiStatusMain'),
+    statusSub:  document.getElementById('fiStatusSub'),
+    updated:    document.getElementById('fiUpdated'),
+    preview:    document.getElementById('fiPreview')
+  };
+
+  var lastTs = null;
+  var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  function countUp(target) {
+    if (reduce) { el.num.textContent = target; return; }
+    var start = 0, dur = 700, t0 = performance.now();
+    (function step(now) {
+      var p = Math.min(1, (now - t0) / dur);
+      var eased = 1 - Math.pow(1 - p, 3);
+      el.num.textContent = Math.round(start + (target - start) * eased);
+      if (p < 1) requestAnimationFrame(step);
+    })(t0);
+  }
+
+  function render(d) {
+    var s = STATES[d.status] || STATES.error;
+    el.root.setAttribute('data-status', d.status);
+    el.max.textContent = d.max;
+    el.statusMain.textContent = s.main;
+    el.statusSub.textContent = s.sub;
+
+    if (d.status === 'error') {
+      el.num.textContent = '–';
+      el.fill.style.width = '0%';
+      return;
+    }
+    countUp(d.count);
+    el.fill.style.width = (d.percent || 0) + '%';
+    lastTs = Date.now();
+    tick();
+  }
+
+  function tick() {
+    if (!lastTs) return;
+    var secs = Math.round((Date.now() - lastTs) / 1000);
+    el.updated.textContent = secs < 5 ? 'Gerade aktualisiert' : 'Aktualisiert vor ' + secs + ' s';
+  }
+
+  function demo() {
+    el.preview.hidden = false;
+    var count = 5, max = CONFIG.maxDemo;
+    render({ count: count, max: max, percent: Math.round(count / max * 100), status: 'low' });
+  }
+
+  function load() {
+    fetch(CONFIG.endpoint, { cache: 'no-store' })
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then(function (d) { render(d); })
+      .catch(function () { render({ status: 'error', max: CONFIG.maxDemo }); });
+  }
+
+  // Start
+  if (!CONFIG.endpoint) {
+    demo();
+  } else {
+    load();
+    setInterval(load, CONFIG.refreshMs);
+  }
+  setInterval(tick, 1000);
+})();
+</script>
+</body>
+</html>
