@@ -132,7 +132,7 @@
 
       <div class="divider"></div>
 
-      <div class="reco">
+      <div class="reco" id="reco">
         <div class="reco-icon">★</div>
         <div style="min-width:0;">
           <div class="reco-eyebrow">BESTE ZEIT HEUTE · <span id="bestDay">—</span></div>
@@ -173,6 +173,8 @@
   var timesText = [WD, WD, WD, WD, WD, '13:00 – 18:00', '09:00 – 15:00'];
   var ivWd = [[570, 780], [900, 1290]];                 // 09:30–13:00, 15:00–21:30
   var iv = [ivWd, ivWd, ivWd, ivWd, ivWd, [[780, 1080]], [[540, 900]]];
+  // Abweichende Schließungen (Feiertage etc.) aus Magicline closingHours
+  var closingHours = [];                                 // [{reason, fromY..toMi}]
 
   function pad(n){ return (n < 10 ? '0' : '') + n; }
   function fmt(m){ return pad(Math.floor(m/60)) + ':' + pad(m%60); }
@@ -198,6 +200,15 @@
           if (ivN[d].length) ok = true;
           txtN[d] = ivN[d].length ? ivN[d].map(function(p){ return fmt(p[0]) + ' – ' + fmt(p[1]); }).join(' · ') : 'geschlossen';
         }
+        // Abweichende Schließungen (Feiertage etc.) parsen
+        var rx = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/;
+        closingHours = (Array.isArray(h.closingHours) ? h.closingHours : []).map(function(c){
+          var a = rx.exec(c.dateTimeFrom || ''), b = rx.exec(c.dateTimeTo || '');
+          if (!a || !b) return null;
+          return { reason: c.reason || 'Geschlossen',
+                   fromY:+a[1], fromMo:+a[2], fromD:+a[3], fromH:+a[4], fromMi:+a[5],
+                   toY:+b[1], toMo:+b[2], toD:+b[3], toH:+b[4], toMi:+b[5] };
+        }).filter(Boolean);
         if (ok) {
           iv = ivN; timesText = txtN;
           lastDi = -1; lastHour = -1;           // Neu-Rendern erzwingen
@@ -210,11 +221,41 @@
 
   // Aktuelle Zeit in Studio-Zeitzone (Europe/Berlin), egal wo der Betrachter ist
   function berlinNow(){
-    var p = new Intl.DateTimeFormat('en-GB', { timeZone:'Europe/Berlin', weekday:'short', hour:'2-digit', minute:'2-digit', hourCycle:'h23' }).formatToParts(new Date());
+    var p = new Intl.DateTimeFormat('en-GB', { timeZone:'Europe/Berlin', year:'numeric', month:'2-digit', day:'2-digit', weekday:'short', hour:'2-digit', minute:'2-digit', hourCycle:'h23' }).formatToParts(new Date());
     var g = function(t){ return (p.find(function(x){return x.type===t;}) || {}).value; };
     var map = { Mon:0, Tue:1, Wed:2, Thu:3, Fri:4, Sat:5, Sun:6 };
     var hour = parseInt(g('hour'),10), min = parseInt(g('minute'),10);
-    return { di: map[g('weekday')], hour: hour, min: hour*60 + min };
+    return { di: map[g('weekday')], hour: hour, min: hour*60 + min, y: +g('year'), mo: +g('month'), d: +g('day') };
+  }
+
+  // Reguläre Intervalle minus Schließ-Intervalle (für abweichende Zeiten)
+  function subtract(base, cuts){
+    var res = base.map(function(x){ return [x[0], x[1]]; });
+    cuts.forEach(function(cut){
+      var next = [];
+      res.forEach(function(seg){
+        if (cut[1] <= seg[0] || cut[0] >= seg[1]) { next.push(seg); return; }
+        if (cut[0] > seg[0]) next.push([seg[0], cut[0]]);
+        if (cut[1] < seg[1]) next.push([cut[1], seg[1]]);
+      });
+      res = next;
+    });
+    return res.filter(function(s){ return s[1] > s[0]; });
+  }
+
+  // Heutige Schließ-Intervalle (in Minuten) aus closingHours, mit Grund
+  function closuresToday(n){
+    var todayNum = n.y * 10000 + n.mo * 100 + n.d;
+    var cuts = [];
+    closingHours.forEach(function(c){
+      var fromDate = c.fromY * 10000 + c.fromMo * 100 + c.fromD;
+      var toDate = c.toY * 10000 + c.toMo * 100 + c.toD;
+      if (todayNum < fromDate || todayNum > toDate) return;
+      var start = (todayNum === fromDate) ? (c.fromH * 60 + c.fromMi) : 0;
+      var end = (todayNum === toDate) ? (c.toH * 60 + c.toMi) : 1440;
+      if (end > start) cuts.push({ start: start, end: end, reason: c.reason });
+    });
+    return cuts;
   }
 
   var el = {
@@ -229,6 +270,7 @@
     statusLabel: document.getElementById('statusLabel'),
     statusDetail:document.getElementById('statusDetail'),
     chevron:     document.getElementById('chevron'),
+    reco:        document.getElementById('reco'),
     bestDay:     document.getElementById('bestDay'),
     bestWindow:  document.getElementById('bestWindow'),
     bestNote:    document.getElementById('bestNote'),
@@ -317,20 +359,32 @@
   }
 
   // ── Status + Verlaufsbalken + Öffnungszeiten ──
-  var lastHour = -1, lastPause = null, lastDi = -1;
+  var lastHour = -1, lastPause = null, lastDi = -1, lastClosed = null;
   function updateStatus(force){
     var n = berlinNow(), di = n.di, cur = n.min;
-    var today = iv[di], open = false, closeAt = null, nextStart = null, passed = false;
+    var cuts = closuresToday(n);                         // abweichende Schließungen heute
+    var today = subtract(iv[di] || [], cuts.map(function(c){ return [c.start, c.end]; }));
+    var reasonNow = null;
+    for (var ci = 0; ci < cuts.length; ci++) { if (cur >= cuts[ci].start && cur < cuts[ci].end) { reasonNow = cuts[ci].reason; break; } }
+
+    var open = false, closeAt = null, nextStart = null, passed = false;
     for (var i = 0; i < today.length; i++) {
       if (cur >= today[i][0] && cur < today[i][1]) { open = true; closeAt = today[i][1]; }
       if (today[i][1] <= cur) passed = true;
       if (today[i][0] > cur && nextStart === null) nextStart = today[i][0];
     }
-    var label, detail, color, isPause = false;
-    if (open) { label = 'Geöffnet'; color = '#1FD65F'; detail = 'noch bis ' + fmt(closeAt) + ' Uhr'; }
-    else if (nextStart !== null && passed) { label = 'Pause'; color = '#FF9F1A'; detail = 'öffnet wieder ' + fmt(nextStart) + ' Uhr'; isPause = true; }
-    else if (nextStart !== null) { label = 'Geschlossen'; color = '#E0563B'; detail = 'öffnet ' + fmt(nextStart) + ' Uhr'; }
-    else {
+    var label, detail, color, isPause = false, fullyClosed = false;
+    if (open) {
+      label = 'Geöffnet'; color = '#1FD65F'; detail = 'noch bis ' + fmt(closeAt) + ' Uhr';
+    } else if (reasonNow) {
+      label = 'Geschlossen'; color = '#E0563B';
+      detail = reasonNow + (nextStart !== null ? ' · öffnet ' + fmt(nextStart) + ' Uhr' : '');
+      fullyClosed = (nextStart === null);
+    } else if (nextStart !== null && passed) {
+      label = 'Pause'; color = '#FF9F1A'; detail = 'öffnet wieder ' + fmt(nextStart) + ' Uhr'; isPause = true;
+    } else if (nextStart !== null) {
+      label = 'Geschlossen'; color = '#E0563B'; detail = 'öffnet ' + fmt(nextStart) + ' Uhr';
+    } else {
       var nd = (di + 1) % 7, guard = 0;
       while ((!iv[nd] || !iv[nd].length) && guard < 7) { nd = (nd + 1) % 7; guard++; }
       label = 'Geschlossen'; color = '#E0563B';
@@ -340,16 +394,20 @@
     el.statusDetail.textContent = detail;
     el.statusDot.style.background = color;
     state.isPause = isPause;
+    // Bei ganztägiger (Feiertags-)Schließung Empfehlung + Verlauf ausblenden
+    var dayClosed = fullyClosed || today.length === 0;
+    state.dayClosed = dayClosed;
+    if (el.reco) el.reco.style.display = dayClosed ? 'none' : '';
 
     if (force || di !== lastDi) { lastDi = di; renderHours(di); }
-    if (force || n.hour !== lastHour || isPause !== lastPause) {
-      lastHour = n.hour; lastPause = isPause;
+    if (force || n.hour !== lastHour || isPause !== lastPause || dayClosed !== lastClosed) {
+      lastHour = n.hour; lastPause = isPause; lastClosed = dayClosed;
       renderTrend(n);
     }
   }
 
   function renderTrend(n){
-    if (state.isPause || !state.trend) { el.trendSection.style.display = 'none'; return; }
+    if (state.isPause || state.dayClosed || !state.trend) { el.trendSection.style.display = 'none'; return; }
     el.trendSection.style.display = '';
     var hours = state.trend.hours, mx = state.trend.max, html = '';
     for (var b = 0; b < hours.length; b++) {

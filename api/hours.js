@@ -64,6 +64,7 @@ module.exports = async function handler(req, res) {
       available: true,
       studioName: data.name || data.studioName || null,
       openingHours: data.openingHours || data.openingHourRanges || data.businessHours || null,
+      closingHours: data.closingHours || null,   // abweichende Schließungen (Feiertage etc.)
       closingDate: (data.closingDate !== undefined) ? data.closingDate : null,
       openingDate: (data.openingDate !== undefined) ? data.openingDate : null,
     };
