@@ -177,6 +177,37 @@
   function pad(n){ return (n < 10 ? '0' : '') + n; }
   function fmt(m){ return pad(Math.floor(m/60)) + ':' + pad(m%60); }
 
+  // ── Öffnungszeiten live aus Magicline (/api/hours); oben = Fallback ──
+  var DOW = { MONDAY:0, TUESDAY:1, WEDNESDAY:2, THURSDAY:3, FRIDAY:4, SATURDAY:5, SUNDAY:6 };
+  function parseHHMM(s){ var p = String(s).split(':'); return parseInt(p[0],10)*60 + parseInt(p[1]||'0',10); }
+  function loadHours(){
+    fetch('/api/hours', { cache:'no-store' })
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(h){
+        if (!h || !h.available || !Array.isArray(h.openingHours) || !h.openingHours.length) return;
+        var ivN = [[],[],[],[],[],[],[]];
+        h.openingHours.forEach(function(e){
+          var a = DOW[e.dayOfWeekFrom], b = DOW[e.dayOfWeekTo];
+          if (a == null || b == null) return;
+          var f = parseHHMM(e.timeFrom), t = parseHHMM(e.timeTo);
+          for (var d = a; ; d = (d + 1) % 7) { ivN[d].push([f, t]); if (d === b) break; }
+        });
+        var ok = false, txtN = [];
+        for (var d = 0; d < 7; d++) {
+          ivN[d].sort(function(x, y){ return x[0] - y[0]; });
+          if (ivN[d].length) ok = true;
+          txtN[d] = ivN[d].length ? ivN[d].map(function(p){ return fmt(p[0]) + ' – ' + fmt(p[1]); }).join(' · ') : 'geschlossen';
+        }
+        if (ok) {
+          iv = ivN; timesText = txtN;
+          lastDi = -1; lastHour = -1;           // Neu-Rendern erzwingen
+          updateStatus(true);
+          if (state.trend) computeReco(state.trend.day);
+        }
+      })
+      .catch(function(){});
+  }
+
   // Aktuelle Zeit in Studio-Zeitzone (Europe/Berlin), egal wo der Betrachter ist
   function berlinNow(){
     var p = new Intl.DateTimeFormat('en-GB', { timeZone:'Europe/Berlin', weekday:'short', hour:'2-digit', minute:'2-digit', hourCycle:'h23' }).formatToParts(new Date());
@@ -299,7 +330,12 @@
     if (open) { label = 'Geöffnet'; color = '#1FD65F'; detail = 'noch bis ' + fmt(closeAt) + ' Uhr'; }
     else if (nextStart !== null && passed) { label = 'Pause'; color = '#FF9F1A'; detail = 'öffnet wieder ' + fmt(nextStart) + ' Uhr'; isPause = true; }
     else if (nextStart !== null) { label = 'Geschlossen'; color = '#E0563B'; detail = 'öffnet ' + fmt(nextStart) + ' Uhr'; }
-    else { var nd = (di + 1) % 7; label = 'Geschlossen'; color = '#E0563B'; detail = 'öffnet ' + names[nd] + ' ' + fmt(iv[nd][0][0]) + ' Uhr'; }
+    else {
+      var nd = (di + 1) % 7, guard = 0;
+      while ((!iv[nd] || !iv[nd].length) && guard < 7) { nd = (nd + 1) % 7; guard++; }
+      label = 'Geschlossen'; color = '#E0563B';
+      detail = (iv[nd] && iv[nd].length) ? ('öffnet ' + names[nd] + ' ' + fmt(iv[nd][0][0]) + ' Uhr') : 'aktuell geschlossen';
+    }
     el.statusLabel.textContent = label;
     el.statusDetail.textContent = detail;
     el.statusDot.style.background = color;
@@ -384,6 +420,7 @@
   fitScreen();
   renderOccupancy();
   updateStatus(true);
+  loadHours();      setInterval(loadHours, 3600000);   // echte Öffnungszeiten, stündlich
   loadOccupancy();  setInterval(loadOccupancy, CFG.occRefreshMs);
   loadTypical();    setInterval(loadTypical, CFG.typicalRefreshMs);
   setInterval(function(){ updateStatus(false); }, 30000);
