@@ -153,6 +153,36 @@ Einbetten:
 
 Ampel-Schwellen: grün < 50 % · gelb 50–79 % · rot ≥ 80 %. Anpassbar über `YELLOW_AT` / `RED_AT` in der `.env`.
 
+## Typische Auslastung / „Stoßzeiten"
+
+Die Magicline API liefert **nur den aktuellen Live-Wert** — keine historische
+„so voll ist es normalerweise um diese Zeit"-Kurve. Diese bauen wir selbst auf,
+indem wir den Live-Wert regelmäßig mitschreiben und pro Wochentag + 30-Min-Slot
+mitteln (wie Google Maps' „Stoßzeiten"). Gespeichert werden **nur anonyme,
+aggregierte Durchschnittszahlen**.
+
+**Bausteine:**
+
+1. **Speicher — Upstash Redis** (Vercel → Storage → Upstash → Redis → mit Projekt
+   verbinden). Setzt automatisch `KV_REST_API_URL` + `KV_REST_API_TOKEN`.
+2. **Taktgeber — GitHub Actions** (`.github/workflows/record.yml`): ruft alle
+   15 min `/api/record` auf. Läuft nur auf dem Default-Branch des Repos.
+3. **Endpunkte:**
+   - `GET /api/record` — schreibt den aktuellen Wert in die Historie (vom Cron).
+   - `GET /api/typical` — liefert „normal um diese Zeit" + Tageskurve fürs Widget.
+
+**Datenmodell (Redis):** je Wochentag zwei Hashes `typical:sum:{wd}` und
+`typical:cnt:{wd}` mit Feld = Slot (0–47). Durchschnitt = `sum / cnt`.
+
+**Optionaler Schutz:** Repo-Secret `RECORD_SECRET` anlegen **und** dieselbe
+Env-Variable in Vercel setzen — dann akzeptiert `/api/record` nur Aufrufe mit
+passendem `Authorization: Bearer …`. Ohne Secret ist der Endpunkt offen
+(für den anonymen Zähl-Zweck unkritisch).
+
+Nach ~1 Woche entsteht eine brauchbare Kurve, nach ~3–4 Wochen eine solide.
+Das Widget zeigt dann „Jetzt: X · Normal um diese Zeit: ~Y" plus ein kleines
+Tagesdiagramm. Zeitzone via `STUDIO_TZ` (Standard `Europe/Berlin`).
+
 ## Sicherheit / DSGVO
 
 - Ausgeliefert wird nur eine **anonyme, aggregierte Zahl** — keine personenbezogenen Daten.
