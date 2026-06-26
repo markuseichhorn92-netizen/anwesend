@@ -258,6 +258,31 @@
     return cuts;
   }
 
+  // Anstehende Sonderzeiten der nächsten 14 Tage (fürs Dropup), inkl. heute
+  function upcomingDeviations(n){
+    var out = [], baseMs = Date.UTC(n.y, n.mo - 1, n.d);
+    for (var k = 0; k < 14; k++) {
+      var dt = new Date(baseMs + k * 86400000);
+      var Y = dt.getUTCFullYear(), Mo = dt.getUTCMonth() + 1, D = dt.getUTCDate();
+      var dateNum = Y * 10000 + Mo * 100 + D;
+      var wd = (dt.getUTCDay() + 6) % 7;             // Mo=0 … So=6
+      var cuts = [], reason = null;
+      closingHours.forEach(function(c){
+        var fromDate = c.fromY * 10000 + c.fromMo * 100 + c.fromD;
+        var toDate = c.toY * 10000 + c.toMo * 100 + c.toD;
+        if (dateNum < fromDate || dateNum > toDate) return;
+        var start = (dateNum === fromDate) ? (c.fromH * 60 + c.fromMi) : 0;
+        var end = (dateNum === toDate) ? (c.toH * 60 + c.toMi) : 1440;
+        if (end > start) { cuts.push([start, end]); if (!reason) reason = c.reason; }
+      });
+      if (!cuts.length) continue;
+      var eff = subtract(iv[wd] || [], cuts);
+      var txt = eff.length ? eff.map(function(p){ return fmt(p[0]) + ' – ' + fmt(p[1]); }).join(' · ') : 'geschlossen';
+      out.push({ label: names[wd].slice(0, 2) + ' ' + pad(D) + '.' + pad(Mo) + '.', txt: txt, reason: reason || '' });
+    }
+    return out;
+  }
+
   var el = {
     screen:      document.getElementById('screen'),
     count:       document.getElementById('count'),
@@ -455,6 +480,16 @@
       rows += '<div class="hrow" style="background:' + rbg + ';border-top:' + bt + ';">'
             + '<span class="d" style="font-weight:' + rw + ';color:' + rfg + ';">' + names[d] + (t ? ' · heute' : '') + '</span>'
             + '<span class="t" style="color:' + rtc + ';">' + timesText[d] + '</span></div>';
+    }
+    var dev = upcomingDeviations(berlinNow());
+    if (dev.length) {
+      rows += '<div class="hrow" style="background:#FFF6E9;border-top:1px solid #eef3f4;">'
+            + '<span class="d" style="font-weight:800;color:#9a6a12;">Sonderzeiten</span><span class="t"></span></div>';
+      dev.forEach(function(x){
+        rows += '<div class="hrow" style="background:#FFFBF3;border-top:1px solid #f2e8d8;">'
+              + '<span class="d" style="font-weight:600;color:#9a6a12;">' + x.label + (x.reason ? ' · ' + x.reason : '') + '</span>'
+              + '<span class="t" style="color:#b9842c;">' + x.txt + '</span></div>';
+      });
     }
     el.hoursPanel.innerHTML = rows;
   }
