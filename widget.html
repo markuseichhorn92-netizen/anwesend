@@ -328,11 +328,14 @@
     // Tageskurve 06:00–24:00 (Slots 12..47)
     if (Array.isArray(t.day) && t.totalSamples > 0) {
       var startSlot = 12, endSlot = 48;
-      var max = Math.max(1, t.max || CONFIG.maxDemo);
+      // Balkenhöhe relativ zum Tagesmaximum (nicht zur Kapazität) -> Kurve füllt
+      // den Chart und die Stoßzeiten sind klar erkennbar.
+      var dayMax = 1;
+      for (var k = startSlot; k < endSlot; k++) { if (t.day[k] != null && t.day[k] > dayMax) dayMax = t.day[k]; }
       var html = '';
       for (var s = startSlot; s < endSlot; s++) {
         var v = t.day[s];
-        var h = (v == null) ? 0 : Math.max(4, Math.round(v / max * 100));
+        var h = (v == null) ? 0 : (v === 0 ? 4 : Math.max(12, Math.round(v / dayMax * 100)));
         var now = (s === t.slot) ? ' is-now' : '';
         var lbl = slotLabel(s);
         var vAttr = (v == null) ? '' : v;
