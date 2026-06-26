@@ -36,18 +36,10 @@
 
   .eyebrow{text-align:center; font-weight:800; font-size:13px; letter-spacing:.22em; opacity:.75; margin-top:36px;}
 
-  /* Ring (Conic-Gradient grün→orange→rot, füllt sich mit der Auslastung) */
-  @property --ang { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
+  /* Ring */
   .ring-wrap{position:relative; width:264px; height:264px; margin:18px auto 0;}
-  .ring{
-    width:264px; height:264px; border-radius:50%; --ang:0deg;
-    background:
-      conic-gradient(from -90deg, transparent 0deg, transparent var(--ang), #0a4655 var(--ang), #0a4655 360deg),
-      conic-gradient(from -90deg, #2fbf71 0deg, #4cc06a 140deg, #f5a623 200deg, #f0843a 280deg, #e5484d 338deg, #d8333e 360deg);
-    -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 20px), #000 calc(100% - 20px));
-            mask: radial-gradient(farthest-side, transparent calc(100% - 20px), #000 calc(100% - 20px));
-    transition: --ang .9s cubic-bezier(.22,1,.36,1);
-  }
+  .ring-wrap svg{display:block;}
+  #ring{transition:stroke-dashoffset .9s cubic-bezier(.22,1,.36,1);}
   .ring-center{position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;}
   .count{font-weight:900; font-size:104px; line-height:.82; letter-spacing:-.04em; color:#fff; text-shadow:0 4px 18px rgba(4,33,40,.22); font-variant-numeric:tabular-nums;}
   .cap-label{font-weight:700; font-size:16px; opacity:.82; margin-top:6px;}
@@ -107,7 +99,12 @@
 
     <!-- Ring -->
     <div class="ring-wrap">
-      <div class="ring" id="ring"></div>
+      <svg width="264" height="264" viewBox="0 0 264 264">
+        <circle cx="132" cy="132" r="116" fill="none" stroke="rgba(4,33,40,.28)" stroke-width="20" />
+        <circle id="ring" cx="132" cy="132" r="116" fill="none" stroke="#FFFFFF" stroke-width="20"
+                stroke-linecap="round" stroke-dasharray="728.85" stroke-dashoffset="728.85"
+                transform="rotate(-90 132 132)" />
+      </svg>
       <div class="ring-center">
         <div class="count" id="count">–</div>
         <div class="cap-label">von <span id="capacity">25</span> Plätzen</div>
@@ -117,7 +114,7 @@
     <!-- Load pill -->
     <div class="load-wrap">
       <div class="load-pill">
-        <span class="load-dot" id="loadDot"></span>
+        <span class="load-dot"></span>
         <span class="load-label" id="loadLabel">—</span>
       </div>
     </div>
@@ -194,7 +191,6 @@
     count:       document.getElementById('count'),
     capacity:    document.getElementById('capacity'),
     ring:        document.getElementById('ring'),
-    loadDot:     document.getElementById('loadDot'),
     loadLabel:   document.getElementById('loadLabel'),
     hoursToggle: document.getElementById('hoursToggle'),
     hoursPanel:  document.getElementById('hoursPanel'),
@@ -213,7 +209,6 @@
   var state = { capacity: CFG.capacity, current: null, trend: null, isPause: false };
 
   // ── Auslastung (Ring + Zahl + Ampel) ──
-  function levelColor(ratio){ return ratio < 0.5 ? '#2fbf71' : (ratio <= 0.8 ? '#f5a623' : '#e5484d'); }
   function renderOccupancy(){
     var cap = state.capacity || CFG.capacity;
     el.capacity.textContent = cap;
@@ -221,16 +216,14 @@
     if (c == null) {
       el.count.textContent = '–';
       el.count.classList.add('err');
-      el.ring.style.setProperty('--ang', '0deg');
-      el.loadDot.style.background = '#9aa0a8';
+      el.ring.setAttribute('stroke-dashoffset', '728.85');
       el.loadLabel.textContent = 'nicht verfügbar';
       return;
     }
     el.count.classList.remove('err');
     el.count.textContent = c;
     var ratio = Math.max(0, Math.min(1, c / cap));
-    el.ring.style.setProperty('--ang', (ratio * 360).toFixed(1) + 'deg');
-    el.loadDot.style.background = levelColor(ratio);
+    el.ring.setAttribute('stroke-dashoffset', (728.85 * (1 - ratio)).toFixed(1));
     var pct = Math.round(ratio * 100);
     var lt = ratio < 0.5 ? 'ENTSPANNT' : (ratio <= 0.8 ? 'GUT BESUCHT' : 'VOLL');
     el.loadLabel.textContent = lt + ' · ' + pct + '%';
