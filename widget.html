@@ -305,16 +305,28 @@
     for (var i = 0; i < act.length; i++) act[i].classList.remove('is-active');
     if (bar) bar.classList.add('is-active');
   }
+  // Balken anhand der horizontalen Position bestimmen -> trifft immer den
+  // nächstgelegenen Balken, auch wenn man die Lücke oder knapp daneben tippt.
+  function chartBarFromX(clientX) {
+    var rect = el.chart.getBoundingClientRect();
+    if (!rect.width) return null;
+    var frac = (clientX - rect.left) / rect.width;
+    frac = Math.min(0.9999, Math.max(0, frac));
+    var bars = el.chart.children;
+    return bars[Math.floor(frac * bars.length)] || null;
+  }
+  function chartSelect(clientX) {
+    var bar = chartBarFromX(clientX);
+    if (bar) { chartActive(bar); chartShow(chartInfo(bar)); }
+  }
   function chartWire() {
     if (el.chart.__wired) return;
     el.chart.__wired = true;
-    function pick(e) {
-      var b = (e.target && e.target.classList && e.target.classList.contains('fi-au__bar2')) ? e.target : null;
-      if (b) { chartActive(b); chartShow(chartInfo(b)); }
-    }
-    el.chart.addEventListener('pointermove', pick);
-    el.chart.addEventListener('pointerdown', pick);
-    el.chart.addEventListener('pointerleave', function () { chartActive(null); chartReset(); });
+    // Tippen/Klicken wählt aus; Ziehen (Maus-Hover oder Finger-Drag) scrubt.
+    el.chart.addEventListener('pointerdown', function (e) { chartSelect(e.clientX); });
+    el.chart.addEventListener('pointermove', function (e) { if (e.pointerType === 'mouse' || e.buttons) chartSelect(e.clientX); });
+    // Nur die Maus setzt beim Rausfahren zurück; ein Tipp bleibt stehen.
+    el.chart.addEventListener('pointerleave', function (e) { if (e.pointerType === 'mouse') { chartActive(null); chartReset(); } });
   }
 
   function renderTypical(t) {
