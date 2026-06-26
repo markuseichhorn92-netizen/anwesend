@@ -1,399 +1,392 @@
 <!DOCTYPE html>
 <html lang="de">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 <title>Fit-Inn Trier · Live-Auslastung</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
 <style>
-  /* ═══════════════════════════════════════════════════════════════════
-     Fit-Inn Live-Auslastung · self-contained Widget
-     Zum Einbetten reicht der <style>-Block + das .fi-auslastung-Element
-     (oder die ganze Datei per <iframe>). Markenfarben oben anpassen.
-     ═══════════════════════════════════════════════════════════════════ */
-  .fi-auslastung {
-    /* — Theme — */
-    --fi-card:   #14171c;
-    --fi-card-2: #1b1f26;
-    --fi-border: #272c34;
-    --fi-text:   #f5f6f8;
-    --fi-muted:  #9aa1ab;
-    --fi-green:  #2fbf71;
-    --fi-amber:  #f5a623;
-    --fi-red:    #e5484d;
-    --fi-radius: 20px;
-    --fi-accent: var(--fi-green);
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{
+    margin:0; background:#063540; overflow:hidden;
+    font-family:'Archivo', system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    display:flex; align-items:center; justify-content:center;
+    -webkit-font-smoothing:antialiased;
+  }
+  @keyframes blink{0%,100%{opacity:1;}50%{opacity:.18;}}
 
-    box-sizing: border-box;
-    width: 100%;
-    max-width: 420px;
-    margin: 0 auto;
-    padding: 28px 28px 22px;
-    background:
-      radial-gradient(120% 80% at 100% 0%, color-mix(in srgb, var(--fi-accent) 12%, transparent) 0%, transparent 60%),
-      var(--fi-card);
-    border: 1px solid var(--fi-border);
-    border-radius: var(--fi-radius);
-    color: var(--fi-text);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    -webkit-font-smoothing: antialiased;
-  }
-  .fi-auslastung *, .fi-auslastung *::before, .fi-auslastung *::after { box-sizing: border-box; }
-
-  .fi-au__top {
-    display: flex; align-items: center; justify-content: space-between;
-    margin-bottom: 22px;
-  }
-  .fi-au__live {
-    display: inline-flex; align-items: center; gap: 7px;
-    font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
-    color: var(--fi-muted);
-  }
-  .fi-au__dot {
-    width: 8px; height: 8px; border-radius: 50%;
-    background: var(--fi-accent);
-    animation: fi-pulse 2s infinite;
-  }
-  @keyframes fi-pulse {
-    0%   { box-shadow: 0 0 0 0 color-mix(in srgb, var(--fi-accent) 55%, transparent); }
-    70%  { box-shadow: 0 0 0 9px transparent; }
-    100% { box-shadow: 0 0 0 0 transparent; }
-  }
-  .fi-au__title { font-size: 13px; font-weight: 600; color: var(--fi-muted); }
-
-  .fi-au__count { display: flex; align-items: baseline; gap: 10px; margin-bottom: 18px; }
-  .fi-au__num {
-    font-size: 64px; font-weight: 800; line-height: 1;
-    font-variant-numeric: tabular-nums; letter-spacing: -.02em;
-  }
-  .fi-au__of { font-size: 16px; color: var(--fi-muted); font-weight: 600; }
-
-  .fi-au__bar {
-    position: relative; height: 12px; border-radius: 99px;
-    background: var(--fi-card-2); overflow: hidden; margin-bottom: 18px;
-    border: 1px solid var(--fi-border);
-  }
-  .fi-au__fill {
-    height: 100%; width: 0%; border-radius: 99px;
-    background: linear-gradient(90deg, color-mix(in srgb, var(--fi-accent) 65%, #000), var(--fi-accent));
-    transition: width .8s cubic-bezier(.22,1,.36,1), background .4s ease;
+  .screen{
+    width:390px; height:812px; flex:none;
+    background:linear-gradient(165deg,#0e6072 0%,#063540 100%);
+    border-radius:36px; overflow:hidden; position:relative;
+    padding:34px 28px 0; color:#fff;
+    transform-origin:center center;
   }
 
-  .fi-au__status { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 18px; }
-  .fi-au__badge { margin-top: 3px; flex: 0 0 auto; width: 10px; height: 10px; border-radius: 50%; background: var(--fi-accent); }
-  .fi-au__status-main { font-size: 17px; font-weight: 700; line-height: 1.2; }
-  .fi-au__status-sub  { font-size: 13px; color: var(--fi-muted); margin-top: 2px; }
+  .row{display:flex; align-items:center;}
 
-  .fi-au__foot {
-    display: flex; align-items: center; justify-content: space-between;
-    padding-top: 16px; border-top: 1px solid var(--fi-border);
-    font-size: 12px; color: var(--fi-muted);
-  }
-  .fi-au__preview {
-    font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
-    color: var(--fi-amber); border: 1px solid color-mix(in srgb, var(--fi-amber) 40%, transparent);
-    padding: 2px 7px; border-radius: 99px;
-  }
+  /* Header */
+  .live-badge{display:flex; align-items:center; gap:7px; background:rgba(4,33,40,.24); border-radius:20px; padding:7px 13px;}
+  .live-dot{width:8px; height:8px; border-radius:50%; background:#5fe0c2; animation:blink 1.6s infinite;}
+  .live-txt{font-weight:800; font-size:11px; letter-spacing:.16em;}
+  .logo{height:26px; width:auto; display:block;}
 
-  /* Ampel-Farben je Status */
-  .fi-auslastung[data-status="low"]    { --fi-accent: var(--fi-green); }
-  .fi-auslastung[data-status="medium"] { --fi-accent: var(--fi-amber); }
-  .fi-auslastung[data-status="high"]   { --fi-accent: var(--fi-red);   }
-  .fi-auslastung[data-status="error"]  { --fi-accent: var(--fi-muted); }
-  .fi-auslastung[data-status="error"] .fi-au__num { font-size: 30px; color: var(--fi-muted); }
-  .fi-auslastung[data-status="error"] .fi-au__dot { animation: none; }
+  .eyebrow{text-align:center; font-weight:800; font-size:13px; letter-spacing:.22em; opacity:.75; margin-top:36px;}
 
-  /* Signage-Modus: Klasse fi-auslastung--signage ergänzen */
-  .fi-auslastung--signage { max-width: 680px; padding: 48px; --fi-radius: 28px; }
-  .fi-auslastung--signage .fi-au__num { font-size: 110px; }
-  .fi-auslastung--signage .fi-au__status-main { font-size: 26px; }
-  .fi-auslastung--signage .fi-au__status-sub  { font-size: 16px; }
-  .fi-auslastung--signage .fi-au__bar { height: 18px; }
+  /* Ring */
+  .ring-wrap{position:relative; width:264px; height:264px; margin:18px auto 0;}
+  .ring-wrap svg{display:block;}
+  #ring{transition:stroke-dashoffset .9s cubic-bezier(.22,1,.36,1);}
+  .ring-center{position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;}
+  .count{font-weight:900; font-size:104px; line-height:.82; letter-spacing:-.04em; color:#fff; text-shadow:0 4px 18px rgba(4,33,40,.22); font-variant-numeric:tabular-nums;}
+  .cap-label{font-weight:700; font-size:16px; opacity:.82; margin-top:6px;}
 
-  /* — Typische Auslastung ("normal um diese Zeit") — */
-  .fi-au__typical {
-    display: flex; align-items: baseline; gap: 6px;
-    margin: -6px 0 16px; font-size: 13px; color: var(--fi-muted);
-  }
-  .fi-au__typical-val { color: var(--fi-text); font-weight: 700; font-variant-numeric: tabular-nums; }
+  /* Load pill */
+  .load-wrap{display:flex; justify-content:center; margin-top:22px;}
+  .load-pill{display:inline-flex; align-items:center; gap:9px; background:rgba(4,33,40,.22); border-radius:24px; padding:11px 20px;}
+  .load-dot{width:10px; height:10px; border-radius:50%; background:#fff;}
+  .load-label{font-weight:900; font-size:16px; letter-spacing:.03em;}
 
-  /* — Stoßzeiten-Tageskurve (interaktiv) — */
-  .fi-au__chart-readout {
-    min-height: 20px; font-size: 13px; color: var(--fi-muted); margin-bottom: 8px;
-  }
-  .fi-au__chart-readout b { color: var(--fi-text); font-weight: 700; font-variant-numeric: tabular-nums; }
-  .fi-au__chart {
-    display: flex; align-items: flex-end; gap: 3px;
-    height: 104px; margin-bottom: 8px;
-    touch-action: pan-y;              /* vertikal scrollen erlaubt, horizontal scrubben */
-  }
-  .fi-au__bar2 {
-    flex: 1 1 0; min-height: 4px; border-radius: 4px 4px 0 0;
-    background: var(--fi-card-2); border: 1px solid var(--fi-border); border-bottom: none;
-    cursor: pointer;
-    transition: height .5s cubic-bezier(.22,1,.36,1), background .15s ease, filter .15s ease;
-  }
-  .fi-au__bar2:hover, .fi-au__bar2.is-active {
-    background: color-mix(in srgb, var(--fi-accent) 35%, var(--fi-card-2));
-    filter: brightness(1.25);
-  }
-  .fi-au__bar2.is-now {
-    background: var(--fi-accent);
-    border-color: color-mix(in srgb, var(--fi-accent) 60%, transparent);
-  }
-  .fi-au__chart-foot {
-    display: flex; justify-content: space-between;
-    font-size: 10px; color: var(--fi-muted); margin: 0 0 16px;
-  }
-  .fi-auslastung--signage .fi-au__chart { height: 170px; }
-  .fi-auslastung--signage .fi-au__chart-readout { font-size: 16px; }
+  /* Drawer */
+  .drawer{position:absolute; left:0; right:0; bottom:0; background:#fff; border-radius:28px 28px 0 0; padding:18px 22px 20px; color:#15171B; box-shadow:0 -10px 32px rgba(4,33,40,.18);}
 
-  @media (prefers-reduced-motion: reduce) {
-    .fi-au__dot { animation: none; }
-    .fi-au__fill { transition: none; }
-    .fi-au__bar2 { transition: none; }
-  }
+  .hours-panel{display:none; border:1px solid #e6eef0; border-radius:16px; overflow:hidden; margin-bottom:14px;}
+  .hrow{display:flex; align-items:center; justify-content:space-between; padding:10px 15px;}
+  .hrow .d{font-size:13px;} .hrow .t{font-weight:600; font-size:12px;}
+
+  .status-row{display:flex; align-items:center; gap:9px; cursor:pointer; user-select:none;}
+  .status-dot{width:9px; height:9px; border-radius:50%; background:#1FD65F; flex:none;}
+  .status-label{font-weight:800; font-size:14px;}
+  .status-detail{font-weight:500; font-size:13px; color:#9aa0a8; margin-left:auto;}
+  .chevron{display:inline-block; margin-left:10px; color:#b9c4c6; font-size:10px; transition:transform .2s; transform:rotate(0deg);}
+
+  .divider{height:1px; background:#eaf0f1; margin:15px 0;}
+
+  .reco{display:flex; align-items:center; gap:13px; background:linear-gradient(100deg,#E7F1F3,#D6E8EB); border:1px solid #C2DCE0; border-radius:15px; padding:13px 15px;}
+  .reco-icon{width:40px; height:40px; border-radius:11px; background:#0a4958; display:flex; align-items:center; justify-content:center; flex:none; font-weight:900; font-size:19px; color:#fff;}
+  .reco-eyebrow{font-weight:800; font-size:10px; letter-spacing:.13em; color:#0a4958;}
+  .reco-window{font-weight:900; font-size:17px; color:#15171B; margin-top:2px; letter-spacing:-.01em;}
+  .reco-note{font-weight:500; font-size:12px; color:#5d7a80; margin-top:1px;}
+
+  .trend-head{display:flex; justify-content:space-between; align-items:baseline; margin:18px 0 10px;}
+  .trend-head .l{font-weight:800; font-size:11px; letter-spacing:.12em; color:#9aa0a8;}
+  .trend-head .r{font-weight:700; font-size:11px; color:#9aa0a8;}
+  .trend-bars{display:flex; align-items:flex-end; gap:4px; height:46px; touch-action:pan-y;}
+  .tbar{flex:1; border-radius:3px 3px 0 0; min-height:6px; cursor:pointer; transition:height .5s cubic-bezier(.22,1,.36,1), filter .12s;}
+  .tbar:hover{filter:brightness(.93);}
+  .trend-axis{display:flex; justify-content:space-between; margin-top:7px; font-weight:600; font-size:10px; color:#aab4b6;}
+  .trend-caption{text-align:center; font-weight:500; font-size:11px; color:#a8adb5; margin-top:14px; min-height:14px;}
+
+  .err{opacity:.6;}
 </style>
 </head>
-<body style="margin:0;background:#0c0e12;padding:40px 16px;min-height:100vh;display:flex;align-items:center;justify-content:center;">
+<body>
+  <div class="screen" id="screen">
 
-  <div class="fi-auslastung" id="fiAuslastung" data-status="low" role="group" aria-label="Aktuelle Studio-Auslastung">
-    <div class="fi-au__top">
-      <span class="fi-au__live"><span class="fi-au__dot"></span> Live</span>
-      <span class="fi-au__title">Aktuelle Auslastung</span>
-    </div>
-
-    <div class="fi-au__count">
-      <span class="fi-au__num" id="fiNum" aria-live="polite">–</span>
-      <span class="fi-au__of">von <span id="fiMax">25</span> Personen</span>
-    </div>
-
-    <div class="fi-au__bar" role="img" aria-label="Auslastungsbalken">
-      <div class="fi-au__fill" id="fiFill"></div>
-    </div>
-
-    <div class="fi-au__status">
-      <span class="fi-au__badge"></span>
-      <div>
-        <div class="fi-au__status-main" id="fiStatusMain">Lädt …</div>
-        <div class="fi-au__status-sub" id="fiStatusSub">Einen Moment</div>
+    <!-- Header -->
+    <div class="row" style="justify-content:space-between;">
+      <img class="logo" src="/assets/fitinn-logo-white.png" alt="Fit-Inn Trier" />
+      <div class="live-badge">
+        <span class="live-dot"></span>
+        <span class="live-txt">LIVE</span>
       </div>
     </div>
 
-    <div class="fi-au__typical" id="fiTypicalWrap" hidden>
-      <span>Normal um diese Zeit:</span>
-      <span class="fi-au__typical-val" id="fiTypical">–</span>
+    <div class="eyebrow">AKTUELLE AUSLASTUNG</div>
+
+    <!-- Ring -->
+    <div class="ring-wrap">
+      <svg width="264" height="264" viewBox="0 0 264 264">
+        <circle cx="132" cy="132" r="116" fill="none" stroke="rgba(4,33,40,.28)" stroke-width="20" />
+        <circle id="ring" cx="132" cy="132" r="116" fill="none" stroke="#FFFFFF" stroke-width="20"
+                stroke-linecap="round" stroke-dasharray="728.85" stroke-dashoffset="728.85"
+                transform="rotate(-90 132 132)" />
+      </svg>
+      <div class="ring-center">
+        <div class="count" id="count">–</div>
+        <div class="cap-label">von <span id="capacity">25</span> Plätzen</div>
+      </div>
     </div>
 
-    <div class="fi-au__chart-readout" id="fiChartReadout" hidden></div>
-    <div class="fi-au__chart" id="fiChart" hidden role="group" aria-label="Typische Auslastung im Tagesverlauf – Balken antippen zeigt die Personenzahl"></div>
-    <div class="fi-au__chart-foot" id="fiChartFoot" hidden>
-      <span>6 Uhr</span><span>12 Uhr</span><span>18 Uhr</span><span>24 Uhr</span>
+    <!-- Load pill -->
+    <div class="load-wrap">
+      <div class="load-pill">
+        <span class="load-dot"></span>
+        <span class="load-label" id="loadLabel">—</span>
+      </div>
     </div>
 
-    <div class="fi-au__foot">
-      <span id="fiUpdated">Aktualisiere …</span>
-      <span class="fi-au__preview" id="fiPreview" hidden>Vorschau</span>
+    <!-- Drawer -->
+    <div class="drawer">
+      <div class="hours-panel" id="hoursPanel"></div>
+
+      <div class="status-row" id="hoursToggle">
+        <span class="status-dot" id="statusDot"></span>
+        <span class="status-label" id="statusLabel">—</span>
+        <span class="status-detail" id="statusDetail"></span>
+        <span class="chevron" id="chevron">▼</span>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="reco">
+        <div class="reco-icon">★</div>
+        <div style="min-width:0;">
+          <div class="reco-eyebrow">BESTE ZEIT HEUTE · <span id="bestDay">—</span></div>
+          <div class="reco-window" id="bestWindow">—</div>
+          <div class="reco-note" id="bestNote">—</div>
+        </div>
+      </div>
+
+      <div id="trendSection">
+        <div class="trend-head">
+          <span class="l">VERLAUF HEUTE</span>
+          <span class="r">8 – 22 Uhr</span>
+        </div>
+        <div class="trend-bars" id="trendBars" role="group" aria-label="Typischer Tagesverlauf – Balken antippen für Details"></div>
+        <div class="trend-axis">
+          <span>8</span><span>12</span><span style="color:#0a4958;">jetzt</span><span>22</span>
+        </div>
+        <div class="trend-caption" id="trendCaption">Verlauf aus den letzten Wochen</div>
+      </div>
     </div>
   </div>
 
 <script>
 (function () {
-  // ═══ KONFIGURATION ═══════════════════════════════════════════════════
-  var CONFIG = {
-    // Wird das Widget von derselben Domain ausgeliefert (z.B. Vercel), reicht der
-    // relative Pfad '/api/auslastung'. Für cross-origin-Einbettung die absolute
-    // Proxy-URL eintragen, z.B. 'https://auslastung.fit-inn-trier.de/api/auslastung'.
-    // Leer lassen = Vorschau-Modus (Demo-Daten, kein Netzwerk).
-    endpoint: '/api/auslastung',
-    // Endpunkt für die typische Auslastung ("Stoßzeiten"). Bei cross-origin-
-    // Einbettung absolute URL eintragen, sonst relativ lassen.
+  var CFG = {
+    occEndpoint:     '/api/auslastung',
     typicalEndpoint: '/api/typical',
-    refreshMs: 45000,
-    typicalRefreshMs: 600000,   // typischer Wert ändert sich langsam -> alle 10 min
-    maxDemo: 25
+    occRefreshMs:     45000,
+    typicalRefreshMs: 600000,
+    capacity: 25,
+    accent: '#0a4958'
   };
 
-  var STATES = {
-    low:    { main: 'Viel Platz',                sub: 'Perfekt zum Trainieren' },
-    medium: { main: 'Gut besucht',               sub: 'Angenehme Auslastung' },
-    high:   { main: 'Stark besucht',             sub: 'Etwas mehr los als sonst' },
-    error:  { main: 'Momentan nicht verfügbar',  sub: 'Bitte später erneut versuchen' }
-  };
+  // ── Öffnungszeiten je Wochentag (Mo=0 … So=6) als Minuten-Intervalle ──
+  //    Bei Bedarf hier anpassen (gilt für Status "Geöffnet/Pause/Geschlossen").
+  var names = ['Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag','Sonntag'];
+  var WD = '09:30 – 13:00 · 15:00 – 21:30';
+  var timesText = [WD, WD, WD, WD, WD, '13:00 – 18:00', '09:00 – 15:00'];
+  var ivWd = [[570, 780], [900, 1290]];                 // 09:30–13:00, 15:00–21:30
+  var iv = [ivWd, ivWd, ivWd, ivWd, ivWd, [[780, 1080]], [[540, 900]]];
+
+  function pad(n){ return (n < 10 ? '0' : '') + n; }
+  function fmt(m){ return pad(Math.floor(m/60)) + ':' + pad(m%60); }
+
+  // Aktuelle Zeit in Studio-Zeitzone (Europe/Berlin), egal wo der Betrachter ist
+  function berlinNow(){
+    var p = new Intl.DateTimeFormat('en-GB', { timeZone:'Europe/Berlin', weekday:'short', hour:'2-digit', minute:'2-digit', hourCycle:'h23' }).formatToParts(new Date());
+    var g = function(t){ return (p.find(function(x){return x.type===t;}) || {}).value; };
+    var map = { Mon:0, Tue:1, Wed:2, Thu:3, Fri:4, Sat:5, Sun:6 };
+    var hour = parseInt(g('hour'),10), min = parseInt(g('minute'),10);
+    return { di: map[g('weekday')], hour: hour, min: hour*60 + min };
+  }
 
   var el = {
-    root:       document.getElementById('fiAuslastung'),
-    num:        document.getElementById('fiNum'),
-    max:        document.getElementById('fiMax'),
-    fill:       document.getElementById('fiFill'),
-    statusMain: document.getElementById('fiStatusMain'),
-    statusSub:  document.getElementById('fiStatusSub'),
-    updated:    document.getElementById('fiUpdated'),
-    preview:    document.getElementById('fiPreview'),
-    typicalWrap: document.getElementById('fiTypicalWrap'),
-    typical:    document.getElementById('fiTypical'),
-    chart:      document.getElementById('fiChart'),
-    chartFoot:  document.getElementById('fiChartFoot'),
-    chartReadout: document.getElementById('fiChartReadout')
+    screen:      document.getElementById('screen'),
+    count:       document.getElementById('count'),
+    capacity:    document.getElementById('capacity'),
+    ring:        document.getElementById('ring'),
+    loadLabel:   document.getElementById('loadLabel'),
+    hoursToggle: document.getElementById('hoursToggle'),
+    hoursPanel:  document.getElementById('hoursPanel'),
+    statusDot:   document.getElementById('statusDot'),
+    statusLabel: document.getElementById('statusLabel'),
+    statusDetail:document.getElementById('statusDetail'),
+    chevron:     document.getElementById('chevron'),
+    bestDay:     document.getElementById('bestDay'),
+    bestWindow:  document.getElementById('bestWindow'),
+    bestNote:    document.getElementById('bestNote'),
+    trendSection:document.getElementById('trendSection'),
+    trendBars:   document.getElementById('trendBars'),
+    trendCaption:document.getElementById('trendCaption')
   };
 
-  var lastTs = null;
-  var lastTypical = null;
-  var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var state = { capacity: CFG.capacity, current: null, trend: null, isPause: false };
 
-  function countUp(target) {
-    if (reduce) { el.num.textContent = target; return; }
-    var start = 0, dur = 700, t0 = performance.now();
-    (function step(now) {
-      var p = Math.min(1, (now - t0) / dur);
-      var eased = 1 - Math.pow(1 - p, 3);
-      el.num.textContent = Math.round(start + (target - start) * eased);
-      if (p < 1) requestAnimationFrame(step);
-    })(t0);
-  }
-
-  function render(d) {
-    var s = STATES[d.status] || STATES.error;
-    el.root.setAttribute('data-status', d.status);
-    el.max.textContent = d.max;
-    el.statusMain.textContent = s.main;
-    el.statusSub.textContent = s.sub;
-
-    if (d.status === 'error') {
-      el.num.textContent = '–';
-      el.fill.style.width = '0%';
+  // ── Auslastung (Ring + Zahl + Ampel) ──
+  function renderOccupancy(){
+    var cap = state.capacity || CFG.capacity;
+    el.capacity.textContent = cap;
+    var c = state.current;
+    if (c == null) {
+      el.count.textContent = '–';
+      el.count.classList.add('err');
+      el.ring.setAttribute('stroke-dashoffset', '728.85');
+      el.loadLabel.textContent = 'nicht verfügbar';
       return;
     }
-    countUp(d.count);
-    el.fill.style.width = (d.percent || 0) + '%';
-    lastTs = Date.now();
-    tick();
+    el.count.classList.remove('err');
+    el.count.textContent = c;
+    var ratio = Math.max(0, Math.min(1, c / cap));
+    el.ring.setAttribute('stroke-dashoffset', (728.85 * (1 - ratio)).toFixed(1));
+    var pct = Math.round(ratio * 100);
+    var lt = ratio < 0.5 ? 'ENTSPANNT' : (ratio <= 0.8 ? 'GUT BESUCHT' : 'VOLL');
+    el.loadLabel.textContent = lt + ' · ' + pct + '%';
+  }
+  function loadOccupancy(){
+    fetch(CFG.occEndpoint, { cache:'no-store' })
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(d){
+        if (d) { state.current = (typeof d.count === 'number') ? d.count : null; if (d.max) state.capacity = d.max; }
+        else { state.current = null; }
+        renderOccupancy();
+      })
+      .catch(function(){ state.current = null; renderOccupancy(); });
   }
 
-  function tick() {
-    if (!lastTs) return;
-    var secs = Math.round((Date.now() - lastTs) / 1000);
-    el.updated.textContent = secs < 5 ? 'Gerade aktualisiert' : 'Aktualisiert vor ' + secs + ' s';
+  // ── Historie / Verlauf + Empfehlung ──
+  function loadTypical(){
+    fetch(CFG.typicalEndpoint, { cache:'no-store' })
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(t){
+        if (!t || !t.available || !Array.isArray(t.day)) { state.trend = null; }
+        else {
+          var hours = [], mx = 1;
+          for (var h = 8; h <= 21; h++) {
+            var a = t.day[h*2], b = t.day[h*2+1], vals = [];
+            if (a != null) vals.push(a); if (b != null) vals.push(b);
+            var v = vals.length ? Math.round(vals.reduce(function(x,y){return x+y;},0) / vals.length) : 0;
+            hours.push({ hour:h, count:v });
+            if (v > mx) mx = v;
+          }
+          state.trend = { hours: hours, max: mx, day: t.day };
+          computeReco(t.day);
+        }
+        updateStatus(true);
+      })
+      .catch(function(){});
   }
 
-  function demo() {
-    el.preview.hidden = false;
-    var count = 5, max = CONFIG.maxDemo;
-    render({ count: count, max: max, percent: Math.round(count / max * 100), status: 'low' });
-  }
-
-  function slotLabel(s) {
-    var h = Math.floor(s / 2), m = (s % 2) ? '30' : '00';
-    return (h < 10 ? '0' : '') + h + ':' + m;
-  }
-
-  // — Interaktion: Balken antippen/überfahren zeigt die Personenzahl —
-  function chartInfo(bar) {
-    if (!bar || !bar.getAttribute) return null;
-    return { t: bar.getAttribute('data-t'), v: bar.getAttribute('data-v') };
-  }
-  function chartShow(info) {
-    if (!info) { chartReset(); return; }
-    el.chartReadout.hidden = false;
-    el.chartReadout.innerHTML = info.t + ' Uhr · <b>' + (info.v === '' ? 'keine Daten' : '~' + info.v + ' Personen') + '</b>';
-  }
-  function chartReset() {
-    el.chartReadout.hidden = false;
-    el.chartReadout.textContent = 'Typischer Tagesverlauf – Balken antippen für Details';
-  }
-  function chartActive(bar) {
-    var act = el.chart.querySelectorAll('.fi-au__bar2.is-active');
-    for (var i = 0; i < act.length; i++) act[i].classList.remove('is-active');
-    if (bar) bar.classList.add('is-active');
-  }
-  // Balken anhand der horizontalen Position bestimmen -> trifft immer den
-  // nächstgelegenen Balken, auch wenn man die Lücke oder knapp daneben tippt.
-  function chartBarFromX(clientX) {
-    var rect = el.chart.getBoundingClientRect();
-    if (!rect.width) return null;
-    var frac = (clientX - rect.left) / rect.width;
-    frac = Math.min(0.9999, Math.max(0, frac));
-    var bars = el.chart.children;
-    return bars[Math.floor(frac * bars.length)] || null;
-  }
-  function chartSelect(clientX) {
-    var bar = chartBarFromX(clientX);
-    if (bar) { chartActive(bar); chartShow(chartInfo(bar)); }
-  }
-  function chartWire() {
-    if (el.chart.__wired) return;
-    el.chart.__wired = true;
-    // Tippen/Klicken wählt aus; Ziehen (Maus-Hover oder Finger-Drag) scrubt.
-    el.chart.addEventListener('pointerdown', function (e) { chartSelect(e.clientX); });
-    el.chart.addEventListener('pointermove', function (e) { if (e.pointerType === 'mouse' || e.buttons) chartSelect(e.clientX); });
-    // Nur die Maus setzt beim Rausfahren zurück; ein Tipp bleibt stehen.
-    el.chart.addEventListener('pointerleave', function (e) { if (e.pointerType === 'mouse') { chartActive(null); chartReset(); } });
-  }
-
-  function renderTypical(t) {
-    lastTypical = t;
-    if (!t || !t.available) { el.typicalWrap.hidden = true; el.chart.hidden = true; el.chartFoot.hidden = true; el.chartReadout.hidden = true; return; }
-
-    var hasData = t.samples > 0 && t.typicalCount != null;
-    el.typicalWrap.hidden = false;
-    el.typical.textContent = hasData ? ('~' + t.typicalCount + ' Personen') : 'wird noch gesammelt …';
-
-    // Tageskurve 06:00–24:00 (Slots 12..47)
-    if (Array.isArray(t.day) && t.totalSamples > 0) {
-      var startSlot = 12, endSlot = 48;
-      // Balkenhöhe relativ zum Tagesmaximum (nicht zur Kapazität) -> Kurve füllt
-      // den Chart und die Stoßzeiten sind klar erkennbar.
-      var dayMax = 1;
-      for (var k = startSlot; k < endSlot; k++) { if (t.day[k] != null && t.day[k] > dayMax) dayMax = t.day[k]; }
-      var html = '';
-      for (var s = startSlot; s < endSlot; s++) {
-        var v = t.day[s];
-        var h = (v == null) ? 0 : (v === 0 ? 4 : Math.max(12, Math.round(v / dayMax * 100)));
-        var now = (s === t.slot) ? ' is-now' : '';
-        var lbl = slotLabel(s);
-        var vAttr = (v == null) ? '' : v;
-        var aria = lbl + ' Uhr, ' + (v == null ? 'keine Daten' : ('etwa ' + v + ' Personen'));
-        html += '<span class="fi-au__bar2' + now + '" style="height:' + h + '%"'
-              + ' data-t="' + lbl + '" data-v="' + vAttr + '"'
-              + ' title="' + lbl + ' Uhr · ' + (v == null ? 'keine Daten' : ('~' + v)) + '"'
-              + ' aria-label="' + aria + '"></span>';
+  function computeReco(day){
+    var di = berlinNow().di;
+    var intervals = iv[di], best = null;
+    for (var k = 0; k < intervals.length; k++) {
+      var s0 = Math.floor(intervals[k][0] / 30), s1 = Math.ceil(intervals[k][1] / 30);
+      for (var s = s0; s + 3 <= s1; s++) {
+        var sum = 0, cnt = 0;
+        for (var j = 0; j < 3; j++) { var v = day[s+j]; if (v != null) { sum += v; cnt++; } }
+        if (cnt > 0) { var avg = sum / cnt; if (best === null || avg < best.avg) best = { avg:avg, start:s*30, end:(s+3)*30 }; }
       }
-      el.chart.innerHTML = html;
-      el.chart.hidden = false;
-      el.chartFoot.hidden = false;
-      chartWire();
-      chartReset();
+    }
+    el.bestDay.textContent = names[di];
+    if (best) {
+      el.bestWindow.textContent = fmt(best.start) + ' – ' + fmt(best.end) + ' Uhr';
+      var sh = Math.floor(best.start / 60);
+      el.bestNote.textContent = sh < 11 ? 'morgens am leersten'
+        : (sh < 14 ? 'um die Mittagszeit am ruhigsten'
+        : (sh < 17 ? 'am frühen Nachmittag am ruhigsten' : 'am Abend am ruhigsten'));
     } else {
-      el.chart.hidden = true;
-      el.chartFoot.hidden = true;
-      el.chartReadout.hidden = true;
+      el.bestWindow.textContent = '—'; el.bestNote.textContent = '';
     }
   }
 
-  function loadTypical() {
-    if (!CONFIG.typicalEndpoint) return;
-    fetch(CONFIG.typicalEndpoint, { cache: 'no-store' })
-      .then(function (r) { return r.ok ? r.json() : null; })
-      .then(function (t) { renderTypical(t); })
-      .catch(function () { /* still: Widget zeigt weiter den Live-Wert */ });
+  // ── Status + Verlaufsbalken + Öffnungszeiten ──
+  var lastHour = -1, lastPause = null, lastDi = -1;
+  function updateStatus(force){
+    var n = berlinNow(), di = n.di, cur = n.min;
+    var today = iv[di], open = false, closeAt = null, nextStart = null, passed = false;
+    for (var i = 0; i < today.length; i++) {
+      if (cur >= today[i][0] && cur < today[i][1]) { open = true; closeAt = today[i][1]; }
+      if (today[i][1] <= cur) passed = true;
+      if (today[i][0] > cur && nextStart === null) nextStart = today[i][0];
+    }
+    var label, detail, color, isPause = false;
+    if (open) { label = 'Geöffnet'; color = '#1FD65F'; detail = 'noch bis ' + fmt(closeAt) + ' Uhr'; }
+    else if (nextStart !== null && passed) { label = 'Pause'; color = '#FF9F1A'; detail = 'öffnet wieder ' + fmt(nextStart) + ' Uhr'; isPause = true; }
+    else if (nextStart !== null) { label = 'Geschlossen'; color = '#E0563B'; detail = 'öffnet ' + fmt(nextStart) + ' Uhr'; }
+    else { var nd = (di + 1) % 7; label = 'Geschlossen'; color = '#E0563B'; detail = 'öffnet ' + names[nd] + ' ' + fmt(iv[nd][0][0]) + ' Uhr'; }
+    el.statusLabel.textContent = label;
+    el.statusDetail.textContent = detail;
+    el.statusDot.style.background = color;
+    state.isPause = isPause;
+
+    if (force || di !== lastDi) { lastDi = di; renderHours(di); }
+    if (force || n.hour !== lastHour || isPause !== lastPause) {
+      lastHour = n.hour; lastPause = isPause;
+      renderTrend(n);
+    }
   }
 
-  function load() {
-    fetch(CONFIG.endpoint, { cache: 'no-store' })
-      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
-      .then(function (d) { render(d); })
-      .catch(function () { render({ status: 'error', max: CONFIG.maxDemo }); });
+  function renderTrend(n){
+    if (state.isPause || !state.trend) { el.trendSection.style.display = 'none'; return; }
+    el.trendSection.style.display = '';
+    var hours = state.trend.hours, mx = state.trend.max, html = '';
+    for (var b = 0; b < hours.length; b++) {
+      var hh = hours[b];
+      var ratio = mx > 0 ? hh.count / mx : 0;
+      var px = Math.round(14 + ratio * 32);
+      var isNow = hh.hour === n.hour;
+      var bg = isNow ? CFG.accent : '#E7EEEF';
+      var sh = isNow ? 'box-shadow:0 0 0 1px rgba(10,73,88,.3);' : '';
+      html += '<div class="tbar" data-h="' + hh.hour + '" data-v="' + hh.count + '" title="' + hh.hour + ' Uhr · ~' + hh.count + ' Personen"'
+            + ' style="height:' + px + 'px;background:' + bg + ';' + sh + '"></div>';
+    }
+    el.trendBars.innerHTML = html;
+    trendWire();
+    trendReset();
   }
+
+  // Verlaufsbalken interaktiv (Tippen/Überfahren -> Caption zeigt Wert)
+  function trendBarFromX(clientX){
+    var rect = el.trendBars.getBoundingClientRect();
+    if (!rect.width) return null;
+    var frac = Math.min(0.9999, Math.max(0, (clientX - rect.left) / rect.width));
+    var bars = el.trendBars.children;
+    return bars[Math.floor(frac * bars.length)] || null;
+  }
+  function trendShow(bar){
+    if (!bar) return;
+    el.trendCaption.textContent = bar.getAttribute('data-h') + ' Uhr · ~' + bar.getAttribute('data-v') + ' Personen';
+  }
+  function trendReset(){ el.trendCaption.textContent = 'Verlauf aus den letzten Wochen'; }
+  function trendWire(){
+    if (el.trendBars.__wired) return;
+    el.trendBars.__wired = true;
+    el.trendBars.addEventListener('pointerdown', function(e){ trendShow(trendBarFromX(e.clientX)); });
+    el.trendBars.addEventListener('pointermove', function(e){ if (e.pointerType === 'mouse' || e.buttons) trendShow(trendBarFromX(e.clientX)); });
+    el.trendBars.addEventListener('pointerleave', function(e){ if (e.pointerType === 'mouse') trendReset(); });
+  }
+
+  function renderHours(di){
+    var rows = '';
+    for (var d = 0; d < 7; d++) {
+      var t = d === di;
+      var rbg = t ? '#E7F1F3' : '#fff', rfg = t ? '#15171B' : '#42454b', rtc = t ? CFG.accent : '#9aa0a8', rw = t ? '800' : '600';
+      var bt = d === 0 ? '0' : '1px solid #eef3f4';
+      rows += '<div class="hrow" style="background:' + rbg + ';border-top:' + bt + ';">'
+            + '<span class="d" style="font-weight:' + rw + ';color:' + rfg + ';">' + names[d] + (t ? ' · heute' : '') + '</span>'
+            + '<span class="t" style="color:' + rtc + ';">' + timesText[d] + '</span></div>';
+    }
+    el.hoursPanel.innerHTML = rows;
+  }
+
+  // Dropup
+  var hoursOpen = false;
+  el.hoursToggle.addEventListener('click', function(){
+    hoursOpen = !hoursOpen;
+    el.hoursPanel.style.display = hoursOpen ? 'block' : 'none';
+    el.chevron.style.transform = hoursOpen ? 'rotate(180deg)' : 'rotate(0deg)';
+  });
+
+  // Frame an Viewport anpassen (Handy randlos, Wand-Display skaliert hoch)
+  function fitScreen(){
+    var s = Math.min(window.innerWidth / 390, window.innerHeight / 812, 3);
+    el.screen.style.transform = 'scale(' + s + ')';
+  }
+  window.addEventListener('resize', fitScreen);
 
   // Start
-  if (!CONFIG.endpoint) {
-    demo();
-  } else {
-    load();
-    setInterval(load, CONFIG.refreshMs);
-    loadTypical();
-    setInterval(loadTypical, CONFIG.typicalRefreshMs);
-  }
-  setInterval(tick, 1000);
+  fitScreen();
+  renderOccupancy();
+  updateStatus(true);
+  loadOccupancy();  setInterval(loadOccupancy, CFG.occRefreshMs);
+  loadTypical();    setInterval(loadTypical, CFG.typicalRefreshMs);
+  setInterval(function(){ updateStatus(false); }, 30000);
 })();
 </script>
 </body>
