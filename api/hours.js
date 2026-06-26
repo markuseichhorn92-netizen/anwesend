@@ -22,7 +22,7 @@ const API_KEY =
   process.env.ML_APIKEY ||
   process.env.MAGICLINE_API_KEY;
 const URL = `https://${TENANT}.open-api.magicline.com/v1/studios/information`;
-const TTL_MS = 3600000; // 1 Stunde – Öffnungszeiten ändern sich selten
+const TTL_MS = 30000; // 30 s – Änderungen aus Magicline sollen schnell durchschlagen
 
 let cache = { data: null, ts: 0 };
 
@@ -40,7 +40,7 @@ module.exports = async function handler(req, res) {
   try {
     const now = Date.now();
     if (!debug && cache.data && now - cache.ts < TTL_MS) {
-      res.setHeader('Cache-Control', 'public, s-maxage=3600');
+      res.setHeader('Cache-Control', 'public, s-maxage=30, stale-while-revalidate=120');
       res.statusCode = 200;
       return res.end(JSON.stringify({ ...cache.data, cached: true }));
     }
@@ -70,7 +70,7 @@ module.exports = async function handler(req, res) {
     };
     if (debug) out.raw = data;
 
-    if (!debug) { cache = { data: out, ts: now }; res.setHeader('Cache-Control', 'public, s-maxage=3600'); }
+    if (!debug) { cache = { data: out, ts: now }; res.setHeader('Cache-Control', 'public, s-maxage=30, stale-while-revalidate=120'); }
     res.statusCode = 200;
     return res.end(JSON.stringify(out));
   } catch (err) {
