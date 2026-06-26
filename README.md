@@ -174,6 +174,12 @@ aggregierte Durchschnittszahlen**.
 **Datenmodell (Redis):** je Wochentag zwei Hashes `typical:sum:{wd}` und
 `typical:cnt:{wd}` mit Feld = Slot (0–47). Durchschnitt = `sum / cnt`.
 
+**Live-Daten haben Priorität (gleitender Speicher):** Ab `TYPICAL_MAX_SAMPLES`
+Messungen pro Slot (Standard 40 ≈ ~20 Wochen) läuft ein gleitender Schnitt
+(EWMA) — jede neue Live-Messung verdrängt den ältesten Anteil. So spiegelt die
+Kurve immer die jüngere Realität wider und die historische Basis verblässt über
+einige Monate. Niedrigerer Wert = schnellere Anpassung an Veränderungen.
+
 **Optionaler Schutz:** Repo-Secret `RECORD_SECRET` anlegen **und** dieselbe
 Env-Variable in Vercel setzen — dann akzeptiert `/api/record` nur Aufrufe mit
 passendem `Authorization: Bearer …`. Ohne Secret ist der Endpunkt offen
