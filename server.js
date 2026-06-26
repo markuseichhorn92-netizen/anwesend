@@ -1,78 +1,29 @@
 'use strict';
 
 /**
- * Fit-Inn Trier · Live-Auslastung Proxy
- * --------------------------------------
- * Holt die aktuelle Personenzahl aus der Magicline Open API
- * (GET /v1/studios/utilization), cached sie und liefert eine
- * anonyme, aggregierte JSON-Antwort an das Frontend.
- *
- * Der API-Key bleibt ausschliesslich hier auf dem Server (in der .env)
- * und taucht NIE im Browser auf.
+ * Fit-Inn Trier · Live-Auslastung Proxy (Standalone / Docker / VPS)
+ * ----------------------------------------------------------------
+ * Langlaufender Node-HTTP-Server für die VPS-/Docker-Variante.
+ * Die eigentliche Logik liegt in lib/utilization.js und wird mit der
+ * Vercel-Variante (api/auslastung.js) geteilt.
  *
  * Endpunkte:
  *   GET /api/auslastung  ->  { count, max, percent, status, ... }
  *   GET /health          ->  { ok: true }
+ *
+ * Hinweis: Für ein Vercel-Deployment wird DIESE Datei nicht gebraucht —
+ * dort übernehmen die Functions unter /api. Siehe README.
  */
 
 const http = require('node:http');
+const { config, fetchUtilization, getCache } = require('./lib/utilization');
 
-// ─── Konfiguration (aus .env / Umgebungsvariablen) ───────────────────────────
 const PORT           = parseInt(process.env.PORT || '8080', 10);
-const TENANT         = process.env.ML_TENANT || 'fit-inn-trier';
-const API_KEY        = process.env.ML_API_KEY;                  // PFLICHT
-const MAX_CAPACITY   = parseInt(process.env.MAX_CAPACITY || '80', 10);
-const CACHE_TTL_MS   = parseInt(process.env.CACHE_TTL_MS || '45000', 10);
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || '*';
 
-// Ampel-Schwellen in Prozent
-const YELLOW_AT = parseInt(process.env.YELLOW_AT || '50', 10);
-const RED_AT    = parseInt(process.env.RED_AT || '80', 10);
-
-const ML_URL = `https://${TENANT}.open-api.magicline.com/v1/studios/utilization`;
-
-if (!API_KEY) {
+if (!config.hasApiKey) {
   console.error('FATAL: ML_API_KEY ist nicht gesetzt. Bitte in der .env hinterlegen.');
   process.exit(1);
-}
-
-// ─── Cache ───────────────────────────────────────────────────────────────────
-let cache = { payload: null, ts: 0 };
-
-async function fetchUtilization() {
-  const now = Date.now();
-  if (cache.payload && now - cache.ts < CACHE_TTL_MS) {
-    return { ...cache.payload, cached: true };
-  }
-
-  const res = await fetch(ML_URL, {
-    headers: { 'x-api-key': API_KEY, Accept: 'application/json' },
-  });
-
-  if (!res.ok) {
-    throw new Error(`Magicline API antwortete mit ${res.status}`);
-  }
-
-  const data = await res.json();                 // { capacity, count }
-  const count = Number.isFinite(data.count) ? data.count : 0;
-  const max = MAX_CAPACITY;
-  const percent = max > 0 ? Math.min(100, Math.round((count / max) * 100)) : 0;
-
-  let status = 'low';
-  if (percent >= RED_AT) status = 'high';
-  else if (percent >= YELLOW_AT) status = 'medium';
-
-  const payload = {
-    count,
-    max,
-    percent,
-    status,
-    rawCapacity: data.capacity ?? null,           // was Magicline selbst meldet (aktuell null)
-    updatedAt: new Date().toISOString(),
-  };
-
-  cache = { payload, ts: now };
-  return { ...payload, cached: false };
 }
 
 // ─── HTTP-Server ─────────────────────────────────────────────────────────────
@@ -101,6 +52,7 @@ const server = http.createServer(async (req, res) => {
     } catch (err) {
       console.error('[auslastung]', err.message);
       // Bei kurzem Magicline-Aussetzer: letzten bekannten Wert ausliefern statt hart zu failen
+      const cache = getCache();
       if (cache.payload) {
         res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
         return res.end(JSON.stringify({ ...cache.payload, cached: true, stale: true }));
@@ -116,8 +68,8 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, () => {
   console.log(`✓ Auslastungs-Proxy läuft auf :${PORT}`);
-  console.log(`  → Quelle:  ${ML_URL}`);
-  console.log(`  → Max:     ${MAX_CAPACITY} Personen`);
-  console.log(`  → Cache:   ${CACHE_TTL_MS} ms`);
-  console.log(`  → Ampel:   grün < ${YELLOW_AT}%  ·  gelb ${YELLOW_AT}–${RED_AT - 1}%  ·  rot ≥ ${RED_AT}%`);
+  console.log(`  → Quelle:  ${config.ML_URL}`);
+  console.log(`  → Max:     ${config.MAX_CAPACITY} Personen`);
+  console.log(`  → Cache:   ${config.CACHE_TTL_MS} ms`);
+  console.log(`  → Ampel:   grün < ${config.YELLOW_AT}%  ·  gelb ${config.YELLOW_AT}–${config.RED_AT - 1}%  ·  rot ≥ ${config.RED_AT}%`);
 });

@@ -3,15 +3,60 @@
 Zeigt die aktuelle Personenzahl im Studio als Live-Widget — für Website und Signage.
 Die Zahl kommt aus der Magicline Open API (`GET /v1/studios/utilization`, Feld `count`).
 
-**Architektur:** Ein kleiner Node-Proxy (Docker) auf dem VPS hält den API-Key serverseitig,
+**Architektur:** Ein kleiner Node-Proxy hält den API-Key serverseitig,
 fragt Magicline höchstens alle 45 s ab und liefert eine **anonyme, aggregierte** JSON-Zahl.
 Das Frontend-Widget spricht nur den Proxy an — der Key landet nie im Browser.
 
 ```
-Browser/Signage ──> widget.html ──> dein Proxy (VPS) ──x-api-key──> Magicline
+Browser/Signage ──> widget.html ──> dein Proxy ──x-api-key──> Magicline
 ```
 
+Es gibt zwei Deployment-Wege — **Vercel** (Serverless, am einfachsten) oder **VPS/Docker**:
+
+| | Vercel | VPS / Docker |
+|---|---|---|
+| Code | `api/*.js` + `widget.html` | `server.js` |
+| Konfig | Environment Variables im Dashboard | `.env` |
+| URL | `…vercel.app/api/auslastung` | `https://auslastung.fit-inn-trier.de/api/auslastung` |
+
 ---
+
+## Variante A: Vercel (empfohlen) ▲
+
+Vercel führt **Serverless Functions** aus — es startet *keinen* langlaufenden
+`server.js`. Deshalb liegen die Endpunkte als Functions unter `api/`:
+
+```
+api/auslastung.js   ->  GET /api/auslastung
+api/health.js       ->  GET /api/health
+widget.html         ->  /  (per vercel.json auf die Wurzel gemappt)
+```
+
+1. **Repo mit Vercel verbinden** (Add New → Project → dieses GitHub-Repo importieren).
+   Framework-Preset: *Other*. Build-Command leer lassen — Zero-Config genügt.
+2. **Environment Variable setzen** (Project → Settings → Environment Variables):
+
+   | Name | Wert |
+   |---|---|
+   | `ML_API_KEY` | **dein neuer Magicline-Key** (siehe Schritt 0) |
+   | `MAX_CAPACITY` | `80` *(optional)* |
+   | `YELLOW_AT` / `RED_AT` | `50` / `80` *(optional)* |
+
+   > ⚠️ Ohne `ML_API_KEY` antwortet `/api/auslastung` mit `500 { "error": "missing_api_key" }`.
+   > Nach dem Setzen **neu deployen**, damit die Variable greift.
+3. **Deploy.** Danach prüfen:
+
+   ```bash
+   curl https://<dein-projekt>.vercel.app/api/auslastung
+   # -> {"count":5,"max":80,"percent":6,"status":"low",...}
+   ```
+
+   Das Widget ist direkt unter der Projekt-Wurzel (`https://<dein-projekt>.vercel.app/`)
+   erreichbar und ruft `/api/auslastung` auf derselben Domain ab.
+
+---
+
+## Variante B: VPS / Docker
 
 ## 0. Zuerst: API-Key rotieren 🔐
 
