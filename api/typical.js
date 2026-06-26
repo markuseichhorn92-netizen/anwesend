@@ -15,7 +15,7 @@
  * blendet die "normal"-Anzeige dann einfach aus.
  */
 
-const { getTypicalSlot, getTypicalDay, localParts, hasStore } = require('../lib/store');
+const { getTypicalSlot, getTypicalDay, getTypicalWeek, localParts, hasStore } = require('../lib/store');
 
 const MAX_CAPACITY = parseInt(process.env.MAX_CAPACITY || '25', 10);
 
@@ -64,6 +64,10 @@ module.exports = async function handler(req, res) {
       const d = await getTypicalDay(weekday);
       payload.day = d.day;
       payload.totalSamples = d.totalSamples;
+    }
+
+    if (url.searchParams.get('week') === '1') {
+      payload.week = await getTypicalWeek();   // 7 Tageskurven für die Empfehlung
     }
 
     // CDN-cachebar: entlastet den Speicher massiv (viele Viewer -> 1 Abruf/5 min)

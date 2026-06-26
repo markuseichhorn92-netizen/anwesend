@@ -135,7 +135,7 @@
       <div class="reco" id="reco">
         <div class="reco-icon">★</div>
         <div style="min-width:0;">
-          <div class="reco-eyebrow">BESTE ZEIT HEUTE · <span id="bestDay">—</span></div>
+          <div class="reco-eyebrow" id="bestEyebrow">BESTE ZEIT</div>
           <div class="reco-window" id="bestWindow">—</div>
           <div class="reco-note" id="bestNote">—</div>
         </div>
@@ -159,7 +159,7 @@
 (function () {
   var CFG = {
     occEndpoint:     '/api/auslastung',
-    typicalEndpoint: '/api/typical',
+    typicalEndpoint: '/api/typical?week=1',
     occRefreshMs:     45000,
     typicalRefreshMs: 600000,
     capacity: 25,
@@ -213,7 +213,7 @@
           iv = ivN; timesText = txtN;
           lastDi = -1; lastHour = -1;           // Neu-Rendern erzwingen
           updateStatus(true);
-          if (state.trend) computeReco(state.trend.day);
+          computeReco();
         }
       })
       .catch(function(){});
@@ -283,6 +283,38 @@
     return out;
   }
 
+  // Effektive offene Intervalle für Tag (heute + offset), Schließungen abgezogen
+  function effectiveIntervals(offset, n){
+    var dt = new Date(Date.UTC(n.y, n.mo - 1, n.d) + offset * 86400000);
+    var Y = dt.getUTCFullYear(), Mo = dt.getUTCMonth() + 1, D = dt.getUTCDate();
+    var dateNum = Y * 10000 + Mo * 100 + D;
+    var wd = (dt.getUTCDay() + 6) % 7;
+    var cuts = [];
+    closingHours.forEach(function(c){
+      var fromDate = c.fromY * 10000 + c.fromMo * 100 + c.fromD;
+      var toDate = c.toY * 10000 + c.toMo * 100 + c.toD;
+      if (dateNum < fromDate || dateNum > toDate) return;
+      var start = (dateNum === fromDate) ? (c.fromH * 60 + c.fromMi) : 0;
+      var end = (dateNum === toDate) ? (c.toH * 60 + c.toMi) : 1440;
+      if (end > start) cuts.push([start, end]);
+    });
+    var eff = subtract(iv[wd] || [], cuts).sort(function(a, b){ return a[0] - b[0]; });
+    return { wd: wd, intervals: eff };
+  }
+
+  // Nächstes offenes Fenster ab jetzt (Rest von heute, sonst Folgetage)
+  function nextOpenWindow(n){
+    for (var off = 0; off < 8; off++) {
+      var e = effectiveIntervals(off, n);
+      for (var i = 0; i < e.intervals.length; i++) {
+        var s = e.intervals[i][0], en = e.intervals[i][1];
+        if (off === 0 && en <= n.min) continue;
+        return { off: off, wd: e.wd, s: s, e: en, ongoing: (off === 0 && s <= n.min && n.min < en) };
+      }
+    }
+    return null;
+  }
+
   var el = {
     screen:      document.getElementById('screen'),
     count:       document.getElementById('count'),
@@ -296,7 +328,7 @@
     statusDetail:document.getElementById('statusDetail'),
     chevron:     document.getElementById('chevron'),
     reco:        document.getElementById('reco'),
-    bestDay:     document.getElementById('bestDay'),
+    bestEyebrow: document.getElementById('bestEyebrow'),
     bestWindow:  document.getElementById('bestWindow'),
     bestNote:    document.getElementById('bestNote'),
     trendSection:document.getElementById('trendSection'),
@@ -304,7 +336,7 @@
     trendCaption:document.getElementById('trendCaption')
   };
 
-  var state = { capacity: CFG.capacity, current: null, trend: null, isPause: false };
+  var state = { capacity: CFG.capacity, current: null, trend: null, week: null, isPause: false };
 
   // ── Auslastung (Ring + Zahl + Ampel) ──
   function renderOccupancy(){
@@ -353,34 +385,43 @@
             if (v > mx) mx = v;
           }
           state.trend = { hours: hours, max: mx, day: t.day };
-          computeReco(t.day);
+          if (Array.isArray(t.week)) state.week = t.week;
+          computeReco();
         }
         updateStatus(true);
       })
       .catch(function(){});
   }
 
-  function computeReco(day){
-    var di = berlinNow().di;
-    var intervals = iv[di], best = null;
-    for (var k = 0; k < intervals.length; k++) {
-      var s0 = Math.floor(intervals[k][0] / 30), s1 = Math.ceil(intervals[k][1] / 30);
-      for (var s = s0; s + 3 <= s1; s++) {
-        var sum = 0, cnt = 0;
-        for (var j = 0; j < 3; j++) { var v = day[s+j]; if (v != null) { sum += v; cnt++; } }
-        if (cnt > 0) { var avg = sum / cnt; if (best === null || avg < best.avg) best = { avg:avg, start:s*30, end:(s+3)*30 }; }
-      }
+  // Ruhigstes ~90-Min-Fenster im nächsten offenen Zeitfenster – passend zur Uhrzeit
+  function computeReco(){
+    if (!el.reco) return;
+    var n = berlinNow();
+    var w = nextOpenWindow(n);
+    // Store-Wochentag: Sonntag=0…Samstag=6 (Widget nutzt Montag=0…Sonntag=6)
+    var storeWd = w ? (w.wd + 1) % 7 : -1;
+    if (!w || !state.week || !state.week[storeWd]) { el.reco.style.display = 'none'; return; }
+    el.reco.style.display = '';
+
+    var day = state.week[storeWd];
+    var lo = w.ongoing ? Math.max(w.s, n.min) : w.s;   // keine Vergangenheit empfehlen
+    var hi = w.e;
+    var s0 = Math.floor(lo / 30), s1 = Math.ceil(hi / 30), best = null;
+    for (var s = s0; s + 3 <= s1; s++) {
+      var sum = 0, cnt = 0;
+      for (var j = 0; j < 3; j++) { var v = day[s + j]; if (v != null) { sum += v; cnt++; } }
+      if (cnt > 0) { var a = sum / cnt; if (best === null || a < best.a) best = { a: a, start: s * 30, end: (s + 3) * 30 }; }
     }
-    el.bestDay.textContent = names[di];
-    if (best) {
-      el.bestWindow.textContent = fmt(best.start) + ' – ' + fmt(best.end) + ' Uhr';
-      var sh = Math.floor(best.start / 60);
-      el.bestNote.textContent = sh < 11 ? 'morgens am leersten'
-        : (sh < 14 ? 'um die Mittagszeit am ruhigsten'
-        : (sh < 17 ? 'am frühen Nachmittag am ruhigsten' : 'am Abend am ruhigsten'));
-    } else {
-      el.bestWindow.textContent = '—'; el.bestNote.textContent = '';
-    }
+    if (!best) best = { start: lo, end: hi };           // kurzes Restfenster
+    var ws = Math.max(lo, best.start), we = Math.min(hi, best.end);
+
+    var when = w.off === 0 ? 'HEUTE' : (w.off === 1 ? 'MORGEN' : names[w.wd].toUpperCase());
+    el.bestEyebrow.textContent = 'BESTE ZEIT ' + when;
+    el.bestWindow.textContent = fmt(ws) + ' – ' + fmt(we) + ' Uhr';
+    var sh = Math.floor(ws / 60);
+    el.bestNote.textContent = sh < 11 ? 'morgens am leersten'
+      : (sh < 14 ? 'um die Mittagszeit am ruhigsten'
+      : (sh < 17 ? 'am Nachmittag am ruhigsten' : 'am Abend am ruhigsten'));
   }
 
   // ── Status + Verlaufsbalken + Öffnungszeiten ──
@@ -410,25 +451,29 @@
     } else if (nextStart !== null) {
       label = 'Geschlossen'; color = '#E0563B'; detail = 'öffnet ' + fmt(nextStart) + ' Uhr';
     } else {
-      var nd = (di + 1) % 7, guard = 0;
-      while ((!iv[nd] || !iv[nd].length) && guard < 7) { nd = (nd + 1) % 7; guard++; }
       label = 'Geschlossen'; color = '#E0563B';
-      detail = (iv[nd] && iv[nd].length) ? ('öffnet ' + names[nd] + ' ' + fmt(iv[nd][0][0]) + ' Uhr') : 'aktuell geschlossen';
+      var w2 = nextOpenWindow(n);             // closure-bewusst, über Folgetage
+      if (w2) {
+        var when2 = w2.off === 1 ? 'morgen ' : (names[w2.wd] + ' ');
+        detail = 'öffnet ' + when2 + fmt(w2.s) + ' Uhr';
+      } else {
+        detail = 'aktuell geschlossen';
+      }
     }
     el.statusLabel.textContent = label;
     el.statusDetail.textContent = detail;
     el.statusDot.style.background = color;
     state.isPause = isPause;
-    // Bei ganztägiger (Feiertags-)Schließung Empfehlung + Verlauf ausblenden
+    // Verlauf ("heute") bei ganztägiger Schließung ausblenden – Empfehlung bleibt
     var dayClosed = fullyClosed || today.length === 0;
     state.dayClosed = dayClosed;
-    if (el.reco) el.reco.style.display = dayClosed ? 'none' : '';
 
     if (force || di !== lastDi) { lastDi = di; renderHours(di); }
     if (force || n.hour !== lastHour || isPause !== lastPause || dayClosed !== lastClosed) {
       lastHour = n.hour; lastPause = isPause; lastClosed = dayClosed;
       renderTrend(n);
     }
+    computeReco();   // hängt von der Uhrzeit ab -> bei jedem Tick aktualisieren
   }
 
   function renderTrend(n){
