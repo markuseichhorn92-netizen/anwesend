@@ -183,6 +183,14 @@ Nach ~1 Woche entsteht eine brauchbare Kurve, nach ~3–4 Wochen eine solide.
 Das Widget zeigt dann „Jetzt: X · Normal um diese Zeit: ~Y" plus ein kleines
 Tagesdiagramm. Zeitzone via `STUDIO_TZ` (Standard `Europe/Berlin`).
 
+**Historische Basis (Seed):** Aus einem Check-in-Export lässt sich eine
+Startkurve vorab eintragen. Die anonymen Aggregate (Ø Anwesende je
+Wochentag+Slot) liegen in `data/baseline.json`; der Endpunkt `/api/seed?confirm=1`
+schreibt sie **einmalig** in den Speicher (idempotent — zweiter Aufruf tut nichts,
+`&force=1` überschreibt). Das Gewicht (`weight` in der JSON) bestimmt, wie schnell
+die Live-Daten die Basis überschreiben — bewusst niedrig gehalten. Im Export
+landen **nur Aggregate**, keine personenbezogenen Daten.
+
 ## Sicherheit / DSGVO
 
 - Ausgeliefert wird nur eine **anonyme, aggregierte Zahl** — keine personenbezogenen Daten.
