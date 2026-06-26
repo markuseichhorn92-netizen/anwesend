@@ -116,15 +116,25 @@
   }
   .fi-au__typical-val { color: var(--fi-text); font-weight: 700; font-variant-numeric: tabular-nums; }
 
-  /* — Stoßzeiten-Tageskurve — */
+  /* — Stoßzeiten-Tageskurve (interaktiv) — */
+  .fi-au__chart-readout {
+    min-height: 20px; font-size: 13px; color: var(--fi-muted); margin-bottom: 8px;
+  }
+  .fi-au__chart-readout b { color: var(--fi-text); font-weight: 700; font-variant-numeric: tabular-nums; }
   .fi-au__chart {
-    display: flex; align-items: flex-end; gap: 2px;
-    height: 52px; margin-bottom: 18px;
+    display: flex; align-items: flex-end; gap: 3px;
+    height: 104px; margin-bottom: 8px;
+    touch-action: pan-y;              /* vertikal scrollen erlaubt, horizontal scrubben */
   }
   .fi-au__bar2 {
-    flex: 1 1 0; min-height: 2px; border-radius: 3px 3px 0 0;
+    flex: 1 1 0; min-height: 4px; border-radius: 4px 4px 0 0;
     background: var(--fi-card-2); border: 1px solid var(--fi-border); border-bottom: none;
-    transition: height .5s cubic-bezier(.22,1,.36,1);
+    cursor: pointer;
+    transition: height .5s cubic-bezier(.22,1,.36,1), background .15s ease, filter .15s ease;
+  }
+  .fi-au__bar2:hover, .fi-au__bar2.is-active {
+    background: color-mix(in srgb, var(--fi-accent) 35%, var(--fi-card-2));
+    filter: brightness(1.25);
   }
   .fi-au__bar2.is-now {
     background: var(--fi-accent);
@@ -132,9 +142,10 @@
   }
   .fi-au__chart-foot {
     display: flex; justify-content: space-between;
-    font-size: 10px; color: var(--fi-muted); margin: -10px 0 16px;
+    font-size: 10px; color: var(--fi-muted); margin: 0 0 16px;
   }
-  .fi-auslastung--signage .fi-au__chart { height: 84px; }
+  .fi-auslastung--signage .fi-au__chart { height: 170px; }
+  .fi-auslastung--signage .fi-au__chart-readout { font-size: 16px; }
 
   @media (prefers-reduced-motion: reduce) {
     .fi-au__dot { animation: none; }
@@ -173,7 +184,8 @@
       <span class="fi-au__typical-val" id="fiTypical">–</span>
     </div>
 
-    <div class="fi-au__chart" id="fiChart" hidden aria-hidden="true"></div>
+    <div class="fi-au__chart-readout" id="fiChartReadout" hidden></div>
+    <div class="fi-au__chart" id="fiChart" hidden role="group" aria-label="Typische Auslastung im Tagesverlauf – Balken antippen zeigt die Personenzahl"></div>
     <div class="fi-au__chart-foot" id="fiChartFoot" hidden>
       <span>6 Uhr</span><span>12 Uhr</span><span>18 Uhr</span><span>24 Uhr</span>
     </div>
@@ -220,10 +232,12 @@
     typicalWrap: document.getElementById('fiTypicalWrap'),
     typical:    document.getElementById('fiTypical'),
     chart:      document.getElementById('fiChart'),
-    chartFoot:  document.getElementById('fiChartFoot')
+    chartFoot:  document.getElementById('fiChartFoot'),
+    chartReadout: document.getElementById('fiChartReadout')
   };
 
   var lastTs = null;
+  var lastTypical = null;
   var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   function countUp(target) {
@@ -272,8 +286,45 @@
     return (h < 10 ? '0' : '') + h + ':' + m;
   }
 
+  // — Interaktion: Balken antippen/überfahren zeigt die Personenzahl —
+  function chartInfo(bar) {
+    if (!bar || !bar.getAttribute) return null;
+    return { t: bar.getAttribute('data-t'), v: bar.getAttribute('data-v') };
+  }
+  function chartShow(info) {
+    if (!info) { chartReset(); return; }
+    el.chartReadout.hidden = false;
+    el.chartReadout.innerHTML = info.t + ' Uhr · <b>' + (info.v === '' ? 'keine Daten' : '~' + info.v + ' Personen') + '</b>';
+  }
+  function chartReset() {
+    if (lastTypical && lastTypical.slot != null && Array.isArray(lastTypical.day)) {
+      var v = lastTypical.day[lastTypical.slot];
+      el.chartReadout.hidden = false;
+      el.chartReadout.innerHTML = 'Jetzt ' + slotLabel(lastTypical.slot) + ' Uhr · <b>' + (v == null ? '—' : '~' + v + ' Personen') + '</b>';
+    } else {
+      el.chartReadout.hidden = true;
+    }
+  }
+  function chartActive(bar) {
+    var act = el.chart.querySelectorAll('.fi-au__bar2.is-active');
+    for (var i = 0; i < act.length; i++) act[i].classList.remove('is-active');
+    if (bar) bar.classList.add('is-active');
+  }
+  function chartWire() {
+    if (el.chart.__wired) return;
+    el.chart.__wired = true;
+    function pick(e) {
+      var b = (e.target && e.target.classList && e.target.classList.contains('fi-au__bar2')) ? e.target : null;
+      if (b) { chartActive(b); chartShow(chartInfo(b)); }
+    }
+    el.chart.addEventListener('pointermove', pick);
+    el.chart.addEventListener('pointerdown', pick);
+    el.chart.addEventListener('pointerleave', function () { chartActive(null); chartReset(); });
+  }
+
   function renderTypical(t) {
-    if (!t || !t.available) { el.typicalWrap.hidden = true; el.chart.hidden = true; el.chartFoot.hidden = true; return; }
+    lastTypical = t;
+    if (!t || !t.available) { el.typicalWrap.hidden = true; el.chart.hidden = true; el.chartFoot.hidden = true; el.chartReadout.hidden = true; return; }
 
     var hasData = t.samples > 0 && t.typicalCount != null;
     el.typicalWrap.hidden = false;
@@ -288,15 +339,23 @@
         var v = t.day[s];
         var h = (v == null) ? 0 : Math.max(4, Math.round(v / max * 100));
         var now = (s === t.slot) ? ' is-now' : '';
-        var title = slotLabel(s) + ' · ' + (v == null ? 'keine Daten' : ('~' + v));
-        html += '<span class="fi-au__bar2' + now + '" style="height:' + h + '%" title="' + title + '"></span>';
+        var lbl = slotLabel(s);
+        var vAttr = (v == null) ? '' : v;
+        var aria = lbl + ' Uhr, ' + (v == null ? 'keine Daten' : ('etwa ' + v + ' Personen'));
+        html += '<span class="fi-au__bar2' + now + '" style="height:' + h + '%"'
+              + ' data-t="' + lbl + '" data-v="' + vAttr + '"'
+              + ' title="' + lbl + ' Uhr · ' + (v == null ? 'keine Daten' : ('~' + v)) + '"'
+              + ' aria-label="' + aria + '"></span>';
       }
       el.chart.innerHTML = html;
       el.chart.hidden = false;
       el.chartFoot.hidden = false;
+      chartWire();
+      chartReset();
     } else {
       el.chart.hidden = true;
       el.chartFoot.hidden = true;
+      el.chartReadout.hidden = true;
     }
   }
 
