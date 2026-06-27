@@ -96,7 +96,7 @@
     cancelStep:0, cancelReason:'', pauseAsk:false, pauseWeeks:8, offerDone:'', withdrawConfirm:false, withdrawDone:false, cancelDone:false, busy:false,
     apptTab:'book', bookType:'', apptMsg:'',
     helpView:'list', helpArticle:0, helpCat:'', helpQ:'',
-    copied:false, dlMsg:false,
+    copied:false, dlMsg:false, dlMsg2:'', emailing:false,
     liEmail:'', liPlz:'', remember:(localStorage.getItem('fi_remember')==='1'),
     dpOpen:false, dpYear:1995, dpMonth:0, dpSel:null,
     loginErr:'' };
@@ -355,7 +355,10 @@
     var groups={}, order=[];
     list.slice().sort(function(a,b){return new Date(b.in)-new Date(a.in);}).forEach(function(c){ var d=new Date(c.in); var key=monthName(d); if(!groups[key]){groups[key]=[];order.push(key);} groups[key].push(c); });
     var stats='<div style="display:flex;gap:12px;margin-bottom:14px"><div style="flex:1;background:#fff;border-radius:18px;box-shadow:0 12px 34px rgba(4,33,40,.18);padding:18px 16px"><div style="font-size:30px;font-weight:900;color:'+TEAL+'">'+thisMonth+'</div><div style="font-size:12px;color:#6b7780;font-weight:600;margin-top:2px">Besuche diesen Monat</div></div><div style="flex:1;background:#fff;border-radius:18px;box-shadow:0 12px 34px rgba(4,33,40,.18);padding:18px 16px"><div style="font-size:30px;font-weight:900;color:'+TEAL+'">'+avgL+'</div><div style="font-size:12px;color:#6b7780;font-weight:600;margin-top:2px">Ø Dauer</div></div></div>';
-    var dl='<button class="btn2" data-act="download" style="display:flex;align-items:center;justify-content:center;gap:9px;margin-bottom:8px">'+svg(IC.dl,{w:2,s:18})+'Anwesenheitsbestätigung als PDF</button>'+(S.dlMsg?'<div style="font-size:13px;color:#1d7a3e;font-weight:600;text-align:center;margin-bottom:10px">Download gestartet …</div>':'');
+    var dl='<button class="btn2" data-act="download" style="display:flex;align-items:center;justify-content:center;gap:9px;margin-bottom:8px">'+svg(IC.dl,{w:2,s:18})+'Anwesenheitsbestätigung als PDF</button>'+
+      '<button class="btn2" data-act="emailPdf" style="display:flex;align-items:center;justify-content:center;gap:9px;margin-bottom:8px">'+svg('<rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="M3 7l9 6 9-6"></path>',{w:2,s:18})+(S.emailing?'Wird gesendet …':'Per E-Mail zuschicken')+'</button>'+
+      (S.dlMsg?'<div style="font-size:13px;color:#1d7a3e;font-weight:600;text-align:center;margin-bottom:10px">Download gestartet …</div>':'')+
+      (S.dlMsg2?'<div style="font-size:13px;color:#0a4958;font-weight:600;text-align:center;margin-bottom:10px">'+esc(S.dlMsg2)+'</div>':'');
     var months=order.map(function(key){ return '<div><div style="font-size:13px;font-weight:700;color:#bfd7dc;text-transform:uppercase;letter-spacing:.5px;margin:0 2px 10px">'+esc(key)+'</div><div style="background:#fff;border-radius:18px;box-shadow:0 12px 34px rgba(4,33,40,.18);overflow:hidden">'+
       groups[key].map(function(v){return '<div style="display:flex;align-items:center;gap:13px;padding:14px 18px;border-bottom:1px solid #f0f3f4"><div style="width:9px;height:9px;border-radius:50%;background:'+TEAL+';flex-shrink:0"></div><div style="flex:1;font-size:15px;font-weight:700">'+deDate(v.in)+'</div><div style="font-size:13px;color:#6b7780">'+deTime(v.in)+' Uhr</div><div style="font-size:13px;font-weight:700;color:'+TEAL+';min-width:54px;text-align:right">'+(dur(v.in,v.out)||'')+'</div></div>';}).join('')+'</div></div>'; }).join('');
     return head+stats+dl+'<div style="display:flex;flex-direction:column;gap:18px;margin-top:8px">'+months+'</div>';
@@ -471,6 +474,7 @@
     shareRef:function(){ var code=(DATA.profile||{}).referralCode||''; var link=window.location.origin+'/mitglied-werden?ref='+encodeURIComponent(code); var txt='Trainier mit mir im Fit-Inn Trier! 💪 Werde Mitglied mit meinem Code '+code+': '+link; if(navigator.share){ navigator.share({title:'Fit-Inn Trier',text:txt,url:link}).catch(function(){}); } else { copyText(txt); setS({copied:true}); setTimeout(function(){ S.copied=false; render(); },1800); } },
     // checkins
     download:function(){ downloadPdf(); setS({dlMsg:true}); setTimeout(function(){ S.dlMsg=false; render(); },2400); },
+    emailPdf:function(){ emailPdf(); },
     cancelAppt:function(a){ if(!a) return; var id=a;
       api('/api/member/appointment-cancel',{method:'POST',body:JSON.stringify({bookingId:id})}).then(function(d){ DATA.appts=null; loadAppts(); }).catch(function(){}); },
     // help
@@ -487,8 +491,8 @@
     var csv=rows.map(function(r){return r.map(function(x){return '"'+String(x).replace(/"/g,'""')+'"';}).join(';');}).join('\n');
     var a=document.createElement('a'); a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv); a.download='checkin-verlauf.csv'; document.body.appendChild(a); a.click(); a.remove(); }
   function logoTxt(doc,M){ doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(16); doc.text('FIT-INN TRIER',M,17); }
-  function downloadPdf(){
-    var ns=window.jspdf; if(!ns||!ns.jsPDF){ downloadCsv(); return; }
+  function buildPdfDoc(){
+    var ns=window.jspdf; if(!ns||!ns.jsPDF){ return null; }
     var p=DATA.profile||{}; var list=(DATA.checkins||[]).slice().sort(function(a,b){return new Date(b.in)-new Date(a.in);});
     var doc=new ns.jsPDF({unit:'mm',format:'a4'}); var W=210, M=14;
     doc.setFillColor(10,73,88); doc.rect(0,0,W,26,'F');
@@ -507,7 +511,16 @@
     if(!list.length){ doc.text('Keine Besuche vorhanden.',M,y); y+=6; }
     list.forEach(function(c){ if(y>284){ doc.addPage(); y=20; } doc.text(deDateFull(c.in),M,y); doc.text(deTime(c.in)+' Uhr',74,y); doc.text(dur(c.in,c.out)||'-',104,y); doc.text(String(c.studio||'').slice(0,28),132,y); y+=6; });
     y+=8; if(y>290){ doc.addPage(); y=20; } doc.setFontSize(8.5); doc.setTextColor(150); doc.text('Ausgestellt am '+todayStr()+'  ·  Fit-Inn Trier  ·  Auf Hirtenberg 8  ·  54296 Trier  ·  '+list.length+' Besuche',M,Math.min(y,293));
-    doc.save('anwesenheitsbestaetigung.pdf');
+    return doc;
+  }
+  function downloadPdf(){ var d=buildPdfDoc(); if(d) d.save('anwesenheitsbestaetigung.pdf'); else downloadCsv(); }
+  function emailPdf(){
+    var d=buildPdfDoc(); if(!d){ setS({dlMsg2:'PDF-Bibliothek lädt noch – bitte kurz erneut.'}); return; }
+    var b64=d.output('datauristring');
+    setQuiet({emailing:true, dlMsg2:''});
+    api('/api/member/checkin-pdf',{method:'POST',body:JSON.stringify({pdf:b64})})
+      .then(function(r){ setS({emailing:false, dlMsg2:(r.message||(r.ok?'Gesendet.':'Versand fehlgeschlagen.'))}); })
+      .catch(function(){ setS({emailing:false, dlMsg2:'Versand fehlgeschlagen.'}); });
   }
 
   document.addEventListener('click',function(e){
