@@ -44,6 +44,10 @@
   .big{font-size:18px; font-weight:900; margin:6px 0 2px;}
   .center{text-align:center;}
   .badge{display:inline-block; background:#0a4958; color:#fff; font-size:34px; line-height:1; padding:14px; border-radius:16px; margin:6px 0 10px;}
+  /* Freunde werben */
+  .refrow{display:flex; gap:10px; align-items:stretch; margin-top:8px;}
+  .refcode{flex:1; display:flex; align-items:center; justify-content:center; background:#0a4958; color:#fff; font-size:24px; font-weight:900; letter-spacing:3px; border-radius:12px; padding:14px 10px;}
+  .refrow button{margin-top:0; flex:0 0 auto; width:auto; padding:0 16px;}
 </style>
 </head>
 <body>
@@ -75,6 +79,17 @@
 
       <!-- Bearbeiten -->
       <div id="editArea">
+        <div class="sec hidden" id="refSec">
+          <h2>Freunde werben</h2>
+          <p class="hint">Teile deinen persönlichen Code – dein Freund nennt ihn einfach bei der Anmeldung.</p>
+          <div class="refrow">
+            <div class="refcode" id="refCode">—</div>
+            <button class="secondary" id="copyRef" type="button">Kopieren</button>
+          </div>
+          <button class="secondary" id="shareRef" type="button">Einladung teilen</button>
+          <div id="refMsg" class="msg"></div>
+        </div>
+
         <div class="sec">
           <h2>Adresse</h2>
           <p class="hint">Änderung beantragen – wir tragen sie zeitnah ein.</p>
@@ -190,6 +205,7 @@
   var $ = function(id){ return document.getElementById(id); };
   var TOKEN = sessionStorage.getItem('fi_member_token') || null;
   var CONTRACT = null;
+  var REFCODE = null;
 
   // reCAPTCHA (invisible) – Token für die direkte Kündigung über die Connect API
   var RC_SITEKEY = '6Ld5qKcgAAAAAMoywArOgIrC0lQ7NpYUTsF92PIC';
@@ -224,6 +240,9 @@
         $('zipCode').value=p.zipCode||''; $('city').value=p.city||'';
         $('accountHolder').value=(p.firstName||'')+' '+(p.lastName||'');
         $('ibanCur').textContent = p.ibanMasked || 'nicht hinterlegt';
+        REFCODE = p.referralCode || null;
+        if(REFCODE){ $('refCode').textContent = REFCODE; $('refSec').classList.remove('hidden'); }
+        else { $('refSec').classList.add('hidden'); }
         show('member'); showEdit();
       });
   }
@@ -339,6 +358,23 @@
   function done(icon,title,text){ $('doneIcon').textContent=icon; $('doneTitle').textContent=title; $('doneText').textContent=text||''; fstep('done'); }
 
   document.querySelectorAll('#funnelArea [data-cancelfunnel]').forEach(function(b){ b.addEventListener('click', showEdit); });
+
+  // Freunde werben – kopieren / teilen
+  function shareText(){
+    return 'Trainier mit mir im Fit-Inn Trier! 💪 Mit meinem Freunde-werben-Code ' + (REFCODE||'') + ' bekommst du bei der Anmeldung einen Vorteil. Schau vorbei: https://fit-inn-trier.de';
+  }
+  $('copyRef').addEventListener('click', function(){
+    if(!REFCODE) return;
+    var done=function(){ msg($('refMsg'), true, 'Code kopiert: '+REFCODE); };
+    if(navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(REFCODE).then(done, done); }
+    else done();
+  });
+  $('shareRef').addEventListener('click', function(){
+    if(!REFCODE) return;
+    if(navigator.share){ navigator.share({ title:'Fit-Inn Trier', text: shareText() }).catch(function(){}); }
+    else if(navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(shareText()).then(function(){ msg($('refMsg'), true, 'Einladungstext kopiert – jetzt einfügen & verschicken.'); }); }
+    else { msg($('refMsg'), true, shareText()); }
+  });
 
   function logout(){ TOKEN=null; sessionStorage.removeItem('fi_member_token'); show('login'); }
   $('logout').addEventListener('click', logout);
