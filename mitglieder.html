@@ -6,6 +6,7 @@
 <title>Fit-Inn Trier · Mitgliederbereich</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+<script src="https://www.google.com/recaptcha/api.js?onload=onRcLoad&render=explicit" async defer></script>
 <style>
   *{box-sizing:border-box;}
   body{margin:0; min-height:100dvh; background:linear-gradient(165deg,#0e6072 0%,#063540 100%);
@@ -48,6 +49,7 @@
 <body>
   <div class="card">
     <div class="brand"><img src="/assets/fitinn-logo-white.png" alt="Fit-Inn Trier"></div>
+    <div id="rcContainer"></div>
 
     <!-- Login -->
     <div id="loginView">
@@ -189,6 +191,22 @@
   var TOKEN = sessionStorage.getItem('fi_member_token') || null;
   var CONTRACT = null;
 
+  // reCAPTCHA (invisible) – Token für die direkte Kündigung über die Connect API
+  var RC_SITEKEY = '6Ld5qKcgAAAAAMoywArOgIrC0lQ7NpYUTsF92PIC';
+  var rcId = null, rcResolve = null;
+  window.onRcLoad = function(){
+    try { rcId = grecaptcha.render('rcContainer', { sitekey: RC_SITEKEY, size: 'invisible',
+      callback: function(tok){ var r = rcResolve; rcResolve = null; if (r) r(tok); } }); } catch(e){}
+  };
+  function rcToken(){
+    return new Promise(function(resolve){
+      if (typeof grecaptcha === 'undefined' || rcId === null){ resolve(null); return; }
+      rcResolve = resolve;
+      try { grecaptcha.reset(rcId); grecaptcha.execute(rcId); } catch(e){ rcResolve = null; resolve(null); }
+      setTimeout(function(){ if (rcResolve){ rcResolve = null; resolve(null); } }, 20000);
+    });
+  }
+
   function show(v){ $('loginView').classList.toggle('hidden', v!=='login'); $('memberView').classList.toggle('hidden', v!=='member'); }
   function msg(el, ok, t){ el.className='msg '+(ok?'ok':'err'); el.textContent=t; }
   function hide(el){ el.className='msg'; el.textContent=''; }
@@ -301,18 +319,20 @@
     });
   });
 
-  // Kündigung einreichen
+  // Kündigung einreichen (reCAPTCHA-Token holen -> Direkteintrag via Connect API, sonst E-Mail-Fallback)
   $('doCancel').addEventListener('click', function(){
-    hide($('cancelMsg')); var b=$('doCancel'); b.disabled=true;
-    fetch('/api/member/cancel', { method:'POST', headers:headers(),
-      body: JSON.stringify({ action:'cancel', reason:reason(), date:$('cancelDate').value }) })
+    hide($('cancelMsg')); var b=$('doCancel'); b.disabled=true; b.textContent='Wird übermittelt …';
+    rcToken().then(function(tok){
+      return fetch('/api/member/cancel', { method:'POST', headers:headers(),
+        body: JSON.stringify({ action:'cancel', reason:reason(), date:$('cancelDate').value, recaptchaToken:tok }) });
+    })
       .then(function(r){ if(r.status===401){ logout(); throw 0; } return r.json(); })
       .then(function(d){
         if(d.ok){ done('✓','Kündigung eingegangen', d.message); }
         else msg($('cancelMsg'), false, d.message||'Fehler.');
       })
       .catch(function(){ if(TOKEN) msg($('cancelMsg'), false, 'Fehler.'); })
-      .finally(function(){ b.disabled=false; });
+      .finally(function(){ b.disabled=false; b.textContent='Kündigung verbindlich einreichen'; });
   });
 
   function done(icon,title,text){ $('doneIcon').textContent=icon; $('doneTitle').textContent=title; $('doneText').textContent=text||''; fstep('done'); }

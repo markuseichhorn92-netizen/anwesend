@@ -10,6 +10,7 @@
  */
 
 const M = require('../../lib/members');
+const C = require('../../lib/connect');
 const { sendMail, hasMail } = require('../../lib/mail');
 
 const OFFERS = { discount10: '10 % Rabatt für 6 Monate', pause: 'Beitragspause' };
@@ -43,6 +44,32 @@ module.exports = async function handler(req, res) {
   } else if (body.action === 'cancel') {
     var ct = null;
     try { ct = await M.getContract(sess.id); } catch (e) {}
+    var dateISO = body.date || (ct && ct.nextCancellationDateISO) || null;
+    var useNext = !!(ct && ct.nextCancellationDateISO && (!body.date || body.date === ct.nextCancellationDateISO));
+
+    // 1) Direkteintrag über die Connect API (wenn Vertrag + reCAPTCHA-Token da sind)
+    if (ct && ct.contractId && body.recaptchaToken && dateISO) {
+      var direct = null;
+      try { direct = await C.submitCancellation({ member: m, contract: ct, reasonText: body.reason, dateISO: dateISO, useNextPossible: useNext, recaptchaToken: body.recaptchaToken }); }
+      catch (e) { direct = { ok: false, error: String(e && e.message) }; }
+      if (direct && direct.ok) {
+        var cd = direct.confirmedDate || dateISO;
+        if (hasMail) {
+          try {
+            await sendMail('✅ Kündigung direkt eingetragen – ' + who(m),
+              'Ein Mitglied hat über den Mitgliederbereich gekündigt – die Kündigung wurde DIREKT in Magicline eingetragen (Connect API).\n\n'
+              + 'Mitglied: ' + who(m) + '\nKundennr.: ' + (m.customerNumber || '—')
+              + '\nKündigung zum: ' + cd + '\nGrund: ' + (body.reason || '—')
+              + '\n\nKeine manuelle Aktion nötig – nur zur Info.');
+          } catch (e) {}
+        }
+        res.statusCode = 200;
+        return res.end(JSON.stringify({ ok: true, direct: true, message: 'Deine Kündigung wurde verbindlich eingereicht' + (cd ? ' – zum ' + cd : '') + '. Du erhältst eine Bestätigung per E-Mail.' }));
+      }
+      // sonst weiter zum E-Mail-Fallback (z. B. reCAPTCHA-Domain noch nicht freigeschaltet)
+    }
+
+    // 2) Fallback: Studio per E-Mail informieren (manueller Eintrag)
     var targetDate = body.date || (ct && ct.nextCancellationDate) || 'nächstmöglich';
     subject = '⚠️ KÜNDIGUNG eingegangen – ' + who(m);
     text = 'Über den Mitgliederbereich wurde eine Kündigung eingereicht.\n\n'
