@@ -103,6 +103,16 @@
           '<button class="btn" id="l_btn" style="margin-top:18px" '+(S.busy?'disabled':'')+'>'+(S.busy?'Prüfe …':'Anmelden')+'</button>'+e+
           '<div style="display:flex;align-items:center;justify-content:space-between;margin-top:16px"><button id="l_back" style="background:none;border:none;color:'+TEAL+';font-weight:700;font-size:13px;cursor:pointer">‹ E-Mail ändern</button><button id="l_resend" style="background:none;border:none;color:'+TEAL+';font-weight:700;font-size:13px;cursor:pointer;text-decoration:underline">Code erneut senden</button></div>'+
         '</div>'
+      : S.loginStep==='number'
+      ? '<div class="card" style="margin-top:14px">'+
+          '<div style="font-size:16px;font-weight:800;margin-bottom:4px">Mit Mitgliedsnummer anmelden</div>'+
+          '<div style="font-size:13px;color:#6b7780;margin-bottom:16px;line-height:1.45">Für Mitglieder ohne hinterlegte E-Mail.</div>'+
+          '<div style="margin-bottom:14px"><label class="lbl">Mitgliedsnummer</label><input id="l_num" type="text" class="inp" placeholder="z. B. M-962" value="'+esc(S.num||'')+'" oninput="window.__set(\'num\',this.value)"></div>'+
+          '<div><label class="lbl">Geburtsdatum</label><input id="l_dob" type="date" class="inp" value="'+esc(S.dob)+'" oninput="window.__set(\'dob\',this.value)"></div>'+
+          '<label style="display:flex;align-items:center;gap:10px;margin-top:18px;cursor:pointer"><input type="checkbox" '+(S.remember?'checked':'')+' style="width:18px;height:18px;accent-color:'+TEAL+'" onchange="window.__set(\'remember\',this.checked)"><span style="font-size:14px;color:#42454b;font-weight:600">Angemeldet bleiben</span></label>'+
+          '<button class="btn" id="l_btn" style="margin-top:18px" '+(S.busy?'disabled':'')+'>'+(S.busy?'Prüfe …':'Anmelden')+'</button>'+e+
+          '<div style="text-align:center;margin-top:16px"><button id="l_back2" style="background:none;border:none;color:'+TEAL+';font-weight:700;font-size:13px;cursor:pointer">‹ Zurück zum E-Mail-Login</button></div>'+
+        '</div>'
       : '<div class="card" style="margin-top:14px">'+
           '<div style="font-size:16px;font-weight:800;margin-bottom:4px">Jetzt anmelden &amp; Code holen</div>'+
           '<div style="font-size:13px;color:#6b7780;margin-bottom:16px;line-height:1.45">Wir schicken dir einen Einmal-Code per E-Mail – kein Passwort nötig.</div>'+
@@ -111,6 +121,7 @@
           '<label style="display:flex;align-items:center;gap:10px;margin-top:18px;cursor:pointer"><input id="l_rem" type="checkbox" '+(S.remember?'checked':'')+' style="width:18px;height:18px;accent-color:'+TEAL+'" onchange="window.__set(\'remember\',this.checked)"><span style="font-size:14px;color:#42454b;font-weight:600">Angemeldet bleiben</span></label>'+
           '<button class="btn" id="l_btn" style="margin-top:18px" '+(S.busy?'disabled':'')+'>'+(S.busy?'Code wird gesendet …':'Code anfordern')+'</button>'+e+
           '<div style="display:flex;align-items:center;gap:8px;margin-top:18px;padding:11px 13px;background:#f4f7f7;border-radius:11px">'+svg(IC_SHIELD,{w:1.9,s:17})+'<span style="font-size:12px;color:#6b7780;line-height:1.4">Deine Daten werden verschlüsselt übertragen und nur zur Identitätsprüfung genutzt.</span></div>'+
+          '<div style="text-align:center;margin-top:14px"><button id="l_nummode" style="background:none;border:none;color:'+TEAL+';font-weight:700;font-size:13px;cursor:pointer;text-decoration:underline">Keine E-Mail hinterlegt? Mit Mitgliedsnummer anmelden</button></div>'+
         '</div>')+
     stepsCard()+
     '<div style="text-align:center;margin-top:20px"><span style="color:#bfd7dc;font-size:13px">Noch kein Mitglied? </span><a href="/mitglied-werden" style="color:#fff;font-weight:700;font-size:13px;text-decoration:underline;text-underline-offset:3px">Jetzt online beitreten</a></div>';
@@ -153,16 +164,29 @@
         else { setS({busy:false,err:(o.j&&o.j.message)||'Code falsch. Bitte erneut versuchen.'}); }
       }).catch(function(){ setS({busy:false,err:'Es ist ein Fehler aufgetreten. Bitte später erneut.'}); });
   }
+  function loginNumber(){
+    var num=(S.num||'').trim(), dob=S.dob;
+    if(!num||!dob){ setS({err:'Bitte Mitgliedsnummer und Geburtsdatum ausfüllen.'}); return; }
+    setS({busy:true,err:''});
+    fetch('/api/member/login-number',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({customerNumber:num,dob:dob,remember:S.remember})})
+      .then(function(r){return r.json().then(function(j){return {status:r.status,j:j};});})
+      .then(function(o){
+        if(o.status===200 && o.j && o.j.token){ TOKEN=o.j.token; (S.remember?localStorage:sessionStorage).setItem('fi_member_token',TOKEN); S.busy=false; S.loginStep='request'; S.screen='load'; render(); loadMe(); }
+        else { setS({busy:false,err:(o.j&&o.j.message)||'Daten nicht gefunden. Bitte Mitgliedsnummer und Geburtsdatum prüfen.'}); }
+      }).catch(function(){ setS({busy:false,err:'Es ist ein Fehler aufgetreten. Bitte später erneut.'}); });
+  }
   function loadMe(){
     api('/api/member/me').then(function(d){ PROFILE=d.profile||null; setS({screen:'referral'}); }).catch(function(){ /* 401 handled */ });
   }
-  function doLogout(){ TOKEN=null; sessionStorage.removeItem('fi_member_token'); localStorage.removeItem('fi_member_token'); PROFILE=null; setS({screen:'login',email:'',dob:'',otp:'',loginStep:'request',challenge:''}); }
+  function doLogout(){ TOKEN=null; sessionStorage.removeItem('fi_member_token'); localStorage.removeItem('fi_member_token'); PROFILE=null; setS({screen:'login',email:'',dob:'',otp:'',num:'',loginStep:'request',challenge:''}); }
 
   document.addEventListener('click',function(e){
     var el=e.target;
-    if(el.closest('#l_btn')){ e.preventDefault(); if(S.loginStep==='verify') verifyCode(); else reqCode(); }
+    if(el.closest('#l_btn')){ e.preventDefault(); if(S.loginStep==='verify') verifyCode(); else if(S.loginStep==='number') loginNumber(); else reqCode(); }
     else if(el.closest('#l_resend')){ e.preventDefault(); reqCode(); }
     else if(el.closest('#l_back')){ e.preventDefault(); setS({loginStep:'request',otp:'',err:''}); }
+    else if(el.closest('#l_nummode')){ e.preventDefault(); setS({loginStep:'number',err:''}); }
+    else if(el.closest('#l_back2')){ e.preventDefault(); setS({loginStep:'request',err:''}); }
     else if(el.closest('#logoutBtn')){ e.preventDefault(); doLogout(); }
     else if(el.closest('#b_copy')){ e.preventDefault(); copyText(refLink()); setS({copied:true}); setTimeout(function(){ S.copied=false; render(); },1800); }
     else if(el.closest('#b_share')){ e.preventDefault(); var code=(PROFILE||{}).referralCode||''; var txt='Trainier mit mir im Fit-Inn Trier! 💪 Werde Mitglied mit meinem Code '+code+': '+refLink(); if(navigator.share){ navigator.share({title:'Fit-Inn Trier',text:txt,url:refLink()}).catch(function(){}); } else { copyText(txt); setS({copied:true}); setTimeout(function(){ S.copied=false; render(); },1800); } }

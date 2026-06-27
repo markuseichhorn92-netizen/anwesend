@@ -140,11 +140,11 @@
     helpView:'list', helpArticle:0, helpCat:'', helpQ:'',
     copied:false, dlMsg:false, dlMsg2:'', emailing:false,
     ciRange:'all', ciFrom:'', ciTo:'',
-    liEmail:'', remember:(localStorage.getItem('fi_remember')==='1'),
+    liEmail:'', liNum:'', remember:(localStorage.getItem('fi_remember')==='1'),
     loginStep:'request', challenge:'', otp:'',
     dpOpen:false, dpYear:1995, dpMonth:0, dpSel:null,
     loginErr:'' };
-  window.__setLi=function(f,v){ if(f==='email')S.liEmail=v; else if(f==='code')S.otp=v; };
+  window.__setLi=function(f,v){ if(f==='email')S.liEmail=v; else if(f==='code')S.otp=v; else if(f==='num')S.liNum=v; };
   window.__dpYear=function(v){ S.dpYear=+v; render(); };
   window.__ciDate=function(which,v){ if(which==='from')S.ciFrom=v; else S.ciTo=v; render(); };
   window.__pauseNote=function(v){ S.pauseReasonText=v; };
@@ -240,6 +240,21 @@
     var e = S.loginErr ? '<div class="err" style="margin-top:14px">'+svg(IC.warn,{c:'#b53a2c',w:2,s:17})+'<span>'+esc(S.loginErr)+'</span></div>' : '';
     var hero='<div style="text-align:center;padding:18px 6px 26px"><div style="font-size:34px;font-weight:900;color:#fff;letter-spacing:-1px;line-height:1.05">Willkommen<br>zurück</div></div>';
     var memberLink='<div style="text-align:center;margin-top:20px"><span style="color:#bfd7dc;font-size:13px">Noch kein Mitglied? </span><a href="/mitglied-werden" style="color:#fff;font-weight:700;font-size:13px;text-decoration:underline;text-underline-offset:3px">Jetzt online beitreten</a></div>';
+    if(S.loginStep==='number'){
+      return hero+
+      '<div class="card">'+
+        '<div style="font-size:21px;font-weight:800;letter-spacing:-.4px">Anmelden mit Mitgliedsnummer</div>'+
+        '<div style="font-size:14px;color:#6b7780;margin-top:5px;line-height:1.45">Für Mitglieder ohne hinterlegte E-Mail. Gib deine Mitgliedsnummer und dein Geburtsdatum ein.</div>'+
+        '<div style="margin-top:20px"><label class="lbl">Mitgliedsnummer</label><input id="li_num" type="text" placeholder="z. B. M-962" class="inp" value="'+esc(S.liNum)+'" oninput="window.__setLi(\'num\',this.value)"></div>'+
+        '<div style="margin-top:14px;position:relative"><label class="lbl">Geburtsdatum</label>'+
+          '<div data-act="dpOpen" style="display:flex;align-items:center;justify-content:space-between;width:100%;padding:13px 14px;border:1.5px solid '+(S.dpOpen?TEAL:'#d6dee0')+';border-radius:11px;font-size:15px;cursor:pointer;background:#fff"><span style="color:'+(S.dpSel?'#15171B':'#a9b1b6')+';font-weight:500">'+(S.dpSel?(pad2(S.dpSel.getDate())+'.'+pad2(S.dpSel.getMonth()+1)+'.'+S.dpSel.getFullYear()):'TT.MM.JJJJ')+'</span>'+svg('<rect x="3" y="4" width="18" height="18" rx="3"></rect><path d="M16 2v4M8 2v4M3 10h18"></path>',{c:'#6b7780',w:1.9,s:19})+'</div>'+
+          (S.dpOpen?dpCal():'')+'</div>'+
+        '<label data-act="toggleRemember" style="display:flex;align-items:center;gap:10px;margin-top:18px;cursor:pointer"><input type="checkbox" '+(S.remember?'checked':'')+' tabindex="-1" style="width:18px;height:18px;accent-color:'+TEAL+';pointer-events:none"><span style="font-size:14px;color:#42454b;font-weight:600">Angemeldet bleiben</span></label>'+
+        '<button class="btn" id="li_btn" data-act="loginNumber" style="margin-top:18px">'+(S.busy?'Prüfe …':'Anmelden')+'</button>'+
+        e+
+        '<div style="text-align:center;margin-top:16px"><button data-act="loginBack2" style="background:none;border:none;color:'+TEAL+';font-weight:700;font-size:13px;cursor:pointer">‹ Zurück zum E-Mail-Login</button></div>'+
+      '</div>'+memberLink;
+    }
     if(S.loginStep==='verify'){
       return hero+
       '<div class="card">'+
@@ -264,6 +279,7 @@
       '<button class="btn" id="li_btn" data-act="reqCode" style="margin-top:18px">'+(S.busy?'Code wird gesendet …':'Code anfordern')+'</button>'+
       e+
       '<div style="display:flex;align-items:center;gap:8px;margin-top:18px;padding:11px 13px;background:#f4f7f7;border-radius:11px">'+svg('<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>',{w:1.9,s:17})+'<span style="font-size:12px;color:#6b7780;line-height:1.4">Deine Daten werden verschlüsselt übertragen und nur zur Identitätsprüfung genutzt.</span></div>'+
+      '<div style="text-align:center;margin-top:14px"><button data-act="loginNumberMode" style="background:none;border:none;color:'+TEAL+';font-weight:700;font-size:13px;cursor:pointer;text-decoration:underline">Keine E-Mail hinterlegt? Mit Mitgliedsnummer anmelden</button></div>'+
     '</div>'+memberLink;
   }
 
@@ -630,6 +646,19 @@
     },
     resendCode:function(){ ACT.reqCode(); },
     loginBack:function(){ setS({loginStep:'request',otp:'',loginErr:''}); },
+    loginNumberMode:function(){ setS({loginStep:'number',loginErr:''}); },
+    loginBack2:function(){ setS({loginStep:'request',loginErr:''}); },
+    loginNumber:function(){
+      var num=(S.liNum||'').trim();
+      var dob = S.dpSel ? (S.dpSel.getFullYear()+'-'+pad2(S.dpSel.getMonth()+1)+'-'+pad2(S.dpSel.getDate())) : '';
+      if(!num||!dob){ setS({loginErr:'Bitte Mitgliedsnummer und Geburtsdatum ausfüllen.'}); return; }
+      var remember=!!S.remember;
+      setQuiet({busy:true,loginErr:''});
+      fetch('/api/member/login-number',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({customerNumber:num,dob:dob,remember:remember})})
+        .then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j};});})
+        .then(function(x){ if(x.ok&&x.j.token){ TOKEN=x.j.token; if(remember){ localStorage.setItem('fi_member_token',TOKEN); localStorage.setItem('fi_remember','1'); sessionStorage.removeItem('fi_member_token'); } else { sessionStorage.setItem('fi_member_token',TOKEN); localStorage.removeItem('fi_member_token'); localStorage.removeItem('fi_remember'); } S.loginStep='request'; return loadMe().then(function(){ loadAppts(); S.busy=false; nav('home'); }); } S.busy=false; setS({loginErr:(x.j&&x.j.message)||'Daten nicht gefunden.'}); })
+        .catch(function(){ setS({busy:false,loginErr:'Es ist ein Fehler aufgetreten.'}); });
+    },
     verifyCode:function(){
       var code=(S.otp||val('li_code')||'').replace(/\D/g,'');
       if(code.length<4){ setS({loginErr:'Bitte gib den Code aus der E-Mail ein.'}); return; }
