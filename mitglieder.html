@@ -458,9 +458,7 @@
     var groups={}, order=[];
     list.slice().sort(function(a,b){return new Date(b.in)-new Date(a.in);}).forEach(function(c){ var d=new Date(c.in); var key=monthName(d); if(!groups[key]){groups[key]=[];order.push(key);} groups[key].push(c); });
     var stats='<div style="display:flex;gap:12px;margin-bottom:14px"><div style="flex:1;background:#fff;border-radius:18px;box-shadow:0 12px 34px rgba(4,33,40,.18);padding:18px 16px"><div style="font-size:30px;font-weight:900;color:'+TEAL+'">'+list.length+'</div><div style="font-size:12px;color:#6b7780;font-weight:600;margin-top:2px">Besuche im Zeitraum</div></div><div style="flex:1;background:#fff;border-radius:18px;box-shadow:0 12px 34px rgba(4,33,40,.18);padding:18px 16px"><div style="font-size:30px;font-weight:900;color:'+TEAL+'">'+avgL+'</div><div style="font-size:12px;color:#6b7780;font-weight:600;margin-top:2px">Ø Dauer</div></div></div>';
-    var dl='<button class="btn2" data-act="download" style="display:flex;align-items:center;justify-content:center;gap:9px;margin-bottom:8px">'+svg(IC.dl,{w:2,s:18})+'Anwesenheitsbestätigung als PDF</button>'+
-      '<button class="btn2" data-act="emailPdf" style="display:flex;align-items:center;justify-content:center;gap:9px;margin-bottom:8px">'+svg('<rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="M3 7l9 6 9-6"></path>',{w:2,s:18})+(S.emailing?'Wird gesendet …':'Per E-Mail zuschicken')+'</button>'+
-      (S.dlMsg?'<div style="font-size:13px;color:#1d7a3e;font-weight:600;text-align:center;margin-bottom:10px">Download gestartet …</div>':'')+
+    var dl='<button class="btn2" data-act="emailPdf" style="display:flex;align-items:center;justify-content:center;gap:9px;margin-bottom:8px">'+svg('<rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="M3 7l9 6 9-6"></path>',{w:2,s:18})+(S.emailing?'Wird gesendet …':'Anwesenheitsbestätigung per E-Mail')+'</button>'+
       (S.dlMsg2?'<div style="font-size:13px;color:#0a4958;font-weight:600;text-align:center;margin-bottom:10px">'+esc(S.dlMsg2)+'</div>':'');
     var months=order.map(function(key){ return '<div><div style="font-size:13px;font-weight:700;color:#bfd7dc;text-transform:uppercase;letter-spacing:.5px;margin:0 2px 10px">'+esc(key)+'</div><div style="background:#fff;border-radius:18px;box-shadow:0 12px 34px rgba(4,33,40,.18);overflow:hidden">'+
       groups[key].map(function(v){return '<div style="display:flex;align-items:center;gap:13px;padding:14px 18px;border-bottom:1px solid #f0f3f4"><div style="width:9px;height:9px;border-radius:50%;background:'+TEAL+';flex-shrink:0"></div><div style="flex:1;font-size:15px;font-weight:700">'+deDate(v.in)+'</div><div style="font-size:13px;color:#6b7780">'+deTime(v.in)+' Uhr</div><div style="font-size:13px;font-weight:700;color:'+TEAL+';min-width:54px;text-align:right">'+(dur(v.in,v.out)||'')+'</div></div>';}).join('')+'</div></div>'; }).join('');
@@ -586,7 +584,6 @@
     shareRef:function(){ var code=(DATA.profile||{}).referralCode||''; var link=window.location.origin+'/mitglied-werden?ref='+encodeURIComponent(code); var txt='Trainier mit mir im Fit-Inn Trier! 💪 Werde Mitglied mit meinem Code '+code+': '+link; if(navigator.share){ navigator.share({title:'Fit-Inn Trier',text:txt,url:link}).catch(function(){}); } else { copyText(txt); setS({copied:true}); setTimeout(function(){ S.copied=false; render(); },1800); } },
     // checkins
     ciRange:function(a){ S.ciRange=a||'all'; S.dlMsg2=''; setS({}); },
-    download:function(){ downloadPdf(); setS({dlMsg:true}); setTimeout(function(){ S.dlMsg=false; render(); },2400); },
     emailPdf:function(){ emailPdf(); },
     cancelAppt:function(a){ if(!a) return; var id=a;
       // Sofort aus der Liste entfernen (optimistisch), danach frisch laden
@@ -636,7 +633,7 @@
   function emailPdf(){
     var d=buildPdfDoc(); if(!d){ setS({dlMsg2:'PDF-Bibliothek lädt noch – bitte kurz erneut.'}); return; }
     var b64=d.output('datauristring'); var ix=b64.indexOf('base64,'); if(ix>=0) b64=b64.slice(ix+7);
-    if(b64.length>6000000){ downloadPdf(); setS({dlMsg2:'Das PDF ist sehr groß – es wurde stattdessen heruntergeladen.'}); return; }
+    if(b64.length>6000000){ setS({dlMsg2:'Das PDF ist für den Versand zu groß – bitte wähle oben einen kürzeren Zeitraum.'}); return; }
     setQuiet({emailing:true, dlMsg2:''});
     api('/api/member/checkin-pdf',{method:'POST',body:JSON.stringify({pdf:b64})})
       .then(function(r){ setS({emailing:false, dlMsg2:(r.message||(r.ok?'Gesendet.':'Versand fehlgeschlagen.'))}); })
