@@ -41,18 +41,22 @@ module.exports = async function handler(req, res) {
       + '\n\nBitte "' + off + '" in Magicline einrichten.';
     okMsg = 'Super – wir richten dein Angebot ein und melden uns bei dir.';
   } else if (body.action === 'cancel') {
-    var contract = '—';
-    try {
-      var c = await M.ml('GET', '/customers/' + encodeURIComponent(sess.id) + '/contracts');
-      if (c.status === 200 && c.json) contract = JSON.stringify(c.json).slice(0, 600);
-    } catch (e) {}
+    var ct = null;
+    try { ct = await M.getContract(sess.id); } catch (e) {}
+    var targetDate = body.date || (ct && ct.nextCancellationDate) || 'nächstmöglich';
     subject = '⚠️ KÜNDIGUNG eingegangen – ' + who(m);
     text = 'Über den Mitgliederbereich wurde eine Kündigung eingereicht.\n\n'
       + 'Mitglied: ' + who(m) + '\nKundennr.: ' + (m.customerNumber || '—')
       + '\nGrund: ' + (body.reason || '—')
-      + '\nGewünschtes Datum: ' + (body.date || 'nächstmöglich')
-      + '\nGegenangebote: abgelehnt'
-      + '\n\nVertrag (Auszug): ' + contract
+      + '\nKündigung zum: ' + targetDate + '\nGegenangebote: abgelehnt\n'
+      + (ct ? ('\nVertrag:'
+              + '\n  Tarif: ' + (ct.rateName || '—')
+              + '\n  Vertragsende: ' + (ct.endDate || '—')
+              + '\n  Kündigungsfrist: ' + (ct.cancellationPeriod || '—')
+              + '\n  Kündigung möglich bis: ' + (ct.deadline || '—') + (ct.deadlinePassed ? ' (überschritten)' : '')
+              + '\n  Nächstmöglicher Kündigungstermin: ' + (ct.nextCancellationDate || '—')
+              + '\n  ContractId: ' + (ct.contractId || '—'))
+            : '\n(Vertragsdaten nicht abrufbar)')
       + '\n\nBitte Kündigung in Magicline verarbeiten.';
     okMsg = 'Deine Kündigung ist eingegangen. Wir bestätigen sie dir zeitnah per E-Mail.';
   } else {

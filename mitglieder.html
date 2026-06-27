@@ -163,9 +163,10 @@
         <!-- 4: Kündigung bestätigen -->
         <div class="fstep hidden" data-step="confirm">
           <h2>Kündigung einreichen</h2>
-          <p class="hint">Wir prüfen deine Kündigung zum nächstmöglichen Termin und bestätigen sie dir per E-Mail.</p>
-          <label for="cancelDate">Gewünschtes Kündigungsdatum (optional)</label>
+          <div id="contractInfo" class="offer" style="background:#fff7ef;border-color:#f0d9bf"></div>
+          <label for="cancelDate">Kündigung zum</label>
           <input id="cancelDate" type="date">
+          <p class="hint">Vorausgefüllt mit dem nächstmöglichen Termin laut Vertrag – du kannst ein anderes Datum wünschen.</p>
           <button class="danger" id="doCancel" type="button">Kündigung verbindlich einreichen</button>
           <button class="ghost" data-cancelfunnel type="button">Abbrechen – ich bleibe</button>
           <div id="cancelMsg" class="msg"></div>
@@ -186,6 +187,7 @@
 (function(){
   var $ = function(id){ return document.getElementById(id); };
   var TOKEN = sessionStorage.getItem('fi_member_token') || null;
+  var CONTRACT = null;
 
   function show(v){ $('loginView').classList.toggle('hidden', v!=='login'); $('memberView').classList.toggle('hidden', v!=='member'); }
   function msg(el, ok, t){ el.className='msg '+(ok?'ok':'err'); el.textContent=t; }
@@ -197,6 +199,7 @@
       .then(function(r){ if(!r.ok) throw 0; return r.json(); })
       .then(function(d){
         var p = d.profile || {};
+        CONTRACT = d.contract || null;
         $('hello').textContent = 'Hallo ' + (p.firstName||'') + '!';
         $('who').textContent = (p.customerNumber? 'Mitgliedsnr. '+p.customerNumber+' · ':'') + (p.email||'');
         $('street').value=p.street||''; $('houseNumber').value=p.houseNumber||'';
@@ -240,7 +243,7 @@
   });
 
   // ── Kündigungs-Funnel ──
-  function showEdit(){ $('editArea').classList.remove('hidden'); $('funnelArea').classList.add('hidden'); }
+  function showEdit(){ $('editArea').classList.remove('hidden'); $('funnelArea').classList.add('hidden'); $('doCancel').style.display=''; $('cancelDate').disabled=false; }
   function fstep(name){
     $('editArea').classList.add('hidden'); $('funnelArea').classList.remove('hidden');
     var steps = document.querySelectorAll('#funnelArea .fstep');
@@ -248,12 +251,39 @@
   }
   function reason(){ return $('reason').value || '—'; }
 
-  $('startCancel').addEventListener('click', function(){ fstep('reason'); });
+  // Vertragsdaten in den Bestätigungs-Schritt einblenden + Datum vorbelegen
+  function fillContract(){
+    var box = $('contractInfo'), inp = $('cancelDate');
+    if(!CONTRACT){
+      box.innerHTML = '<p>Vertragsdaten konnten nicht geladen werden. Gib bitte dein gewünschtes Kündigungsdatum an – wir prüfen den nächstmöglichen Termin und bestätigen ihn dir.</p>';
+      return;
+    }
+    if(CONTRACT.cancelled){
+      box.innerHTML = '<h3>Bereits gekündigt</h3><p>Für deinen Vertrag liegt bereits eine Kündigung'
+        + (CONTRACT.cancellationDate ? ' zum ' + CONTRACT.cancellationDate : '') + ' vor.</p>';
+    } else {
+      var rows = [];
+      if(CONTRACT.rateName) rows.push('Tarif: <b>'+CONTRACT.rateName+'</b>');
+      if(CONTRACT.cancellationPeriod) rows.push('Kündigungsfrist: <b>'+CONTRACT.cancellationPeriod+'</b>');
+      if(CONTRACT.nextCancellationDate) rows.push('Nächstmöglich kündbar zum: <b>'+CONTRACT.nextCancellationDate+'</b>');
+      box.innerHTML = '<h3>Dein Vertrag</h3><p>'+ (rows.join('<br>') || 'Keine Vertragsdetails verfügbar.') +'</p>';
+    }
+    if(CONTRACT.nextCancellationDateISO && !inp.value) inp.value = CONTRACT.nextCancellationDateISO;
+  }
+
+  $('startCancel').addEventListener('click', function(){
+    if(CONTRACT && CONTRACT.cancelled){
+      fstep('confirm'); fillContract();
+      $('doCancel').style.display='none'; $('cancelDate').disabled=true;
+      return;
+    }
+    fstep('reason');
+  });
   $('toConseq').addEventListener('click', function(){
     if(!$('reason').value){ alert('Bitte einen Grund wählen.'); return; } fstep('conseq');
   });
   $('toOffers').addEventListener('click', function(){ fstep('offers'); });
-  $('toConfirm').addEventListener('click', function(){ fstep('confirm'); });
+  $('toConfirm').addEventListener('click', function(){ fillContract(); fstep('confirm'); });
 
   // Gegenangebot annehmen
   document.querySelectorAll('#funnelArea [data-offer]').forEach(function(btn){
