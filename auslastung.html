@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>Fit-Inn Trier · Live-Auslastung</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+<style>
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{font-family:'Archivo',system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+  @keyframes blink{0%,100%{opacity:1}50%{opacity:.18}}
+  .embed{container-type:inline-size; min-height:100dvh; width:100%;
+    background:linear-gradient(165deg,#0e6072 0%,#063540 100%); color:#fff;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    text-align:center; padding:clamp(16px,5cqw,40px); gap:clamp(10px,2.5cqw,18px);}
+  .top{display:flex; align-items:center; gap:9px}
+  .live-dot{width:8px;height:8px;border-radius:50%;background:#5fe0c2;animation:blink 1.6s infinite}
+  .eyebrow{font-weight:800;font-size:clamp(11px,3.2cqw,14px);letter-spacing:.22em;opacity:.8}
+  .ring-wrap{position:relative;width:min(64cqw,300px);aspect-ratio:1;margin:2px auto 0}
+  .ring-wrap svg{width:100%;height:100%;display:block}
+  #ring{transition:stroke-dashoffset .9s cubic-bezier(.22,1,.36,1)}
+  .ring-center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+  .count{font-weight:900;font-size:clamp(52px,26cqw,150px);line-height:.82;letter-spacing:-.04em;text-shadow:0 4px 18px rgba(4,33,40,.22);font-variant-numeric:tabular-nums}
+  .cap-label{font-weight:700;font-size:clamp(13px,4cqw,19px);opacity:.82;margin-top:6px}
+  .load-pill{display:inline-flex;align-items:center;gap:9px;background:rgba(4,33,40,.22);border-radius:24px;padding:clamp(9px,2.4cqw,13px) clamp(16px,4.5cqw,24px)}
+  .load-dot{width:10px;height:10px;border-radius:50%;background:#fff}
+  .load-label{font-weight:900;font-size:clamp(13px,4cqw,18px);letter-spacing:.03em}
+  .status{display:inline-flex;align-items:center;gap:9px;font-weight:600;font-size:clamp(12px,3.6cqw,16px);opacity:.95}
+  .status-dot{width:9px;height:9px;border-radius:50%;background:#1FD65F;flex:none}
+  .err{opacity:.6}
+</style>
+</head>
+<body>
+  <div class="embed" id="embed">
+    <div class="top"><span class="live-dot"></span><span class="eyebrow">AKTUELLE AUSLASTUNG</span></div>
+
+    <div class="ring-wrap">
+      <svg viewBox="0 0 264 264">
+        <circle cx="132" cy="132" r="116" fill="none" stroke="rgba(4,33,40,.28)" stroke-width="20" />
+        <circle id="ring" cx="132" cy="132" r="116" fill="none" stroke="#FFFFFF" stroke-width="20"
+                stroke-linecap="round" stroke-dasharray="728.85" stroke-dashoffset="728.85"
+                transform="rotate(-90 132 132)" />
+      </svg>
+      <div class="ring-center">
+        <div class="count" id="count">–</div>
+        <div class="cap-label">von <span id="capacity">25</span> Personen</div>
+      </div>
+    </div>
+
+    <div class="load-pill" id="loadPill"><span class="load-dot"></span><span class="load-label" id="loadLabel">—</span></div>
+
+    <div class="status"><span class="status-dot" id="statusDot"></span><span id="statusText">—</span></div>
+  </div>
+
+<script>
+(function () {
+  var CFG = { occEndpoint:'/api/auslastung', occRefreshMs:45000, capacity:25 };
+
+  // Fallback-Öffnungszeiten (Mo=0 … So=6), werden von /api/hours überschrieben
+  var names = ['Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag','Sonntag'];
+  var ivWd = [[570,780],[900,1290]];
+  var iv = [ivWd, ivWd, ivWd, ivWd, ivWd, [[780,1080]], [[540,900]]];
+  var closingHours = [];
+
+  function pad(n){ return (n<10?'0':'')+n; }
+  function fmt(m){ return pad(Math.floor(m/60))+':'+pad(m%60); }
+  function parseHHMM(s){ var p=String(s).split(':'); return parseInt(p[0],10)*60+parseInt(p[1]||'0',10); }
+  var DOW = { MONDAY:0,TUESDAY:1,WEDNESDAY:2,THURSDAY:3,FRIDAY:4,SATURDAY:5,SUNDAY:6 };
+
+  function berlinNow(){
+    var p = new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/Berlin',year:'numeric',month:'2-digit',day:'2-digit',weekday:'short',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(new Date());
+    var g=function(t){return (p.find(function(x){return x.type===t;})||{}).value;};
+    var map={Mon:0,Tue:1,Wed:2,Thu:3,Fri:4,Sat:5,Sun:6};
+    var hour=parseInt(g('hour'),10);
+    return { di:map[g('weekday')], hour:hour, min:hour*60+parseInt(g('minute'),10), y:+g('year'), mo:+g('month'), d:+g('day') };
+  }
+  function subtract(base, cuts){
+    var res = base.map(function(x){return [x[0],x[1]];});
+    cuts.forEach(function(cut){ var next=[]; res.forEach(function(seg){
+      if(cut[1]<=seg[0]||cut[0]>=seg[1]){next.push(seg);return;}
+      if(cut[0]>seg[0])next.push([seg[0],cut[0]]); if(cut[1]<seg[1])next.push([cut[1],seg[1]]);
+    }); res=next; });
+    return res.filter(function(s){return s[1]>s[0];});
+  }
+  function closuresToday(n){
+    var today=n.y*10000+n.mo*100+n.d, cuts=[];
+    closingHours.forEach(function(c){
+      var f=c.fromY*10000+c.fromMo*100+c.fromD, t=c.toY*10000+c.toMo*100+c.toD;
+      if(today<f||today>t)return;
+      var start=(today===f)?(c.fromH*60+c.fromMi):0, end=(today===t)?(c.toH*60+c.toMi):1440;
+      if(end>start)cuts.push({start:start,end:end,reason:c.reason});
+    });
+    return cuts;
+  }
+  function effectiveIntervals(offset, n){
+    var dt=new Date(Date.UTC(n.y,n.mo-1,n.d)+offset*86400000);
+    var Y=dt.getUTCFullYear(),Mo=dt.getUTCMonth()+1,D=dt.getUTCDate(), dateNum=Y*10000+Mo*100+D, wd=(dt.getUTCDay()+6)%7, cuts=[];
+    closingHours.forEach(function(c){
+      var f=c.fromY*10000+c.fromMo*100+c.fromD, t=c.toY*10000+c.toMo*100+c.toD;
+      if(dateNum<f||dateNum>t)return;
+      var start=(dateNum===f)?(c.fromH*60+c.fromMi):0, end=(dateNum===t)?(c.toH*60+c.toMi):1440;
+      if(end>start)cuts.push([start,end]);
+    });
+    return { wd:wd, intervals: subtract(iv[wd]||[],cuts).sort(function(a,b){return a[0]-b[0];}) };
+  }
+  function nextOpenWindow(n){
+    for(var off=0;off<8;off++){ var e=effectiveIntervals(off,n);
+      for(var i=0;i<e.intervals.length;i++){ var s=e.intervals[i][0],en=e.intervals[i][1];
+        if(off===0&&en<=n.min)continue; return {off:off,wd:e.wd,s:s,e:en}; } }
+    return null;
+  }
+
+  var el = {
+    count:document.getElementById('count'), capacity:document.getElementById('capacity'),
+    ring:document.getElementById('ring'), loadPill:document.getElementById('loadPill'),
+    loadLabel:document.getElementById('loadLabel'), statusDot:document.getElementById('statusDot'),
+    statusText:document.getElementById('statusText')
+  };
+  var state = { capacity:CFG.capacity, current:null, open:false };
+
+  function renderOccupancy(){
+    var cap = state.capacity||CFG.capacity; el.capacity.textContent = cap;
+    var c = state.current;
+    if (c == null){ el.count.textContent='–'; el.count.classList.add('err'); el.ring.setAttribute('stroke-dashoffset','728.85'); el.loadPill.style.display='none'; return; }
+    el.count.classList.remove('err'); el.count.textContent=c;
+    var ratio=Math.max(0,Math.min(1,c/cap));
+    el.ring.setAttribute('stroke-dashoffset',(728.85*(1-ratio)).toFixed(1));
+    if (state.open){
+      el.loadPill.style.display='';
+      var pct=Math.round(ratio*100);
+      el.loadLabel.textContent=(ratio<0.5?'ENTSPANNT':(ratio<=0.8?'GUT BESUCHT':'VOLL'))+' · '+pct+'%';
+    } else { el.loadPill.style.display='none'; }
+  }
+  function loadOccupancy(){
+    fetch(CFG.occEndpoint,{cache:'no-store'}).then(function(r){return r.ok?r.json():null;})
+      .then(function(d){ if(d){ state.current=(typeof d.count==='number')?d.count:null; if(d.max)state.capacity=d.max; } else state.current=null; renderOccupancy(); })
+      .catch(function(){ state.current=null; renderOccupancy(); });
+  }
+
+  function updateStatus(){
+    var n=berlinNow(), cur=n.min;
+    var cuts=closuresToday(n);
+    var today=subtract(iv[n.di]||[],cuts.map(function(c){return [c.start,c.end];}));
+    var reasonNow=null;
+    for(var ci=0;ci<cuts.length;ci++){ if(cur>=cuts[ci].start&&cur<cuts[ci].end){reasonNow=cuts[ci].reason;break;} }
+    var open=false,closeAt=null,nextStart=null,passed=false;
+    for(var i=0;i<today.length;i++){
+      if(cur>=today[i][0]&&cur<today[i][1]){open=true;closeAt=today[i][1];}
+      if(today[i][1]<=cur)passed=true;
+      if(today[i][0]>cur&&nextStart===null)nextStart=today[i][0];
+    }
+    var text,color;
+    if(open){ color='#1FD65F'; text='Geöffnet · noch bis '+fmt(closeAt)+' Uhr'; }
+    else if(reasonNow){ color='#E0563B'; text=reasonNow+(nextStart!==null?(' · öffnet '+fmt(nextStart)+' Uhr'):''); }
+    else if(nextStart!==null&&passed){ color='#FF9F1A'; text='Pause · öffnet wieder '+fmt(nextStart)+' Uhr'; }
+    else if(nextStart!==null){ color='#E0563B'; text='Geschlossen · öffnet '+fmt(nextStart)+' Uhr'; }
+    else { color='#E0563B'; var w=nextOpenWindow(n);
+      text = w ? ('Geschlossen · öffnet '+(w.off===1?'morgen ':(names[w.wd]+' '))+fmt(w.s)+' Uhr') : 'Geschlossen'; }
+    state.open = open;
+    el.statusDot.style.background=color; el.statusText.textContent=text;
+    renderOccupancy();
+  }
+
+  function loadHours(){
+    fetch('/api/hours',{cache:'no-store'}).then(function(r){return r.ok?r.json():null;})
+      .then(function(h){
+        if(!h||!h.available||!Array.isArray(h.openingHours)||!h.openingHours.length) return;
+        var ivN=[[],[],[],[],[],[],[]];
+        h.openingHours.forEach(function(e){ var a=DOW[e.dayOfWeekFrom],b=DOW[e.dayOfWeekTo]; if(a==null||b==null)return;
+          var f=parseHHMM(e.timeFrom),t=parseHHMM(e.timeTo); for(var d=a;;d=(d+1)%7){ivN[d].push([f,t]); if(d===b)break;} });
+        var ok=false; for(var d=0;d<7;d++){ ivN[d].sort(function(x,y){return x[0]-y[0];}); if(ivN[d].length)ok=true; }
+        var rx=/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/;
+        closingHours=(Array.isArray(h.closingHours)?h.closingHours:[]).map(function(c){
+          var a=rx.exec(c.dateTimeFrom||''),b=rx.exec(c.dateTimeTo||''); if(!a||!b)return null;
+          return {reason:c.reason||'Geschlossen',fromY:+a[1],fromMo:+a[2],fromD:+a[3],fromH:+a[4],fromMi:+a[5],toY:+b[1],toMo:+b[2],toD:+b[3],toH:+b[4],toMi:+b[5]};
+        }).filter(Boolean);
+        if(ok){ iv=ivN; updateStatus(); }
+      }).catch(function(){});
+  }
+
+  updateStatus();
+  loadOccupancy(); setInterval(loadOccupancy, CFG.occRefreshMs);
+  loadHours();     setInterval(loadHours, 30000);
+  setInterval(updateStatus, 30000);
+})();
+</script>
+</body>
+</html>
