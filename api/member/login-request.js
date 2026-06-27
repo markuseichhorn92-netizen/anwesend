@@ -10,7 +10,7 @@
 
 const crypto = require('node:crypto');
 const M = require('../../lib/members');
-const { sendMailRaw, hasMail } = require('../../lib/mail');
+const { sendLoginCode } = require('../../lib/loginCode');
 
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json');
@@ -24,25 +24,16 @@ module.exports = async function handler(req, res) {
 
   const d = await M.readBody(req);
   const email = String(d.email || '').trim().toLowerCase();
-  const challenge = crypto.randomBytes(24).toString('hex');
+  let challenge = crypto.randomBytes(24).toString('hex');
 
   try {
     // Pro E-Mail begrenzen (Mail-Bombing verhindern) – ohne nach außen zu verraten
     const emailOk = email ? await M.rateLimit('otpreq:e:' + email, 5, 1800) : false;
     if (emailOk) {
       const m = await M.findByEmailDob(email, d.dob);
-      if (m && m.email && hasMail) {
-        const code = String(crypto.randomInt(100000, 1000000));
-        await M.otpSave(challenge, { id: m.id, codeHash: M.hashCode(code), exp: Date.now() + 600000, tries: 0 }, 600);
-        await sendMailRaw({
-          to: m.email,
-          subject: 'Dein Anmelde-Code: ' + code + ' – Fit-Inn Trier',
-          text: 'Hallo' + (m.firstName ? ' ' + m.firstName : '') + ',\n\n'
-            + 'dein Anmelde-Code für den Mitgliederbereich lautet:\n\n'
-            + '   ' + code + '\n\n'
-            + 'Der Code ist 10 Minuten gültig. Wenn du dich nicht anmelden wolltest, ignoriere diese E-Mail einfach.\n\n'
-            + 'Sportliche Grüße\nDein Fit-Inn Trier',
-        });
+      if (m && m.email) {
+        const r = await sendLoginCode(m, req.headers['host']);
+        if (r && r.challenge) challenge = r.challenge;
       }
     }
   } catch (e) { /* still return ok to avoid leaking */ }

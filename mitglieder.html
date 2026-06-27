@@ -259,7 +259,7 @@
       return hero+
       '<div class="card">'+
         '<div style="font-size:21px;font-weight:800;letter-spacing:-.4px">Code eingeben</div>'+
-        '<div style="font-size:14px;color:#6b7780;margin-top:5px;line-height:1.45">Wir haben dir einen 6-stelligen Code an <b style="color:#15171B">'+esc(S.liEmail)+'</b> geschickt (falls deine Angaben übereinstimmen). Bitte gib ihn hier ein.</div>'+
+        '<div style="font-size:14px;color:#6b7780;margin-top:5px;line-height:1.45">Wir haben dir einen 6-stelligen Code '+(S.liEmail?('an <b style="color:#15171B">'+esc(S.liEmail)+'</b>'):'an deine hinterlegte E-Mail-Adresse')+' geschickt. Bitte gib ihn hier ein – oder nutze den Anmelde-Link aus der E-Mail.</div>'+
         '<div style="margin-top:18px"><label class="lbl">Einmal-Code</label><input id="li_code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="• • • • • •" class="inp" style="letter-spacing:8px;text-align:center;font-size:24px;font-weight:800" value="'+esc(S.otp)+'" oninput="window.__setLi(\'code\',this.value)"></div>'+
         '<label data-act="toggleRemember" style="display:flex;align-items:center;gap:10px;margin-top:16px;cursor:pointer"><input type="checkbox" '+(S.remember?'checked':'')+' tabindex="-1" style="width:18px;height:18px;accent-color:'+TEAL+';pointer-events:none"><span style="font-size:14px;color:#42454b;font-weight:600">Angemeldet bleiben</span></label>'+
         '<button class="btn" id="li_btn" data-act="verifyCode" style="margin-top:18px">'+(S.busy?'Prüfe …':'Anmelden')+'</button>'+
@@ -656,7 +656,10 @@
       setQuiet({busy:true,loginErr:''});
       fetch('/api/member/login-number',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({customerNumber:num,dob:dob,remember:remember})})
         .then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j};});})
-        .then(function(x){ if(x.ok&&x.j.token){ TOKEN=x.j.token; if(remember){ localStorage.setItem('fi_member_token',TOKEN); localStorage.setItem('fi_remember','1'); sessionStorage.removeItem('fi_member_token'); } else { sessionStorage.setItem('fi_member_token',TOKEN); localStorage.removeItem('fi_member_token'); localStorage.removeItem('fi_remember'); } S.loginStep='request'; return loadMe().then(function(){ loadAppts(); S.busy=false; nav('home'); }); } S.busy=false; setS({loginErr:(x.j&&x.j.message)||'Daten nicht gefunden.'}); })
+        .then(function(x){
+          if(x.ok&&x.j.needsCode){ setS({busy:false,challenge:x.j.challenge,loginStep:'verify',otp:'',liEmail:'',loginErr:''}); return; }
+          if(x.ok&&x.j.token){ TOKEN=x.j.token; if(remember){ localStorage.setItem('fi_member_token',TOKEN); localStorage.setItem('fi_remember','1'); sessionStorage.removeItem('fi_member_token'); } else { sessionStorage.setItem('fi_member_token',TOKEN); localStorage.removeItem('fi_member_token'); localStorage.removeItem('fi_remember'); } S.loginStep='request'; return loadMe().then(function(){ loadAppts(); S.busy=false; nav('home'); }); }
+          S.busy=false; setS({loginErr:(x.j&&x.j.message)||'Daten nicht gefunden.'}); })
         .catch(function(){ setS({busy:false,loginErr:'Es ist ein Fehler aufgetreten.'}); });
     },
     verifyCode:function(){
@@ -792,7 +795,17 @@
   });
 
   // ---- boot ----
-  if(TOKEN){ loadMe().then(function(){ loadAppts(); render(); }).catch(function(){ logout(); }); }
+  function cleanMlt(){ try{ var u=new URL(window.location.href); if(u.searchParams.has('mlt')){ u.searchParams.delete('mlt'); window.history.replaceState({}, document.title, u.pathname+u.search+u.hash); } }catch(e){} }
+  function bootMagic(tok){
+    S.screen='login'; render();
+    fetch('/api/member/login-magic',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:tok,remember:true})})
+      .then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j};});})
+      .then(function(x){ cleanMlt(); if(x.ok&&x.j.token){ TOKEN=x.j.token; localStorage.setItem('fi_member_token',TOKEN); localStorage.setItem('fi_remember','1'); return loadMe().then(function(){ loadAppts(); nav('home'); }); } setS({loginErr:(x.j&&x.j.message)||'Der Anmelde-Link ist ungültig oder abgelaufen.'}); })
+      .catch(function(){ cleanMlt(); setS({loginErr:'Der Anmelde-Link konnte nicht geprüft werden. Bitte melde dich erneut an.'}); });
+  }
+  var MLT=null; try{ MLT=new URL(window.location.href).searchParams.get('mlt'); }catch(e){}
+  if(MLT){ bootMagic(MLT); }
+  else if(TOKEN){ loadMe().then(function(){ loadAppts(); render(); }).catch(function(){ logout(); }); }
   else render();
 })();
 </script>

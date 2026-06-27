@@ -9,6 +9,7 @@
  */
 
 const M = require('../../lib/members');
+const { sendLoginCode } = require('../../lib/loginCode');
 
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json');
@@ -31,8 +32,11 @@ module.exports = async function handler(req, res) {
     const m = await M.findByNumberDob(num, dobISO);
     if (!m) { res.statusCode = 401; return res.end(JSON.stringify({ ok: false, message: 'Daten nicht gefunden. Bitte Mitgliedsnummer und Geburtsdatum prüfen.' })); }
     if (m.email) {
+      // Konto hat eine E-Mail: aus Sicherheitsgründen Code/Magic-Link an die
+      // hinterlegte Adresse schicken und zur Code-Eingabe weiterleiten.
+      const r = await sendLoginCode(m, req.headers['host']);
       res.statusCode = 200;
-      return res.end(JSON.stringify({ ok: false, hasEmail: true, message: 'Für dein Konto ist eine E-Mail hinterlegt. Bitte melde dich oben mit E-Mail + Code an.' }));
+      return res.end(JSON.stringify({ ok: true, needsCode: true, challenge: r.challenge }));
     }
     const token = await M.createSession(m.id, d.remember ? 2592000 : 1800);
     res.statusCode = 200;
