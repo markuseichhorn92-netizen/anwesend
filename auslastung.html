@@ -17,6 +17,8 @@
     --fg:#fff; --eyebrow:rgba(255,255,255,.8); --cap:rgba(255,255,255,.82);
     --ring:#fff; --track:rgba(4,33,40,.28); --pill-bg:rgba(4,33,40,.22); --pill-fg:#fff;
     --shadow:0 4px 18px rgba(4,33,40,.22);
+    --bar:rgba(255,255,255,.26); --bar-now:#fff; --nowdot:#fff; --trend-fg:rgba(255,255,255,.82);
+    --axis:rgba(255,255,255,.6); --gapline:rgba(255,255,255,.32); --dnav-bg:rgba(255,255,255,.16); --dnav-fg:#fff;
     container-type:inline-size; min-height:100dvh; width:100%;
     background:linear-gradient(165deg,#0e6072 0%,#063540 100%); color:var(--fg);
     display:flex; flex-direction:column; align-items:center; justify-content:center;
@@ -27,11 +29,13 @@
   .embed.bg-white{background:#fff}
   /* Dunkles Theme = dunkle Schrift + Teal-Ring (für helle Websites) */
   .embed.theme-dark{--fg:#15171B; --eyebrow:#0a4958; --cap:#5d7a80; --ring:#0a4958;
-    --track:rgba(10,73,88,.15); --pill-bg:rgba(10,73,88,.08); --pill-fg:#0a4958; --shadow:none;}
+    --track:rgba(10,73,88,.15); --pill-bg:rgba(10,73,88,.08); --pill-fg:#0a4958; --shadow:none;
+    --bar:#E7EEEF; --bar-now:#0a4958; --nowdot:#0a4958; --trend-fg:#9aa0a8;
+    --axis:#aab4b6; --gapline:#d9e2e4; --dnav-bg:#eef3f4; --dnav-fg:#0a4958;}
   .top{display:flex; align-items:center; gap:9px}
   .live-dot{width:8px;height:8px;border-radius:50%;background:#5fe0c2;animation:blink 1.6s infinite}
   .eyebrow{font-weight:800;font-size:clamp(11px,3.2cqw,14px);letter-spacing:.22em;color:var(--eyebrow)}
-  .ring-wrap{position:relative;width:min(64cqw,300px);aspect-ratio:1;margin:2px auto 0}
+  .ring-wrap{position:relative;width:min(64cqw,300px);aspect-ratio:1;margin:2px auto 0;animation:ringPop .7s cubic-bezier(.22,1,.36,1) both}
   .ring-wrap svg{width:100%;height:100%;display:block}
   .ring-track{stroke:var(--track)}
   #ring{stroke:var(--ring);transition:stroke-dashoffset .9s cubic-bezier(.22,1,.36,1)}
@@ -44,6 +48,33 @@
   .status{display:inline-flex;align-items:center;gap:9px;font-weight:600;font-size:clamp(12px,3.6cqw,16px);color:var(--fg)}
   .status-dot{width:9px;height:9px;border-radius:50%;background:#1FD65F;flex:none}
   .err{opacity:.6}
+
+  /* ── Verlauf (Tagestrend) ── */
+  .trend{width:100%; max-width:380px; text-align:left; animation:fiUp .6s cubic-bezier(.22,1,.36,1) .06s both}
+  .trend.hidden{display:none}
+  .trend-head{display:flex; justify-content:space-between; align-items:center; margin-bottom:10px}
+  .trend-title{font-weight:800; font-size:11px; letter-spacing:.12em; color:var(--trend-fg)}
+  .day-nav{display:flex; align-items:center; gap:8px}
+  .day-nav .trend-day{font-weight:800; font-size:12px; color:var(--fg); min-width:54px; text-align:center}
+  .dnav{width:26px; height:26px; border-radius:8px; border:none; background:var(--dnav-bg); color:var(--dnav-fg); font-size:16px; font-weight:800; line-height:1; cursor:pointer; display:flex; align-items:center; justify-content:center; flex:none}
+  .trend-bars{display:flex; align-items:flex-end; gap:4px; height:clamp(46px,14cqw,64px); touch-action:pan-y}
+  .tbar{position:relative; flex:1; border-radius:3px 3px 0 0; min-height:6px; cursor:pointer; transform-origin:bottom; background:var(--bar);
+    transition:height .5s cubic-bezier(.22,1,.36,1), filter .15s ease, transform .15s ease, box-shadow .15s ease}
+  .tbar.anim{animation:barRise .55s cubic-bezier(.22,1,.36,1) both}
+  .tbar:hover{filter:brightness(1.05); transform:scaleY(1.04)}
+  .tbar:active{transform:scaleY(.94); filter:brightness(.92)}
+  .tbar.now{background:var(--bar-now); box-shadow:0 0 0 2px rgba(10,73,88,.2)}
+  .tnow-dot{position:absolute; top:-8px; left:50%; transform:translateX(-50%); width:7px; height:7px; border-radius:50%; background:var(--nowdot); box-shadow:0 0 0 3px rgba(10,73,88,.14)}
+  .tgap{position:relative; flex:0 0 14px; align-self:stretch; pointer-events:none}
+  .trend-bars .tgap::before{content:""; position:absolute; left:50%; bottom:0; top:38%; border-left:2px dotted var(--gapline); transform:translateX(-50%)}
+  .trend-closed{flex:1; display:flex; align-items:center; justify-content:center; color:var(--axis); font-weight:600; font-size:12px}
+  .trend-axis{display:flex; align-items:flex-start; gap:4px; margin-top:7px; font-weight:600; font-size:10px; color:var(--axis)}
+  .ax-seg{display:flex; justify-content:space-between; min-width:0}
+  .trend-caption{text-align:center; font-weight:500; font-size:11px; color:var(--axis); margin-top:10px; min-height:14px}
+  @keyframes barRise{from{transform:scaleY(0); opacity:.35} to{transform:scaleY(1); opacity:1}}
+  @keyframes ringPop{from{opacity:0; transform:scale(.92)} to{opacity:1; transform:none}}
+  @keyframes fiUp{from{opacity:0; transform:translateY(14px)} to{opacity:1; transform:none}}
+  @media (prefers-reduced-motion:reduce){ *,*::before,*::after{animation-duration:.001ms!important; animation-iteration-count:1!important; transition-duration:.001ms!important} }
 </style>
 </head>
 <body>
@@ -66,6 +97,16 @@
     <div class="load-pill" id="loadPill"><span class="load-dot"></span><span class="load-label" id="loadLabel">—</span></div>
 
     <div class="status"><span class="status-dot" id="statusDot"></span><span id="statusText">—</span></div>
+
+    <div class="trend hidden" id="trendSection">
+      <div class="trend-head">
+        <span class="trend-title">VERLAUF</span>
+        <span class="day-nav"><button class="dnav" data-d="-1" aria-label="Vorheriger Tag">‹</button><span class="trend-day" id="trendDay">Heute</span><button class="dnav" data-d="1" aria-label="Nächster Tag">›</button></span>
+      </div>
+      <div class="trend-bars" id="trendBars" role="group" aria-label="Typischer Tagesverlauf – nach links/rechts wischen für andere Tage"></div>
+      <div class="trend-axis" id="trendAxis"></div>
+      <div class="trend-caption" id="trendCaption">Verlauf aus den letzten Wochen</div>
+    </div>
   </div>
 
 <script>
@@ -75,6 +116,7 @@
   // ── Theme über URL-Parameter ──
   //   ?bg=transparent            -> transparenter Hintergrund (Host-Seite scheint durch)
   //   ?theme=dark | ?theme=light -> dunkle (für helle Seiten) bzw. helle Schrift
+  var EMBED_TRANSPARENT = false;     // im transparenten Embed bleibt der Verlauf minimal (aus)
   (function(){
     try{
       var q = new URLSearchParams(window.location.search);
@@ -83,6 +125,7 @@
       var em = document.getElementById('embed');
       var transparent = (bg==='transparent' || bg==='none' || q.get('transparent')==='1');
       var white = (bg==='white' || bg==='weiss' || bg==='hell');
+      EMBED_TRANSPARENT = transparent;
       if (transparent) em.classList.add('bg-transparent');
       if (white) em.classList.add('bg-white');
       // Standard-Theme: bei transparentem/weißem Hintergrund "dark" (für helle Flächen), sonst hell
@@ -148,15 +191,30 @@
     count:document.getElementById('count'), capacity:document.getElementById('capacity'),
     ring:document.getElementById('ring'), loadPill:document.getElementById('loadPill'),
     loadLabel:document.getElementById('loadLabel'), statusDot:document.getElementById('statusDot'),
-    statusText:document.getElementById('statusText')
+    statusText:document.getElementById('statusText'),
+    trendSection:document.getElementById('trendSection'), trendBars:document.getElementById('trendBars'),
+    trendAxis:document.getElementById('trendAxis'), trendDay:document.getElementById('trendDay'),
+    trendCaption:document.getElementById('trendCaption')
   };
-  var state = { capacity:CFG.capacity, current:null, open:false };
+  var state = { capacity:CFG.capacity, current:null, open:false, trend:null, week:null, selWd:null, userPicked:false };
+  var lastHour = -1, lastDi = -1;
 
+  var countRaf=null, shownCount=0;
+  function animateCount(to){
+    var from=shownCount;
+    if(from===to){ el.count.textContent=to; return; }
+    if(countRaf)cancelAnimationFrame(countRaf);
+    var start=null, dur=650;
+    function step(ts){ if(start==null)start=ts; var p=Math.min(1,(ts-start)/dur), eased=1-Math.pow(1-p,3);
+      el.count.textContent=Math.round(from+(to-from)*eased);
+      if(p<1){countRaf=requestAnimationFrame(step);} else {shownCount=to; countRaf=null;} }
+    countRaf=requestAnimationFrame(step);
+  }
   function renderOccupancy(){
     var cap = state.capacity||CFG.capacity; el.capacity.textContent = cap;
     var c = state.current;
-    if (c == null){ el.count.textContent='–'; el.count.classList.add('err'); el.ring.setAttribute('stroke-dashoffset','728.85'); el.loadPill.style.display='none'; return; }
-    el.count.classList.remove('err'); el.count.textContent=c;
+    if (c == null){ if(countRaf){cancelAnimationFrame(countRaf);countRaf=null;} shownCount=0; el.count.textContent='–'; el.count.classList.add('err'); el.ring.setAttribute('stroke-dashoffset','728.85'); el.loadPill.style.display='none'; return; }
+    el.count.classList.remove('err'); animateCount(c);
     var ratio=Math.max(0,Math.min(1,c/cap));
     el.ring.setAttribute('stroke-dashoffset',(728.85*(1-ratio)).toFixed(1));
     if (state.open){
@@ -193,6 +251,10 @@
     state.open = open;
     el.statusDot.style.background=color; el.statusText.textContent=text;
     renderOccupancy();
+    if (el.trendSection && !EMBED_TRANSPARENT){
+      syncDefaultDay();                                  // Verlauf folgt automatisch dem nächsten geöffneten Tag
+      if (n.hour!==lastHour || n.di!==lastDi){ lastHour=n.hour; lastDi=n.di; renderTrend(n, false); }
+    }
   }
 
   function loadHours(){
@@ -212,10 +274,119 @@
       }).catch(function(){});
   }
 
+  // ── Verlauf (Tagestrend) ──────────────────────────────────────────────
+  function openSegmentsForDay(wd){
+    var ivs=iv[wd]||[], segs=[];
+    ivs.forEach(function(intv){ var s=Math.floor(intv[0]/60), e=Math.ceil(intv[1]/60), hrs=[];
+      for(var h=s;h<e;h++)hrs.push(h); if(hrs.length)segs.push(hrs); });
+    return segs;
+  }
+  function hourValue(src,h){ if(!src)return 0; var a=src[h*2],b=src[h*2+1],vals=[];
+    if(a!=null)vals.push(a); if(b!=null)vals.push(b);
+    return vals.length?Math.round(vals.reduce(function(x,y){return x+y;},0)/vals.length):0; }
+  function dayHours(wd){
+    var src=(state.week&&state.week[(wd+1)%7])?state.week[(wd+1)%7]:(state.trend&&state.trend.day?state.trend.day:null);
+    if(!src)return null;
+    var segs=openSegmentsForDay(wd); if(!segs.length)return {closed:true};
+    var mx=1,segments=[];
+    segs.forEach(function(hrs){ var seg=hrs.map(function(h){var v=hourValue(src,h); if(v>mx)mx=v; return {hour:h,count:v};}); segments.push(seg); });
+    return {segments:segments,max:mx};
+  }
+  function buildAxis(wd){
+    var segs=openSegmentsForDay(wd), ivs=iv[wd]||[]; if(!segs.length||!ivs.length)return '';
+    var html='';
+    for(var i=0;i<segs.length;i++){
+      if(i>0)html+='<div class="tgap" aria-hidden="true"></div>';
+      var open=fmt(ivs[i]?ivs[i][0]:segs[i][0]*60), close=fmt(ivs[i]?ivs[i][1]:(segs[i][segs[i].length-1]+1)*60);
+      html+='<div class="ax-seg" style="flex:'+segs[i].length+'"><span>'+open+'</span><span>'+close+'</span></div>';
+    }
+    return html;
+  }
+  function defaultWd(){ var w=nextOpenWindow(berlinNow()); return w?w.wd:berlinNow().di; }
+  function dayLabel(wd){ var td=berlinNow().di, diff=((wd-td)%7+7)%7;
+    if(diff===0)return 'Heute'; if(diff===1)return 'Morgen'; if(diff===6)return 'Gestern'; return names[wd]; }
+  function syncDefaultDay(){ if(state.userPicked)return; var d=defaultWd();
+    if(d!==state.selWd){ state.selWd=d; renderTrend(berlinNow(), true); } }
+  function changeDay(delta){ state.userPicked=true; if(state.selWd==null)state.selWd=defaultWd();
+    state.selWd=((state.selWd+delta)%7+7)%7; renderTrend(berlinNow(), true); }
+  function renderTrend(n, animate){
+    if(!el.trendSection)return;
+    if(state.selWd==null)state.selWd=defaultWd();
+    var dh=dayHours(state.selWd);
+    if(!dh){ el.trendSection.classList.add('hidden'); return; }
+    el.trendSection.classList.remove('hidden');
+    if(el.trendDay)el.trendDay.textContent=dayLabel(state.selWd);
+    if(dh.closed){ el.trendBars.innerHTML='<div class="trend-closed">An diesem Tag geschlossen</div>';
+      if(el.trendAxis)el.trendAxis.innerHTML=''; if(el.trendCaption)el.trendCaption.textContent=''; return; }
+    var isToday=state.selWd===n.di, segments=dh.segments, mx=dh.max, html='', idx=0, cls=animate?'tbar anim':'tbar';
+    for(var s=0;s<segments.length;s++){
+      if(s>0)html+='<div class="tgap" aria-hidden="true"></div>';
+      var seg=segments[s];
+      for(var b=0;b<seg.length;b++){
+        var hh=seg[b], ratio=mx>0?hh.count/mx:0, pct=Math.round(20+ratio*80), isNow=isToday&&hh.hour===n.hour;
+        var marker=isNow?'<span class="tnow-dot" aria-hidden="true"></span>':'';
+        html+='<div class="'+cls+(isNow?' now':'')+'" data-h="'+hh.hour+'" data-v="'+hh.count+'"'
+            +' title="'+(isNow?'Jetzt · ':'')+hh.hour+' Uhr · ~'+hh.count+' Personen"'
+            +' style="height:'+pct+'%;animation-delay:'+(idx*32)+'ms;">'+marker+'</div>';
+        idx++;
+      }
+    }
+    el.trendBars.innerHTML=html;
+    if(el.trendAxis)el.trendAxis.innerHTML=buildAxis(state.selWd);
+    trendWire(); trendReset();
+  }
+  function trendBarFromX(clientX){
+    var bars=el.trendBars.querySelectorAll('.tbar'); if(!bars.length)return null;
+    var best=null,bd=Infinity;
+    for(var i=0;i<bars.length;i++){ var r=bars[i].getBoundingClientRect(), d=Math.abs((r.left+r.width/2)-clientX);
+      if(d<bd){bd=d;best=bars[i];} }
+    return best;
+  }
+  function trendShow(bar){ if(!bar||!bar.getAttribute||bar.getAttribute('data-v')==null||!el.trendCaption)return;
+    el.trendCaption.textContent=bar.getAttribute('data-h')+' Uhr · ~'+bar.getAttribute('data-v')+' Personen'; }
+  function trendReset(){ if(el.trendCaption)el.trendCaption.textContent='Verlauf aus den letzten Wochen'; }
+  function trendWire(){
+    if(el.trendBars.__wired)return; el.trendBars.__wired=true;
+    el.trendBars.addEventListener('pointerdown',function(e){ trendShow(trendBarFromX(e.clientX)); });
+    el.trendBars.addEventListener('pointermove',function(e){ if(e.pointerType==='mouse'||e.buttons)trendShow(trendBarFromX(e.clientX)); });
+    el.trendBars.addEventListener('pointerleave',function(e){ if(e.pointerType==='mouse')trendReset(); });
+  }
+  function loadTypical(){
+    fetch('/api/typical?week=1',{cache:'no-store'}).then(function(r){return r.ok?r.json():null;})
+      .then(function(t){
+        if(!t||!t.available||!Array.isArray(t.day)){ state.trend=null; }
+        else{
+          var hours=[],mx=1;
+          for(var h=8;h<=21;h++){ var a=t.day[h*2],b=t.day[h*2+1],vals=[];
+            if(a!=null)vals.push(a); if(b!=null)vals.push(b);
+            var v=vals.length?Math.round(vals.reduce(function(x,y){return x+y;},0)/vals.length):0;
+            hours.push({hour:h,count:v}); if(v>mx)mx=v; }
+          state.trend={hours:hours,max:mx,day:t.day};
+          if(Array.isArray(t.week))state.week=t.week;
+        }
+        renderTrend(berlinNow(), true);
+      }).catch(function(){});
+  }
+
+  // Tages-Navigation: Pfeile (Klick) + Wischen
+  if (el.trendSection){
+    el.trendSection.addEventListener('click',function(e){
+      var btn=e.target.closest?e.target.closest('.dnav'):null;
+      if(btn)changeDay(parseInt(btn.getAttribute('data-d'),10)||0);
+    });
+    (function(){ var sx=null,sy=null;
+      el.trendSection.addEventListener('touchstart',function(e){ sx=e.touches[0].clientX; sy=e.touches[0].clientY; },{passive:true});
+      el.trendSection.addEventListener('touchend',function(e){ if(sx==null)return;
+        var dx=e.changedTouches[0].clientX-sx, dy=e.changedTouches[0].clientY-sy; sx=null;
+        if(Math.abs(dx)>40&&Math.abs(dx)>Math.abs(dy))changeDay(dx<0?1:-1); });
+    })();
+  }
+
   updateStatus();
   loadOccupancy(); setInterval(loadOccupancy, CFG.occRefreshMs);
   loadHours();     setInterval(loadHours, 30000);
   setInterval(updateStatus, 30000);
+  if (!EMBED_TRANSPARENT){ loadTypical(); setInterval(loadTypical, 600000); }
 })();
 </script>
 </body>
