@@ -1,5 +1,5 @@
 'use strict';
-/** TEMPORÄR: Re-Test Schreibrechte nach Scope-Änderung. id 0 -> kein echtes Schreiben. */
+/** TEMPORÄR: master-data mit gültigem Body + direkte Kunden-Write-Endpunkte. id 0 -> kein echtes Schreiben. */
 const TENANT = process.env.ML_TENANT || 'fit-inn-trier';
 const API_KEY = process.env.ML_API_KEY || process.env.MLAPIKEY || process.env.mlapikey || process.env.ML_APIKEY || process.env.MAGICLINE_API_KEY;
 const BASE = `https://${TENANT}.open-api.magicline.com/v1`;
@@ -19,14 +19,16 @@ module.exports = async function handler(req, res) {
   if (new URL(req.url, 'http://localhost').searchParams.get('run') !== '1') { res.statusCode = 400; return res.end(JSON.stringify({ hint: '?run=1' })); }
   const ID = 0;
   const out = [];
-  out.push(await call('POST', `/customers/${ID}/self-service/address-data`,
-    { street: 'Teststr', houseNumber: '1', zipCode: '54290', city: 'Trier', countryCode: 'DE' }));
+  // master-data mit gültigem customerTitle
   out.push(await call('POST', `/customers/${ID}/self-service/master-data`,
-    { firstName: 'Max', lastName: 'Muster', dateOfBirth: '1990-01-01', gender: 'MALE', customerTitle: 'MR' }));
-  out.push(await call('POST', `/customers/${ID}/self-service/contact-data`,
-    { email: 'test@example.de', phonePrivate: '+49 651 1234' }));
-  out.push(await call('POST', `/customers/${ID}/self-service/payment-data`,
-    { accountHolder: 'Max Muster', iban: 'DE89370400440532013000', bic: 'COBADEFFXXX', bankName: 'Testbank' }));
+    { firstName: 'Max', lastName: 'Muster', dateOfBirth: '1990-01-01', gender: 'MALE', customerTitle: 'NONE' }));
+  // direkte Kunden-Write-Kandidaten
+  out.push(await call('PUT', `/customers/${ID}`, { firstName: 'Max', lastName: 'Muster' }));
+  out.push(await call('PATCH', `/customers/${ID}`, { firstName: 'Max' }));
+  out.push(await call('POST', `/customers/${ID}`, { firstName: 'Max' }));
+  out.push(await call('PUT', `/customers/${ID}/master-data`, { firstName: 'Max', lastName: 'Muster' }));
+  out.push(await call('POST', `/customers/${ID}/master-data`, { firstName: 'Max', lastName: 'Muster' }));
+  out.push(await call('PUT', `/customers/${ID}/address`, { street: 'A', zipCode: '54290', city: 'Trier', countryCode: 'DE' }));
   res.statusCode = 200;
-  res.end(JSON.stringify({ note: '403=keine Berechtigung, 400/404=erreichbar (Berechtigung ok)', out }, null, 2));
+  res.end(JSON.stringify({ note: '403=keine Berechtigung; 400/404=erreichbar; 405=Methode falsch; 404 path=Endpoint gibts nicht', out }, null, 2));
 };
