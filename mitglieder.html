@@ -93,7 +93,8 @@
   var DATA = { profile:null, contract:null, checkins:null, appts:null };
   var S = { screen: TOKEN?'home':'login',
     msg:'', // generic success on data screen
-    cancelStep:0, cancelReason:'', pauseAsk:false, pauseWeeks:8, offerDone:'', withdrawConfirm:false, withdrawDone:false, cancelDone:false, busy:false,
+    cancelStep:0, cancelReason:'', pauseWeeks:6, offerDone:'', withdrawConfirm:false, withdrawDone:false, cancelDone:false, busy:false,
+    pauseStep:0, pauseReason:'', pauseReasonText:'', pauseFrom:'', pausePhoto:'', pausePhotoName:'', pauseDone:false,
     apptTab:'book', bookType:'', apptMsg:'',
     helpView:'list', helpArticle:0, helpCat:'', helpQ:'',
     copied:false, dlMsg:false, dlMsg2:'', emailing:false,
@@ -104,6 +105,26 @@
   window.__setLi=function(f,v){ if(f==='email')S.liEmail=v; else if(f==='plz')S.liPlz=v; };
   window.__dpYear=function(v){ S.dpYear=+v; render(); };
   window.__ciDate=function(which,v){ if(which==='from')S.ciFrom=v; else S.ciTo=v; render(); };
+  window.__pauseNote=function(v){ S.pauseReasonText=v; };
+  window.__pauseFrom=function(v){ S.pauseFrom=v; render(); };
+  window.__pausePhoto=function(input){
+    var f=input&&input.files&&input.files[0]; if(!f) return;
+    var rd=new FileReader();
+    rd.onload=function(e){
+      var src=e.target.result;
+      var img=new Image();
+      img.onload=function(){ try{
+        var max=1500, w=img.naturalWidth||1, h=img.naturalHeight||1, sc=Math.min(1,max/Math.max(w,h));
+        var cw=Math.max(1,Math.round(w*sc)), ch=Math.max(1,Math.round(h*sc));
+        var cv=document.createElement('canvas'); cv.width=cw; cv.height=ch; cv.getContext('2d').drawImage(img,0,0,cw,ch);
+        S.pausePhoto=cv.toDataURL('image/jpeg',0.82);
+      }catch(err){ S.pausePhoto=src; } S.pausePhotoName=f.name||'attest.jpg'; render(); };
+      img.onerror=function(){ S.pausePhoto=src; S.pausePhotoName=f.name||'attest'; render(); };
+      img.src=src;
+    };
+    rd.readAsDataURL(f);
+  };
+  function isoToday(){ var d=new Date(); var p=function(n){return(n<10?'0':'')+n;}; return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate()); }
 
   function setS(p){ Object.assign(S,p); render(); window.scrollTo(0,0); }
   function setQuiet(p){ Object.assign(S,p); render(); }
@@ -237,30 +258,33 @@
 
   function row(k,v){ return '<div style="display:flex;justify-content:space-between;padding:11px 0;border-bottom:1px solid #eef1f2"><span style="font-size:14px;color:#6b7780">'+k+'</span><span style="font-size:14px;font-weight:700">'+esc(v||'—')+'</span></div>'; }
 
+  function pauseBtn(mt){ return '<button data-act="openPause" style="width:100%;margin-top:'+(mt||14)+'px;padding:15px;border:1.5px solid '+TEAL+';border-radius:13px;background:#fff;color:'+TEAL+';font-weight:800;font-size:15px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:9px">'+svg('<rect x="6" y="5" width="4" height="14" rx="1"></rect><rect x="14" y="5" width="4" height="14" rx="1"></rect>',{c:TEAL,w:2,s:18})+'Mitgliedschaft pausieren</button>'; }
+  function pauseDoneBox(){ return '<div class="card" style="padding:32px 24px;text-align:center"><div style="width:64px;height:64px;border-radius:50%;background:#E7F6EC;display:flex;align-items:center;justify-content:center;margin:0 auto 16px">'+svg(IC.check,{c:'#1d7a3e',w:2.4,s:32})+'</div><div style="font-size:22px;font-weight:900">Pause beantragt!</div><div style="font-size:14px;color:#6b7780;margin-top:8px;line-height:1.55">Deine Beitragspause ist eingegangen. Wir prüfen den Nachweis und bestätigen dir die Pause per E-Mail. Dein Tarif und deine Konditionen bleiben erhalten.</div><button class="btn" data-act="closePauseDone" style="margin-top:22px">Zurück zur Vertragsverwaltung</button></div>'; }
   function scrContract(){
-    var c=DATA.contract;
-    var head=backHd('Vertrag');
+    var c=DATA.contract; var p=DATA.profile||{};
+    var head=backHd('Vertragsverwaltung');
     // success states
-    if(S.offerDone){ var pause=S.offerDone==='pause';
-      return head+'<div class="card" style="padding:32px 24px;text-align:center"><div style="font-size:40px;line-height:1">🎉</div><div style="font-size:22px;font-weight:900;margin-top:10px">Angebot angenommen!</div><div style="font-size:15px;font-weight:700;color:'+TEAL+';margin-top:10px">'+(pause?('Beitragspause · '+S.pauseWeeks+(S.pauseWeeks===1?' Woche':' Wochen')):'10 % Rabatt für 6 Monate')+'</div><div style="font-size:14px;color:#6b7780;margin-top:6px;line-height:1.5">'+(pause?('Deine Beitragspause ist beantragt – wir bestätigen sie dir per E-Mail. Dein Tarif bleibt erhalten.'):'Du sparst 6 Monate lang 10 % auf deinen Beitrag. Stark, dass du dabei bleibst!')+'</div><button class="btn" data-act="closeOffer" style="margin-top:22px">Zurück zu meinem Vertrag</button></div>'; }
-    if(S.cancelStep>0 && !S.pauseAsk) return head+funnel();
-    if(S.pauseAsk) return head+pauseScreen();
+    if(S.offerDone){
+      return head+'<div class="card" style="padding:32px 24px;text-align:center"><div style="font-size:40px;line-height:1">🎉</div><div style="font-size:22px;font-weight:900;margin-top:10px">Angebot angenommen!</div><div style="font-size:15px;font-weight:700;color:'+TEAL+';margin-top:10px">10 % Rabatt für 6 Monate</div><div style="font-size:14px;color:#6b7780;margin-top:6px;line-height:1.5">Du sparst 6 Monate lang 10 % auf deinen Beitrag. Stark, dass du dabei bleibst!</div><button class="btn" data-act="closeOffer" style="margin-top:22px">Zurück zur Vertragsverwaltung</button></div>'; }
+    if(S.pauseDone) return head+pauseDoneBox();
+    if(S.pauseStep>0) return head+pauseForm();
+    if(S.cancelStep>0) return head+funnel();
     // overview
     if(!c){
-      return head+'<div class="card" style="padding:28px 22px;text-align:center"><div style="width:56px;height:56px;border-radius:50%;background:#FCEBEA;display:flex;align-items:center;justify-content:center;margin:0 auto 14px">'+svg(IC.warn,{c:'#b53a2c',w:2,s:28})+'</div><div style="font-size:18px;font-weight:800">Vertragsdaten nicht verfügbar</div><div style="font-size:14px;color:#6b7780;margin-top:6px;line-height:1.5">Wir konnten keinen laufenden Vertrag automatisch zuordnen. Du kannst trotzdem kündigen – nenn uns dein Wunsch-Datum.</div><button class="btnDanger" data-act="startCancel" style="margin-top:18px">Mitgliedschaft kündigen</button><div style="font-size:12px;color:#8a929a;margin-top:12px">Oder ruf uns an: <b style="color:'+TEAL+'">0651 308524</b></div></div>'+(S.cancelDone?okBox('Deine Kündigung wurde eingereicht. Du erhältst eine Bestätigung per E-Mail.'):'');
+      return head+'<div class="card" style="padding:28px 22px;text-align:center"><div style="width:56px;height:56px;border-radius:50%;background:#FCEBEA;display:flex;align-items:center;justify-content:center;margin:0 auto 14px">'+svg(IC.warn,{c:'#b53a2c',w:2,s:28})+'</div><div style="font-size:18px;font-weight:800">Vertragsdaten nicht verfügbar</div><div style="font-size:14px;color:#6b7780;margin-top:6px;line-height:1.5">Wir konnten keinen laufenden Vertrag automatisch zuordnen. Du kannst trotzdem pausieren oder kündigen – wir melden uns.</div>'+pauseBtn(18)+'<button class="btnDanger" data-act="startCancel" style="margin-top:12px">Mitgliedschaft kündigen</button><div style="font-size:12px;color:#8a929a;margin-top:12px">Oder ruf uns an: <b style="color:'+TEAL+'">0651 308524</b></div></div>'+(S.cancelDone?okBox('Deine Kündigung wurde eingereicht. Du erhältst eine Bestätigung per E-Mail.'):'')+(S.pauseDone?okBox('Deine Pause-Anfrage ist eingegangen.'):'');
     }
     var cancelled=!!c.cancelled;
     var msgs=(S.cancelDone?okBox('Deine Kündigung wurde verbindlich eingereicht. Du erhältst eine Bestätigung per E-Mail.'):'')+(S.withdrawDone?okBox('Deine Kündigung wurde zurückgenommen. Schön, dass du dabei bleibst!'):'');
-    var badge=cancelled?'<span style="font-size:12px;font-weight:700;color:#b53a2c;background:#FCEBEA;padding:5px 11px;border-radius:20px">Gekündigt</span>':'';
+    var badge=cancelled?'<span style="font-size:12px;font-weight:700;color:#b53a2c;background:#FCEBEA;padding:5px 11px;border-radius:20px">Gekündigt</span>':'<span style="font-size:12px;font-weight:700;color:#1d7a3e;background:#E7F6EC;padding:5px 11px;border-radius:20px">Aktiv</span>';
     var box='<div class="card"><div style="display:flex;align-items:center;justify-content:space-between"><div style="font-size:19px;font-weight:900">'+esc(c.rateName||'Mitgliedschaft')+'</div>'+badge+'</div>'+
-      '<div style="margin-top:18px">'+row('Vertragsende',c.endDate)+row('Kündigungsfrist',c.cancellationPeriod)+'</div>'+
+      '<div style="margin-top:18px">'+row('Mitgliedsnummer',p.customerNumber)+row('Vertragsbeginn',c.startDate)+row('Vertragsende',c.endDate)+row('Kündigungsfrist',c.cancellationPeriod)+'</div>'+
       '<div style="background:#f4f7f7;border-radius:13px;padding:14px 16px;margin-top:16px"><div style="font-size:12px;color:#8a929a;font-weight:600">Nächstmöglich kündbar zum</div><div style="font-size:18px;font-weight:800;color:'+TEAL+';margin-top:2px">'+esc(c.nextCancellationDate||'—')+'</div></div>';
     if(cancelled){ box+='<div style="display:flex;align-items:center;gap:8px;background:#FCEBEA;border-radius:13px;padding:12px 14px;margin-top:16px">'+svg('<circle cx="12" cy="12" r="9"></circle><path d="M12 8v4M12 16h.01"></path>',{c:'#b53a2c',w:2,s:17})+'<span style="font-size:13px;color:#b53a2c;font-weight:600">Gekündigt zum '+esc(c.cancellationDate||c.nextCancellationDate||'—')+'</span></div>'+
       '<button class="btn" data-act="askWithdraw" style="margin-top:14px">Kündigung zurücknehmen</button>'; }
     box+='</div>';
-    var cancelBtn = cancelled?'':'<button class="btnDanger" data-act="startCancel" style="margin-top:14px">Mitgliedschaft kündigen</button>';
+    var actions = cancelled ? '' : (pauseBtn(14)+'<button class="btnDanger" data-act="startCancel" style="margin-top:12px">Mitgliedschaft kündigen</button>');
     var dialog = S.withdrawConfirm ? withdrawDialog() : '';
-    return head+msgs+box+cancelBtn+dialog;
+    return head+msgs+box+actions+dialog;
   }
   function okBox(t){ return '<div class="ok" style="margin-bottom:14px">'+svg(IC.check,{c:'#1d7a3e',w:2.1,s:18})+'<span>'+esc(t)+'</span></div>'; }
 
@@ -307,11 +331,52 @@
     if(n===1||n===2||n===3){ var dis=(n===1&&!S.cancelReason); nav='<div style="display:flex;gap:10px;margin-top:20px"><button class="btn2" data-act="cancelBack" style="flex:1">Zurück</button><button class="btn" data-act="cancelNext" '+(dis?'disabled':'')+' style="flex:2">Weiter</button></div>'; }
     return '<div class="card"><div style="display:flex;gap:6px;margin-bottom:6px">'+segs+'</div><div style="font-size:12px;color:#8a929a;font-weight:600;margin-bottom:18px">Schritt '+n+' von 5</div>'+inner+nav+'</div>';
   }
-  function pauseScreen(){
-    return '<div class="card"><div style="width:46px;height:46px;border-radius:13px;background:#eef3f4;display:flex;align-items:center;justify-content:center;margin-bottom:14px">'+svg('<rect x="6" y="5" width="4" height="14" rx="1"></rect><rect x="14" y="5" width="4" height="14" rx="1"></rect>',{w:1.9,s:24})+'</div>'+
-      '<div style="font-size:20px;font-weight:800;letter-spacing:-.3px">Wie lange möchtest du pausieren?</div><div style="font-size:14px;color:#6b7780;margin-top:6px;line-height:1.5">Bis zu <b>25 Wochen</b> sind möglich. Dein Tarif und deine Konditionen bleiben erhalten.</div>'+
-      '<div style="display:flex;align-items:center;justify-content:space-between;gap:14px;background:#f4f7f7;border-radius:16px;padding:16px 18px;margin-top:20px"><button data-act="pauseDec" style="width:44px;height:44px;border-radius:12px;border:none;background:#fff;color:'+TEAL+';font-size:24px;font-weight:800;cursor:pointer;box-shadow:0 2px 8px rgba(4,33,40,.10)">−</button><div style="text-align:center"><div style="font-size:30px;font-weight:900;color:'+TEAL+';line-height:1">'+S.pauseWeeks+(S.pauseWeeks===1?' Woche':' Wochen')+'</div><div style="font-size:12px;color:#8a929a;margin-top:2px">beitragsfrei</div></div><button data-act="pauseInc" style="width:44px;height:44px;border-radius:12px;border:none;background:#fff;color:'+TEAL+';font-size:24px;font-weight:800;cursor:pointer;box-shadow:0 2px 8px rgba(4,33,40,.10)">+</button></div>'+
-      '<button class="btn" data-act="confirmPause" style="margin-top:22px">'+(S.busy?'Wird beantragt …':'Pause verbindlich beantragen')+'</button><button class="btn2" data-act="closePause" style="margin-top:10px">Zurück</button></div>';
+  function pRow(k,v){ return '<div style="display:flex;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid #e8edee"><span style="font-size:14px;color:#6b7780;flex-shrink:0">'+esc(k)+'</span><span style="font-size:14px;font-weight:700;text-align:right;word-break:break-word">'+esc(v||'—')+'</span></div>'; }
+  function pauseEndISO(){ try{ var d=new Date((S.pauseFrom||isoToday())+'T00:00:00'); d.setDate(d.getDate()+S.pauseWeeks*7); return fmtD(d); }catch(e){ return '—'; } }
+  function pauseForm(){
+    var n=S.pauseStep; var p=DATA.profile||{}; var c=DATA.contract||{};
+    var segs='';for(var i=1;i<=4;i++)segs+='<div class="seg" style="background:'+(i<=n?TEAL:'#e3eaeb')+'"></div>';
+    var PR=['Krankheit','Operation','Reha / Therapie','Schwangerschaft / Elternzeit','Sonstiges'];
+    var inner='';
+    if(n===1){
+      inner='<div style="font-size:20px;font-weight:800;letter-spacing:-.3px">Warum möchtest du pausieren?</div>'
+        +'<div style="font-size:14px;color:#6b7780;margin-top:5px;line-height:1.45">Für eine Beitragspause benötigen wir den Grund und einen ärztlichen Nachweis. Dein Tarif bleibt erhalten.</div>'
+        +'<div style="display:flex;flex-direction:column;gap:10px;margin-top:18px">'
+        +PR.map(function(r){var sel=S.pauseReason===r;return '<button data-act="pauseReason" data-arg="'+esc(r)+'" style="display:flex;align-items:center;justify-content:space-between;width:100%;padding:14px 16px;border:1.5px solid '+(sel?TEAL:'#d6dee0')+';border-radius:13px;background:'+(sel?'rgba(10,73,88,.06)':'#fff')+';font-weight:600;font-size:15px;cursor:pointer;text-align:left"><span>'+esc(r)+'</span>'+(sel?svg(IC.check,{w:2.4,s:20}):'')+'</button>';}).join('')
+        +'</div>'
+        +'<div style="margin-top:14px"><label class="lbl">Ergänzende Angaben (optional)</label><textarea id="pause_note" rows="3" class="inp" style="resize:vertical" placeholder="z. B. genauer Grund oder Zeitraum laut Attest" oninput="window.__pauseNote(this.value)">'+esc(S.pauseReasonText||'')+'</textarea></div>';
+    } else if(n===2){
+      inner='<div style="font-size:20px;font-weight:800;letter-spacing:-.3px">Ab wann und wie lange?</div>'
+        +'<div style="font-size:14px;color:#6b7780;margin-top:5px;line-height:1.45">In der Regel sind bis zu 6 Wochen möglich. Längere Pausen stimmen wir individuell mit dir ab.</div>'
+        +'<div style="margin-top:18px"><label class="lbl">Beginn der Pause</label><input type="date" class="inp" value="'+esc(S.pauseFrom||isoToday())+'" min="'+isoToday()+'" onchange="window.__pauseFrom(this.value)"></div>'
+        +'<div style="margin-top:16px"><label class="lbl">Dauer</label><div style="display:flex;align-items:center;justify-content:space-between;gap:14px;background:#f4f7f7;border-radius:16px;padding:14px 18px;margin-top:4px"><button data-act="pauseDec" style="width:44px;height:44px;border-radius:12px;border:none;background:#fff;color:'+TEAL+';font-size:24px;font-weight:800;cursor:pointer;box-shadow:0 2px 8px rgba(4,33,40,.10)">−</button><div style="text-align:center"><div style="font-size:28px;font-weight:900;color:'+TEAL+';line-height:1">'+S.pauseWeeks+(S.pauseWeeks===1?' Woche':' Wochen')+'</div><div style="font-size:12px;color:#8a929a;margin-top:2px">beitragsfrei</div></div><button data-act="pauseInc" style="width:44px;height:44px;border-radius:12px;border:none;background:#fff;color:'+TEAL+';font-size:24px;font-weight:800;cursor:pointer;box-shadow:0 2px 8px rgba(4,33,40,.10)">+</button></div></div>'
+        +'<div style="background:#eef3f4;border-radius:12px;padding:12px 14px;margin-top:14px;font-size:13px;color:#3c5a60;font-weight:600">Voraussichtliches Ende: <b style="color:'+TEAL+'">'+pauseEndISO()+'</b></div>';
+    } else if(n===3){
+      inner='<div style="font-size:20px;font-weight:800;letter-spacing:-.3px">Ärztlichen Nachweis hinzufügen</div>'
+        +'<div style="font-size:14px;color:#6b7780;margin-top:5px;line-height:1.45">Für die Pause benötigen wir einen ärztlichen Nachweis (Attest), aus dem Grund und Zeitraum hervorgehen. Mach einfach ein Foto.</div>';
+      if(S.pausePhoto){
+        inner+='<div style="margin-top:18px;border-radius:14px;overflow:hidden;border:1px solid #e3eaeb"><img src="'+S.pausePhoto+'" style="width:100%;display:block;max-height:320px;object-fit:contain;background:#f4f7f7"></div>'
+          +'<div style="display:flex;align-items:center;gap:8px;margin-top:10px;color:#1d7a3e;font-size:13px;font-weight:700">'+svg(IC.check,{c:'#1d7a3e',w:2.2,s:18})+'Nachweis angehängt</div>'
+          +'<div style="display:flex;gap:10px;margin-top:12px"><label style="flex:1;cursor:pointer;text-align:center;padding:12px;border:1.5px solid '+TEAL+';border-radius:11px;color:'+TEAL+';font-weight:700;font-size:14px">Neues Foto<input type="file" accept="image/*" capture="environment" onchange="window.__pausePhoto(this)" style="display:none"></label><button data-act="pausePhotoRemove" style="flex:1;padding:12px;border:1.5px solid #e3b8b1;border-radius:11px;background:#fff;color:#b53a2c;font-weight:700;font-size:14px;cursor:pointer">Entfernen</button></div>';
+      } else {
+        inner+='<label style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;margin-top:18px;padding:30px 18px;border:2px dashed #c2d3d6;border-radius:16px;background:#f7fafa;cursor:pointer;text-align:center">'+svg('<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle>',{c:TEAL,w:1.8,s:40})+'<span style="font-size:15px;font-weight:800;color:'+TEAL+'">Foto aufnehmen</span><span style="font-size:13px;color:#6b7780">Kamera öffnen oder Bild auswählen</span><input type="file" accept="image/*" capture="environment" onchange="window.__pausePhoto(this)" style="display:none"></label>'
+          +'<div style="font-size:12px;color:#8a929a;margin-top:12px;text-align:center;line-height:1.4">Du kannst den Nachweis auch später nachreichen – die Pause wird bearbeitet, sobald er vorliegt.</div>';
+      }
+    } else if(n===4){
+      var rows=pRow('Name',((p.firstName||'')+' '+(p.lastName||'')).trim())+pRow('Mitgliedsnummer',p.customerNumber)+pRow('Geburtsdatum',deDateFull(p.dateOfBirth))+pRow('E-Mail',p.email)+(c.rateName?pRow('Tarif',c.rateName):'');
+      var det=pRow('Grund',S.pauseReason||'—')+(S.pauseReasonText?pRow('Anmerkung',S.pauseReasonText):'')+pRow('Beginn',fmtD(new Date((S.pauseFrom||isoToday())+'T00:00:00')))+pRow('Dauer',S.pauseWeeks+(S.pauseWeeks===1?' Woche':' Wochen'))+pRow('Vsl. Ende',pauseEndISO())+pRow('Ärztl. Nachweis',S.pausePhoto?'angehängt':'wird nachgereicht');
+      inner='<div style="font-size:20px;font-weight:800;letter-spacing:-.3px">Pause bestätigen</div>'
+        +'<div style="font-size:14px;color:#6b7780;margin-top:5px;line-height:1.45">Bitte prüfe deine Angaben. Wir hinterlegen die Pause nach Prüfung des Nachweises.</div>'
+        +'<div style="font-size:12px;font-weight:700;color:#8a929a;text-transform:uppercase;letter-spacing:.5px;margin:18px 2px 8px">Deine Daten</div>'
+        +'<div style="background:#f4f7f7;border-radius:14px;padding:4px 16px">'+rows+'</div>'
+        +'<div style="font-size:12px;font-weight:700;color:#8a929a;text-transform:uppercase;letter-spacing:.5px;margin:16px 2px 8px">Pause</div>'
+        +'<div style="background:#f4f7f7;border-radius:14px;padding:4px 16px">'+det+'</div>'
+        +'<button class="btn" data-act="confirmPauseSubmit" style="margin-top:20px">'+(S.busy?'Wird gesendet …':'Pause verbindlich beantragen')+'</button>';
+    }
+    var nav='';
+    if(n>=1&&n<=3){ var dis=(n===1&&!S.pauseReason); nav='<div style="display:flex;gap:10px;margin-top:20px"><button class="btn2" data-act="pauseBack" style="flex:1">Zurück</button><button class="btn" data-act="pauseNext" '+(dis?'disabled':'')+' style="flex:2">Weiter</button></div>'; }
+    else if(n===4){ nav='<button class="btn2" data-act="pauseBack" style="margin-top:10px">Zurück</button>'; }
+    return '<div class="card"><div style="display:flex;gap:6px;margin-bottom:6px">'+segs+'</div><div style="font-size:12px;color:#8a929a;font-weight:600;margin-bottom:18px">Schritt '+n+' von 4</div>'+inner+nav+'</div>';
   }
   function withdrawDialog(){
     return '<div style="position:fixed;inset:0;z-index:60;background:rgba(6,33,40,.55);display:flex;align-items:flex-end;justify-content:center"><div data-act="cancelWithdraw" style="position:absolute;inset:0"></div><div style="position:relative;z-index:2;width:100%;max-width:480px;background:#fff;border-radius:22px 22px 0 0;padding:26px 22px 28px;box-shadow:0 -10px 40px rgba(4,33,40,.30)"><div style="width:42px;height:5px;border-radius:3px;background:#e3eaeb;margin:0 auto 18px"></div><div style="font-size:20px;font-weight:900">Kündigung zurücknehmen?</div><div style="font-size:14px;color:#6b7780;margin-top:8px;line-height:1.5">Deine Mitgliedschaft läuft dann ganz normal weiter – zu deinen aktuellen Konditionen.</div><button class="btn" data-act="confirmWithdraw" style="margin-top:20px">'+(S.busy?'…':'Ja, Kündigung zurücknehmen')+'</button><button class="btn2" data-act="cancelWithdraw" style="margin-top:10px">Abbrechen</button></div></div>';
@@ -476,18 +541,26 @@
       var data={accountHolder:val('d_holder'),iban:iban,bankName:val('d_bank'),bic:val('d_bic')};
       api('/api/member/update',{method:'POST',body:JSON.stringify({type:'payment',data:data})}).then(function(d){ setS({msg:d.message||'Übermittelt.'}); }).catch(function(){}); },
     // contract
-    startCancel:function(){ setS({cancelStep:1,cancelReason:'',cancelDone:false,offerDone:'',pauseAsk:false}); },
+    startCancel:function(){ setS({cancelStep:1,cancelReason:'',cancelDone:false,offerDone:'',pauseStep:0,pauseDone:false}); },
     pickReason:function(a){ setS({cancelReason:a}); },
     cancelNext:function(){ if(S.cancelStep<5) setS({cancelStep:S.cancelStep+1}); },
     cancelBack:function(){ if(S.cancelStep>1) setS({cancelStep:S.cancelStep-1}); else setS({cancelStep:0}); },
     abortCancel:function(){ setS({cancelStep:0}); },
-    reasonCta:function(a){ if(a==='rabatt') doOffer('discount10'); else if(a==='pause') setS({pauseAsk:true}); else setS({cancelStep:4}); },
+    reasonCta:function(a){ if(a==='rabatt') doOffer('discount10'); else if(a==='pause') startPause(); else setS({cancelStep:4}); },
     takeRabatt:function(){ doOffer('discount10'); },
-    openPause:function(){ setS({pauseAsk:true}); },
-    closePause:function(){ setS({pauseAsk:false}); },
+    openPause:function(){ startPause(); },
     pauseInc:function(){ setS({pauseWeeks:Math.min(25,S.pauseWeeks+1)}); },
     pauseDec:function(){ setS({pauseWeeks:Math.max(1,S.pauseWeeks-1)}); },
-    confirmPause:function(){ doOffer('pause'); },
+    pauseReason:function(a){ setS({pauseReason:a}); },
+    pauseNext:function(){ if(S.pauseStep===1 && !S.pauseReason) return; if(S.pauseStep<4) setS({pauseStep:S.pauseStep+1}); },
+    pauseBack:function(){ if(S.pauseStep>1) setS({pauseStep:S.pauseStep-1}); else setS({pauseStep:0}); },
+    pausePhotoRemove:function(){ setS({pausePhoto:'',pausePhotoName:''}); },
+    closePauseDone:function(){ setS({pauseDone:false}); },
+    confirmPauseSubmit:function(){ setQuiet({busy:true});
+      var payload={ reason:S.pauseReason||'—', reasonText:S.pauseReasonText||'', from:(S.pauseFrom||isoToday()), weeks:S.pauseWeeks, photo:S.pausePhoto||'' };
+      api('/api/member/pause',{method:'POST',body:JSON.stringify(payload)})
+        .then(function(d){ setS({busy:false,pauseStep:0,pauseDone:true,pausePhoto:'',pausePhotoName:'',pauseReason:'',pauseReasonText:''}); })
+        .catch(function(){ setS({busy:false,pauseStep:0,pauseDone:true,pausePhoto:'',pausePhotoName:''}); }); },
     submitCancel:function(){
       var date=val('c_date'); setQuiet({busy:true});
       rcToken().then(function(tok){
@@ -527,10 +600,11 @@
     helpList:function(){ setS({helpView:'list'}); },
     helpCat:function(a){ S.helpCat=(S.helpCat===a?'':a); setS({}); }
   };
+  function startPause(){ S.cancelStep=0; S.pauseDone=false; S.pauseStep=1; S.pauseReason=''; S.pauseReasonText=''; S.pausePhoto=''; S.pausePhotoName=''; S.pauseFrom=isoToday(); if(!S.pauseWeeks)S.pauseWeeks=6; setS({}); }
   function doOffer(offer){ setQuiet({busy:true});
     var extra = offer==='pause' ? (S.pauseWeeks+' Wochen Pause') : '';
     api('/api/member/cancel',{method:'POST',body:JSON.stringify({action:'offer_accepted',offer:offer,reason:(S.cancelReason||'—')+(extra?(' · '+extra):'')})})
-      .then(function(){ setS({busy:false,offerDone:offer,pauseAsk:false,cancelStep:0}); }).catch(function(){ setS({busy:false,offerDone:offer,pauseAsk:false,cancelStep:0}); }); }
+      .then(function(){ setS({busy:false,offerDone:offer,pauseStep:0,cancelStep:0}); }).catch(function(){ setS({busy:false,offerDone:offer,pauseStep:0,cancelStep:0}); }); }
   function copyText(t){ if(navigator.clipboard&&navigator.clipboard.writeText) navigator.clipboard.writeText(t).catch(function(){}); }
   function downloadCsv(){ var list=ciCurrent(); var rows=[['Datum','Uhrzeit','Dauer','Studio']].concat(list.map(function(c){return [c.in?c.in.slice(0,10):'',deTime(c.in),dur(c.in,c.out),c.studio||''];}));
     var csv=rows.map(function(r){return r.map(function(x){return '"'+String(x).replace(/"/g,'""')+'"';}).join(';');}).join('\n');

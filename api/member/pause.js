@@ -1,0 +1,97 @@
+'use strict';
+
+/**
+ * POST /api/member/pause   (Authorization: Bearer <token>)
+ *   { reason, reasonText, from (yyyy-mm-dd), weeks, photo (dataURI/base64) }
+ * Beantragt eine Beitragspause. Da eine Pause einen ärztlichen Nachweis
+ * erfordert und in Magicline manuell hinterlegt wird, wird die Anfrage inkl.
+ * aller Mitgliederdaten und dem Foto des Attests per E-Mail ans Studio gesendet.
+ * Mitgliederdaten werden serverseitig aus Magicline gezogen (nicht vom Client).
+ */
+
+const M = require('../../lib/members');
+const { sendMailRaw, hasMail } = require('../../lib/mail');
+
+function fmtDE(iso) {
+  if (!iso) return '—';
+  const s = String(iso).slice(0, 10);
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m ? (m[3] + '.' + m[2] + '.' + m[1]) : s;
+}
+function addWeeks(iso, wk) {
+  let d = iso ? new Date(iso + 'T00:00:00Z') : new Date();
+  if (isNaN(d.getTime())) d = new Date();
+  d.setUTCDate(d.getUTCDate() + (wk || 0) * 7);
+  return d.toISOString().slice(0, 10);
+}
+
+module.exports = async function handler(req, res) {
+  res.setHeader('Content-Type', 'application/json');
+  if (req.method !== 'POST') { res.statusCode = 405; return res.end(JSON.stringify({ error: 'method_not_allowed' })); }
+  const sess = await M.getSession(M.bearer(req));
+  if (!sess) { res.statusCode = 401; return res.end(JSON.stringify({ error: 'unauthorized' })); }
+
+  const body = await M.readBody(req);
+  const m = await M.getMember(sess.id);
+  if (!m) { res.statusCode = 404; return res.end(JSON.stringify({ error: 'not_found' })); }
+  let ct = null; try { ct = await M.getContract(sess.id); } catch (e) {}
+
+  const reason = String(body.reason || '—').slice(0, 120);
+  const note = String(body.reasonText || '').slice(0, 1000);
+  const weeks = Math.max(1, Math.min(52, parseInt(body.weeks, 10) || 0));
+  const fromISO = /^\d{4}-\d{2}-\d{2}$/.test(String(body.from || '')) ? body.from : null;
+  const toISO = fromISO ? addWeeks(fromISO, weeks) : null;
+
+  // Attest (Foto) – nur kleine, bereits clientseitig skalierte Bilder
+  const attachments = [];
+  let hasPhoto = false;
+  const raw = String(body.photo || '');
+  if (raw) {
+    let mime = 'image/jpeg';
+    const mm = raw.match(/^data:([^;]+);base64,/);
+    if (mm) mime = mm[1];
+    const bi = raw.indexOf('base64,');
+    let b64 = bi >= 0 ? raw.slice(bi + 7) : raw;
+    b64 = b64.replace(/\s+/g, '');
+    if (b64.length > 100 && b64.length < 8000000) {
+      const ext = mime.indexOf('png') >= 0 ? 'png' : (mime.indexOf('pdf') >= 0 ? 'pdf' : 'jpg');
+      attachments.push({ filename: 'attest-' + (m.customerNumber || 'mitglied') + '.' + ext, content: b64 });
+      hasPhoto = true;
+    }
+  }
+
+  const name = ((m.firstName || '') + ' ' + (m.lastName || '')).trim();
+  const text = 'Beitragspause beantragt über den Mitgliederbereich\n\n'
+    + '— Mitglied —\n'
+    + 'Name: ' + (m.lastName || '—') + '\n'
+    + 'Vorname: ' + (m.firstName || '—') + '\n'
+    + 'Kundennr.: ' + (m.customerNumber || '—') + '\n'
+    + 'Geburtsdatum: ' + fmtDE(m.dateOfBirth) + '\n'
+    + 'E-Mail: ' + (m.email || '—') + '\n'
+    + 'Telefon: ' + (m.phonePrivate || '—') + '\n'
+    + 'Adresse: ' + ((m.street || '') + ' ' + (m.houseNumber || '')).trim() + ', ' + (m.zipCode || '') + ' ' + (m.city || '') + '\n'
+    + (ct ? ('Tarif: ' + (ct.rateName || '—') + '\n') : '')
+    + '\n— Pause —\n'
+    + 'Grund: ' + reason + '\n'
+    + (note ? ('Anmerkung: ' + note + '\n') : '')
+    + 'Gewünschter Beginn: ' + (fromISO ? fmtDE(fromISO) : '—') + '\n'
+    + 'Dauer: ' + weeks + (weeks === 1 ? ' Woche' : ' Wochen') + '\n'
+    + 'Voraussichtliches Ende: ' + (toISO ? fmtDE(toISO) : '—') + '\n'
+    + 'Ärztlicher Nachweis: ' + (hasPhoto ? 'im Anhang' : 'wird nachgereicht') + '\n'
+    + '\nBitte Beitragspause in Magicline hinterlegen und dem Mitglied bestätigen.';
+
+  if (!hasMail) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'E-Mail-Versand noch nicht eingerichtet.' })); }
+  const mail = await sendMailRaw({
+    subject: '⏸️ Beitragspause beantragt – ' + name + (m.customerNumber ? (' (' + m.customerNumber + ')') : ''),
+    text: text,
+    attachments: attachments,
+    replyTo: m.email || undefined,
+  });
+  res.statusCode = 200;
+  return res.end(JSON.stringify({
+    ok: mail.ok,
+    message: mail.ok
+      ? ('Deine Pause-Anfrage ist eingegangen' + (hasPhoto ? ' (inkl. Nachweis)' : '') + '. Wir prüfen sie und bestätigen dir die Pause per E-Mail.')
+      : 'Übermittlung fehlgeschlagen – bitte später erneut.',
+  }));
+};
