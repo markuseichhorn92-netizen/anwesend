@@ -7,6 +7,14 @@
  */
 
 const { sendMailRaw, hasMail, TO } = require('../lib/mail');
+const M = require('../lib/members');
+
+function maskEmail(e) {
+  if (!e) return null;
+  const s = String(e); const at = s.indexOf('@');
+  if (at < 1) return '***';
+  return s[0] + '***' + s.slice(at);
+}
 
 // Minimal gültiges PDF (Base64) – nur als Anhang-Test
 const TINY_PDF_B64 =
@@ -24,6 +32,24 @@ module.exports = async function handler(req, res) {
 
   const out = { hasMail: hasMail, toIsSet: Boolean(TO), envKeyPresent: Boolean(process.env.RESEND_API_KEY), fromEnv: Boolean(process.env.MAIL_FROM) };
   if (!hasMail) { res.statusCode = 200; return res.end(JSON.stringify(out)); }
+
+  // Variante 2: exakt wie checkin-pdf – Mitglied laden, an dessen E-Mail senden
+  const cid = url.searchParams.get('cid');
+  if (cid) {
+    const m = await M.getMember(cid);
+    out.member = { found: Boolean(m), email: m ? maskEmail(m.email) : null, hasEmailField: m ? Boolean(m.email) : null };
+    if (m && m.email) {
+      const mail2 = await sendMailRaw({
+        to: m.email,
+        subject: 'Anhang-Test an Mitglied (mailtest2)',
+        text: 'Test mit PDF-Anhang an Mitglieds-Adresse.',
+        attachments: [{ filename: 'test.pdf', content: TINY_PDF_B64 }],
+      });
+      out.memberSend = mail2;
+    }
+    res.statusCode = 200;
+    return res.end(JSON.stringify(out, null, 2));
+  }
 
   const mail = await sendMailRaw({
     subject: 'Anhang-Test (mailtest2)',
