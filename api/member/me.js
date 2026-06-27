@@ -19,7 +19,7 @@ module.exports = async function handler(req, res) {
     let contractDebug = null;
     try { contractDebug = await M.diagContracts(sess.id); } catch (e) { contractDebug = [{ err: String(e && e.message) }]; }
     res.statusCode = 200;
-    return res.end(JSON.stringify({ ok: true, profile: M.publicProfile(m), contract: contract, contractDebug: contractDebug }));
+    return res.end(JSON.stringify({ ok: true, profile: M.publicProfile(m), contract: contract, contractDebug: contractDebug, memberShape: M.shapeOf(m) }));
   } catch (err) {
     console.error('[member/me]', err.message);
     res.statusCode = 500; return res.end(JSON.stringify({ error: 'server_error' }));
