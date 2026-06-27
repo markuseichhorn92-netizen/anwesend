@@ -103,6 +103,15 @@ module.exports = async function handler(req, res) {
             : '\n(Vertragsdaten nicht abrufbar)')
       + '\n\nBitte Kündigung in Magicline verarbeiten.';
     okMsg = 'Deine Kündigung ist eingegangen. Wir bestätigen sie dir zeitnah per E-Mail.';
+  } else if (body.action === 'withdraw') {
+    var ctw = null;
+    try { ctw = await M.getContract(sess.id); } catch (e) {}
+    subject = '↩️ Kündigung zurücknehmen – ' + who(m);
+    text = 'Ein Mitglied möchte seine Kündigung zurücknehmen.\n\n'
+      + 'Mitglied: ' + who(m) + '\nKundennr.: ' + (m.customerNumber || '—')
+      + (ctw ? ('\nTarif: ' + (ctw.rateName || '—') + '\nGekündigt zum: ' + (ctw.cancellationDate || ctw.nextCancellationDate || '—')) : '')
+      + '\n\nBitte die Kündigung in Magicline zurücknehmen/stornieren.';
+    okMsg = 'Deine Kündigung wird zurückgenommen – wir bestätigen das per E-Mail.';
   } else {
     res.statusCode = 400; return res.end(JSON.stringify({ error: 'unknown_action' }));
   }
