@@ -29,6 +29,10 @@ module.exports = async function handler(req, res) {
   const m = await M.getMember(sess.id);
   if (!m) { res.statusCode = 404; return res.end(JSON.stringify({ error: 'not_found' })); }
 
+  // Gültig-ab-Datum (optional). Leer = "sofort / nächstmöglich".
+  const vf = M.isoDate(data.validFrom);
+  const validFromDE = vf ? (function () { var p = vf.match(/^(\d{4})-(\d{2})-(\d{2})$/); return p ? (p[3] + '.' + p[2] + '.' + p[1]) : vf; })() : 'sofort / nächstmöglich';
+
   let subject, lines = [];
   if (body.type === 'address') {
     [['Straße', 'street'], ['Nr.', 'houseNumber'], ['PLZ', 'zipCode'], ['Ort', 'city']].forEach(function (f) {
@@ -36,6 +40,7 @@ module.exports = async function handler(req, res) {
       if (alt !== neu) lines.push(f[0] + ': ' + (alt || '—') + '  →  ' + (neu || '—'));
     });
     if (!lines.length) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'Keine Änderung erkannt.' })); }
+    lines.push('Gültig ab: ' + validFromDE);
     subject = 'Adressänderung gewünscht – ' + who(m);
   } else if (body.type === 'payment') {
     lines.push('Kontoinhaber: ' + (data.accountHolder || '—'));
@@ -43,6 +48,7 @@ module.exports = async function handler(req, res) {
     lines.push('IBAN NEU:    ' + (String(data.iban || '').replace(/\s+/g, '') || '—'));
     if (data.bankName) lines.push('Bank: ' + data.bankName);
     if (data.bic) lines.push('BIC: ' + data.bic);
+    lines.push('Gültig ab: ' + validFromDE);
     subject = 'IBAN-Änderung gewünscht – ' + who(m);
   } else {
     res.statusCode = 400; return res.end(JSON.stringify({ error: 'unknown_type' }));

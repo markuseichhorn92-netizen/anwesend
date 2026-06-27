@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>Fit-Inn Trier · Freunde werben</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+<style>
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{font-family:'Archivo',system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased;color:#15171B;
+    background:linear-gradient(165deg,#0e6072 0%,#063540 100%);min-height:100dvh}
+  ::placeholder{color:#a9b1b6}
+  input,select,button{font-family:inherit}
+  @keyframes fiUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
+  .shell{width:100%;max-width:480px;margin:0 auto;min-height:100dvh;display:flex;flex-direction:column}
+  .brandbar{display:flex;align-items:center;justify-content:space-between;padding:18px 20px 14px}
+  .logout{background:rgba(255,255,255,.12);border:none;color:#cfe3e7;font-weight:600;font-size:13px;padding:8px 13px;border-radius:9px;cursor:pointer}
+  .body{flex:1;padding:4px 16px 40px;animation:fiUp .25s ease}
+  .card{background:#fff;border-radius:22px;box-shadow:0 18px 50px rgba(4,33,40,.30);padding:24px 22px}
+  .h1w{font-size:23px;font-weight:900;color:#fff;letter-spacing:-.4px}
+  .lbl{font-size:13px;font-weight:600;color:#42454b;margin-bottom:6px;display:block}
+  .inp{width:100%;padding:13px 14px;border:1.5px solid #d6dee0;border-radius:11px;font-size:15px;color:#15171B;outline:none;background:#fff}
+  .inp:focus{border-color:#0a4958;box-shadow:0 0 0 3px rgba(10,73,88,.12)}
+  .btn{width:100%;padding:15px;border:none;border-radius:13px;background:#0a4958;color:#fff;font-weight:700;font-size:15px;cursor:pointer}
+  .btn:hover{background:#0c5566}.btn:disabled{background:#9fb9bf;cursor:not-allowed}
+  .btn2{width:100%;padding:14px;border:none;border-radius:13px;background:#eef3f4;color:#0a4958;font-weight:700;font-size:15px;cursor:pointer}
+  .err{display:flex;align-items:flex-start;gap:8px;background:#FCEBEA;border-radius:12px;padding:12px 14px;margin-top:14px}
+  .err span{font-size:13px;color:#b53a2c;font-weight:600;line-height:1.4}
+  a{color:inherit}
+</style>
+</head>
+<body>
+<div class="shell">
+  <div class="brandbar">
+    <div style="display:flex;align-items:center"><img src="/assets/fitinn-logo-white.png" alt="Fit-Inn Trier" style="height:26px;width:auto;display:block"></div>
+    <button class="logout" id="logoutBtn" style="display:none">Abmelden</button>
+  </div>
+  <div class="body" id="app"></div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  var $=function(id){return document.getElementById(id);};
+  var esc=function(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});};
+  var TEAL='#0a4958';
+  function svg(p,o){o=o||{};return '<svg width="'+(o.s||22)+'" height="'+(o.s||22)+'" viewBox="0 0 24 24" fill="none" stroke="'+(o.c||TEAL)+'" stroke-width="'+(o.w||1.85)+'" stroke-linecap="round" stroke-linejoin="round">'+p+'</svg>';}
+  var IC_SHARE='<circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"></path>';
+  var IC_SHIELD='<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>';
+
+  var TOKEN=sessionStorage.getItem('fi_member_token')||localStorage.getItem('fi_member_token')||null;
+  var PROFILE=null;
+  var S={screen:TOKEN?'load':'login', email:'', dob:'', plz:'', remember:false, busy:false, err:'', copied:false};
+
+  window.__set=function(f,v){ S[f]=v; };
+
+  function headers(){ var h={'Content-Type':'application/json'}; if(TOKEN) h['Authorization']='Bearer '+TOKEN; return h; }
+  function api(path,opt){ opt=opt||{}; opt.headers=Object.assign(headers(),opt.headers||{}); opt.cache='no-store';
+    return fetch(path,opt).then(function(r){ if(r.status===401){ doLogout(); throw new Error('unauthorized'); } return r.json(); }); }
+
+  function render(){
+    var html='';
+    if(S.screen==='login') html=scrLogin();
+    else if(S.screen==='referral') html=scrReferral();
+    else html='<div class="card" style="text-align:center;color:#8a929a;font-size:14px">Lade …</div>';
+    $('app').innerHTML=html;
+    $('logoutBtn').style.display = (S.screen==='referral') ? 'block' : 'none';
+  }
+  function setS(p){ Object.assign(S,p); render(); }
+
+  function scrLogin(){
+    var e = S.err ? '<div class="err">'+svg('<path d="M12 9v4M12 17h.01"></path><circle cx="12" cy="12" r="9"></circle>',{c:'#b53a2c',w:2,s:18})+'<span>'+esc(S.err)+'</span></div>' : '';
+    return '<div style="padding:8px 4px 16px"><div class="h1w">Freunde werben</div><div style="font-size:14px;color:#bfd7dc;margin-top:4px;font-weight:500;line-height:1.45">Melde dich an, um deinen persönlichen Werbe-Code zu sehen und Freund:innen einzuladen.</div></div>'+
+    '<div class="card">'+
+      '<div style="margin-bottom:14px"><label class="lbl">E-Mail-Adresse</label><input id="l_email" type="email" inputmode="email" class="inp" placeholder="name@beispiel.de" value="'+esc(S.email)+'" oninput="window.__set(\'email\',this.value)"></div>'+
+      '<div style="margin-bottom:14px"><label class="lbl">Geburtsdatum</label><input id="l_dob" type="date" class="inp" value="'+esc(S.dob)+'" oninput="window.__set(\'dob\',this.value)"></div>'+
+      '<div><label class="lbl">Postleitzahl</label><input id="l_plz" type="text" inputmode="numeric" maxlength="5" class="inp" placeholder="54290" value="'+esc(S.plz)+'" oninput="window.__set(\'plz\',this.value)"></div>'+
+      '<label style="display:flex;align-items:center;gap:10px;margin-top:18px;cursor:pointer"><input id="l_rem" type="checkbox" '+(S.remember?'checked':'')+' style="width:18px;height:18px;accent-color:'+TEAL+'" onchange="window.__set(\'remember\',this.checked)"><span style="font-size:14px;color:#42454b;font-weight:600">Angemeldet bleiben</span></label>'+
+      '<button class="btn" id="l_btn" style="margin-top:18px" '+(S.busy?'disabled':'')+'>'+(S.busy?'Prüfe …':'Anmelden')+'</button>'+e+
+      '<div style="display:flex;align-items:center;gap:8px;margin-top:18px;padding:11px 13px;background:#f4f7f7;border-radius:11px">'+svg(IC_SHIELD,{w:1.9,s:17})+'<span style="font-size:12px;color:#6b7780;line-height:1.4">Deine Daten werden verschlüsselt übertragen und nur zur Identitätsprüfung genutzt.</span></div>'+
+    '</div>'+
+    '<div style="text-align:center;margin-top:20px"><span style="color:#bfd7dc;font-size:13px">Noch kein Mitglied? </span><a href="/mitglied-werden" style="color:#fff;font-weight:700;font-size:13px;text-decoration:underline;text-underline-offset:3px">Jetzt online beitreten</a></div>';
+  }
+
+  function scrReferral(){
+    var p=PROFILE||{}; var code=p.referralCode||'—';
+    var link=window.location.origin+'/mitglied-werden?ref='+encodeURIComponent(code);
+    var steps=[['1','Link teilen','Schick deinen Code oder Link an Freund:innen.'],['2','Freund wird Mitglied','Sie schließen eine Mitgliedschaft mit deinem Code ab.'],['3','Prämie sichern','Du wirst als Werber:in gutgeschrieben.']];
+    var reward=function(tag,big,sub){ return '<div style="flex:1;background:linear-gradient(135deg,#E7F1F3,#D6E8EB);border:1px solid #C2DCE0;border-radius:18px;padding:18px 16px;text-align:center"><div style="font-size:11px;font-weight:800;color:'+TEAL+';text-transform:uppercase;letter-spacing:.5px">'+tag+'</div><div style="font-size:26px;font-weight:900;color:'+TEAL+';margin-top:6px;line-height:1">'+big+'</div><div style="font-size:12px;color:#3c5a60;font-weight:600;margin-top:3px">'+sub+'</div></div>'; };
+    return '<div style="padding:6px 4px 16px"><div class="h1w">Freunde werben</div><div style="font-size:14px;color:#bfd7dc;margin-top:3px;font-weight:500">Hallo '+esc(p.firstName||'')+'! Teile deinen Code und sichere dir deine Prämie.</div></div>'+
+    '<div class="card" style="text-align:center"><div style="font-size:15px;font-weight:700;color:#6b7780">Dein persönlicher Code</div><div style="font-size:46px;font-weight:900;color:'+TEAL+';letter-spacing:6px;margin:10px 0 4px">'+esc(code)+'</div><div style="font-size:13px;color:#8a929a;line-height:1.45">Teile ihn mit Freunden – für jede Mitgliedschaft erhältst du <b style="color:'+TEAL+'">4 Wochen beitragsfrei</b>.</div>'+
+    '<div style="display:flex;gap:10px;margin-top:20px"><button class="btn2" id="b_copy" style="flex:1;padding:14px;font-size:14px">'+(S.copied?'Kopiert ✓':'Link kopieren')+'</button><button class="btn" id="b_share" style="flex:1;padding:14px;font-size:14px;display:flex;align-items:center;justify-content:center;gap:7px">'+svg(IC_SHARE,{c:'#fff',w:2,s:17})+'Einladung teilen</button></div></div>'+
+    '<div style="display:flex;gap:12px;margin-top:14px">'+reward('Für dich','4 Wochen','beitragsfrei')+reward('Für deinen Freund','2 Wochen','gratis trainieren')+'</div>'+
+    '<div style="background:#fff;border-radius:18px;box-shadow:0 12px 34px rgba(4,33,40,.18);padding:18px 20px;margin-top:14px"><div style="font-size:12px;font-weight:700;color:#8a929a;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Das bekommt dein Freund</div><div style="font-size:14px;color:#42454b;line-height:1.55;background:#f4f7f7;border-radius:12px;padding:14px 16px;word-break:break-word">Hey! Trainier doch mal mit mir im Fit-Inn Trier 💪 Mit meinem Code <b style="color:'+TEAL+'">'+esc(code)+'</b> bekommst du <b style="color:'+TEAL+'">2 Wochen gratis</b>. Hier geht\'s los: '+esc(link)+'</div></div>'+
+    '<div class="card" style="margin-top:14px"><div style="font-size:17px;font-weight:800;margin-bottom:16px">So funktioniert\'s</div><div style="display:flex;flex-direction:column;gap:16px">'+
+    steps.map(function(r){return '<div style="display:flex;gap:14px;align-items:flex-start"><div style="width:30px;height:30px;border-radius:50%;background:'+TEAL+';color:#fff;font-weight:800;font-size:14px;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+r[0]+'</div><div><div style="font-size:15px;font-weight:700">'+r[1]+'</div><div style="font-size:13px;color:#6b7780;line-height:1.4;margin-top:2px">'+r[2]+'</div></div></div>';}).join('')+'</div></div>';
+  }
+
+  function copyText(t){ if(navigator.clipboard&&navigator.clipboard.writeText) navigator.clipboard.writeText(t).catch(function(){}); }
+  function refLink(){ var code=(PROFILE||{}).referralCode||''; return window.location.origin+'/mitglied-werden?ref='+encodeURIComponent(code); }
+
+  function doLogin(){
+    var email=(S.email||'').trim(), dob=S.dob, plz=(S.plz||'').trim();
+    if(!email||!dob||!plz){ setS({err:'Bitte E-Mail, Geburtsdatum und PLZ ausfüllen.'}); return; }
+    setS({busy:true,err:''});
+    fetch('/api/member/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:email,dob:dob,plz:plz,remember:S.remember})})
+      .then(function(r){return r.json().then(function(j){return {status:r.status,j:j};});})
+      .then(function(o){
+        if(o.status===200 && o.j && o.j.token){ TOKEN=o.j.token; (S.remember?localStorage:sessionStorage).setItem('fi_member_token',TOKEN); S.busy=false; S.screen='load'; render(); loadMe(); }
+        else if(o.status===429){ setS({busy:false,err:'Zu viele Versuche. Bitte später erneut.'}); }
+        else { setS({busy:false,err:'Daten nicht gefunden. Bitte prüfe E-Mail, Geburtsdatum und PLZ.'}); }
+      }).catch(function(){ setS({busy:false,err:'Es ist ein Fehler aufgetreten. Bitte später erneut.'}); });
+  }
+  function loadMe(){
+    api('/api/member/me').then(function(d){ PROFILE=d.profile||null; setS({screen:'referral'}); }).catch(function(){ /* 401 handled */ });
+  }
+  function doLogout(){ TOKEN=null; sessionStorage.removeItem('fi_member_token'); localStorage.removeItem('fi_member_token'); PROFILE=null; setS({screen:'login',email:'',dob:'',plz:''}); }
+
+  document.addEventListener('click',function(e){
+    var el=e.target;
+    if(el.closest('#l_btn')){ e.preventDefault(); doLogin(); }
+    else if(el.closest('#logoutBtn')){ e.preventDefault(); doLogout(); }
+    else if(el.closest('#b_copy')){ e.preventDefault(); copyText(refLink()); setS({copied:true}); setTimeout(function(){ S.copied=false; render(); },1800); }
+    else if(el.closest('#b_share')){ e.preventDefault(); var code=(PROFILE||{}).referralCode||''; var txt='Trainier mit mir im Fit-Inn Trier! 💪 Werde Mitglied mit meinem Code '+code+': '+refLink(); if(navigator.share){ navigator.share({title:'Fit-Inn Trier',text:txt,url:refLink()}).catch(function(){}); } else { copyText(txt); setS({copied:true}); setTimeout(function(){ S.copied=false; render(); },1800); } }
+  });
+
+  // ---- boot ----
+  if(TOKEN){ render(); loadMe(); } else render();
+})();
+</script>
+</body>
+</html>
