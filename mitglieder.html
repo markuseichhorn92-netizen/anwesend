@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+<script src="https://www.google.com/recaptcha/api.js?onload=onRcLoad&render=explicit" async defer></script>
 <style>
   *{box-sizing:border-box}
   html,body{margin:0;padding:0}
@@ -52,6 +53,7 @@
     <button class="logout" id="logoutBtn" style="display:none">Abmelden</button>
   </div>
   <div class="body" id="app"></div>
+  <div id="rcContainer"></div>
 </div>
 
 <script>
@@ -79,8 +81,14 @@
     search:'<circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4.3-4.3"></path>'
   };
 
+  // ---- reCAPTCHA (für direkte Kündigung über die Connect API) ----
+  var RC_SITEKEY='6Ld5qKcgAAAAAMoywArOgIrC0lQ7NpYUTsF92PIC';
+  var rcId=null, rcResolve=null;
+  window.onRcLoad=function(){ try{ rcId=grecaptcha.render('rcContainer',{sitekey:RC_SITEKEY,size:'invisible',callback:function(t){ var r=rcResolve; rcResolve=null; if(r) r(t); }}); }catch(e){} };
+  function rcToken(){ return new Promise(function(resolve){ if(typeof grecaptcha==='undefined'||rcId===null){ resolve(null); return; } rcResolve=resolve; try{ grecaptcha.reset(rcId); grecaptcha.execute(rcId); }catch(e){ rcResolve=null; resolve(null); } setTimeout(function(){ if(rcResolve){ rcResolve=null; resolve(null); } },20000); }); }
+
   // ---- state ----
-  var TOKEN = sessionStorage.getItem('fi_member_token') || null;
+  var TOKEN = localStorage.getItem('fi_member_token') || sessionStorage.getItem('fi_member_token') || null;
   var DATA = { profile:null, contract:null, checkins:null, appts:null };
   var S = { screen: TOKEN?'home':'login',
     msg:'', // generic success on data screen
@@ -88,7 +96,11 @@
     apptTab:'book', bookType:'', apptMsg:'',
     helpView:'list', helpArticle:0,
     copied:false, dlMsg:false,
+    liEmail:'', liPlz:'', remember:(localStorage.getItem('fi_remember')==='1'),
+    dpOpen:false, dpYear:1995, dpMonth:0, dpSel:null,
     loginErr:'' };
+  window.__setLi=function(f,v){ if(f==='email')S.liEmail=v; else if(f==='plz')S.liPlz=v; };
+  window.__dpYear=function(v){ S.dpYear=+v; render(); };
 
   function setS(p){ Object.assign(S,p); render(); window.scrollTo(0,0); }
   function setQuiet(p){ Object.assign(S,p); render(); }
@@ -104,7 +116,27 @@
   function api(path, opt){ opt=opt||{}; opt.headers=Object.assign(headers(), opt.headers||{}); opt.cache='no-store';
     return fetch(path,opt).then(function(r){ if(r.status===401){ logout(); throw new Error('unauthorized'); } return r.json(); }); }
 
-  function logout(){ TOKEN=null; sessionStorage.removeItem('fi_member_token'); DATA={profile:null,contract:null,checkins:null,appts:null}; S.screen='login'; render(); }
+  function logout(){ TOKEN=null; sessionStorage.removeItem('fi_member_token'); localStorage.removeItem('fi_member_token'); DATA={profile:null,contract:null,checkins:null,appts:null}; S.screen='login'; render(); }
+  // ---- modern date picker ----
+  function pad2(n){ return (n<10?'0':'')+n; }
+  var MN=['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
+  function dpCal(){
+    var y=S.dpYear, m=S.dpMonth;
+    var off=(new Date(y,m,1).getDay()+6)%7, dim=new Date(y,m+1,0).getDate();
+    var heads=['Mo','Di','Mi','Do','Fr','Sa','So'].map(function(d){return '<div style="text-align:center;font-size:11px;font-weight:700;color:#8a929a;padding-bottom:4px">'+d+'</div>';}).join('');
+    var btns=[];
+    for(var i=0;i<42;i++){ var dn=i-off+1, inM=dn>=1&&dn<=dim;
+      var sel=S.dpSel&&inM&&S.dpSel.getFullYear()===y&&S.dpSel.getMonth()===m&&S.dpSel.getDate()===dn;
+      btns.push('<button '+(inM?('data-act="dpPick" data-arg="'+dn+'"'):'')+' style="height:34px;border:none;border-radius:9px;background:'+(sel?TEAL:'transparent')+';color:'+(sel?'#fff':(inM?'#15171B':'transparent'))+';font-weight:'+(sel?'800':'600')+';font-size:13px;cursor:'+(inM?'pointer':'default')+'">'+(inM?dn:'')+'</button>'); }
+    var weeks='';for(var w=0;w<6;w++){ weeks+='<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-bottom:3px">'+btns.slice(w*7,w*7+7).join('')+'</div>'; }
+    var yrs='';for(var yy=2012;yy>=1930;yy--){ yrs+='<option value="'+yy+'"'+(yy===y?' selected':'')+'>'+yy+'</option>'; }
+    var navBtn=function(act,ch){ return '<button data-act="'+act+'" style="width:34px;height:34px;border-radius:9px;border:none;background:#eef3f4;color:'+TEAL+';font-size:18px;font-weight:800;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center">'+ch+'</button>'; };
+    return '<div data-act="dpClose" style="position:fixed;inset:0;z-index:40"></div>'+
+      '<div style="position:absolute;top:calc(100% + 8px);left:0;right:0;z-index:50;background:#fff;border-radius:16px;box-shadow:0 18px 50px rgba(4,33,40,.30);border:1px solid #eef1f2;padding:14px">'+
+      '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">'+navBtn('dpPrev','‹')+'<div style="flex:1;text-align:center;font-size:15px;font-weight:800">'+MN[m]+'</div>'+
+      '<select onchange="window.__dpYear(this.value)" style="padding:8px 6px;border:1.5px solid #d6dee0;border-radius:9px;font-size:14px;font-weight:700;color:'+TEAL+';background:#fff;outline:none;cursor:pointer">'+yrs+'</select>'+navBtn('dpNext','›')+'</div>'+
+      '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-bottom:4px">'+heads+'</div>'+weeks+'</div>';
+  }
   $('logoutBtn').addEventListener('click', logout);
   $('brandLogo').addEventListener('click', function(){ if(TOKEN) nav('home'); });
 
@@ -127,9 +159,12 @@
     '<div class="card">'+
       '<div style="font-size:21px;font-weight:800;letter-spacing:-.4px">Mitglieder-Login</div>'+
       '<div style="font-size:14px;color:#6b7780;margin-top:5px;line-height:1.45">Zur Bestätigung deiner Identität – keine Passwörter.</div>'+
-      '<div style="margin-top:20px"><label class="lbl">E-Mail-Adresse</label><input id="li_email" type="email" autocomplete="email" placeholder="du@beispiel.de" class="inp"></div>'+
-      '<div style="margin-top:14px"><label class="lbl">Geburtsdatum</label><input id="li_dob" type="date" class="inp"></div>'+
-      '<div style="margin-top:14px"><label class="lbl">Postleitzahl</label><input id="li_plz" type="text" inputmode="numeric" maxlength="5" placeholder="54290" class="inp"></div>'+
+      '<div style="margin-top:20px"><label class="lbl">E-Mail-Adresse</label><input id="li_email" type="email" autocomplete="email" placeholder="du@beispiel.de" class="inp" value="'+esc(S.liEmail)+'" oninput="window.__setLi(\'email\',this.value)"></div>'+
+      '<div style="margin-top:14px;position:relative"><label class="lbl">Geburtsdatum</label>'+
+        '<div data-act="dpOpen" style="display:flex;align-items:center;justify-content:space-between;width:100%;padding:13px 14px;border:1.5px solid '+(S.dpOpen?TEAL:'#d6dee0')+';border-radius:11px;font-size:15px;cursor:pointer;background:#fff"><span style="color:'+(S.dpSel?'#15171B':'#a9b1b6')+';font-weight:500">'+(S.dpSel?(pad2(S.dpSel.getDate())+'.'+pad2(S.dpSel.getMonth()+1)+'.'+S.dpSel.getFullYear()):'TT.MM.JJJJ')+'</span>'+svg('<rect x="3" y="4" width="18" height="18" rx="3"></rect><path d="M16 2v4M8 2v4M3 10h18"></path>',{c:'#6b7780',w:1.9,s:19})+'</div>'+
+        (S.dpOpen?dpCal():'')+'</div>'+
+      '<div style="margin-top:14px"><label class="lbl">Postleitzahl</label><input id="li_plz" type="text" inputmode="numeric" maxlength="5" placeholder="54290" class="inp" value="'+esc(S.liPlz)+'" oninput="window.__setLi(\'plz\',this.value)"></div>'+
+      '<label style="display:flex;align-items:center;gap:10px;margin-top:18px;cursor:pointer"><input type="checkbox" data-act="toggleRemember" '+(S.remember?'checked':'')+' style="width:18px;height:18px;accent-color:'+TEAL+';cursor:pointer"><span style="font-size:14px;color:#42454b;font-weight:600">Angemeldet bleiben</span></label>'+
       '<button class="btn" id="li_btn" data-act="login" style="margin-top:18px">'+(S.busy?'Prüfe …':'Anmelden')+'</button>'+
       e+
       '<div style="display:flex;align-items:center;gap:8px;margin-top:18px;padding:11px 13px;background:#f4f7f7;border-radius:11px">'+svg('<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>',{w:1.9,s:17})+'<span style="font-size:12px;color:#6b7780;line-height:1.4">Deine Daten werden verschlüsselt übertragen und nur zur Identitätsprüfung genutzt.</span></div>'+
@@ -290,10 +325,12 @@
     var p=DATA.profile||{}; var code=p.referralCode||'—';
     var link = window.location.origin+'/mitglied-werden?ref='+encodeURIComponent(code);
     var steps=[['1','Link teilen','Schick deinen Code oder Link an Freund:innen.'],['2','Freund wird Mitglied','Sie schließen eine Mitgliedschaft mit deinem Code ab.'],['3','Prämie sichern','Du wirst als Werber:in gutgeschrieben.']];
+    var reward=function(tag,big,sub){ return '<div style="flex:1;background:linear-gradient(135deg,#E7F1F3,#D6E8EB);border:1px solid #C2DCE0;border-radius:18px;padding:18px 16px;text-align:center"><div style="font-size:11px;font-weight:800;color:'+TEAL+';text-transform:uppercase;letter-spacing:.5px">'+tag+'</div><div style="font-size:26px;font-weight:900;color:'+TEAL+';margin-top:6px;line-height:1">'+big+'</div><div style="font-size:12px;color:#3c5a60;font-weight:600;margin-top:3px">'+sub+'</div></div>'; };
     return backHd('Freunde werben')+
-    '<div class="card" style="text-align:center"><div style="font-size:15px;font-weight:700;color:#6b7780">Dein persönlicher Code</div><div style="font-size:46px;font-weight:900;color:'+TEAL+';letter-spacing:6px;margin:10px 0 4px">'+esc(code)+'</div><div style="font-size:13px;color:#8a929a;line-height:1.45">Teile ihn mit Freunden – beim Abschluss wird dein Code automatisch hinterlegt.</div>'+
-    '<div style="display:flex;gap:10px;margin-top:20px"><button class="btn2" data-act="copyRef" style="flex:1;padding:14px;font-size:14px">'+(S.copied?'Kopiert ✓':'Link kopieren')+'</button><button class="btn" data-act="shareRef" style="flex:1;padding:14px;font-size:14px;display:flex;align-items:center;justify-content:center;gap:7px">'+svg(IC.share,{c:'#fff',w:2,s:17})+'Teilen</button></div></div>'+
-    '<div style="background:#fff;border-radius:18px;box-shadow:0 12px 34px rgba(4,33,40,.18);padding:18px 20px;margin-top:14px"><div style="font-size:12px;font-weight:700;color:#8a929a;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Dein Einladungslink</div><div style="font-size:13px;color:#42454b;line-height:1.55;background:#f4f7f7;border-radius:12px;padding:14px 16px;word-break:break-all">'+esc(link)+'</div></div>'+
+    '<div class="card" style="text-align:center"><div style="font-size:15px;font-weight:700;color:#6b7780">Dein persönlicher Code</div><div style="font-size:46px;font-weight:900;color:'+TEAL+';letter-spacing:6px;margin:10px 0 4px">'+esc(code)+'</div><div style="font-size:13px;color:#8a929a;line-height:1.45">Teile ihn mit Freunden – für jede Mitgliedschaft erhältst du <b style="color:'+TEAL+'">4 Wochen beitragsfrei</b>.</div>'+
+    '<div style="display:flex;gap:10px;margin-top:20px"><button class="btn2" data-act="copyRef" style="flex:1;padding:14px;font-size:14px">'+(S.copied?'Kopiert ✓':'Link kopieren')+'</button><button class="btn" data-act="shareRef" style="flex:1;padding:14px;font-size:14px;display:flex;align-items:center;justify-content:center;gap:7px">'+svg(IC.share,{c:'#fff',w:2,s:17})+'Einladung teilen</button></div></div>'+
+    '<div style="display:flex;gap:12px;margin-top:14px">'+reward('Für dich','4 Wochen','beitragsfrei')+reward('Für deinen Freund','2 Wochen','gratis trainieren')+'</div>'+
+    '<div style="background:#fff;border-radius:18px;box-shadow:0 12px 34px rgba(4,33,40,.18);padding:18px 20px;margin-top:14px"><div style="font-size:12px;font-weight:700;color:#8a929a;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Das bekommt dein Freund</div><div style="font-size:14px;color:#42454b;line-height:1.55;background:#f4f7f7;border-radius:12px;padding:14px 16px;word-break:break-word">Hey! Trainier doch mal mit mir im Fit-Inn Trier 💪 Mit meinem Code <b style="color:'+TEAL+'">'+esc(code)+'</b> bekommst du <b style="color:'+TEAL+'">2 Wochen gratis</b>. Hier geht\'s los: '+esc(link)+'</div></div>'+
     '<div class="card" style="margin-top:14px"><div style="font-size:17px;font-weight:800;margin-bottom:16px">So funktioniert\'s</div><div style="display:flex;flex-direction:column;gap:16px">'+
     steps.map(function(r){return '<div style="display:flex;gap:14px;align-items:flex-start"><div style="width:30px;height:30px;border-radius:50%;background:'+TEAL+';color:#fff;font-weight:800;font-size:14px;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+r[0]+'</div><div><div style="font-size:15px;font-weight:700">'+r[1]+'</div><div style="font-size:13px;color:#6b7780;line-height:1.4;margin-top:2px">'+r[2]+'</div></div></div>';}).join('')+'</div></div>';
   }
@@ -370,14 +407,22 @@
   var ACT={
     nav:function(a){ nav(a); },
     login:function(){
-      var email=val('li_email'), dob=val('li_dob'), plz=val('li_plz');
+      var email=(S.liEmail||'').trim(), plz=(S.liPlz||'').trim();
+      var dob = S.dpSel ? (S.dpSel.getFullYear()+'-'+pad2(S.dpSel.getMonth()+1)+'-'+pad2(S.dpSel.getDate())) : '';
       if(!email||!dob||!plz){ setS({loginErr:'Bitte E-Mail, Geburtsdatum und PLZ ausfüllen.'}); return; }
+      var remember=!!S.remember;
       setQuiet({busy:true,loginErr:''});
-      fetch('/api/member/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:email,dob:dob,plz:plz})})
+      fetch('/api/member/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:email,dob:dob,plz:plz,remember:remember})})
         .then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j};});})
-        .then(function(x){ if(x.ok&&x.j.token){ TOKEN=x.j.token; sessionStorage.setItem('fi_member_token',TOKEN); return loadMe().then(function(){ loadAppts(); S.busy=false; nav('home'); }); } S.busy=false; setS({loginErr: x.j.error==='rate_limited'?'Zu viele Versuche. Bitte später erneut.':'Daten nicht gefunden. Bitte E-Mail, Geburtsdatum und PLZ prüfen.'}); })
+        .then(function(x){ if(x.ok&&x.j.token){ TOKEN=x.j.token; if(remember){ localStorage.setItem('fi_member_token',TOKEN); localStorage.setItem('fi_remember','1'); sessionStorage.removeItem('fi_member_token'); } else { sessionStorage.setItem('fi_member_token',TOKEN); localStorage.removeItem('fi_member_token'); localStorage.removeItem('fi_remember'); } return loadMe().then(function(){ loadAppts(); S.busy=false; nav('home'); }); } S.busy=false; setS({loginErr: x.j.error==='rate_limited'?'Zu viele Versuche. Bitte später erneut.':'Daten nicht gefunden. Bitte E-Mail, Geburtsdatum und PLZ prüfen.'}); })
         .catch(function(){ S.busy=false; setS({loginErr:'Es ist ein Fehler aufgetreten.'}); });
     },
+    toggleRemember:function(){ S.remember=!S.remember; if(!S.remember) localStorage.removeItem('fi_remember'); },
+    dpOpen:function(){ if(!S.dpOpen && S.dpSel){ S.dpYear=S.dpSel.getFullYear(); S.dpMonth=S.dpSel.getMonth(); } setS({dpOpen:!S.dpOpen}); },
+    dpClose:function(){ setS({dpOpen:false}); },
+    dpPrev:function(){ var m=S.dpMonth-1,y=S.dpYear; if(m<0){m=11;y--;} setS({dpMonth:m,dpYear:y}); },
+    dpNext:function(){ var m=S.dpMonth+1,y=S.dpYear; if(m>11){m=0;y++;} setS({dpMonth:m,dpYear:y}); },
+    dpPick:function(a){ setS({dpSel:new Date(S.dpYear,S.dpMonth,+a),dpOpen:false}); },
     saveAddr:function(){ var data={street:val('d_street'),houseNumber:val('d_house'),zipCode:val('d_zip'),city:val('d_city')};
       api('/api/member/update',{method:'POST',body:JSON.stringify({type:'address',data:data})}).then(function(d){ setS({msg:d.message||(d.ok?'Übermittelt.':'Keine Änderung erkannt.')}); }).catch(function(){}); },
     saveIban:function(){ var iban=val('d_iban'); if(!iban){ setS({msg:'Bitte neue IBAN eingeben.'}); return; }
@@ -398,8 +443,12 @@
     confirmPause:function(){ doOffer('pause'); },
     submitCancel:function(){
       var date=val('c_date'); setQuiet({busy:true});
-      api('/api/member/cancel',{method:'POST',body:JSON.stringify({action:'cancel',reason:S.cancelReason||'—',date:date})})
-        .then(function(){ setS({busy:false,cancelStep:0,cancelDone:true}); return loadMe().then(render); }).catch(function(){ setS({busy:false,cancelStep:0,cancelDone:true}); });
+      rcToken().then(function(tok){
+        return api('/api/member/cancel',{method:'POST',body:JSON.stringify({action:'cancel',reason:S.cancelReason||'—',date:date,recaptchaToken:tok})});
+      })
+        .then(function(){ S.busy=false; S.cancelStep=0; S.cancelDone=true; return loadMe(); })
+        .then(function(){ render(); window.scrollTo(0,0); })
+        .catch(function(){ setS({busy:false,cancelStep:0,cancelDone:true}); });
     },
     askWithdraw:function(){ setS({withdrawConfirm:true}); },
     cancelWithdraw:function(){ setS({withdrawConfirm:false}); },

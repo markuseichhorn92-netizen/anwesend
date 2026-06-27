@@ -24,7 +24,8 @@ module.exports = async function handler(req, res) {
   try {
     const v = await M.findAndValidate(d.email, d.dob, d.plz);
     if (!v.ok) { res.statusCode = 401; return res.end(JSON.stringify({ ok: false, error: 'invalid_credentials' })); }
-    const token = await M.createSession(v.member.id);
+    const ttl = d.remember ? 2592000 : 1800;   // "Angemeldet bleiben" = 30 Tage, sonst 30 min
+    const token = await M.createSession(v.member.id, ttl);
     res.statusCode = 200;
     return res.end(JSON.stringify({ ok: true, token }));
   } catch (err) {
