@@ -49,22 +49,52 @@
   .legalfoot a{color:#bfd7dc;font-size:12px;font-weight:600;text-decoration:none}
   .legalfoot a:hover{color:#fff;text-decoration:underline}
   .legalfoot span{color:#5e8088;font-size:12px}
+  /* ---------- responsive layout ---------- */
+  .sidebar,.topbar{display:none}
+  .maincol{display:flex;flex-direction:column;flex:1;min-width:0}
+  .narrow{width:100%}
+  .gTiles{display:grid;grid-template-columns:1fr 1fr;gap:13px}
+  .gCols2{display:flex;flex-direction:column;gap:16px}
+  .gCats{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  @media(min-width:1000px){
+    body{background:linear-gradient(170deg,#0e6072 0%,#063540 100%)}
+    .shell{max-width:none;margin:0;flex-direction:row;align-items:stretch}
+    .app-in .brandbar{display:none}
+    .app-in .sidebar{display:flex;flex-direction:column;width:266px;flex-shrink:0;position:sticky;top:0;height:100vh;padding:24px 16px;background:linear-gradient(170deg,#0c5a6b 0%,#062f39 100%);border-right:1px solid rgba(255,255,255,.08)}
+    .app-in .topbar{display:flex;align-items:center;justify-content:space-between;padding:22px 38px}
+    .app-in .hd{display:none}
+    .app-in .body{max-width:1180px;width:100%;margin:0 auto;padding:24px 38px 46px}
+    .app-in .legalfoot{padding:8px 38px 30px;justify-content:flex-start}
+    .gTiles{grid-template-columns:repeat(3,1fr);gap:18px}
+    .gCols2{display:grid;grid-template-columns:1fr 1fr;gap:22px;align-items:start}
+    .gCats{grid-template-columns:repeat(4,1fr);gap:16px}
+    .narrow{max-width:780px;margin:0 auto}
+    .app-guest .maincol{align-items:center;justify-content:center}
+    .app-guest .body{max-width:440px;width:100%}
+    .sidebtn{display:flex;align-items:center;gap:13px;padding:12px 14px;border:none;border-radius:12px;cursor:pointer;font-weight:700;font-size:15px;background:transparent;color:#bcd7dc;width:100%;text-align:left}
+    .sidebtn:hover{background:rgba(255,255,255,.08)}
+    .sidebtn.active{background:rgba(255,255,255,.16);color:#fff}
+  }
 </style>
 </head>
 <body>
 <div class="shell">
-  <div class="brandbar">
-    <div id="brandLogo" style="display:flex;align-items:center;cursor:pointer"><img src="/assets/fitinn-logo-white.png" alt="Fit-Inn Trier" style="height:26px;width:auto;display:block"></div>
-    <button class="logout" id="logoutBtn" style="display:none">Abmelden</button>
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="maincol">
+    <div class="brandbar">
+      <div id="brandLogo" style="display:flex;align-items:center;cursor:pointer"><img src="/assets/fitinn-logo-white.png" alt="Fit-Inn Trier" style="height:26px;width:auto;display:block"></div>
+      <button class="logout" id="logoutBtn" style="display:none">Abmelden</button>
+    </div>
+    <div class="topbar" id="topbar"></div>
+    <div class="body" id="app"></div>
+    <div class="legalfoot">
+      <a href="https://www.fit-inn-trier.de/impressum-fit-inn-trier" target="_blank" rel="noopener">Impressum</a><span>·</span>
+      <a href="https://www.fit-inn-trier.de/datenschutz-fit-inn-trier" target="_blank" rel="noopener">Datenschutz</a><span>·</span>
+      <a href="https://www.fit-inn-trier.de/agbs-fit-inn-trier" target="_blank" rel="noopener">AGB</a><span>·</span>
+      <a href="https://www.fit-inn-trier.de/kundigungsbedingungen-fit-inn-trier" target="_blank" rel="noopener">Widerruf</a>
+    </div>
   </div>
-  <div class="body" id="app"></div>
   <div id="rcContainer"></div>
-  <div class="legalfoot">
-    <a href="https://www.fit-inn-trier.de/impressum-fit-inn-trier" target="_blank" rel="noopener">Impressum</a><span>·</span>
-    <a href="https://www.fit-inn-trier.de/datenschutz-fit-inn-trier" target="_blank" rel="noopener">Datenschutz</a><span>·</span>
-    <a href="https://www.fit-inn-trier.de/agbs-fit-inn-trier" target="_blank" rel="noopener">AGB</a><span>·</span>
-    <a href="https://www.fit-inn-trier.de/kundigungsbedingungen-fit-inn-trier" target="_blank" rel="noopener">Widerruf</a>
-  </div>
 </div>
 
 <script>
@@ -188,7 +218,12 @@
   $('logoutBtn').addEventListener('click', logout);
   $('brandLogo').addEventListener('click', function(){ if(TOKEN) nav('home'); });
 
-  function nav(s){ S.screen=s; if(s==='checkins'&&!DATA.checkins) loadCheckins(); if(s==='appt'&&!DATA.appts) loadAppts(); setS({}); }
+  function nav(s){ S.screen=s;
+    if(s==='help') S.helpView='list';
+    if(s==='contract'){ S.cancelStep=0; S.pauseStep=0; S.pauseDone=false; S.offerDone=''; }
+    if(s==='checkins'&&!DATA.checkins) loadCheckins();
+    if(s==='appt'&&!DATA.appts) loadAppts();
+    setS({}); }
 
   // ---- data loading ----
   function loadMe(){
@@ -243,14 +278,15 @@
       '<div style="padding:6px 4px 16px"><div style="font-size:28px;font-weight:900;color:#fff;letter-spacing:-.6px">Hallo '+esc(name||'')+'!</div>'+
       '<div style="font-size:14px;color:#bfd7dc;margin-top:3px;font-weight:500">'+(p.customerNumber?('Mitgliedsnr. '+esc(p.customerNumber)):'')+'</div></div>'+
       status+
-      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:13px;margin-top:'+(status?'14px':'0')+'">'+tiles+'</div>';
+      '<div class="gTiles" style="margin-top:'+(status?'14px':'0')+'">'+tiles+'</div>';
   }
 
   function scrData(){
     var p=DATA.profile||{};
     var m = S.msg ? '<div class="ok" style="margin-bottom:14px">'+svg(IC.check,{c:'#1d7a3e',w:2.1,s:18})+'<span>'+esc(S.msg)+'</span></div>' : '';
     return backHd('Meine Daten')+m+
-    '<div class="card" style="margin-bottom:16px">'+
+    '<div class="gCols2">'+
+    '<div class="card">'+
       '<div style="font-size:17px;font-weight:800">Adresse</div>'+
       '<div class="row2" style="grid-template-columns:2fr 1fr;margin-top:16px"><div><label class="lbl">Straße</label><input id="d_street" class="inp" value="'+esc(p.street||'')+'"></div><div><label class="lbl">Nr.</label><input id="d_house" class="inp" value="'+esc(p.houseNumber||'')+'"></div></div>'+
       '<div class="row2" style="grid-template-columns:1fr 2fr;margin-top:12px"><div><label class="lbl">PLZ</label><input id="d_zip" class="inp" value="'+esc(p.zipCode||'')+'"></div><div><label class="lbl">Ort</label><input id="d_city" class="inp" value="'+esc(p.city||'')+'"></div></div>'+
@@ -266,6 +302,7 @@
       '<div style="margin-top:12px"><label class="lbl">Gültig ab</label><input id="d_iban_from" type="date" class="inp" min="'+isoToday()+'"><div style="font-size:12px;color:#8a929a;margin-top:5px">Ab wann soll die neue Bankverbindung für den Einzug genutzt werden? Leer = ab sofort / nächstmöglich.</div></div>'+
       '<button class="btn" data-act="saveIban" style="margin-top:18px">IBAN-Änderung beantragen</button>'+
       '<div style="font-size:12px;color:#8a929a;text-align:center;margin-top:12px;line-height:1.4">Änderungen werden zeitnah geprüft und übernommen. Bei Rückfragen melden wir uns.</div>'+
+    '</div>'+
     '</div>';
   }
 
@@ -487,7 +524,7 @@
       (S.dlMsg2?'<div style="font-size:13px;color:#0a4958;font-weight:600;text-align:center;margin-bottom:10px">'+esc(S.dlMsg2)+'</div>':'');
     var months=order.map(function(key){ return '<div><div style="font-size:13px;font-weight:700;color:#bfd7dc;text-transform:uppercase;letter-spacing:.5px;margin:0 2px 10px">'+esc(key)+'</div><div style="background:#fff;border-radius:18px;box-shadow:0 12px 34px rgba(4,33,40,.18);overflow:hidden">'+
       groups[key].map(function(v){return '<div style="display:flex;align-items:center;gap:13px;padding:14px 18px;border-bottom:1px solid #f0f3f4"><div style="width:9px;height:9px;border-radius:50%;background:'+TEAL+';flex-shrink:0"></div><div style="flex:1;font-size:15px;font-weight:700">'+deDate(v.in)+'</div><div style="font-size:13px;color:#6b7780">'+deTime(v.in)+' Uhr</div><div style="font-size:13px;font-weight:700;color:'+TEAL+';min-width:54px;text-align:right">'+(dur(v.in,v.out)||'')+'</div></div>';}).join('')+'</div></div>'; }).join('');
-    return head+sel+stats+dl+'<div style="display:flex;flex-direction:column;gap:18px;margin-top:8px">'+months+'</div>';
+    return head+sel+stats+dl+'<div class="gCols2" style="margin-top:8px">'+months+'</div>';
   }
 
   var HELP_CATS=[['Mitgliedschaft',7,IC.user],['Training',6,'<path d="M6.5 6.5l11 11M3 10l4-4M21 14l-4 4M5 13l-2 2 4 4 2-2M19 11l2-2-4-4-2 2"></path>'],['Studio',2,'<path d="M3 21V7l9-4 9 4v14M9 21v-6h6v6"></path>']];
@@ -510,12 +547,37 @@
     var listHead = S.helpCat ? ('<div style="display:flex;align-items:center;justify-content:space-between;margin:24px 2px 12px"><span style="font-size:13px;font-weight:700;color:#bfd7dc;text-transform:uppercase;letter-spacing:.5px">'+esc(S.helpCat)+'</span><button data-act="helpCat" data-arg="'+esc(S.helpCat)+'" style="background:none;border:none;color:#bfd7dc;font-weight:700;font-size:12px;cursor:pointer;text-decoration:underline">Alle anzeigen</button></div>') : '<div style="font-size:13px;font-weight:700;color:#bfd7dc;text-transform:uppercase;letter-spacing:.5px;margin:24px 2px 12px">Alle Artikel</div>';
     return backHd('Hilfe-Center')+
     '<div style="position:relative;margin-bottom:18px">'+svg(IC.search,{c:'#8a929a',w:2,s:19}).replace('<svg','<svg style="position:absolute;left:16px;top:50%;transform:translateY(-50%)"')+'<input id="help_q" value="'+esc(S.helpQ)+'" oninput="window.__helpFilter&&window.__helpFilter(this.value)" placeholder="Themen durchsuchen" style="width:100%;padding:15px 16px 15px 44px;border:none;border-radius:14px;font-size:15px;outline:none;box-shadow:0 8px 24px rgba(4,33,40,.18)"></div>'+
-    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">'+cats+'</div>'+
+    '<div class="gCats">'+cats+'</div>'+
     listHead+'<div id="help_list" style="background:#fff;border-radius:18px;box-shadow:0 12px 34px rgba(4,33,40,.18);overflow:hidden">'+helpListHtml()+'</div>'+
     '<div style="margin-top:24px;padding:20px 4px;text-align:center"><div style="font-size:14px;font-weight:700;color:#fff">Fit-Inn Trier</div><div style="font-size:13px;color:#bfd7dc;margin-top:8px;line-height:1.6">Auf Hirtenberg 8 · 54296 Trier<br>info@fit-inn-trier.de · 0651 308524</div></div>';
   }
 
   // ---- render ----
+  // ---- responsive chrome (Desktop-Sidebar + Topbar) ----
+  var DASH_IC='<rect x="3" y="3" width="7" height="9" rx="1.5"></rect><rect x="14" y="3" width="7" height="5" rx="1.5"></rect><rect x="14" y="12" width="7" height="9" rx="1.5"></rect><rect x="3" y="16" width="7" height="5" rx="1.5"></rect>';
+  var NAVITEMS=[['home','Übersicht',DASH_IC],['data','Meine Daten',IC.user],['contract','Vertragsverwaltung',IC.doc],['appt','Termine',IC.cal],['referral','Freunde werben',IC.gift],['checkins','Check-ins',IC.list],['help','Hilfe',IC.help]];
+  var TITLES={home:'Übersicht',data:'Meine Daten',contract:'Vertragsverwaltung',appt:'Termine',referral:'Freunde werben',checkins:'Check-in-Verlauf',help:'Hilfe-Center'};
+  function initials(p){ p=p||{}; var a=(p.firstName||'').trim(),b=(p.lastName||'').trim(); return (((a?a[0]:'')+(b?b[0]:'')).toUpperCase())||'FT'; }
+  function renderChrome(){
+    var inApp = !!(TOKEN && S.screen!=='login');
+    document.body.className = inApp ? 'app-in' : 'app-guest';
+    var sb=$('sidebar'), tb=$('topbar');
+    if(!inApp){ if(sb)sb.innerHTML=''; if(tb)tb.innerHTML=''; return; }
+    var p=DATA.profile||{};
+    if(sb) sb.innerHTML=
+      '<img src="/assets/fitinn-logo-white.png" alt="Fit-Inn Trier" data-act="nav" data-arg="home" style="height:28px;width:auto;align-self:flex-start;margin:2px 6px 22px;cursor:pointer">'+
+      '<div style="display:flex;align-items:center;gap:12px;background:rgba(255,255,255,.08);border-radius:15px;padding:12px 13px;margin-bottom:20px"><div style="width:42px;height:42px;border-radius:50%;background:#fff;color:'+TEAL+';font-weight:900;font-size:15px;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+esc(initials(p))+'</div><div style="min-width:0"><div style="color:#fff;font-weight:800;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(((p.firstName||'')+' '+(p.lastName||'')).trim()||'Mitglied')+'</div><div style="color:#9fc3ca;font-size:12px;font-weight:500">'+(p.customerNumber?('Mitgliedsnr. '+esc(p.customerNumber)):'')+'</div></div></div>'+
+      '<nav style="display:flex;flex-direction:column;gap:4px">'+NAVITEMS.map(function(it){var act=S.screen===it[0];return '<button class="sidebtn'+(act?' active':'')+'" data-act="nav" data-arg="'+it[0]+'">'+svg(it[2],{c:act?'#fff':'#bcd7dc',w:1.9,s:20})+'<span>'+it[1]+'</span></button>';}).join('')+'</nav>'+
+      '<button class="sidebtn" data-act="logout" style="margin-top:auto;color:#9fc3ca">'+svg('<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"></path>',{c:'#9fc3ca',w:1.9,s:19})+'<span>Abmelden</span></button>';
+    if(tb){
+      var c=DATA.contract; var badge='';
+      if(c){ badge = c.cancelled
+        ? '<div style="display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.12);border-radius:30px;padding:7px 14px"><span style="width:8px;height:8px;border-radius:50%;background:#f0a23b"></span><span style="font-size:13px;font-weight:700;color:#eaf4f5">Gekündigt</span></div>'
+        : '<div style="display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.12);border-radius:30px;padding:7px 14px"><span style="width:8px;height:8px;border-radius:50%;background:#54e08a"></span><span style="font-size:13px;font-weight:700;color:#eaf4f5">Mitgliedschaft aktiv</span></div>'; }
+      tb.innerHTML='<div style="font-size:23px;font-weight:900;color:#fff;letter-spacing:-.4px">'+esc(TITLES[S.screen]||'')+'</div>'+badge;
+    }
+  }
+  var NARROW={contract:1,referral:1,appt:1};
   function render(){
     $('logoutBtn').style.display = (TOKEN && S.screen!=='login') ? 'block' : 'none';
     var html;
@@ -530,7 +592,10 @@
       case 'help': html=scrHelp(); break;
       default: html=scrHome();
     }
+    var narrow = NARROW[S.screen] || (S.screen==='help' && S.helpView==='article');
+    if(narrow) html='<div class="narrow">'+html+'</div>';
     $('app').innerHTML=html;
+    renderChrome();
   }
 
   // ---- actions (event delegation) ----
@@ -563,6 +628,7 @@
     saveIban:function(){ var iban=val('d_iban'); if(!iban){ setS({msg:'Bitte neue IBAN eingeben.'}); return; }
       var data={accountHolder:val('d_holder'),iban:iban,bankName:val('d_bank'),bic:val('d_bic'),validFrom:val('d_iban_from')};
       api('/api/member/update',{method:'POST',body:JSON.stringify({type:'payment',data:data})}).then(function(d){ setS({msg:d.message||'Übermittelt.'}); }).catch(function(){}); },
+    logout:function(){ logout(); },
     // contract
     contractCopy:function(){ if(S.ccBusy) return; setQuiet({ccBusy:true,ccMsg:''});
       api('/api/member/contract-copy',{method:'POST',body:JSON.stringify({})}).then(function(d){ setS({ccBusy:false,ccMsg:d.message||(d.ok?'Gesendet.':'Versand fehlgeschlagen.')}); }).catch(function(){ setS({ccBusy:false,ccMsg:'Versand fehlgeschlagen.'}); }); },
