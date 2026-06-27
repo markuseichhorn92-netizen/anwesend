@@ -68,9 +68,10 @@ module.exports = async function handler(req, res) {
     ['size20', base + '?size=20'],
     ['pageSize20', base + '?pageSize=20'],
     ['limit20', base + '?limit=20'],
-    ['from2024', base + '?fromDate=2024-01-01'],
-    ['from2024to', base + '?fromDate=2024-01-01&toDate=' + today],
-    ['offsetSlice', base + '?offset=0&sliceSize=20'],
+    ['slice50', base + '?sliceSize=50'],
+    ['slice100', base + '?sliceSize=100'],
+    ['slice150', base + '?sliceSize=150'],
+    ['offsetSlice', base + '?offset=0&sliceSize=50'],
   ];
   out.checkins = {};
   for (const [name, q] of variants) {
