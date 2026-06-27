@@ -97,11 +97,13 @@
     apptTab:'book', bookType:'', apptMsg:'',
     helpView:'list', helpArticle:0, helpCat:'', helpQ:'',
     copied:false, dlMsg:false, dlMsg2:'', emailing:false,
+    ciRange:'all', ciFrom:'', ciTo:'',
     liEmail:'', liPlz:'', remember:(localStorage.getItem('fi_remember')==='1'),
     dpOpen:false, dpYear:1995, dpMonth:0, dpSel:null,
     loginErr:'' };
   window.__setLi=function(f,v){ if(f==='email')S.liEmail=v; else if(f==='plz')S.liPlz=v; };
   window.__dpYear=function(v){ S.dpYear=+v; render(); };
+  window.__ciDate=function(which,v){ if(which==='from')S.ciFrom=v; else S.ciTo=v; render(); };
 
   function setS(p){ Object.assign(S,p); render(); window.scrollTo(0,0); }
   function setQuiet(p){ Object.assign(S,p); render(); }
@@ -343,11 +345,37 @@
     steps.map(function(r){return '<div style="display:flex;gap:14px;align-items:flex-start"><div style="width:30px;height:30px;border-radius:50%;background:'+TEAL+';color:#fff;font-weight:800;font-size:14px;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+r[0]+'</div><div><div style="font-size:15px;font-weight:700">'+r[1]+'</div><div style="font-size:13px;color:#6b7780;line-height:1.4;margin-top:2px">'+r[2]+'</div></div></div>';}).join('')+'</div></div>';
   }
 
+  // ---- Check-in Zeitraum-Filter ----
+  function fmtD(d){ var p=function(n){return(n<10?'0':'')+n;}; return p(d.getDate())+'.'+p(d.getMonth()+1)+'.'+d.getFullYear(); }
+  function ciBounds(){
+    var now=new Date(); var r=S.ciRange||'all'; var from=null,to=null;
+    if(r==='1m'){from=new Date(now);from.setMonth(from.getMonth()-1);}
+    else if(r==='3m'){from=new Date(now);from.setMonth(from.getMonth()-3);}
+    else if(r==='6m'){from=new Date(now);from.setMonth(from.getMonth()-6);}
+    else if(r==='12m'){from=new Date(now);from.setFullYear(from.getFullYear()-1);}
+    else if(r==='lastyear'){var y=now.getFullYear()-1;from=new Date(y,0,1,0,0,0);to=new Date(y,11,31,23,59,59);}
+    else if(r==='custom'){ if(S.ciFrom)from=new Date(S.ciFrom+'T00:00:00'); if(S.ciTo)to=new Date(S.ciTo+'T23:59:59'); }
+    return {from:from,to:to};
+  }
+  function ciFilter(list){ var b=ciBounds(); return (list||[]).filter(function(c){ var d=new Date(c.in); if(isNaN(d))return false; if(b.from&&d<b.from)return false; if(b.to&&d>b.to)return false; return true; }); }
+  function ciCurrent(){ return ciFilter(DATA.checkins||[]); }
+  function ciRangeLabel(){ var b=ciBounds(); if(!b.from&&!b.to) return 'Gesamter Verlauf'; var f=b.from?fmtD(b.from):'Beginn'; var t=b.to?fmtD(b.to):fmtD(new Date()); return f+' – '+t; }
+  function ciSelector(){
+    var opts=[['all','Alle'],['1m','1 Monat'],['3m','3 Monate'],['6m','6 Monate'],['12m','12 Monate'],['lastyear','Letztes Jahr'],['custom','Zeitraum']];
+    var cur=S.ciRange||'all';
+    var chips=opts.map(function(o){ var on=cur===o[0]; return '<button data-act="ciRange" data-arg="'+o[0]+'" style="flex-shrink:0;padding:9px 14px;border-radius:11px;border:1.5px solid '+(on?TEAL:'#dfe7e8')+';background:'+(on?TEAL:'#fff')+';color:'+(on?'#fff':'#42454b')+';font-weight:700;font-size:13px;cursor:pointer;white-space:nowrap">'+o[1]+'</button>'; }).join('');
+    var custom = cur==='custom' ? '<div style="display:flex;gap:10px;margin-bottom:12px"><div style="flex:1"><label class="lbl">Von</label><input type="date" value="'+esc(S.ciFrom||'')+'" onchange="window.__ciDate(\'from\',this.value)" class="inp"></div><div style="flex:1"><label class="lbl">Bis</label><input type="date" value="'+esc(S.ciTo||'')+'" onchange="window.__ciDate(\'to\',this.value)" class="inp"></div></div>' : '';
+    return '<div style="display:flex;gap:8px;overflow-x:auto;padding-bottom:8px;margin-bottom:12px;-webkit-overflow-scrolling:touch">'+chips+'</div>'+custom;
+  }
+
   function scrCheckins(){
-    var list=DATA.checkins;
+    var all=DATA.checkins;
     var head=backHd('Check-in-Verlauf');
-    if(list===null) return head+'<div class="card" style="text-align:center;color:#8a929a;font-size:14px">Lade Verlauf …</div>';
-    if(!list.length) return head+'<div class="card" style="text-align:center"><div style="font-size:16px;font-weight:800">Noch keine Besuche</div><div style="font-size:13px;color:#6b7780;margin-top:6px;line-height:1.5">Sobald du eincheckst, erscheinen deine Besuche hier.</div></div>';
+    if(all===null) return head+'<div class="card" style="text-align:center;color:#8a929a;font-size:14px">Lade Verlauf …</div>';
+    if(!all.length) return head+'<div class="card" style="text-align:center"><div style="font-size:16px;font-weight:800">Noch keine Besuche</div><div style="font-size:13px;color:#6b7780;margin-top:6px;line-height:1.5">Sobald du eincheckst, erscheinen deine Besuche hier.</div></div>';
+    var sel=ciSelector();
+    var list=ciFilter(all);
+    if(!list.length) return head+sel+'<div class="card" style="text-align:center"><div style="font-size:15px;font-weight:800">Keine Besuche im gewählten Zeitraum</div><div style="font-size:13px;color:#6b7780;margin-top:6px">Wähle oben einen anderen Zeitraum.</div></div>';
     // stats
     var now=new Date(); var thisMonth=list.filter(function(c){var d=new Date(c.in);return d.getMonth()===now.getMonth()&&d.getFullYear()===now.getFullYear();}).length;
     var durs=list.map(function(c){return (c.out&&c.in)?(new Date(c.out)-new Date(c.in)):0;}).filter(function(x){return x>0;});
@@ -356,14 +384,14 @@
     // group by month
     var groups={}, order=[];
     list.slice().sort(function(a,b){return new Date(b.in)-new Date(a.in);}).forEach(function(c){ var d=new Date(c.in); var key=monthName(d); if(!groups[key]){groups[key]=[];order.push(key);} groups[key].push(c); });
-    var stats='<div style="display:flex;gap:12px;margin-bottom:14px"><div style="flex:1;background:#fff;border-radius:18px;box-shadow:0 12px 34px rgba(4,33,40,.18);padding:18px 16px"><div style="font-size:30px;font-weight:900;color:'+TEAL+'">'+thisMonth+'</div><div style="font-size:12px;color:#6b7780;font-weight:600;margin-top:2px">Besuche diesen Monat</div></div><div style="flex:1;background:#fff;border-radius:18px;box-shadow:0 12px 34px rgba(4,33,40,.18);padding:18px 16px"><div style="font-size:30px;font-weight:900;color:'+TEAL+'">'+avgL+'</div><div style="font-size:12px;color:#6b7780;font-weight:600;margin-top:2px">Ø Dauer</div></div></div>';
+    var stats='<div style="display:flex;gap:12px;margin-bottom:14px"><div style="flex:1;background:#fff;border-radius:18px;box-shadow:0 12px 34px rgba(4,33,40,.18);padding:18px 16px"><div style="font-size:30px;font-weight:900;color:'+TEAL+'">'+list.length+'</div><div style="font-size:12px;color:#6b7780;font-weight:600;margin-top:2px">Besuche im Zeitraum</div></div><div style="flex:1;background:#fff;border-radius:18px;box-shadow:0 12px 34px rgba(4,33,40,.18);padding:18px 16px"><div style="font-size:30px;font-weight:900;color:'+TEAL+'">'+avgL+'</div><div style="font-size:12px;color:#6b7780;font-weight:600;margin-top:2px">Ø Dauer</div></div></div>';
     var dl='<button class="btn2" data-act="download" style="display:flex;align-items:center;justify-content:center;gap:9px;margin-bottom:8px">'+svg(IC.dl,{w:2,s:18})+'Anwesenheitsbestätigung als PDF</button>'+
       '<button class="btn2" data-act="emailPdf" style="display:flex;align-items:center;justify-content:center;gap:9px;margin-bottom:8px">'+svg('<rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="M3 7l9 6 9-6"></path>',{w:2,s:18})+(S.emailing?'Wird gesendet …':'Per E-Mail zuschicken')+'</button>'+
       (S.dlMsg?'<div style="font-size:13px;color:#1d7a3e;font-weight:600;text-align:center;margin-bottom:10px">Download gestartet …</div>':'')+
       (S.dlMsg2?'<div style="font-size:13px;color:#0a4958;font-weight:600;text-align:center;margin-bottom:10px">'+esc(S.dlMsg2)+'</div>':'');
     var months=order.map(function(key){ return '<div><div style="font-size:13px;font-weight:700;color:#bfd7dc;text-transform:uppercase;letter-spacing:.5px;margin:0 2px 10px">'+esc(key)+'</div><div style="background:#fff;border-radius:18px;box-shadow:0 12px 34px rgba(4,33,40,.18);overflow:hidden">'+
       groups[key].map(function(v){return '<div style="display:flex;align-items:center;gap:13px;padding:14px 18px;border-bottom:1px solid #f0f3f4"><div style="width:9px;height:9px;border-radius:50%;background:'+TEAL+';flex-shrink:0"></div><div style="flex:1;font-size:15px;font-weight:700">'+deDate(v.in)+'</div><div style="font-size:13px;color:#6b7780">'+deTime(v.in)+' Uhr</div><div style="font-size:13px;font-weight:700;color:'+TEAL+';min-width:54px;text-align:right">'+(dur(v.in,v.out)||'')+'</div></div>';}).join('')+'</div></div>'; }).join('');
-    return head+stats+dl+'<div style="display:flex;flex-direction:column;gap:18px;margin-top:8px">'+months+'</div>';
+    return head+sel+stats+dl+'<div style="display:flex;flex-direction:column;gap:18px;margin-top:8px">'+months+'</div>';
   }
 
   var HELP_CATS=[['Mitgliedschaft',7,IC.user],['Training',6,'<path d="M6.5 6.5l11 11M3 10l4-4M21 14l-4 4M5 13l-2 2 4 4 2-2M19 11l2-2-4-4-2 2"></path>'],['Studio',2,'<path d="M3 21V7l9-4 9 4v14M9 21v-6h6v6"></path>']];
@@ -476,6 +504,7 @@
     copyRef:function(){ var code=(DATA.profile||{}).referralCode||''; var link=window.location.origin+'/mitglied-werden?ref='+encodeURIComponent(code); copyText(link); setS({copied:true}); setTimeout(function(){ S.copied=false; render(); },1800); },
     shareRef:function(){ var code=(DATA.profile||{}).referralCode||''; var link=window.location.origin+'/mitglied-werden?ref='+encodeURIComponent(code); var txt='Trainier mit mir im Fit-Inn Trier! 💪 Werde Mitglied mit meinem Code '+code+': '+link; if(navigator.share){ navigator.share({title:'Fit-Inn Trier',text:txt,url:link}).catch(function(){}); } else { copyText(txt); setS({copied:true}); setTimeout(function(){ S.copied=false; render(); },1800); } },
     // checkins
+    ciRange:function(a){ S.ciRange=a||'all'; S.dlMsg2=''; setS({}); },
     download:function(){ downloadPdf(); setS({dlMsg:true}); setTimeout(function(){ S.dlMsg=false; render(); },2400); },
     emailPdf:function(){ emailPdf(); },
     cancelAppt:function(a){ if(!a) return; var id=a;
@@ -495,20 +524,20 @@
     api('/api/member/cancel',{method:'POST',body:JSON.stringify({action:'offer_accepted',offer:offer,reason:(S.cancelReason||'—')+(extra?(' · '+extra):'')})})
       .then(function(){ setS({busy:false,offerDone:offer,pauseAsk:false,cancelStep:0}); }).catch(function(){ setS({busy:false,offerDone:offer,pauseAsk:false,cancelStep:0}); }); }
   function copyText(t){ if(navigator.clipboard&&navigator.clipboard.writeText) navigator.clipboard.writeText(t).catch(function(){}); }
-  function downloadCsv(){ var list=DATA.checkins||[]; var rows=[['Datum','Uhrzeit','Dauer','Studio']].concat(list.map(function(c){return [c.in?c.in.slice(0,10):'',deTime(c.in),dur(c.in,c.out),c.studio||''];}));
+  function downloadCsv(){ var list=ciCurrent(); var rows=[['Datum','Uhrzeit','Dauer','Studio']].concat(list.map(function(c){return [c.in?c.in.slice(0,10):'',deTime(c.in),dur(c.in,c.out),c.studio||''];}));
     var csv=rows.map(function(r){return r.map(function(x){return '"'+String(x).replace(/"/g,'""')+'"';}).join(';');}).join('\n');
     var a=document.createElement('a'); a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv); a.download='checkin-verlauf.csv'; document.body.appendChild(a); a.click(); a.remove(); }
   function logoTxt(doc,M){ doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(16); doc.text('FIT-INN TRIER',M,17); }
   function buildPdfDoc(){
     var ns=window.jspdf; if(!ns||!ns.jsPDF){ return null; }
-    var p=DATA.profile||{}; var list=(DATA.checkins||[]).slice().sort(function(a,b){return new Date(b.in)-new Date(a.in);});
+    var p=DATA.profile||{}; var list=ciCurrent().slice().sort(function(a,b){return new Date(b.in)-new Date(a.in);});
     var doc=new ns.jsPDF({unit:'mm',format:'a4'}); var W=210, M=14;
     doc.setFillColor(10,73,88); doc.rect(0,0,W,26,'F');
     var lh=11, lw=lh*(LOGO_RATIO||3.6); if(lw>72) lw=72;
     if(LOGO_DATAURL){ try{ doc.addImage(LOGO_DATAURL,'PNG',M,8,lw,lh); }catch(e){ logoTxt(doc,M); } } else logoTxt(doc,M);
     doc.setTextColor(21,23,27); doc.setFont('helvetica','bold'); doc.setFontSize(18); doc.text('Anwesenheitsbestätigung',M,40);
     var y=50; doc.setFontSize(11);
-    [['Name',p.lastName],['Vorname',p.firstName],['Mitgliedsnummer',p.customerNumber],['Geburtsdatum',deDateFull(p.dateOfBirth)]].forEach(function(r){ doc.setFont('helvetica','bold'); doc.setTextColor(60,66,72); doc.text(r[0]+':',M,y); doc.setFont('helvetica','normal'); doc.setTextColor(21,23,27); doc.text(String(r[1]||'—'),62,y); y+=7; });
+    [['Name',p.lastName],['Vorname',p.firstName],['Mitgliedsnummer',p.customerNumber],['Geburtsdatum',deDateFull(p.dateOfBirth)],['Zeitraum',ciRangeLabel()]].forEach(function(r){ doc.setFont('helvetica','bold'); doc.setTextColor(60,66,72); doc.text(r[0]+':',M,y); doc.setFont('helvetica','normal'); doc.setTextColor(21,23,27); doc.text(String(r[1]||'—'),62,y); y+=7; });
     y+=3; doc.setFont('helvetica','normal'); doc.setTextColor(60,66,72); doc.setFontSize(10.5);
     var intro='Hiermit bestätigt das Fit-Inn Trier, dass das oben genannte Mitglied an den folgenden Terminen im Studio anwesend war:';
     var lines=doc.splitTextToSize(intro,W-2*M); doc.text(lines,M,y); y+=lines.length*5.5+6;
@@ -524,7 +553,7 @@
   function downloadPdf(){ var d=buildPdfDoc(); if(d) d.save('anwesenheitsbestaetigung.pdf'); else downloadCsv(); }
   function emailPdf(){
     var d=buildPdfDoc(); if(!d){ setS({dlMsg2:'PDF-Bibliothek lädt noch – bitte kurz erneut.'}); return; }
-    var b64=d.output('datauristring');
+    var b64=d.output('datauristring'); var ix=b64.indexOf('base64,'); if(ix>=0) b64=b64.slice(ix+7);
     setQuiet({emailing:true, dlMsg2:''});
     api('/api/member/checkin-pdf',{method:'POST',body:JSON.stringify({pdf:b64})})
       .then(function(r){ setS({emailing:false, dlMsg2:(r.message||(r.ok?'Gesendet.':'Versand fehlgeschlagen.'))}); })

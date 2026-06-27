@@ -18,7 +18,13 @@ module.exports = async function handler(req, res) {
   if (!sess) { res.statusCode = 401; return res.end(JSON.stringify({ error: 'unauthorized' })); }
 
   const body = await M.readBody(req);
-  let pdf = String(body.pdf || '').replace(/^data:[^;]*;base64,/, '');
+  // Robust: alles vor (inkl.) "base64," entfernen. jsPDF liefert
+  // "data:application/pdf;filename=generated.pdf;base64,..." – die alte Regex
+  // (;base64, direkt nach dem MIME-Typ) hat diesen Präfix nicht erfasst.
+  let pdf = String(body.pdf || '');
+  const bi = pdf.indexOf('base64,');
+  if (bi >= 0) pdf = pdf.slice(bi + 7);
+  pdf = pdf.replace(/\s+/g, '');
   if (!pdf || pdf.length < 100) { res.statusCode = 400; return res.end(JSON.stringify({ ok: false, message: 'PDF fehlt.' })); }
   if (pdf.length > 7000000) { res.statusCode = 413; return res.end(JSON.stringify({ ok: false, message: 'PDF zu groß.' })); }
 
