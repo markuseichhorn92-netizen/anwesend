@@ -45,8 +45,12 @@ module.exports = async function handler(req, res) {
   } else if (body.action === 'cancel') {
     var ct = null;
     try { ct = await M.getContract(sess.id); } catch (e) {}
-    var dateISO = body.date || (ct && ct.nextCancellationDateISO) || null;
-    var useNext = !!(ct && ct.nextCancellationDateISO && (!body.date || body.date === ct.nextCancellationDateISO));
+    var minISO = ct && ct.nextCancellationDateISO ? ct.nextCancellationDateISO : null;
+    var reqDate = body.date || null;
+    // Kein Datum vor dem nächstmöglichen Kündigungstermin zulassen (Server-Absicherung)
+    if (reqDate && minISO && reqDate < minISO) reqDate = minISO;
+    var dateISO = reqDate || minISO || null;
+    var useNext = !!(minISO && (!reqDate || reqDate === minISO));
 
     cancelDbg = {
       contractFound: !!ct,
