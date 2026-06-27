@@ -89,9 +89,12 @@
   .reco-window{font-weight:900; font-size:17px; color:#15171B; margin-top:2px; letter-spacing:-.01em;}
   .reco-note{font-weight:500; font-size:12px; color:#5d7a80; margin-top:1px;}
 
-  .trend-head{display:flex; justify-content:space-between; align-items:baseline; margin:18px 0 10px;}
+  .trend-head{display:flex; justify-content:space-between; align-items:center; margin:18px 0 10px;}
   .trend-head .l{font-weight:800; font-size:11px; letter-spacing:.12em; color:#9aa0a8;}
-  .trend-head .r{font-weight:700; font-size:11px; color:#9aa0a8;}
+  .day-nav{display:flex; align-items:center; gap:8px;}
+  .day-nav .trend-day{font-weight:800; font-size:12px; color:#42454b; min-width:54px; text-align:center;}
+  .dnav{width:26px; height:26px; border-radius:8px; border:none; background:#eef3f4; color:#0a4958; font-size:16px; font-weight:800; line-height:1; cursor:pointer; display:flex; align-items:center; justify-content:center; flex:none;}
+  .dnav:hover{background:#e0e9ea;}
   .trend-bars{display:flex; align-items:flex-end; gap:4px; height:46px; touch-action:pan-y;}
   .tbar{flex:1; border-radius:3px 3px 0 0; min-height:6px; cursor:pointer; transition:height .5s cubic-bezier(.22,1,.36,1), filter .12s;}
   .tbar:hover{filter:brightness(.93);}
@@ -200,12 +203,12 @@
 
       <div id="trendSection">
         <div class="trend-head">
-          <span class="l">VERLAUF HEUTE</span>
-          <span class="r">8 – 22 Uhr</span>
+          <span class="l">VERLAUF</span>
+          <span class="day-nav"><button class="dnav" data-d="-1" aria-label="Vorheriger Tag">‹</button><span class="trend-day" id="trendDay">Heute</span><button class="dnav" data-d="1" aria-label="Nächster Tag">›</button></span>
         </div>
-        <div class="trend-bars" id="trendBars" role="group" aria-label="Typischer Tagesverlauf – Balken antippen für Details"></div>
+        <div class="trend-bars" id="trendBars" role="group" aria-label="Typischer Tagesverlauf – nach links/rechts wischen für andere Tage"></div>
         <div class="trend-axis">
-          <span>8</span><span>12</span><span style="color:#0a4958;">jetzt</span><span>22</span>
+          <span>8</span><span>12</span><span>17</span><span>22</span>
         </div>
         <div class="trend-caption" id="trendCaption">Verlauf aus den letzten Wochen</div>
       </div>
@@ -390,10 +393,11 @@
     bestNote:    document.getElementById('bestNote'),
     trendSection:document.getElementById('trendSection'),
     trendBars:   document.getElementById('trendBars'),
+    trendDay:    document.getElementById('trendDay'),
     trendCaption:document.getElementById('trendCaption')
   };
 
-  var state = { capacity: CFG.capacity, current: null, trend: null, week: null, isPause: false };
+  var state = { capacity: CFG.capacity, current: null, trend: null, week: null, isPause: false, selWd: null, userPicked: false };
 
   // ── Auslastung (Ring + Zahl + Ampel) ──
   function renderOccupancy(){
@@ -530,18 +534,55 @@
       lastHour = n.hour; lastPause = isPause; lastClosed = dayClosed;
       renderTrend(n);
     }
+    syncDefaultDay();   // Verlauf folgt automatisch dem nächsten geöffneten Tag
     computeReco();   // hängt von der Uhrzeit ab -> bei jedem Tick aktualisieren
   }
 
+  // ── Tages-Auswahl für den Verlauf ──
+  // Standard-Tag = nächster geöffneter Tag (springt nach Feierabend auf morgen)
+  function defaultWd(){ var w = nextOpenWindow(berlinNow()); return w ? w.wd : berlinNow().di; }
+  function dayLabel(wd){
+    var td = berlinNow().di, diff = ((wd - td) % 7 + 7) % 7;
+    if (diff === 0) return 'Heute'; if (diff === 1) return 'Morgen'; if (diff === 6) return 'Gestern';
+    return names[wd];
+  }
+  function dayHours(wd){
+    if (state.week && state.week[(wd + 1) % 7]) {
+      var day = state.week[(wd + 1) % 7], hours = [], mx = 1;
+      for (var h = 8; h <= 21; h++) {
+        var a = day[h*2], b = day[h*2+1], vals = [];
+        if (a != null) vals.push(a); if (b != null) vals.push(b);
+        var v = vals.length ? Math.round(vals.reduce(function(x,y){return x+y;},0) / vals.length) : 0;
+        hours.push({ hour:h, count:v }); if (v > mx) mx = v;
+      }
+      return { hours:hours, max:mx };
+    }
+    return state.trend ? { hours: state.trend.hours, max: state.trend.max } : null;
+  }
+  function syncDefaultDay(){
+    if (state.userPicked) return;
+    var d = defaultWd();
+    if (d !== state.selWd) { state.selWd = d; renderTrend(berlinNow()); }
+  }
+  function changeDay(delta){
+    state.userPicked = true;
+    if (state.selWd == null) state.selWd = defaultWd();
+    state.selWd = ((state.selWd + delta) % 7 + 7) % 7;
+    renderTrend(berlinNow());
+  }
   function renderTrend(n){
-    if (state.isPause || state.dayClosed || !state.trend) { el.trendSection.style.display = 'none'; return; }
+    if (state.selWd == null) state.selWd = defaultWd();
+    var dh = dayHours(state.selWd);
+    if (!dh) { el.trendSection.style.display = 'none'; return; }
     el.trendSection.style.display = '';
-    var hours = state.trend.hours, mx = state.trend.max, html = '';
+    if (el.trendDay) el.trendDay.textContent = dayLabel(state.selWd);
+    var isToday = state.selWd === n.di;
+    var hours = dh.hours, mx = dh.max, html = '';
     for (var b = 0; b < hours.length; b++) {
       var hh = hours[b];
       var ratio = mx > 0 ? hh.count / mx : 0;
       var pct = Math.round(20 + ratio * 80);   // % der Balkenhöhe (skaliert mobil/Desktop)
-      var isNow = hh.hour === n.hour;
+      var isNow = isToday && hh.hour === n.hour;
       var bg = isNow ? CFG.accent : '#E7EEEF';
       var sh = isNow ? 'box-shadow:0 0 0 1px rgba(10,73,88,.3);' : '';
       html += '<div class="tbar" data-h="' + hh.hour + '" data-v="' + hh.count + '" title="' + hh.hour + ' Uhr · ~' + hh.count + ' Personen"'
@@ -603,6 +644,21 @@
     el.hoursPanel.classList.toggle('open', hoursOpen);
     el.chevron.style.transform = hoursOpen ? 'rotate(180deg)' : 'rotate(0deg)';
   });
+
+  // Tages-Navigation: Pfeile (Klick) + Wischen
+  el.trendSection.addEventListener('click', function(e){
+    var btn = e.target.closest ? e.target.closest('.dnav') : null;
+    if (btn) changeDay(parseInt(btn.getAttribute('data-d'), 10) || 0);
+  });
+  (function(){
+    var sx = null, sy = null;
+    el.trendSection.addEventListener('touchstart', function(e){ sx = e.touches[0].clientX; sy = e.touches[0].clientY; }, { passive:true });
+    el.trendSection.addEventListener('touchend', function(e){
+      if (sx == null) return;
+      var dx = e.changedTouches[0].clientX - sx, dy = e.changedTouches[0].clientY - sy; sx = null;
+      if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy)) changeDay(dx < 0 ? 1 : -1);  // links wischen = nächster Tag
+    });
+  })();
 
   // Start
   renderOccupancy();
