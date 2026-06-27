@@ -95,6 +95,7 @@
     msg:'', // generic success on data screen
     cancelStep:0, cancelReason:'', pauseWeeks:6, offerDone:'', withdrawConfirm:false, withdrawDone:false, cancelDone:false, busy:false,
     pauseStep:0, pauseReason:'', pauseReasonText:'', pauseFrom:'', pausePhoto:'', pausePhotoName:'', pauseDone:false,
+    ccBusy:false, ccMsg:'',
     apptTab:'book', bookType:'', apptMsg:'',
     helpView:'list', helpArticle:0, helpCat:'', helpQ:'',
     copied:false, dlMsg:false, dlMsg2:'', emailing:false,
@@ -282,9 +283,11 @@
     if(cancelled){ box+='<div style="display:flex;align-items:center;gap:8px;background:#FCEBEA;border-radius:13px;padding:12px 14px;margin-top:16px">'+svg('<circle cx="12" cy="12" r="9"></circle><path d="M12 8v4M12 16h.01"></path>',{c:'#b53a2c',w:2,s:17})+'<span style="font-size:13px;color:#b53a2c;font-weight:600">Gekündigt zum '+esc(c.cancellationDate||c.nextCancellationDate||'—')+'</span></div>'+
       '<button class="btn" data-act="askWithdraw" style="margin-top:14px">Kündigung zurücknehmen</button>'; }
     box+='</div>';
+    var copyBtn='<button class="btn2" data-act="contractCopy" style="margin-top:14px;display:flex;align-items:center;justify-content:center;gap:9px">'+svg('<rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="M3 7l9 6 9-6"></path>',{w:2,s:18})+(S.ccBusy?'Wird gesendet …':'Vertragskopie per E-Mail')+'</button>'+
+      (S.ccMsg?'<div style="font-size:13px;color:#0a4958;font-weight:600;text-align:center;margin-top:8px">'+esc(S.ccMsg)+'</div>':'');
     var actions = cancelled ? '' : (pauseBtn(14)+'<button class="btnDanger" data-act="startCancel" style="margin-top:12px">Mitgliedschaft kündigen</button>');
     var dialog = S.withdrawConfirm ? withdrawDialog() : '';
-    return head+msgs+box+actions+dialog;
+    return head+msgs+box+copyBtn+actions+dialog;
   }
   function okBox(t){ return '<div class="ok" style="margin-bottom:14px">'+svg(IC.check,{c:'#1d7a3e',w:2.1,s:18})+'<span>'+esc(t)+'</span></div>'; }
 
@@ -539,6 +542,8 @@
       var data={accountHolder:val('d_holder'),iban:iban,bankName:val('d_bank'),bic:val('d_bic')};
       api('/api/member/update',{method:'POST',body:JSON.stringify({type:'payment',data:data})}).then(function(d){ setS({msg:d.message||'Übermittelt.'}); }).catch(function(){}); },
     // contract
+    contractCopy:function(){ if(S.ccBusy) return; setQuiet({ccBusy:true,ccMsg:''});
+      api('/api/member/contract-copy',{method:'POST',body:JSON.stringify({})}).then(function(d){ setS({ccBusy:false,ccMsg:d.message||(d.ok?'Gesendet.':'Versand fehlgeschlagen.')}); }).catch(function(){ setS({ccBusy:false,ccMsg:'Versand fehlgeschlagen.'}); }); },
     startCancel:function(){ setS({cancelStep:1,cancelReason:'',cancelDone:false,offerDone:'',pauseStep:0,pauseDone:false}); },
     pickReason:function(a){ setS({cancelReason:a}); },
     cancelNext:function(){ if(S.cancelStep<5) setS({cancelStep:S.cancelStep+1}); },
