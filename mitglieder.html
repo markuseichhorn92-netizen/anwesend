@@ -140,10 +140,11 @@
     helpView:'list', helpArticle:0, helpCat:'', helpQ:'',
     copied:false, dlMsg:false, dlMsg2:'', emailing:false,
     ciRange:'all', ciFrom:'', ciTo:'',
-    liEmail:'', liPlz:'', remember:(localStorage.getItem('fi_remember')==='1'),
+    liEmail:'', remember:(localStorage.getItem('fi_remember')==='1'),
+    loginStep:'request', challenge:'', otp:'',
     dpOpen:false, dpYear:1995, dpMonth:0, dpSel:null,
     loginErr:'' };
-  window.__setLi=function(f,v){ if(f==='email')S.liEmail=v; else if(f==='plz')S.liPlz=v; };
+  window.__setLi=function(f,v){ if(f==='email')S.liEmail=v; else if(f==='code')S.otp=v; };
   window.__dpYear=function(v){ S.dpYear=+v; render(); };
   window.__ciDate=function(which,v){ if(which==='from')S.ciFrom=v; else S.ciTo=v; render(); };
   window.__pauseNote=function(v){ S.pauseReasonText=v; };
@@ -194,7 +195,7 @@
   function api(path, opt){ opt=opt||{}; opt.headers=Object.assign(headers(), opt.headers||{}); opt.cache='no-store';
     return fetch(path,opt).then(function(r){ if(r.status===401){ logout(); throw new Error('unauthorized'); } return r.json(); }); }
 
-  function logout(){ TOKEN=null; sessionStorage.removeItem('fi_member_token'); localStorage.removeItem('fi_member_token'); DATA={profile:null,contract:null,checkins:null,appts:null}; S.screen='login'; render(); }
+  function logout(){ TOKEN=null; sessionStorage.removeItem('fi_member_token'); localStorage.removeItem('fi_member_token'); DATA={profile:null,contract:null,checkins:null,appts:null}; S.screen='login'; S.loginStep='request'; S.challenge=''; S.otp=''; render(); }
   // ---- modern date picker ----
   function pad2(n){ return (n<10?'0':'')+n; }
   var MN=['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
@@ -237,22 +238,33 @@
 
   function scrLogin(){
     var e = S.loginErr ? '<div class="err" style="margin-top:14px">'+svg(IC.warn,{c:'#b53a2c',w:2,s:17})+'<span>'+esc(S.loginErr)+'</span></div>' : '';
-    return ''+
-    '<div style="text-align:center;padding:18px 6px 26px"><div style="font-size:34px;font-weight:900;color:#fff;letter-spacing:-1px;line-height:1.05">Willkommen<br>zurück</div></div>'+
+    var hero='<div style="text-align:center;padding:18px 6px 26px"><div style="font-size:34px;font-weight:900;color:#fff;letter-spacing:-1px;line-height:1.05">Willkommen<br>zurück</div></div>';
+    var memberLink='<div style="text-align:center;margin-top:20px"><span style="color:#bfd7dc;font-size:13px">Noch kein Mitglied? </span><a href="/mitglied-werden" style="color:#fff;font-weight:700;font-size:13px;text-decoration:underline;text-underline-offset:3px">Jetzt online beitreten</a></div>';
+    if(S.loginStep==='verify'){
+      return hero+
+      '<div class="card">'+
+        '<div style="font-size:21px;font-weight:800;letter-spacing:-.4px">Code eingeben</div>'+
+        '<div style="font-size:14px;color:#6b7780;margin-top:5px;line-height:1.45">Wir haben dir einen 6-stelligen Code an <b style="color:#15171B">'+esc(S.liEmail)+'</b> geschickt (falls deine Angaben übereinstimmen). Bitte gib ihn hier ein.</div>'+
+        '<div style="margin-top:18px"><label class="lbl">Einmal-Code</label><input id="li_code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="• • • • • •" class="inp" style="letter-spacing:8px;text-align:center;font-size:24px;font-weight:800" value="'+esc(S.otp)+'" oninput="window.__setLi(\'code\',this.value)"></div>'+
+        '<label data-act="toggleRemember" style="display:flex;align-items:center;gap:10px;margin-top:16px;cursor:pointer"><input type="checkbox" '+(S.remember?'checked':'')+' tabindex="-1" style="width:18px;height:18px;accent-color:'+TEAL+';pointer-events:none"><span style="font-size:14px;color:#42454b;font-weight:600">Angemeldet bleiben</span></label>'+
+        '<button class="btn" id="li_btn" data-act="verifyCode" style="margin-top:18px">'+(S.busy?'Prüfe …':'Anmelden')+'</button>'+
+        e+
+        '<div style="display:flex;align-items:center;justify-content:space-between;margin-top:16px"><button data-act="loginBack" style="background:none;border:none;color:'+TEAL+';font-weight:700;font-size:13px;cursor:pointer">‹ E-Mail ändern</button><button data-act="resendCode" style="background:none;border:none;color:'+TEAL+';font-weight:700;font-size:13px;cursor:pointer;text-decoration:underline">'+(S.busy?'…':'Code erneut senden')+'</button></div>'+
+      '</div>'+memberLink;
+    }
+    return hero+
     '<div class="card">'+
       '<div style="font-size:21px;font-weight:800;letter-spacing:-.4px">Mitglieder-Login</div>'+
-      '<div style="font-size:14px;color:#6b7780;margin-top:5px;line-height:1.45">Zur Bestätigung deiner Identität – keine Passwörter.</div>'+
+      '<div style="font-size:14px;color:#6b7780;margin-top:5px;line-height:1.45">Wir schicken dir einen Einmal-Code per E-Mail – kein Passwort nötig.</div>'+
       '<div style="margin-top:20px"><label class="lbl">E-Mail-Adresse</label><input id="li_email" type="email" autocomplete="email" placeholder="du@beispiel.de" class="inp" value="'+esc(S.liEmail)+'" oninput="window.__setLi(\'email\',this.value)"></div>'+
       '<div style="margin-top:14px;position:relative"><label class="lbl">Geburtsdatum</label>'+
         '<div data-act="dpOpen" style="display:flex;align-items:center;justify-content:space-between;width:100%;padding:13px 14px;border:1.5px solid '+(S.dpOpen?TEAL:'#d6dee0')+';border-radius:11px;font-size:15px;cursor:pointer;background:#fff"><span style="color:'+(S.dpSel?'#15171B':'#a9b1b6')+';font-weight:500">'+(S.dpSel?(pad2(S.dpSel.getDate())+'.'+pad2(S.dpSel.getMonth()+1)+'.'+S.dpSel.getFullYear()):'TT.MM.JJJJ')+'</span>'+svg('<rect x="3" y="4" width="18" height="18" rx="3"></rect><path d="M16 2v4M8 2v4M3 10h18"></path>',{c:'#6b7780',w:1.9,s:19})+'</div>'+
         (S.dpOpen?dpCal():'')+'</div>'+
-      '<div style="margin-top:14px"><label class="lbl">Postleitzahl</label><input id="li_plz" type="text" inputmode="numeric" maxlength="5" placeholder="54290" class="inp" value="'+esc(S.liPlz)+'" oninput="window.__setLi(\'plz\',this.value)"></div>'+
       '<label data-act="toggleRemember" style="display:flex;align-items:center;gap:10px;margin-top:18px;cursor:pointer"><input type="checkbox" '+(S.remember?'checked':'')+' tabindex="-1" style="width:18px;height:18px;accent-color:'+TEAL+';pointer-events:none"><span style="font-size:14px;color:#42454b;font-weight:600">Angemeldet bleiben</span></label>'+
-      '<button class="btn" id="li_btn" data-act="login" style="margin-top:18px">'+(S.busy?'Prüfe …':'Anmelden')+'</button>'+
+      '<button class="btn" id="li_btn" data-act="reqCode" style="margin-top:18px">'+(S.busy?'Code wird gesendet …':'Code anfordern')+'</button>'+
       e+
       '<div style="display:flex;align-items:center;gap:8px;margin-top:18px;padding:11px 13px;background:#f4f7f7;border-radius:11px">'+svg('<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>',{w:1.9,s:17})+'<span style="font-size:12px;color:#6b7780;line-height:1.4">Deine Daten werden verschlüsselt übertragen und nur zur Identitätsprüfung genutzt.</span></div>'+
-    '</div>'+
-    '<div style="text-align:center;margin-top:20px"><span style="color:#bfd7dc;font-size:13px">Noch kein Mitglied? </span><a href="/mitglied-werden" style="color:#fff;font-weight:700;font-size:13px;text-decoration:underline;text-underline-offset:3px">Jetzt online beitreten</a></div>';
+    '</div>'+memberLink;
   }
 
   function scrHome(){
@@ -606,16 +618,27 @@
 
   var ACT={
     nav:function(a){ nav(a); },
-    login:function(){
-      var email=(S.liEmail||'').trim(), plz=(S.liPlz||'').trim();
+    reqCode:function(){
+      var email=(S.liEmail||'').trim();
       var dob = S.dpSel ? (S.dpSel.getFullYear()+'-'+pad2(S.dpSel.getMonth()+1)+'-'+pad2(S.dpSel.getDate())) : '';
-      if(!email||!dob||!plz){ setS({loginErr:'Bitte E-Mail, Geburtsdatum und PLZ ausfüllen.'}); return; }
+      if(!email||!dob){ setS({loginErr:'Bitte E-Mail und Geburtsdatum ausfüllen.'}); return; }
+      setQuiet({busy:true,loginErr:''});
+      fetch('/api/member/login-request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:email,dob:dob})})
+        .then(function(r){return r.json().catch(function(){return {};});})
+        .then(function(j){ if(j&&j.challenge){ setS({busy:false,challenge:j.challenge,loginStep:'verify',otp:'',loginErr:''}); } else { setS({busy:false,loginErr:'Es ist ein Fehler aufgetreten. Bitte später erneut.'}); } })
+        .catch(function(){ setS({busy:false,loginErr:'Es ist ein Fehler aufgetreten. Bitte später erneut.'}); });
+    },
+    resendCode:function(){ ACT.reqCode(); },
+    loginBack:function(){ setS({loginStep:'request',otp:'',loginErr:''}); },
+    verifyCode:function(){
+      var code=(S.otp||val('li_code')||'').replace(/\D/g,'');
+      if(code.length<4){ setS({loginErr:'Bitte gib den Code aus der E-Mail ein.'}); return; }
       var remember=!!S.remember;
       setQuiet({busy:true,loginErr:''});
-      fetch('/api/member/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:email,dob:dob,plz:plz,remember:remember})})
+      fetch('/api/member/login-verify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({challenge:S.challenge,code:code,remember:remember})})
         .then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j};});})
-        .then(function(x){ if(x.ok&&x.j.token){ TOKEN=x.j.token; if(remember){ localStorage.setItem('fi_member_token',TOKEN); localStorage.setItem('fi_remember','1'); sessionStorage.removeItem('fi_member_token'); } else { sessionStorage.setItem('fi_member_token',TOKEN); localStorage.removeItem('fi_member_token'); localStorage.removeItem('fi_remember'); } return loadMe().then(function(){ loadAppts(); S.busy=false; nav('home'); }); } S.busy=false; setS({loginErr: x.j.error==='rate_limited'?'Zu viele Versuche. Bitte später erneut.':'Daten nicht gefunden. Bitte E-Mail, Geburtsdatum und PLZ prüfen.'}); })
-        .catch(function(){ S.busy=false; setS({loginErr:'Es ist ein Fehler aufgetreten.'}); });
+        .then(function(x){ if(x.ok&&x.j.token){ TOKEN=x.j.token; if(remember){ localStorage.setItem('fi_member_token',TOKEN); localStorage.setItem('fi_remember','1'); sessionStorage.removeItem('fi_member_token'); } else { sessionStorage.setItem('fi_member_token',TOKEN); localStorage.removeItem('fi_member_token'); localStorage.removeItem('fi_remember'); } S.loginStep='request'; S.challenge=''; S.otp=''; return loadMe().then(function(){ loadAppts(); S.busy=false; nav('home'); }); } S.busy=false; setS({loginErr:(x.j&&x.j.message)||'Code falsch. Bitte erneut versuchen.'}); })
+        .catch(function(){ setS({busy:false,loginErr:'Es ist ein Fehler aufgetreten.'}); });
     },
     toggleRemember:function(){ S.remember=!S.remember; if(!S.remember) localStorage.removeItem('fi_remember'); setQuiet({}); },
     dpOpen:function(){ if(!S.dpOpen && S.dpSel){ S.dpYear=S.dpSel.getFullYear(); S.dpMonth=S.dpSel.getMonth(); } setS({dpOpen:!S.dpOpen}); },

@@ -63,7 +63,7 @@
 
   var TOKEN=sessionStorage.getItem('fi_member_token')||localStorage.getItem('fi_member_token')||null;
   var PROFILE=null;
-  var S={screen:TOKEN?'load':'login', email:'', dob:'', plz:'', remember:false, busy:false, err:'', copied:false};
+  var S={screen:TOKEN?'load':'login', email:'', dob:'', remember:false, busy:false, err:'', copied:false, loginStep:'request', challenge:'', otp:''};
 
   window.__set=function(f,v){ S[f]=v; };
 
@@ -94,16 +94,24 @@
     var e = S.err ? '<div class="err">'+svg('<path d="M12 9v4M12 17h.01"></path><circle cx="12" cy="12" r="9"></circle>',{c:'#b53a2c',w:2,s:18})+'<span>'+esc(S.err)+'</span></div>' : '';
     return '<div style="padding:8px 4px 16px"><div class="h1w">Freunde werben &amp; Prämie sichern</div><div style="font-size:14px;color:#bfd7dc;margin-top:4px;font-weight:500;line-height:1.45">Empfiehl das Fit-Inn Trier weiter: Für jede Mitgliedschaft, die über dich zustande kommt, trainierst du <b style="color:#fff">4 Wochen beitragsfrei</b> – dein:e Freund:in startet mit <b style="color:#fff">2 Wochen gratis</b>.</div></div>'+
     rewardCards()+
-    '<div class="card" style="margin-top:14px">'+
-      '<div style="font-size:16px;font-weight:800;margin-bottom:4px">Jetzt anmelden &amp; Code holen</div>'+
-      '<div style="font-size:13px;color:#6b7780;margin-bottom:16px;line-height:1.45">Melde dich kurz an, um deinen persönlichen Werbe-Code zu sehen.</div>'+
-      '<div style="margin-bottom:14px"><label class="lbl">E-Mail-Adresse</label><input id="l_email" type="email" inputmode="email" class="inp" placeholder="name@beispiel.de" value="'+esc(S.email)+'" oninput="window.__set(\'email\',this.value)"></div>'+
-      '<div style="margin-bottom:14px"><label class="lbl">Geburtsdatum</label><input id="l_dob" type="date" class="inp" value="'+esc(S.dob)+'" oninput="window.__set(\'dob\',this.value)"></div>'+
-      '<div><label class="lbl">Postleitzahl</label><input id="l_plz" type="text" inputmode="numeric" maxlength="5" class="inp" placeholder="54290" value="'+esc(S.plz)+'" oninput="window.__set(\'plz\',this.value)"></div>'+
-      '<label style="display:flex;align-items:center;gap:10px;margin-top:18px;cursor:pointer"><input id="l_rem" type="checkbox" '+(S.remember?'checked':'')+' style="width:18px;height:18px;accent-color:'+TEAL+'" onchange="window.__set(\'remember\',this.checked)"><span style="font-size:14px;color:#42454b;font-weight:600">Angemeldet bleiben</span></label>'+
-      '<button class="btn" id="l_btn" style="margin-top:18px" '+(S.busy?'disabled':'')+'>'+(S.busy?'Prüfe …':'Anmelden')+'</button>'+e+
-      '<div style="display:flex;align-items:center;gap:8px;margin-top:18px;padding:11px 13px;background:#f4f7f7;border-radius:11px">'+svg(IC_SHIELD,{w:1.9,s:17})+'<span style="font-size:12px;color:#6b7780;line-height:1.4">Deine Daten werden verschlüsselt übertragen und nur zur Identitätsprüfung genutzt.</span></div>'+
-    '</div>'+
+    (S.loginStep==='verify'
+      ? '<div class="card" style="margin-top:14px">'+
+          '<div style="font-size:16px;font-weight:800;margin-bottom:4px">Code eingeben</div>'+
+          '<div style="font-size:13px;color:#6b7780;margin-bottom:16px;line-height:1.45">Wir haben dir einen 6-stelligen Code an <b style="color:#15171B">'+esc(S.email)+'</b> geschickt (falls deine Angaben übereinstimmen).</div>'+
+          '<div><label class="lbl">Einmal-Code</label><input id="l_code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" class="inp" placeholder="• • • • • •" style="letter-spacing:8px;text-align:center;font-size:24px;font-weight:800" value="'+esc(S.otp)+'" oninput="window.__set(\'otp\',this.value)"></div>'+
+          '<label style="display:flex;align-items:center;gap:10px;margin-top:16px;cursor:pointer"><input type="checkbox" '+(S.remember?'checked':'')+' style="width:18px;height:18px;accent-color:'+TEAL+'" onchange="window.__set(\'remember\',this.checked)"><span style="font-size:14px;color:#42454b;font-weight:600">Angemeldet bleiben</span></label>'+
+          '<button class="btn" id="l_btn" style="margin-top:18px" '+(S.busy?'disabled':'')+'>'+(S.busy?'Prüfe …':'Anmelden')+'</button>'+e+
+          '<div style="display:flex;align-items:center;justify-content:space-between;margin-top:16px"><button id="l_back" style="background:none;border:none;color:'+TEAL+';font-weight:700;font-size:13px;cursor:pointer">‹ E-Mail ändern</button><button id="l_resend" style="background:none;border:none;color:'+TEAL+';font-weight:700;font-size:13px;cursor:pointer;text-decoration:underline">Code erneut senden</button></div>'+
+        '</div>'
+      : '<div class="card" style="margin-top:14px">'+
+          '<div style="font-size:16px;font-weight:800;margin-bottom:4px">Jetzt anmelden &amp; Code holen</div>'+
+          '<div style="font-size:13px;color:#6b7780;margin-bottom:16px;line-height:1.45">Wir schicken dir einen Einmal-Code per E-Mail – kein Passwort nötig.</div>'+
+          '<div style="margin-bottom:14px"><label class="lbl">E-Mail-Adresse</label><input id="l_email" type="email" inputmode="email" class="inp" placeholder="name@beispiel.de" value="'+esc(S.email)+'" oninput="window.__set(\'email\',this.value)"></div>'+
+          '<div><label class="lbl">Geburtsdatum</label><input id="l_dob" type="date" class="inp" value="'+esc(S.dob)+'" oninput="window.__set(\'dob\',this.value)"></div>'+
+          '<label style="display:flex;align-items:center;gap:10px;margin-top:18px;cursor:pointer"><input id="l_rem" type="checkbox" '+(S.remember?'checked':'')+' style="width:18px;height:18px;accent-color:'+TEAL+'" onchange="window.__set(\'remember\',this.checked)"><span style="font-size:14px;color:#42454b;font-weight:600">Angemeldet bleiben</span></label>'+
+          '<button class="btn" id="l_btn" style="margin-top:18px" '+(S.busy?'disabled':'')+'>'+(S.busy?'Code wird gesendet …':'Code anfordern')+'</button>'+e+
+          '<div style="display:flex;align-items:center;gap:8px;margin-top:18px;padding:11px 13px;background:#f4f7f7;border-radius:11px">'+svg(IC_SHIELD,{w:1.9,s:17})+'<span style="font-size:12px;color:#6b7780;line-height:1.4">Deine Daten werden verschlüsselt übertragen und nur zur Identitätsprüfung genutzt.</span></div>'+
+        '</div>')+
     stepsCard()+
     '<div style="text-align:center;margin-top:20px"><span style="color:#bfd7dc;font-size:13px">Noch kein Mitglied? </span><a href="/mitglied-werden" style="color:#fff;font-weight:700;font-size:13px;text-decoration:underline;text-underline-offset:3px">Jetzt online beitreten</a></div>';
   }
@@ -125,26 +133,36 @@
   function copyText(t){ if(navigator.clipboard&&navigator.clipboard.writeText) navigator.clipboard.writeText(t).catch(function(){}); }
   function refLink(){ var code=(PROFILE||{}).referralCode||''; return window.location.origin+'/mitglied-werden?ref='+encodeURIComponent(code); }
 
-  function doLogin(){
-    var email=(S.email||'').trim(), dob=S.dob, plz=(S.plz||'').trim();
-    if(!email||!dob||!plz){ setS({err:'Bitte E-Mail, Geburtsdatum und PLZ ausfüllen.'}); return; }
+  function reqCode(){
+    var email=(S.email||'').trim(), dob=S.dob;
+    if(!email||!dob){ setS({err:'Bitte E-Mail und Geburtsdatum ausfüllen.'}); return; }
     setS({busy:true,err:''});
-    fetch('/api/member/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:email,dob:dob,plz:plz,remember:S.remember})})
+    fetch('/api/member/login-request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:email,dob:dob})})
+      .then(function(r){return r.json().catch(function(){return {};});})
+      .then(function(j){ if(j&&j.challenge){ setS({busy:false,challenge:j.challenge,loginStep:'verify',otp:'',err:''}); } else { setS({busy:false,err:'Es ist ein Fehler aufgetreten. Bitte später erneut.'}); } })
+      .catch(function(){ setS({busy:false,err:'Es ist ein Fehler aufgetreten. Bitte später erneut.'}); });
+  }
+  function verifyCode(){
+    var code=(S.otp||'').replace(/\D/g,'');
+    if(code.length<4){ setS({err:'Bitte gib den Code aus der E-Mail ein.'}); return; }
+    setS({busy:true,err:''});
+    fetch('/api/member/login-verify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({challenge:S.challenge,code:code,remember:S.remember})})
       .then(function(r){return r.json().then(function(j){return {status:r.status,j:j};});})
       .then(function(o){
-        if(o.status===200 && o.j && o.j.token){ TOKEN=o.j.token; (S.remember?localStorage:sessionStorage).setItem('fi_member_token',TOKEN); S.busy=false; S.screen='load'; render(); loadMe(); }
-        else if(o.status===429){ setS({busy:false,err:'Zu viele Versuche. Bitte später erneut.'}); }
-        else { setS({busy:false,err:'Daten nicht gefunden. Bitte prüfe E-Mail, Geburtsdatum und PLZ.'}); }
+        if(o.status===200 && o.j && o.j.token){ TOKEN=o.j.token; (S.remember?localStorage:sessionStorage).setItem('fi_member_token',TOKEN); S.busy=false; S.loginStep='request'; S.challenge=''; S.otp=''; S.screen='load'; render(); loadMe(); }
+        else { setS({busy:false,err:(o.j&&o.j.message)||'Code falsch. Bitte erneut versuchen.'}); }
       }).catch(function(){ setS({busy:false,err:'Es ist ein Fehler aufgetreten. Bitte später erneut.'}); });
   }
   function loadMe(){
     api('/api/member/me').then(function(d){ PROFILE=d.profile||null; setS({screen:'referral'}); }).catch(function(){ /* 401 handled */ });
   }
-  function doLogout(){ TOKEN=null; sessionStorage.removeItem('fi_member_token'); localStorage.removeItem('fi_member_token'); PROFILE=null; setS({screen:'login',email:'',dob:'',plz:''}); }
+  function doLogout(){ TOKEN=null; sessionStorage.removeItem('fi_member_token'); localStorage.removeItem('fi_member_token'); PROFILE=null; setS({screen:'login',email:'',dob:'',otp:'',loginStep:'request',challenge:''}); }
 
   document.addEventListener('click',function(e){
     var el=e.target;
-    if(el.closest('#l_btn')){ e.preventDefault(); doLogin(); }
+    if(el.closest('#l_btn')){ e.preventDefault(); if(S.loginStep==='verify') verifyCode(); else reqCode(); }
+    else if(el.closest('#l_resend')){ e.preventDefault(); reqCode(); }
+    else if(el.closest('#l_back')){ e.preventDefault(); setS({loginStep:'request',otp:'',err:''}); }
     else if(el.closest('#logoutBtn')){ e.preventDefault(); doLogout(); }
     else if(el.closest('#b_copy')){ e.preventDefault(); copyText(refLink()); setS({copied:true}); setTimeout(function(){ S.copied=false; render(); },1800); }
     else if(el.closest('#b_share')){ e.preventDefault(); var code=(PROFILE||{}).referralCode||''; var txt='Trainier mit mir im Fit-Inn Trier! 💪 Werde Mitglied mit meinem Code '+code+': '+refLink(); if(navigator.share){ navigator.share({title:'Fit-Inn Trier',text:txt,url:refLink()}).catch(function(){}); } else { copyText(txt); setS({copied:true}); setTimeout(function(){ S.copied=false; render(); },1800); } }
