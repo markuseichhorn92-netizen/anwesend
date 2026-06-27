@@ -32,6 +32,7 @@ module.exports = async function handler(req, res) {
   if (!m) { res.statusCode = 404; return res.end(JSON.stringify({ error: 'not_found' })); }
 
   let subject, text, okMsg;
+  let cancelDbg = null;   // TEMP-Diagnose (PII-frei)
   if (body.action === 'offer_accepted') {
     var off = OFFERS[body.offer] || body.offer || '—';
     subject = '🎉 Retention: Gegenangebot angenommen – ' + who(m);
@@ -47,12 +48,28 @@ module.exports = async function handler(req, res) {
     var dateISO = body.date || (ct && ct.nextCancellationDateISO) || null;
     var useNext = !!(ct && ct.nextCancellationDateISO && (!body.date || body.date === ct.nextCancellationDateISO));
 
+    cancelDbg = {
+      contractFound: !!ct,
+      contractId: (ct && ct.contractId) ? 'ja' : 'nein',
+      cancelledAlready: !!(ct && ct.cancelled),
+      dateISO: dateISO || null,
+      hadToken: !!body.recaptchaToken,
+      tokenLen: body.recaptchaToken ? String(body.recaptchaToken).length : 0,
+      attemptedDirect: false,
+      path: 'fallback',
+    };
+
     // 1) Direkteintrag über die Connect API (wenn Vertrag + reCAPTCHA-Token da sind)
     if (ct && ct.contractId && body.recaptchaToken && dateISO) {
+      cancelDbg.attemptedDirect = true;
       var direct = null;
       try { direct = await C.submitCancellation({ member: m, contract: ct, reasonText: body.reason, dateISO: dateISO, useNextPossible: useNext, recaptchaToken: body.recaptchaToken }); }
       catch (e) { direct = { ok: false, error: String(e && e.message) }; }
+      cancelDbg.connectStatus = direct && direct.status;
+      cancelDbg.connectError = String((direct && (direct.body || direct.error)) || '').slice(0, 240);
+      cancelDbg.reasonId = direct && direct.reasonId;
       if (direct && direct.ok) {
+        cancelDbg.path = 'direct';
         var cd = direct.confirmedDate || dateISO;
         if (hasMail) {
           try {
@@ -64,7 +81,7 @@ module.exports = async function handler(req, res) {
           } catch (e) {}
         }
         res.statusCode = 200;
-        return res.end(JSON.stringify({ ok: true, direct: true, message: 'Deine Kündigung wurde verbindlich eingereicht' + (cd ? ' – zum ' + cd : '') + '. Du erhältst eine Bestätigung per E-Mail.' }));
+        return res.end(JSON.stringify({ ok: true, direct: true, message: 'Deine Kündigung wurde verbindlich eingereicht' + (cd ? ' – zum ' + cd : '') + '. Du erhältst eine Bestätigung per E-Mail.', _debug: cancelDbg }));
       }
       // sonst weiter zum E-Mail-Fallback (z. B. reCAPTCHA-Domain noch nicht freigeschaltet)
     }
@@ -90,8 +107,8 @@ module.exports = async function handler(req, res) {
     res.statusCode = 400; return res.end(JSON.stringify({ error: 'unknown_action' }));
   }
 
-  if (!hasMail) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'E-Mail-Versand noch nicht eingerichtet (RESEND_API_KEY fehlt).' })); }
+  if (!hasMail) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'E-Mail-Versand noch nicht eingerichtet (RESEND_API_KEY fehlt).', _debug: cancelDbg })); }
   const mail = await sendMail(subject, text);
   res.statusCode = 200;
-  return res.end(JSON.stringify({ ok: mail.ok, message: mail.ok ? okMsg : 'Übermittlung fehlgeschlagen – bitte später erneut.' }));
+  return res.end(JSON.stringify({ ok: mail.ok, direct: false, message: mail.ok ? okMsg : 'Übermittlung fehlgeschlagen – bitte später erneut.', _debug: cancelDbg }));
 };
