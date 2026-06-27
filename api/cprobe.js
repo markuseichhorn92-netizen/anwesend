@@ -16,10 +16,11 @@ module.exports = async function (req, res) {
     catch (e) { out[label] = { error: String(e && e.message) }; }
   }
 
-  await probe('reasons', 'GET', '/memberships/self-service/contract-cancelation-reasons');
-  await probe('cancelData0', 'GET', '/memberships/0/self-service/contract-data');
-  await probe('cancelEmpty0', 'POST', '/memberships/0/self-service/ordinary-contract-cancelation', {});
-  await probe('cancelBody0', 'POST', '/memberships/0/self-service/ordinary-contract-cancelation', { contractId: 0, cancellationDate: '2026-12-31', cancellationType: 'ORDINARY' });
+  var P = '/memberships/0/self-service/ordinary-contract-cancelation';
+  // Magicline-Feldnamen: "cancelation" mit EINEM L
+  await probe('full_v1', 'POST', P, { contractId: 0, cancelationReasonId: 1, cancelationDate: '2026-12-31' });
+  await probe('full_v2', 'POST', P, { contractId: 0, cancelationReasonId: 1, cancelationDate: '2026-12-31', cancelationType: 'ORDINARY', cancelationDateType: 'NEXT_POSSIBLE_CANCELATION_DATE' });
+  await probe('full_v3', 'POST', P, { contractId: 0, cancelationReasonId: 1, cancelationDate: '2026-12-31', additionalInformation: 'test', confirmationEmail: false });
 
   res.statusCode = 200; res.end(JSON.stringify(out, null, 2));
 };
