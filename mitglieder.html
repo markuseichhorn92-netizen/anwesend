@@ -118,7 +118,15 @@
   function todayStr(){ var d=new Date(); var p=function(n){return(n<10?'0':'')+n;}; return p(d.getDate())+'.'+p(d.getMonth()+1)+'.'+d.getFullYear(); }
   // Logo als dataURL vorladen (für PDF)
   var LOGO_DATAURL=null, LOGO_RATIO=3.6;
-  (function(){ try{ var img=new Image(); img.onload=function(){ try{ var c=document.createElement('canvas'); c.width=img.naturalWidth||320; c.height=img.naturalHeight||90; c.getContext('2d').drawImage(img,0,0); LOGO_DATAURL=c.toDataURL('image/png'); if(img.naturalHeight) LOGO_RATIO=img.naturalWidth/img.naturalHeight; }catch(e){} }; img.src='/assets/fitinn-logo-white.png'; }catch(e){} })();
+  (function(){ try{ var img=new Image(); img.onload=function(){ try{
+    var nw=img.naturalWidth||320, nh=img.naturalHeight||90;
+    // WICHTIG: herunterskalieren! Das Original ist 2917px breit – in voller
+    // Auflösung bläht jsPDF das PDF auf ~5–7 MB auf und der E-Mail-Upload
+    // überschreitet das Body-Limit (Versand schlägt fehl). 900px reichen für Druck.
+    var maxW=900, sc=Math.min(1,maxW/nw), cw=Math.round(nw*sc), ch=Math.round(nh*sc);
+    var c=document.createElement('canvas'); c.width=cw; c.height=ch; c.getContext('2d').drawImage(img,0,0,cw,ch);
+    LOGO_DATAURL=c.toDataURL('image/png'); LOGO_RATIO=nw/nh;
+  }catch(e){} }; img.src='/assets/fitinn-logo-white.png'; }catch(e){} })();
 
   function headers(){ return { 'Content-Type':'application/json', 'Authorization':'Bearer '+TOKEN }; }
   function api(path, opt){ opt=opt||{}; opt.headers=Object.assign(headers(), opt.headers||{}); opt.cache='no-store';
@@ -193,7 +201,7 @@
       '</div>') : '';
     var tiles=[
       ['data','Meine Daten','Adresse & Bankverbindung verwalten',IC.user],
-      ['contract','Vertrag & Kündigung','Vertrag einsehen, kündigen, zurücknehmen',IC.doc],
+      ['contract','Vertragsverwaltung','Vertrag, Pause & Kündigung verwalten',IC.doc],
       ['appt','Termine','Einführungstraining & Co. buchen',IC.cal],
       ['referral','Freunde werben','Code teilen & Prämie sichern',IC.gift],
       ['checkins','Check-in-Verlauf','Deine Besuche ansehen & herunterladen',IC.list],
@@ -554,6 +562,7 @@
   function emailPdf(){
     var d=buildPdfDoc(); if(!d){ setS({dlMsg2:'PDF-Bibliothek lädt noch – bitte kurz erneut.'}); return; }
     var b64=d.output('datauristring'); var ix=b64.indexOf('base64,'); if(ix>=0) b64=b64.slice(ix+7);
+    if(b64.length>6000000){ downloadPdf(); setS({dlMsg2:'Das PDF ist sehr groß – es wurde stattdessen heruntergeladen.'}); return; }
     setQuiet({emailing:true, dlMsg2:''});
     api('/api/member/checkin-pdf',{method:'POST',body:JSON.stringify({pdf:b64})})
       .then(function(r){ setS({emailing:false, dlMsg2:(r.message||(r.ok?'Gesendet.':'Versand fehlgeschlagen.'))}); })
