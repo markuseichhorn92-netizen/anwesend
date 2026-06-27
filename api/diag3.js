@@ -81,9 +81,19 @@ module.exports = async function handler(req, res) {
         const rr = await fetch('https://' + TENANT + '.open-api.magicline.com/v1' + p, { headers: { 'x-api-key': KEY, Accept: '*/*' } });
         const buf = await rr.arrayBuffer().catch(() => null);
         const ct = rr.headers.get('content-type');
-        let jsonKeys = null;
-        if (ct && ct.indexOf('json') >= 0 && buf) { try { jsonKeys = keys(JSON.parse(Buffer.from(buf).toString('utf8'))); } catch (e) {} }
+        let jsonKeys = null, followUrl = null;
+        if (ct && ct.indexOf('json') >= 0 && buf) {
+          try { const j = JSON.parse(Buffer.from(buf).toString('utf8')); jsonKeys = keys(j); if (j && j.url) followUrl = j.url; } catch (e) {}
+        }
         out.download[p] = { status: rr.status, contentType: ct, bytes: buf ? buf.byteLength : 0, jsonKeys: jsonKeys };
+        // Wenn detail eine url liefert: diese laden (echtes PDF?)
+        if (followUrl) {
+          try {
+            const fr = await fetch(followUrl);
+            const fb = await fr.arrayBuffer().catch(() => null);
+            out.download[p].followedUrl = { status: fr.status, contentType: fr.headers.get('content-type'), bytes: fb ? fb.byteLength : 0, urlHost: (function () { try { return new URL(followUrl).host; } catch (e) { return null; } })() };
+          } catch (e) { out.download[p].followedUrl = { error: e.message }; }
+        }
       } catch (e) { out.download[p] = { error: e.message }; }
     }
   }
