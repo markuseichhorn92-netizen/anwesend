@@ -60,12 +60,17 @@ module.exports = async function handler(req, res) {
 
   // ── Check-ins: mehrere Parameter-Varianten ──
   const today = new Date().toISOString().slice(0, 10);
+  const base = '/customers/' + eid + '/activities/checkins';
   const variants = [
-    ['none', '/customers/' + eid + '/activities/checkins'],
-    ['size200', '/customers/' + eid + '/activities/checkins?sliceSize=200'],
-    ['from2005', '/customers/' + eid + '/activities/checkins?fromDate=2005-01-01&sliceSize=200'],
-    ['from2005_to', '/customers/' + eid + '/activities/checkins?fromDate=2005-01-01&toDate=' + today + '&sliceSize=200'],
-    ['lastyear', '/customers/' + eid + '/activities/checkins?fromDate=2024-01-01&toDate=' + today + '&sliceSize=200'],
+    ['none', base],
+    ['offset0', base + '?offset=0'],
+    ['sliceSize20', base + '?sliceSize=20'],
+    ['size20', base + '?size=20'],
+    ['pageSize20', base + '?pageSize=20'],
+    ['limit20', base + '?limit=20'],
+    ['from2024', base + '?fromDate=2024-01-01'],
+    ['from2024to', base + '?fromDate=2024-01-01&toDate=' + today],
+    ['offsetSlice', base + '?offset=0&sliceSize=20'],
   ];
   out.checkins = {};
   for (const [name, q] of variants) {
@@ -75,12 +80,10 @@ module.exports = async function handler(req, res) {
         : (Array.isArray(r.json) ? r.json : []);
       out.checkins[name] = {
         status: r.status,
-        topKeys: keysOf(r.json),
         count: list.length,
         hasNext: r.json ? r.json.hasNext : undefined,
-        firstKeys: keysOf(list[0]),
-        firstDate: list[0] ? (list[0].checkInDateTime || list[0].checkinDateTime || list[0].date || null) : null,
-        bodyHead: !r.json ? String(r.text || '').slice(0, 160) : undefined,
+        offset: r.json ? r.json.offset : undefined,
+        err: r.json && r.json.errorMessage ? (r.json.errorMessage + ' | code=' + r.json.errorCode + ' | args=' + JSON.stringify(r.json.args || r.json.typedArgs || '')) : undefined,
       };
     } catch (e) { out.checkins[name] = { error: e.message }; }
   }
