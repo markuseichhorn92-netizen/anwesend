@@ -14,26 +14,20 @@ module.exports = async function handler(req, res) {
   const url = new URL(req.url, 'http://x');
   if (url.searchParams.get('k') !== 'fitinn-probe-2026') { res.statusCode = 403; return res.end('{}'); }
   const num = url.searchParams.get('num') || '';
+  const dob = url.searchParams.get('dob') || '';
   const out = {};
 
-  const variants = [
-    ['search_customerNumber', 'POST', '/customers/search', { customerNumber: num }],
-    ['search_number', 'POST', '/customers/search', { number: num }],
-    ['search_query', 'POST', '/customers/search', { query: num }],
-    ['search_numNoPrefix', 'POST', '/customers/search', { customerNumber: num.replace(/^M-/i, '') }],
-  ];
-  out.results = {};
-  for (const [name, method, path, body] of variants) {
-    try {
-      const r = await M.ml(method, path, body);
-      const arr = Array.isArray(r.json) ? r.json : null;
-      out.results[name] = {
-        status: r.status,
-        count: arr ? arr.length : null,
-        sample: arr ? arr.slice(0, 3).map(shape) : (r.json && r.json.errorMessage ? r.json.errorMessage.slice(0, 300) : null),
-      };
-    } catch (e) { out.results[name] = { error: e.message }; }
-  }
+  try {
+    const r = await M.ml('POST', '/customers/search', { dateOfBirth: dob });
+    const arr = Array.isArray(r.json) ? r.json : [];
+    const match = arr.find((c) => String(c.customerNumber || '') === num);
+    out.dobSearch = {
+      status: r.status,
+      count: arr.length,
+      matchFound: !!match,
+      match: shape(match),
+    };
+  } catch (e) { out.dobSearch = { error: e.message }; }
 
   res.statusCode = 200;
   return res.end(JSON.stringify(out, null, 2));
