@@ -493,32 +493,44 @@
       .catch(function(){});
   }
 
-  // Ruhigstes ~90-Min-Fenster im nächsten offenen Zeitfenster – passend zur Uhrzeit
+  // Ruhigstes ~90-Min-Fenster für den AKTUELL gewählten Verlaufs-Tag (state.selWd).
+  // Heute: ab jetzt (keine Vergangenheit). Andere Tage: ganzer Tag.
+  // Standard-Tag springt nach Ladenschluss ohnehin auf morgen (siehe syncDefaultDay),
+  // daher zeigt der heutige Tag nach Feierabend automatisch die Bestzeit für morgen.
   function computeReco(){
     if (!el.reco) return;
     var n = berlinNow();
-    var w = nextOpenWindow(n);
-    // Store-Wochentag: Sonntag=0…Samstag=6 (Widget nutzt Montag=0…Sonntag=6)
-    var storeWd = w ? (w.wd + 1) % 7 : -1;
-    if (!w || !state.week || !state.week[storeWd]) { el.reco.style.display = 'none'; return; }
+    if (state.selWd == null) state.selWd = defaultWd();
+    var wd = state.selWd, day = state.week && state.week[(wd + 1) % 7];
+    var ivs = iv[wd] || [];
+    if (!day || !ivs.length) { el.reco.style.display = 'none'; return; }   // keine Daten / geschlossen
+    var isToday = wd === n.di;
+
+    function search(floor){
+      var best = null;
+      for (var k = 0; k < ivs.length; k++) {
+        var lo = Math.max(ivs[k][0], floor), hi = ivs[k][1];
+        if (lo >= hi) continue;
+        var s0 = Math.floor(lo / 30), s1 = Math.ceil(hi / 30), found = false;
+        for (var s = s0; s + 3 <= s1; s++) {
+          var sum = 0, cnt = 0;
+          for (var j = 0; j < 3; j++) { var v = day[s + j]; if (v != null) { sum += v; cnt++; } }
+          if (cnt > 0) { found = true; var a = sum / cnt;
+            if (best === null || a < best.a) best = { a:a, start:Math.max(lo, s*30), end:Math.min(hi, (s+3)*30) }; }
+        }
+        if (!found && best === null) best = { a:Infinity, start:lo, end:Math.min(hi, lo + 90) };  // kurzes Restfenster
+      }
+      return best;
+    }
+
+    var best = search(isToday ? n.min : -1);
+    if (!best && isToday) best = search(-1);            // heute schon vorbei -> typische Bestzeit
+    if (!best) { el.reco.style.display = 'none'; return; }
     el.reco.style.display = '';
 
-    var day = state.week[storeWd];
-    var lo = w.ongoing ? Math.max(w.s, n.min) : w.s;   // keine Vergangenheit empfehlen
-    var hi = w.e;
-    var s0 = Math.floor(lo / 30), s1 = Math.ceil(hi / 30), best = null;
-    for (var s = s0; s + 3 <= s1; s++) {
-      var sum = 0, cnt = 0;
-      for (var j = 0; j < 3; j++) { var v = day[s + j]; if (v != null) { sum += v; cnt++; } }
-      if (cnt > 0) { var a = sum / cnt; if (best === null || a < best.a) best = { a: a, start: s * 30, end: (s + 3) * 30 }; }
-    }
-    if (!best) best = { start: lo, end: hi };           // kurzes Restfenster
-    var ws = Math.max(lo, best.start), we = Math.min(hi, best.end);
-
-    var when = w.off === 0 ? 'HEUTE' : (w.off === 1 ? 'MORGEN' : names[w.wd].toUpperCase());
-    el.bestEyebrow.textContent = 'BESTE ZEIT ' + when;
-    el.bestWindow.textContent = fmt(ws) + ' – ' + fmt(we) + ' Uhr';
-    var sh = Math.floor(ws / 60);
+    el.bestEyebrow.textContent = 'BESTE ZEIT ' + dayLabel(wd).toUpperCase();
+    el.bestWindow.textContent = fmt(best.start) + ' – ' + fmt(best.end) + ' Uhr';
+    var sh = Math.floor(best.start / 60);
     el.bestNote.textContent = sh < 11 ? 'morgens am leersten'
       : (sh < 14 ? 'um die Mittagszeit am ruhigsten'
       : (sh < 17 ? 'am Nachmittag am ruhigsten' : 'am Abend am ruhigsten'));
@@ -650,6 +662,7 @@
       el.trendBars.innerHTML = '<div class="trend-closed">An diesem Tag geschlossen</div>';
       if (el.trendAxis) el.trendAxis.innerHTML = '';
       el.trendCaption.textContent = '';
+      computeReco();
       return;
     }
     var isToday = state.selWd === n.di;
@@ -675,6 +688,7 @@
     if (el.trendAxis) el.trendAxis.innerHTML = buildAxis(state.selWd);
     trendWire();
     trendReset();
+    computeReco();   // Empfehlung folgt dem gewählten Tag
   }
 
   // Verlaufsbalken interaktiv (Tippen/Überfahren -> Caption zeigt Wert)
