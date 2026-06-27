@@ -2,13 +2,21 @@
 
 /**
  * POST /api/member/update   (Authorization: Bearer <token>)
- *   { type: "address", data: {...} }  oder  { type: "payment", data: {...} }
- * Schreibt über die Magicline Self-Service-Endpunkte. Greift erst, wenn die
- * Self-Service-Schreibrechte am Key freigeschaltet sind – bis dahin meldet
- * Magicline 403, was wir verständlich weiterreichen.
+ *   { type: "address"|"payment", data: {...} }
+ * Da direktes Schreiben in Magicline (noch) gesperrt ist (403), wird der
+ * Änderungswunsch als E-Mail mit "vorher → jetzt" an das Studio geschickt.
+ * Sobald der Self-Service-Schreibzugriff frei ist, kann hier direkt geschrieben
+ * werden (Code in lib/members.js liegt bereit).
  */
 
 const M = require('../../lib/members');
+const { sendMail, hasMail } = require('../../lib/mail');
+
+function who(m) {
+  return ((m.firstName || '') + ' ' + (m.lastName || '')).trim()
+    + (m.customerNumber ? ' (' + m.customerNumber + ')' : '')
+    + (m.email ? ' · ' + m.email : '');
+}
 
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json');
@@ -18,23 +26,38 @@ module.exports = async function handler(req, res) {
 
   const body = await M.readBody(req);
   const data = body.data || {};
-  let r;
-  try {
-    if (body.type === 'address') r = await M.writeAddress(sess.id, data);
-    else if (body.type === 'payment') r = await M.writePayment(sess.id, data);
-    else { res.statusCode = 400; return res.end(JSON.stringify({ error: 'unknown_type' })); }
-  } catch (err) {
-    console.error('[member/update]', err.message);
-    res.statusCode = 502; return res.end(JSON.stringify({ error: 'upstream_error' }));
+  const m = await M.getMember(sess.id);
+  if (!m) { res.statusCode = 404; return res.end(JSON.stringify({ error: 'not_found' })); }
+
+  let subject, lines = [];
+  if (body.type === 'address') {
+    [['Straße', 'street'], ['Nr.', 'houseNumber'], ['PLZ', 'zipCode'], ['Ort', 'city']].forEach(function (f) {
+      var alt = String(m[f[1]] || ''), neu = String(data[f[1]] || '');
+      if (alt !== neu) lines.push(f[0] + ': ' + (alt || '—') + '  →  ' + (neu || '—'));
+    });
+    if (!lines.length) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'Keine Änderung erkannt.' })); }
+    subject = 'Adressänderung gewünscht – ' + who(m);
+  } else if (body.type === 'payment') {
+    lines.push('Kontoinhaber: ' + (data.accountHolder || '—'));
+    lines.push('IBAN ALT:    ' + (M.maskIban(m.bankAccount && m.bankAccount.iban) || '—'));
+    lines.push('IBAN NEU:    ' + (String(data.iban || '').replace(/\s+/g, '') || '—'));
+    if (data.bankName) lines.push('Bank: ' + data.bankName);
+    if (data.bic) lines.push('BIC: ' + data.bic);
+    subject = 'IBAN-Änderung gewünscht – ' + who(m);
+  } else {
+    res.statusCode = 400; return res.end(JSON.stringify({ error: 'unknown_type' }));
   }
 
-  if (r.status >= 200 && r.status < 300) {
-    res.statusCode = 200; return res.end(JSON.stringify({ ok: true }));
-  }
-  if (r.status === 403) {
-    res.statusCode = 200;
-    return res.end(JSON.stringify({ ok: false, error: 'not_enabled', message: 'Änderungen sind noch nicht freigeschaltet (Self-Service-Schreibrecht im Magicline-Portal aktivieren).' }));
-  }
+  if (!hasMail) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'E-Mail-Versand noch nicht eingerichtet (RESEND_API_KEY fehlt).' })); }
+
+  const text = 'Änderungswunsch über den Mitgliederbereich\n\n'
+    + 'Mitglied: ' + who(m) + '\nKundennr.: ' + (m.customerNumber || '—') + '\n\n'
+    + lines.join('\n') + '\n\nBitte in Magicline eintragen.';
+  const mail = await sendMail(subject, text);
   res.statusCode = 200;
-  return res.end(JSON.stringify({ ok: false, error: 'rejected', status: r.status, message: (r.json && r.json.errorMessage) || 'Eingaben prüfen.' }));
+  return res.end(JSON.stringify({
+    ok: mail.ok,
+    message: mail.ok ? 'Dein Änderungswunsch wurde übermittelt – wir tragen ihn zeitnah ein.'
+                     : 'Konnte gerade nicht übermittelt werden. Bitte später erneut.',
+  }));
 };
