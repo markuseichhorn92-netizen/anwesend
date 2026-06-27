@@ -8,6 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
 <script src="https://www.google.com/recaptcha/api.js?onload=onRcLoad&render=explicit" async defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" defer></script>
 <style>
   *{box-sizing:border-box}
   html,body{margin:0;padding:0}
@@ -111,6 +112,11 @@
   function deTime(iso){ if(!iso) return ''; var d=new Date(iso); if(isNaN(d)) return ''; var p=function(n){return(n<10?'0':'')+n;}; return p(d.getHours())+':'+p(d.getMinutes()); }
   function monthName(d){ return ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'][d.getMonth()]+' '+d.getFullYear(); }
   function dur(a,b){ if(!a||!b) return ''; var ms=new Date(b)-new Date(a); if(isNaN(ms)||ms<=0) return ''; var min=Math.round(ms/60000); var h=Math.floor(min/60); var m=min%60; return h?(h+'h '+(m<10?'0':'')+m+'m'):(m+'m'); }
+  function deDateFull(iso){ if(!iso) return '—'; var s=String(iso).slice(0,10); var m=s.match(/^(\d{4})-(\d{2})-(\d{2})$/); if(m) return m[3]+'.'+m[2]+'.'+m[1]; var d=new Date(iso); if(isNaN(d)) return s; var p=function(n){return(n<10?'0':'')+n;}; return p(d.getDate())+'.'+p(d.getMonth()+1)+'.'+d.getFullYear(); }
+  function todayStr(){ var d=new Date(); var p=function(n){return(n<10?'0':'')+n;}; return p(d.getDate())+'.'+p(d.getMonth()+1)+'.'+d.getFullYear(); }
+  // Logo als dataURL vorladen (für PDF)
+  var LOGO_DATAURL=null, LOGO_RATIO=3.6;
+  (function(){ try{ var img=new Image(); img.onload=function(){ try{ var c=document.createElement('canvas'); c.width=img.naturalWidth||320; c.height=img.naturalHeight||90; c.getContext('2d').drawImage(img,0,0); LOGO_DATAURL=c.toDataURL('image/png'); if(img.naturalHeight) LOGO_RATIO=img.naturalWidth/img.naturalHeight; }catch(e){} }; img.src='/assets/fitinn-logo-white.png'; }catch(e){} })();
 
   function headers(){ return { 'Content-Type':'application/json', 'Authorization':'Bearer '+TOKEN }; }
   function api(path, opt){ opt=opt||{}; opt.headers=Object.assign(headers(), opt.headers||{}); opt.cache='no-store';
@@ -316,7 +322,7 @@
       var list=DATA.appts;
       if(list===null) body='<div class="card" style="text-align:center;color:#8a929a;font-size:14px">Lade Termine …</div>';
       else if(!list.length) body='<div class="card" style="text-align:center"><div style="font-size:15px;font-weight:700">Noch keine Termine</div><div style="font-size:13px;color:#6b7780;margin-top:4px">Buche dir oben deinen ersten Termin.</div></div>';
-      else body='<div style="display:flex;flex-direction:column;gap:12px">'+list.map(function(a){ return '<div style="background:#fff;border-radius:18px;box-shadow:0 12px 34px rgba(4,33,40,.18);padding:18px 20px;display:flex;align-items:center;gap:14px"><div style="width:48px;height:48px;border-radius:13px;background:#eef3f4;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+svg(IC.cal,{w:1.9})+'</div><div style="flex:1"><div style="font-size:15px;font-weight:800">'+esc(a.title)+'</div><div style="font-size:13px;color:#6b7780;margin-top:2px">'+deDate(a.start)+' · '+deTime(a.start)+' Uhr</div></div></div>'; }).join('')+'</div>';
+      else body='<div style="display:flex;flex-direction:column;gap:12px">'+list.map(function(a){ return '<div style="background:#fff;border-radius:18px;box-shadow:0 12px 34px rgba(4,33,40,.18);padding:18px 20px;display:flex;align-items:center;gap:14px"><div style="width:48px;height:48px;border-radius:13px;background:#eef3f4;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+svg(IC.cal,{w:1.9})+'</div><div style="flex:1"><div style="font-size:15px;font-weight:800">'+esc(a.title)+'</div><div style="font-size:13px;color:#6b7780;margin-top:2px">'+deDate(a.start)+' · '+deTime(a.start)+' Uhr</div></div>'+(a.id?'<button data-act="cancelAppt" data-arg="'+esc(a.id)+'" style="padding:9px 14px;border:1.5px solid #e3b8b1;border-radius:10px;background:#fff;color:#b53a2c;font-weight:700;font-size:13px;cursor:pointer">Stornieren</button>':'')+'</div>'; }).join('')+'</div>';
     }
     return backHd('Termine')+tabs+body;
   }
@@ -349,7 +355,7 @@
     var groups={}, order=[];
     list.slice().sort(function(a,b){return new Date(b.in)-new Date(a.in);}).forEach(function(c){ var d=new Date(c.in); var key=monthName(d); if(!groups[key]){groups[key]=[];order.push(key);} groups[key].push(c); });
     var stats='<div style="display:flex;gap:12px;margin-bottom:14px"><div style="flex:1;background:#fff;border-radius:18px;box-shadow:0 12px 34px rgba(4,33,40,.18);padding:18px 16px"><div style="font-size:30px;font-weight:900;color:'+TEAL+'">'+thisMonth+'</div><div style="font-size:12px;color:#6b7780;font-weight:600;margin-top:2px">Besuche diesen Monat</div></div><div style="flex:1;background:#fff;border-radius:18px;box-shadow:0 12px 34px rgba(4,33,40,.18);padding:18px 16px"><div style="font-size:30px;font-weight:900;color:'+TEAL+'">'+avgL+'</div><div style="font-size:12px;color:#6b7780;font-weight:600;margin-top:2px">Ø Dauer</div></div></div>';
-    var dl='<button class="btn2" data-act="download" style="display:flex;align-items:center;justify-content:center;gap:9px;margin-bottom:8px">'+svg(IC.dl,{w:2,s:18})+'Verlauf herunterladen (CSV)</button>'+(S.dlMsg?'<div style="font-size:13px;color:#1d7a3e;font-weight:600;text-align:center;margin-bottom:10px">Download gestartet …</div>':'');
+    var dl='<button class="btn2" data-act="download" style="display:flex;align-items:center;justify-content:center;gap:9px;margin-bottom:8px">'+svg(IC.dl,{w:2,s:18})+'Anwesenheitsbestätigung als PDF</button>'+(S.dlMsg?'<div style="font-size:13px;color:#1d7a3e;font-weight:600;text-align:center;margin-bottom:10px">Download gestartet …</div>':'');
     var months=order.map(function(key){ return '<div><div style="font-size:13px;font-weight:700;color:#bfd7dc;text-transform:uppercase;letter-spacing:.5px;margin:0 2px 10px">'+esc(key)+'</div><div style="background:#fff;border-radius:18px;box-shadow:0 12px 34px rgba(4,33,40,.18);overflow:hidden">'+
       groups[key].map(function(v){return '<div style="display:flex;align-items:center;gap:13px;padding:14px 18px;border-bottom:1px solid #f0f3f4"><div style="width:9px;height:9px;border-radius:50%;background:'+TEAL+';flex-shrink:0"></div><div style="flex:1;font-size:15px;font-weight:700">'+deDate(v.in)+'</div><div style="font-size:13px;color:#6b7780">'+deTime(v.in)+' Uhr</div><div style="font-size:13px;font-weight:700;color:'+TEAL+';min-width:54px;text-align:right">'+(dur(v.in,v.out)||'')+'</div></div>';}).join('')+'</div></div>'; }).join('');
     return head+stats+dl+'<div style="display:flex;flex-direction:column;gap:18px;margin-top:8px">'+months+'</div>';
@@ -464,7 +470,9 @@
     copyRef:function(){ var code=(DATA.profile||{}).referralCode||''; var link=window.location.origin+'/mitglied-werden?ref='+encodeURIComponent(code); copyText(link); setS({copied:true}); setTimeout(function(){ S.copied=false; render(); },1800); },
     shareRef:function(){ var code=(DATA.profile||{}).referralCode||''; var link=window.location.origin+'/mitglied-werden?ref='+encodeURIComponent(code); var txt='Trainier mit mir im Fit-Inn Trier! 💪 Werde Mitglied mit meinem Code '+code+': '+link; if(navigator.share){ navigator.share({title:'Fit-Inn Trier',text:txt,url:link}).catch(function(){}); } else { copyText(txt); setS({copied:true}); setTimeout(function(){ S.copied=false; render(); },1800); } },
     // checkins
-    download:function(){ downloadCsv(); setS({dlMsg:true}); setTimeout(function(){ S.dlMsg=false; render(); },2400); },
+    download:function(){ downloadPdf(); setS({dlMsg:true}); setTimeout(function(){ S.dlMsg=false; render(); },2400); },
+    cancelAppt:function(a){ if(!a) return; var id=a;
+      api('/api/member/appointment-cancel',{method:'POST',body:JSON.stringify({bookingId:id})}).then(function(d){ DATA.appts=null; loadAppts(); }).catch(function(){}); },
     // help
     openArticle:function(a){ setS({helpView:'article',helpArticle:+a}); },
     helpList:function(){ setS({helpView:'list'}); },
@@ -478,6 +486,29 @@
   function downloadCsv(){ var list=DATA.checkins||[]; var rows=[['Datum','Uhrzeit','Dauer','Studio']].concat(list.map(function(c){return [c.in?c.in.slice(0,10):'',deTime(c.in),dur(c.in,c.out),c.studio||''];}));
     var csv=rows.map(function(r){return r.map(function(x){return '"'+String(x).replace(/"/g,'""')+'"';}).join(';');}).join('\n');
     var a=document.createElement('a'); a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv); a.download='checkin-verlauf.csv'; document.body.appendChild(a); a.click(); a.remove(); }
+  function logoTxt(doc,M){ doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(16); doc.text('FIT-INN TRIER',M,17); }
+  function downloadPdf(){
+    var ns=window.jspdf; if(!ns||!ns.jsPDF){ downloadCsv(); return; }
+    var p=DATA.profile||{}; var list=(DATA.checkins||[]).slice().sort(function(a,b){return new Date(b.in)-new Date(a.in);});
+    var doc=new ns.jsPDF({unit:'mm',format:'a4'}); var W=210, M=14;
+    doc.setFillColor(10,73,88); doc.rect(0,0,W,26,'F');
+    var lh=11, lw=lh*(LOGO_RATIO||3.6); if(lw>72) lw=72;
+    if(LOGO_DATAURL){ try{ doc.addImage(LOGO_DATAURL,'PNG',M,8,lw,lh); }catch(e){ logoTxt(doc,M); } } else logoTxt(doc,M);
+    doc.setTextColor(21,23,27); doc.setFont('helvetica','bold'); doc.setFontSize(18); doc.text('Anwesenheitsbestätigung',M,40);
+    var y=50; doc.setFontSize(11);
+    [['Name',p.lastName],['Vorname',p.firstName],['Mitgliedsnummer',p.customerNumber],['Geburtsdatum',deDateFull(p.dateOfBirth)]].forEach(function(r){ doc.setFont('helvetica','bold'); doc.setTextColor(60,66,72); doc.text(r[0]+':',M,y); doc.setFont('helvetica','normal'); doc.setTextColor(21,23,27); doc.text(String(r[1]||'—'),62,y); y+=7; });
+    y+=3; doc.setFont('helvetica','normal'); doc.setTextColor(60,66,72); doc.setFontSize(10.5);
+    var intro='Hiermit bestätigt das Fit-Inn Trier, dass das oben genannte Mitglied an den folgenden Terminen im Studio anwesend war:';
+    var lines=doc.splitTextToSize(intro,W-2*M); doc.text(lines,M,y); y+=lines.length*5.5+6;
+    doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.setTextColor(21,23,27);
+    doc.text('Datum',M,y); doc.text('Uhrzeit',74,y); doc.text('Dauer',104,y); doc.text('Studio',132,y);
+    y+=2; doc.setDrawColor(210); doc.line(M,y,W-M,y); y+=5;
+    doc.setFont('helvetica','normal'); doc.setTextColor(60,66,72);
+    if(!list.length){ doc.text('Keine Besuche vorhanden.',M,y); y+=6; }
+    list.forEach(function(c){ if(y>284){ doc.addPage(); y=20; } doc.text(deDateFull(c.in),M,y); doc.text(deTime(c.in)+' Uhr',74,y); doc.text(dur(c.in,c.out)||'-',104,y); doc.text(String(c.studio||'').slice(0,28),132,y); y+=6; });
+    y+=8; if(y>290){ doc.addPage(); y=20; } doc.setFontSize(8.5); doc.setTextColor(150); doc.text('Ausgestellt am '+todayStr()+'  ·  Fit-Inn Trier  ·  Auf Hirtenberg 8  ·  54296 Trier  ·  '+list.length+' Besuche',M,Math.min(y,293));
+    doc.save('anwesenheitsbestaetigung.pdf');
+  }
 
   document.addEventListener('click',function(e){
     var el=e.target.closest('[data-act]'); if(!el) return;
