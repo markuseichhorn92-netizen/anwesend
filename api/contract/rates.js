@@ -17,7 +17,10 @@ module.exports = async function handler(req, res) {
       name: b.name,
       subDescription: b.subDescription || '',
       footnote: b.footnote || '',
-      allowedPaymentChoices: b.allowedPaymentChoices || ['DIRECT_DEBIT'],
+      allowedPaymentChoices: (function () {
+        var pc = (b.allowedPaymentChoices || ['DIRECT_DEBIT']).filter(function (p) { return p !== 'CREDIT_CARD'; });
+        return pc.length ? pc : ['DIRECT_DEBIT'];
+      })(),
       terms: (b.terms || []).map((t) => ({
         id: t.id,
         price: t.price,
