@@ -30,7 +30,7 @@ module.exports = async function handler(req, res) {
       out.results[name] = {
         status: r.status,
         count: arr ? arr.length : null,
-        sample: arr ? arr.slice(0, 3).map(shape) : (r.json && r.json.errorMessage ? r.json.errorMessage.slice(0, 60) : null),
+        sample: arr ? arr.slice(0, 3).map(shape) : (r.json && r.json.errorMessage ? r.json.errorMessage.slice(0, 300) : null),
       };
     } catch (e) { out.results[name] = { error: e.message }; }
   }
