@@ -44,7 +44,11 @@ module.exports = async function handler(req, res) {
     const r = await C.createContract(b);
     if (r.ok) {
       res.statusCode = 200;
-      return res.end(JSON.stringify({ ok: true, message: 'Willkommen im Fit-Inn Trier! Dein Vertrag ist abgeschlossen – du erhältst alle Unterlagen per E-Mail.' }));
+      return res.end(JSON.stringify({
+        ok: true,
+        customerNumber: r.json && r.json.customerNumber || null,
+        message: 'Willkommen im Fit-Inn Trier! Dein Vertrag ist abgeschlossen – du erhältst alle Unterlagen per E-Mail.',
+      }));
     }
     res.statusCode = 200;
     return res.end(JSON.stringify({
