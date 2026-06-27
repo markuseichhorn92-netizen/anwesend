@@ -14,17 +14,21 @@ module.exports = async function handler(req, res) {
   if (!sess) { res.statusCode = 401; return res.end(JSON.stringify({ error: 'unauthorized' })); }
   const eid = encodeURIComponent(sess.id);
   try {
+    // Wichtig: KEIN fromDate/toDate – ein zu großer Zeitraum liefert 400
+    // ("time period too long"). Stattdessen über offset paginieren.
+    // sliceSize max. < 100 (50 ist sicher), sonst 400 ("value too large").
+    const SLICE = 50;
     const all = [];
-    let offset = null;
-    for (let page = 0; page < 80; page++) {        // Sicherheits-Cap (80*200 = 16.000)
-      let q = '/customers/' + eid + '/activities/checkins?fromDate=2005-01-01&sliceSize=200';
-      if (offset) q += '&offset=' + encodeURIComponent(offset);
+    let offset = 0;
+    for (let page = 0; page < 200; page++) {        // Sicherheits-Cap (200*50 = 10.000)
+      const q = '/customers/' + eid + '/activities/checkins?sliceSize=' + SLICE + '&offset=' + offset;
       const r = await M.ml('GET', q);
       if (r.status !== 200 || !r.json) break;
       const list = Array.isArray(r.json.result) ? r.json.result : [];
       for (const c of list) all.push(c);
-      if (!r.json.hasNext || !r.json.offset || list.length === 0) break;
-      offset = r.json.offset;
+      if (!r.json.hasNext || list.length === 0) break;
+      const next = parseInt(r.json.offset, 10);
+      offset = Number.isFinite(next) && next > offset ? next : offset + SLICE;
     }
     const checkins = all.map((c) => ({
       in: c.checkInDateTime || null,

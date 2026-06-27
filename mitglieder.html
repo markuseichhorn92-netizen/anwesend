@@ -476,7 +476,12 @@
     download:function(){ downloadPdf(); setS({dlMsg:true}); setTimeout(function(){ S.dlMsg=false; render(); },2400); },
     emailPdf:function(){ emailPdf(); },
     cancelAppt:function(a){ if(!a) return; var id=a;
-      api('/api/member/appointment-cancel',{method:'POST',body:JSON.stringify({bookingId:id})}).then(function(d){ DATA.appts=null; loadAppts(); }).catch(function(){}); },
+      // Sofort aus der Liste entfernen (optimistisch), danach frisch laden
+      if(Array.isArray(DATA.appts)) DATA.appts=DATA.appts.filter(function(x){return String(x.id)!==String(id);});
+      setQuiet({});
+      api('/api/member/appointment-cancel',{method:'POST',body:JSON.stringify({bookingId:id})})
+        .then(function(d){ DATA.appts=null; loadAppts(); })
+        .catch(function(){ DATA.appts=null; loadAppts(); }); },
     // help
     openArticle:function(a){ setS({helpView:'article',helpArticle:+a}); },
     helpList:function(){ setS({helpView:'list'}); },
