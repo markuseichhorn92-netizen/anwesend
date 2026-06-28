@@ -16,6 +16,8 @@
   input:focus,select:focus{outline:none;border-color:#0a4958 !important;box-shadow:0 0 0 3px rgba(10,73,88,.12) !important}
   a{-webkit-tap-highlight-color:transparent}
   @keyframes fiUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+  @keyframes fiPulse{0%{box-shadow:0 0 0 0 rgba(10,73,88,.30)}70%{box-shadow:0 0 0 10px rgba(10,73,88,0)}100%{box-shadow:0 0 0 0 rgba(10,73,88,0)}}
+  .nav .next.ready,.submit.ready{animation:fiPulse 1.3s ease-out 2}
 
   .topbar{background:#0a4958}
   .topbar .in{max-width:760px;margin:0 auto;padding:18px 24px;display:flex;align-items:center;justify-content:space-between}
@@ -55,7 +57,9 @@
   .info{margin-top:16px;display:flex;gap:11px;background:#fff8ef;border:1px solid #f6e2cb;border-radius:13px;padding:14px 16px}
   .info span{font-size:13px;font-weight:600;color:#8a6a3f;line-height:1.5}
 
-  .days{margin-top:20px;display:flex;gap:10px;overflow-x:auto;padding-bottom:4px;-webkit-overflow-scrolling:touch}
+  .days{margin-top:20px;display:flex;gap:10px;overflow-x:auto;padding-bottom:4px;-webkit-overflow-scrolling:touch;scrollbar-width:none;-ms-overflow-style:none}
+  .days::-webkit-scrollbar{display:none}
+  @media(min-width:721px){.days{flex-wrap:wrap;overflow-x:visible}}
   .day{flex:0 0 auto;min-width:78px;padding:14px 10px;border-radius:14px;border:1.5px solid #dce3e4;background:#fff;cursor:pointer;text-align:center}
   .day.sel{border-color:#0a4958;background:#0a4958}
   .day .dow{font-size:12px;font-weight:700;color:#8a8178;text-transform:uppercase;letter-spacing:.4px}
@@ -275,16 +279,23 @@
     return '<div class="card">'+eb+'<div class="q">Zusammenfassung</div><div class="summary">'+rows+'</div>'+
       '<label class="consent"><input type="checkbox" data-chk="consent"'+(S.consent?' checked':'')+' /><span>Ich habe die <a href="https://www.fit-inn-trier.de/datenschutz-fit-inn-trier" target="_blank" rel="noopener">Datenschutzerklärung</a> gelesen und stimme der Verarbeitung meiner Daten zur Terminbuchung zu.</span></label>'+
       '<label class="consent" style="margin-top:12px"><input type="checkbox" data-chk="marketing"'+(S.marketing?' checked':'')+' /><span>Ich möchte Infos zu Angeboten & Kursen per E-Mail erhalten (optional).</span></label>'+
-      '<button type="button" class="submit" id="submitBtn"'+(S.busy?' disabled':'')+'>'+(S.busy?'Wird gebucht …':'Probetraining verbindlich buchen')+'</button>'+
+      '<button type="button" class="submit'+(S.consent&&!S.busy?' ready':'')+'" id="submitBtn"'+((!S.consent||S.busy)?' disabled':'')+'>'+(S.busy?'Wird gebucht …':'Probetraining verbindlich buchen')+'</button>'+
       '<div class="msg'+(S.err?' err':'')+'" id="msg">'+esc(S.err)+'</div></div>';
   }
 
   function navBar(){
     if(S.step>=TOTAL) return '';
     var back=S.step>1?'<button type="button" class="back" id="backBtn">Zurück</button>':'';
-    var dis=stepValid(S.step)?'':' disabled';
-    return '<div class="nav">'+back+'<button type="button" class="next" id="nextBtn"'+dis+'>Weiter</button></div>';
+    var ok=stepValid(S.step);
+    return '<div class="nav">'+back+'<button type="button" class="next'+(ok?' ready':'')+'" id="nextBtn"'+(ok?'':' disabled')+'>Weiter</button></div>';
   }
+
+  // Schritt-Übergang (auch für Auto-Weiter bei Einzelauswahl)
+  var advTimer=null;
+  function goNext(){ if(advTimer){ clearTimeout(advTimer); advTimer=null; }
+    if(stepValid(S.step)&&S.step<TOTAL){ S.step++; S.err='';
+    if(S.step===4){ var wt=(S.trainer===0); if(loadedTrainer!==wt) loadSlots(wt); }
+    render(); window.scrollTo(0,0); } }
 
   function xsell(){
     var bonus=REF?' und sichere dir deinen Bonus von 2 Wochen gratis':'';
@@ -308,20 +319,23 @@
     var el=e.target.closest?e.target.closest('[data-opt],[data-day],[data-slot],#nextBtn,#backBtn,#submitBtn'):null;
     if(!el) return;
     if(el.hasAttribute('data-opt')){ var i=+el.getAttribute('data-opt');
-      if(S.step===1)S.goal=i; else if(S.step===2)S.friend=i; else if(S.step===3)S.trainer=i; render(); return; }
+      if(S.step===1)S.goal=i; else if(S.step===2)S.friend=i; else if(S.step===3)S.trainer=i; render();
+      // Einzelauswahl: kurz die Auswahl zeigen, dann automatisch weiter
+      if(S.step<=3){ if(advTimer)clearTimeout(advTimer); advTimer=setTimeout(goNext,280); }
+      return; }
     if(el.hasAttribute('data-day')){ S.dayKey=el.getAttribute('data-day'); S.slotISO=null; render(); return; }
-    if(el.hasAttribute('data-slot')){ S.slotISO=el.getAttribute('data-slot'); render(); return; }
-    if(el.id==='nextBtn'){ if(stepValid(S.step)&&S.step<TOTAL){ S.step++; S.err='';
-      if(S.step===4){ var wt=(S.trainer===0); if(loadedTrainer!==wt) loadSlots(wt); }
-      render(); window.scrollTo(0,0); } return; }
-    if(el.id==='backBtn'){ if(S.step>1){ S.step--; S.err=''; render(); window.scrollTo(0,0); } return; }
+    if(el.hasAttribute('data-slot')){ S.slotISO=el.getAttribute('data-slot'); render();
+      // Termin gewählt -> automatisch weiter zu den Daten
+      if(advTimer)clearTimeout(advTimer); advTimer=setTimeout(goNext,300); return; }
+    if(el.id==='nextBtn'){ goNext(); return; }
+    if(el.id==='backBtn'){ if(advTimer){clearTimeout(advTimer);advTimer=null;} if(S.step>1){ S.step--; S.err=''; render(); window.scrollTo(0,0); } return; }
     if(el.id==='submitBtn'){ submit(); return; }
   });
-  document.addEventListener('input',function(e){ var el=e.target; if(el.hasAttribute&&el.hasAttribute('data-f')){ F[el.getAttribute('data-f')]=el.value;
-    var nb=$('nextBtn'); if(nb) nb.disabled=!stepValid(S.step); } });
+  function syncNext(){ var nb=$('nextBtn'); if(nb){ var ok=stepValid(S.step); nb.disabled=!ok; nb.classList.toggle('ready',ok); } }
+  document.addEventListener('input',function(e){ var el=e.target; if(el.hasAttribute&&el.hasAttribute('data-f')){ F[el.getAttribute('data-f')]=el.value; syncNext(); } });
   document.addEventListener('change',function(e){ var el=e.target;
-    if(el.hasAttribute&&el.hasAttribute('data-f')){ F[el.getAttribute('data-f')]=el.value; }
-    if(el.hasAttribute&&el.hasAttribute('data-chk')){ S[el.getAttribute('data-chk')]=el.checked; var sb=$('submitBtn'); if(sb)sb.disabled=!S.consent||S.busy; } });
+    if(el.hasAttribute&&el.hasAttribute('data-f')){ F[el.getAttribute('data-f')]=el.value; syncNext(); }
+    if(el.hasAttribute&&el.hasAttribute('data-chk')){ S[el.getAttribute('data-chk')]=el.checked; var sb=$('submitBtn'); if(sb){ var ok=S.consent&&!S.busy; sb.disabled=!ok; sb.classList.toggle('ready',ok); } } });
 
   function submit(){
     if(!stepValid(7)){ S.err='Bitte stimme der Datenschutzerklärung zu.'; render(); return; }
@@ -341,6 +355,19 @@
         else { S.err=res.message||'Buchung fehlgeschlagen – bitte einen anderen Termin wählen.'; render(); }
       }).catch(function(){ S.busy=false; S.err='Es ist ein Fehler aufgetreten. Bitte später erneut.'; render(); });
   }
+
+  // Eingeloggtes Mitglied? Formular mit den Magicline-Daten vorausfüllen.
+  (function prefill(){
+    var tok=localStorage.getItem('fi_member_token')||sessionStorage.getItem('fi_member_token')||null;
+    if(!tok) return;
+    fetch('/api/member/me',{headers:{Authorization:'Bearer '+tok},cache:'no-store'}).then(function(r){return r.ok?r.json():null;}).then(function(d){
+      if(!d||!d.profile) return; var p=d.profile;
+      var set=function(k,v){ if(v&&!(F[k]||'').trim()) F[k]=v; };
+      set('firstname',p.firstName); set('lastname',p.lastName); set('email',p.email); set('phone',p.phonePrivate);
+      set('dateOfBirth',p.dateOfBirth); set('street',p.street); set('houseNumber',p.houseNumber); set('zip',p.zipCode); set('city',p.city);
+      render();
+    }).catch(function(){});
+  })();
 
   render();
 })();

@@ -16,6 +16,8 @@
   input:focus,select:focus{outline:none;border-color:#0a4958 !important;box-shadow:0 0 0 3px rgba(10,73,88,.12) !important}
   a{-webkit-tap-highlight-color:transparent}
   @keyframes fiUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+  @keyframes fiPulse{0%{box-shadow:0 0 0 0 rgba(10,73,88,.30)}70%{box-shadow:0 0 0 10px rgba(10,73,88,0)}100%{box-shadow:0 0 0 0 rgba(10,73,88,0)}}
+  .nav .next.ready,.submit.ready{animation:fiPulse 1.3s ease-out 2}
 
   .topbar{background:#0a4958}
   .topbar .in{max-width:760px;margin:0 auto;padding:18px 24px;display:flex;align-items:center;justify-content:space-between}
@@ -41,7 +43,9 @@
   .q{margin-top:6px;font-size:22px;font-weight:900;letter-spacing:-.5px;color:#15171B}
   .sub{margin:8px 0 0;font-size:14px;font-weight:500;color:#6b7780;line-height:1.55}
 
-  .ratepick{display:flex;gap:9px;overflow-x:auto;padding-bottom:4px;margin:18px 0 2px;-webkit-overflow-scrolling:touch}
+  .ratepick{display:flex;gap:9px;overflow-x:auto;padding-bottom:4px;margin:18px 0 2px;-webkit-overflow-scrolling:touch;scrollbar-width:none;-ms-overflow-style:none}
+  .ratepick::-webkit-scrollbar{display:none}
+  @media(min-width:721px){.ratepick{flex-wrap:wrap;overflow-x:visible}}
   .ratepill{flex:0 0 auto;padding:11px 16px;border-radius:11px;border:1.5px solid #dce3e4;background:#fff;color:#15171B;font-size:14px;font-weight:700;cursor:pointer;white-space:nowrap}
   .ratepill.sel{border-color:#0a4958;background:#0a4958;color:#fff}
 
@@ -276,7 +280,7 @@
     return '<div class="card"><div class="eyebrow">Schritt 5</div><div class="q">Zusammenfassung & Abschluss</div>'+
       price+
       '<div class="consents">'+tbs+sepa+mkt+'</div>'+
-      '<button type="button" class="submit" data-finish'+(stepValid(5)?'':' disabled')+'>'+(BUSY?'Wird abgeschlossen …':'Zahlungspflichtig Mitglied werden')+'</button>'+
+      '<button type="button" class="submit'+(stepValid(5)&&!BUSY?' ready':'')+'" data-finish'+(stepValid(5)?'':' disabled')+'>'+(BUSY?'Wird abgeschlossen …':'Zahlungspflichtig Mitglied werden')+'</button>'+
       '<p class="fineprint">Mit Klick schließt du einen kostenpflichtigen Vertrag ab.</p>'+
       '<div class="msg'+(ERR?' err':'')+'" id="msg">'+esc(ERR)+'</div>'+
       '</div>';
@@ -284,7 +288,8 @@
 
   function navBar(){
     var back=STEP>1?'<button type="button" class="back" data-back>Zurück</button>':'';
-    var next=STEP<5?'<button type="button" class="next" data-next'+(stepValid(STEP)?'':' disabled')+'>Weiter</button>':'';
+    var nok=stepValid(STEP);
+    var next=STEP<5?'<button type="button" class="next'+(nok?' ready':'')+'" data-next'+(nok?'':' disabled')+'>Weiter</button>':'';
     if(!back&&!next) return '';
     return '<div class="nav">'+back+next+'</div>';
   }
@@ -315,8 +320,8 @@
   function setStep(n){ STEP=n; ERR=''; render(); window.scrollTo(0,0); }
 
   function refreshButtons(){
-    var nx=document.querySelector('[data-next]'); if(nx) nx.disabled=!stepValid(STEP);
-    var fin=document.querySelector('[data-finish]'); if(fin) fin.disabled=!stepValid(5)||BUSY;
+    var nx=document.querySelector('[data-next]'); if(nx){ var ok=stepValid(STEP); nx.disabled=!ok; nx.classList.toggle('ready',ok); }
+    var fin=document.querySelector('[data-finish]'); if(fin){ var fok=stepValid(5)&&!BUSY; fin.disabled=!fok; fin.classList.toggle('ready',fok); }
   }
 
   // ---- Events ----
@@ -370,6 +375,21 @@
 
   // ---- Tarife laden ----
   fetch('/api/contract/rates',{cache:'no-store'}).then(function(r){return r.json();}).then(function(d){ RATES=(d.rates||[]); var best=RATES.filter(function(b){return /basic/i.test(b.name);})[0]; SEL=best||RATES[0]||null; render(); }).catch(function(){ render(); });
+
+  // Eingeloggtes Mitglied? Formular mit den Magicline-Daten vorausfüllen (IBAN bleibt leer).
+  (function prefill(){
+    var tok=localStorage.getItem('fi_member_token')||sessionStorage.getItem('fi_member_token')||null;
+    if(!tok) return;
+    fetch('/api/member/me',{headers:{Authorization:'Bearer '+tok},cache:'no-store'}).then(function(r){return r.ok?r.json():null;}).then(function(d){
+      if(!d||!d.profile) return; var p=d.profile;
+      var set=function(k,v){ if(v&&!(F[k]||'').trim()) F[k]=v; };
+      set('firstname',p.firstName); set('lastname',p.lastName); set('email',p.email); set('phone',p.phonePrivate);
+      set('dateOfBirth',p.dateOfBirth); set('street',p.street); set('houseNumber',p.houseNumber); set('zipCode',p.zipCode); set('city',p.city);
+      if(!(F.accountHolder||'').trim() && (p.firstName||p.lastName)) F.accountHolder=((p.firstName||'')+' '+(p.lastName||'')).trim();
+      render();
+    }).catch(function(){});
+  })();
+
   render();
 })();
 </script>
