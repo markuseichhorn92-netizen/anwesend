@@ -26,6 +26,10 @@
   .lbl{font-size:13px;font-weight:600;color:#42454b;margin-bottom:6px;display:block}
   .inp{width:100%;padding:13px 14px;border:1.5px solid #d6dee0;border-radius:11px;font-size:15px;color:#15171B;outline:none;background:#fff}
   .inp:focus{border-color:#0a4958;box-shadow:0 0 0 3px rgba(10,73,88,.12)}
+  /* Native Datumsauswahl: groß & antippbar, 16px verhindert iOS-Zoom */
+  input.inp[type="date"]{min-height:50px;font-size:16px;-webkit-appearance:none;appearance:none}
+  input.inp[type="date"]::-webkit-date-and-time-value{text-align:left;margin:0}
+  input.inp[type="date"]::-webkit-calendar-picker-indicator{opacity:.5;cursor:pointer;padding-left:6px}
   .btn{width:100%;padding:15px;border:none;border-radius:13px;background:#0a4958;color:#fff;font-weight:700;font-size:15px;cursor:pointer}
   .btn:hover{background:#0c5566}.btn:disabled{background:#9fb9bf;cursor:not-allowed}
   .btn2{width:100%;padding:14px;border:none;border-radius:13px;background:#eef3f4;color:#0a4958;font-weight:700;font-size:15px;cursor:pointer}
@@ -169,10 +173,9 @@
     ciRange:'all', ciFrom:'', ciTo:'',
     liEmail:'', liNum:'', remember:(localStorage.getItem('fi_remember')==='1'),
     loginStep:'request', challenge:'', otp:'',
-    dpOpen:false, dpYear:1995, dpMonth:0, dpSel:null,
+    liDob:'',
     loginErr:'' };
-  window.__setLi=function(f,v){ if(f==='email')S.liEmail=v; else if(f==='code')S.otp=v; else if(f==='num')S.liNum=v; };
-  window.__dpYear=function(v){ S.dpYear=+v; render(); };
+  window.__setLi=function(f,v){ if(f==='email')S.liEmail=v; else if(f==='code')S.otp=v; else if(f==='num')S.liNum=v; else if(f==='dob')S.liDob=v; };
   window.__ciDate=function(which,v){ if(which==='from')S.ciFrom=v; else S.ciTo=v; render(); };
   window.__pauseNote=function(v){ S.pauseReasonText=v; };
   window.__pauseFrom=function(v){ S.pauseFrom=v; render(); };
@@ -223,26 +226,7 @@
     return fetch(path,opt).then(function(r){ if(r.status===401){ logout(); throw new Error('unauthorized'); } return r.json(); }); }
 
   function logout(){ TOKEN=null; sessionStorage.removeItem('fi_member_token'); localStorage.removeItem('fi_member_token'); DATA={profile:null,contract:null,checkins:null,appts:null}; S.screen='login'; S.loginStep='request'; S.challenge=''; S.otp=''; render(); }
-  // ---- modern date picker ----
   function pad2(n){ return (n<10?'0':'')+n; }
-  var MN=['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
-  function dpCal(){
-    var y=S.dpYear, m=S.dpMonth;
-    var off=(new Date(y,m,1).getDay()+6)%7, dim=new Date(y,m+1,0).getDate();
-    var heads=['Mo','Di','Mi','Do','Fr','Sa','So'].map(function(d){return '<div style="text-align:center;font-size:11px;font-weight:700;color:#8a929a;padding-bottom:4px">'+d+'</div>';}).join('');
-    var btns=[];
-    for(var i=0;i<42;i++){ var dn=i-off+1, inM=dn>=1&&dn<=dim;
-      var sel=S.dpSel&&inM&&S.dpSel.getFullYear()===y&&S.dpSel.getMonth()===m&&S.dpSel.getDate()===dn;
-      btns.push('<button '+(inM?('data-act="dpPick" data-arg="'+dn+'"'):'')+' style="height:34px;border:none;border-radius:9px;background:'+(sel?TEAL:'transparent')+';color:'+(sel?'#fff':(inM?'#15171B':'transparent'))+';font-weight:'+(sel?'800':'600')+';font-size:13px;cursor:'+(inM?'pointer':'default')+'">'+(inM?dn:'')+'</button>'); }
-    var weeks='';for(var w=0;w<6;w++){ weeks+='<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-bottom:3px">'+btns.slice(w*7,w*7+7).join('')+'</div>'; }
-    var yrs='';for(var yy=2012;yy>=1930;yy--){ yrs+='<option value="'+yy+'"'+(yy===y?' selected':'')+'>'+yy+'</option>'; }
-    var navBtn=function(act,ch){ return '<button data-act="'+act+'" style="width:34px;height:34px;border-radius:9px;border:none;background:#eef3f4;color:'+TEAL+';font-size:18px;font-weight:800;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center">'+ch+'</button>'; };
-    return '<div data-act="dpClose" style="position:fixed;inset:0;z-index:40"></div>'+
-      '<div style="position:absolute;top:calc(100% + 8px);left:0;right:0;z-index:50;background:#fff;border-radius:16px;box-shadow:0 18px 50px rgba(4,33,40,.30);border:1px solid #eef1f2;padding:14px">'+
-      '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">'+navBtn('dpPrev','‹')+'<div style="flex:1;text-align:center;font-size:15px;font-weight:800">'+MN[m]+'</div>'+
-      '<select onchange="window.__dpYear(this.value)" style="padding:8px 6px;border:1.5px solid #d6dee0;border-radius:9px;font-size:14px;font-weight:700;color:'+TEAL+';background:#fff;outline:none;cursor:pointer">'+yrs+'</select>'+navBtn('dpNext','›')+'</div>'+
-      '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-bottom:4px">'+heads+'</div>'+weeks+'</div>';
-  }
   $('logoutBtn').addEventListener('click', logout);
   $('brandLogo').addEventListener('click', function(){ if(TOKEN) nav('home'); });
 
@@ -288,9 +272,8 @@
   function backHd(title, target){ return '<div class="hd"><button class="back" data-act="nav" data-arg="'+(target||'home')+'">'+svg(IC.back,{c:'#fff',w:2,s:20})+'</button><div class="h1w">'+esc(title)+'</div></div>'; }
 
   function dpField(){
-    return '<div style="position:relative"><label class="lbl">Geburtsdatum</label>'+
-      '<div data-act="dpOpen" style="display:flex;align-items:center;justify-content:space-between;width:100%;padding:14px 15px;border:1.5px solid '+(S.dpOpen?TEAL:'#d6dee0')+';border-radius:12px;font-size:15px;cursor:pointer;background:#fff"><span style="color:'+(S.dpSel?'#15171B':'#a9b1b6')+';font-weight:500">'+(S.dpSel?(pad2(S.dpSel.getDate())+'.'+pad2(S.dpSel.getMonth()+1)+'.'+S.dpSel.getFullYear()):'TT.MM.JJJJ')+'</span>'+svg('<rect x="3" y="4" width="18" height="18" rx="3"></rect><path d="M16 2v4M8 2v4M3 10h18"></path>',{c:'#6b7780',w:1.9,s:19})+'</div>'+
-      (S.dpOpen?dpCal():'')+'</div>';
+    return '<div><label class="lbl">Geburtsdatum</label>'+
+      '<input id="li_dob" type="date" class="inp" max="'+isoToday()+'" min="1920-01-01" value="'+esc(S.liDob||'')+'" oninput="window.__setLi(\'dob\',this.value)"></div>';
   }
   function scrLogin(){
     var e = S.loginErr ? '<div class="err" style="margin-top:14px">'+svg(IC.warn,{c:'#b53a2c',w:2,s:17})+'<span>'+esc(S.loginErr)+'</span></div>' : '';
@@ -744,7 +727,7 @@
     planEditCancel:function(){ setQuiet({planEdit:false}); },
     reqCode:function(){
       var email=(S.liEmail||'').trim();
-      var dob = S.dpSel ? (S.dpSel.getFullYear()+'-'+pad2(S.dpSel.getMonth()+1)+'-'+pad2(S.dpSel.getDate())) : '';
+      var dob = S.liDob || '';
       if(!email||!dob){ setS({loginErr:'Bitte E-Mail und Geburtsdatum ausfüllen.'}); return; }
       setQuiet({busy:true,loginErr:''});
       fetch('/api/member/login-request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:email,dob:dob})})
@@ -758,7 +741,7 @@
     loginBack2:function(){ setS({loginStep:'request',loginErr:''}); },
     loginNumber:function(){
       var num=(S.liNum||'').trim();
-      var dob = S.dpSel ? (S.dpSel.getFullYear()+'-'+pad2(S.dpSel.getMonth()+1)+'-'+pad2(S.dpSel.getDate())) : '';
+      var dob = S.liDob || '';
       if(!num||!dob){ setS({loginErr:'Bitte Mitgliedsnummer und Geburtsdatum ausfüllen.'}); return; }
       var remember=!!S.remember;
       setQuiet({busy:true,loginErr:''});
@@ -781,11 +764,6 @@
         .catch(function(){ setS({busy:false,loginErr:'Es ist ein Fehler aufgetreten.'}); });
     },
     toggleRemember:function(){ S.remember=!S.remember; if(!S.remember) localStorage.removeItem('fi_remember'); setQuiet({}); },
-    dpOpen:function(){ if(!S.dpOpen && S.dpSel){ S.dpYear=S.dpSel.getFullYear(); S.dpMonth=S.dpSel.getMonth(); } setS({dpOpen:!S.dpOpen}); },
-    dpClose:function(){ setS({dpOpen:false}); },
-    dpPrev:function(){ var m=S.dpMonth-1,y=S.dpYear; if(m<0){m=11;y--;} setS({dpMonth:m,dpYear:y}); },
-    dpNext:function(){ var m=S.dpMonth+1,y=S.dpYear; if(m>11){m=0;y++;} setS({dpMonth:m,dpYear:y}); },
-    dpPick:function(a){ setS({dpSel:new Date(S.dpYear,S.dpMonth,+a),dpOpen:false}); },
     saveAddr:function(){ var data={street:val('d_street'),houseNumber:val('d_house'),zipCode:val('d_zip'),city:val('d_city'),validFrom:val('d_addr_from')};
       api('/api/member/update',{method:'POST',body:JSON.stringify({type:'address',data:data})}).then(function(d){ setS({msg:d.message||(d.ok?'Übermittelt.':'Keine Änderung erkannt.')}); }).catch(function(){}); },
     saveIban:function(){ var iban=val('d_iban'); if(!iban){ setS({msg:'Bitte neue IBAN eingeben.'}); return; }
