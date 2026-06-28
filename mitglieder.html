@@ -149,7 +149,9 @@
     warn:'<path d="M12 9v4M12 17h.01"></path><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"></path>',
     share:'<circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"></path>',
     dl:'<path d="M12 3v12M7 10l5 5 5-5M5 21h14"></path>',
-    search:'<circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4.3-4.3"></path>'
+    search:'<circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4.3-4.3"></path>',
+    mail:'<rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="M3 7l9 6 9-6"></path>',
+    spark:'<path d="M12 3l1.8 4.9L18.7 9.7l-4.9 1.8L12 16.4l-1.8-4.9L5.3 9.7l4.9-1.8L12 3z"></path><path d="M19 14l.7 1.9 1.9.7-1.9.7-.7 1.9-.7-1.9-1.9-.7 1.9-.7z"></path>'
   };
 
   // ---- reCAPTCHA (für direkte Kündigung über die Connect API) ----
@@ -162,7 +164,7 @@
   var TOKEN = localStorage.getItem('fi_member_token') || sessionStorage.getItem('fi_member_token') || null;
   var DATA = { profile:null, contract:null, checkins:null, appts:null, plan:null, membershipActive:true };
   // Erlaubte Screens für ehemalige Mitglieder (alles andere wird gesperrt)
-  var FORMER_OK = ['home','checkins','help'];
+  var FORMER_OK = ['home','checkins','help','contact'];
   function isFormer(){ return DATA.membershipActive===false; }
   var S = { screen: TOKEN?'home':'login',
     msg:'', // generic success on data screen
@@ -171,6 +173,7 @@
     pauseStep:0, pauseReason:'', pauseReasonText:'', pauseFrom:'', pausePhoto:'', pausePhotoName:'', pauseDone:false,
     ccBusy:false, ccMsg:'',
     apptTab:'book', bookType:'', apptMsg:'',
+    contactStep:'ask', contactQ:'', contactAnswer:'', contactBusy:false, contactErr:'', contactMsg:'',
     helpView:'list', helpArticle:0, helpCat:'', helpQ:'',
     copied:false, dlMsg:false, dlMsg2:'', emailing:false,
     ciRange:'all', ciFrom:'', ciTo:'',
@@ -237,6 +240,7 @@
     if(isFormer() && FORMER_OK.indexOf(s)<0) s='home';   // Ehemalige: gesperrte Screens -> Übersicht
     S.screen=s;
     if(s==='help') S.helpView='list';
+    if(s==='contact'){ S.contactStep='ask'; S.contactQ=''; S.contactAnswer=''; S.contactErr=''; S.contactMsg=''; S.contactBusy=false; }
     if(s==='contract'){ S.cancelStep=0; S.pauseStep=0; S.pauseDone=false; S.offerDone=''; }
     if(s==='checkins'&&!DATA.checkins) loadCheckins();
     if(s==='appt'&&!DATA.appts) loadAppts();
@@ -416,7 +420,8 @@
       ['appt','Termine','Einführungstraining & Co. buchen','#43BE6B,#1F9A4E','rgba(31,154,78,.42)','<rect x="3" y="4" width="18" height="18" rx="3"></rect><path d="M16 2v4M8 2v4M3 10h18M8 15h.01M12 15h.01M16 15h.01"></path>'],
       ['referral','Freunde werben','Code teilen & Prämie sichern','#F6A964,#E07C3C','rgba(224,124,60,.45)','<rect x="3" y="8" width="18" height="13" rx="2"></rect><path d="M3 12h18M12 8v13M12 8C12 8 10 2.5 7.6 4.2 5.9 5.4 8.4 8 12 8zM12 8c0 0 2-5.5 4.4-3.8C18.1 5.4 15.6 8 12 8z"></path>'],
       ['checkins','Check-in-Verlauf','Deine Besuche ansehen & herunterladen','#8E7BF0,#5B47C9','rgba(91,71,201,.45)','<path d="M3 6h13M3 12h13M3 18h9"></path><path d="M17.5 15l2 2 3.2-3.2"></path>'],
-      ['help','Hilfe','Antworten & Anleitungen','#7C8A99,#566372','rgba(86,99,114,.40)','<circle cx="12" cy="12" r="9"></circle><path d="M9.5 9.5a2.5 2.5 0 1 1 3.4 2.3c-.8.3-1.4 1-1.4 1.9v.3"></path><path d="M12 17h.01"></path>']
+      ['help','Hilfe','Antworten & Anleitungen','#7C8A99,#566372','rgba(86,99,114,.40)','<circle cx="12" cy="12" r="9"></circle><path d="M9.5 9.5a2.5 2.5 0 1 1 3.4 2.3c-.8.3-1.4 1-1.4 1.9v.3"></path><path d="M12 17h.01"></path>'],
+      ['contact','Kontakt','Frage stellen & uns schreiben','#5FA8C0,#347E97','rgba(52,126,151,.42)','<rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="M3 7l9 6 9-6"></path>']
     ].map(function(t){ return '<button class="tile" data-act="nav" data-arg="'+t[0]+'"><div class="chip" style="background:linear-gradient(150deg,'+t[3]+');box-shadow:0 10px 22px -6px '+t[4]+',inset 0 1px 1px rgba(255,255,255,.55)"><span class="gloss"></span>'+svg(t[5],{c:'#fff',w:1.85,s:24})+'</div><div style="position:relative;font-size:15px;font-weight:800;margin-top:14px;letter-spacing:-.2px;color:#211E1B">'+t[1]+'</div><div style="position:relative;font-size:12px;color:#8a8178;margin-top:3px;line-height:1.35">'+t[2]+'</div></button>'; }).join('');
     return ''+
       '<div style="padding:6px 4px 16px"><div style="font-size:28px;font-weight:900;color:#fff;letter-spacing:-.6px">'+greetLine(name)+'</div>'+
@@ -629,6 +634,47 @@
     steps.map(function(r){return '<div style="display:flex;gap:14px;align-items:flex-start"><div style="width:30px;height:30px;border-radius:50%;background:'+TEAL+';color:#fff;font-weight:800;font-size:14px;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+r[0]+'</div><div><div style="font-size:15px;font-weight:700">'+r[1]+'</div><div style="font-size:13px;color:#6b7780;line-height:1.4;margin-top:2px">'+r[2]+'</div></div></div>';}).join('')+'</div></div>';
   }
 
+  function scrKontakt(){
+    var p=DATA.profile||{}; var head=backHd('Kontakt'); var step=S.contactStep||'ask';
+    var errBox=S.contactErr?'<div class="err" style="margin-top:12px">'+svg(IC.warn,{c:'#b53a2c',w:2,s:17})+'<span>'+esc(S.contactErr)+'</span></div>':'';
+
+    if(step==='sent'){
+      return head+'<div class="card" style="padding:32px 24px;text-align:center"><div style="width:64px;height:64px;border-radius:50%;background:#E7F6EC;display:flex;align-items:center;justify-content:center;margin:0 auto 16px">'+svg(IC.check,{c:'#1d7a3e',w:2.4,s:32})+'</div><div style="font-size:22px;font-weight:900">Nachricht gesendet!</div><div style="font-size:14px;color:#6b7780;margin-top:8px;line-height:1.55">'+esc(S.contactMsg||'Wir melden uns so schnell wie möglich persönlich bei dir.')+'</div><button class="btn" data-act="contactRestart" style="margin-top:22px">Neue Anfrage</button></div>';
+    }
+    if(step==='resolved'){
+      return head+'<div class="card" style="padding:32px 24px;text-align:center"><div style="font-size:42px;line-height:1">🎉</div><div style="font-size:22px;font-weight:900;margin-top:8px">Super, freut uns!</div><div style="font-size:14px;color:#6b7780;margin-top:8px;line-height:1.55">Schön, dass wir dir weiterhelfen konnten. Hast du noch eine andere Frage?</div><button class="btn" data-act="contactRestart" style="margin-top:20px">Neue Frage stellen</button><button class="btn2" data-act="nav" data-arg="home" style="margin-top:10px">Zur Übersicht</button></div>';
+    }
+
+    if(step==='ask'){
+      return head+
+        '<div class="card"><div style="font-size:18px;font-weight:900">Wie können wir dir helfen?</div>'+
+        '<div style="font-size:14px;color:#6b7780;margin-top:6px;line-height:1.5">Stell uns deine Frage – unser Assistent durchsucht unser Hilfe-Center und schlägt dir sofort eine Antwort vor. Passt sie nicht, leiten wir deine Nachricht direkt an unser Team weiter.</div>'+
+        '<div style="margin-top:16px"><label class="lbl">Deine Frage</label><textarea id="k_q" class="inp" rows="4" style="resize:vertical;min-height:96px" placeholder="z. B. Wie kann ich meine Mitgliedschaft pausieren?">'+esc(S.contactQ||'')+'</textarea></div>'+
+        errBox+
+        '<button class="btn" data-act="contactAsk" style="margin-top:16px;display:flex;align-items:center;justify-content:center;gap:8px">'+(S.contactBusy?'':svg(IC.spark,{c:'#fff',w:2,s:18}))+(S.contactBusy?'Suche Antwort …':'Antwort finden')+'</button>'+
+        '<button class="btn2" data-act="contactSkip" style="margin-top:10px">Lieber direkt schreiben</button></div>';
+    }
+
+    if(step==='answer'){
+      var ans=(S.contactAnswer||'').split(/\n{2,}/).map(function(x){return '<div style="font-size:15px;color:#42454b;line-height:1.65;margin-top:10px">'+esc(x).replace(/\n/g,'<br>')+'</div>';}).join('');
+      return head+
+        '<div class="card"><div style="font-size:12px;font-weight:800;color:'+TEAL+';text-transform:uppercase;letter-spacing:.5px">Deine Frage</div><div style="font-size:15px;font-weight:700;margin-top:5px;line-height:1.4">'+esc(S.contactQ)+'</div></div>'+
+        '<div class="card" style="margin-top:14px"><div style="display:flex;align-items:center;gap:9px"><div style="width:34px;height:34px;border-radius:10px;background:#eef3f4;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+svg(IC.spark,{c:TEAL,w:1.8,s:19})+'</div><div style="font-size:16px;font-weight:800">Vorgeschlagene Antwort</div></div>'+ans+'<div style="font-size:11px;color:#a4adb3;margin-top:14px">Automatisch aus unserem Hilfe-Center erstellt.</div></div>'+
+        '<div class="card" style="margin-top:14px;text-align:center"><div style="font-size:15px;font-weight:800">Hat das deine Frage beantwortet?</div><div style="display:flex;gap:10px;margin-top:14px"><button class="btn2" data-act="contactNotHelpful" style="flex:1">Nein, Team fragen</button><button class="btn" data-act="contactHelpful" style="flex:1">Ja, danke!</button></div></div>';
+    }
+
+    // step === 'form'
+    var note = S.contactAnswer ? 'Schade, dass die Antwort nicht gepasst hat – schildere uns dein Anliegen, wir melden uns persönlich.' : 'Schreib uns dein Anliegen – wir melden uns persönlich bei dir.';
+    return head+'<div class="card"><div style="font-size:18px;font-weight:900">Nachricht an unser Team</div>'+
+      '<div style="font-size:14px;color:#6b7780;margin-top:6px;line-height:1.5">'+esc(note)+'</div>'+
+      '<div style="margin-top:14px"><label class="lbl">Name</label><input id="k_name" class="inp" value="'+esc(((p.firstName||'')+' '+(p.lastName||'')).trim())+'" readonly style="background:#f4f7f7;color:#6b7780"></div>'+
+      '<div style="margin-top:12px"><label class="lbl">E-Mail für die Antwort</label><input id="k_email" class="inp" value="'+esc(p.email||'')+'" placeholder="name@example.de"></div>'+
+      '<div style="margin-top:12px"><label class="lbl">Deine Nachricht</label><textarea id="k_msg" class="inp" rows="5" style="resize:vertical;min-height:120px" placeholder="Wobei können wir dir helfen?">'+esc(S.contactQ||'')+'</textarea></div>'+
+      errBox+
+      '<button class="btn" data-act="contactSend" style="margin-top:16px">'+(S.contactBusy?'Wird gesendet …':'Nachricht senden')+'</button>'+
+      '<button class="btn2" data-act="contactRestart" style="margin-top:10px">Abbrechen</button></div>';
+  }
+
   // ---- Check-in Zeitraum-Filter ----
   function fmtD(d){ var p=function(n){return(n<10?'0':'')+n;}; return p(d.getDate())+'.'+p(d.getMonth()+1)+'.'+d.getFullYear(); }
   function ciBounds(){
@@ -704,8 +750,8 @@
   // ---- render ----
   // ---- responsive chrome (Desktop-Sidebar + Topbar) ----
   var DASH_IC='<rect x="3" y="3" width="7" height="9" rx="1.5"></rect><rect x="14" y="3" width="7" height="5" rx="1.5"></rect><rect x="14" y="12" width="7" height="9" rx="1.5"></rect><rect x="3" y="16" width="7" height="5" rx="1.5"></rect>';
-  var NAVITEMS=[['home','Übersicht',DASH_IC],['data','Meine Daten',IC.user],['contract','Vertragsverwaltung',IC.doc],['appt','Termine',IC.cal],['referral','Freunde werben',IC.gift],['checkins','Check-ins',IC.list],['help','Hilfe',IC.help]];
-  var TITLES={home:'Übersicht',data:'Meine Daten',contract:'Vertragsverwaltung',appt:'Termine',referral:'Freunde werben',checkins:'Check-in-Verlauf',help:'Hilfe-Center'};
+  var NAVITEMS=[['home','Übersicht',DASH_IC],['data','Meine Daten',IC.user],['contract','Vertragsverwaltung',IC.doc],['appt','Termine',IC.cal],['referral','Freunde werben',IC.gift],['checkins','Check-ins',IC.list],['help','Hilfe',IC.help],['contact','Kontakt',IC.mail]];
+  var TITLES={home:'Übersicht',data:'Meine Daten',contract:'Vertragsverwaltung',appt:'Termine',referral:'Freunde werben',checkins:'Check-in-Verlauf',help:'Hilfe-Center',contact:'Kontakt'};
   function initials(p){ p=p||{}; var a=(p.firstName||'').trim(),b=(p.lastName||'').trim(); return (((a?a[0]:'')+(b?b[0]:'')).toUpperCase())||'FT'; }
   function renderChrome(){
     var inApp = !!(TOKEN && S.screen!=='login');
@@ -727,7 +773,7 @@
       tb.innerHTML='<div style="font-size:23px;font-weight:900;color:#fff;letter-spacing:-.4px">'+esc(TITLES[S.screen]||'')+'</div>'+badge;
     }
   }
-  var NARROW={contract:1,referral:1,appt:1};
+  var NARROW={contract:1,referral:1,appt:1,contact:1};
   function render(){
     $('logoutBtn').style.display = (TOKEN && S.screen!=='login') ? 'block' : 'none';
     // Ehemalige Mitglieder: gesperrte Screens immer auf die Übersicht (Rejoin) umleiten
@@ -742,6 +788,7 @@
       case 'referral': html=scrReferral(); break;
       case 'checkins': html=scrCheckins(); break;
       case 'help': html=scrHelp(); break;
+      case 'contact': html=scrKontakt(); break;
       default: html=scrHome();
     }
     var narrow = NARROW[S.screen] || (S.screen==='help' && S.helpView==='article');
@@ -887,7 +934,23 @@
     // help
     openArticle:function(a){ setS({helpView:'article',helpArticle:+a}); },
     helpList:function(){ setS({helpView:'list'}); },
-    helpCat:function(a){ S.helpCat=(S.helpCat===a?'':a); setS({}); }
+    helpCat:function(a){ S.helpCat=(S.helpCat===a?'':a); setS({}); },
+    // contact
+    contactAsk:function(){ var q=val('k_q'); if(!q||q.length<3){ setS({contactErr:'Bitte formuliere kurz deine Frage.'}); return; }
+      S.contactQ=q; setQuiet({contactBusy:true,contactErr:''});
+      api('/api/member/contact',{method:'POST',body:JSON.stringify({action:'ask',question:q})})
+        .then(function(d){ if(d&&d.ok&&d.answer){ setS({contactBusy:false,contactAnswer:d.answer,contactStep:'answer'}); } else { setS({contactBusy:false,contactAnswer:'',contactStep:'form',contactErr:''}); } })
+        .catch(function(){ setS({contactBusy:false,contactAnswer:'',contactStep:'form'}); }); },
+    contactSkip:function(){ var q=val('k_q'); if(q) S.contactQ=q; setS({contactStep:'form',contactErr:'',contactAnswer:''}); },
+    contactHelpful:function(){ setS({contactStep:'resolved'}); },
+    contactNotHelpful:function(){ setS({contactStep:'form',contactErr:''}); },
+    contactSend:function(){ var email=val('k_email'); var msg=val('k_msg');
+      if(!msg||msg.length<3){ setS({contactErr:'Bitte schreib uns kurz dein Anliegen.'}); return; }
+      setQuiet({contactBusy:true,contactErr:''});
+      api('/api/member/contact',{method:'POST',body:JSON.stringify({action:'send',question:S.contactQ||'',message:msg,email:email,answer:S.contactAnswer||''})})
+        .then(function(d){ if(d&&d.ok){ setS({contactBusy:false,contactStep:'sent',contactMsg:d.message||''}); } else { setS({contactBusy:false,contactErr:(d&&d.message)||'Übermittlung fehlgeschlagen – bitte später erneut.'}); } })
+        .catch(function(){ setS({contactBusy:false,contactErr:'Es ist ein Fehler aufgetreten. Bitte später erneut.'}); }); },
+    contactRestart:function(){ setS({contactStep:'ask',contactQ:'',contactAnswer:'',contactErr:'',contactMsg:'',contactBusy:false}); }
   };
   function startPause(){ S.cancelStep=0; S.pauseDone=false; S.pauseStep=1; S.pauseReason=''; S.pauseReasonText=''; S.pausePhoto=''; S.pausePhotoName=''; S.pauseFrom=isoToday(); if(!S.pauseWeeks)S.pauseWeeks=6; setS({}); }
   function doOffer(offer){ setQuiet({busy:true});

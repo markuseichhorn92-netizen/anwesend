@@ -40,6 +40,7 @@ async function sendMemberCancelMail(m, opts) {
       panel: panel,
       button: { label: 'Vertrag ansehen', href: BASE + '/mitglieder' },
       promo: true,
+      referral: { code: m.referralCode, firstName: m.firstName },
       footer: 'member',
     });
     await sendMailRaw({ to: m.email, subject: 'Deine Kündigung ist eingegangen – Fit-Inn Trier', text: cm.text, html: cm.html });

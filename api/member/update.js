@@ -82,6 +82,7 @@ module.exports = async function handler(req, res) {
           note: 'Das warst nicht du? Bitte kontaktiere uns umgehend unter info@fit-inn-trier.de.',
           button: { label: 'Meine Daten ansehen', href: BASE + '/mitglieder' },
           promo: true,
+          referral: { code: m.referralCode, firstName: m.firstName },
           footer: 'member',
         });
       } else {
@@ -98,6 +99,7 @@ module.exports = async function handler(req, res) {
           ],
           button: { label: 'Meine Daten ansehen', href: BASE + '/mitglieder' },
           promo: true,
+          referral: { code: m.referralCode, firstName: m.firstName },
           footer: 'member',
         });
       }

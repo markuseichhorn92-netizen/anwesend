@@ -49,6 +49,7 @@ module.exports = async function handler(req, res) {
         ],
         button: { label: 'Termine ansehen', href: BASE + '/mitglieder' },
         promo: true,
+        referral: { code: m.referralCode, firstName: m.firstName },
         footer: 'member',
       });
       await sendMailRaw({ to: m.email, subject: 'Dein Terminwunsch ist eingegangen – Fit-Inn Trier', text: cm.text, html: cm.html });

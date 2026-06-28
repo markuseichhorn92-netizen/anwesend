@@ -108,6 +108,7 @@ module.exports = async function handler(req, res) {
           : 'Bitte denke daran, den ärztlichen Nachweis nachzureichen. Deine Vertragslaufzeit verlängert sich um die Dauer der Pause.',
         button: { label: 'Vertrag verwalten', href: BASE + '/mitglieder' },
         promo: true,
+        referral: { code: m.referralCode, firstName: m.firstName },
         footer: 'member',
       });
       await sendMailRaw({ to: m.email, subject: 'Deine Beitragspause-Anfrage ist eingegangen – Fit-Inn Trier', text: cm.text, html: cm.html });
