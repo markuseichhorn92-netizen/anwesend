@@ -166,7 +166,7 @@
 
   var S={step:1,goal:null,friend:null,trainer:null,dayKey:null,slotISO:null,consent:false,marketing:false,busy:false,err:''};
   var F={gender:'',firstname:'',lastname:'',dateOfBirth:'',phone:'',email:'',street:'',houseNumber:'',zip:'',city:''};
-  var DAYS=null, SLOTERR=false;
+  var DAYS=null, SLOTERR=false, loadedTrainer=null;
 
   var fmtDow=new Intl.DateTimeFormat('de-DE',{weekday:'short',timeZone:'Europe/Berlin'});
   var fmtDay=new Intl.DateTimeFormat('de-DE',{day:'2-digit',timeZone:'Europe/Berlin'});
@@ -175,19 +175,25 @@
   var fmtLong=new Intl.DateTimeFormat('de-DE',{weekday:'long',day:'2-digit',month:'long',timeZone:'Europe/Berlin'});
   var fmtFull=new Intl.DateTimeFormat('de-DE',{weekday:'long',day:'2-digit',month:'long',hour:'2-digit',minute:'2-digit',timeZone:'Europe/Berlin'});
 
-  // ---- Slots laden + nach Tagen gruppieren ----
-  fetch('/api/trial/slots',{cache:'no-store'}).then(function(r){return r.json();}).then(function(d){
-    var slots=(d.slots||[]).filter(function(s){return s&&s.startDateTime;});
-    slots.sort(function(a,b){return new Date(a.startDateTime)-new Date(b.startDateTime);});
-    var map={},order=[];
-    slots.forEach(function(s){ var dt=new Date(s.startDateTime); var key=dt.toLocaleDateString('de-DE',{timeZone:'Europe/Berlin'});
-      if(!map[key]){ map[key]={key:key,dow:fmtDow.format(dt).replace('.',''),day:fmtDay.format(dt),mon:fmtMon.format(dt).replace('.',''),long:fmtLong.format(dt),slots:[]}; order.push(key); }
-      map[key].slots.push({iso:s.startDateTime,time:fmtTime.format(dt)});
-    });
-    DAYS=order.map(function(k){return map[k];});
-    if(DAYS.length){ S.dayKey=DAYS[0].key; }
+  // ---- Slots je nach Trainer-Wahl laden + nach Tagen gruppieren ----
+  // trainerReq=true -> mit Trainer (weniger Termine); false -> ohne Trainer (mehr Termine).
+  function loadSlots(trainerReq){
+    loadedTrainer=trainerReq; DAYS=null; SLOTERR=false; S.dayKey=null; S.slotISO=null;
     if(S.step===4) render();
-  }).catch(function(){ SLOTERR=true; if(S.step===4) render(); });
+    fetch('/api/trial/slots?trainer='+(trainerReq?'1':'0'),{cache:'no-store'}).then(function(r){return r.json();}).then(function(d){
+      if(loadedTrainer!==trainerReq) return; // zwischenzeitlich umgewählt -> veraltete Antwort verwerfen
+      var slots=(d.slots||[]).filter(function(s){return s&&s.startDateTime;});
+      slots.sort(function(a,b){return new Date(a.startDateTime)-new Date(b.startDateTime);});
+      var map={},order=[];
+      slots.forEach(function(s){ var dt=new Date(s.startDateTime); var key=dt.toLocaleDateString('de-DE',{timeZone:'Europe/Berlin'});
+        if(!map[key]){ map[key]={key:key,dow:fmtDow.format(dt).replace('.',''),day:fmtDay.format(dt),mon:fmtMon.format(dt).replace('.',''),long:fmtLong.format(dt),slots:[]}; order.push(key); }
+        map[key].slots.push({iso:s.startDateTime,time:fmtTime.format(dt)});
+      });
+      DAYS=order.map(function(k){return map[k];});
+      if(DAYS.length){ S.dayKey=DAYS[0].key; }
+      if(S.step===4) render();
+    }).catch(function(){ if(loadedTrainer!==trainerReq) return; SLOTERR=true; if(S.step===4) render(); });
+  }
 
   function selDay(){ if(!DAYS) return null; for(var i=0;i<DAYS.length;i++){ if(DAYS[i].key===S.dayKey) return DAYS[i]; } return DAYS[0]||null; }
   function selSlotLabel(){ if(!S.slotISO) return '–'; return fmtFull.format(new Date(S.slotISO))+' Uhr'; }
@@ -240,7 +246,10 @@
         var times=(d?d.slots:[]).map(function(s){ return '<button type="button" class="slot'+(s.iso===S.slotISO?' sel':'')+'" data-slot="'+esc(s.iso)+'">'+esc(s.time)+'</button>'; }).join('');
         body='<div class="days">'+chips+'</div><div class="freelbl">Freie Zeiten am '+esc(d?d.long:'')+'</div><div class="slots">'+times+'</div>';
       }
-      return '<div class="card">'+eb+'<div class="q">Wähle deinen Termin</div>'+body+'</div>';
+      var hint=(S.trainer===0)
+        ? 'Zeiten mit Trainerbegleitung — diese sind begrenzter verfügbar.'
+        : 'Ohne Trainer sind meist deutlich mehr Zeiten frei.';
+      return '<div class="card">'+eb+'<div class="q">Wähle deinen Termin</div><div class="sub">'+hint+'</div>'+body+'</div>';
     }
     if(S.step===5){
       return '<div class="card">'+eb+'<div class="q">Persönliche Angaben</div><div class="form">'+
@@ -302,7 +311,9 @@
       if(S.step===1)S.goal=i; else if(S.step===2)S.friend=i; else if(S.step===3)S.trainer=i; render(); return; }
     if(el.hasAttribute('data-day')){ S.dayKey=el.getAttribute('data-day'); S.slotISO=null; render(); return; }
     if(el.hasAttribute('data-slot')){ S.slotISO=el.getAttribute('data-slot'); render(); return; }
-    if(el.id==='nextBtn'){ if(stepValid(S.step)&&S.step<TOTAL){ S.step++; S.err=''; render(); window.scrollTo(0,0); } return; }
+    if(el.id==='nextBtn'){ if(stepValid(S.step)&&S.step<TOTAL){ S.step++; S.err='';
+      if(S.step===4){ var wt=(S.trainer===0); if(loadedTrainer!==wt) loadSlots(wt); }
+      render(); window.scrollTo(0,0); } return; }
     if(el.id==='backBtn'){ if(S.step>1){ S.step--; S.err=''; render(); window.scrollTo(0,0); } return; }
     if(el.id==='submitBtn'){ submit(); return; }
   });
@@ -319,7 +330,7 @@
     if(S.goal!==null) noteBits.push('Ziel: '+GOALS[S.goal][2]);
     if(S.friend!==null) noteBits.push(S.friend===0?'mit Freund':'allein');
     if(S.trainer!==null) noteBits.push(S.trainer===0?'mit Trainer':'ohne Trainer');
-    var data={ startDateTime:S.slotISO, referralCode:REF||undefined, marketing:S.marketing,
+    var data={ startDateTime:S.slotISO, referralCode:REF||undefined, marketing:S.marketing, trainerRequired:(S.trainer===0),
       gender:F.gender, firstname:F.firstname.trim(), lastname:F.lastname.trim(), email:F.email.trim(),
       phone:F.phone.trim(), dateOfBirth:F.dateOfBirth, street:F.street.trim(), houseNumber:F.houseNumber.trim(),
       zip:F.zip.trim(), city:F.city.trim(), note:'Probetraining über die Website'+(noteBits.length?(' — '+noteBits.join(' · ')):'') };

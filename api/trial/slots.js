@@ -1,8 +1,10 @@
 'use strict';
 
 /**
- * GET /api/trial/slots[?days=21]
+ * GET /api/trial/slots[?days=21][&trainer=1|0]
  * Liefert die freien Probetraining-Slots (über die öffentliche Connect API).
+ * trainer=1 -> mit Trainer (trainerRequired=true, weniger Slots),
+ * trainer=0/fehlt -> ohne Trainer (trainerRequired=false, mehr Slots).
  * Proxy, damit der Aufruf serverseitig läuft und einheitlich gecacht wird.
  */
 
@@ -15,13 +17,14 @@ module.exports = async function handler(req, res) {
   const u = require('url').parse(req.url, true);
   let days = parseInt(u.query.days, 10);
   if (!(days >= 1 && days <= 30)) days = 21;
+  const trainerRequired = String(u.query.trainer) === '1';
 
   const now = new Date();
   const start = new Date(now.getTime());
   const end = new Date(now.getTime() + days * 86400000);
 
   try {
-    const r = await C.getTrialSlots(ymd(start), ymd(end));
+    const r = await C.getTrialSlots(ymd(start), ymd(end), trainerRequired);
     if (r.status !== 200 || !r.json) {
       res.statusCode = 502;
       return res.end(JSON.stringify({ ok: false, error: 'slots_unavailable' }));
