@@ -64,6 +64,14 @@
   .planbody .bonus .pk{color:#0a4958;font-weight:700}
   .planbody .green{color:#0a8f5b;font-weight:800}
 
+  .incltitle{font-size:12px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:#0a4958;margin-top:22px}
+  .incl{margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:8px 18px}
+  .incl .it{display:flex;align-items:center;gap:9px}
+  .incl .it span{font-size:14px;color:#42454b;font-weight:600}
+  .voucher-ok{margin-top:18px;display:flex;gap:10px;align-items:flex-start;background:#e7f6ee;border:1px solid #bce6d1;border-radius:13px;padding:13px 15px}
+  .voucher-ok span:first-child{color:#0a8f5b;font-weight:900;font-size:15px;flex-shrink:0}
+  .voucher-ok span{font-size:13px;font-weight:700;color:#0a7f4f;line-height:1.45}
+  .legal-note{margin-top:20px;font-size:11px;line-height:1.6;color:#8a929a}
   .field{margin-top:18px}
   .field label{display:block;font-size:13px;font-weight:700;color:#42454b;margin-bottom:7px}
   .field input,.field select{width:100%;padding:13px 15px;border:1.5px solid #dce3e4;border-radius:11px;font-size:15px;background:#fff;color:#15171B}
@@ -129,6 +137,7 @@
     .card{padding:26px 20px}
     .head h1{font-size:30px}
     .form{grid-template-columns:1fr}
+    .incl{grid-template-columns:1fr}
   }
 </style>
 </head>
@@ -163,8 +172,16 @@
   var TEAL='#0a4958';
   var params=new URLSearchParams(location.search);
   var REF=(params.get('ref')||params.get('code')||'').trim().toUpperCase().slice(0,40);
+  // Gutschein/Voucher (z. B. Rückkehr-Code für ehemalige Mitglieder, der die
+  // Aktivierungsgebühr erlässt) – exakte Schreibweise beibehalten (Magicline-Matching).
+  var VOUCHER=(params.get('voucher')||'').trim().slice(0,60);
   var rawName=(params.get('name')||'').trim().replace(/[^\p{L}\s\-]/gu,'').slice(0,40);
   var REFNAME=rawName?(rawName.charAt(0).toUpperCase()+rawName.slice(1)):'';
+
+  // Inkludierte Leistungen (gelten für alle Tarife)
+  var INCLUDED=['Komplette Nutzung des Clubs','Cardio Entertainment','Mineralgetränke','Trainingspläne','TechnoGym App','W-LAN','Gesundheits-Check-up'];
+  // Rechtssicherer Pflichthinweis zum Vertrag
+  var LEGAL='Der Vertrag startet mit angekreuzter Laufzeit, verlängert sich automatisch und ist mit 4-wöchiger Frist in Textform kündbar. Abbuchung erfolgt via SEPA-Lastschriftmandat im 14-tägigen Rhythmus. Sämtliche Beiträge enthalten die gesetzliche Mehrwertsteuer.';
 
   if(REFNAME){ $('badgeText').textContent='Empfohlen von '+REFNAME+' · 2 Wochen gratis'; $('headSub').textContent='Nur wenige Schritte bis zu deiner Mitgliedschaft — dein Werbe-Bonus ist automatisch hinterlegt.'; }
   else if(REF){ $('badgeText').textContent='Empfohlen von einem Mitglied · 2 Wochen gratis'; }
@@ -204,7 +221,11 @@
     var t=(SEL.terms||[])[0]||{};
     var picker='';
     if(RATES.length>1){ picker='<div class="ratepick">'+RATES.map(function(b){ var tt=(b.terms||[])[0]||{}; return '<button type="button" class="ratepill'+(SEL.id===b.id?' sel':'')+'" data-pick="'+b.id+'">'+esc(b.name)+' · '+eur(tt.price)+'</button>'; }).join('')+'</div>'; }
-    var fee=(t.flatFees&&t.flatFees.length)?eur(t.flatFees[0].price):'keine';
+    var rawFee=(t.flatFees&&t.flatFees.length)?eur(t.flatFees[0].price):'keine';
+    // Rückkehr-Gutschein erlässt die Aufnahmegebühr -> durchgestrichen + "entfällt"
+    var fee=VOUCHER && (t.flatFees&&t.flatFees.length)
+      ? '<span style="text-decoration:line-through;color:#8a929a;font-weight:600">'+rawFee+'</span> <span class="green">entfällt</span>'
+      : rawFee;
     var bonus=REF?'<div class="prow bonus"><span class="pk">Werbe-Bonus</span><span class="green">2 Wochen gratis</span></div>':'';
     return picker+
       '<div class="plan"><div class="planhd"><div><div class="pn">'+esc(SEL.name)+'</div><div class="pt">Laufzeit '+termText(t)+'</div></div>'+
@@ -212,12 +233,22 @@
       '<div class="planbody"><div class="prow"><span class="pk">Aufnahmegebühr</span><span class="pvv">'+fee+'</span></div>'+bonus+'</div></div>';
   }
 
+  function inclList(){
+    var chk='<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1d7a3e" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M20 6L9 17l-5-5"></path></svg>';
+    return '<div class="incltitle">Inkludierte Leistungen</div><div class="incl">'+
+      INCLUDED.map(function(s){ return '<div class="it">'+chk+'<span>'+esc(s)+'</span></div>'; }).join('')+'</div>';
+  }
+
   function step1(){
     var redeemed=effCode()?'<div class="redeemed"><b>✓</b><span>Eingelöst</span></div>':'';
+    var welcomeBack=VOUCHER?'<div class="voucher-ok"><span>✓</span><span>Willkommen zurück! Mit deinem Rückkehr-Code entfällt die Aktivierungsgebühr.</span></div>':'';
     return '<div class="card"><div class="eyebrow">Schritt 1</div><div class="q">Dein Tarif</div>'+
       planCard()+
+      inclList()+
+      welcomeBack+
       '<div class="field"><label>Startdatum</label><input data-f="startDate" type="date" min="'+new Date().toISOString().slice(0,10)+'" value="'+esc(F.startDate||'')+'" /></div>'+
       '<div class="field"><label>Gutschein- / Werbe-Code</label><div class="codewrap"><input data-f="code" placeholder="Code (optional)" value="'+esc(F.code||'')+'" />'+redeemed+'</div></div>'+
+      '<div class="legal-note">'+esc(LEGAL)+'</div>'+
       '</div>';
   }
 
@@ -348,7 +379,7 @@
   }
 
   function collect(){
-    var d={ paymentChoice:'DIRECT_DEBIT', referralCode:effCode()||undefined, marketing:!!F.conf_mkt,
+    var d={ paymentChoice:'DIRECT_DEBIT', referralCode:effCode()||undefined, voucherCode:VOUCHER||undefined, marketing:!!F.conf_mkt,
       accountHolder:(F.accountHolder||((F.firstname||'')+' '+(F.lastname||''))).trim(),
       rateBundleTermId:(SEL.terms[0]||{}).id, gender:F.gender||undefined, countryCode:F.country||'DE', phone:(F.phone||'').trim() };
     DATA_FIELDS.forEach(function(f){ d[f]=(F[f]||'').trim(); });
