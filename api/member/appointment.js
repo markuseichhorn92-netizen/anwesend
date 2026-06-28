@@ -8,7 +8,8 @@
  */
 
 const M = require('../../lib/members');
-const { sendMail, hasMail } = require('../../lib/mail');
+const { sendMail, sendMailRaw, hasMail } = require('../../lib/mail');
+const { renderEmail, BASE } = require('../../lib/emailTemplate');
 
 function who(m) {
   return ((m.firstName || '') + ' ' + (m.lastName || '')).trim()
@@ -32,6 +33,28 @@ module.exports = async function handler(req, res) {
     + '\nWunsch: ' + (body.preferred || '—')
     + '\n\nBitte Termin in Magicline anlegen und dem Mitglied bestätigen.';
   const mail = await sendMail('📅 Terminwunsch – ' + who(m), text);
+
+  // Bestätigung ans Mitglied (best effort – darf den Vorgang nie scheitern lassen)
+  if (mail.ok && m.email) {
+    try {
+      const cm = renderEmail({
+        preheader: 'Dein Terminwunsch ist bei uns eingegangen.',
+        name: m.firstName || '',
+        eyebrow: 'Terminwunsch',
+        headline: 'Dein Terminwunsch ist eingegangen',
+        intro: 'Wir haben deinen Terminwunsch erhalten und melden uns mit einem konkreten Termin per E-Mail bei dir.',
+        panel: [
+          { label: 'Terminart', value: body.type || '—' },
+          { label: 'Wunsch', value: body.preferred || 'nach Absprache' },
+        ],
+        button: { label: 'Termine ansehen', href: BASE + '/mitglieder' },
+        promo: true,
+        footer: 'member',
+      });
+      await sendMailRaw({ to: m.email, subject: 'Dein Terminwunsch ist eingegangen – Fit-Inn Trier', text: cm.text, html: cm.html });
+    } catch (e) { /* Mitglied-Mail ist optional */ }
+  }
+
   res.statusCode = 200;
   return res.end(JSON.stringify({
     ok: mail.ok,

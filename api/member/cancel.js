@@ -11,7 +11,8 @@
 
 const M = require('../../lib/members');
 const C = require('../../lib/connect');
-const { sendMail, hasMail } = require('../../lib/mail');
+const { sendMail, sendMailRaw, hasMail } = require('../../lib/mail');
+const { renderEmail, BASE } = require('../../lib/emailTemplate');
 
 const OFFERS = { discount10: '10 % Rabatt für 6 Monate', pause: 'Beitragspause' };
 
@@ -19,6 +20,30 @@ function who(m) {
   return ((m.firstName || '') + ' ' + (m.lastName || '')).trim()
     + (m.customerNumber ? ' (' + m.customerNumber + ')' : '')
     + (m.email ? ' · ' + m.email : '');
+}
+
+// Designte Kündigungs-Bestätigung ans Mitglied (best effort).
+async function sendMemberCancelMail(m, opts) {
+  if (!hasMail || !m.email) return;
+  var ct = opts.ct || null;
+  var panel = [{ label: 'Kündigung zum', value: opts.dateText || 'nächstmöglich' }];
+  if (ct && ct.rateName) panel.push({ label: 'Tarif', value: ct.rateName });
+  try {
+    var cm = renderEmail({
+      preheader: 'Deine Kündigung ist bei uns eingegangen.',
+      name: m.firstName || '',
+      eyebrow: 'Kündigung eingegangen',
+      headline: 'Deine Kündigung ist eingegangen',
+      intro: opts.direct
+        ? 'Wir haben deine Kündigung verbindlich erhalten und bearbeitet. Schade, dass du gehst – bis zum Vertragsende bleibt dein Zugang voll aktiv.'
+        : 'Wir haben deine Kündigung erhalten. Schade, dass du gehst – bis zum Vertragsende bleibt dein Zugang voll aktiv. Wir bestätigen dir die Kündigung zeitnah.',
+      panel: panel,
+      button: { label: 'Vertrag ansehen', href: BASE + '/mitglieder' },
+      promo: true,
+      footer: 'member',
+    });
+    await sendMailRaw({ to: m.email, subject: 'Deine Kündigung ist eingegangen – Fit-Inn Trier', text: cm.text, html: cm.html });
+  } catch (e) { /* Mitglied-Mail ist optional */ }
 }
 
 module.exports = async function handler(req, res) {
@@ -84,6 +109,7 @@ module.exports = async function handler(req, res) {
               + '\n\nKeine manuelle Aktion nötig – nur zur Info.');
           } catch (e) {}
         }
+        await sendMemberCancelMail(m, { direct: true, dateText: cd, ct: ct });
         res.statusCode = 200;
         return res.end(JSON.stringify({ ok: true, direct: true, message: 'Deine Kündigung wurde verbindlich eingereicht' + (cd ? ' – zum ' + cd : '') + '. Du erhältst eine Bestätigung per E-Mail.', _debug: cancelDbg }));
       }
@@ -122,6 +148,10 @@ module.exports = async function handler(req, res) {
 
   if (!hasMail) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'E-Mail-Versand noch nicht eingerichtet (RESEND_API_KEY fehlt).', _debug: cancelDbg })); }
   const mail = await sendMail(subject, text);
+  // Bestätigung ans Mitglied – nur bei tatsächlicher Kündigung (nicht bei Angebot/Rücknahme)
+  if (mail.ok && body.action === 'cancel') {
+    await sendMemberCancelMail(m, { direct: false, dateText: targetDate, ct: ct });
+  }
   res.statusCode = 200;
   return res.end(JSON.stringify({ ok: mail.ok, direct: false, message: mail.ok ? okMsg : 'Übermittlung fehlgeschlagen – bitte später erneut.', _debug: cancelDbg }));
 };

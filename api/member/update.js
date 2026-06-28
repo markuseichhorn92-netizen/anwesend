@@ -10,7 +10,8 @@
  */
 
 const M = require('../../lib/members');
-const { sendMail, hasMail } = require('../../lib/mail');
+const { sendMail, sendMailRaw, hasMail } = require('../../lib/mail');
+const { renderEmail, BASE } = require('../../lib/emailTemplate');
 
 function who(m) {
   return ((m.firstName || '') + ' ' + (m.lastName || '')).trim()
@@ -60,6 +61,51 @@ module.exports = async function handler(req, res) {
     + 'Mitglied: ' + who(m) + '\nKundennr.: ' + (m.customerNumber || '—') + '\n\n'
     + lines.join('\n') + '\n\nBitte in Magicline eintragen.';
   const mail = await sendMail(subject, text);
+
+  // Bestätigung ans Mitglied (best effort) – IBAN nur maskiert, niemals vollständig
+  if (mail.ok && m.email) {
+    try {
+      let cm;
+      if (body.type === 'payment') {
+        const newIbanMasked = M.maskIban(String(data.iban || '').replace(/\s+/g, '')) || '—';
+        cm = renderEmail({
+          preheader: 'Deine Bankverbindung-Änderung ist eingegangen.',
+          name: m.firstName || '',
+          eyebrow: 'Bankverbindung',
+          headline: 'Deine IBAN-Änderung ist eingegangen',
+          intro: 'Wir haben deinen Änderungswunsch erhalten und tragen ihn zeitnah ein. Künftige Beiträge ziehen wir dann von diesem Konto ein.',
+          panel: [
+            { label: 'Neue IBAN', value: newIbanMasked },
+            { label: 'Kontoinhaber', value: data.accountHolder || (((m.firstName || '') + ' ' + (m.lastName || '')).trim() || '—') },
+            { label: 'Gültig ab', value: validFromDE },
+          ],
+          note: 'Das warst nicht du? Bitte kontaktiere uns umgehend unter info@fit-inn-trier.de.',
+          button: { label: 'Meine Daten ansehen', href: BASE + '/mitglieder' },
+          promo: true,
+          footer: 'member',
+        });
+      } else {
+        const newAddr = ((data.street || '') + ' ' + (data.houseNumber || '')).trim() + ', ' + (data.zipCode || '') + ' ' + (data.city || '');
+        cm = renderEmail({
+          preheader: 'Deine Adressänderung ist eingegangen.',
+          name: m.firstName || '',
+          eyebrow: 'Adressänderung',
+          headline: 'Deine Adressänderung ist eingegangen',
+          intro: 'Wir haben deinen Änderungswunsch erhalten und tragen ihn zeitnah für dich ein.',
+          panel: [
+            { label: 'Neue Adresse', value: newAddr.replace(/^,\s*/, '').trim() || '—' },
+            { label: 'Gültig ab', value: validFromDE },
+          ],
+          button: { label: 'Meine Daten ansehen', href: BASE + '/mitglieder' },
+          promo: true,
+          footer: 'member',
+        });
+      }
+      const subj = body.type === 'payment' ? 'Deine IBAN-Änderung ist eingegangen – Fit-Inn Trier' : 'Deine Adressänderung ist eingegangen – Fit-Inn Trier';
+      await sendMailRaw({ to: m.email, subject: subj, text: cm.text, html: cm.html });
+    } catch (e) { /* Mitglied-Mail ist optional */ }
+  }
+
   res.statusCode = 200;
   return res.end(JSON.stringify({
     ok: mail.ok,

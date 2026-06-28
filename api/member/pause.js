@@ -11,6 +11,7 @@
 
 const M = require('../../lib/members');
 const { sendMailRaw, hasMail } = require('../../lib/mail');
+const { renderEmail, BASE } = require('../../lib/emailTemplate');
 
 function fmtDE(iso) {
   if (!iso) return '—';
@@ -87,6 +88,32 @@ module.exports = async function handler(req, res) {
     attachments: attachments,
     replyTo: m.email || undefined,
   });
+
+  // Bestätigung ans Mitglied (best effort – ohne Attest-Anhang)
+  if (mail.ok && m.email) {
+    try {
+      const cm = renderEmail({
+        preheader: 'Deine Beitragspause-Anfrage ist eingegangen.',
+        name: m.firstName || '',
+        eyebrow: 'Beitragspause',
+        headline: 'Deine Pause-Anfrage ist eingegangen',
+        intro: 'Wir haben deine Anfrage für eine Beitragspause erhalten und prüfen sie. Sobald die Pause eingerichtet ist, bestätigen wir dir das per E-Mail.',
+        panel: [
+          { label: 'Gewünschter Beginn', value: fromISO ? fmtDE(fromISO) : '—' },
+          { label: 'Dauer', value: weeks + (weeks === 1 ? ' Woche' : ' Wochen') },
+          { label: 'Voraussichtliches Ende', value: toISO ? fmtDE(toISO) : '—' },
+        ],
+        note: hasPhoto
+          ? 'Deinen ärztlichen Nachweis haben wir erhalten. Deine Vertragslaufzeit verlängert sich um die Dauer der Pause.'
+          : 'Bitte denke daran, den ärztlichen Nachweis nachzureichen. Deine Vertragslaufzeit verlängert sich um die Dauer der Pause.',
+        button: { label: 'Vertrag verwalten', href: BASE + '/mitglieder' },
+        promo: true,
+        footer: 'member',
+      });
+      await sendMailRaw({ to: m.email, subject: 'Deine Beitragspause-Anfrage ist eingegangen – Fit-Inn Trier', text: cm.text, html: cm.html });
+    } catch (e) { /* Mitglied-Mail ist optional */ }
+  }
+
   res.statusCode = 200;
   return res.end(JSON.stringify({
     ok: mail.ok,
