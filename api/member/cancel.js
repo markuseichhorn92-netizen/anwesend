@@ -182,10 +182,12 @@ module.exports = async function handler(req, res) {
     if (ctr && ctr.contractId && body.recaptchaToken) {
       cancelDbg.attemptedDirect = true;
       var dw = null;
-      try { dw = await C.submitWithdrawal({ member: m, contract: ctr, recaptchaToken: body.recaptchaToken }); }
+      try { dw = await C.submitWithdrawal({ member: m, contract: ctr, customerId: sess.id, recaptchaToken: body.recaptchaToken }); }
       catch (e) { dw = { ok: false, error: String(e && e.message) }; }
       cancelDbg.connectStatus = dw && dw.status;
       cancelDbg.connectError = String((dw && (dw.text || dw.error)) || '').slice(0, 240);
+      cancelDbg.uuidSent = !!(dw && dw.uuidSent);
+      cancelDbg.uuidFormat = !!(dw && dw.uuidFormat);
       if (!(dw && dw.ok)) {
         console.error('[revoke] Direkter Magicline-Widerruf fehlgeschlagen', {
           status: dw && dw.status, error: cancelDbg.connectError,
