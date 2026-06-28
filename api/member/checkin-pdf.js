@@ -10,6 +10,7 @@
 
 const M = require('../../lib/members');
 const { sendMailRaw, hasMail } = require('../../lib/mail');
+const { renderEmail, BASE } = require('../../lib/emailTemplate');
 
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json');
@@ -33,13 +34,21 @@ module.exports = async function handler(req, res) {
   if (!m.email) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'Für dein Konto ist keine E-Mail-Adresse hinterlegt.' })); }
   if (!hasMail) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'E-Mail-Versand ist noch nicht eingerichtet.' })); }
 
-  const text = 'Hallo ' + (m.firstName || '') + ',\n\n'
-    + 'im Anhang findest du deine Anwesenheitsbestätigung des Fit-Inn Trier mit deinen Check-ins.\n\n'
-    + 'Sportliche Grüße\nDein Fit-Inn Trier';
+  const tpl = renderEmail({
+    preheader: 'Deine Anwesenheitsbestätigung findest du im Anhang.',
+    name: m.firstName || '',
+    eyebrow: 'Anwesenheitsbestätigung',
+    headline: 'Deine Anwesenheitsbestätigung',
+    intro: 'im Anhang findest du deine Anwesenheitsbestätigung des Fit-Inn Trier mit deinen Check-ins.',
+    button: { label: 'Check-ins ansehen', href: BASE + '/mitglieder' },
+    promo: false,
+    footer: 'member',
+  });
   const mail = await sendMailRaw({
     to: m.email,
     subject: 'Deine Anwesenheitsbestätigung – Fit-Inn Trier',
-    text: text,
+    text: tpl.text,
+    html: tpl.html,
     attachments: [{ filename: 'anwesenheitsbestaetigung.pdf', content: pdf }],
   });
   res.statusCode = 200;

@@ -17,6 +17,7 @@
 
 const M = require('../../lib/members');
 const { sendMailRaw, hasMail } = require('../../lib/mail');
+const { renderEmail, BASE } = require('../../lib/emailTemplate');
 
 function pickCurrentContract(list) {
   if (!Array.isArray(list) || !list.length) return null;
@@ -58,13 +59,23 @@ module.exports = async function handler(req, res) {
   if (!pdfB64) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'Der Vertrag konnte gerade nicht geladen werden. Bitte versuche es später erneut.' })); }
 
   const fileName = 'Vertrag-' + (m.customerNumber || 'Fit-Inn-Trier') + '.pdf';
-  const text = 'Hallo ' + (m.firstName || '') + ',\n\n'
-    + 'im Anhang findest du eine Kopie deines aktuellen Vertrags' + (current.rateName ? (' (' + current.rateName + ')') : '') + ' beim Fit-Inn Trier.\n\n'
-    + 'Sportliche Grüße\nDein Fit-Inn Trier';
+  const tpl = renderEmail({
+    preheader: 'Deine Vertragskopie findest du im Anhang.',
+    name: m.firstName || '',
+    eyebrow: 'Vertragskopie',
+    headline: 'Deine Vertragskopie',
+    intro: 'im Anhang findest du eine Kopie deines aktuellen Vertrags' + (current.rateName ? (' (' + current.rateName + ')') : '') + ' beim Fit-Inn Trier.',
+    panel: current.rateName ? [{ label: 'Tarif', value: current.rateName }] : null,
+    note: 'Bei Fragen zu deinem Vertrag sind wir jederzeit gerne für dich da.',
+    button: { label: 'Vertrag verwalten', href: BASE + '/mitglieder' },
+    promo: false,
+    footer: 'member',
+  });
   const mail = await sendMailRaw({
     to: m.email,
     subject: 'Deine Vertragskopie – Fit-Inn Trier',
-    text: text,
+    text: tpl.text,
+    html: tpl.html,
     attachments: [{ filename: fileName, content: pdfB64 }],
   });
   res.statusCode = 200;

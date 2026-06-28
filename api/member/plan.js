@@ -11,26 +11,34 @@
 const M = require('../../lib/members');
 const P = require('../../lib/plans');
 const { sendMailRaw, hasMail } = require('../../lib/mail');
+const { renderEmail, BASE } = require('../../lib/emailTemplate');
 
 function fmtSlot(m) { return (Math.floor(m / 60) < 10 ? '0' : '') + Math.floor(m / 60) + ':' + (m % 60 < 10 ? '0' : '') + (m % 60); }
 
 // Sofort-Bestätigung beim Vormerken (blockiert die Antwort nicht hart – Fehler werden geschluckt).
 async function sendConfirmation(memberId, email, firstName, slot, date) {
   if (!hasMail || !email) return;
-  const name = firstName ? (' ' + firstName) : '';
-  const cancelUrl = 'https://mitglieder.fit-inn-trier.de/api/plan-cancel?t=' +
-    encodeURIComponent(P.cancelToken(memberId, date));
+  const cancelUrl = BASE + '/api/plan-cancel?t=' + encodeURIComponent(P.cancelToken(memberId, date));
   try {
+    const mail = renderEmail({
+      preheader: 'Vormerkung bestätigt: heute um ' + fmtSlot(slot) + ' Uhr',
+      name: firstName || '',
+      eyebrow: 'Vormerkung bestätigt',
+      headline: 'Deine Zeit ist notiert',
+      intro: 'Wir haben deine Vormerkung im Fit-Inn Trier gespeichert. Eine kurze Erinnerung schicken wir dir noch rechtzeitig vorher. Wir freuen uns auf dich!',
+      panel: [
+        { label: 'Wann', value: 'Heute, ' + fmtSlot(slot) + ' Uhr' },
+      ],
+      button: { label: 'Zeit ändern', href: BASE + '/mitglieder' },
+      secondary: { label: 'Vormerkung stornieren', href: cancelUrl },
+      promo: true,
+      footer: 'member',
+    });
     await sendMailRaw({
       to: email,
       subject: 'Vormerkung bestätigt: heute um ' + fmtSlot(slot) + ' Uhr',
-      text:
-        'Hallo' + name + ',\n\n' +
-        'wir haben deine Vormerkung für heute um ' + fmtSlot(slot) + ' Uhr im Fit-Inn Trier notiert. ✅\n' +
-        'Eine kurze Erinnerung schicken wir dir noch einmal rechtzeitig vorher.\n\n' +
-        'Doch keine Zeit? Hier mit einem Klick stornieren:\n' + cancelUrl + '\n\n' +
-        'Zeit ändern? Im Mitgliederbereich: https://mitglieder.fit-inn-trier.de/mitglieder\n\n' +
-        'Bis später! 💪\nFit-Inn Trier · Auf Hirtenberg 8 · 54296 Trier',
+      text: mail.text,
+      html: mail.html,
     });
   } catch (e) { /* Bestätigungsmail darf die Buchung nie scheitern lassen */ }
 }
