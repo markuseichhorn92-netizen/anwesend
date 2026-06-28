@@ -20,6 +20,18 @@
   .shell{width:100%;max-width:480px;margin:0 auto;min-height:100dvh;display:flex;flex-direction:column}
   .brandbar{display:flex;align-items:center;justify-content:space-between;padding:18px 20px 14px;background:linear-gradient(160deg,#0e6072,#063540)}
   .logout{background:rgba(255,255,255,.12);border:none;color:#cfe3e7;font-weight:600;font-size:13px;padding:8px 13px;border-radius:9px;cursor:pointer}
+  /* ---------- mobile burger menu ---------- */
+  .burger{display:none;align-items:center;justify-content:center;width:42px;height:42px;border-radius:11px;background:rgba(255,255,255,.12);border:none;cursor:pointer;flex-shrink:0;padding:0;position:relative}
+  .burger:active{background:rgba(255,255,255,.22)}
+  .app-in .burger{display:flex}
+  .navOverlay{position:fixed;inset:0;background:rgba(4,20,25,.55);opacity:0;visibility:hidden;transition:opacity .25s ease,visibility .25s;z-index:60}
+  .navOverlay.open{opacity:1;visibility:visible}
+  .navDrawer{position:fixed;top:0;left:0;bottom:0;width:86%;max-width:300px;background:linear-gradient(170deg,#0c5a6b 0%,#062f39 100%);box-shadow:0 0 60px rgba(0,0,0,.45);transform:translateX(-100%);transition:transform .28s cubic-bezier(.22,1,.36,1);z-index:61;display:flex;flex-direction:column;padding:18px 14px calc(20px + env(safe-area-inset-bottom,0px));overflow-y:auto;-webkit-overflow-scrolling:touch}
+  .navDrawer.open{transform:none}
+  body.menu-open{overflow:hidden}
+  .sidebtn{display:flex;align-items:center;gap:13px;padding:12px 14px;border:none;border-radius:12px;cursor:pointer;font-weight:700;font-size:15px;background:transparent;color:#bcd7dc;width:100%;text-align:left}
+  .sidebtn:hover{background:rgba(255,255,255,.08)}
+  .sidebtn.active{background:rgba(255,255,255,.16);color:#fff}
   .body{flex:1;padding:4px 16px 40px;animation:fiUp .25s ease}
   .card{background:#fff;border-radius:22px;box-shadow:0 18px 50px rgba(4,33,40,.30);padding:24px 22px}
   .h1w{font-size:23px;font-weight:900;color:#15171B;letter-spacing:-.4px}
@@ -101,9 +113,8 @@
     .gCols2{display:grid;grid-template-columns:1fr 1fr;gap:22px;align-items:start}
     .gCats{grid-template-columns:repeat(4,1fr);gap:16px}
     .narrow{max-width:780px;margin:0 auto}
-    .sidebtn{display:flex;align-items:center;gap:13px;padding:12px 14px;border:none;border-radius:12px;cursor:pointer;font-weight:700;font-size:15px;background:transparent;color:#bcd7dc;width:100%;text-align:left}
-    .sidebtn:hover{background:rgba(255,255,255,.08)}
-    .sidebtn.active{background:rgba(255,255,255,.16);color:#fff}
+    /* Auf dem Desktop übernimmt die feste Sidebar – Burger/Drawer ausblenden */
+    .burger,.navOverlay,.navDrawer{display:none!important}
   }
   /* ---- Hilfe & Kontakt ---- */
   @keyframes fiRise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
@@ -129,10 +140,15 @@
 <body>
 <div class="shell">
   <aside class="sidebar" id="sidebar"></aside>
+  <div class="navOverlay" id="navOverlay" data-act="menuClose"></div>
+  <aside class="navDrawer" id="navDrawer"></aside>
   <div class="maincol">
     <div class="brandbar">
       <div id="brandLogo" style="display:flex;align-items:center;cursor:pointer"><img src="/assets/fitinn-logo-white.png" alt="Fit-Inn Trier" style="height:26px;width:auto;display:block"></div>
-      <button class="logout" id="logoutBtn" style="display:none">Abmelden</button>
+      <button class="burger" id="burgerBtn" data-act="menu" aria-label="Menü öffnen" aria-expanded="false">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#eaf4f6" stroke-width="2.1" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"></path></svg>
+        <span id="burgerDot" style="display:none;position:absolute;top:7px;right:7px;width:9px;height:9px;border-radius:50%;background:#E08C53;box-shadow:0 0 0 2px #0e6072"></span>
+      </button>
     </div>
     <div class="topbar" id="topbar"></div>
     <div class="body" id="app"></div>
@@ -252,12 +268,16 @@
   function api(path, opt){ opt=opt||{}; opt.headers=Object.assign(headers(), opt.headers||{}); opt.cache='no-store';
     return fetch(path,opt).then(function(r){ if(r.status===401){ logout(); throw new Error('unauthorized'); } return r.json(); }); }
 
-  function logout(){ TOKEN=null; sessionStorage.removeItem('fi_member_token'); localStorage.removeItem('fi_member_token'); DATA={profile:null,contract:null,checkins:null,appts:null}; S.screen='login'; S.loginStep='request'; S.challenge=''; S.otp=''; render(); }
+  function logout(){ closeMenu(); TOKEN=null; sessionStorage.removeItem('fi_member_token'); localStorage.removeItem('fi_member_token'); DATA={profile:null,contract:null,checkins:null,appts:null}; S.screen='login'; S.loginStep='request'; S.challenge=''; S.otp=''; render(); }
   function pad2(n){ return (n<10?'0':'')+n; }
-  $('logoutBtn').addEventListener('click', logout);
   $('brandLogo').addEventListener('click', function(){ if(TOKEN) nav('home'); });
 
+  // Mobiles Burger-Menü (Slide-in-Drawer) öffnen/schließen
+  function openMenu(){ var o=$('navOverlay'), d=$('navDrawer'), b=$('burgerBtn'); if(o)o.classList.add('open'); if(d)d.classList.add('open'); document.body.classList.add('menu-open'); if(b)b.setAttribute('aria-expanded','true'); }
+  function closeMenu(){ var o=$('navOverlay'), d=$('navDrawer'), b=$('burgerBtn'); if(o)o.classList.remove('open'); if(d)d.classList.remove('open'); document.body.classList.remove('menu-open'); if(b)b.setAttribute('aria-expanded','false'); }
+
   function nav(s){
+    closeMenu();   // bei Navigation das Burger-Menü schließen
     if(isFormer() && FORMER_OK.indexOf(s)<0) s='home';   // Ehemalige: gesperrte Screens -> Übersicht
     S.screen=s;
     if(s==='help'){ S.helpSel=null; S.helpCat='all'; S.helpQ=''; S.helpShowAll=false; S.aiPhase='idle'; S.aiQuery=''; S.aiAsked=''; S.aiAnswer=''; S.aiFeedback=null; S.ctOpen=false; S.ctSent=false; S.ctMsg=''; S.ctErr=''; S.artFb=null; }
@@ -1008,17 +1028,34 @@
   var NAVITEMS=[['home','Übersicht',DASH_IC],['data','Meine Daten',IC.user],['contract','Vertragsverwaltung',IC.doc],['appt','Termine',IC.cal],['referral','Freunde werben',IC.gift],['checkins','Check-ins',IC.list],['postfach','Postfach',IC.mail],['help','Hilfe',IC.help]];
   var TITLES={home:'Übersicht',data:'Meine Daten',contract:'Vertragsverwaltung',appt:'Termine',referral:'Freunde werben',checkins:'Check-in-Verlauf',postfach:'Postfach',help:'Hilfe & Kontakt'};
   function initials(p){ p=p||{}; var a=(p.firstName||'').trim(),b=(p.lastName||'').trim(); return (((a?a[0]:'')+(b?b[0]:'')).toUpperCase())||'FT'; }
+  // Profil-Kopf für Sidebar/Drawer
+  function navProfile(){
+    var p=DATA.profile||{};
+    return '<div style="display:flex;align-items:center;gap:12px;background:rgba(255,255,255,.08);border-radius:15px;padding:12px 13px;margin-bottom:20px"><div style="width:42px;height:42px;border-radius:50%;background:#fff;color:'+TEAL+';font-weight:900;font-size:15px;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+esc(initials(p))+'</div><div style="min-width:0"><div style="color:#fff;font-weight:800;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(((p.firstName||'')+' '+(p.lastName||'')).trim()||'Mitglied')+'</div><div style="color:#9fc3ca;font-size:12px;font-weight:500">'+(p.customerNumber?('Mitgliedsnr. '+esc(p.customerNumber)):'')+'</div></div></div>';
+  }
+  // Navigations-Liste (für Sidebar & Burger-Drawer identisch)
+  function navList(){
+    return '<nav style="display:flex;flex-direction:column;gap:4px">'+NAVITEMS.filter(function(it){return !isFormer()||FORMER_OK.indexOf(it[0])>=0;}).map(function(it){var act=S.screen===it[0];var bdg=(it[0]==='postfach'&&pfUnread()>0)?'<span style="background:#E08C53;color:#fff;font-size:11px;font-weight:800;border-radius:20px;min-width:20px;height:20px;padding:0 6px;display:flex;align-items:center;justify-content:center">'+pfUnread()+'</span>':'';return '<button class="sidebtn'+(act?' active':'')+'" data-act="nav" data-arg="'+it[0]+'">'+svg(it[2],{c:act?'#fff':'#bcd7dc',w:1.9,s:20})+'<span style="flex:1">'+it[1]+'</span>'+bdg+'</button>';}).join('')+'</nav>';
+  }
+  function navLogoutBtn(){
+    return '<button class="sidebtn" data-act="logout" style="margin-top:auto;color:#9fc3ca">'+svg('<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"></path>',{c:'#9fc3ca',w:1.9,s:19})+'<span>Abmelden</span></button>';
+  }
   function renderChrome(){
     var inApp = !!(TOKEN && S.screen!=='login');
     document.body.className = inApp ? 'app-in' : 'app-guest';
-    var sb=$('sidebar'), tb=$('topbar');
-    if(!inApp){ if(sb)sb.innerHTML=''; if(tb)tb.innerHTML=''; return; }
-    var p=DATA.profile||{};
+    var sb=$('sidebar'), tb=$('topbar'), dw=$('navDrawer'), bd=$('burgerDot');
+    if(!inApp){ if(sb)sb.innerHTML=''; if(tb)tb.innerHTML=''; if(dw)dw.innerHTML=''; closeMenu(); return; }
     if(sb) sb.innerHTML=
       '<img src="/assets/fitinn-logo-white.png" alt="Fit-Inn Trier" data-act="nav" data-arg="home" style="height:28px;width:auto;align-self:flex-start;margin:2px 6px 22px;cursor:pointer">'+
-      '<div style="display:flex;align-items:center;gap:12px;background:rgba(255,255,255,.08);border-radius:15px;padding:12px 13px;margin-bottom:20px"><div style="width:42px;height:42px;border-radius:50%;background:#fff;color:'+TEAL+';font-weight:900;font-size:15px;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+esc(initials(p))+'</div><div style="min-width:0"><div style="color:#fff;font-weight:800;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(((p.firstName||'')+' '+(p.lastName||'')).trim()||'Mitglied')+'</div><div style="color:#9fc3ca;font-size:12px;font-weight:500">'+(p.customerNumber?('Mitgliedsnr. '+esc(p.customerNumber)):'')+'</div></div></div>'+
-      '<nav style="display:flex;flex-direction:column;gap:4px">'+NAVITEMS.filter(function(it){return !isFormer()||FORMER_OK.indexOf(it[0])>=0;}).map(function(it){var act=S.screen===it[0];var bdg=(it[0]==='postfach'&&pfUnread()>0)?'<span style="background:#E08C53;color:#fff;font-size:11px;font-weight:800;border-radius:20px;min-width:20px;height:20px;padding:0 6px;display:flex;align-items:center;justify-content:center">'+pfUnread()+'</span>':'';return '<button class="sidebtn'+(act?' active':'')+'" data-act="nav" data-arg="'+it[0]+'">'+svg(it[2],{c:act?'#fff':'#bcd7dc',w:1.9,s:20})+'<span style="flex:1">'+it[1]+'</span>'+bdg+'</button>';}).join('')+'</nav>'+
-      '<button class="sidebtn" data-act="logout" style="margin-top:auto;color:#9fc3ca">'+svg('<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"></path>',{c:'#9fc3ca',w:1.9,s:19})+'<span>Abmelden</span></button>';
+      navProfile()+navList()+navLogoutBtn();
+    // Burger-Drawer (mobil) – gleiche Inhalte wie die Sidebar, plus Schließen-Button
+    if(dw) dw.innerHTML=
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin:2px 6px 18px">'+
+        '<img src="/assets/fitinn-logo-white.png" alt="Fit-Inn Trier" data-act="nav" data-arg="home" style="height:26px;width:auto;cursor:pointer">'+
+        '<button data-act="menuClose" aria-label="Menü schließen" style="width:38px;height:38px;border-radius:10px;background:rgba(255,255,255,.1);border:none;display:flex;align-items:center;justify-content:center;cursor:pointer">'+svg('<path d="M6 6l12 12M18 6L6 18"></path>',{c:'#cfe3e7',w:2.1,s:20})+'</button>'+
+      '</div>'+
+      navProfile()+navList()+navLogoutBtn();
+    if(bd) bd.style.display = pfUnread()>0 ? 'block' : 'none';
     if(tb){
       var c=DATA.contract; var badge='';
       var pill=function(col,txt){ return '<div style="display:flex;align-items:center;gap:8px;background:#fff;border:1px solid #e3eaeb;border-radius:30px;padding:7px 14px;box-shadow:0 4px 14px rgba(4,33,40,.06)"><span style="width:8px;height:8px;border-radius:50%;background:'+col+'"></span><span style="font-size:13px;font-weight:700;color:#42454b">'+txt+'</span></div>'; };
@@ -1030,7 +1067,6 @@
   }
   var NARROW={contract:1,referral:1,appt:1};
   function render(){
-    $('logoutBtn').style.display = (TOKEN && S.screen!=='login') ? 'block' : 'none';
     // Ehemalige Mitglieder: gesperrte Screens immer auf die Übersicht (Rejoin) umleiten
     if(isFormer() && S.screen!=='login' && FORMER_OK.indexOf(S.screen)<0) S.screen='home';
     var html;
@@ -1063,6 +1099,8 @@
 
   var ACT={
     nav:function(a){ nav(a); },
+    menu:function(){ openMenu(); },
+    menuClose:function(){ closeMenu(); },
     planSet:function(a){
       var s=String(a).split('@'); var mins=parseInt(s[0],10); var off=(parseInt(s[1],10)===1)?1:0;
       if(!isFinite(mins)) return;
