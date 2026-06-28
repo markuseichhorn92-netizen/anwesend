@@ -181,7 +181,7 @@
 
   // ---- state ----
   var TOKEN = localStorage.getItem('fi_member_token') || sessionStorage.getItem('fi_member_token') || null;
-  var DATA = { profile:null, contract:null, checkins:null, appts:null, plan:null, planAgg:null, inbox:null, membershipActive:true };
+  var DATA = { profile:null, contract:null, checkins:null, appts:null, plan:null, planAgg:null, planAggTom:null, inbox:null, membershipActive:true };
   // Erlaubte Screens für ehemalige Mitglieder (alles andere wird gesperrt)
   var FORMER_OK = ['home','checkins','help','postfach'];
   function isFormer(){ return DATA.membershipActive===false; }
@@ -274,7 +274,11 @@
   function loadCheckins(){ api('/api/member/checkins').then(function(d){ DATA.checkins=d.checkins||[]; render(); }).catch(function(){ DATA.checkins=[]; render(); }); }
   function loadAppts(){ api('/api/member/appointments').then(function(d){ DATA.appts=d.appointments||[]; render(); }).catch(function(){ DATA.appts=[]; render(); }); }
   function loadPlan(){ api('/api/member/plan').then(function(d){ DATA.plan=(d&&d.plan)||null; if(DATA.plan&&typeof DATA.plan.remind==='boolean')S.planRemind=DATA.plan.remind; render(); }).catch(function(){ DATA.plan=null; }); }
-  function loadPlanAgg(){ fetch('/api/plan',{cache:'no-store'}).then(function(r){return r.json();}).then(function(d){ DATA.planAgg=d||null; render(); }).catch(function(){}); }
+  function loadPlanAgg(){
+    fetch('/api/plan',{cache:'no-store'}).then(function(r){return r.json();}).then(function(d){ DATA.planAgg=d||null; render(); }).catch(function(){});
+    // Vorschau für morgen (für die Slot-Auslastung, wenn heute schon geschlossen ist)
+    fetch('/api/plan?offset=1',{cache:'no-store'}).then(function(r){return r.json();}).then(function(d){ DATA.planAggTom=d||null; render(); }).catch(function(){});
+  }
   function loadInbox(){ return api('/api/member/inbox').then(function(d){ DATA.inbox=(d&&d.vorgaenge)||[]; render(); }).catch(function(){ DATA.inbox=DATA.inbox||[]; }); }
 
   // ── „Vormerken" (geplante Trainingszeit heute) ──
@@ -287,17 +291,28 @@
     var hour=parseInt(g('hour'),10);
     return {wd:map[g('weekday')], hour:hour, min:hour*60+parseInt(g('minute'),10)};
   }
-  function openSlotsToday(){
-    var n=berlinNowParts(), ivs=PLAN_IV[n.wd]||[], slots=[];
-    var minStart=Math.ceil(n.min/30)*30;            // nächster freier 30-Min-Slot ab jetzt
+  // Freie 30-Min-Slots für „heute + offset Tage" (0 = heute ab jetzt, 1 = morgen ganztags)
+  function openSlotsForDay(offset){
+    var n=berlinNowParts(), wd=(n.wd+(offset||0))%7, ivs=PLAN_IV[wd]||[], slots=[];
+    var minStart=offset>0 ? -1 : Math.ceil(n.min/30)*30;   // morgen: alle Slots; heute: ab jetzt
     ivs.forEach(function(intv){
       for(var m=intv[0]; m<=intv[1]-30; m+=30){ if(m>=minStart && slots.indexOf(m)<0) slots.push(m); }
     });
     slots.sort(function(a,b){return a-b;});
     return slots;
   }
+  function openSlotsToday(){ return openSlotsForDay(0); }
   function fmtMin(m){ return (m<600?'0':'')+Math.floor(m/60)+':'+(m%60<10?'0':'')+(m%60); }
-  function planExpired(slot){ return slot==null || berlinNowParts().min >= slot+30; }
+  // Heutiges Datum (Berlin) als YYYY-MM-DD – für den Tagesvergleich der Vormerkung
+  function berlinToday(){ try{ return new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Berlin',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date()); }catch(e){ return ''; } }
+  function planIsTomorrow(plan){ var t=berlinToday(); return !!(plan&&plan.date&&t&&plan.date>t); }
+  // Vormerkung noch aktiv? Künftiger Tag immer; heute bis Slot-Ende (+30 Min)
+  function planActive(plan){
+    if(!plan||plan.slot==null) return false;
+    var t=berlinToday();
+    if(plan.date&&t){ if(plan.date>t) return true; if(plan.date<t) return false; }
+    return berlinNowParts().min < plan.slot+30;
+  }
   window.__planRemind=function(v){ S.planRemind=!!v; };
 
   // ========================= SCREENS =========================
@@ -353,20 +368,23 @@
   }
 
   // Geplante Auslastung pro Slot -> frei/mittel/voll (aus /api/plan, best effort)
-  function slotLoad(min){
+  function slotLoad(min, agg){
     var h=Math.floor(min/60);
-    var agg=(DATA.planAgg&&DATA.planAgg.hours)||{};
-    var c=Number(agg[h]||agg[String(h)]||0);
+    var hrs=(agg&&agg.hours)||{};
+    var c=Number(hrs[h]||hrs[String(h)]||0);
     if(c>=6) return {k:'voll',col:'#f0876a'};
     if(c>=3) return {k:'mittel',col:'#f3c969'};
     return {k:'frei',col:'#5fe0a0'};
   }
   function planCard(){
     var plan=DATA.plan;
+    // Tageskontext: bestehende Vormerkung -> deren Tag; sonst heute, und falls heute
+    // kein Slot mehr frei ist (abends/geschlossen) automatisch morgen.
+    var tomorrowMode = (plan && planActive(plan)) ? planIsTomorrow(plan) : !openSlotsToday().length;
     var clock='<circle cx="12" cy="12" r="9"></circle><path d="M12 7.5v5l3 1.8"></path>';
     var eyebrow='<div style="position:relative;display:inline-flex;align-items:center;gap:9px">'+
       '<div style="width:32px;height:32px;border-radius:10px;background:rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center">'+svg(clock,{c:'#F6A964',w:1.9,s:18})+'</div>'+
-      '<span style="font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#F6C79A">Auslastung · heute</span></div>';
+      '<span style="font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#F6C79A">Auslastung · '+(tomorrowMode?'morgen':'heute')+'</span></div>';
     // „Live-Auslastung ansehen" -> die Mitgliederbereich-Version der Live-Übersicht
     // (/auslastung-mitglieder, inkl. Zurück-Button). Gleiche Ansicht wie die Startseite,
     // aber mit Rücksprung in den Mitgliederbereich. Öffnet im selben Fenster, damit der
@@ -376,9 +394,10 @@
       '<div style="position:absolute;width:220px;height:220px;right:-70px;top:-90px;border-radius:50%;background:radial-gradient(circle,rgba(246,169,100,.18),transparent 70%);pointer-events:none"></div>'+eyebrow+inner+ausLink+'</div>'; };
 
     // Bereits vorgemerkt -> Bestätigung
-    if(plan && !planExpired(plan.slot) && !S.planEdit){
+    if(plan && planActive(plan) && !S.planEdit){
+      var whenWord=planIsTomorrow(plan)?'Morgen':'Heute';
       return wrap(
-        '<div style="position:relative;font-size:21px;font-weight:900;color:#fff;letter-spacing:-.4px;margin-top:12px">Heute um '+fmtMin(plan.slot)+' Uhr 👍</div>'+
+        '<div style="position:relative;font-size:21px;font-weight:900;color:#fff;letter-spacing:-.4px;margin-top:12px">'+whenWord+' um '+fmtMin(plan.slot)+' Uhr 👍</div>'+
         '<div style="position:relative;font-size:13px;color:#aed0d6;margin-top:4px;line-height:1.45">'+(S.planRemind?'Wir erinnern dich rechtzeitig per E-Mail.':'Ohne E-Mail-Benachrichtigung.')+'</div>'+
         '<div style="position:relative;display:flex;gap:10px;margin-top:16px">'+
           '<button data-act="planEdit" style="flex:1;padding:12px;border:1px solid rgba(255,255,255,.3);border-radius:11px;background:rgba(255,255,255,.08);color:#fff;font-weight:700;font-size:14px;cursor:pointer">Zeit ändern</button>'+
@@ -386,16 +405,18 @@
         '</div>');
     }
 
-    var title='<div style="position:relative;font-size:21px;font-weight:900;color:#fff;letter-spacing:-.4px;margin-top:12px">Trainingszeit vorreservieren</div>';
-    var slots=openSlotsToday();
+    var dayOffset=tomorrowMode?1:0;
+    var slots=openSlotsForDay(dayOffset);
+    var agg=tomorrowMode?DATA.planAggTom:DATA.planAgg;
+    var title='<div style="position:relative;font-size:21px;font-weight:900;color:#fff;letter-spacing:-.4px;margin-top:12px">'+(tomorrowMode?'Trainingszeit für morgen vorreservieren':'Trainingszeit vorreservieren')+'</div>';
     if(!slots.length){
-      // Bugfix: nie eine leere/„tote" Karte – außerhalb der Öffnungszeiten klare Info
+      // Nie eine leere/„tote" Karte – außerhalb der Öffnungszeiten klare Info
       return wrap(title+
-        '<div style="position:relative;font-size:13px;color:#aed0d6;margin-top:6px;line-height:1.5">Für heute ist gerade kein Zeitfenster mehr verfügbar. Schau zu den Öffnungszeiten wieder vorbei – dann kannst du deine Wunschzeit vormerken.</div>');
+        '<div style="position:relative;font-size:13px;color:#aed0d6;margin-top:6px;line-height:1.5">Aktuell ist kein Zeitfenster verfügbar. Schau zu den Öffnungszeiten wieder vorbei – dann kannst du deine Wunschzeit vormerken.</div>');
     }
-    var chips=slots.map(function(m){ var L=slotLoad(m); return '<button class="planSlot" data-act="planSet" data-arg="'+m+'"'+(S.planBusy?' disabled':'')+' style="flex-shrink:0;min-width:74px;padding:10px 8px;border-radius:12px;border:1px solid rgba(255,255,255,.22);background:rgba(255,255,255,.08);color:#fff;cursor:pointer;text-align:center"><div style="font-size:15px;font-weight:800">'+fmtMin(m)+'</div><div style="display:flex;align-items:center;justify-content:center;gap:5px;margin-top:3px"><span style="width:7px;height:7px;border-radius:50%;background:'+L.col+'"></span><span style="font-size:11px;color:#cfe3e7;font-weight:600">'+L.k+'</span></div></button>'; }).join('');
+    var chips=slots.map(function(m){ var L=slotLoad(m,agg); return '<button class="planSlot" data-act="planSet" data-arg="'+m+(dayOffset?('@'+dayOffset):'')+'"'+(S.planBusy?' disabled':'')+' style="flex-shrink:0;min-width:74px;padding:10px 8px;border-radius:12px;border:1px solid rgba(255,255,255,.22);background:rgba(255,255,255,.08);color:#fff;cursor:pointer;text-align:center"><div style="font-size:15px;font-weight:800">'+fmtMin(m)+'</div><div style="display:flex;align-items:center;justify-content:center;gap:5px;margin-top:3px"><span style="width:7px;height:7px;border-radius:50%;background:'+L.col+'"></span><span style="font-size:11px;color:#cfe3e7;font-weight:600">'+L.k+'</span></div></button>'; }).join('');
     return wrap(title+
-      '<div style="position:relative;font-size:13px;color:#aed0d6;margin-top:6px;line-height:1.45">Wähl deine Wunschzeit – wir halten dir den Platz im Studio frei.</div>'+
+      '<div style="position:relative;font-size:13px;color:#aed0d6;margin-top:6px;line-height:1.45">'+(tomorrowMode?'Für heute haben wir schon geschlossen – sichere dir direkt deine Wunschzeit für morgen.':'Wähl deine Wunschzeit – wir halten dir den Platz im Studio frei.')+'</div>'+
       '<div style="position:relative;display:flex;gap:8px;margin-top:14px;overflow-x:auto;padding-bottom:4px;-webkit-overflow-scrolling:touch">'+chips+'</div>'+
       '<label style="position:relative;display:flex;align-items:center;gap:9px;margin-top:14px;cursor:pointer;font-size:13px;color:#cfe3e7;font-weight:600"><input type="checkbox" '+(S.planRemind?'checked':'')+' onclick="window.__planRemind(this.checked)" style="width:17px;height:17px;accent-color:#E08C53"> Benachrichtigungen per E-Mail (Bestätigung + Erinnerung)</label>'+
       ((S.planEdit&&plan)?'<div style="position:relative;margin-top:10px"><button data-act="planEditCancel" style="background:none;border:none;color:#aed0d6;font-size:13px;font-weight:600;cursor:pointer;text-decoration:underline">Abbrechen</button></div>':''));
@@ -1043,15 +1064,17 @@
   var ACT={
     nav:function(a){ nav(a); },
     planSet:function(a){
-      var mins=parseInt(a,10); if(!isFinite(mins)) return;
+      var s=String(a).split('@'); var mins=parseInt(s[0],10); var off=(parseInt(s[1],10)===1)?1:0;
+      if(!isFinite(mins)) return;
       setQuiet({planBusy:true});
-      api('/api/member/plan',{method:'POST',body:JSON.stringify({action:'set',minutes:mins,remind:S.planRemind})})
+      api('/api/member/plan',{method:'POST',body:JSON.stringify({action:'set',minutes:mins,remind:S.planRemind,dayOffset:off})})
         .then(function(r){ if(r&&r.ok&&r.plan){ DATA.plan=r.plan; } setQuiet({planBusy:false,planEdit:false}); })
         .catch(function(){ setQuiet({planBusy:false}); });
     },
     planCancel:function(){
+      var off=(DATA.plan&&DATA.plan.dayOffset===1)?1:0;
       setQuiet({planBusy:true});
-      api('/api/member/plan',{method:'POST',body:JSON.stringify({action:'cancel'})})
+      api('/api/member/plan',{method:'POST',body:JSON.stringify({action:'cancel',dayOffset:off})})
         .then(function(){ DATA.plan=null; setQuiet({planBusy:false,planEdit:false}); })
         .catch(function(){ setQuiet({planBusy:false}); });
     },

@@ -19,13 +19,17 @@ module.exports = async function handler(req, res) {
 
   if (req.method === 'OPTIONS') { res.statusCode = 204; return res.end(); }
 
+  // Optional: Vorschau für morgen (?offset=1), z. B. wenn heute schon geschlossen ist.
+  let offset = 0;
+  try { offset = (new URL(req.url, 'http://x').searchParams.get('offset') === '1') ? 1 : 0; } catch (e) {}
+
   // Zuverlässiger Erinnerungs-Trigger: Live-Anzeigen pollen diesen Endpunkt während der
   // Öffnungszeiten regelmäßig. Gedrosselt per Redis-Lock -> nur ~alle 5 Min wird gesendet.
-  // Best-effort: ein Fehler darf die Auslastungs-Antwort nie beeinflussen.
-  try { await dispatch({ force: false }); } catch (e) {}
+  // Best-effort: ein Fehler darf die Auslastungs-Antwort nie beeinflussen. Nur für „heute".
+  if (!offset) { try { await dispatch({ force: false }); } catch (e) {} }
 
   try {
-    const agg = await P.getAggregate();
+    const agg = await P.getAggregate(undefined, offset);
     // CDN-cachebar: viele Viewer -> wenige Abrufe
     res.setHeader('Cache-Control', 'public, s-maxage=60, max-age=30, stale-while-revalidate=120');
     res.statusCode = 200;

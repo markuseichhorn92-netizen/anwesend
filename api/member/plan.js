@@ -16,18 +16,20 @@ const { renderEmail, BASE } = require('../../lib/emailTemplate');
 function fmtSlot(m) { return (Math.floor(m / 60) < 10 ? '0' : '') + Math.floor(m / 60) + ':' + (m % 60 < 10 ? '0' : '') + (m % 60); }
 
 // Sofort-Bestätigung beim Vormerken (blockiert die Antwort nicht hart – Fehler werden geschluckt).
-async function sendConfirmation(memberId, email, firstName, slot, date, referralCode) {
+async function sendConfirmation(memberId, email, firstName, slot, date, referralCode, dayOffset) {
   if (!hasMail || !email) return;
+  const Word = dayOffset === 1 ? 'Morgen' : 'Heute';     // „Heute" / „Morgen"
+  const word = Word.toLowerCase();                         // „heute" / „morgen"
   const cancelUrl = BASE + '/api/plan-cancel?t=' + encodeURIComponent(P.cancelToken(memberId, date));
   try {
     const mail = renderEmail({
-      preheader: 'Vormerkung bestätigt: heute um ' + fmtSlot(slot) + ' Uhr',
+      preheader: 'Vormerkung bestätigt: ' + word + ' um ' + fmtSlot(slot) + ' Uhr',
       name: firstName || '',
       eyebrow: 'Vormerkung bestätigt',
       headline: 'Deine Zeit ist notiert',
       intro: 'Wir haben deine Vormerkung im Fit-Inn Trier gespeichert. Eine kurze Erinnerung schicken wir dir noch rechtzeitig vorher. Wir freuen uns auf dich!',
       panel: [
-        { label: 'Wann', value: 'Heute, ' + fmtSlot(slot) + ' Uhr' },
+        { label: 'Wann', value: Word + ', ' + fmtSlot(slot) + ' Uhr' },
       ],
       button: { label: 'Zeit ändern', href: BASE + '/mitglieder' },
       secondary: { label: 'Vormerkung stornieren', href: cancelUrl },
@@ -37,7 +39,7 @@ async function sendConfirmation(memberId, email, firstName, slot, date, referral
     });
     await sendMailRaw({
       to: email,
-      subject: 'Vormerkung bestätigt: heute um ' + fmtSlot(slot) + ' Uhr',
+      subject: 'Vormerkung bestätigt: ' + word + ' um ' + fmtSlot(slot) + ' Uhr',
       text: mail.text,
       html: mail.html,
     });
@@ -77,7 +79,7 @@ module.exports = async function handler(req, res) {
 
   try {
     if (action === 'cancel') {
-      const r = await P.cancelPlan(sess.id);
+      const r = await P.cancelPlan(sess.id, undefined, body.dayOffset);
       res.statusCode = 200;
       return res.end(JSON.stringify(r));
     }
@@ -87,10 +89,11 @@ module.exports = async function handler(req, res) {
     try { const m = await M.getMember(sess.id); if (m) { email = m.email || ''; firstName = m.firstName || ''; referralCode = m.referralCode || ''; } } catch (e) {}
 
     const remind = body.remind !== false;
+    const dayOffset = (parseInt(body.dayOffset, 10) === 1) ? 1 : 0;
     const minutes = (body.minutes != null) ? body.minutes : (body.hour != null ? body.hour * 60 : null);
-    const r = await P.setPlan(sess.id, minutes, { email: email, firstName: firstName, remind: remind });
+    const r = await P.setPlan(sess.id, minutes, { email: email, firstName: firstName, remind: remind, dayOffset: dayOffset });
     // Sofort-Bestätigung per E-Mail, wenn Benachrichtigungen aktiv sind
-    if (r.ok && r.plan && remind) await sendConfirmation(sess.id, email, firstName, r.plan.slot, r.plan.date, referralCode);
+    if (r.ok && r.plan && remind) await sendConfirmation(sess.id, email, firstName, r.plan.slot, r.plan.date, referralCode, r.plan.dayOffset);
     res.statusCode = r.ok ? 200 : 400;
     return res.end(JSON.stringify(r));
   } catch (e) {
