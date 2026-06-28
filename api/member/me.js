@@ -14,10 +14,13 @@ module.exports = async function handler(req, res) {
   try {
     const m = await M.getMember(sess.id);
     if (!m) { res.statusCode = 404; return res.end(JSON.stringify({ error: 'not_found' })); }
-    let contract = null;
-    try { contract = await M.getContract(sess.id); } catch (e) {}
+    let contract = null, contractError = false;
+    try { contract = await M.getContract(sess.id); } catch (e) { contractError = true; }
+    // Aktive Mitgliedschaft? Fail-safe: bei Fehler NICHT aussperren (true);
+    // kein Vertrag -> ehemalig/nie (false); sonst contract.active.
+    const membershipActive = contractError ? true : (contract ? contract.active !== false : false);
     res.statusCode = 200;
-    return res.end(JSON.stringify({ ok: true, profile: M.publicProfile(m), contract: contract }));
+    return res.end(JSON.stringify({ ok: true, profile: M.publicProfile(m), contract: contract, membershipActive: membershipActive }));
   } catch (err) {
     console.error('[member/me]', err.message);
     res.statusCode = 500; return res.end(JSON.stringify({ error: 'server_error' }));

@@ -160,7 +160,10 @@
 
   // ---- state ----
   var TOKEN = localStorage.getItem('fi_member_token') || sessionStorage.getItem('fi_member_token') || null;
-  var DATA = { profile:null, contract:null, checkins:null, appts:null, plan:null };
+  var DATA = { profile:null, contract:null, checkins:null, appts:null, plan:null, membershipActive:true };
+  // Erlaubte Screens für ehemalige Mitglieder (alles andere wird gesperrt)
+  var FORMER_OK = ['home','checkins','help'];
+  function isFormer(){ return DATA.membershipActive===false; }
   var S = { screen: TOKEN?'home':'login',
     msg:'', // generic success on data screen
     planEdit:false, planRemind:true, planBusy:false,
@@ -230,7 +233,9 @@
   $('logoutBtn').addEventListener('click', logout);
   $('brandLogo').addEventListener('click', function(){ if(TOKEN) nav('home'); });
 
-  function nav(s){ S.screen=s;
+  function nav(s){
+    if(isFormer() && FORMER_OK.indexOf(s)<0) s='home';   // Ehemalige: gesperrte Screens -> Übersicht
+    S.screen=s;
     if(s==='help') S.helpView='list';
     if(s==='contract'){ S.cancelStep=0; S.pauseStep=0; S.pauseDone=false; S.offerDone=''; }
     if(s==='checkins'&&!DATA.checkins) loadCheckins();
@@ -239,7 +244,7 @@
 
   // ---- data loading ----
   function loadMe(){
-    return api('/api/member/me').then(function(d){ DATA.profile=d.profile||null; DATA.contract=d.contract||null; });
+    return api('/api/member/me').then(function(d){ DATA.profile=d.profile||null; DATA.contract=d.contract||null; DATA.membershipActive=(d.membershipActive!==false); });
   }
   function loadCheckins(){ api('/api/member/checkins').then(function(d){ DATA.checkins=d.checkins||[]; render(); }).catch(function(){ DATA.checkins=[]; render(); }); }
   function loadAppts(){ api('/api/member/appointments').then(function(d){ DATA.appts=d.appointments||[]; render(); }).catch(function(){ DATA.appts=[]; render(); }); }
@@ -356,7 +361,31 @@
     '</div>';
   }
 
+  function scrRejoin(){
+    var p=DATA.profile||{}; var name=p.firstName||'';
+    var benefits=[
+      ['<path d="M20 6 9 17l-5-5"></path>','Wieder voller Zugang zu Geräten & Kursen'],
+      ['<path d="M20 6 9 17l-5-5"></path>','Live-Auslastung & Zeit vormerken'],
+      ['<path d="M20 6 9 17l-5-5"></path>','Faire Konditionen – jederzeit online abschließbar']
+    ].map(function(b){ return '<div style="display:flex;align-items:center;gap:11px;margin-top:10px"><span style="width:24px;height:24px;border-radius:8px;background:#E7F6EC;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+svg(b[0],{c:'#1d7a3e',w:2.4,s:15})+'</span><span style="font-size:14px;color:#42454b;font-weight:600">'+b[1]+'</span></div>'; }).join('');
+    return ''+
+      '<div style="padding:6px 4px 16px"><div style="font-size:28px;font-weight:900;color:#fff;letter-spacing:-.6px">Hallo '+esc(name||'')+'!</div>'+
+      '<div style="font-size:14px;color:#bfd7dc;margin-top:3px;font-weight:500">Schön, dass du da warst.</div></div>'+
+      '<div style="background:#fff;border-radius:22px;padding:24px 22px;box-shadow:0 12px 34px rgba(4,33,40,.10)">'+
+        '<div style="width:54px;height:54px;border-radius:15px;background:linear-gradient(150deg,#0e6072,#063540);display:flex;align-items:center;justify-content:center">'+svg('<path d="M12 21s-7-4.3-9.2-8.5C1.2 9.4 2.6 6 6 6c1.9 0 3.2 1 4 2 .8-1 2.1-2 4-2 3.4 0 4.8 3.4 3.2 6.5C19 16.7 12 21 12 21z"></path>',{c:'#fff',w:1.9,s:27})+'</div>'+
+        '<div style="font-size:20px;font-weight:900;color:#15171B;letter-spacing:-.3px;margin-top:16px">Deine Mitgliedschaft ist beendet</div>'+
+        '<div style="font-size:14px;color:#6b7780;margin-top:6px;line-height:1.5">Wir würden uns freuen, dich wieder im Fit-Inn Trier begrüßen zu dürfen. Eine neue Mitgliedschaft schließt du in wenigen Minuten online ab.</div>'+
+        '<div style="margin-top:16px">'+benefits+'</div>'+
+        '<a href="/mitglied-werden" target="_top" class="btn" style="display:flex;align-items:center;justify-content:center;gap:9px;margin-top:22px;padding:16px;font-size:16px;text-decoration:none">'+svg('<path d="M5 12h14M13 6l6 6-6 6"></path>',{c:'#fff',w:2.2,s:20})+'Jetzt wieder Mitglied werden</a>'+
+        '<div style="display:flex;gap:10px;margin-top:12px">'+
+          '<button data-act="nav" data-arg="checkins" style="flex:1;padding:12px;border:1.5px solid #d6dee0;border-radius:11px;background:#fff;color:'+TEAL+';font-weight:700;font-size:14px;cursor:pointer">Check-in-Verlauf</button>'+
+          '<button data-act="nav" data-arg="help" style="flex:1;padding:12px;border:1.5px solid #d6dee0;border-radius:11px;background:#fff;color:'+TEAL+';font-weight:700;font-size:14px;cursor:pointer">Hilfe</button>'+
+        '</div>'+
+      '</div>';
+  }
+
   function scrHome(){
+    if(isFormer()) return scrRejoin();
     var p=DATA.profile||{}; var name=p.firstName||'';
     var nextAppt = (DATA.appts||[]).slice().filter(function(a){return new Date(a.start)>=new Date();}).sort(function(a,b){return new Date(a.start)-new Date(b.start);})[0];
     var status = nextAppt ? (''+
@@ -670,19 +699,22 @@
     if(sb) sb.innerHTML=
       '<img src="/assets/fitinn-logo-white.png" alt="Fit-Inn Trier" data-act="nav" data-arg="home" style="height:28px;width:auto;align-self:flex-start;margin:2px 6px 22px;cursor:pointer">'+
       '<div style="display:flex;align-items:center;gap:12px;background:rgba(255,255,255,.08);border-radius:15px;padding:12px 13px;margin-bottom:20px"><div style="width:42px;height:42px;border-radius:50%;background:#fff;color:'+TEAL+';font-weight:900;font-size:15px;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+esc(initials(p))+'</div><div style="min-width:0"><div style="color:#fff;font-weight:800;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(((p.firstName||'')+' '+(p.lastName||'')).trim()||'Mitglied')+'</div><div style="color:#9fc3ca;font-size:12px;font-weight:500">'+(p.customerNumber?('Mitgliedsnr. '+esc(p.customerNumber)):'')+'</div></div></div>'+
-      '<nav style="display:flex;flex-direction:column;gap:4px">'+NAVITEMS.map(function(it){var act=S.screen===it[0];return '<button class="sidebtn'+(act?' active':'')+'" data-act="nav" data-arg="'+it[0]+'">'+svg(it[2],{c:act?'#fff':'#bcd7dc',w:1.9,s:20})+'<span>'+it[1]+'</span></button>';}).join('')+'</nav>'+
+      '<nav style="display:flex;flex-direction:column;gap:4px">'+NAVITEMS.filter(function(it){return !isFormer()||FORMER_OK.indexOf(it[0])>=0;}).map(function(it){var act=S.screen===it[0];return '<button class="sidebtn'+(act?' active':'')+'" data-act="nav" data-arg="'+it[0]+'">'+svg(it[2],{c:act?'#fff':'#bcd7dc',w:1.9,s:20})+'<span>'+it[1]+'</span></button>';}).join('')+'</nav>'+
       '<button class="sidebtn" data-act="logout" style="margin-top:auto;color:#9fc3ca">'+svg('<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"></path>',{c:'#9fc3ca',w:1.9,s:19})+'<span>Abmelden</span></button>';
     if(tb){
       var c=DATA.contract; var badge='';
-      if(c){ badge = c.cancelled
-        ? '<div style="display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.12);border-radius:30px;padding:7px 14px"><span style="width:8px;height:8px;border-radius:50%;background:#f0a23b"></span><span style="font-size:13px;font-weight:700;color:#eaf4f5">Gekündigt</span></div>'
-        : '<div style="display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.12);border-radius:30px;padding:7px 14px"><span style="width:8px;height:8px;border-radius:50%;background:#54e08a"></span><span style="font-size:13px;font-weight:700;color:#eaf4f5">Mitgliedschaft aktiv</span></div>'; }
+      var pill=function(col,txt){ return '<div style="display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.12);border-radius:30px;padding:7px 14px"><span style="width:8px;height:8px;border-radius:50%;background:'+col+'"></span><span style="font-size:13px;font-weight:700;color:#eaf4f5">'+txt+'</span></div>'; };
+      if(isFormer()) badge=pill('#b9c4c6','Kein aktives Mitglied');
+      else if(c&&c.cancelled) badge=pill('#f0a23b','Gekündigt');
+      else if(c) badge=pill('#54e08a','Mitgliedschaft aktiv');
       tb.innerHTML='<div style="font-size:23px;font-weight:900;color:#fff;letter-spacing:-.4px">'+esc(TITLES[S.screen]||'')+'</div>'+badge;
     }
   }
   var NARROW={contract:1,referral:1,appt:1};
   function render(){
     $('logoutBtn').style.display = (TOKEN && S.screen!=='login') ? 'block' : 'none';
+    // Ehemalige Mitglieder: gesperrte Screens immer auf die Übersicht (Rejoin) umleiten
+    if(isFormer() && S.screen!=='login' && FORMER_OK.indexOf(S.screen)<0) S.screen='home';
     var html;
     switch(S.screen){
       case 'login': html=scrLogin(); break;
