@@ -83,9 +83,11 @@ module.exports = async function handler(req, res) {
 
     if (!hasMail) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'E-Mail-Versand ist noch nicht eingerichtet.' })); }
 
+    const topic = String(body.topic || '').trim();
     const text = 'Kontaktanfrage über den Mitgliederbereich\n\n'
       + 'Mitglied: ' + who(m) + '\nKundennr.: ' + (m.customerNumber || '—')
       + '\nAntwort-Adresse: ' + (replyTo || '—')
+      + (topic ? ('\nThema: ' + topic) : '')
       + '\n\nFrage des Mitglieds:\n' + (question || '—')
       + '\n\nNachricht:\n' + (message || '—')
       + (body.answer ? ('\n\n— Vorgeschlagene KI-Antwort (war nicht ausreichend) —\n' + String(body.answer).slice(0, 1200)) : '')
