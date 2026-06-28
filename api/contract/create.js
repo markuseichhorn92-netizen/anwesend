@@ -10,6 +10,8 @@
  */
 
 const C = require('../../lib/connect');
+const { sendMailRaw, hasMail } = require('../../lib/mail');
+const { renderEmail, BASE } = require('../../lib/emailTemplate');
 
 function readBody(req) {
   return new Promise((resolve) => {
@@ -17,6 +19,43 @@ function readBody(req) {
     req.on('end', () => { try { resolve(JSON.parse(b || '{}')); } catch (e) { resolve({}); } });
     req.on('error', () => resolve({}));
   });
+}
+
+// Connect-API liefert die Mitgliedsnummer je nach Version unter verschiedenen Keys.
+function pickCustomerNumber(j) {
+  if (!j) return null;
+  return j.customerNumber || j[' customer member number'] || j['customer member number'] || null;
+}
+function fmtDateDE(s) {
+  const m = String(s || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return m ? (m[3] + '.' + m[2] + '.' + m[1]) : (s || '');
+}
+
+// Eigene, gebrandete Willkommens-/Abschluss-Bestätigung ans Mitglied (best effort).
+// Ergänzt die formellen Vertragsunterlagen (die separat aus Magicline kommen).
+async function sendWelcomeMail(b, customerNumber) {
+  if (!hasMail || !b.email) return;
+  try {
+    const panel = [];
+    if (customerNumber) panel.push({ label: 'Mitgliedsnummer', value: customerNumber });
+    if (b.startDate) panel.push({ label: 'Start', value: fmtDateDE(b.startDate) });
+    panel.push({ label: 'Studio', value: 'Fit-Inn Trier · Auf Hirtenberg 8' });
+    const em = renderEmail({
+      preheader: 'Willkommen im Fit-Inn Trier – deine Mitgliedschaft ist abgeschlossen.',
+      name: b.firstname || '',
+      eyebrow: 'Willkommen',
+      headline: 'Willkommen im Fit-Inn Trier!',
+      intro: [
+        'Schön, dass du dabei bist – deine Mitgliedschaft ist erfolgreich abgeschlossen. Ab sofort gehört der ganze Club dir.',
+        'In deinem Mitgliederbereich kannst du dich jederzeit mit deiner Mitgliedsnummer und deinem Geburtsdatum anmelden, Termine buchen und deine Daten verwalten. Deine vollständigen Vertragsunterlagen erhältst du gesondert.',
+      ],
+      panel: panel,
+      button: { label: 'Zum Mitgliederbereich', href: BASE + '/mitglieder' },
+      promo: true,
+      footer: 'member',
+    });
+    await sendMailRaw({ to: b.email, subject: 'Willkommen im Fit-Inn Trier!', text: em.text, html: em.html });
+  } catch (e) { /* Bestätigungs-Mail ist optional */ }
 }
 
 const REQUIRED = ['rateBundleTermId', 'startDate', 'firstname', 'lastname', 'email', 'dateOfBirth', 'street', 'houseNumber', 'zipCode', 'city'];
@@ -43,10 +82,12 @@ module.exports = async function handler(req, res) {
   try {
     const r = await C.createContract(b);
     if (r.ok) {
+      const customerNumber = pickCustomerNumber(r.json);
+      await sendWelcomeMail(b, customerNumber);
       res.statusCode = 200;
       return res.end(JSON.stringify({
         ok: true,
-        customerNumber: r.json && r.json.customerNumber || null,
+        customerNumber: customerNumber,
         message: 'Willkommen im Fit-Inn Trier! Dein Vertrag ist abgeschlossen – du erhältst alle Unterlagen per E-Mail.',
       }));
     }

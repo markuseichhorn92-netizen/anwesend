@@ -9,6 +9,8 @@
  */
 
 const C = require('../../lib/connect');
+const { sendMailRaw, hasMail } = require('../../lib/mail');
+const { renderEmail, BASE } = require('../../lib/emailTemplate');
 
 function readBody(req) {
   return new Promise((resolve) => {
@@ -16,6 +18,44 @@ function readBody(req) {
     req.on('end', () => { try { resolve(JSON.parse(b || '{}')); } catch (e) { resolve({}); } });
     req.on('error', () => resolve({}));
   });
+}
+
+// Termin (ISO) in deutsche Datums-/Uhrzeit-Darstellung (Zeitzone Berlin).
+function fmtBerlin(iso) {
+  try {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return { date: '', time: '' };
+    const date = new Intl.DateTimeFormat('de-DE', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric', timeZone: 'Europe/Berlin' }).format(d);
+    const time = new Intl.DateTimeFormat('de-DE', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Berlin' }).format(d);
+    return { date, time };
+  } catch (e) { return { date: '', time: '' }; }
+}
+
+// Eigene, gebrandete Probetraining-Bestätigung ans Interessenten-Postfach (best effort).
+async function sendTrialMail(b) {
+  if (!hasMail || !b.email) return;
+  try {
+    const f = fmtBerlin(b.startDateTime);
+    const panel = [];
+    if (f.date) panel.push({ label: 'Termin', value: f.date });
+    if (f.time) panel.push({ label: 'Uhrzeit', value: f.time + ' Uhr' });
+    panel.push({ label: 'Adresse', value: 'Auf Hirtenberg 8 · 54296 Trier' });
+    const em = renderEmail({
+      preheader: 'Dein Probetraining ist gebucht.',
+      name: b.firstname || '',
+      eyebrow: 'Probetraining',
+      headline: 'Dein Probetraining ist gebucht',
+      intro: [
+        'Wir freuen uns auf dich! Komm am besten ein paar Minuten früher – wir zeigen dir in Ruhe alles und beantworten alle deine Fragen.',
+        'Bring einfach bequeme Sportkleidung und saubere Hallenschuhe mit. Solltest du den Termin doch nicht wahrnehmen können, gib uns kurz Bescheid.',
+      ],
+      panel: panel,
+      button: { label: 'Mehr über uns', href: BASE },
+      promo: true,
+      footer: 'member',
+    });
+    await sendMailRaw({ to: b.email, subject: 'Dein Probetraining ist gebucht – Fit-Inn Trier', text: em.text, html: em.html });
+  } catch (e) { /* Bestätigungs-Mail ist optional */ }
 }
 
 const REQUIRED = ['firstname', 'lastname', 'email', 'phone', 'gender', 'dateOfBirth', 'street', 'houseNumber', 'zip', 'city', 'startDateTime'];
@@ -39,6 +79,7 @@ module.exports = async function handler(req, res) {
   try {
     const r = await C.bookTrial(b);
     if (r.ok) {
+      await sendTrialMail(b);
       res.statusCode = 200;
       return res.end(JSON.stringify({ ok: true, message: 'Dein Probetraining ist gebucht! Du bekommst eine Bestätigung per E-Mail.' }));
     }
