@@ -46,6 +46,27 @@ async function sendMemberCancelMail(m, opts) {
   } catch (e) { /* Mitglied-Mail ist optional */ }
 }
 
+// Designte Widerruf-Bestätigung ans Mitglied (best effort). direct=true -> direkt bei Magicline eingetragen.
+async function sendMemberRevokeMail(m, direct) {
+  if (!hasMail || !m.email) return;
+  try {
+    var rm = renderEmail({
+      preheader: 'Dein Widerruf ist bei uns eingegangen.',
+      name: m.firstName || '',
+      eyebrow: 'Widerruf eingegangen',
+      headline: 'Dein Widerruf ist eingegangen',
+      intro: (direct
+        ? 'Wir haben deinen Widerruf verbindlich verarbeitet. '
+        : 'Wir haben deinen Widerruf erhalten. ')
+        + 'Dein online abgeschlossener Vertrag wird vollständig rückabgewickelt – bereits gezahlte Beiträge erstatten wir dir selbstverständlich zurück. Die Bestätigung folgt in Kürze per E-Mail.',
+      button: { label: 'Zum Mitgliederbereich', href: BASE + '/mitglieder' },
+      promo: false,
+      footer: 'member',
+    });
+    await sendMailRaw({ to: m.email, subject: 'Dein Widerruf ist eingegangen – Fit-Inn Trier', text: rm.text, html: rm.html });
+  } catch (e) { /* Mitglied-Mail ist optional */ }
+}
+
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json');
   if (req.method !== 'POST') { res.statusCode = 405; return res.end(JSON.stringify({ error: 'method_not_allowed' })); }
@@ -143,10 +164,30 @@ module.exports = async function handler(req, res) {
       + '\n\nBitte die Kündigung in Magicline zurücknehmen/stornieren.';
     okMsg = 'Deine Kündigung wird zurückgenommen – wir bestätigen das per E-Mail.';
   } else if (body.action === 'revoke') {
-    // 14-Tage-Widerruf (Fernabsatz) – wirksam mit Eingang der Erklärung. Wird im
-    // Mitgliederbereich erklärt und ans Studio gemeldet (Rückabwicklung in Magicline).
+    // 14-Tage-Widerruf (Fernabsatz). 1) Direkt über die Connect API eintragen, wenn
+    // Vertrag + reCAPTCHA-Token vorhanden; 2) sonst E-Mail-Fallback ans Studio.
     var ctr = null;
     try { ctr = await M.getContract(sess.id); } catch (e) {}
+    if (ctr && ctr.contractId && body.recaptchaToken) {
+      var dw = null;
+      try { dw = await C.submitWithdrawal({ member: m, contract: ctr, recaptchaToken: body.recaptchaToken }); }
+      catch (e) { dw = { ok: false, error: String(e && e.message) }; }
+      if (dw && dw.ok) {
+        await sendMemberRevokeMail(m, true);
+        if (hasMail) {
+          try {
+            await sendMail('✅ Widerruf direkt eingetragen – ' + who(m),
+              'Ein Mitglied hat seinen Vertrag über den Mitgliederbereich WIDERRUFEN – der Widerruf wurde DIREKT in Magicline eingetragen (Connect API).\n\n'
+              + 'Mitglied: ' + who(m) + '\nKundennr.: ' + (m.customerNumber || '—')
+              + (ctr.rateName ? ('\nTarif: ' + ctr.rateName) : '') + '\nContractId: ' + (ctr.contractId || '—')
+              + '\n\nKeine manuelle Aktion nötig – nur zur Info. Bereits eingezogene Beiträge ggf. erstatten.');
+          } catch (e) {}
+        }
+        res.statusCode = 200;
+        return res.end(JSON.stringify({ ok: true, direct: true, message: 'Dein Widerruf wurde verbindlich eingereicht. Du erhältst eine Bestätigung per E-Mail.' }));
+      }
+      // sonst weiter zum E-Mail-Fallback (z. B. reCAPTCHA-Domain noch nicht freigeschaltet)
+    }
     subject = '⚠️ WIDERRUF (14-Tage-Widerrufsrecht) eingegangen – ' + who(m);
     text = 'Ein Mitglied hat seinen ONLINE abgeschlossenen Vertrag über den Mitgliederbereich WIDERRUFEN '
       + '(gesetzliches Fernabsatz-Widerrufsrecht, 14 Tage). Der Widerruf ist mit Eingang dieser Erklärung wirksam.\n\n'
@@ -171,21 +212,9 @@ module.exports = async function handler(req, res) {
   if (mail.ok && body.action === 'cancel') {
     await sendMemberCancelMail(m, { direct: false, dateText: targetDate, ct: ct });
   }
-  // Bestätigung ans Mitglied beim Widerruf
-  if (mail.ok && body.action === 'revoke' && hasMail && m.email) {
-    try {
-      var rm = renderEmail({
-        preheader: 'Dein Widerruf ist bei uns eingegangen.',
-        name: m.firstName || '',
-        eyebrow: 'Widerruf eingegangen',
-        headline: 'Dein Widerruf ist eingegangen',
-        intro: 'Wir haben deinen Widerruf erhalten. Dein online abgeschlossener Vertrag wird rückabgewickelt – du erhältst die Bestätigung in Kürze per E-Mail. Bereits gezahlte Beiträge erstatten wir dir selbstverständlich zurück.',
-        button: { label: 'Zum Mitgliederbereich', href: BASE + '/mitglieder' },
-        promo: false,
-        footer: 'member',
-      });
-      await sendMailRaw({ to: m.email, subject: 'Dein Widerruf ist eingegangen – Fit-Inn Trier', text: rm.text, html: rm.html });
-    } catch (e) { /* Mitglied-Mail ist optional */ }
+  // Bestätigung ans Mitglied beim Widerruf (E-Mail-Fallback-Pfad)
+  if (mail.ok && body.action === 'revoke') {
+    await sendMemberRevokeMail(m, false);
   }
   res.statusCode = 200;
   return res.end(JSON.stringify({ ok: mail.ok, direct: false, message: mail.ok ? okMsg : 'Übermittlung fehlgeschlagen – bitte später erneut.', _debug: cancelDbg }));
