@@ -60,6 +60,8 @@
   .days{margin-top:20px;display:flex;gap:10px;overflow-x:auto;padding-bottom:4px;-webkit-overflow-scrolling:touch;scrollbar-width:none;-ms-overflow-style:none}
   .days::-webkit-scrollbar{display:none}
   @media(min-width:721px){.days{flex-wrap:wrap;overflow-x:visible}}
+  .moredays{margin-top:12px;width:100%;background:#fff;border:1.5px dashed #cbd6d8;color:#0a4958;font-weight:700;font-size:14px;padding:12px;border-radius:12px;cursor:pointer}
+  .moredays:hover{border-color:#0a4958;background:#f6fafb}
   .day{flex:0 0 auto;min-width:78px;padding:14px 10px;border-radius:14px;border:1.5px solid #dce3e4;background:#fff;cursor:pointer;text-align:center}
   .day.sel{border-color:#0a4958;background:#0a4958}
   .day .dow{font-size:12px;font-weight:700;color:#8a8178;text-transform:uppercase;letter-spacing:.4px}
@@ -168,7 +170,8 @@
   var TITLES=['Fitnessziel','Freund mitbringen','Trainer','Termin','Persönliche Angaben','Adresse','Absenden'];
   var GOALS=[['fire','🔥','Abnehmen'],['heart','❤️','Allgemeine Fitness'],['health','🩺','Gesundheitliches Problem'],['muscle','💪','Muskelaufbau']];
 
-  var S={step:1,goal:null,friend:null,trainer:null,dayKey:null,slotISO:null,consent:false,marketing:false,busy:false,err:''};
+  var S={step:1,goal:null,friend:null,trainer:null,dayKey:null,slotISO:null,consent:false,marketing:false,busy:false,err:'',showAllDays:false};
+  var DAY_LIMIT=7;
   var F={gender:'',firstname:'',lastname:'',dateOfBirth:'',phone:'',email:'',street:'',houseNumber:'',zip:'',city:''};
   var DAYS=null, SLOTERR=false, loadedTrainer=null;
 
@@ -182,9 +185,9 @@
   // ---- Slots je nach Trainer-Wahl laden + nach Tagen gruppieren ----
   // trainerReq=true -> mit Trainer (weniger Termine); false -> ohne Trainer (mehr Termine).
   function loadSlots(trainerReq){
-    loadedTrainer=trainerReq; DAYS=null; SLOTERR=false; S.dayKey=null; S.slotISO=null;
+    loadedTrainer=trainerReq; DAYS=null; SLOTERR=false; S.dayKey=null; S.slotISO=null; S.showAllDays=false;
     if(S.step===4) render();
-    fetch('/api/trial/slots?trainer='+(trainerReq?'1':'0'),{cache:'no-store'}).then(function(r){return r.json();}).then(function(d){
+    fetch('/api/trial/slots?days=14&trainer='+(trainerReq?'1':'0'),{cache:'no-store'}).then(function(r){return r.json();}).then(function(d){
       if(loadedTrainer!==trainerReq) return; // zwischenzeitlich umgewählt -> veraltete Antwort verwerfen
       var slots=(d.slots||[]).filter(function(s){return s&&s.startDateTime;});
       slots.sort(function(a,b){return new Date(a.startDateTime)-new Date(b.startDateTime);});
@@ -246,9 +249,11 @@
       else if(!DAYS.length){ body='<div class="sub" style="margin-top:18px">Aktuell sind keine freien Termine online verfügbar. Ruf uns gern an – wir finden gemeinsam einen Termin: <b>0651 308524</b>.</div>'; }
       else {
         var d=selDay();
-        var chips=DAYS.map(function(x){ return '<button type="button" class="day'+(x.key===S.dayKey?' sel':'')+'" data-day="'+esc(x.key)+'"><div class="dow">'+esc(x.dow)+'</div><div class="dd">'+esc(x.day)+'</div><div class="mon">'+esc(x.mon)+'</div></button>'; }).join('');
+        var visDays=S.showAllDays?DAYS:DAYS.slice(0,DAY_LIMIT);
+        var chips=visDays.map(function(x){ return '<button type="button" class="day'+(x.key===S.dayKey?' sel':'')+'" data-day="'+esc(x.key)+'"><div class="dow">'+esc(x.dow)+'</div><div class="dd">'+esc(x.day)+'</div><div class="mon">'+esc(x.mon)+'</div></button>'; }).join('');
+        var more=(!S.showAllDays&&DAYS.length>DAY_LIMIT)?'<button type="button" id="moreDays" class="moredays">+ '+(DAYS.length-DAY_LIMIT)+' weitere Tage anzeigen</button>':'';
         var times=(d?d.slots:[]).map(function(s){ return '<button type="button" class="slot'+(s.iso===S.slotISO?' sel':'')+'" data-slot="'+esc(s.iso)+'">'+esc(s.time)+'</button>'; }).join('');
-        body='<div class="days">'+chips+'</div><div class="freelbl">Freie Zeiten am '+esc(d?d.long:'')+'</div><div class="slots">'+times+'</div>';
+        body='<div class="days">'+chips+'</div>'+more+'<div class="freelbl">Freie Zeiten am '+esc(d?d.long:'')+'</div><div class="slots">'+times+'</div>';
       }
       var hint=(S.trainer===0)
         ? 'Zeiten mit Trainerbegleitung — diese sind begrenzter verfügbar.'
@@ -316,8 +321,9 @@
 
   // ---- Events (Delegation) ----
   document.addEventListener('click',function(e){
-    var el=e.target.closest?e.target.closest('[data-opt],[data-day],[data-slot],#nextBtn,#backBtn,#submitBtn'):null;
+    var el=e.target.closest?e.target.closest('[data-opt],[data-day],[data-slot],#moreDays,#nextBtn,#backBtn,#submitBtn'):null;
     if(!el) return;
+    if(el.id==='moreDays'){ S.showAllDays=true; render(); return; }
     if(el.hasAttribute('data-opt')){ var i=+el.getAttribute('data-opt');
       if(S.step===1)S.goal=i; else if(S.step===2)S.friend=i; else if(S.step===3)S.trainer=i; render();
       // Einzelauswahl: kurz die Auswahl zeigen, dann automatisch weiter
@@ -372,5 +378,6 @@
   render();
 })();
 </script>
+<script defer src="/_vercel/insights/script.js"></script>
 </body>
 </html>
