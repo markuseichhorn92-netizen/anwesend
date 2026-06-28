@@ -1,0 +1,848 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>Fit-Inn Trier · Live-Auslastung (Mitgliederbereich)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+<style>
+  *{box-sizing:border-box;}
+  html,body{margin:0;}
+  body{
+    min-height:100dvh; overflow-x:hidden; background:#063540;
+    font-family:'Archivo', system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  @keyframes blink{0%,100%{opacity:1;}50%{opacity:.18;}}
+  @keyframes fiUp{from{opacity:0; transform:translateY(16px);} to{opacity:1; transform:none;}}
+  @keyframes ringPop{from{opacity:0; transform:scale(.92);} to{opacity:1; transform:none;}}
+
+  /* Vollbild-Rahmen; auf kurzen Viewports (z. B. In-App-Browser) darf die Seite
+     wachsen/scrollen statt zu überlappen. Desktop bleibt fix (siehe Media-Query). */
+  .screen{
+    container-type:inline-size;
+    width:100%; min-height:100dvh; overflow-x:hidden;
+    display:flex; flex-direction:column;
+    background:linear-gradient(165deg,#0e6072 0%,#063540 100%);
+    color:#fff; position:relative;
+  }
+
+  .row{display:flex; align-items:center;}
+  .stage{flex:1 1 auto; display:flex; flex-direction:column; min-height:0;}
+
+  /* Header */
+  .head{display:flex; align-items:center; justify-content:space-between;
+    padding: calc(env(safe-area-inset-top,0px) + clamp(16px,4.5vw,32px)) clamp(16px,5vw,28px) 0;}
+  .live-badge{display:flex; align-items:center; gap:7px; background:rgba(4,33,40,.24); border-radius:20px; padding:7px 13px;}
+  .live-dot{width:8px; height:8px; border-radius:50%; background:#5fe0c2; animation:blink 1.6s infinite;}
+  .live-txt{font-weight:800; font-size:11px; letter-spacing:.16em;}
+  .logo{height:clamp(22px,6.5cqw,28px); width:auto; display:block;}
+  /* Zurück-Button – nur in der Mitgliederbereich-Version dieser Seite */
+  .backbtn{display:inline-flex; align-items:center; gap:6px; background:rgba(4,33,40,.24);
+    border-radius:20px; padding:8px 14px 8px 10px; color:#fff; text-decoration:none;
+    font-weight:800; font-size:13px; letter-spacing:.01em; flex:none;
+    transition:background .15s ease, transform .12s ease;}
+  .backbtn:hover{background:rgba(4,33,40,.42);}
+  .backbtn:active{transform:scale(.97);}
+  .backbtn svg{flex:none;}
+
+  /* Hero – mittlerer, fluider Bereich */
+  .hero{flex:1 1 auto; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    text-align:center; min-height:0; padding: clamp(6px,2vw,18px) clamp(16px,5vw,28px) clamp(8px,2vw,16px);
+    animation:fiUp .6s cubic-bezier(.22,1,.36,1) both;}
+  .eyebrow{font-weight:800; font-size:clamp(11px,3.3cqw,13px); letter-spacing:.22em; opacity:.75;}
+
+  /* Ring – Größe zusätzlich an die Viewport-Höhe gekoppelt, damit er auf
+     kurzen Bildschirmen nicht überläuft */
+  .ring-wrap{position:relative; width:min(62cqw,36dvh); aspect-ratio:1; margin:clamp(4px,2cqw,14px) auto 0;
+    animation:ringPop .7s cubic-bezier(.22,1,.36,1) both;}
+  .ring-wrap svg{width:100%; height:100%; display:block;}
+  #ring{transition:stroke-dashoffset .9s cubic-bezier(.22,1,.36,1);}
+  .ring-center{position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;}
+  .count{font-weight:900; font-size:clamp(54px,27cqw,190px); line-height:.82; letter-spacing:-.04em; color:#fff; text-shadow:0 4px 18px rgba(4,33,40,.22); font-variant-numeric:tabular-nums;}
+  .cap-label{font-weight:700; font-size:clamp(13px,4.2cqw,17px); opacity:.82; margin-top:4px;}
+
+  /* Load pill */
+  .load-wrap{display:flex; justify-content:center; margin-top:clamp(8px,2.5vw,18px);}
+  .load-pill{display:inline-flex; align-items:center; gap:9px; background:rgba(4,33,40,.22); border-radius:24px; padding:11px 20px;}
+  .load-dot{width:10px; height:10px; border-radius:50%; background:#fff;}
+  .load-label{font-weight:900; font-size:clamp(14px,4.3cqw,17px); letter-spacing:.03em;}
+
+  /* Drawer – sitzt unten im Fluss, volle Breite */
+  .drawer{position:relative; background:#fff; border-radius:28px 28px 0 0;
+    padding:14px clamp(16px,5vw,22px) calc(16px + env(safe-area-inset-bottom,0px));
+    color:#15171B; box-shadow:0 -10px 32px rgba(4,33,40,.18);
+    animation:fiUp .6s cubic-bezier(.22,1,.36,1) .07s both;}
+
+  /* Öffnungszeiten als Overlay, das nach oben über den Ring aufklappt */
+  .hours-panel{
+    position:absolute; left:clamp(16px,5vw,22px); right:clamp(16px,5vw,22px);
+    bottom:calc(100% - 6px); z-index:5;
+    max-height:72vh; overflow-y:auto; -webkit-overflow-scrolling:touch;
+    background:#fff; border:1px solid #e6eef0; border-radius:16px;
+    box-shadow:0 -14px 34px rgba(4,33,40,.28);
+    opacity:0; transform:translateY(12px); visibility:hidden; pointer-events:none;
+    transition:opacity .22s ease, transform .24s cubic-bezier(.22,1,.36,1), visibility .24s;
+  }
+  .hours-panel.open{opacity:1; transform:none; visibility:visible; pointer-events:auto;}
+  .hrow{display:flex; align-items:center; justify-content:space-between; padding:10px 15px;}
+  .hrow .d{font-size:13px;} .hrow .t{font-weight:600; font-size:12px;}
+
+  .status-row{display:flex; align-items:center; gap:9px; cursor:pointer; user-select:none;}
+  .status-dot{width:9px; height:9px; border-radius:50%; background:#1FD65F; flex:none;}
+  .status-label{font-weight:800; font-size:14px;}
+  .status-detail{font-weight:500; font-size:13px; color:#9aa0a8; margin-left:auto;}
+  .chevron{display:inline-block; margin-left:10px; color:#b9c4c6; font-size:10px; transition:transform .2s; transform:rotate(0deg);}
+
+  .divider{height:1px; background:#eaf0f1; margin:12px 0;}
+
+  .reco{display:flex; align-items:center; gap:13px; background:linear-gradient(100deg,#E7F1F3,#D6E8EB); border:1px solid #C2DCE0; border-radius:15px; padding:13px 15px;
+    transition:transform .2s ease, box-shadow .2s ease;}
+  .reco:hover{transform:translateY(-2px); box-shadow:0 10px 24px rgba(10,73,88,.13);}
+
+  .vormerk-cta{display:flex; align-items:center; justify-content:center; gap:9px; margin-top:12px;
+    padding:11px 16px; border-radius:14px; background:#eef4f5; border:1.5px solid #cfe0e3; color:#0a4958;
+    font-weight:800; font-size:14px; text-decoration:none; cursor:pointer;
+    transition:background .15s ease, border-color .15s ease, transform .12s ease;}
+  .vormerk-cta:hover{background:#e2eef0; border-color:#0a4958;}
+  .vormerk-cta:active{transform:scale(.99);}
+  .vormerk-cta svg{flex:none;}
+  .reco-icon{width:40px; height:40px; border-radius:11px; background:#0a4958; display:flex; align-items:center; justify-content:center; flex:none; font-weight:900; font-size:19px; color:#fff;}
+  .reco-eyebrow{font-weight:800; font-size:10px; letter-spacing:.13em; color:#0a4958;}
+  .reco-window{font-weight:900; font-size:17px; color:#15171B; margin-top:2px; letter-spacing:-.01em;}
+  .reco-note{font-weight:500; font-size:12px; color:#5d7a80; margin-top:1px;}
+
+  .trend-head{display:flex; justify-content:space-between; align-items:center; margin:13px 0 8px;}
+  .trend-head .l{font-weight:800; font-size:11px; letter-spacing:.12em; color:#9aa0a8;}
+  .day-nav{display:flex; align-items:center; gap:8px;}
+  .day-nav .trend-day{font-weight:800; font-size:12px; color:#42454b; min-width:54px; text-align:center;}
+  .dnav{width:26px; height:26px; border-radius:8px; border:none; background:#eef3f4; color:#0a4958; font-size:16px; font-weight:800; line-height:1; cursor:pointer; display:flex; align-items:center; justify-content:center; flex:none;}
+  .dnav:hover{background:#e0e9ea;}
+  .trend-bars{display:flex; align-items:flex-end; gap:4px; height:46px; touch-action:pan-y;}
+  .tbar{position:relative; flex:1; border-radius:3px 3px 0 0; min-height:6px; cursor:pointer; transform-origin:bottom;
+    transition:height .5s cubic-bezier(.22,1,.36,1), filter .15s ease, transform .15s ease, box-shadow .15s ease;}
+  .tbar.anim{animation:barRise .55s cubic-bezier(.22,1,.36,1) both;}
+  .tbar:hover{filter:brightness(1.05); transform:scaleY(1.04);}
+  .tbar:active{transform:scaleY(.94); filter:brightness(.9);}
+  .tbar.now{box-shadow:0 0 0 2px rgba(10,73,88,.22);}
+  .tnow-dot{position:absolute; top:-8px; left:50%; transform:translateX(-50%); width:7px; height:7px; border-radius:50%; background:#0a4958; box-shadow:0 0 0 3px rgba(10,73,88,.16);}
+  .tcap{position:absolute; top:0; left:0; right:0; background:#F6A964; border-radius:3px 3px 0 0; max-height:62%; box-shadow:0 0 0 1px rgba(224,124,60,.3); pointer-events:none;}
+  .plan-line{display:none; align-items:center; gap:7px; margin:2px 0 9px; font-weight:700; font-size:11.5px; color:#C2722E;}
+  .plan-line .pdot{width:8px; height:8px; border-radius:50%; background:#F6A964; flex:none;}
+  .plan-line.on{display:flex;}
+  .tgap{position:relative; flex:0 0 16px; align-self:stretch; pointer-events:none;}
+  .trend-bars .tgap::before{content:""; position:absolute; left:50%; bottom:0; top:38%; border-left:2px dotted #d9e2e4; transform:translateX(-50%);}
+  .trend-closed{flex:1; display:flex; align-items:center; justify-content:center; color:#aab4b6; font-weight:600; font-size:12px;}
+  @keyframes barRise{from{transform:scaleY(0); opacity:.35;} to{transform:scaleY(1); opacity:1;}}
+  .trend-axis{display:flex; align-items:flex-start; gap:4px; margin-top:7px; font-weight:600; font-size:10px; color:#aab4b6;}
+  .ax-seg{display:flex; justify-content:space-between; min-width:0;}
+  .trend-caption{text-align:center; font-weight:500; font-size:11px; color:#a8adb5; margin-top:10px; min-height:14px;}
+
+  .err{opacity:.6;}
+
+  /* ============ Desktop / Querformat: zweispaltig (Bühne + Panel) ============ */
+  @media (min-width:880px){
+    .screen{flex-direction:row; height:100dvh; overflow:hidden;}
+    .stage{flex:0 0 52%; max-width:720px; justify-content:space-between; padding:40px clamp(36px,4vw,56px);}
+    .stage .head{padding:0;}
+    .stage .hero{flex:1 1 auto; justify-content:center; padding:18px 0 0;}
+    .eyebrow{font-size:15px; letter-spacing:.24em;}
+    .ring-wrap{width:min(380px,32vw);}
+    .count{font-size:clamp(96px,8.5vw,150px);}
+    .cap-label{font-size:20px;}
+    .load-pill{padding:14px 26px;}
+    .load-label{font-size:20px;}
+
+    /* rechtes weißes Panel */
+    .drawer{flex:1 1 auto; position:relative; height:100dvh; overflow-y:auto;
+      border-radius:0; box-shadow:none; padding:44px clamp(32px,3.4vw,46px);
+      display:flex; flex-direction:column;}
+    .status-row{order:1;}
+    .status-label{font-size:20px;} .status-detail{font-size:16px;}
+    /* Öffnungszeiten klappen auf dem Desktop NACH UNTEN auf (im Fluss) */
+    #hoursPanel{order:2; position:static; left:auto; right:auto; bottom:auto;
+      box-shadow:none; max-height:0; opacity:1; transform:none; visibility:visible;
+      margin:0; transition:max-height .25s ease, margin .25s ease;}
+    #hoursPanel.open{max-height:46vh; overflow-y:auto; margin-top:14px;}
+    .divider{order:3; margin:24px 0;}
+    .reco{order:4; padding:18px 20px;}
+    .reco-icon{width:52px; height:52px; border-radius:14px; font-size:24px;}
+    .reco-window{font-size:23px;} .reco-note{font-size:15px;}
+    .vormerk-cta{order:5;}
+    #trendSection{order:5; margin-top:auto;}
+    .trend-bars{height:96px; gap:6px;}
+    .tbar{border-radius:4px 4px 0 0;}
+    .tgap{flex:0 0 22px;}
+  }
+
+  @media (prefers-reduced-motion:reduce){
+    *,*::before,*::after{animation-duration:.001ms!important; animation-iteration-count:1!important; transition-duration:.001ms!important;}
+  }
+</style>
+</head>
+<body>
+  <div class="screen" id="screen">
+
+    <!-- LEFT: teal stage -->
+    <div class="stage">
+
+    <!-- Header -->
+    <div class="head">
+      <a class="backbtn" href="/mitglieder" aria-label="Zurück zum Mitgliederbereich">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"></path></svg>
+        <span>Zurück</span>
+      </a>
+      <img class="logo" src="/assets/fitinn-logo-white.png" alt="Fit-Inn Trier" />
+      <div class="live-badge">
+        <span class="live-dot"></span>
+        <span class="live-txt">LIVE</span>
+      </div>
+    </div>
+
+    <div class="hero">
+    <div class="eyebrow">AKTUELLE AUSLASTUNG</div>
+
+    <!-- Ring -->
+    <div class="ring-wrap">
+      <svg width="264" height="264" viewBox="0 0 264 264">
+        <circle cx="132" cy="132" r="116" fill="none" stroke="rgba(4,33,40,.28)" stroke-width="20" />
+        <circle id="ring" cx="132" cy="132" r="116" fill="none" stroke="#FFFFFF" stroke-width="20"
+                stroke-linecap="round" stroke-dasharray="728.85" stroke-dashoffset="728.85"
+                transform="rotate(-90 132 132)" />
+      </svg>
+      <div class="ring-center">
+        <div class="count" id="count">–</div>
+        <div class="cap-label">von <span id="capacity">40</span> Personen</div>
+      </div>
+    </div>
+
+    <!-- Load pill -->
+    <div class="load-wrap">
+      <div class="load-pill">
+        <span class="load-dot"></span>
+        <span class="load-label" id="loadLabel">—</span>
+      </div>
+    </div>
+    </div><!-- /hero -->
+    </div><!-- /stage -->
+
+    <!-- Drawer -->
+    <div class="drawer">
+      <div class="hours-panel" id="hoursPanel"></div>
+
+      <div class="status-row" id="hoursToggle">
+        <span class="status-dot" id="statusDot"></span>
+        <span class="status-label" id="statusLabel">—</span>
+        <span class="status-detail" id="statusDetail"></span>
+        <span class="chevron" id="chevron">▼</span>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="reco" id="reco">
+        <div class="reco-icon">★</div>
+        <div style="min-width:0;">
+          <div class="reco-eyebrow" id="bestEyebrow">BESTE ZEIT</div>
+          <div class="reco-window" id="bestWindow">—</div>
+          <div class="reco-note" id="bestNote">—</div>
+        </div>
+      </div>
+
+      <a class="vormerk-cta" href="/mitglieder#vormerken" target="_top" aria-label="Trainingszeit im Mitgliederbereich vormerken">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="12" r="8"></circle><path d="M11 8.4V12l2.4 1.4"></path><path d="M18.5 4.5v4M16.5 6.5h4"></path></svg>
+        <span>Zeit vormerken</span>
+      </a>
+
+      <div id="trendSection">
+        <div class="trend-head">
+          <span class="l">VERLAUF</span>
+          <span class="day-nav"><button class="dnav" data-d="-1" aria-label="Vorheriger Tag">‹</button><span class="trend-day" id="trendDay">Heute</span><button class="dnav" data-d="1" aria-label="Nächster Tag">›</button></span>
+        </div>
+        <div class="plan-line" id="planLine"><span class="pdot"></span><span id="planLineTxt"></span></div>
+        <div class="trend-bars" id="trendBars" role="group" aria-label="Typischer Tagesverlauf – nach links/rechts wischen für andere Tage"></div>
+        <div class="trend-axis" id="trendAxis"></div>
+        <div class="trend-caption" id="trendCaption">Verlauf aus den letzten Wochen</div>
+      </div>
+    </div>
+  </div>
+
+<script>
+(function () {
+  var CFG = {
+    occEndpoint:     '/api/auslastung',
+    typicalEndpoint: '/api/typical?week=1',
+    planEndpoint:    '/api/plan',
+    occRefreshMs:     45000,
+    typicalRefreshMs: 600000,
+    planRefreshMs:    60000,
+    capacity: 40,
+    accent: '#0a4958'
+  };
+
+  // ── Öffnungszeiten je Wochentag (Mo=0 … So=6) als Minuten-Intervalle ──
+  //    Bei Bedarf hier anpassen (gilt für Status "Geöffnet/Pause/Geschlossen").
+  var names = ['Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag','Sonntag'];
+  var WD = '09:30 – 13:00 · 15:00 – 21:30';
+  var timesText = [WD, WD, WD, WD, WD, '13:00 – 18:00', '09:00 – 15:00'];
+  var ivWd = [[570, 780], [900, 1290]];                 // 09:30–13:00, 15:00–21:30
+  var iv = [ivWd, ivWd, ivWd, ivWd, ivWd, [[780, 1080]], [[540, 900]]];
+  // Abweichende Schließungen (Feiertage etc.) aus Magicline closingHours
+  var closingHours = [];                                 // [{reason, fromY..toMi}]
+
+  function pad(n){ return (n < 10 ? '0' : '') + n; }
+  function fmt(m){ return pad(Math.floor(m/60)) + ':' + pad(m%60); }
+
+  // ── Öffnungszeiten live aus Magicline (/api/hours); oben = Fallback ──
+  var DOW = { MONDAY:0, TUESDAY:1, WEDNESDAY:2, THURSDAY:3, FRIDAY:4, SATURDAY:5, SUNDAY:6 };
+  function parseHHMM(s){ var p = String(s).split(':'); return parseInt(p[0],10)*60 + parseInt(p[1]||'0',10); }
+  function loadHours(){
+    fetch('/api/hours', { cache:'no-store' })
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(h){
+        if (!h || !h.available || !Array.isArray(h.openingHours) || !h.openingHours.length) return;
+        var ivN = [[],[],[],[],[],[],[]];
+        h.openingHours.forEach(function(e){
+          var a = DOW[e.dayOfWeekFrom], b = DOW[e.dayOfWeekTo];
+          if (a == null || b == null) return;
+          var f = parseHHMM(e.timeFrom), t = parseHHMM(e.timeTo);
+          for (var d = a; ; d = (d + 1) % 7) { ivN[d].push([f, t]); if (d === b) break; }
+        });
+        var ok = false, txtN = [];
+        for (var d = 0; d < 7; d++) {
+          ivN[d].sort(function(x, y){ return x[0] - y[0]; });
+          if (ivN[d].length) ok = true;
+          txtN[d] = ivN[d].length ? ivN[d].map(function(p){ return fmt(p[0]) + ' – ' + fmt(p[1]); }).join(' · ') : 'geschlossen';
+        }
+        // Abweichende Schließungen (Feiertage etc.) parsen
+        var rx = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/;
+        closingHours = (Array.isArray(h.closingHours) ? h.closingHours : []).map(function(c){
+          var a = rx.exec(c.dateTimeFrom || ''), b = rx.exec(c.dateTimeTo || '');
+          if (!a || !b) return null;
+          return { reason: c.reason || 'Geschlossen',
+                   fromY:+a[1], fromMo:+a[2], fromD:+a[3], fromH:+a[4], fromMi:+a[5],
+                   toY:+b[1], toMo:+b[2], toD:+b[3], toH:+b[4], toMi:+b[5] };
+        }).filter(Boolean);
+        if (ok) {
+          iv = ivN; timesText = txtN;
+          lastDi = -1; lastHour = -1;           // Neu-Rendern erzwingen
+          updateStatus(true);
+          computeReco();
+        }
+      })
+      .catch(function(){});
+  }
+
+  // Aktuelle Zeit in Studio-Zeitzone (Europe/Berlin), egal wo der Betrachter ist
+  function berlinNow(){
+    var p = new Intl.DateTimeFormat('en-GB', { timeZone:'Europe/Berlin', year:'numeric', month:'2-digit', day:'2-digit', weekday:'short', hour:'2-digit', minute:'2-digit', hourCycle:'h23' }).formatToParts(new Date());
+    var g = function(t){ return (p.find(function(x){return x.type===t;}) || {}).value; };
+    var map = { Mon:0, Tue:1, Wed:2, Thu:3, Fri:4, Sat:5, Sun:6 };
+    var hour = parseInt(g('hour'),10), min = parseInt(g('minute'),10);
+    return { di: map[g('weekday')], hour: hour, min: hour*60 + min, y: +g('year'), mo: +g('month'), d: +g('day') };
+  }
+
+  // Reguläre Intervalle minus Schließ-Intervalle (für abweichende Zeiten)
+  function subtract(base, cuts){
+    var res = base.map(function(x){ return [x[0], x[1]]; });
+    cuts.forEach(function(cut){
+      var next = [];
+      res.forEach(function(seg){
+        if (cut[1] <= seg[0] || cut[0] >= seg[1]) { next.push(seg); return; }
+        if (cut[0] > seg[0]) next.push([seg[0], cut[0]]);
+        if (cut[1] < seg[1]) next.push([cut[1], seg[1]]);
+      });
+      res = next;
+    });
+    return res.filter(function(s){ return s[1] > s[0]; });
+  }
+
+  // Heutige Schließ-Intervalle (in Minuten) aus closingHours, mit Grund
+  function closuresToday(n){
+    var todayNum = n.y * 10000 + n.mo * 100 + n.d;
+    var cuts = [];
+    closingHours.forEach(function(c){
+      var fromDate = c.fromY * 10000 + c.fromMo * 100 + c.fromD;
+      var toDate = c.toY * 10000 + c.toMo * 100 + c.toD;
+      if (todayNum < fromDate || todayNum > toDate) return;
+      var start = (todayNum === fromDate) ? (c.fromH * 60 + c.fromMi) : 0;
+      var end = (todayNum === toDate) ? (c.toH * 60 + c.toMi) : 1440;
+      if (end > start) cuts.push({ start: start, end: end, reason: c.reason });
+    });
+    return cuts;
+  }
+
+  // Anstehende Sonderzeiten der nächsten 14 Tage (fürs Dropup), inkl. heute
+  function upcomingDeviations(n){
+    var out = [], baseMs = Date.UTC(n.y, n.mo - 1, n.d);
+    for (var k = 0; k < 14; k++) {
+      var dt = new Date(baseMs + k * 86400000);
+      var Y = dt.getUTCFullYear(), Mo = dt.getUTCMonth() + 1, D = dt.getUTCDate();
+      var dateNum = Y * 10000 + Mo * 100 + D;
+      var wd = (dt.getUTCDay() + 6) % 7;             // Mo=0 … So=6
+      var cuts = [], reason = null;
+      closingHours.forEach(function(c){
+        var fromDate = c.fromY * 10000 + c.fromMo * 100 + c.fromD;
+        var toDate = c.toY * 10000 + c.toMo * 100 + c.toD;
+        if (dateNum < fromDate || dateNum > toDate) return;
+        var start = (dateNum === fromDate) ? (c.fromH * 60 + c.fromMi) : 0;
+        var end = (dateNum === toDate) ? (c.toH * 60 + c.toMi) : 1440;
+        if (end > start) { cuts.push([start, end]); if (!reason) reason = c.reason; }
+      });
+      if (!cuts.length) continue;
+      var eff = subtract(iv[wd] || [], cuts);
+      var txt = eff.length ? eff.map(function(p){ return fmt(p[0]) + ' – ' + fmt(p[1]); }).join(' · ') : 'geschlossen';
+      out.push({ label: names[wd].slice(0, 2) + ' ' + pad(D) + '.' + pad(Mo) + '.', txt: txt, reason: reason || '' });
+    }
+    return out;
+  }
+
+  // Effektive offene Intervalle für Tag (heute + offset), Schließungen abgezogen
+  function effectiveIntervals(offset, n){
+    var dt = new Date(Date.UTC(n.y, n.mo - 1, n.d) + offset * 86400000);
+    var Y = dt.getUTCFullYear(), Mo = dt.getUTCMonth() + 1, D = dt.getUTCDate();
+    var dateNum = Y * 10000 + Mo * 100 + D;
+    var wd = (dt.getUTCDay() + 6) % 7;
+    var cuts = [];
+    closingHours.forEach(function(c){
+      var fromDate = c.fromY * 10000 + c.fromMo * 100 + c.fromD;
+      var toDate = c.toY * 10000 + c.toMo * 100 + c.toD;
+      if (dateNum < fromDate || dateNum > toDate) return;
+      var start = (dateNum === fromDate) ? (c.fromH * 60 + c.fromMi) : 0;
+      var end = (dateNum === toDate) ? (c.toH * 60 + c.toMi) : 1440;
+      if (end > start) cuts.push([start, end]);
+    });
+    var eff = subtract(iv[wd] || [], cuts).sort(function(a, b){ return a[0] - b[0]; });
+    return { wd: wd, intervals: eff };
+  }
+
+  // Nächstes offenes Fenster ab jetzt (Rest von heute, sonst Folgetage)
+  function nextOpenWindow(n){
+    for (var off = 0; off < 8; off++) {
+      var e = effectiveIntervals(off, n);
+      for (var i = 0; i < e.intervals.length; i++) {
+        var s = e.intervals[i][0], en = e.intervals[i][1];
+        if (off === 0 && en <= n.min) continue;
+        return { off: off, wd: e.wd, s: s, e: en, ongoing: (off === 0 && s <= n.min && n.min < en) };
+      }
+    }
+    return null;
+  }
+
+  var el = {
+    screen:      document.getElementById('screen'),
+    count:       document.getElementById('count'),
+    capacity:    document.getElementById('capacity'),
+    ring:        document.getElementById('ring'),
+    loadLabel:   document.getElementById('loadLabel'),
+    hoursToggle: document.getElementById('hoursToggle'),
+    hoursPanel:  document.getElementById('hoursPanel'),
+    statusDot:   document.getElementById('statusDot'),
+    statusLabel: document.getElementById('statusLabel'),
+    statusDetail:document.getElementById('statusDetail'),
+    chevron:     document.getElementById('chevron'),
+    reco:        document.getElementById('reco'),
+    bestEyebrow: document.getElementById('bestEyebrow'),
+    bestWindow:  document.getElementById('bestWindow'),
+    bestNote:    document.getElementById('bestNote'),
+    trendSection:document.getElementById('trendSection'),
+    trendBars:   document.getElementById('trendBars'),
+    trendAxis:   document.getElementById('trendAxis'),
+    trendDay:    document.getElementById('trendDay'),
+    trendCaption:document.getElementById('trendCaption'),
+    planLine:    document.getElementById('planLine'),
+    planLineTxt: document.getElementById('planLineTxt')
+  };
+
+  var state = { capacity: CFG.capacity, current: null, trend: null, week: null, isPause: false, selWd: null, userPicked: false, plan: { hours:{}, total:0 } };
+
+  // ── Auslastung (Ring + Zahl + Ampel) ──
+  var countRaf = null, shownCount = 0;
+  function animateCount(to){
+    var from = shownCount;
+    if (from === to) { el.count.textContent = to; return; }
+    if (countRaf) cancelAnimationFrame(countRaf);
+    var start = null, dur = 650;
+    function step(ts){
+      if (start == null) start = ts;
+      var p = Math.min(1, (ts - start) / dur);
+      var eased = 1 - Math.pow(1 - p, 3);           // easeOutCubic
+      el.count.textContent = Math.round(from + (to - from) * eased);
+      if (p < 1) { countRaf = requestAnimationFrame(step); }
+      else { shownCount = to; countRaf = null; }
+    }
+    countRaf = requestAnimationFrame(step);
+  }
+  function renderOccupancy(){
+    var cap = state.capacity || CFG.capacity;
+    el.capacity.textContent = cap;
+    var c = state.current;
+    if (c == null) {
+      if (countRaf) { cancelAnimationFrame(countRaf); countRaf = null; }
+      shownCount = 0;
+      el.count.textContent = '–';
+      el.count.classList.add('err');
+      el.ring.setAttribute('stroke-dashoffset', '728.85');
+      el.loadLabel.textContent = 'nicht verfügbar';
+      return;
+    }
+    el.count.classList.remove('err');
+    animateCount(c);
+    var ratio = Math.max(0, Math.min(1, c / cap));
+    el.ring.setAttribute('stroke-dashoffset', (728.85 * (1 - ratio)).toFixed(1));
+    var pct = Math.round(ratio * 100);
+    var lt = ratio < 0.5 ? 'ENTSPANNT' : (ratio <= 0.8 ? 'GUT BESUCHT' : 'VOLL');
+    el.loadLabel.textContent = lt + ' · ' + pct + '%';
+  }
+  function loadOccupancy(){
+    fetch(CFG.occEndpoint, { cache:'no-store' })
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(d){
+        if (d) { state.current = (typeof d.count === 'number') ? d.count : null; if (d.max) state.capacity = d.max; }
+        else { state.current = null; }
+        renderOccupancy();
+      })
+      .catch(function(){ state.current = null; renderOccupancy(); });
+  }
+
+  // ── Geplante Auslastung heute („Vormerken") ──
+  function plannedAt(hour){ var h = state.plan && state.plan.hours ? state.plan.hours[hour] : 0; h = (typeof h === 'number') ? h : parseInt(h, 10); return h > 0 ? h : 0; }
+  function loadPlan(){
+    fetch(CFG.planEndpoint, { cache:'no-store' })
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(p){ state.plan = (p && p.available) ? { hours: p.hours || {}, total: p.total || 0 } : { hours:{}, total:0 }; renderTrend(berlinNow(), false); })
+      .catch(function(){});
+  }
+
+  // ── Historie / Verlauf + Empfehlung ──
+  function loadTypical(){
+    fetch(CFG.typicalEndpoint, { cache:'no-store' })
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(t){
+        if (!t || !t.available || !Array.isArray(t.day)) { state.trend = null; }
+        else {
+          var hours = [], mx = 1;
+          for (var h = 8; h <= 21; h++) {
+            var a = t.day[h*2], b = t.day[h*2+1], vals = [];
+            if (a != null) vals.push(a); if (b != null) vals.push(b);
+            var v = vals.length ? Math.round(vals.reduce(function(x,y){return x+y;},0) / vals.length) : 0;
+            hours.push({ hour:h, count:v });
+            if (v > mx) mx = v;
+          }
+          state.trend = { hours: hours, max: mx, day: t.day };
+          if (Array.isArray(t.week)) state.week = t.week;
+          computeReco();
+        }
+        updateStatus(true);
+      })
+      .catch(function(){});
+  }
+
+  // Ruhigstes ~90-Min-Fenster für den AKTUELL gewählten Verlaufs-Tag (state.selWd).
+  // Heute: ab jetzt (keine Vergangenheit). Andere Tage: ganzer Tag.
+  // Standard-Tag springt nach Ladenschluss ohnehin auf morgen (siehe syncDefaultDay),
+  // daher zeigt der heutige Tag nach Feierabend automatisch die Bestzeit für morgen.
+  function computeReco(){
+    if (!el.reco) return;
+    var n = berlinNow();
+    if (state.selWd == null) state.selWd = defaultWd();
+    var wd = state.selWd, day = state.week && state.week[(wd + 1) % 7];
+    var ivs = iv[wd] || [];
+    if (!day || !ivs.length) { el.reco.style.display = 'none'; return; }   // keine Daten / geschlossen
+    var isToday = wd === n.di;
+
+    function search(floor){
+      var best = null;
+      for (var k = 0; k < ivs.length; k++) {
+        var lo = Math.max(ivs[k][0], floor), hi = ivs[k][1];
+        if (lo >= hi) continue;
+        var s0 = Math.floor(lo / 30), s1 = Math.ceil(hi / 30), found = false;
+        for (var s = s0; s + 3 <= s1; s++) {
+          var sum = 0, cnt = 0;
+          for (var j = 0; j < 3; j++) { var v = day[s + j]; if (v != null) { sum += v; cnt++; } }
+          if (cnt > 0) { found = true; var a = sum / cnt;
+            if (best === null || a < best.a) best = { a:a, start:Math.max(lo, s*30), end:Math.min(hi, (s+3)*30) }; }
+        }
+        if (!found && best === null) best = { a:Infinity, start:lo, end:Math.min(hi, lo + 90) };  // kurzes Restfenster
+      }
+      return best;
+    }
+
+    var best = search(isToday ? n.min : -1);
+    if (!best && isToday) best = search(-1);            // heute schon vorbei -> typische Bestzeit
+    if (!best) { el.reco.style.display = 'none'; return; }
+    el.reco.style.display = '';
+
+    el.bestEyebrow.textContent = 'BESTE ZEIT ' + recoWhen(wd, n);
+    el.bestWindow.textContent = fmt(best.start) + ' – ' + fmt(best.end) + ' Uhr';
+    var sh = Math.floor(best.start / 60);
+    el.bestNote.textContent = sh < 11 ? 'morgens am leersten'
+      : (sh < 14 ? 'um die Mittagszeit am ruhigsten'
+      : (sh < 17 ? 'am Nachmittag am ruhigsten' : 'am Abend am ruhigsten'));
+  }
+
+  // ── Status + Verlaufsbalken + Öffnungszeiten ──
+  var lastHour = -1, lastPause = null, lastDi = -1, lastClosed = null;
+  function updateStatus(force){
+    var n = berlinNow(), di = n.di, cur = n.min;
+    var cuts = closuresToday(n);                         // abweichende Schließungen heute
+    var today = subtract(iv[di] || [], cuts.map(function(c){ return [c.start, c.end]; }));
+    var reasonNow = null;
+    for (var ci = 0; ci < cuts.length; ci++) { if (cur >= cuts[ci].start && cur < cuts[ci].end) { reasonNow = cuts[ci].reason; break; } }
+
+    var open = false, closeAt = null, nextStart = null, passed = false;
+    for (var i = 0; i < today.length; i++) {
+      if (cur >= today[i][0] && cur < today[i][1]) { open = true; closeAt = today[i][1]; }
+      if (today[i][1] <= cur) passed = true;
+      if (today[i][0] > cur && nextStart === null) nextStart = today[i][0];
+    }
+    var label, detail, color, isPause = false, fullyClosed = false;
+    if (open) {
+      label = 'Geöffnet'; color = '#1FD65F'; detail = 'noch bis ' + fmt(closeAt) + ' Uhr';
+    } else if (reasonNow) {
+      label = 'Geschlossen'; color = '#E0563B';
+      detail = reasonNow + (nextStart !== null ? ' · öffnet ' + fmt(nextStart) + ' Uhr' : '');
+      fullyClosed = (nextStart === null);
+    } else if (nextStart !== null && passed) {
+      label = 'Pause'; color = '#FF9F1A'; detail = 'öffnet wieder ' + fmt(nextStart) + ' Uhr'; isPause = true;
+    } else if (nextStart !== null) {
+      label = 'Geschlossen'; color = '#E0563B'; detail = 'öffnet ' + fmt(nextStart) + ' Uhr';
+    } else {
+      label = 'Geschlossen'; color = '#E0563B';
+      var w2 = nextOpenWindow(n);             // closure-bewusst, über Folgetage
+      if (w2) {
+        var when2 = w2.off === 1 ? 'morgen ' : (names[w2.wd] + ' ');
+        detail = 'öffnet ' + when2 + fmt(w2.s) + ' Uhr';
+      } else {
+        detail = 'aktuell geschlossen';
+      }
+    }
+    el.statusLabel.textContent = label;
+    el.statusDetail.textContent = detail;
+    el.statusDot.style.background = color;
+    state.isPause = isPause;
+    // Verlauf ("heute") bei ganztägiger Schließung ausblenden – Empfehlung bleibt
+    var dayClosed = fullyClosed || today.length === 0;
+    state.dayClosed = dayClosed;
+
+    if (force || di !== lastDi) { lastDi = di; renderHours(di); }
+    if (force || n.hour !== lastHour || isPause !== lastPause || dayClosed !== lastClosed) {
+      lastHour = n.hour; lastPause = isPause; lastClosed = dayClosed;
+      renderTrend(n, force);
+    }
+    syncDefaultDay();   // Verlauf folgt automatisch dem nächsten geöffneten Tag
+    computeReco();   // hängt von der Uhrzeit ab -> bei jedem Tick aktualisieren
+  }
+
+  // ── Tages-Auswahl für den Verlauf ──
+  // Standard-Tag = nächster geöffneter Tag (springt nach Feierabend auf morgen)
+  function defaultWd(){ var w = nextOpenWindow(berlinNow()); return w ? w.wd : berlinNow().di; }
+  function dayLabel(wd){
+    var td = berlinNow().di, diff = ((wd - td) % 7 + 7) % 7;
+    if (diff === 0) return 'Heute'; if (diff === 1) return 'Morgen'; if (diff === 6) return 'Gestern';
+    return names[wd];
+  }
+  // Tageskennzeichnung für die "Beste Zeit"-Karte: "morgen" zusätzlich mit Wochentag,
+  // damit klar ist, dass der TAG (z. B. Dienstag) gemeint ist – nicht die Tageszeit.
+  var WD_ABBR = ['MO','DI','MI','DO','FR','SA','SO'];
+  function recoWhen(wd, n){
+    var diff = ((wd - n.di) % 7 + 7) % 7;
+    if (diff === 0) return 'HEUTE';
+    if (diff === 1) return 'MORGEN, ' + WD_ABBR[wd] + '.';
+    return names[wd].toUpperCase();
+  }
+  // Geöffnete Stunden je Tag als Segmente (Mittagspause/geschlossene Zeiten fallen raus)
+  function openSegmentsForDay(wd){
+    var ivs = iv[wd] || [], segs = [];
+    ivs.forEach(function(intv){
+      var startH = Math.floor(intv[0] / 60), endH = Math.ceil(intv[1] / 60), hrs = [];
+      for (var h = startH; h < endH; h++) hrs.push(h);
+      if (hrs.length) segs.push(hrs);
+    });
+    return segs;
+  }
+  // Wert pro Stunde aus Halbstunden-Slots (week-Tag bevorzugt, sonst „heute")
+  function hourValue(src, h){
+    if (!src) return 0;
+    var a = src[h*2], b = src[h*2+1], vals = [];
+    if (a != null) vals.push(a); if (b != null) vals.push(b);
+    return vals.length ? Math.round(vals.reduce(function(x,y){return x+y;},0) / vals.length) : 0;
+  }
+  function dayHours(wd){
+    var src = (state.week && state.week[(wd + 1) % 7]) ? state.week[(wd + 1) % 7]
+            : (state.trend && state.trend.day ? state.trend.day : null);
+    if (!src) return null;                                  // noch keine Daten geladen
+    var segs = openSegmentsForDay(wd);
+    if (!segs.length) return { closed:true };               // ganztägig geschlossen
+    var mx = 1, segments = [];
+    segs.forEach(function(hrs){
+      var seg = hrs.map(function(h){ var v = hourValue(src, h); if (v > mx) mx = v; return { hour:h, count:v }; });
+      segments.push(seg);
+    });
+    return { segments:segments, max:mx };
+  }
+  // Achse: je Öffnungsblock eigene Start-/Schlusszeit, ausgerichtet unter den Balken.
+  // Die Mittagspause ist allein durch die Lücke sichtbar (keine verwirrende „13:00–15:00").
+  function buildAxis(wd){
+    var segs = openSegmentsForDay(wd), ivs = iv[wd] || [];
+    if (!segs.length || !ivs.length) return '';
+    var html = '';
+    for (var i = 0; i < segs.length; i++) {
+      if (i > 0) html += '<div class="tgap" aria-hidden="true"></div>';
+      var open  = fmt(ivs[i] ? ivs[i][0] : segs[i][0] * 60);
+      var close = fmt(ivs[i] ? ivs[i][1] : (segs[i][segs[i].length - 1] + 1) * 60);
+      html += '<div class="ax-seg" style="flex:' + segs[i].length + '"><span>' + open + '</span><span>' + close + '</span></div>';
+    }
+    return html;
+  }
+  function syncDefaultDay(){
+    if (state.userPicked) return;
+    var d = defaultWd();
+    if (d !== state.selWd) { state.selWd = d; renderTrend(berlinNow(), true); }
+  }
+  function changeDay(delta){
+    state.userPicked = true;
+    if (state.selWd == null) state.selWd = defaultWd();
+    state.selWd = ((state.selWd + delta) % 7 + 7) % 7;
+    renderTrend(berlinNow(), true);
+  }
+  function renderTrend(n, animate){
+    if (state.selWd == null) state.selWd = defaultWd();
+    var dh = dayHours(state.selWd);
+    if (!dh) { el.trendSection.style.display = 'none'; return; }   // noch keine Daten
+    el.trendSection.style.display = '';
+    if (el.trendDay) el.trendDay.textContent = dayLabel(state.selWd);
+    if (dh.closed) {
+      el.trendBars.innerHTML = '<div class="trend-closed">An diesem Tag geschlossen</div>';
+      if (el.trendAxis) el.trendAxis.innerHTML = '';
+      el.trendCaption.textContent = '';
+      updatePlanLine(false);
+      computeReco();
+      return;
+    }
+    var isToday = state.selWd === n.di;
+    var segments = dh.segments, mx = dh.max, html = '', idx = 0;
+    var cls = animate ? 'tbar anim' : 'tbar';
+    for (var s = 0; s < segments.length; s++) {
+      if (s > 0) html += '<div class="tgap" aria-hidden="true"></div>';   // Lücke an der Mittagspause
+      var seg = segments[s];
+      for (var b = 0; b < seg.length; b++) {
+        var hh = seg[b];
+        var ratio = mx > 0 ? hh.count / mx : 0;
+        var pct = Math.round(20 + ratio * 80);   // % der Balkenhöhe (skaliert mobil/Desktop)
+        var isNow = isToday && hh.hour === n.hour;
+        var bg = isNow ? CFG.accent : '#E7EEEF';
+        var marker = isNow ? '<span class="tnow-dot" aria-hidden="true"></span>' : '';
+        var planned = isToday ? plannedAt(hh.hour) : 0;   // geplante Vormerkungen nur für heute
+        var cap = planned > 0 ? '<span class="tcap" style="height:' + (5 + planned * 4) + 'px"></span>' : '';
+        html += '<div class="' + cls + (isNow ? ' now' : '') + '" data-h="' + hh.hour + '" data-v="' + hh.count + '" data-p="' + planned + '"'
+              + ' title="' + (isNow ? 'Jetzt · ' : '') + hh.hour + ' Uhr · ~' + hh.count + ' Personen' + (planned > 0 ? ' · ' + planned + ' vorgemerkt' : '') + '"'
+              + ' style="height:' + pct + '%;background:' + bg + ';animation-delay:' + (idx * 32) + 'ms;">' + marker + cap + '</div>';
+        idx++;
+      }
+    }
+    el.trendBars.innerHTML = html;
+    if (el.trendAxis) el.trendAxis.innerHTML = buildAxis(state.selWd);
+    updatePlanLine(isToday);
+    trendWire();
+    trendReset();
+    computeReco();   // Empfehlung folgt dem gewählten Tag
+  }
+
+  function updatePlanLine(isToday){
+    if (!el.planLine) return;
+    var total = (state.plan && state.plan.total) || 0;
+    if (isToday && total > 0) {
+      el.planLineTxt.textContent = total + (total === 1 ? ' Person hat sich' : ' Personen haben sich') + ' für heute vorgemerkt';
+      el.planLine.classList.add('on');
+    } else {
+      el.planLine.classList.remove('on');
+    }
+  }
+
+  // Verlaufsbalken interaktiv (Tippen/Überfahren -> Caption zeigt Wert)
+  function trendBarFromX(clientX){
+    var bars = el.trendBars.querySelectorAll('.tbar');
+    if (!bars.length) return null;
+    var best = null, bestD = Infinity;
+    for (var i = 0; i < bars.length; i++) {
+      var r = bars[i].getBoundingClientRect();
+      var d = Math.abs((r.left + r.width / 2) - clientX);
+      if (d < bestD) { bestD = d; best = bars[i]; }
+    }
+    return best;
+  }
+  function trendShow(bar){
+    if (!bar || !bar.getAttribute || bar.getAttribute('data-v') == null) return;
+    var p = parseInt(bar.getAttribute('data-p'), 10) || 0;
+    el.trendCaption.textContent = bar.getAttribute('data-h') + ' Uhr · ~' + bar.getAttribute('data-v') + ' Personen' + (p > 0 ? ' · ' + p + ' vorgemerkt' : '');
+  }
+  function trendReset(){ el.trendCaption.textContent = 'Verlauf aus den letzten Wochen'; }
+  function trendWire(){
+    if (el.trendBars.__wired) return;
+    el.trendBars.__wired = true;
+    el.trendBars.addEventListener('pointerdown', function(e){ trendShow(trendBarFromX(e.clientX)); });
+    el.trendBars.addEventListener('pointermove', function(e){ if (e.pointerType === 'mouse' || e.buttons) trendShow(trendBarFromX(e.clientX)); });
+    el.trendBars.addEventListener('pointerleave', function(e){ if (e.pointerType === 'mouse') trendReset(); });
+  }
+
+  function renderHours(di){
+    var rows = '';
+    for (var d = 0; d < 7; d++) {
+      var t = d === di;
+      var rbg = t ? '#E7F1F3' : '#fff', rfg = t ? '#15171B' : '#42454b', rtc = t ? CFG.accent : '#9aa0a8', rw = t ? '800' : '600';
+      var bt = d === 0 ? '0' : '1px solid #eef3f4';
+      rows += '<div class="hrow" style="background:' + rbg + ';border-top:' + bt + ';">'
+            + '<span class="d" style="font-weight:' + rw + ';color:' + rfg + ';">' + names[d] + (t ? ' · heute' : '') + '</span>'
+            + '<span class="t" style="color:' + rtc + ';">' + timesText[d] + '</span></div>';
+    }
+    var dev = upcomingDeviations(berlinNow());
+    if (dev.length) {
+      rows += '<div class="hrow" style="background:#FFF6E9;border-top:1px solid #eef3f4;">'
+            + '<span class="d" style="font-weight:800;color:#9a6a12;">Sonderzeiten</span><span class="t"></span></div>';
+      dev.forEach(function(x){
+        rows += '<div class="hrow" style="background:#FFFBF3;border-top:1px solid #f2e8d8;">'
+              + '<span class="d" style="font-weight:600;color:#9a6a12;">' + x.label + (x.reason ? ' · ' + x.reason : '') + '</span>'
+              + '<span class="t" style="color:#b9842c;">' + x.txt + '</span></div>';
+      });
+    }
+    el.hoursPanel.innerHTML = rows;
+  }
+
+  // Dropup
+  var hoursOpen = false;
+  el.hoursToggle.addEventListener('click', function(){
+    hoursOpen = !hoursOpen;
+    el.hoursPanel.classList.toggle('open', hoursOpen);
+    el.chevron.style.transform = hoursOpen ? 'rotate(180deg)' : 'rotate(0deg)';
+  });
+
+  // Tages-Navigation: Pfeile (Klick) + Wischen
+  el.trendSection.addEventListener('click', function(e){
+    var btn = e.target.closest ? e.target.closest('.dnav') : null;
+    if (btn) changeDay(parseInt(btn.getAttribute('data-d'), 10) || 0);
+  });
+  (function(){
+    var sx = null, sy = null;
+    el.trendSection.addEventListener('touchstart', function(e){ sx = e.touches[0].clientX; sy = e.touches[0].clientY; }, { passive:true });
+    el.trendSection.addEventListener('touchend', function(e){
+      if (sx == null) return;
+      var dx = e.changedTouches[0].clientX - sx, dy = e.changedTouches[0].clientY - sy; sx = null;
+      if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy)) changeDay(dx < 0 ? 1 : -1);  // links wischen = nächster Tag
+    });
+  })();
+
+  // Start
+  renderOccupancy();
+  updateStatus(true);
+  loadHours();      setInterval(loadHours, 30000);     // echte Öffnungszeiten, alle 30 s
+  loadOccupancy();  setInterval(loadOccupancy, CFG.occRefreshMs);
+  loadTypical();    setInterval(loadTypical, CFG.typicalRefreshMs);
+  loadPlan();       setInterval(loadPlan, CFG.planRefreshMs);
+  setInterval(function(){ updateStatus(false); }, 30000);
+})();
+</script>
+<script defer src="/_vercel/insights/script.js"></script>
+</body>
+</html>
