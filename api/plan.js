@@ -9,6 +9,7 @@
  */
 
 const P = require('../lib/plans');
+const { dispatch } = require('../lib/remind');
 
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', process.env.ALLOWED_ORIGIN || '*');
@@ -17,6 +18,11 @@ module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json');
 
   if (req.method === 'OPTIONS') { res.statusCode = 204; return res.end(); }
+
+  // Zuverlässiger Erinnerungs-Trigger: Live-Anzeigen pollen diesen Endpunkt während der
+  // Öffnungszeiten regelmäßig. Gedrosselt per Redis-Lock -> nur ~alle 5 Min wird gesendet.
+  // Best-effort: ein Fehler darf die Auslastungs-Antwort nie beeinflussen.
+  try { await dispatch({ force: false }); } catch (e) {}
 
   try {
     const agg = await P.getAggregate();

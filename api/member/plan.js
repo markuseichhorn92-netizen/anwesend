@@ -10,6 +10,28 @@
 
 const M = require('../../lib/members');
 const P = require('../../lib/plans');
+const { sendMailRaw, hasMail } = require('../../lib/mail');
+
+function fmtHour(h) { return (h < 10 ? '0' : '') + h + ':00'; }
+
+// Sofort-Bestätigung beim Vormerken (blockiert die Antwort nicht hart – Fehler werden geschluckt).
+async function sendConfirmation(email, firstName, hour) {
+  if (!hasMail || !email) return;
+  const name = firstName ? (' ' + firstName) : '';
+  try {
+    await sendMailRaw({
+      to: email,
+      subject: 'Vormerkung bestätigt: heute um ' + fmtHour(hour) + ' Uhr',
+      text:
+        'Hallo' + name + ',\n\n' +
+        'wir haben deine Vormerkung für heute um ' + fmtHour(hour) + ' Uhr im Fit-Inn Trier notiert. ✅\n' +
+        'Eine kurze Erinnerung schicken wir dir noch einmal rechtzeitig vorher.\n\n' +
+        'Plan geändert? Im Mitgliederbereich kannst du die Zeit anpassen oder absagen:\n' +
+        'https://mitglieder.fit-inn-trier.de/mitglieder\n\n' +
+        'Bis später! 💪\nFit-Inn Trier · Auf Hirtenberg 8 · 54296 Trier',
+    });
+  } catch (e) { /* Bestätigungsmail darf die Buchung nie scheitern lassen */ }
+}
 
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json');
@@ -49,11 +71,14 @@ module.exports = async function handler(req, res) {
       return res.end(JSON.stringify(r));
     }
 
-    // E-Mail/Vorname aus Magicline ziehen und im Plan ablegen (für die Erinnerung)
+    // E-Mail/Vorname aus Magicline ziehen und im Plan ablegen (für Bestätigung + Erinnerung)
     let email = '', firstName = '';
     try { const m = await M.getMember(sess.id); if (m) { email = m.email || ''; firstName = m.firstName || ''; } } catch (e) {}
 
-    const r = await P.setPlan(sess.id, body.hour, { email: email, firstName: firstName, remind: body.remind !== false });
+    const remind = body.remind !== false;
+    const r = await P.setPlan(sess.id, body.hour, { email: email, firstName: firstName, remind: remind });
+    // Sofort-Bestätigung per E-Mail, wenn Benachrichtigungen aktiv sind
+    if (r.ok && r.plan && remind) await sendConfirmation(email, firstName, r.plan.hour);
     res.statusCode = r.ok ? 200 : 400;
     return res.end(JSON.stringify(r));
   } catch (e) {
