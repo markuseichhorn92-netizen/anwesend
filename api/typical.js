@@ -18,7 +18,7 @@
 const { getTypicalSlot, getTypicalDay, getTypicalWeek, localParts, hasStore } = require('../lib/store');
 const { scaleVal } = require('../lib/utilization');
 
-const MAX_CAPACITY = parseInt(process.env.MAX_CAPACITY || '25', 10);
+const MAX_CAPACITY = parseInt(process.env.MAX_CAPACITY || '40', 10);
 
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', process.env.ALLOWED_ORIGIN || '*');
