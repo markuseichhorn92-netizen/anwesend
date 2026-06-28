@@ -45,6 +45,10 @@
   .tile::after{content:"";position:absolute;width:150px;height:150px;right:-46px;bottom:-56px;border-radius:50%;background:radial-gradient(circle,rgba(246,169,100,.13),transparent 70%);pointer-events:none}
   .chip{position:relative;width:44px;height:44px;border-radius:14px;display:flex;align-items:center;justify-content:center;margin-bottom:auto}
   .chip .gloss{position:absolute;inset:0;border-radius:14px;background:linear-gradient(180deg,rgba(255,255,255,.4),rgba(255,255,255,0) 50%);pointer-events:none}
+  .planChip{padding:9px 14px;border:1.5px solid #cfe0e3;border-radius:11px;background:#f4f9fa;color:#0a4958;font-weight:800;font-size:14px;cursor:pointer;transition:transform .1s,background .12s,border-color .12s}
+  .planChip:hover{background:#e7f1f3;border-color:#0a4958}
+  .planChip:active{transform:scale(.96)}
+  .planChip:disabled{opacity:.5;cursor:default}
   .seg{height:5px;flex:1;border-radius:3px}
   a{color:inherit}
   .legalfoot{padding:14px 16px 28px;display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;justify-content:center}
@@ -152,9 +156,10 @@
 
   // ---- state ----
   var TOKEN = localStorage.getItem('fi_member_token') || sessionStorage.getItem('fi_member_token') || null;
-  var DATA = { profile:null, contract:null, checkins:null, appts:null };
+  var DATA = { profile:null, contract:null, checkins:null, appts:null, plan:null };
   var S = { screen: TOKEN?'home':'login',
     msg:'', // generic success on data screen
+    planEdit:false, planRemind:true, planBusy:false,
     cancelStep:0, cancelReason:'', pauseWeeks:6, offerDone:'', withdrawConfirm:false, withdrawDone:false, cancelDone:false, busy:false,
     pauseStep:0, pauseReason:'', pauseReasonText:'', pauseFrom:'', pausePhoto:'', pausePhotoName:'', pauseDone:false,
     ccBusy:false, ccMsg:'',
@@ -254,6 +259,26 @@
   }
   function loadCheckins(){ api('/api/member/checkins').then(function(d){ DATA.checkins=d.checkins||[]; render(); }).catch(function(){ DATA.checkins=[]; render(); }); }
   function loadAppts(){ api('/api/member/appointments').then(function(d){ DATA.appts=d.appointments||[]; render(); }).catch(function(){ DATA.appts=[]; render(); }); }
+  function loadPlan(){ api('/api/member/plan').then(function(d){ DATA.plan=(d&&d.plan)||null; if(DATA.plan&&typeof DATA.plan.remind==='boolean')S.planRemind=DATA.plan.remind; render(); }).catch(function(){ DATA.plan=null; }); }
+
+  // ── „Vormerken" (geplante Trainingszeit heute) ──
+  // Öffnungszeiten Mo=0…So=6 (Fallback identisch zur Auslastungs-Anzeige)
+  var PLAN_IV=(function(){ var wd=[[570,780],[900,1290]]; return [wd,wd,wd,wd,wd,[[780,1080]],[[540,900]]]; })();
+  function berlinNowParts(){
+    var p=new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/Berlin',weekday:'short',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(new Date());
+    var g=function(t){return (p.find(function(x){return x.type===t;})||{}).value;};
+    var map={Mon:0,Tue:1,Wed:2,Thu:3,Fri:4,Sat:5,Sun:6};
+    var hour=parseInt(g('hour'),10);
+    return {wd:map[g('weekday')], hour:hour, min:hour*60+parseInt(g('minute'),10)};
+  }
+  function openHoursToday(){
+    var n=berlinNowParts(), ivs=PLAN_IV[n.wd]||[], hrs=[];
+    ivs.forEach(function(intv){ var s=Math.floor(intv[0]/60), e=Math.ceil(intv[1]/60);
+      for(var h=s;h<e;h++){ if(h>=n.hour && hrs.indexOf(h)<0) hrs.push(h); } });
+    return hrs;
+  }
+  function hh2(h){ return (h<10?'0':'')+h+':00'; }
+  window.__planRemind=function(v){ S.planRemind=!!v; };
 
   // ========================= SCREENS =========================
   function backHd(title, target){ return '<div class="hd"><button class="back" data-act="nav" data-arg="'+(target||'home')+'">'+svg(IC.back,{c:'#fff',w:2,s:20})+'</button><div class="h1w">'+esc(title)+'</div></div>'; }
@@ -308,6 +333,42 @@
     return '<div class="loginWrap">'+brand+'<div class="loginForm"><div class="loginCard">'+inner+legal+'</div></div></div>';
   }
 
+  function planCard(){
+    var clock='<circle cx="12" cy="12" r="9"></circle><path d="M12 7.5v5l3 1.8"></path>';
+    var plan=DATA.plan;
+    var head='<div style="display:flex;align-items:center;gap:13px">'+
+      '<div style="width:46px;height:46px;border-radius:13px;background:'+TEAL+';display:flex;align-items:center;justify-content:center;flex-shrink:0">'+svg(clock,{c:'#fff',w:1.9,s:23})+'</div>';
+    if(plan && plan.hour!=null && !S.planEdit){
+      return '<div style="background:#fff;border-radius:22px;padding:18px 20px;box-shadow:0 12px 34px rgba(4,33,40,.10)">'+
+        head+
+        '<div style="flex:1;min-width:0">'+
+          '<div style="font-size:12px;font-weight:700;color:'+TEAL+';text-transform:uppercase;letter-spacing:.5px">Heute vorgemerkt</div>'+
+          '<div style="font-size:16px;font-weight:800;margin-top:2px;color:#15171B">Du kommst heute um '+hh2(plan.hour)+' Uhr 👍</div>'+
+          '<div style="font-size:12px;color:#6b7780;margin-top:2px">'+(S.planRemind?'Wir erinnern dich ~30 Min vorher per E-Mail.':'Ohne E-Mail-Erinnerung.')+'</div>'+
+        '</div></div>'+
+        '<div style="display:flex;gap:10px;margin-top:14px">'+
+          '<button data-act="planEdit" style="flex:1;padding:11px;border:1.5px solid '+TEAL+';border-radius:11px;background:#fff;color:'+TEAL+';font-weight:700;font-size:14px;cursor:pointer">Zeit ändern</button>'+
+          '<button data-act="planCancel"'+(S.planBusy?' disabled':'')+' style="flex:1;padding:11px;border:1.5px solid #e3b8b1;border-radius:11px;background:#fff;color:#b53a2c;font-weight:700;font-size:14px;cursor:pointer">Absagen</button>'+
+        '</div>'+
+      '</div>';
+    }
+    var hrs=openHoursToday();
+    if(!hrs.length) return '';   // heute kein offenes Zeitfenster mehr
+    var chips=hrs.map(function(h){ return '<button class="planChip" data-act="planSet" data-arg="'+h+'"'+(S.planBusy?' disabled':'')+'>'+hh2(h)+'</button>'; }).join('');
+    return '<div style="background:#fff;border-radius:22px;padding:18px 20px;box-shadow:0 12px 34px rgba(4,33,40,.10)">'+
+      head+
+        '<div style="flex:1;min-width:0">'+
+          '<div style="font-size:16px;font-weight:800;color:#15171B">Heute trainieren?</div>'+
+          '<div style="font-size:12px;color:#6b7780;margin-top:2px">Merk dir eine Zeit vor – so sehen alle die geplante Auslastung.</div>'+
+        '</div></div>'+
+      '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:14px">'+chips+'</div>'+
+      '<label style="display:flex;align-items:center;gap:9px;margin-top:14px;cursor:pointer;font-size:13px;color:#42454b;font-weight:600">'+
+        '<input type="checkbox" '+(S.planRemind?'checked':'')+' onclick="window.__planRemind(this.checked)" style="width:17px;height:17px;accent-color:'+TEAL+'"> Erinnerung per E-Mail (ca. 30 Min vorher)'+
+      '</label>'+
+      ((S.planEdit&&plan)?'<div style="margin-top:10px"><button data-act="planEditCancel" style="background:none;border:none;color:#6b7780;font-size:13px;font-weight:600;cursor:pointer;text-decoration:underline">Abbrechen</button></div>':'')+
+    '</div>';
+  }
+
   function scrHome(){
     var p=DATA.profile||{}; var name=p.firstName||'';
     var nextAppt = (DATA.appts||[]).slice().filter(function(a){return new Date(a.start)>=new Date();}).sort(function(a,b){return new Date(a.start)-new Date(b.start);})[0];
@@ -331,7 +392,9 @@
       '<div style="padding:6px 4px 16px"><div style="font-size:28px;font-weight:900;color:#fff;letter-spacing:-.6px">Hallo '+esc(name||'')+'!</div>'+
       '<div style="font-size:14px;color:#bfd7dc;margin-top:3px;font-weight:500">'+(p.customerNumber?('Mitgliedsnr. '+esc(p.customerNumber)):'')+'</div></div>'+
       status+
-      '<div class="gTiles" style="margin-top:'+(status?'14px':'0')+'">'+tiles+'</div>';
+      (status?'<div style="height:14px"></div>':'')+
+      planCard()+
+      '<div class="gTiles" style="margin-top:14px">'+tiles+'</div>';
   }
 
   function scrData(){
@@ -660,6 +723,21 @@
 
   var ACT={
     nav:function(a){ nav(a); },
+    planSet:function(a){
+      var h=parseInt(a,10); if(!isFinite(h)) return;
+      setQuiet({planBusy:true});
+      api('/api/member/plan',{method:'POST',body:JSON.stringify({action:'set',hour:h,remind:S.planRemind})})
+        .then(function(r){ if(r&&r.ok&&r.plan){ DATA.plan=r.plan; } setQuiet({planBusy:false,planEdit:false}); })
+        .catch(function(){ setQuiet({planBusy:false}); });
+    },
+    planCancel:function(){
+      setQuiet({planBusy:true});
+      api('/api/member/plan',{method:'POST',body:JSON.stringify({action:'cancel'})})
+        .then(function(){ DATA.plan=null; setQuiet({planBusy:false,planEdit:false}); })
+        .catch(function(){ setQuiet({planBusy:false}); });
+    },
+    planEdit:function(){ setQuiet({planEdit:true}); },
+    planEditCancel:function(){ setQuiet({planEdit:false}); },
     reqCode:function(){
       var email=(S.liEmail||'').trim();
       var dob = S.dpSel ? (S.dpSel.getFullYear()+'-'+pad2(S.dpSel.getMonth()+1)+'-'+pad2(S.dpSel.getDate())) : '';
@@ -684,7 +762,7 @@
         .then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j};});})
         .then(function(x){
           if(x.ok&&x.j.needsCode){ setS({busy:false,challenge:x.j.challenge,loginStep:'verify',otp:'',liEmail:'',loginErr:''}); return; }
-          if(x.ok&&x.j.token){ TOKEN=x.j.token; if(remember){ localStorage.setItem('fi_member_token',TOKEN); localStorage.setItem('fi_remember','1'); sessionStorage.removeItem('fi_member_token'); } else { sessionStorage.setItem('fi_member_token',TOKEN); localStorage.removeItem('fi_member_token'); localStorage.removeItem('fi_remember'); } S.loginStep='request'; return loadMe().then(function(){ loadAppts(); S.busy=false; nav('home'); }); }
+          if(x.ok&&x.j.token){ TOKEN=x.j.token; if(remember){ localStorage.setItem('fi_member_token',TOKEN); localStorage.setItem('fi_remember','1'); sessionStorage.removeItem('fi_member_token'); } else { sessionStorage.setItem('fi_member_token',TOKEN); localStorage.removeItem('fi_member_token'); localStorage.removeItem('fi_remember'); } S.loginStep='request'; return loadMe().then(function(){ loadAppts(); loadPlan(); S.busy=false; nav('home'); }); }
           S.busy=false; setS({loginErr:(x.j&&x.j.message)||'Daten nicht gefunden.'}); })
         .catch(function(){ setS({busy:false,loginErr:'Es ist ein Fehler aufgetreten.'}); });
     },
@@ -695,7 +773,7 @@
       setQuiet({busy:true,loginErr:''});
       fetch('/api/member/login-verify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({challenge:S.challenge,code:code,remember:remember})})
         .then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j};});})
-        .then(function(x){ if(x.ok&&x.j.token){ TOKEN=x.j.token; if(remember){ localStorage.setItem('fi_member_token',TOKEN); localStorage.setItem('fi_remember','1'); sessionStorage.removeItem('fi_member_token'); } else { sessionStorage.setItem('fi_member_token',TOKEN); localStorage.removeItem('fi_member_token'); localStorage.removeItem('fi_remember'); } S.loginStep='request'; S.challenge=''; S.otp=''; return loadMe().then(function(){ loadAppts(); S.busy=false; nav('home'); }); } S.busy=false; setS({loginErr:(x.j&&x.j.message)||'Code falsch. Bitte erneut versuchen.'}); })
+        .then(function(x){ if(x.ok&&x.j.token){ TOKEN=x.j.token; if(remember){ localStorage.setItem('fi_member_token',TOKEN); localStorage.setItem('fi_remember','1'); sessionStorage.removeItem('fi_member_token'); } else { sessionStorage.setItem('fi_member_token',TOKEN); localStorage.removeItem('fi_member_token'); localStorage.removeItem('fi_remember'); } S.loginStep='request'; S.challenge=''; S.otp=''; return loadMe().then(function(){ loadAppts(); loadPlan(); S.busy=false; nav('home'); }); } S.busy=false; setS({loginErr:(x.j&&x.j.message)||'Code falsch. Bitte erneut versuchen.'}); })
         .catch(function(){ setS({busy:false,loginErr:'Es ist ein Fehler aufgetreten.'}); });
     },
     toggleRemember:function(){ S.remember=!S.remember; if(!S.remember) localStorage.removeItem('fi_remember'); setQuiet({}); },
@@ -829,12 +907,12 @@
     S.screen='login'; render();
     fetch('/api/member/login-magic',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:tok,remember:true})})
       .then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j};});})
-      .then(function(x){ cleanMlt(); if(x.ok&&x.j.token){ TOKEN=x.j.token; localStorage.setItem('fi_member_token',TOKEN); localStorage.setItem('fi_remember','1'); return loadMe().then(function(){ loadAppts(); nav('home'); }); } setS({loginErr:(x.j&&x.j.message)||'Der Anmelde-Link ist ungültig oder abgelaufen.'}); })
+      .then(function(x){ cleanMlt(); if(x.ok&&x.j.token){ TOKEN=x.j.token; localStorage.setItem('fi_member_token',TOKEN); localStorage.setItem('fi_remember','1'); return loadMe().then(function(){ loadAppts(); loadPlan(); nav('home'); }); } setS({loginErr:(x.j&&x.j.message)||'Der Anmelde-Link ist ungültig oder abgelaufen.'}); })
       .catch(function(){ cleanMlt(); setS({loginErr:'Der Anmelde-Link konnte nicht geprüft werden. Bitte melde dich erneut an.'}); });
   }
   var MLT=null; try{ MLT=new URL(window.location.href).searchParams.get('mlt'); }catch(e){}
   if(MLT){ bootMagic(MLT); }
-  else if(TOKEN){ loadMe().then(function(){ loadAppts(); render(); }).catch(function(){ logout(); }); }
+  else if(TOKEN){ loadMe().then(function(){ loadAppts(); loadPlan(); render(); }).catch(function(){ logout(); }); }
   else render();
 })();
 </script>

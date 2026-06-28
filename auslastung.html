@@ -65,6 +65,11 @@
   .tbar:active{transform:scaleY(.94); filter:brightness(.92)}
   .tbar.now{background:var(--bar-now); box-shadow:0 0 0 2px rgba(10,73,88,.2)}
   .tnow-dot{position:absolute; top:-8px; left:50%; transform:translateX(-50%); width:7px; height:7px; border-radius:50%; background:var(--nowdot); box-shadow:0 0 0 3px rgba(10,73,88,.14)}
+  .tcap{position:absolute; top:0; left:0; right:0; background:#F6A964; border-radius:3px 3px 0 0; max-height:62%; box-shadow:0 0 0 1px rgba(224,124,60,.3); pointer-events:none}
+  .plan-line{display:none; align-items:center; gap:7px; margin:0 0 9px; font-weight:700; font-size:11.5px; color:var(--fg)}
+  .plan-line .pdot{width:8px; height:8px; border-radius:50%; background:#F6A964; flex:none}
+  .plan-line.on{display:flex}
+  .plan-pill{display:none; align-items:center; gap:7px; font-weight:700; font-size:clamp(12px,3.4cqw,15px); color:var(--fg)}
   .tgap{position:relative; flex:0 0 14px; align-self:stretch; pointer-events:none}
   .trend-bars .tgap::before{content:""; position:absolute; left:50%; bottom:0; top:38%; border-left:2px dotted var(--gapline); transform:translateX(-50%)}
   .trend-closed{flex:1; display:flex; align-items:center; justify-content:center; color:var(--axis); font-weight:600; font-size:12px}
@@ -98,11 +103,14 @@
 
     <div class="status"><span class="status-dot" id="statusDot"></span><span id="statusText">—</span></div>
 
+    <div class="plan-pill" id="planPill"></div>
+
     <div class="trend hidden" id="trendSection">
       <div class="trend-head">
         <span class="trend-title">VERLAUF</span>
         <span class="day-nav"><button class="dnav" data-d="-1" aria-label="Vorheriger Tag">‹</button><span class="trend-day" id="trendDay">Heute</span><button class="dnav" data-d="1" aria-label="Nächster Tag">›</button></span>
       </div>
+      <div class="plan-line" id="planLine"><span class="pdot"></span><span id="planLineTxt"></span></div>
       <div class="trend-bars" id="trendBars" role="group" aria-label="Typischer Tagesverlauf – nach links/rechts wischen für andere Tage"></div>
       <div class="trend-axis" id="trendAxis"></div>
       <div class="trend-caption" id="trendCaption">Verlauf aus den letzten Wochen</div>
@@ -194,9 +202,11 @@
     statusText:document.getElementById('statusText'),
     trendSection:document.getElementById('trendSection'), trendBars:document.getElementById('trendBars'),
     trendAxis:document.getElementById('trendAxis'), trendDay:document.getElementById('trendDay'),
-    trendCaption:document.getElementById('trendCaption')
+    trendCaption:document.getElementById('trendCaption'),
+    planLine:document.getElementById('planLine'), planLineTxt:document.getElementById('planLineTxt'),
+    planPill:document.getElementById('planPill')
   };
-  var state = { capacity:CFG.capacity, current:null, open:false, trend:null, week:null, selWd:null, userPicked:false };
+  var state = { capacity:CFG.capacity, current:null, open:false, trend:null, week:null, selWd:null, userPicked:false, plan:{ hours:{}, total:0 } };
   var lastHour = -1, lastDi = -1;
 
   var countRaf=null, shownCount=0;
@@ -317,7 +327,7 @@
     el.trendSection.classList.remove('hidden');
     if(el.trendDay)el.trendDay.textContent=dayLabel(state.selWd);
     if(dh.closed){ el.trendBars.innerHTML='<div class="trend-closed">An diesem Tag geschlossen</div>';
-      if(el.trendAxis)el.trendAxis.innerHTML=''; if(el.trendCaption)el.trendCaption.textContent=''; return; }
+      if(el.trendAxis)el.trendAxis.innerHTML=''; if(el.trendCaption)el.trendCaption.textContent=''; updatePlanLine(false); return; }
     var isToday=state.selWd===n.di, segments=dh.segments, mx=dh.max, html='', idx=0, cls=animate?'tbar anim':'tbar';
     for(var s=0;s<segments.length;s++){
       if(s>0)html+='<div class="tgap" aria-hidden="true"></div>';
@@ -325,15 +335,37 @@
       for(var b=0;b<seg.length;b++){
         var hh=seg[b], ratio=mx>0?hh.count/mx:0, pct=Math.round(20+ratio*80), isNow=isToday&&hh.hour===n.hour;
         var marker=isNow?'<span class="tnow-dot" aria-hidden="true"></span>':'';
-        html+='<div class="'+cls+(isNow?' now':'')+'" data-h="'+hh.hour+'" data-v="'+hh.count+'"'
-            +' title="'+(isNow?'Jetzt · ':'')+hh.hour+' Uhr · ~'+hh.count+' Personen"'
-            +' style="height:'+pct+'%;animation-delay:'+(idx*32)+'ms;">'+marker+'</div>';
+        var planned=isToday?plannedAt(hh.hour):0;
+        var cap=planned>0?'<span class="tcap" style="height:'+(5+planned*4)+'px"></span>':'';
+        html+='<div class="'+cls+(isNow?' now':'')+'" data-h="'+hh.hour+'" data-v="'+hh.count+'" data-p="'+planned+'"'
+            +' title="'+(isNow?'Jetzt · ':'')+hh.hour+' Uhr · ~'+hh.count+' Personen'+(planned>0?' · '+planned+' vorgemerkt':'')+'"'
+            +' style="height:'+pct+'%;animation-delay:'+(idx*32)+'ms;">'+marker+cap+'</div>';
         idx++;
       }
     }
     el.trendBars.innerHTML=html;
     if(el.trendAxis)el.trendAxis.innerHTML=buildAxis(state.selWd);
+    updatePlanLine(isToday);
     trendWire(); trendReset();
+  }
+  function plannedAt(hour){ var h=state.plan&&state.plan.hours?state.plan.hours[hour]:0; h=(typeof h==='number')?h:parseInt(h,10); return h>0?h:0; }
+  function updatePlanLine(isToday){
+    if(!el.planLine)return;
+    var t=(state.plan&&state.plan.total)||0;
+    if(isToday&&t>0){ el.planLineTxt.textContent=t+(t===1?' Person hat sich':' Personen haben sich')+' für heute vorgemerkt'; el.planLine.classList.add('on'); }
+    else el.planLine.classList.remove('on');
+  }
+  function updatePlanPill(){
+    if(!el.planPill)return;
+    var t=(state.plan&&state.plan.total)||0;
+    if(t>0){ el.planPill.textContent='🟠 '+t+' heute vorgemerkt'; el.planPill.style.display='flex'; }
+    else el.planPill.style.display='none';
+  }
+  function loadPlan(){
+    fetch('/api/plan',{cache:'no-store'}).then(function(r){return r.ok?r.json():null;})
+      .then(function(p){ state.plan=(p&&p.available)?{hours:p.hours||{},total:p.total||0}:{hours:{},total:0};
+        if(EMBED_TRANSPARENT)updatePlanPill(); else renderTrend(berlinNow(), false); })
+      .catch(function(){});
   }
   function trendBarFromX(clientX){
     var bars=el.trendBars.querySelectorAll('.tbar'); if(!bars.length)return null;
@@ -343,7 +375,8 @@
     return best;
   }
   function trendShow(bar){ if(!bar||!bar.getAttribute||bar.getAttribute('data-v')==null||!el.trendCaption)return;
-    el.trendCaption.textContent=bar.getAttribute('data-h')+' Uhr · ~'+bar.getAttribute('data-v')+' Personen'; }
+    var p=parseInt(bar.getAttribute('data-p'),10)||0;
+    el.trendCaption.textContent=bar.getAttribute('data-h')+' Uhr · ~'+bar.getAttribute('data-v')+' Personen'+(p>0?' · '+p+' vorgemerkt':''); }
   function trendReset(){ if(el.trendCaption)el.trendCaption.textContent='Verlauf aus den letzten Wochen'; }
   function trendWire(){
     if(el.trendBars.__wired)return; el.trendBars.__wired=true;
@@ -387,6 +420,7 @@
   loadHours();     setInterval(loadHours, 30000);
   setInterval(updateStatus, 30000);
   if (!EMBED_TRANSPARENT){ loadTypical(); setInterval(loadTypical, 600000); }
+  loadPlan();      setInterval(loadPlan, 60000);   // geplante Auslastung („Vormerken")
 })();
 </script>
 </body>
