@@ -271,13 +271,17 @@
     var hour=parseInt(g('hour'),10);
     return {wd:map[g('weekday')], hour:hour, min:hour*60+parseInt(g('minute'),10)};
   }
-  function openHoursToday(){
-    var n=berlinNowParts(), ivs=PLAN_IV[n.wd]||[], hrs=[];
-    ivs.forEach(function(intv){ var s=Math.floor(intv[0]/60), e=Math.ceil(intv[1]/60);
-      for(var h=s;h<e;h++){ if(h>=n.hour && hrs.indexOf(h)<0) hrs.push(h); } });
-    return hrs;
+  function openSlotsToday(){
+    var n=berlinNowParts(), ivs=PLAN_IV[n.wd]||[], slots=[];
+    var minStart=Math.ceil(n.min/30)*30;            // nächster freier 30-Min-Slot ab jetzt
+    ivs.forEach(function(intv){
+      for(var m=intv[0]; m<=intv[1]-30; m+=30){ if(m>=minStart && slots.indexOf(m)<0) slots.push(m); }
+    });
+    slots.sort(function(a,b){return a-b;});
+    return slots;
   }
-  function hh2(h){ return (h<10?'0':'')+h+':00'; }
+  function fmtMin(m){ return (m<600?'0':'')+Math.floor(m/60)+':'+(m%60<10?'0':'')+(m%60); }
+  function planExpired(slot){ return slot==null || berlinNowParts().min >= slot+30; }
   window.__planRemind=function(v){ S.planRemind=!!v; };
 
   // ========================= SCREENS =========================
@@ -338,13 +342,13 @@
     var plan=DATA.plan;
     var head='<div style="display:flex;align-items:center;gap:13px">'+
       '<div style="width:46px;height:46px;border-radius:13px;background:'+TEAL+';display:flex;align-items:center;justify-content:center;flex-shrink:0">'+svg(clock,{c:'#fff',w:1.9,s:23})+'</div>';
-    if(plan && plan.hour!=null && !S.planEdit){
+    if(plan && !planExpired(plan.slot) && !S.planEdit){
       return '<div style="background:#fff;border-radius:22px;padding:18px 20px;box-shadow:0 12px 34px rgba(4,33,40,.10)">'+
         head+
         '<div style="flex:1;min-width:0">'+
           '<div style="font-size:12px;font-weight:700;color:'+TEAL+';text-transform:uppercase;letter-spacing:.5px">Heute vorgemerkt</div>'+
-          '<div style="font-size:16px;font-weight:800;margin-top:2px;color:#15171B">Du kommst heute um '+hh2(plan.hour)+' Uhr 👍</div>'+
-          '<div style="font-size:12px;color:#6b7780;margin-top:2px">'+(S.planRemind?'Wir erinnern dich ~30 Min vorher per E-Mail.':'Ohne E-Mail-Erinnerung.')+'</div>'+
+          '<div style="font-size:16px;font-weight:800;margin-top:2px;color:#15171B">Du kommst heute um '+fmtMin(plan.slot)+' Uhr 👍</div>'+
+          '<div style="font-size:12px;color:#6b7780;margin-top:2px">'+(S.planRemind?'Wir erinnern dich rechtzeitig per E-Mail.':'Ohne E-Mail-Benachrichtigung.')+'</div>'+
         '</div></div>'+
         '<div style="display:flex;gap:10px;margin-top:14px">'+
           '<button data-act="planEdit" style="flex:1;padding:11px;border:1.5px solid '+TEAL+';border-radius:11px;background:#fff;color:'+TEAL+';font-weight:700;font-size:14px;cursor:pointer">Zeit ändern</button>'+
@@ -352,16 +356,16 @@
         '</div>'+
       '</div>';
     }
-    var hrs=openHoursToday();
-    if(!hrs.length) return '';   // heute kein offenes Zeitfenster mehr
-    var chips=hrs.map(function(h){ return '<button class="planChip" data-act="planSet" data-arg="'+h+'"'+(S.planBusy?' disabled':'')+'>'+hh2(h)+'</button>'; }).join('');
+    var slots=openSlotsToday();
+    if(!slots.length) return '';   // heute kein offenes Zeitfenster mehr
+    var chips=slots.map(function(m){ return '<button class="planChip" data-act="planSet" data-arg="'+m+'"'+(S.planBusy?' disabled':'')+'>'+fmtMin(m)+'</button>'; }).join('');
     return '<div style="background:#fff;border-radius:22px;padding:18px 20px;box-shadow:0 12px 34px rgba(4,33,40,.10)">'+
       head+
         '<div style="flex:1;min-width:0">'+
           '<div style="font-size:16px;font-weight:800;color:#15171B">Heute trainieren?</div>'+
           '<div style="font-size:12px;color:#6b7780;margin-top:2px">Merk dir eine Zeit vor – so sehen alle die geplante Auslastung.</div>'+
         '</div></div>'+
-      '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:14px">'+chips+'</div>'+
+      '<div class="planChips" style="display:flex;gap:8px;margin-top:14px;overflow-x:auto;padding-bottom:4px;-webkit-overflow-scrolling:touch">'+chips+'</div>'+
       '<label style="display:flex;align-items:center;gap:9px;margin-top:14px;cursor:pointer;font-size:13px;color:#42454b;font-weight:600">'+
         '<input type="checkbox" '+(S.planRemind?'checked':'')+' onclick="window.__planRemind(this.checked)" style="width:17px;height:17px;accent-color:'+TEAL+'"> Benachrichtigungen per E-Mail (Bestätigung + Erinnerung)'+
       '</label>'+
@@ -724,9 +728,9 @@
   var ACT={
     nav:function(a){ nav(a); },
     planSet:function(a){
-      var h=parseInt(a,10); if(!isFinite(h)) return;
+      var mins=parseInt(a,10); if(!isFinite(mins)) return;
       setQuiet({planBusy:true});
-      api('/api/member/plan',{method:'POST',body:JSON.stringify({action:'set',hour:h,remind:S.planRemind})})
+      api('/api/member/plan',{method:'POST',body:JSON.stringify({action:'set',minutes:mins,remind:S.planRemind})})
         .then(function(r){ if(r&&r.ok&&r.plan){ DATA.plan=r.plan; } setQuiet({planBusy:false,planEdit:false}); })
         .catch(function(){ setQuiet({planBusy:false}); });
     },
