@@ -10,6 +10,7 @@
  */
 
 const M = require('../../lib/members');
+const Inbox = require('../../lib/inbox');
 const { sendMailRaw, hasMail } = require('../../lib/mail');
 const { renderEmail, BASE } = require('../../lib/emailTemplate');
 
@@ -42,6 +43,10 @@ module.exports = async function handler(req, res) {
   const weeks = Math.max(1, Math.min(52, parseInt(body.weeks, 10) || 0));
   const fromISO = /^\d{4}-\d{2}-\d{2}$/.test(String(body.from || '')) ? body.from : null;
   const toISO = fromISO ? addWeeks(fromISO, weeks) : null;
+
+  try { await Inbox.addVorgang(sess.id, { type: 'pause', subject: 'Beitragspause',
+    systemText: 'Du hast eine Beitragspause beantragt (' + weeks + (weeks === 1 ? ' Woche' : ' Wochen') + (fromISO ? (' ab ' + fmtDE(fromISO)) : '') + ').',
+    teamText: 'Hallo' + (m.firstName ? (' ' + m.firstName) : '') + ', deine Pause-Anfrage ist eingegangen. Wir prüfen den ärztlichen Nachweis und bestätigen dir die Pause per E-Mail. Deine Vertragslaufzeit verlängert sich um die Dauer der Pause.' }); } catch (e) {}
 
   // Attest (Foto) – nur kleine, bereits clientseitig skalierte Bilder
   const attachments = [];

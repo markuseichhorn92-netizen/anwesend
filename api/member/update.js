@@ -10,6 +10,7 @@
  */
 
 const M = require('../../lib/members');
+const Inbox = require('../../lib/inbox');
 const { sendMail, sendMailRaw, hasMail } = require('../../lib/mail');
 const { renderEmail, BASE } = require('../../lib/emailTemplate');
 
@@ -43,6 +44,10 @@ module.exports = async function handler(req, res) {
     if (!lines.length) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'Keine Änderung erkannt.' })); }
     lines.push('Gültig ab: ' + validFromDE);
     subject = 'Adressänderung gewünscht – ' + who(m);
+    var newAddr = ((data.street || '') + ' ' + (data.houseNumber || '')).trim() + ', ' + (data.zipCode || '') + ' ' + (data.city || '');
+    try { await Inbox.addVorgang(sess.id, { type: 'adresse', subject: 'Adressänderung',
+      systemText: 'Du hast eine Adressänderung beantragt: ' + newAddr.replace(/^,\s*/, '').trim() + '.',
+      teamText: 'Danke! Wir übernehmen deine neue Adresse zeitnah. Bei Rückfragen melden wir uns.' }); } catch (e) {}
   } else if (body.type === 'payment') {
     lines.push('Kontoinhaber: ' + (data.accountHolder || '—'));
     lines.push('IBAN ALT:    ' + (M.maskIban(m.bankAccount && m.bankAccount.iban) || '—'));
@@ -51,6 +56,9 @@ module.exports = async function handler(req, res) {
     if (data.bic) lines.push('BIC: ' + data.bic);
     lines.push('Gültig ab: ' + validFromDE);
     subject = 'IBAN-Änderung gewünscht – ' + who(m);
+    try { await Inbox.addVorgang(sess.id, { type: 'iban', subject: 'Änderung deiner Bankverbindung',
+      systemText: 'Du hast eine IBAN-Änderung beantragt (' + (M.maskIban(String(data.iban || '').replace(/\s+/g, '')) || 'neue IBAN') + ').',
+      teamText: 'Danke! Wir prüfen die neue Bankverbindung und ziehen den nächsten Beitrag wie gewohnt ein. Du musst nichts weiter tun.' }); } catch (e) {}
   } else {
     res.statusCode = 400; return res.end(JSON.stringify({ error: 'unknown_type' }));
   }

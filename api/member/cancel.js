@@ -11,6 +11,7 @@
 
 const M = require('../../lib/members');
 const C = require('../../lib/connect');
+const Inbox = require('../../lib/inbox');
 const { sendMail, sendMailRaw, hasMail } = require('../../lib/mail');
 const { renderEmail, BASE } = require('../../lib/emailTemplate');
 
@@ -89,6 +90,9 @@ module.exports = async function handler(req, res) {
       + '\nUrspr. Kündigungsgrund: ' + (body.reason || '—')
       + '\n\nBitte "' + off + '" in Magicline einrichten.';
     okMsg = 'Super – wir richten dein Angebot ein und melden uns bei dir.';
+    try { await Inbox.addVorgang(sess.id, { type: 'angebot', subject: 'Dein Angebot',
+      systemText: 'Du hast das Angebot „' + off + '" angenommen.',
+      teamText: 'Super, dass du dabei bleibst! Wir richten „' + off + '" für dich ein und melden uns bei dir.' }); } catch (e) {}
   } else if (body.action === 'cancel') {
     var ct = null;
     try { ct = await M.getContract(sess.id); } catch (e) {}
@@ -98,6 +102,9 @@ module.exports = async function handler(req, res) {
     if (reqDate && minISO && reqDate < minISO) reqDate = minISO;
     var dateISO = reqDate || minISO || null;
     var useNext = !!(minISO && (!reqDate || reqDate === minISO));
+    try { await Inbox.addVorgang(sess.id, { type: 'kuendigung', subject: 'Kündigung deiner Mitgliedschaft',
+      systemText: 'Du hast eine Kündigung eingereicht (zum ' + (dateISO ? dateISO.split('-').reverse().join('.') : 'nächstmöglichen Termin') + ').',
+      teamText: 'Hallo' + (m.firstName ? (' ' + m.firstName) : '') + ', wir haben deine Kündigung erhalten. Eine schriftliche Bestätigung senden wir dir innerhalb von 2 Werktagen per E-Mail. Falls du es dir anders überlegst: Eine Beitragspause wäre ebenfalls möglich – melde dich gern.' }); } catch (e) {}
 
     cancelDbg = {
       contractFound: !!ct,
@@ -164,11 +171,17 @@ module.exports = async function handler(req, res) {
       + (ctw ? ('\nTarif: ' + (ctw.rateName || '—') + '\nGekündigt zum: ' + (ctw.cancellationDate || ctw.nextCancellationDate || '—')) : '')
       + '\n\nBitte die Kündigung in Magicline zurücknehmen/stornieren.';
     okMsg = 'Deine Kündigung wird zurückgenommen – wir bestätigen das per E-Mail.';
+    try { await Inbox.addVorgang(sess.id, { type: 'kuendigung', subject: 'Rücknahme deiner Kündigung',
+      systemText: 'Du möchtest deine Kündigung zurücknehmen.',
+      teamText: 'Schön, dass du bleibst! Wir nehmen deine Kündigung zurück und bestätigen das per E-Mail.' }); } catch (e) {}
   } else if (body.action === 'revoke') {
     // 14-Tage-Widerruf (Fernabsatz). 1) Direkt über die Connect API eintragen, wenn
     // Vertrag + reCAPTCHA-Token vorhanden; 2) sonst E-Mail-Fallback ans Studio.
     var ctr = null;
     try { ctr = await M.getContract(sess.id); } catch (e) {}
+    try { await Inbox.addVorgang(sess.id, { type: 'widerruf', subject: 'Widerruf deines Vertrags',
+      systemText: 'Du hast deinen online abgeschlossenen Vertrag widerrufen.',
+      teamText: 'Hallo' + (m.firstName ? (' ' + m.firstName) : '') + ', dein Widerruf ist eingegangen und wird bearbeitet – dein Vertrag wird rückabgewickelt und bereits gezahlte Beiträge erstatten wir dir zurück. Die Bestätigung folgt per E-Mail.' }); } catch (e) {}
     cancelDbg = {
       action: 'revoke',
       contractFound: !!ctr,

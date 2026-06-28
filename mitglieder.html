@@ -46,7 +46,7 @@
   .muted{font-size:12px;color:#8a929a}
   .tile{position:relative;overflow:hidden;background:#fffdfb;border-radius:20px;box-shadow:0 12px 34px rgba(4,33,40,.20);padding:18px 16px 18px;cursor:pointer;min-height:128px;min-width:0;display:flex;flex-direction:column;transition:transform .12s,box-shadow .12s;border:none;text-align:left;overflow-wrap:break-word;word-break:break-word}
   .tile:hover{transform:translateY(-2px);box-shadow:0 18px 44px rgba(4,33,40,.28)}
-  .tile::after{content:"";position:absolute;width:150px;height:150px;right:-46px;bottom:-56px;border-radius:50%;background:radial-gradient(circle,rgba(246,169,100,.13),transparent 70%);pointer-events:none}
+  .tile::after{content:"";position:absolute;width:190px;height:190px;right:-54px;bottom:-66px;border-radius:50%;background:radial-gradient(circle,rgba(246,169,100,.30),rgba(246,169,100,.10) 45%,transparent 72%);pointer-events:none}
   .chip{position:relative;width:44px;height:44px;border-radius:14px;display:flex;align-items:center;justify-content:center;margin-bottom:auto}
   .chip .gloss{position:absolute;inset:0;border-radius:14px;background:linear-gradient(180deg,rgba(255,255,255,.4),rgba(255,255,255,0) 50%);pointer-events:none}
   .planChip{padding:9px 14px;border:1.5px solid #cfe0e3;border-radius:11px;background:#f4f9fa;color:#0a4958;font-weight:800;font-size:14px;cursor:pointer;transition:transform .1s,background .12s,border-color .12s}
@@ -109,6 +109,13 @@
   @keyframes fiRise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
   @keyframes fiSpin{to{transform:rotate(360deg)}}
   @keyframes fiPulse{0%,100%{opacity:1}50%{opacity:.55}}
+  .pfGrid{display:block}
+  .pfHideMobile{display:none}
+  .pfBackBtn{display:flex}
+  .pfRow:hover{background:#f7fafa}
+  .statRow{display:flex;gap:12px;overflow-x:auto;padding-bottom:4px;-webkit-overflow-scrolling:touch}
+  .statRow .statCard{flex:0 0 76%;max-width:300px}
+  .statCard:hover{box-shadow:0 16px 38px rgba(4,33,40,.14)}
   .kbCats{display:grid;grid-template-columns:1fr 1fr;gap:12px}
   .ctGrid{display:grid;grid-template-columns:1fr}
   .kbGrid{display:block}
@@ -116,7 +123,7 @@
   .catile:hover{transform:translateY(-2px);box-shadow:0 16px 38px rgba(4,33,40,.14)}
   .arow:hover,.relrow:hover{background:#f7fafa}
   @media(min-width:700px){.ctGrid{grid-template-columns:1fr 1fr}}
-  @media(min-width:1000px){ .kbCats{grid-template-columns:repeat(4,1fr);gap:16px} .kbGrid{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:32px;align-items:start} }
+  @media(min-width:1000px){ .kbCats{grid-template-columns:repeat(4,1fr);gap:16px} .kbGrid{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:32px;align-items:start} .statRow{display:grid;grid-template-columns:repeat(3,1fr);overflow:visible} .statRow .statCard{flex:none;max-width:none} .pfGrid{display:grid;grid-template-columns:340px minmax(0,1fr);gap:20px;align-items:start} .pfHideMobile{display:block} .pfBackBtn{display:none} }
 </style>
 </head>
 <body>
@@ -174,9 +181,9 @@
 
   // ---- state ----
   var TOKEN = localStorage.getItem('fi_member_token') || sessionStorage.getItem('fi_member_token') || null;
-  var DATA = { profile:null, contract:null, checkins:null, appts:null, plan:null, membershipActive:true };
+  var DATA = { profile:null, contract:null, checkins:null, appts:null, plan:null, planAgg:null, inbox:null, membershipActive:true };
   // Erlaubte Screens für ehemalige Mitglieder (alles andere wird gesperrt)
-  var FORMER_OK = ['home','checkins','help'];
+  var FORMER_OK = ['home','checkins','help','postfach'];
   function isFormer(){ return DATA.membershipActive===false; }
   var S = { screen: TOKEN?'home':'login',
     msg:'', // generic success on data screen
@@ -188,6 +195,7 @@
     helpSel:null, helpCat:'all', helpQ:'', helpShowAll:false,
     aiQuery:'', aiPhase:'idle', aiAsked:'', aiAnswer:'', aiFeedback:null,
     ctOpen:false, ctSent:false, ctMsg:'', ctBusy:false, ctErr:'', ctMsgServer:'', artFb:null,
+    pfFilter:'all', pfSel:null, pfThread:false, pfDraft:'', pfBusy:false, pfErr:'',
     copied:false, dlMsg:false, dlMsg2:'', emailing:false,
     ciRange:'all', ciFrom:'', ciTo:'',
     liEmail:'', liNum:'', remember:(localStorage.getItem('fi_remember')==='1'),
@@ -253,6 +261,7 @@
     if(isFormer() && FORMER_OK.indexOf(s)<0) s='home';   // Ehemalige: gesperrte Screens -> Übersicht
     S.screen=s;
     if(s==='help'){ S.helpSel=null; S.helpCat='all'; S.helpQ=''; S.helpShowAll=false; S.aiPhase='idle'; S.aiQuery=''; S.aiAsked=''; S.aiAnswer=''; S.aiFeedback=null; S.ctOpen=false; S.ctSent=false; S.ctMsg=''; S.ctErr=''; S.artFb=null; }
+    if(s==='postfach'){ S.pfSel=null; S.pfThread=false; S.pfErr=''; S.pfDraft=''; loadInbox(); }
     if(s==='contract'){ S.cancelStep=0; S.pauseStep=0; S.pauseDone=false; S.offerDone=''; }
     if(s==='checkins'&&!DATA.checkins) loadCheckins();
     if(s==='appt'&&!DATA.appts) loadAppts();
@@ -265,6 +274,8 @@
   function loadCheckins(){ api('/api/member/checkins').then(function(d){ DATA.checkins=d.checkins||[]; render(); }).catch(function(){ DATA.checkins=[]; render(); }); }
   function loadAppts(){ api('/api/member/appointments').then(function(d){ DATA.appts=d.appointments||[]; render(); }).catch(function(){ DATA.appts=[]; render(); }); }
   function loadPlan(){ api('/api/member/plan').then(function(d){ DATA.plan=(d&&d.plan)||null; if(DATA.plan&&typeof DATA.plan.remind==='boolean')S.planRemind=DATA.plan.remind; render(); }).catch(function(){ DATA.plan=null; }); }
+  function loadPlanAgg(){ fetch('/api/plan',{cache:'no-store'}).then(function(r){return r.json();}).then(function(d){ DATA.planAgg=d||null; render(); }).catch(function(){}); }
+  function loadInbox(){ return api('/api/member/inbox').then(function(d){ DATA.inbox=(d&&d.vorgaenge)||[]; render(); }).catch(function(){ DATA.inbox=DATA.inbox||[]; }); }
 
   // ── „Vormerken" (geplante Trainingszeit heute) ──
   // Öffnungszeiten Mo=0…So=6 (Fallback identisch zur Auslastungs-Anzeige)
@@ -341,40 +352,49 @@
     return '<div class="loginWrap">'+brand+'<div class="loginForm"><div class="loginCard">'+inner+legal+'</div></div></div>';
   }
 
+  // Geplante Auslastung pro Slot -> frei/mittel/voll (aus /api/plan, best effort)
+  function slotLoad(min){
+    var h=Math.floor(min/60);
+    var agg=(DATA.planAgg&&DATA.planAgg.hours)||{};
+    var c=Number(agg[h]||agg[String(h)]||0);
+    if(c>=6) return {k:'voll',col:'#f0876a'};
+    if(c>=3) return {k:'mittel',col:'#f3c969'};
+    return {k:'frei',col:'#5fe0a0'};
+  }
   function planCard(){
-    var clock='<circle cx="12" cy="12" r="9"></circle><path d="M12 7.5v5l3 1.8"></path>';
     var plan=DATA.plan;
-    var head='<div style="display:flex;align-items:center;gap:13px">'+
-      '<div style="width:46px;height:46px;border-radius:13px;background:'+TEAL+';display:flex;align-items:center;justify-content:center;flex-shrink:0">'+svg(clock,{c:'#fff',w:1.9,s:23})+'</div>';
+    var clock='<circle cx="12" cy="12" r="9"></circle><path d="M12 7.5v5l3 1.8"></path>';
+    var eyebrow='<div style="position:relative;display:inline-flex;align-items:center;gap:9px">'+
+      '<div style="width:32px;height:32px;border-radius:10px;background:rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center">'+svg(clock,{c:'#F6A964',w:1.9,s:18})+'</div>'+
+      '<span style="font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#F6C79A">Auslastung · heute</span></div>';
+    var wrap=function(inner){ return '<div id="vormerken" style="position:relative;overflow:hidden;border-radius:20px;background:linear-gradient(155deg,#0e6072,#073e4b);box-shadow:0 18px 44px rgba(4,33,40,.22);padding:22px">'+
+      '<div style="position:absolute;width:220px;height:220px;right:-70px;top:-90px;border-radius:50%;background:radial-gradient(circle,rgba(246,169,100,.18),transparent 70%);pointer-events:none"></div>'+eyebrow+inner+'</div>'; };
+
+    // Bereits vorgemerkt -> Bestätigung
     if(plan && !planExpired(plan.slot) && !S.planEdit){
-      return '<div style="background:#fff;border-radius:22px;padding:18px 20px;box-shadow:0 12px 34px rgba(4,33,40,.10)">'+
-        head+
-        '<div style="flex:1;min-width:0">'+
-          '<div style="font-size:12px;font-weight:700;color:'+TEAL+';text-transform:uppercase;letter-spacing:.5px">Heute vorgemerkt</div>'+
-          '<div style="font-size:16px;font-weight:800;margin-top:2px;color:#15171B">Du kommst heute um '+fmtMin(plan.slot)+' Uhr 👍</div>'+
-          '<div style="font-size:12px;color:#6b7780;margin-top:2px">'+(S.planRemind?'Wir erinnern dich rechtzeitig per E-Mail.':'Ohne E-Mail-Benachrichtigung.')+'</div>'+
-        '</div></div>'+
-        '<div style="display:flex;gap:10px;margin-top:14px">'+
-          '<button data-act="planEdit" style="flex:1;padding:11px;border:1.5px solid '+TEAL+';border-radius:11px;background:#fff;color:'+TEAL+';font-weight:700;font-size:14px;cursor:pointer">Zeit ändern</button>'+
-          '<button data-act="planCancel"'+(S.planBusy?' disabled':'')+' style="flex:1;padding:11px;border:1.5px solid #e3b8b1;border-radius:11px;background:#fff;color:#b53a2c;font-weight:700;font-size:14px;cursor:pointer">Absagen</button>'+
-        '</div>'+
-      '</div>';
+      return wrap(
+        '<div style="position:relative;font-size:21px;font-weight:900;color:#fff;letter-spacing:-.4px;margin-top:12px">Heute um '+fmtMin(plan.slot)+' Uhr 👍</div>'+
+        '<div style="position:relative;font-size:13px;color:#aed0d6;margin-top:4px;line-height:1.45">'+(S.planRemind?'Wir erinnern dich rechtzeitig per E-Mail.':'Ohne E-Mail-Benachrichtigung.')+'</div>'+
+        '<div style="position:relative;display:flex;gap:10px;margin-top:16px">'+
+          '<button data-act="planEdit" style="flex:1;padding:12px;border:1px solid rgba(255,255,255,.3);border-radius:11px;background:rgba(255,255,255,.08);color:#fff;font-weight:700;font-size:14px;cursor:pointer">Zeit ändern</button>'+
+          '<button data-act="planCancel"'+(S.planBusy?' disabled':'')+' style="flex:1;padding:12px;border:none;border-radius:11px;background:#E08C53;color:#fff;font-weight:800;font-size:14px;cursor:pointer">Absagen</button>'+
+        '</div>');
     }
+
+    var title='<div style="position:relative;font-size:21px;font-weight:900;color:#fff;letter-spacing:-.4px;margin-top:12px">Trainingszeit vorreservieren</div>';
     var slots=openSlotsToday();
-    if(!slots.length) return '';   // heute kein offenes Zeitfenster mehr
-    var chips=slots.map(function(m){ return '<button class="planChip" data-act="planSet" data-arg="'+m+'"'+(S.planBusy?' disabled':'')+'>'+fmtMin(m)+'</button>'; }).join('');
-    return '<div style="background:#fff;border-radius:22px;padding:18px 20px;box-shadow:0 12px 34px rgba(4,33,40,.10)">'+
-      head+
-        '<div style="flex:1;min-width:0">'+
-          '<div style="font-size:16px;font-weight:800;color:#15171B">Heute trainieren?</div>'+
-          '<div style="font-size:12px;color:#6b7780;margin-top:2px">Merk dir eine Zeit vor – so sehen alle die geplante Auslastung.</div>'+
-        '</div></div>'+
-      '<div class="planChips" style="display:flex;gap:8px;margin-top:14px;overflow-x:auto;padding-bottom:4px;-webkit-overflow-scrolling:touch">'+chips+'</div>'+
-      '<label style="display:flex;align-items:center;gap:9px;margin-top:14px;cursor:pointer;font-size:13px;color:#42454b;font-weight:600">'+
-        '<input type="checkbox" '+(S.planRemind?'checked':'')+' onclick="window.__planRemind(this.checked)" style="width:17px;height:17px;accent-color:'+TEAL+'"> Benachrichtigungen per E-Mail (Bestätigung + Erinnerung)'+
-      '</label>'+
-      ((S.planEdit&&plan)?'<div style="margin-top:10px"><button data-act="planEditCancel" style="background:none;border:none;color:#6b7780;font-size:13px;font-weight:600;cursor:pointer;text-decoration:underline">Abbrechen</button></div>':'')+
-    '</div>';
+    if(!slots.length){
+      // Bugfix: nie eine leere/„tote" Karte – außerhalb der Öffnungszeiten klare Info
+      return wrap(title+
+        '<div style="position:relative;font-size:13px;color:#aed0d6;margin-top:6px;line-height:1.5">Für heute ist gerade kein Zeitfenster mehr verfügbar. Schau zu den Öffnungszeiten wieder vorbei – dann kannst du deine Wunschzeit vormerken.</div>'+
+        '<a href="/auslastung" target="_blank" rel="noopener" style="position:relative;display:inline-flex;align-items:center;gap:7px;margin-top:14px;padding:11px 16px;border-radius:11px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.25);color:#fff;font-weight:700;font-size:14px;text-decoration:none">Live-Auslastung ansehen</a>');
+    }
+    var chips=slots.map(function(m){ var L=slotLoad(m); return '<button class="planSlot" data-act="planSet" data-arg="'+m+'"'+(S.planBusy?' disabled':'')+' style="flex-shrink:0;min-width:74px;padding:10px 8px;border-radius:12px;border:1px solid rgba(255,255,255,.22);background:rgba(255,255,255,.08);color:#fff;cursor:pointer;text-align:center"><div style="font-size:15px;font-weight:800">'+fmtMin(m)+'</div><div style="display:flex;align-items:center;justify-content:center;gap:5px;margin-top:3px"><span style="width:7px;height:7px;border-radius:50%;background:'+L.col+'"></span><span style="font-size:11px;color:#cfe3e7;font-weight:600">'+L.k+'</span></div></button>'; }).join('');
+    return wrap(title+
+      '<div style="position:relative;font-size:13px;color:#aed0d6;margin-top:6px;line-height:1.45">Wähl deine Wunschzeit – wir halten dir den Platz im Studio frei.</div>'+
+      '<div style="position:relative;display:flex;gap:8px;margin-top:14px;overflow-x:auto;padding-bottom:4px;-webkit-overflow-scrolling:touch">'+chips+'</div>'+
+      '<label style="position:relative;display:flex;align-items:center;gap:9px;margin-top:14px;cursor:pointer;font-size:13px;color:#cfe3e7;font-weight:600"><input type="checkbox" '+(S.planRemind?'checked':'')+' onclick="window.__planRemind(this.checked)" style="width:17px;height:17px;accent-color:#E08C53"> Benachrichtigungen per E-Mail (Bestätigung + Erinnerung)</label>'+
+      ((S.planEdit&&plan)?'<div style="position:relative;margin-top:10px"><button data-act="planEditCancel" style="background:none;border:none;color:#aed0d6;font-size:13px;font-weight:600;cursor:pointer;text-decoration:underline">Abbrechen</button></div>':''));
   }
 
   // Tages-/situationsabhängige Begrüßung (Berliner Zeit)
@@ -417,30 +437,50 @@
   function scrHome(){
     if(isFormer()) return scrRejoin();
     var p=DATA.profile||{}; var name=p.firstName||'';
-    var nextAppt = (DATA.appts||[]).slice().filter(function(a){return new Date(a.start)>=new Date();}).sort(function(a,b){return new Date(a.start)-new Date(b.start);})[0];
-    var status = nextAppt ? (''+
-      '<div data-act="openMyAppts" style="background:linear-gradient(135deg,#E7F1F3,#D6E8EB);border:1px solid #C2DCE0;border-radius:22px;padding:18px 20px;display:flex;align-items:center;gap:14px;cursor:pointer">'+
-        '<div style="width:46px;height:46px;border-radius:13px;background:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+svg(IC.cal,{w:1.9})+'</div>'+
-        '<div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:700;color:'+TEAL+';text-transform:uppercase;letter-spacing:.5px">Nächster Termin</div>'+
-        '<div style="font-size:15px;font-weight:700;margin-top:2px">'+esc(nextAppt.title)+' · '+deDate(nextAppt.start)+' · '+deTime(nextAppt.start)+'</div>'+
-        '<div style="font-size:12px;color:#3c5a60;font-weight:600;margin-top:2px">Tippen zum Ansehen oder Stornieren</div></div>'+
-        svg('<path d="M9 6l6 6-6 6"></path>',{c:TEAL,w:2.2,s:20})+
-      '</div>') : '';
     var tiles=[
       ['data','Meine Daten','Adresse & Bankverbindung verwalten','#4E86E8,#2C5FB8','rgba(44,95,184,.45)','<path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8z"></path><path d="M4 21c0-3.3 3.6-6 8-6s8 2.7 8 6"></path>'],
       ['contract','Vertragsverwaltung','Vertrag, Pause & Kündigung verwalten','#29B3A6,#0F8378','rgba(15,131,120,.42)','<path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"></path><path d="M14 3v5h5M9 13h6M9 17h4"></path>'],
       ['appt','Termine','Einführungstraining & Co. buchen','#43BE6B,#1F9A4E','rgba(31,154,78,.42)','<rect x="3" y="4" width="18" height="18" rx="3"></rect><path d="M16 2v4M8 2v4M3 10h18M8 15h.01M12 15h.01M16 15h.01"></path>'],
       ['referral','Freunde werben','Code teilen & Prämie sichern','#F6A964,#E07C3C','rgba(224,124,60,.45)','<rect x="3" y="8" width="18" height="13" rx="2"></rect><path d="M3 12h18M12 8v13M12 8C12 8 10 2.5 7.6 4.2 5.9 5.4 8.4 8 12 8zM12 8c0 0 2-5.5 4.4-3.8C18.1 5.4 15.6 8 12 8z"></path>'],
       ['checkins','Check-in-Verlauf','Deine Besuche ansehen & herunterladen','#8E7BF0,#5B47C9','rgba(91,71,201,.45)','<path d="M3 6h13M3 12h13M3 18h9"></path><path d="M17.5 15l2 2 3.2-3.2"></path>'],
+      ['postfach','Postfach','Deine Vorgänge & Nachrichten','#E08C53,#C2702E','rgba(224,124,60,.42)','<path d="M4 5h16v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z"></path><path d="M4 6l8 6 8-6"></path>'],
       ['help','Hilfe & Kontakt','KI-Assistent, FAQ & Team kontaktieren','#7C8A99,#566372','rgba(86,99,114,.40)','<circle cx="12" cy="12" r="9"></circle><path d="M9.5 9.5a2.5 2.5 0 1 1 3.4 2.3c-.8.3-1.4 1-1.4 1.9v.3"></path><path d="M12 17h.01"></path>']
-    ].map(function(t){ return '<button class="tile" data-act="nav" data-arg="'+t[0]+'"><div class="chip" style="background:linear-gradient(150deg,'+t[3]+');box-shadow:0 10px 22px -6px '+t[4]+',inset 0 1px 1px rgba(255,255,255,.55)"><span class="gloss"></span>'+svg(t[5],{c:'#fff',w:1.85,s:24})+'</div><div style="position:relative;font-size:15px;font-weight:800;margin-top:14px;letter-spacing:-.2px;color:#211E1B">'+t[1]+'</div><div style="position:relative;font-size:12px;color:#8a8178;margin-top:3px;line-height:1.35">'+t[2]+'</div></button>'; }).join('');
+    ].map(function(t){ return '<button class="tile" data-act="nav" data-arg="'+t[0]+'">'+(t[0]==='postfach'&&pfUnread()>0?'<span style="position:absolute;top:11px;right:11px;z-index:2;background:#E08C53;color:#fff;font-size:11px;font-weight:800;border-radius:20px;min-width:20px;height:20px;padding:0 6px;display:flex;align-items:center;justify-content:center">'+pfUnread()+'</span>':'')+'<div class="chip" style="background:linear-gradient(150deg,'+t[3]+');box-shadow:0 10px 22px -6px '+t[4]+',inset 0 1px 1px rgba(255,255,255,.55)"><span class="gloss"></span>'+svg(t[5],{c:'#fff',w:1.85,s:24})+'</div><div style="position:relative;font-size:15px;font-weight:800;margin-top:14px;letter-spacing:-.2px;color:#211E1B">'+t[1]+'</div><div style="position:relative;font-size:12px;color:#8a8178;margin-top:3px;line-height:1.35">'+t[2]+'</div></button>'; }).join('');
     return ''+
       '<div style="padding:6px 4px 16px"><div style="font-size:28px;font-weight:900;color:#15171B;letter-spacing:-.6px">'+greetLine(name)+'</div>'+
       '<div style="font-size:14px;color:#6b7780;margin-top:3px;font-weight:500">'+homeSub()+'</div></div>'+
-      status+
-      (status?'<div style="height:14px"></div>':'')+
+      statCards()+
+      '<div style="height:14px"></div>'+
       planCard()+
-      '<div class="gTiles" style="margin-top:14px">'+tiles+'</div>';
+      '<div style="font-size:13px;font-weight:800;color:#8a929a;text-transform:uppercase;letter-spacing:.6px;margin:24px 2px 12px">Schnellzugriff</div>'+
+      '<div class="gTiles">'+tiles+'</div>';
+  }
+  function statCard(eyebrow, icon, value, sub, attrs){
+    return '<div class="statCard" '+(attrs||'')+' style="cursor:pointer;background:#fff;border-radius:18px;box-shadow:0 12px 32px rgba(4,33,40,.10);padding:18px 18px 20px">'+
+      '<div style="display:flex;align-items:center;gap:9px"><div style="width:34px;height:34px;border-radius:10px;background:#eef3f4;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+svg(icon,{c:TEAL,w:1.9,s:18})+'</div><span style="font-size:11px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:#8a929a">'+esc(eyebrow)+'</span></div>'+
+      '<div style="font-size:20px;font-weight:900;color:#15171B;letter-spacing:-.4px;margin-top:12px;line-height:1.15">'+value+'</div>'+
+      '<div style="font-size:13px;color:#6b7780;margin-top:3px;line-height:1.4">'+sub+'</div></div>';
+  }
+  function statCards(){
+    var c=DATA.contract;
+    var vVal=esc((c&&c.rateName)||'—');
+    var vSub=c?(c.cancelled?('Gekündigt zum '+esc(c.cancellationDate||c.nextCancellationDate||'—')):'Aktiv'):'Keine Vertragsdaten';
+    var vCard=statCard('Vertrag', IC.doc, vVal, vSub, 'data-act="nav" data-arg="contract"');
+    var na=(DATA.appts||[]).slice().filter(function(a){return new Date(a.start)>=new Date();}).sort(function(a,b){return new Date(a.start)-new Date(b.start);})[0];
+    var tVal=na?(deDate(na.start)+' · '+deTime(na.start)+' Uhr'):'Kein Termin';
+    var tSub=na?esc(na.title):'Jetzt einen Termin buchen';
+    var tCard=statCard('Nächster Termin', IC.cal, tVal, tSub, na?'data-act="openMyAppts"':'data-act="nav" data-arg="appt"');
+    var now=new Date();
+    var mn=['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'][now.getMonth()];
+    var ci=Array.isArray(DATA.checkins)?DATA.checkins:[];
+    var month=ci.filter(function(x){var d=new Date(x.in);return !isNaN(d)&&d.getMonth()===now.getMonth()&&d.getFullYear()===now.getFullYear();});
+    var durs=month.map(function(x){return (x.out&&x.in)?(new Date(x.out)-new Date(x.in)):0;}).filter(function(x){return x>0;});
+    var avg=durs.length?Math.round(durs.reduce(function(a,b){return a+b;},0)/durs.length/60000):0;
+    var avgL=avg?(Math.floor(avg/60)+':'+String(avg%60).padStart(2,'0')+' h'):'';
+    var bVal=month.length+' '+(month.length===1?'Besuch':'Besuche');
+    var bSub=durs.length?('Ø '+avgL+' pro Besuch'):'in diesem Monat';
+    var bCard=statCard('Besuche im '+mn, IC.list, bVal, bSub, 'data-act="nav" data-arg="checkins"');
+    return '<div class="statRow">'+vCard+tCard+bCard+'</div>';
   }
 
   function scrData(){
@@ -643,6 +683,90 @@
     '<div style="background:#fff;border-radius:18px;box-shadow:0 12px 34px rgba(4,33,40,.18);padding:18px 20px;margin-top:14px"><div style="font-size:12px;font-weight:700;color:#8a929a;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Das bekommt dein Freund</div><div style="font-size:14px;color:#42454b;line-height:1.55;background:#f4f7f7;border-radius:12px;padding:14px 16px;word-break:break-word">Hey! Trainier doch mal mit mir im Fit-Inn Trier 💪 Mit meinem Code <b style="color:'+TEAL+'">'+esc(code)+'</b> bekommst du <b style="color:'+TEAL+'">2 Wochen gratis</b>. Hier geht\'s los: '+esc(link)+'</div></div>'+
     '<div class="card" style="margin-top:14px"><div style="font-size:17px;font-weight:800;margin-bottom:16px">So funktioniert\'s</div><div style="display:flex;flex-direction:column;gap:16px">'+
     steps.map(function(r){return '<div style="display:flex;gap:14px;align-items:flex-start"><div style="width:30px;height:30px;border-radius:50%;background:'+TEAL+';color:#fff;font-weight:800;font-size:14px;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+r[0]+'</div><div><div style="font-size:15px;font-weight:700">'+r[1]+'</div><div style="font-size:13px;color:#6b7780;line-height:1.4;margin-top:2px">'+r[2]+'</div></div></div>';}).join('')+'</div></div>';
+  }
+
+  // ===== Postfach (Vorgänge / Nachrichten) =====
+  var PF_TYPE={
+    kuendigung:{label:'Kündigung',bg:'#fbeae7',col:'#b53a2c',icon:'<path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"></path><path d="M14 3v5h5"></path><path d="M9.5 13.5l5 5M14.5 13.5l-5 5"></path>'},
+    widerruf:{label:'Widerruf',bg:'#fbf0e3',col:'#C77A2E',icon:'<path d="M3 12a9 9 0 1 0 3-6.7L3 8"></path><path d="M3 3v5h5"></path>'},
+    adresse:{label:'Adressänderung',bg:'#e8f6ed',col:'#1d7a3e',icon:'<path d="M12 21s-7-5.5-7-11a7 7 0 0 1 14 0c0 5.5-7 11-7 11z"></path><circle cx="12" cy="10" r="2.5"></circle>'},
+    iban:{label:'Bankverbindung',bg:'#eaf0fb',col:'#2C5FB8',icon:'<rect x="2" y="5" width="20" height="14" rx="2"></rect><path d="M2 10h20M6 15h4"></path>'},
+    kontakt:{label:'Kontakt',bg:'#e7f1f3',col:'#0a4958',icon:'<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>'},
+    termin:{label:'Termin',bg:'#e8f6ed',col:'#1F9A4E',icon:'<rect x="3" y="4" width="18" height="18" rx="3"></rect><path d="M16 2v4M8 2v4M3 10h18"></path>'},
+    pause:{label:'Beitragspause',bg:'#eef3f4',col:'#0a4958',icon:'<rect x="6" y="5" width="4" height="14" rx="1"></rect><rect x="14" y="5" width="4" height="14" rx="1"></rect>'},
+    angebot:{label:'Angebot',bg:'#fff3e8',col:'#E08C53',icon:'<path d="M20 12v9H4v-9M2 7h20v5H2zM12 22V7M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7zM12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"></path>'},
+    willkommen:{label:'Willkommen',bg:'#fff3e8',col:'#E08C53',icon:'<path d="M12 3l1.9 4.6L18.5 9l-4.6 1.4L12 15l-1.9-4.6L5.5 9l4.6-1.4z"></path>'},
+    allgemein:{label:'Vorgang',bg:'#eef3f4',col:'#0a4958',icon:'<path d="M4 5h16v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z"></path><path d="M4 6l8 6 8-6"></path>'}
+  };
+  function pfType(t){ return PF_TYPE[t]||PF_TYPE.allgemein; }
+  var PF_STATUS={ bearbeitung:{label:'In Bearbeitung',col:'#C77A2E',bg:'#fbf0e3'}, beantwortet:{label:'Beantwortet',col:'#0a4958',bg:'#e7f1f3'}, aktion:{label:'Aktion erforderlich',col:'#b53a2c',bg:'#fbeae7'}, abgeschlossen:{label:'Abgeschlossen',col:'#1d7a3e',bg:'#e7f6ec'} };
+  function pfStatus(s){ return PF_STATUS[s]||PF_STATUS.bearbeitung; }
+  function pfUnread(){ return (DATA.inbox||[]).filter(function(v){return v&&v.unread;}).length; }
+  function relTime(at){
+    if(!at) return '';
+    var min=Math.floor((Date.now()-at)/60000);
+    if(min<1) return 'gerade eben';
+    if(min<60) return 'vor '+min+' Min.';
+    var h=Math.floor(min/60); if(h<24) return 'vor '+h+' Std.';
+    var d=Math.floor(h/24); if(d===1) return 'Gestern'; if(d<7) return 'vor '+d+' Tagen';
+    var dt=new Date(at); var p=function(n){return(n<10?'0':'')+n;}; return p(dt.getDate())+'.'+p(dt.getMonth()+1)+'.'+dt.getFullYear();
+  }
+  function updateVorgang(v){ if(!v) return; var arr=DATA.inbox||[]; var i=-1; for(var k=0;k<arr.length;k++){ if(String(arr[k].id)===String(v.id)){ i=k; break; } } if(i>=0) arr[i]=v; else arr.unshift(v); DATA.inbox=arr; }
+
+  function pfListHtml(list){
+    var filt=S.pfFilter||'all';
+    var rows=(list||[]).filter(function(v){ if(filt==='open') return v.status!=='abgeschlossen'; if(filt==='done') return v.status==='abgeschlossen'; return true; });
+    var chips=[['all','Alle'],['open','Offen'],['done','Erledigt']].map(function(f){ var on=filt===f[0]; return '<button data-act="pfFilter" data-arg="'+f[0]+'" style="padding:8px 15px;border-radius:20px;border:1.5px solid '+(on?TEAL:'#dce3e4')+';background:'+(on?TEAL:'#fff')+';color:'+(on?'#fff':'#42454b')+';font-weight:700;font-size:13px;cursor:pointer">'+f[1]+'</button>'; }).join('');
+    var items = rows.length ? rows.map(function(v){
+      var ty=pfType(v.type), st=pfStatus(v.status);
+      var last=(v.messages&&v.messages.length)?v.messages[v.messages.length-1].text:'';
+      var sel=(String(S.pfSel)===String(v.id));
+      return '<div class="pfRow" data-act="pfOpen" data-arg="'+esc(v.id)+'" style="display:flex;gap:13px;padding:15px 16px;border-bottom:1px solid #f0f3f4;cursor:pointer;'+(sel?'background:#f1f6f7;':'')+'border-left:3px solid '+(sel?TEAL:'transparent')+'">'+
+        '<div style="width:38px;height:38px;border-radius:11px;background:'+ty.bg+';display:flex;align-items:center;justify-content:center;flex-shrink:0">'+svg(ty.icon,{c:ty.col,w:1.85,s:19})+'</div>'+
+        '<div style="flex:1;min-width:0">'+
+          '<div style="display:flex;align-items:center;gap:8px"><div style="font-size:14.5px;font-weight:800;color:#15171B;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1">'+esc(v.subject)+'</div>'+(v.unread?'<span style="width:8px;height:8px;border-radius:50%;background:#E08C53;flex-shrink:0"></span>':'')+'</div>'+
+          '<div style="font-size:13px;color:#6b7780;margin-top:3px;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(last)+'</div>'+
+          '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:8px"><span style="font-size:11px;font-weight:800;color:'+st.col+';background:'+st.bg+';border-radius:20px;padding:3px 9px">'+st.label+'</span><span style="font-size:11.5px;color:#a4adb3">'+relTime(v.updatedAt)+'</span></div>'+
+        '</div></div>';
+    }).join('') : '<div style="padding:30px 20px;text-align:center;color:#8a929a;font-size:14px">Keine Vorgänge in dieser Ansicht.</div>';
+    return '<div style="background:#fff;border-radius:18px;box-shadow:0 12px 32px rgba(4,33,40,.10);overflow:hidden">'+
+      '<div style="padding:18px 18px 14px"><div style="font-size:17px;font-weight:900;color:#15171B">Deine Vorgänge</div><div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">'+chips+'</div></div>'+items+'</div>';
+  }
+  function pfThreadHtml(){
+    var list=DATA.inbox||[];
+    var v=null; if(S.pfSel){ for(var k=0;k<list.length;k++){ if(String(list[k].id)===String(S.pfSel)){ v=list[k]; break; } } }
+    if(!v) return '<div style="background:#fff;border-radius:18px;box-shadow:0 12px 32px rgba(4,33,40,.10);padding:40px 24px;text-align:center"><div style="font-size:15px;font-weight:700;color:#42454b">Wähle einen Vorgang</div><div style="font-size:13px;color:#8a929a;margin-top:6px">Links findest du alle deine Vorgänge an einem Ort.</div></div>';
+    var st=pfStatus(v.status), ty=pfType(v.type);
+    var msgs=(v.messages||[]).map(function(mm){
+      var t=relTime(mm.at);
+      if(mm.from==='system') return '<div style="text-align:center;margin:14px 0"><span style="font-size:12px;color:#8a929a;background:#f1f6f7;border-radius:20px;padding:6px 12px;line-height:1.4">'+esc(mm.text)+'</span></div>';
+      if(mm.from==='member') return '<div style="display:flex;justify-content:flex-end;margin-top:12px"><div style="max-width:82%;background:'+TEAL+';color:#fff;border-radius:16px 16px 4px 16px;padding:11px 14px"><div style="font-size:14.5px;line-height:1.5;white-space:pre-wrap">'+esc(mm.text)+'</div><div style="font-size:11px;color:#bfe0e6;margin-top:4px;text-align:right">'+t+'</div></div></div>';
+      return '<div style="display:flex;gap:10px;margin-top:12px"><div style="width:30px;height:30px;border-radius:50%;background:linear-gradient(150deg,#0e6072,#073e4b);color:#fff;font-weight:800;font-size:11px;display:flex;align-items:center;justify-content:center;flex-shrink:0">FI</div><div style="max-width:82%"><div style="background:#eef3f4;border-radius:16px 16px 16px 4px;padding:11px 14px"><div style="font-size:14.5px;line-height:1.5;color:#2a3338;white-space:pre-wrap">'+esc(mm.text)+'</div></div>'+(mm.needsAction?'<button data-act="pfConfirm" data-arg="'+esc(v.id)+'" style="margin-top:8px;display:inline-flex;align-items:center;gap:7px;border:none;border-radius:10px;background:'+TEAL+';color:#fff;font-size:13px;font-weight:700;padding:9px 14px;cursor:pointer">Bestätigen</button>':'')+'<div style="font-size:11px;color:#a4adb3;margin-top:4px">Fit-Inn Team · '+t+'</div></div></div>';
+    }).join('');
+    var err=S.pfErr?'<div class="err" style="margin-top:10px">'+svg(IC.warn,{c:'#b53a2c',w:2,s:16})+'<span>'+esc(S.pfErr)+'</span></div>':'';
+    var resolveBtn = v.status!=='abgeschlossen' ? '<div style="margin-top:10px;text-align:center"><button data-act="pfResolve" data-arg="'+esc(v.id)+'" style="background:none;border:none;color:#6b7780;font-size:12.5px;font-weight:700;cursor:pointer;text-decoration:underline">Als erledigt markieren</button></div>' : '';
+    return '<div style="background:#fff;border-radius:18px;box-shadow:0 12px 32px rgba(4,33,40,.10);overflow:hidden">'+
+      '<div style="display:flex;align-items:center;gap:11px;padding:16px 18px;border-bottom:1px solid #eef1f2">'+
+        '<button class="pfBackBtn" data-act="pfBack" style="width:34px;height:34px;border-radius:10px;background:#e3eaec;border:none;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'+svg('<path d="M15 18l-6-6 6-6"></path>',{c:TEAL,w:2.2,s:18})+'</button>'+
+        '<div style="width:38px;height:38px;border-radius:11px;background:'+ty.bg+';display:flex;align-items:center;justify-content:center;flex-shrink:0">'+svg(ty.icon,{c:ty.col,w:1.85,s:19})+'</div>'+
+        '<div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:900;color:#15171B;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(v.subject)+'</div><div style="font-size:12px;color:#8a929a">'+esc(v.ref||'')+'</div></div>'+
+        '<span style="font-size:11px;font-weight:800;color:'+st.col+';background:'+st.bg+';border-radius:20px;padding:4px 10px;flex-shrink:0">'+st.label+'</span>'+
+      '</div>'+
+      '<div style="padding:6px 18px 18px">'+msgs+'</div>'+
+      '<div style="padding:14px 18px 16px;border-top:1px solid #eef1f2;background:#fafcfc">'+
+        '<textarea id="pf_reply" rows="2" placeholder="Antwort schreiben …" style="width:100%;border:1.5px solid #dce3e4;border-radius:12px;padding:11px 13px;font-size:14.5px;resize:vertical;line-height:1.5;outline:none">'+esc(S.pfDraft||'')+'</textarea>'+
+        err+
+        '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:10px"><span style="font-size:12px;color:#8a929a;line-height:1.4">Unser Team antwortet i. d. R. innerhalb von 24 Std.</span><button data-act="pfReply" data-arg="'+esc(v.id)+'" style="display:inline-flex;align-items:center;gap:8px;border:none;border-radius:11px;background:'+(S.pfBusy?'#9fb9bf':TEAL)+';color:#fff;font-weight:800;font-size:14px;padding:11px 20px;cursor:pointer">'+svg('<path d="M22 2L11 13M22 2l-7 20-4-9-9-4z"></path>',{c:'#fff',w:2,s:16})+(S.pfBusy?'Senden …':'Senden')+'</button></div>'+
+        resolveBtn+
+      '</div></div>';
+  }
+  function scrPostfach(){
+    var list=DATA.inbox||[];
+    return backHd('Postfach')+
+      '<div class="pfGrid">'+
+        '<div class="pfListPane'+(S.pfThread?' pfHideMobile':'')+'">'+pfListHtml(list)+'</div>'+
+        '<div class="pfThreadPane'+(S.pfThread?'':' pfHideMobile')+'">'+pfThreadHtml()+'</div>'+
+      '</div>';
   }
 
   // ---- Check-in Zeitraum-Filter ----
@@ -856,8 +980,8 @@
   // ---- render ----
   // ---- responsive chrome (Desktop-Sidebar + Topbar) ----
   var DASH_IC='<rect x="3" y="3" width="7" height="9" rx="1.5"></rect><rect x="14" y="3" width="7" height="5" rx="1.5"></rect><rect x="14" y="12" width="7" height="9" rx="1.5"></rect><rect x="3" y="16" width="7" height="5" rx="1.5"></rect>';
-  var NAVITEMS=[['home','Übersicht',DASH_IC],['data','Meine Daten',IC.user],['contract','Vertragsverwaltung',IC.doc],['appt','Termine',IC.cal],['referral','Freunde werben',IC.gift],['checkins','Check-ins',IC.list],['help','Hilfe',IC.help]];
-  var TITLES={home:'Übersicht',data:'Meine Daten',contract:'Vertragsverwaltung',appt:'Termine',referral:'Freunde werben',checkins:'Check-in-Verlauf',help:'Hilfe & Kontakt'};
+  var NAVITEMS=[['home','Übersicht',DASH_IC],['data','Meine Daten',IC.user],['contract','Vertragsverwaltung',IC.doc],['appt','Termine',IC.cal],['referral','Freunde werben',IC.gift],['checkins','Check-ins',IC.list],['postfach','Postfach',IC.mail],['help','Hilfe',IC.help]];
+  var TITLES={home:'Übersicht',data:'Meine Daten',contract:'Vertragsverwaltung',appt:'Termine',referral:'Freunde werben',checkins:'Check-in-Verlauf',postfach:'Postfach',help:'Hilfe & Kontakt'};
   function initials(p){ p=p||{}; var a=(p.firstName||'').trim(),b=(p.lastName||'').trim(); return (((a?a[0]:'')+(b?b[0]:'')).toUpperCase())||'FT'; }
   function renderChrome(){
     var inApp = !!(TOKEN && S.screen!=='login');
@@ -868,7 +992,7 @@
     if(sb) sb.innerHTML=
       '<img src="/assets/fitinn-logo-white.png" alt="Fit-Inn Trier" data-act="nav" data-arg="home" style="height:28px;width:auto;align-self:flex-start;margin:2px 6px 22px;cursor:pointer">'+
       '<div style="display:flex;align-items:center;gap:12px;background:rgba(255,255,255,.08);border-radius:15px;padding:12px 13px;margin-bottom:20px"><div style="width:42px;height:42px;border-radius:50%;background:#fff;color:'+TEAL+';font-weight:900;font-size:15px;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+esc(initials(p))+'</div><div style="min-width:0"><div style="color:#fff;font-weight:800;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(((p.firstName||'')+' '+(p.lastName||'')).trim()||'Mitglied')+'</div><div style="color:#9fc3ca;font-size:12px;font-weight:500">'+(p.customerNumber?('Mitgliedsnr. '+esc(p.customerNumber)):'')+'</div></div></div>'+
-      '<nav style="display:flex;flex-direction:column;gap:4px">'+NAVITEMS.filter(function(it){return !isFormer()||FORMER_OK.indexOf(it[0])>=0;}).map(function(it){var act=S.screen===it[0];return '<button class="sidebtn'+(act?' active':'')+'" data-act="nav" data-arg="'+it[0]+'">'+svg(it[2],{c:act?'#fff':'#bcd7dc',w:1.9,s:20})+'<span>'+it[1]+'</span></button>';}).join('')+'</nav>'+
+      '<nav style="display:flex;flex-direction:column;gap:4px">'+NAVITEMS.filter(function(it){return !isFormer()||FORMER_OK.indexOf(it[0])>=0;}).map(function(it){var act=S.screen===it[0];var bdg=(it[0]==='postfach'&&pfUnread()>0)?'<span style="background:#E08C53;color:#fff;font-size:11px;font-weight:800;border-radius:20px;min-width:20px;height:20px;padding:0 6px;display:flex;align-items:center;justify-content:center">'+pfUnread()+'</span>':'';return '<button class="sidebtn'+(act?' active':'')+'" data-act="nav" data-arg="'+it[0]+'">'+svg(it[2],{c:act?'#fff':'#bcd7dc',w:1.9,s:20})+'<span style="flex:1">'+it[1]+'</span>'+bdg+'</button>';}).join('')+'</nav>'+
       '<button class="sidebtn" data-act="logout" style="margin-top:auto;color:#9fc3ca">'+svg('<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"></path>',{c:'#9fc3ca',w:1.9,s:19})+'<span>Abmelden</span></button>';
     if(tb){
       var c=DATA.contract; var badge='';
@@ -894,12 +1018,15 @@
       case 'referral': html=scrReferral(); break;
       case 'checkins': html=scrCheckins(); break;
       case 'help': html=scrHelp(); break;
+      case 'postfach': html=scrPostfach(); break;
       default: html=scrHome();
     }
     var narrow = NARROW[S.screen];
     if(narrow) html='<div class="narrow">'+html+'</div>';
     $('app').innerHTML=html;
     renderChrome();
+    // Deep-Link „Zeit vormerken" (aus dem Widget): einmalig zur Reservierung scrollen
+    if(S.screen==='home' && location.hash==='#vormerken' && !S._vmScrolled){ S._vmScrolled=true; setTimeout(function(){ var el=document.getElementById('vormerken'); if(el) el.scrollIntoView({behavior:'smooth',block:'center'}); },300); }
   }
 
   // ---- actions (event delegation) ----
@@ -950,7 +1077,7 @@
         .then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j};});})
         .then(function(x){
           if(x.ok&&x.j.needsCode){ setS({busy:false,challenge:x.j.challenge,loginStep:'verify',otp:'',liEmail:'',loginErr:''}); return; }
-          if(x.ok&&x.j.token){ TOKEN=x.j.token; if(remember){ localStorage.setItem('fi_member_token',TOKEN); localStorage.setItem('fi_remember','1'); sessionStorage.removeItem('fi_member_token'); } else { sessionStorage.setItem('fi_member_token',TOKEN); localStorage.removeItem('fi_member_token'); localStorage.removeItem('fi_remember'); } S.loginStep='request'; return loadMe().then(function(){ loadAppts(); loadPlan(); S.busy=false; nav('home'); }); }
+          if(x.ok&&x.j.token){ TOKEN=x.j.token; if(remember){ localStorage.setItem('fi_member_token',TOKEN); localStorage.setItem('fi_remember','1'); sessionStorage.removeItem('fi_member_token'); } else { sessionStorage.setItem('fi_member_token',TOKEN); localStorage.removeItem('fi_member_token'); localStorage.removeItem('fi_remember'); } S.loginStep='request'; return loadMe().then(function(){ loadAppts(); loadPlan(); loadPlanAgg(); loadInbox(); if(DATA.checkins===null) loadCheckins(); S.busy=false; nav('home'); }); }
           S.busy=false; setS({loginErr:(x.j&&x.j.message)||'Daten nicht gefunden.'}); })
         .catch(function(){ setS({busy:false,loginErr:'Es ist ein Fehler aufgetreten.'}); });
     },
@@ -961,7 +1088,7 @@
       setQuiet({busy:true,loginErr:''});
       fetch('/api/member/login-verify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({challenge:S.challenge,code:code,remember:remember})})
         .then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j};});})
-        .then(function(x){ if(x.ok&&x.j.token){ TOKEN=x.j.token; if(remember){ localStorage.setItem('fi_member_token',TOKEN); localStorage.setItem('fi_remember','1'); sessionStorage.removeItem('fi_member_token'); } else { sessionStorage.setItem('fi_member_token',TOKEN); localStorage.removeItem('fi_member_token'); localStorage.removeItem('fi_remember'); } S.loginStep='request'; S.challenge=''; S.otp=''; return loadMe().then(function(){ loadAppts(); loadPlan(); S.busy=false; nav('home'); }); } S.busy=false; setS({loginErr:(x.j&&x.j.message)||'Code falsch. Bitte erneut versuchen.'}); })
+        .then(function(x){ if(x.ok&&x.j.token){ TOKEN=x.j.token; if(remember){ localStorage.setItem('fi_member_token',TOKEN); localStorage.setItem('fi_remember','1'); sessionStorage.removeItem('fi_member_token'); } else { sessionStorage.setItem('fi_member_token',TOKEN); localStorage.removeItem('fi_member_token'); localStorage.removeItem('fi_remember'); } S.loginStep='request'; S.challenge=''; S.otp=''; return loadMe().then(function(){ loadAppts(); loadPlan(); loadPlanAgg(); loadInbox(); if(DATA.checkins===null) loadCheckins(); S.busy=false; nav('home'); }); } S.busy=false; setS({loginErr:(x.j&&x.j.message)||'Code falsch. Bitte erneut versuchen.'}); })
         .catch(function(){ setS({busy:false,loginErr:'Es ist ein Fehler aufgetreten.'}); });
     },
     toggleRemember:function(){ S.remember=!S.remember; if(!S.remember) localStorage.removeItem('fi_remember'); setQuiet({}); },
@@ -1057,7 +1184,24 @@
       setQuiet({ctBusy:true,ctErr:''});
       api('/api/member/contact',{method:'POST',body:JSON.stringify({action:'send',question:S.aiAsked||'',message:msg,email:email,answer:S.aiAnswer||'',topic:topic})})
         .then(function(d){ if(d&&d.ok){ setS({ctBusy:false,ctSent:true,ctMsgServer:d.message||''}); } else { setS({ctBusy:false,ctErr:(d&&d.message)||'Übermittlung fehlgeschlagen – bitte später erneut.'}); } })
-        .catch(function(){ setS({ctBusy:false,ctErr:'Es ist ein Fehler aufgetreten. Bitte später erneut.'}); }); }
+        .catch(function(){ setS({ctBusy:false,ctErr:'Es ist ein Fehler aufgetreten. Bitte später erneut.'}); }); },
+    // postfach
+    pfFilter:function(a){ setQuiet({pfFilter:a}); },
+    pfOpen:function(a){ var arr=DATA.inbox||[]; for(var k=0;k<arr.length;k++){ if(String(arr[k].id)===String(a)){ arr[k].unread=false; break; } }
+      setS({pfSel:a,pfThread:true,pfErr:'',pfDraft:''});
+      api('/api/member/inbox?id='+encodeURIComponent(a)).catch(function(){}); },
+    pfBack:function(){ setS({pfThread:false}); },
+    pfReply:function(a){ var t=(val('pf_reply')||'').trim(); if(!t){ setS({pfErr:'Bitte gib eine Nachricht ein.'}); return; }
+      S.pfDraft=t; setQuiet({pfBusy:true,pfErr:''});
+      api('/api/member/inbox',{method:'POST',body:JSON.stringify({action:'reply',id:a,text:t})})
+        .then(function(d){ if(d&&d.ok&&d.vorgang){ updateVorgang(d.vorgang); setS({pfBusy:false,pfDraft:''}); } else { setS({pfBusy:false,pfErr:(d&&d.message)||'Senden fehlgeschlagen – bitte später erneut.'}); } })
+        .catch(function(){ setS({pfBusy:false,pfErr:'Es ist ein Fehler aufgetreten. Bitte später erneut.'}); }); },
+    pfConfirm:function(a){ setQuiet({pfBusy:true,pfErr:''});
+      api('/api/member/inbox',{method:'POST',body:JSON.stringify({action:'reply',id:a,text:'Bestätigt.'})})
+        .then(function(d){ if(d&&d.ok&&d.vorgang) updateVorgang(d.vorgang); setS({pfBusy:false}); })
+        .catch(function(){ setS({pfBusy:false}); }); },
+    pfResolve:function(a){ api('/api/member/inbox',{method:'POST',body:JSON.stringify({action:'resolve',id:a})})
+        .then(function(d){ if(d&&d.ok&&d.vorgang) updateVorgang(d.vorgang); setS({}); }).catch(function(){}); }
   };
   function startPause(){ S.cancelStep=0; S.pauseDone=false; S.pauseStep=1; S.pauseReason=''; S.pauseReasonText=''; S.pausePhoto=''; S.pausePhotoName=''; S.pauseFrom=isoToday(); if(!S.pauseWeeks)S.pauseWeeks=6; setS({}); }
   function doOffer(offer){ setQuiet({busy:true});
@@ -1114,12 +1258,12 @@
     S.screen='login'; render();
     fetch('/api/member/login-magic',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:tok,remember:true})})
       .then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j};});})
-      .then(function(x){ cleanMlt(); if(x.ok&&x.j.token){ TOKEN=x.j.token; localStorage.setItem('fi_member_token',TOKEN); localStorage.setItem('fi_remember','1'); return loadMe().then(function(){ loadAppts(); loadPlan(); nav('home'); }); } setS({loginErr:(x.j&&x.j.message)||'Der Anmelde-Link ist ungültig oder abgelaufen.'}); })
+      .then(function(x){ cleanMlt(); if(x.ok&&x.j.token){ TOKEN=x.j.token; localStorage.setItem('fi_member_token',TOKEN); localStorage.setItem('fi_remember','1'); return loadMe().then(function(){ loadAppts(); loadPlan(); loadPlanAgg(); loadInbox(); if(DATA.checkins===null) loadCheckins(); nav('home'); }); } setS({loginErr:(x.j&&x.j.message)||'Der Anmelde-Link ist ungültig oder abgelaufen.'}); })
       .catch(function(){ cleanMlt(); setS({loginErr:'Der Anmelde-Link konnte nicht geprüft werden. Bitte melde dich erneut an.'}); });
   }
   var MLT=null; try{ MLT=new URL(window.location.href).searchParams.get('mlt'); }catch(e){}
   if(MLT){ bootMagic(MLT); }
-  else if(TOKEN){ loadMe().then(function(){ loadAppts(); loadPlan(); render(); }).catch(function(){ logout(); }); }
+  else if(TOKEN){ loadMe().then(function(){ loadAppts(); loadPlan(); loadPlanAgg(); loadInbox(); if(DATA.checkins===null) loadCheckins(); render(); }).catch(function(){ logout(); }); }
   else render();
 })();
 </script>

@@ -8,6 +8,7 @@
  */
 
 const M = require('../../lib/members');
+const Inbox = require('../../lib/inbox');
 const { sendMail, sendMailRaw, hasMail } = require('../../lib/mail');
 const { renderEmail, BASE } = require('../../lib/emailTemplate');
 
@@ -25,6 +26,10 @@ module.exports = async function handler(req, res) {
   const body = await M.readBody(req);
   const m = await M.getMember(sess.id);
   if (!m) { res.statusCode = 404; return res.end(JSON.stringify({ error: 'not_found' })); }
+
+  try { await Inbox.addVorgang(sess.id, { type: 'termin', subject: 'Terminwunsch',
+    systemText: 'Du hast einen Terminwunsch gesendet: ' + (body.type || 'Termin') + (body.preferred ? (' – ' + body.preferred) : '') + '.',
+    teamText: 'Hallo' + (m.firstName ? (' ' + m.firstName) : '') + ', dein Terminwunsch ist eingegangen. Wir melden uns mit einem konkreten Termin per E-Mail bei dir.' }); } catch (e) {}
 
   if (!hasMail) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'E-Mail-Versand noch nicht eingerichtet.' })); }
   const text = 'Terminwunsch über den Mitgliederbereich\n\n'

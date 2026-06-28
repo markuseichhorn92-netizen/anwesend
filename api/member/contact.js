@@ -14,6 +14,7 @@
  */
 
 const M = require('../../lib/members');
+const Inbox = require('../../lib/inbox');
 const AI = require('../../lib/ai');
 const HELP = require('../../lib/help');
 const { sendMailRaw, hasMail } = require('../../lib/mail');
@@ -84,6 +85,9 @@ module.exports = async function handler(req, res) {
     if (!hasMail) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'E-Mail-Versand ist noch nicht eingerichtet.' })); }
 
     const topic = String(body.topic || '').trim();
+    try { await Inbox.addVorgang(sess.id, { type: 'kontakt', subject: 'Kontaktanfrage' + (topic ? (' · ' + topic) : ''),
+      systemText: 'Du hast unserem Team eine Nachricht geschickt' + (question ? (' zur Frage: „' + question.slice(0, 140) + '"') : '') + '.',
+      teamText: 'Hallo' + (m.firstName ? (' ' + m.firstName) : '') + ', danke für deine Nachricht! Unser Team meldet sich so schnell wie möglich persönlich bei dir.' }); } catch (e) {}
     const text = 'Kontaktanfrage über den Mitgliederbereich\n\n'
       + 'Mitglied: ' + who(m) + '\nKundennr.: ' + (m.customerNumber || '—')
       + '\nAntwort-Adresse: ' + (replyTo || '—')
