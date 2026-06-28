@@ -13,6 +13,7 @@ const M = require('../../lib/members');
 const Inbox = require('../../lib/inbox');
 const { sendMailRaw, hasMail } = require('../../lib/mail');
 const { renderEmail, BASE } = require('../../lib/emailTemplate');
+const { memberLink } = require('../../lib/magic');
 
 function fmtDE(iso) {
   if (!iso) return '—';
@@ -97,6 +98,7 @@ module.exports = async function handler(req, res) {
   // Bestätigung ans Mitglied (best effort – ohne Attest-Anhang)
   if (mail.ok && m.email) {
     try {
+      const portal = await memberLink(sess.id, 'contract');
       const cm = renderEmail({
         preheader: 'Deine Beitragspause-Anfrage ist eingegangen.',
         name: m.firstName || '',
@@ -111,7 +113,7 @@ module.exports = async function handler(req, res) {
         note: hasPhoto
           ? 'Deinen ärztlichen Nachweis haben wir erhalten. Deine Vertragslaufzeit verlängert sich um die Dauer der Pause.'
           : 'Bitte denke daran, den ärztlichen Nachweis nachzureichen. Deine Vertragslaufzeit verlängert sich um die Dauer der Pause.',
-        button: { label: 'Vertrag verwalten', href: BASE + '/mitglieder' },
+        button: { label: 'Vertrag verwalten', href: portal },
         promo: true,
         referral: { code: m.referralCode, firstName: m.firstName },
         footer: 'member',

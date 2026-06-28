@@ -1318,12 +1318,14 @@
   });
 
   // ---- boot ----
-  function cleanMlt(){ try{ var u=new URL(window.location.href); if(u.searchParams.has('mlt')){ u.searchParams.delete('mlt'); window.history.replaceState({}, document.title, u.pathname+u.search+u.hash); } }catch(e){} }
+  function cleanMlt(){ try{ var u=new URL(window.location.href); var ch=false; ['mlt','go'].forEach(function(k){ if(u.searchParams.has(k)){ u.searchParams.delete(k); ch=true; } }); if(ch) window.history.replaceState({}, document.title, u.pathname+u.search+u.hash); }catch(e){} }
+  function magicGo(){ var g=null; try{ g=new URL(window.location.href).searchParams.get('go'); }catch(e){} return (g&&TITLES[g])?g:'home'; }
   function bootMagic(tok){
     S.screen='login'; render();
+    var go=magicGo();
     fetch('/api/member/login-magic',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:tok,remember:true})})
       .then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j};});})
-      .then(function(x){ cleanMlt(); if(x.ok&&x.j.token){ TOKEN=x.j.token; localStorage.setItem('fi_member_token',TOKEN); localStorage.setItem('fi_remember','1'); return loadMe().then(function(){ loadAppts(); loadPlan(); loadPlanAgg(); loadInbox(); if(DATA.checkins===null) loadCheckins(); nav('home'); }); } setS({loginErr:(x.j&&x.j.message)||'Der Anmelde-Link ist ungültig oder abgelaufen.'}); })
+      .then(function(x){ cleanMlt(); if(x.ok&&x.j.token){ TOKEN=x.j.token; localStorage.setItem('fi_member_token',TOKEN); localStorage.setItem('fi_remember','1'); return loadMe().then(function(){ loadAppts(); loadPlan(); loadPlanAgg(); loadInbox(); if(DATA.checkins===null) loadCheckins(); nav(go); }); } setS({loginErr:(x.j&&x.j.message)||'Der Anmelde-Link ist ungültig oder abgelaufen.'}); })
       .catch(function(){ cleanMlt(); setS({loginErr:'Der Anmelde-Link konnte nicht geprüft werden. Bitte melde dich erneut an.'}); });
   }
   var MLT=null; try{ MLT=new URL(window.location.href).searchParams.get('mlt'); }catch(e){}

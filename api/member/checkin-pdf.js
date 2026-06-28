@@ -11,6 +11,7 @@
 const M = require('../../lib/members');
 const { sendMailRaw, hasMail } = require('../../lib/mail');
 const { renderEmail, BASE } = require('../../lib/emailTemplate');
+const { memberLink } = require('../../lib/magic');
 
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json');
@@ -34,13 +35,14 @@ module.exports = async function handler(req, res) {
   if (!m.email) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'Für dein Konto ist keine E-Mail-Adresse hinterlegt.' })); }
   if (!hasMail) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'E-Mail-Versand ist noch nicht eingerichtet.' })); }
 
+  const portal = await memberLink(sess.id, 'checkins');
   const tpl = renderEmail({
     preheader: 'Deine Anwesenheitsbestätigung findest du im Anhang.',
     name: m.firstName || '',
     eyebrow: 'Anwesenheitsbestätigung',
     headline: 'Deine Anwesenheitsbestätigung',
     intro: 'im Anhang findest du deine Anwesenheitsbestätigung des Fit-Inn Trier mit deinen Check-ins.',
-    button: { label: 'Check-ins ansehen', href: BASE + '/mitglieder' },
+    button: { label: 'Check-ins ansehen', href: portal },
     promo: false,
     footer: 'member',
   });

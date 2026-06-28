@@ -13,6 +13,7 @@ const M = require('../../lib/members');
 const Inbox = require('../../lib/inbox');
 const { sendMail, sendMailRaw, hasMail } = require('../../lib/mail');
 const { renderEmail, BASE } = require('../../lib/emailTemplate');
+const { memberLink } = require('../../lib/magic');
 
 function who(m) {
   return ((m.firstName || '') + ' ' + (m.lastName || '')).trim()
@@ -73,6 +74,7 @@ module.exports = async function handler(req, res) {
   // Bestätigung ans Mitglied (best effort) – IBAN nur maskiert, niemals vollständig
   if (mail.ok && m.email) {
     try {
+      const portal = await memberLink(sess.id, 'data');
       let cm;
       if (body.type === 'payment') {
         const newIbanMasked = M.maskIban(String(data.iban || '').replace(/\s+/g, '')) || '—';
@@ -88,7 +90,7 @@ module.exports = async function handler(req, res) {
             { label: 'Gültig ab', value: validFromDE },
           ],
           note: 'Das warst nicht du? Bitte kontaktiere uns umgehend unter info@fit-inn-trier.de.',
-          button: { label: 'Meine Daten ansehen', href: BASE + '/mitglieder' },
+          button: { label: 'Meine Daten ansehen', href: portal },
           promo: true,
           referral: { code: m.referralCode, firstName: m.firstName },
           footer: 'member',
@@ -105,7 +107,7 @@ module.exports = async function handler(req, res) {
             { label: 'Neue Adresse', value: newAddr.replace(/^,\s*/, '').trim() || '—' },
             { label: 'Gültig ab', value: validFromDE },
           ],
-          button: { label: 'Meine Daten ansehen', href: BASE + '/mitglieder' },
+          button: { label: 'Meine Daten ansehen', href: portal },
           promo: true,
           referral: { code: m.referralCode, firstName: m.firstName },
           footer: 'member',

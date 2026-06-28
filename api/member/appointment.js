@@ -11,6 +11,7 @@ const M = require('../../lib/members');
 const Inbox = require('../../lib/inbox');
 const { sendMail, sendMailRaw, hasMail } = require('../../lib/mail');
 const { renderEmail, BASE } = require('../../lib/emailTemplate');
+const { memberLink } = require('../../lib/magic');
 
 function who(m) {
   return ((m.firstName || '') + ' ' + (m.lastName || '')).trim()
@@ -42,6 +43,7 @@ module.exports = async function handler(req, res) {
   // Bestätigung ans Mitglied (best effort – darf den Vorgang nie scheitern lassen)
   if (mail.ok && m.email) {
     try {
+      const portal = await memberLink(sess.id, 'appt');
       const cm = renderEmail({
         preheader: 'Dein Terminwunsch ist bei uns eingegangen.',
         name: m.firstName || '',
@@ -52,7 +54,7 @@ module.exports = async function handler(req, res) {
           { label: 'Terminart', value: body.type || '—' },
           { label: 'Wunsch', value: body.preferred || 'nach Absprache' },
         ],
-        button: { label: 'Termine ansehen', href: BASE + '/mitglieder' },
+        button: { label: 'Termine ansehen', href: portal },
         promo: true,
         referral: { code: m.referralCode, firstName: m.firstName },
         footer: 'member',

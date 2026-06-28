@@ -10,8 +10,10 @@
  */
 
 const C = require('../../lib/connect');
+const M = require('../../lib/members');
 const { sendMailRaw, hasMail } = require('../../lib/mail');
 const { renderEmail, BASE } = require('../../lib/emailTemplate');
+const { memberLink } = require('../../lib/magic');
 
 function readBody(req) {
   return new Promise((resolve) => {
@@ -36,6 +38,11 @@ function fmtDateDE(s) {
 async function sendWelcomeMail(b, customerNumber) {
   if (!hasMail || !b.email) return;
   try {
+    // Direkt-Anmelde-Link, sofern das neue Mitglied schon über die Open-API
+    // auffindbar ist (sonst Fallback auf den normalen Link in memberLink()).
+    let memberId = null;
+    try { const found = await M.findByEmailDob(b.email, b.dateOfBirth); if (found) memberId = found.id; } catch (e) {}
+    const portal = await memberLink(memberId, 'home');
     const panel = [];
     if (customerNumber) panel.push({ label: 'Mitgliedsnummer', value: customerNumber });
     if (b.startDate) panel.push({ label: 'Start', value: fmtDateDE(b.startDate) });
@@ -50,7 +57,7 @@ async function sendWelcomeMail(b, customerNumber) {
         'In deinem Mitgliederbereich kannst du dich jederzeit mit deiner Mitgliedsnummer und deinem Geburtsdatum anmelden, Termine buchen und deine Daten verwalten. Deine vollständigen Vertragsunterlagen erhältst du gesondert.',
       ],
       panel: panel,
-      button: { label: 'Zum Mitgliederbereich', href: BASE + '/mitglieder' },
+      button: { label: 'Zum Mitgliederbereich', href: portal },
       promo: true,
       footer: 'member',
     });

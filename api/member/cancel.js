@@ -14,6 +14,7 @@ const C = require('../../lib/connect');
 const Inbox = require('../../lib/inbox');
 const { sendMail, sendMailRaw, hasMail } = require('../../lib/mail');
 const { renderEmail, BASE } = require('../../lib/emailTemplate');
+const { memberLink } = require('../../lib/magic');
 
 const OFFERS = { discount10: '10 % Rabatt für 6 Monate', pause: 'Beitragspause' };
 
@@ -30,6 +31,7 @@ async function sendMemberCancelMail(m, opts) {
   var panel = [{ label: 'Kündigung zum', value: opts.dateText || 'nächstmöglich' }];
   if (ct && ct.rateName) panel.push({ label: 'Tarif', value: ct.rateName });
   try {
+    var portal = await memberLink(m.id, 'contract');
     var cm = renderEmail({
       preheader: 'Deine Kündigung ist bei uns eingegangen.',
       name: m.firstName || '',
@@ -39,7 +41,7 @@ async function sendMemberCancelMail(m, opts) {
         ? 'Wir haben deine Kündigung verbindlich erhalten und bearbeitet. Schade, dass du gehst – bis zum Vertragsende bleibt dein Zugang voll aktiv.'
         : 'Wir haben deine Kündigung erhalten. Schade, dass du gehst – bis zum Vertragsende bleibt dein Zugang voll aktiv. Wir bestätigen dir die Kündigung zeitnah.',
       panel: panel,
-      button: { label: 'Vertrag ansehen', href: BASE + '/mitglieder' },
+      button: { label: 'Vertrag ansehen', href: portal },
       promo: true,
       referral: { code: m.referralCode, firstName: m.firstName },
       footer: 'member',
@@ -52,6 +54,7 @@ async function sendMemberCancelMail(m, opts) {
 async function sendMemberRevokeMail(m, direct) {
   if (!hasMail || !m.email) return;
   try {
+    var portal = await memberLink(m.id, 'contract');
     var rm = renderEmail({
       preheader: 'Dein Widerruf ist bei uns eingegangen.',
       name: m.firstName || '',
@@ -61,7 +64,7 @@ async function sendMemberRevokeMail(m, direct) {
         ? 'Wir haben deinen Widerruf verbindlich verarbeitet. '
         : 'Wir haben deinen Widerruf erhalten. ')
         + 'Dein online abgeschlossener Vertrag wird vollständig rückabgewickelt – bereits gezahlte Beiträge erstatten wir dir selbstverständlich zurück. Die Bestätigung folgt in Kürze per E-Mail.',
-      button: { label: 'Zum Mitgliederbereich', href: BASE + '/mitglieder' },
+      button: { label: 'Zum Mitgliederbereich', href: portal },
       promo: false,
       footer: 'member',
     });

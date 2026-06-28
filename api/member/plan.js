@@ -12,6 +12,7 @@ const M = require('../../lib/members');
 const P = require('../../lib/plans');
 const { sendMailRaw, hasMail } = require('../../lib/mail');
 const { renderEmail, BASE } = require('../../lib/emailTemplate');
+const { memberLink } = require('../../lib/magic');
 
 function fmtSlot(m) { return (Math.floor(m / 60) < 10 ? '0' : '') + Math.floor(m / 60) + ':' + (m % 60 < 10 ? '0' : '') + (m % 60); }
 
@@ -21,6 +22,7 @@ async function sendConfirmation(memberId, email, firstName, slot, date, referral
   const Word = dayOffset === 1 ? 'Morgen' : 'Heute';     // „Heute" / „Morgen"
   const word = Word.toLowerCase();                         // „heute" / „morgen"
   const cancelUrl = BASE + '/api/plan-cancel?t=' + encodeURIComponent(P.cancelToken(memberId, date));
+  const portal = await memberLink(memberId, 'home', '#vormerken');
   try {
     const mail = renderEmail({
       preheader: 'Vormerkung bestätigt: ' + word + ' um ' + fmtSlot(slot) + ' Uhr',
@@ -31,7 +33,7 @@ async function sendConfirmation(memberId, email, firstName, slot, date, referral
       panel: [
         { label: 'Wann', value: Word + ', ' + fmtSlot(slot) + ' Uhr' },
       ],
-      button: { label: 'Zeit ändern', href: BASE + '/mitglieder' },
+      button: { label: 'Zeit ändern', href: portal },
       secondary: { label: 'Vormerkung stornieren', href: cancelUrl },
       promo: true,
       referral: { code: referralCode, firstName: firstName },

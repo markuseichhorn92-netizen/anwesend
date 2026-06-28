@@ -19,6 +19,7 @@ const AI = require('../../lib/ai');
 const HELP = require('../../lib/help');
 const { sendMailRaw, hasMail } = require('../../lib/mail');
 const { renderEmail, BASE } = require('../../lib/emailTemplate');
+const { memberLink } = require('../../lib/magic');
 
 function who(m) {
   return ((m.firstName || '') + ' ' + (m.lastName || '')).trim()
@@ -27,9 +28,10 @@ function who(m) {
 }
 
 // Bestätigung ans Mitglied (best effort) – mit persönlichem Werben-Link im Promo.
-async function sendMemberContactMail(m, question) {
+async function sendMemberContactMail(m, question, memberId) {
   if (!hasMail || !m.email) return;
   try {
+    var portal = await memberLink(memberId, 'home');
     var cm = renderEmail({
       preheader: 'Deine Nachricht ist bei uns eingegangen.',
       name: m.firstName || '',
@@ -40,7 +42,7 @@ async function sendMemberContactMail(m, question) {
         'Brauchst du es dringend? Ruf uns gerne direkt an unter 0651 308524.',
       ],
       panel: question ? [{ label: 'Deine Frage', value: String(question).slice(0, 120) }] : null,
-      button: { label: 'Zum Mitgliederbereich', href: BASE + '/mitglieder' },
+      button: { label: 'Zum Mitgliederbereich', href: portal },
       promo: true,
       referral: { code: m.referralCode, firstName: m.firstName },
       footer: 'member',
@@ -98,7 +100,7 @@ module.exports = async function handler(req, res) {
       + '\n\nBitte dem Mitglied persönlich antworten.';
 
     const mail = await sendMailRaw({ subject: '✉️ Kontaktanfrage – ' + who(m), text: text, replyTo: replyTo || undefined });
-    if (mail.ok) await sendMemberContactMail(m, question);
+    if (mail.ok) await sendMemberContactMail(m, question, sess.id);
 
     res.statusCode = 200;
     return res.end(JSON.stringify({

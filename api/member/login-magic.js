@@ -26,7 +26,10 @@ module.exports = async function handler(req, res) {
   if (!rec || !rec.id) { res.statusCode = 401; return res.end(JSON.stringify({ ok: false, message: 'Der Anmelde-Link ist ungültig oder abgelaufen.' })); }
   if (rec.exp && Date.now() > rec.exp) { await M.mlinkDel(token); res.statusCode = 401; return res.end(JSON.stringify({ ok: false, message: 'Der Anmelde-Link ist abgelaufen. Bitte melde dich erneut an.' })); }
 
-  await M.mlinkDel(token); // einmalig
+  // Einmal-Tokens (Login-Code) nach Gebrauch löschen. Transaktions-Links aus
+  // E-Mails sind „reusable" und bleiben bis zum Ablauf gültig (mehrfaches Klicken
+  // und das Vorab-Laden durch E-Mail-Scanner soll nicht zum „Link ungültig" führen).
+  if (!rec.reusable) await M.mlinkDel(token);
   const sess = await M.createSession(rec.id, d.remember ? 2592000 : 1800);
   res.statusCode = 200;
   return res.end(JSON.stringify({ ok: true, token: sess }));
