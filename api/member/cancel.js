@@ -168,11 +168,32 @@ module.exports = async function handler(req, res) {
     // Vertrag + reCAPTCHA-Token vorhanden; 2) sonst E-Mail-Fallback ans Studio.
     var ctr = null;
     try { ctr = await M.getContract(sess.id); } catch (e) {}
+    cancelDbg = {
+      action: 'revoke',
+      contractFound: !!ctr,
+      contractId: (ctr && ctr.contractId) ? 'ja' : 'nein',
+      contractOrigin: ctr && ctr.contractOrigin || null,
+      withdrawalEligible: !!(ctr && ctr.withdrawalEligible),
+      hadToken: !!body.recaptchaToken,
+      tokenLen: body.recaptchaToken ? String(body.recaptchaToken).length : 0,
+      attemptedDirect: false,
+      path: 'fallback',
+    };
     if (ctr && ctr.contractId && body.recaptchaToken) {
+      cancelDbg.attemptedDirect = true;
       var dw = null;
       try { dw = await C.submitWithdrawal({ member: m, contract: ctr, recaptchaToken: body.recaptchaToken }); }
       catch (e) { dw = { ok: false, error: String(e && e.message) }; }
+      cancelDbg.connectStatus = dw && dw.status;
+      cancelDbg.connectError = String((dw && (dw.text || dw.error)) || '').slice(0, 240);
+      if (!(dw && dw.ok)) {
+        console.error('[revoke] Direkter Magicline-Widerruf fehlgeschlagen', {
+          status: dw && dw.status, error: cancelDbg.connectError,
+          contractId: ctr.contractId, customerNumber: m.customerNumber,
+        });
+      }
       if (dw && dw.ok) {
+        cancelDbg.path = 'direct';
         await sendMemberRevokeMail(m, true);
         if (hasMail) {
           try {
@@ -184,7 +205,7 @@ module.exports = async function handler(req, res) {
           } catch (e) {}
         }
         res.statusCode = 200;
-        return res.end(JSON.stringify({ ok: true, direct: true, message: 'Dein Widerruf wurde verbindlich eingereicht. Du erhältst eine Bestätigung per E-Mail.' }));
+        return res.end(JSON.stringify({ ok: true, direct: true, message: 'Dein Widerruf wurde verbindlich eingereicht. Du erhältst eine Bestätigung per E-Mail.', _debug: cancelDbg }));
       }
       // sonst weiter zum E-Mail-Fallback (z. B. reCAPTCHA-Domain noch nicht freigeschaltet)
     }
