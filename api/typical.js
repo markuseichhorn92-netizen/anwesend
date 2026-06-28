@@ -16,6 +16,7 @@
  */
 
 const { getTypicalSlot, getTypicalDay, getTypicalWeek, localParts, hasStore } = require('../lib/store');
+const { scaleVal } = require('../lib/utilization');
 
 const MAX_CAPACITY = parseInt(process.env.MAX_CAPACITY || '25', 10);
 
@@ -47,27 +48,33 @@ module.exports = async function handler(req, res) {
     const withDay = url.searchParams.get('day') !== '0';
 
     const cur = await getTypicalSlot(weekday, slot);
+    // Gleiche Hochrechnung wie beim Live-Wert, damit Verlauf & "~X Personen" zur
+    // angezeigten Live-Zahl passen (Rohwerte in der Historie bleiben unverändert).
+    const typicalCount = scaleVal(cur.typicalCount, MAX_CAPACITY);
     const payload = {
       available: true,
       weekday,
       slot,
       max: MAX_CAPACITY,
-      typicalCount: cur.typicalCount,
+      typicalCount,
       typicalPercent:
-        cur.typicalCount == null
+        typicalCount == null
           ? null
-          : Math.min(100, Math.round((cur.typicalCount / MAX_CAPACITY) * 100)),
+          : Math.min(100, Math.round((typicalCount / MAX_CAPACITY) * 100)),
       samples: cur.samples,
     };
 
     if (withDay) {
       const d = await getTypicalDay(weekday);
-      payload.day = d.day;
+      payload.day = Array.isArray(d.day) ? d.day.map(function (v) { return scaleVal(v, MAX_CAPACITY); }) : d.day;
       payload.totalSamples = d.totalSamples;
     }
 
     if (url.searchParams.get('week') === '1') {
-      payload.week = await getTypicalWeek();   // 7 Tageskurven für die Empfehlung
+      const wk = await getTypicalWeek();        // 7 Tageskurven für die Empfehlung
+      payload.week = Array.isArray(wk)
+        ? wk.map(function (day) { return Array.isArray(day) ? day.map(function (v) { return scaleVal(v, MAX_CAPACITY); }) : day; })
+        : wk;
     }
 
     // CDN-cachebar: entlastet den Speicher massiv (viele Viewer -> 1 Abruf/5 min)

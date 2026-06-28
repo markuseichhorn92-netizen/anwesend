@@ -16,7 +16,7 @@
  */
 
 const http = require('node:http');
-const { config, fetchUtilization, getCache } = require('./lib/utilization');
+const { config, fetchUtilization, getCache, presentScaled } = require('./lib/utilization');
 
 const PORT           = parseInt(process.env.PORT || '8080', 10);
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || '*';
@@ -48,14 +48,14 @@ const server = http.createServer(async (req, res) => {
     try {
       const payload = await fetchUtilization();
       res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
-      return res.end(JSON.stringify(payload));
+      return res.end(JSON.stringify(presentScaled(payload)));
     } catch (err) {
       console.error('[auslastung]', err.message);
       // Bei kurzem Magicline-Aussetzer: letzten bekannten Wert ausliefern statt hart zu failen
       const cache = getCache();
       if (cache.payload) {
         res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
-        return res.end(JSON.stringify({ ...cache.payload, cached: true, stale: true }));
+        return res.end(JSON.stringify(presentScaled({ ...cache.payload, cached: true, stale: true })));
       }
       res.writeHead(502, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify({ error: 'upstream_unavailable' }));

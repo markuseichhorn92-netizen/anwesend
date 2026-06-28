@@ -8,7 +8,7 @@
  * (Project → Settings → Environment Variables → ML_API_KEY).
  */
 
-const { fetchUtilization, getCache } = require('../lib/utilization');
+const { fetchUtilization, getCache, presentScaled } = require('../lib/utilization');
 
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', process.env.ALLOWED_ORIGIN || '*');
@@ -31,7 +31,7 @@ module.exports = async function handler(req, res) {
     res.statusCode = 200;
     res.setHeader('Content-Type', 'application/json');
     res.setHeader('Cache-Control', 'no-store');
-    return res.end(JSON.stringify(payload));
+    return res.end(JSON.stringify(presentScaled(payload)));
   } catch (err) {
     // Fehlender Key: saubere JSON-Antwort statt Runtime-Crash (FUNCTION_INVOCATION_FAILED)
     if (err.code === 'missing_api_key') {
@@ -51,7 +51,7 @@ module.exports = async function handler(req, res) {
       res.statusCode = 200;
       res.setHeader('Content-Type', 'application/json');
       res.setHeader('Cache-Control', 'no-store');
-      return res.end(JSON.stringify({ ...cache.payload, cached: true, stale: true }));
+      return res.end(JSON.stringify(presentScaled({ ...cache.payload, cached: true, stale: true })));
     }
 
     res.statusCode = 502;
