@@ -1,20 +1,32 @@
 'use strict';
 
 /**
- * POST /api/member/login-request   { email, dob, channel?, customerNumber? }
- * Schritt 1 des Logins: Mitglied über E-Mail + Geburtsdatum suchen.
- *   - genau 1 Treffer  -> 6-stelligen Einmal-Code senden ({ step:'code', challenge })
- *   - mehrere Treffer  -> Mitgliedsnummer zur Eindeutigkeit anfordern ({ step:'number' })
- *                         (mit customerNumber erneut aufrufen -> exakter Datensatz)
- *   - 0 Treffer        -> tut so, als wäre ein Code unterwegs (kein Enumeration-Leak)
+ * POST /api/member/login-request   { email, dob, customerNumber?, deliver? }
+ * Zweistufiger Login (Facebook-Stil):
+ *   1) OHNE deliver  -> nachschauen:
+ *        - mehrere Konten ohne eindeutige Mitgliedschaft -> { step:'number' }
+ *        - sonst { step:'channel', channels:[{type:'email'|'whatsapp', hint:maskiert}] }
+ *          (nur Kanäle, die am gewählten Konto wirklich hinterlegt sind)
+ *   2) MIT deliver ('email'|'whatsapp') -> 6-stelligen Code über den Kanal senden,
+ *        { step:'code', challenge, via }.
+ * 0 Treffer / Rate-Limit: verhält sich wie ein normaler Ablauf (kein Enumeration-Leak
+ * über die Existenz; nur ob eine WhatsApp-Option erscheint, hängt am Profil).
  */
 
 const crypto = require('node:crypto');
 const M = require('../../lib/members');
+const WA = require('../../lib/whatsapp');
 const { sendLoginCode } = require('../../lib/loginCode');
 
-// Mitgliedsnummern locker vergleichen ("M-1146" == "1146" == "m1146").
 function bareNum(s) { return String(s || '').toUpperCase().replace(/\s+/g, '').replace(/^M-?/, ''); }
+function maskEmail(e) {
+  e = String(e || ''); const at = e.indexOf('@');
+  if (at < 1) return e ? (e[0] + '•••') : '';
+  return e[0] + '•••' + e.slice(at);
+}
+function maskPhone(p) { const d = String(p || '').replace(/[^\d]/g, ''); return d.length >= 4 ? ('•••• ' + d.slice(-4)) : '••••'; }
+
+function send(res, obj) { res.statusCode = 200; return res.end(JSON.stringify(obj)); }
 
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json');
@@ -28,37 +40,50 @@ module.exports = async function handler(req, res) {
 
   const d = await M.readBody(req);
   const email = String(d.email || '').trim().toLowerCase();
-  const via = d.channel === 'whatsapp' ? 'whatsapp' : 'email';
+  const dob = d.dob;
   const num = String(d.customerNumber || '').trim();
+  const deliver = (d.deliver === 'whatsapp' || d.deliver === 'email') ? d.deliver : null;
   let challenge = crypto.randomBytes(24).toString('hex');
 
   try {
-    // Pro E-Mail begrenzen (Mail-Bombing verhindern) – ohne nach außen zu verraten
     const emailOk = email ? await M.rateLimit('otpreq:e:' + email, 10, 1800) : false;
     if (emailOk) {
-      const matches = await M.findAllByEmailDob(email, d.dob);   // alle Datensätze zu E-Mail+Geburtsdatum
+      const matches = await M.findAllByEmailDob(email, dob);
+
+      // Konto bestimmen: per Nummer, eindeutig, oder automatisch das Mitgliedschaftskonto.
       let chosen = null;
       if (num) {
-        // Mit Mitgliedsnummer eingegrenzt.
         chosen = matches.find((c) => bareNum(c.customerNumber) === bareNum(num)) || null;
-        if (!chosen && matches.length) { res.statusCode = 200; return res.end(JSON.stringify({ ok: true, step: 'number', numberMismatch: true })); }
+        if (!chosen && matches.length) return send(res, { ok: true, step: 'number', numberMismatch: true });
       } else if (matches.length === 1) {
         chosen = matches[0];
       } else if (matches.length > 1) {
-        // Mehrere Konten -> automatisch das Mitgliedschaftskonto wählen; nur wenn
-        // das mehrdeutig ist (0/mehrere mit Vertrag), die Mitgliedsnummer abfragen.
         chosen = await M.pickMembershipAccount(matches);
-        if (!chosen) { res.statusCode = 200; return res.end(JSON.stringify({ ok: true, step: 'number' })); }
+        if (!chosen) return send(res, { ok: true, step: 'number' });   // mehrdeutig -> Mitgliedsnummer
       }
+
+      let phone = null; try { phone = await M.phoneByEmailDob(email, dob); } catch (e) {}
+
+      if (!deliver) {
+        // Nachschauen: verfügbare Kanäle (maskiert) zurückgeben.
+        const channels = [];
+        const emAddr = (chosen && chosen.email) || email;
+        if (emAddr) channels.push({ type: 'email', hint: maskEmail(emAddr) });
+        if (chosen && phone && WA.hasWaLogin) channels.push({ type: 'whatsapp', hint: maskPhone(phone) });
+        if (!channels.length) channels.push({ type: 'email', hint: maskEmail(email) });
+        return send(res, { ok: true, step: 'channel', channels: channels });
+      }
+
+      // Senden über den gewählten Kanal.
       if (chosen && chosen.id != null) {
-        let phone; if (via === 'whatsapp') { try { phone = await M.phoneByEmailDob(email, d.dob); } catch (e) {} }
-        const r = await sendLoginCode(chosen, req.headers['host'], { channel: via, phone: phone });
+        const r = await sendLoginCode(chosen, req.headers['host'], { channel: deliver, phone: deliver === 'whatsapp' ? phone : undefined });
         if (r && r.challenge) challenge = r.challenge;
       }
-      // 0 Treffer: nichts senden, aber unten so antworten, als wäre ein Code unterwegs.
+      return send(res, { ok: true, step: 'code', challenge: challenge, via: deliver });
     }
-  } catch (e) { /* still return ok to avoid leaking */ }
+  } catch (e) { /* still respond normally to avoid leaking */ }
 
-  res.statusCode = 200;
-  return res.end(JSON.stringify({ ok: true, step: 'code', challenge: challenge, via: via }));
+  // Fallback (0 Treffer / Rate-Limit pro E-Mail): wie ein normaler Ablauf aussehen lassen.
+  if (!deliver) return send(res, { ok: true, step: 'channel', channels: [{ type: 'email', hint: maskEmail(email) }] });
+  return send(res, { ok: true, step: 'code', challenge: challenge, via: deliver });
 };

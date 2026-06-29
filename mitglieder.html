@@ -260,7 +260,7 @@
     ciRange:'all', ciFrom:'', ciTo:'',
     liEmail:'', liNum:'', liPhone:'', remember:(localStorage.getItem('fi_remember')==='1'),
     loginStep:'request', challenge:'', otp:'',
-    liDob:'', waLogin:false, waLoginFetched:false, loginVia:'email',
+    liDob:'', waLogin:false, waLoginFetched:false, loginVia:'email', channels:[],
     dupNotice:null, dupDismissed:false,
     loginErr:'' };
   window.__setLi=function(f,v){ if(f==='email')S.liEmail=v; else if(f==='code'){ S.otp=v; if(S.loginStep==='verify' && !S.busy && S.challenge && String(v).replace(/\D/g,'').length===6){ ACT.verifyCode(); } } else if(f==='num')S.liNum=v; else if(f==='phone')S.liPhone=v; else if(f==='dob')S.liDob=v; };
@@ -421,6 +421,21 @@
         '<div style="margin-top:22px"><label class="lbl">Mitgliedsnummer</label><input id="li_num" type="text" placeholder="z. B. M-962" class="inp" value="'+esc(S.liNum)+'" oninput="window.__setLi(\'num\',this.value)"></div>'+remember+
         '<button class="btn" id="li_btn" data-act="confirmNumber" style="margin-top:20px;padding:16px;font-size:16px">'+(S.busy?'Prüfe …':'Code anfordern')+'</button>'+e+
         '<div style="text-align:center;margin-top:16px"><button data-act="loginBack2" style="background:none;border:none;color:'+TEAL+';font-weight:700;font-size:13px;cursor:pointer">‹ Zurück</button></div>';
+    } else if(S.loginStep==='channel'){
+      var chans=S.channels||[];
+      inner='<div style="font-size:26px;font-weight:900;color:var(--text);letter-spacing:-.5px">Code erhalten</div>'+
+        '<div style="font-size:14px;color:var(--text-muted);margin-top:7px;line-height:1.5">Wie möchtest du deinen 6-stelligen Anmelde-Code bekommen?</div>'+
+        '<div style="margin-top:22px;display:flex;flex-direction:column;gap:11px">'+
+        (chans.length?chans.map(function(ch){
+          var wa=ch.type==='whatsapp';
+          var ic=wa?'<svg width="22" height="22" viewBox="0 0 24 24" fill="#25D366"><path d="M.057 24l1.687-6.163a11.867 11.867 0 0 1-1.587-5.946C.16 5.335 5.5 0 12.05 0a11.82 11.82 0 0 1 8.413 3.488 11.82 11.82 0 0 1 3.48 8.414c-.003 6.557-5.338 11.892-11.893 11.892a11.9 11.9 0 0 1-5.688-1.448L.057 24zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884a9.86 9.86 0 0 0 1.51 5.26l-.999 3.648 3.477-.999z"/></svg>':svg('<path d="M4 5h16v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z"></path><path d="M4 6l8 6 8-6"></path>',{c:TEAL,w:1.9,s:22});
+          return '<button data-act="pickChannel" data-arg="'+ch.type+'" style="display:flex;align-items:center;gap:13px;width:100%;padding:15px 16px;border:1.5px solid #dce3e4;background:#fff;border-radius:14px;text-align:left;cursor:pointer">'+
+            '<div style="width:42px;height:42px;border-radius:12px;background:'+(wa?'#eafbf0':'var(--surface-2)')+';display:flex;align-items:center;justify-content:center;flex-shrink:0">'+ic+'</div>'+
+            '<div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:800;color:var(--text)">Code per '+(wa?'WhatsApp':'E-Mail')+'</div><div style="font-size:13px;color:var(--text-muted);margin-top:1px">'+esc(ch.hint||'')+'</div></div>'+
+            svg('<path d="M9 18l6-6-6-6"></path>',{c:'#c2ccce',w:2.2,s:18})+'</button>';
+        }).join(''):'<div style="font-size:13.5px;color:var(--text-muted);font-weight:600">Kein Kontaktweg hinterlegt. Bitte wende dich ans Studio.</div>')+
+        '</div>'+e+
+        '<div style="text-align:center;margin-top:16px"><button data-act="loginBack2" style="background:none;border:none;color:'+TEAL+';font-weight:700;font-size:13px;cursor:pointer">‹ Zurück</button></div>';
     } else if(S.loginStep==='verify'){
       inner='<div style="font-size:26px;font-weight:900;color:var(--text);letter-spacing:-.5px">Code eingeben</div>'+
         '<div style="font-size:14px;color:var(--text-muted);margin-top:7px;line-height:1.5">'+(S.loginVia==='whatsapp'?'Wir haben dir einen 6-stelligen Code <b style="color:var(--text)">per WhatsApp</b> an deine hinterlegte Handynummer geschickt (oder an deine E-Mail, falls keine Nummer hinterlegt ist).':'Wir haben dir einen 6-stelligen Code '+(S.liEmail?('an <b style="color:var(--text)">'+esc(S.liEmail)+'</b>'):'an deine hinterlegte E-Mail-Adresse')+' geschickt – oder nutze den Anmelde-Link aus der E-Mail.')+'</div>'+
@@ -432,8 +447,7 @@
         '<div style="font-size:15px;color:var(--text-muted);margin-top:7px;line-height:1.5">Zur Bestätigung deiner Identität – ganz ohne Passwort.</div>'+
         '<div style="margin-top:24px"><label class="lbl">E-Mail-Adresse</label><input id="li_email" type="email" autocomplete="email" placeholder="du@beispiel.de" class="inp" value="'+esc(S.liEmail)+'" oninput="window.__setLi(\'email\',this.value)"></div>'+
         '<div style="margin-top:14px">'+dpField()+'</div>'+remember+
-        '<button class="btn" id="li_btn" data-act="reqCode" style="margin-top:20px;padding:16px;font-size:16px">'+(S.busy?'Code wird gesendet …':'Code per E-Mail anfordern')+'</button>'+
-        (S.waLogin?'<button data-act="reqCode" data-arg="whatsapp" style="margin-top:10px;width:100%;display:flex;align-items:center;justify-content:center;gap:9px;padding:15px;font-size:15px;font-weight:800;border:1.5px solid #25D366;background:#fff;color:#128C4B;border-radius:14px;cursor:pointer"><svg width="19" height="19" viewBox="0 0 24 24" fill="#25D366"><path d="M.057 24l1.687-6.163a11.867 11.867 0 0 1-1.587-5.946C.16 5.335 5.5 0 12.05 0a11.82 11.82 0 0 1 8.413 3.488 11.82 11.82 0 0 1 3.48 8.414c-.003 6.557-5.338 11.892-11.893 11.892a11.9 11.9 0 0 1-5.688-1.448L.057 24zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884a9.86 9.86 0 0 0 1.51 5.26l-.999 3.648 3.477-.999zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.247-.694.247-1.289.173-1.413z"/></svg>Code per WhatsApp anfordern</button>':'')+e+
+        '<button class="btn" id="li_btn" data-act="reqCode" style="margin-top:20px;padding:16px;font-size:16px">'+(S.busy?'Bitte warten …':'Weiter')+'</button>'+e+
         '<div style="display:flex;align-items:flex-start;gap:9px;margin-top:18px;padding:13px 15px;background:var(--surface);border:1px solid #e1e8ea;border-radius:12px">'+svg('<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>',{w:1.9,s:17})+'<span style="font-size:12.5px;color:var(--text-muted);line-height:1.5">Deine Daten werden verschlüsselt übertragen und ausschließlich zur Identitätsprüfung genutzt.</span></div>'+
         '<div style="margin-top:20px;padding-top:18px;border-top:1px solid #e1e8ea">'+
           '<div style="text-align:center;font-size:11.5px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.6px;margin-bottom:12px">Andere Anmeldung</div>'+
@@ -1253,18 +1267,33 @@
     },
     planEdit:function(){ setQuiet({planEdit:true}); },
     planEditCancel:function(){ setQuiet({planEdit:false}); },
-    reqCode:function(channel){
+    reqCode:function(){
       var email=(S.liEmail||'').trim();
       var dob = S.liDob || '';
       if(!email||!dob){ setS({loginErr:'Bitte E-Mail und Geburtsdatum ausfüllen.'}); return; }
-      var via=(channel==='whatsapp')?'whatsapp':'email';
-      setQuiet({busy:true,loginErr:'',loginVia:via});
-      fetch('/api/member/login-request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:email,dob:dob,channel:via})})
+      setQuiet({busy:true,loginErr:''});
+      fetch('/api/member/login-request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:email,dob:dob})})
         .then(function(r){return r.json().then(function(j){return {s:r.status,j:j||{}};}).catch(function(){return {s:r.status,j:{}};});})
         .then(function(x){ var j=x.j;
           if(x.s===429||j.error==='rate_limited'){ setS({busy:false,loginErr:'Zu viele Versuche – bitte ein paar Minuten warten und dann erneut probieren.'}); return; }
           if(j.step==='number'){ setS({busy:false,liNum:'',loginStep:'confirmNumber',loginErr:''}); return; }
-          if(j.challenge){ setS({busy:false,challenge:j.challenge,loginStep:'verify',otp:'',loginErr:'',loginVia:(j.via||via)}); return; }
+          if(j.step==='channel'){ setS({busy:false,channels:(j.channels||[]),loginStep:'channel',loginErr:''}); return; }
+          if(j.challenge){ setS({busy:false,challenge:j.challenge,loginStep:'verify',otp:'',loginErr:''}); return; }
+          setS({busy:false,loginErr:'Es ist ein Fehler aufgetreten. Bitte später erneut.'});
+        })
+        .catch(function(){ setS({busy:false,loginErr:'Es ist ein Fehler aufgetreten. Bitte später erneut.'}); });
+    },
+    // Kanal gewählt -> Code über E-Mail bzw. WhatsApp senden.
+    pickChannel:function(type){
+      var email=(S.liEmail||'').trim(), dob=S.liDob||'', num=(S.liNum||'').trim();
+      var deliver=(type==='whatsapp')?'whatsapp':'email';
+      var body={email:email,dob:dob,deliver:deliver}; if(num) body.customerNumber=num;
+      setQuiet({busy:true,loginErr:'',loginVia:deliver});
+      fetch('/api/member/login-request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
+        .then(function(r){return r.json().then(function(j){return {s:r.status,j:j||{}};}).catch(function(){return {s:r.status,j:{}};});})
+        .then(function(x){ var j=x.j;
+          if(x.s===429||j.error==='rate_limited'){ setS({busy:false,loginErr:'Zu viele Versuche – bitte ein paar Minuten warten und dann erneut probieren.'}); return; }
+          if(j.challenge){ setS({busy:false,challenge:j.challenge,loginStep:'verify',otp:'',loginErr:'',loginVia:(j.via||deliver)}); return; }
           setS({busy:false,loginErr:'Es ist ein Fehler aufgetreten. Bitte später erneut.'});
         })
         .catch(function(){ setS({busy:false,loginErr:'Es ist ein Fehler aufgetreten. Bitte später erneut.'}); });
@@ -1275,17 +1304,22 @@
       if(!num){ setS({loginErr:'Bitte deine Mitgliedsnummer eingeben.'}); return; }
       var via=S.loginVia||'email';
       setQuiet({busy:true,loginErr:''});
-      fetch('/api/member/login-request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:email,dob:dob,channel:via,customerNumber:num})})
+      fetch('/api/member/login-request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:email,dob:dob,customerNumber:num})})
         .then(function(r){return r.json().then(function(j){return {s:r.status,j:j||{}};}).catch(function(){return {s:r.status,j:{}};});})
         .then(function(x){ var j=x.j;
           if(x.s===429||j.error==='rate_limited'){ setS({busy:false,loginErr:'Zu viele Versuche – bitte ein paar Minuten warten und dann erneut probieren.'}); return; }
           if(j.numberMismatch){ setS({busy:false,loginErr:'Diese Mitgliedsnummer passt nicht zu den angegebenen Daten.'}); return; }
-          if(j.challenge){ setS({busy:false,challenge:j.challenge,loginStep:'verify',otp:'',loginErr:'',loginVia:(j.via||via)}); return; }
+          if(j.step==='channel'){ setS({busy:false,channels:(j.channels||[]),loginStep:'channel',loginErr:''}); return; }
+          if(j.challenge){ setS({busy:false,challenge:j.challenge,loginStep:'verify',otp:'',loginErr:'',loginVia:(j.via||'email')}); return; }
           setS({busy:false,loginErr:'Es ist ein Fehler aufgetreten. Bitte später erneut.'});
         })
         .catch(function(){ setS({busy:false,loginErr:'Es ist ein Fehler aufgetreten.'}); });
     },
-    resendCode:function(){ if(S.loginStep==='confirmNumber'){ ACT.confirmNumber(); } else if(S.loginVia==='whatsapp' && S.liPhone && !S.liEmail){ ACT.loginPhone(); } else { ACT.reqCode(S.loginVia); } },
+    resendCode:function(){
+      if(S.liPhone && !S.liEmail){ ACT.loginPhone(); return; }                 // Handynummer-Login
+      if(S.loginVia==='email'||S.loginVia==='whatsapp'){ ACT.pickChannel(S.loginVia); return; }
+      ACT.reqCode();
+    },
     mergeRequest:function(){ if(S.busy) return; setQuiet({busy:true}); api('/api/member/duplicates',{method:'POST',body:JSON.stringify({action:'merge'})}).then(function(d){ S.busy=false; if(d&&d.ok){ S.dupNotice=S.dupNotice||{}; S.dupNotice.requested=true; setS({msg:'Anfrage gesendet – wir kümmern uns darum.'}); } else { setS({msg:(d&&d.message)||'Konnte nicht gesendet werden.'}); } }).catch(function(){ setS({busy:false,msg:'Konnte nicht gesendet werden.'}); }); },
     dupDismiss:function(){ setS({dupDismissed:true}); },
     loginBack:function(){ setS({loginStep:'request',otp:'',loginErr:''}); },
