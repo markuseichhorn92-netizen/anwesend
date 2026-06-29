@@ -37,7 +37,7 @@
   if (!isNative) return;   // im Browser ist hier Schluss.
 
   document.documentElement.classList.add('is-native-app');
-  API.available.push = !!P.PushNotifications;
+  API.available.push = !!(P.FirebaseMessaging || P.PushNotifications);
   API.available.biometrics = !!P.NativeBiometric;
   API.available.apple = !!(P.SignInWithApple || P.SocialLogin);
   API.available.google = !!(P.GoogleAuth || P.SocialLogin);
@@ -53,20 +53,36 @@
       .catch(function () { return {}; });
   }
 
-  // ── Push: Token registrieren ────────────────────────────────────────────────
+  // ── Push: Geräte-Token registrieren ─────────────────────────────────────────
+  // Bevorzugt @capacitor-firebase/messaging (liefert ein FCM-Token für iOS UND
+  // Android -> passt zum FCM-Versand im Backend). Fällt auf @capacitor/push-
+  // notifications zurück, falls nur das installiert ist.
   var pushReady = false;
+  function registerPushToken(tok) {
+    if (tok) post('/api/push/register', { token: tok, platform: API.platform }, true);
+  }
   function setupPush() {
-    if (!P.PushNotifications || pushReady) return;
+    if (pushReady) return;
+    var FM = P.FirebaseMessaging;
+    if (FM) {
+      pushReady = true;
+      try {
+        FM.addListener('tokenReceived', function (e) { registerPushToken(e && e.token); });
+        FM.addListener('notificationActionPerformed', function (ev) {
+          try { var url = ev && ev.notification && ev.notification.data && ev.notification.data.url; if (url) location.assign(url); } catch (e) {}
+        });
+        FM.requestPermissions().then(function (st) {
+          if (st && st.receive === 'granted') return FM.getToken().then(function (r) { registerPushToken(r && r.token); });
+        }).catch(function () {});
+      } catch (e) {}
+      return;
+    }
+    if (!P.PushNotifications) return;
     pushReady = true;
     try {
-      P.PushNotifications.addListener('registration', function (t) {
-        if (t && t.value) post('/api/push/register', { token: t.value, platform: API.platform }, true);
-      });
+      P.PushNotifications.addListener('registration', function (t) { registerPushToken(t && t.value); });
       P.PushNotifications.addListener('pushNotificationActionPerformed', function (ev) {
-        try {
-          var url = ev && ev.notification && ev.notification.data && ev.notification.data.url;
-          if (url) location.assign(url);
-        } catch (e) {}
+        try { var url = ev && ev.notification && ev.notification.data && ev.notification.data.url; if (url) location.assign(url); } catch (e) {}
       });
       P.PushNotifications.checkPermissions().then(function (st) {
         if (st && st.receive === 'granted') return P.PushNotifications.register();

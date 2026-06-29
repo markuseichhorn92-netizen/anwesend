@@ -112,16 +112,22 @@ Extras.
 
 ## 4. App-Icon & Startbildschirm
 
-- Lege ein quadratisches Icon (mind. **1024×1024 px**, ohne abgerundete Ecken, ohne
-  Transparenz) bereit.
-- Einfachster Weg: Paket `@capacitor/assets` nutzen:
-  ```bash
-  npm install -D @capacitor/assets
-  # Icon nach nativeapp/assets/icon.png (1024x1024) und optional logo.png für den Splash
-  npx @capacitor/assets generate --iconBackgroundColor '#0f1115' --splashBackgroundColor '#0f1115'
-  npx cap sync
-  ```
-- Das erzeugt alle benötigten Icon-/Splash-Größen für iOS und Android automatisch.
+Das fertige Icon liegt **schon im Repo** unter `nativeapp/assets/` (Fit-Inn-Symbol auf
+Teal-Verlauf, 1024×1024, ohne Alpha) – inkl. Android-Adaptive-Layern und Splash:
+`icon-only.png`, `icon-foreground.png`, `icon-background.png`, `splash.png`, `splash-dark.png`.
+
+Du musst daraus nur noch die plattform-spezifischen Größen erzeugen:
+
+```bash
+cd nativeapp
+npm install        # zieht u. a. das Tool @capacitor/assets
+npm run icons      # erzeugt alle Icon-/Splash-Größen für iOS + Android
+npx cap sync
+```
+
+Danach in Xcode ▶︎ – die App hat jetzt dein eigenes Icon und einen passenden Startbildschirm.
+(Willst du das Icon ändern, ersetze einfach die PNGs in `nativeapp/assets/` und lass
+`npm run icons` erneut laufen.)
 
 ---
 
@@ -161,14 +167,28 @@ iOS-Pushes über deinen Apple-Push-Schlüssel zu. Du brauchst also nur **eine** 
    automatisch. Wenn das Team auf einen Vorgang antwortet, kommt ein Push „Antwort vom Team".
 
 ### 5e. Plugin in der App
-Das Push-Plugin ist bereits in `nativeapp/package.json` (`@capacitor/push-notifications`).
-Auf iOS in Xcode unter **Signing & Capabilities** die Capability **Push Notifications**
-(und **Background Modes → Remote notifications**) hinzufügen. Danach `npx cap sync`.
+Wir nutzen `@capacitor-firebase/messaging` – das liefert auf **iOS und Android** ein
+**FCM-Token** (passt zum FCM-Versand im Backend). Installieren:
+```bash
+cd nativeapp
+npm install @capacitor-firebase/messaging firebase
+npx cap sync
+```
+- **iOS** in Xcode unter **Signing & Capabilities** hinzufügen: **Push Notifications** und
+  **Background Modes → Remote notifications**. Die `GoogleService-Info.plist` (aus 5b) muss im
+  Projekt liegen.
+- **Android**: die `google-services.json` (aus 5b) in `android/app/` – den Rest macht das
+  Plugin beim `cap sync`.
+Die Native-Brücke (`assets/native.js`) holt das Token nach dem Login automatisch und meldet es
+an `/api/push/register`.
 
 > **Hinweis zu den Plugins:** Die App-Hülle bringt im Grundzustand bewusst nur die offiziellen
-> Capacitor-Pakete mit (damit der erste Build garantiert klappt). Die Plugins für Apple/Google
-> und Biometrie installierst du in den nächsten Abschnitten **bei Bedarf** dazu – die
-> Native-Brücke (`assets/native.js`) erkennt sie automatisch und schaltet die Funktion frei.
+> Capacitor-Kernpakete mit (damit der erste Build garantiert klappt). Push, Apple/Google und
+> Biometrie installierst du in den jeweiligen Abschnitten dazu – die Native-Brücke erkennt sie
+> automatisch und schaltet die Funktion frei. **Wichtig:** Push-, Apple/Google- und
+> Biometrie-Plugins brauchen ihre native Konfiguration (Firebase-Dateien, Capabilities,
+> Info.plist) – sonst kann die App beim Start abbrechen. Deshalb erst installieren, wenn die
+> Konfiguration aus dem jeweiligen Abschnitt bereitliegt.
 
 ---
 
