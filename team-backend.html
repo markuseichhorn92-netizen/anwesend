@@ -53,7 +53,10 @@
 var TEAL='#0a4958', ORANGE='#E08C53';
 var S={ token:null, screen:'inbox', convs:[], counts:{}, selKey:null, sel:null,
         filter:'all', search:'', loading:false, err:'', draft:'', note:'',
-        mobileThread:false, panelOpen:false, busy:false };
+        mobileThread:false, panelOpen:false, busy:false,
+        members:[], membersLoaded:false, membersLoading:false,
+        memberSearch:'', memberResults:null, memberSearching:false,
+        profile:null, profileLoading:false };
 var root=document.getElementById('root');
 
 // ---------- helpers ----------
@@ -129,19 +132,60 @@ async function openConv(key){
   }catch(e){ render(); }
 }
 
+async function actOn(memberId, id, action, extra){
+  var body=Object.assign({ m:memberId, id:id, action:action }, extra||{});
+  try{ return await tapi('/api/team/conversation',{method:'POST',body:body}); }
+  catch(e){ return { ok:false }; }
+}
 async function act(action, extra){
   if(!S.sel) return; S.busy=true; render();
-  var body=Object.assign({ m:S.sel.memberId, id:S.sel.id, action:action }, extra||{});
-  try{
-    var r=await tapi('/api/team/conversation',{method:'POST',body:body});
-    if(r.ok && r.conversation){ S.sel=r.conversation; }
-    else if(r.message){ alert(r.message); }
-    S.busy=false;
-    if(action==='reply'){ S.draft=''; }
-    if(action==='note'){ S.note=''; }
-    render();
-    loadInbox();   // Liste/Badges aktualisieren
-  }catch(e){ S.busy=false; render(); }
+  var r=await actOn(S.sel.memberId, S.sel.id, action, extra);
+  if(r.ok && r.conversation){ S.sel=r.conversation; }
+  else if(r.message){ alert(r.message); }
+  S.busy=false;
+  if(action==='reply'){ S.draft=''; }
+  if(action==='note'){ S.note=''; }
+  render();
+  loadInbox();   // Liste/Badges aktualisieren
+}
+
+// ---------- members data ----------
+async function loadMembers(){
+  S.membersLoading=true; render();
+  try{ var r=await tapi('/api/team/members'); if(r.ok){ S.members=r.members||[]; } S.membersLoaded=true; }
+  catch(e){} S.membersLoading=false; render();
+}
+var _msTimer=null;
+function onMemberSearch(v){
+  S.memberSearch=v; clearTimeout(_msTimer); var q=(v||'').trim();
+  if(!q){ S.memberResults=null; S.memberSearching=false; updateMemberRows(); return; }
+  S.memberSearching=true; updateMemberRows();
+  _msTimer=setTimeout(async function(){
+    try{ var r=await tapi('/api/team/members?q='+encodeURIComponent(q)); if(S.memberSearch.trim()===q){ S.memberResults=r.ok?(r.results||[]):[]; } }
+    catch(e){ S.memberResults=[]; }
+    S.memberSearching=false; updateMemberRows();
+  }, 350);
+}
+async function openProfile(id){
+  S.profileLoading=true; S.profile=null; render();
+  try{ var r=await tapi('/api/team/members?id='+encodeURIComponent(id)); if(r.ok) S.profile=r.profile; }
+  catch(e){} S.profileLoading=false; render();
+}
+function backToMembers(){ S.profile=null; render(); }
+
+// ---------- appointment quick actions (Termine) ----------
+async function apptConfirm(m, id, first){
+  var d=window.prompt('Bestätigter Termin (z. B. „Sa, 28.06. um 11:00 Uhr"):','');
+  if(d==null || !d.trim()) return;
+  await actOn(m, id, 'reply', { text:'Hallo '+(first||'')+', dein Termin ist bestätigt: '+d.trim()+'. Wir freuen uns auf dich! 💪' });
+  await loadInbox(); render();
+}
+async function apptDecline(m, id, first){
+  var rsn=window.prompt('Ablehnen – kurze Begründung (optional):','');
+  if(rsn==null) return;
+  await actOn(m, id, 'reply', { text:'Hallo '+(first||'')+', leider können wir den gewünschten Termin nicht anbieten'+(rsn.trim()?': '+rsn.trim():'.')+' Melde dich gern für einen Alternativtermin – wir finden gemeinsam etwas Passendes.' });
+  await actOn(m, id, 'close');
+  await loadInbox(); render();
 }
 
 // ---------- render: login ----------
@@ -219,10 +263,10 @@ function renderShell(content, title, sub){
   main.appendChild(body); row.appendChild(main); root.appendChild(row);
 
   // wire shell
-  side.querySelectorAll('[data-nav]').forEach(function(b){ b.onclick=function(){ S.screen=b.getAttribute('data-nav'); S.navOpen=false; render(); }; });
+  side.querySelectorAll('[data-nav]').forEach(function(b){ b.onclick=function(){ goScreen(b.getAttribute('data-nav')); }; });
   side.querySelector('[data-logout]').onclick=logout;
   var bg=head.querySelector('[data-burger]'); if(bg) bg.onclick=function(){ S.navOpen=true; render(); };
-  head.querySelector('[data-refresh]').onclick=function(){ if(S.screen==='inbox') loadInbox(); else render(); };
+  head.querySelector('[data-refresh]').onclick=function(){ if(S.screen==='members') loadMembers(); else if(S.screen==='inbox'||S.screen==='appts') loadInbox(); else render(); };
 }
 
 // ---------- render: inbox ----------
@@ -403,6 +447,117 @@ function dashNode(){
   return wrap;
 }
 
+// ---------- render: members ----------
+function fmtDT(iso){ if(!iso) return ''; var d=new Date(iso); if(isNaN(d)) return String(iso); return d.toLocaleDateString('de-DE',{weekday:'short',day:'2-digit',month:'2-digit'})+' · '+d.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'})+' Uhr'; }
+
+function memberRowsHTML(){
+  if(S.memberSearching) return '<div style="padding:34px;text-align:center"><span class="spin"></span></div>';
+  if(S.memberResults!==null){
+    if(!S.memberResults.length) return '<div style="padding:30px 20px;text-align:center;color:#8a929a;font-size:13.5px;font-weight:600">Keine Treffer in Magicline.</div>';
+    return '<div style="padding:10px 18px 4px;font-size:11.5px;font-weight:700;color:#8a929a">'+S.memberResults.length+' Treffer in Magicline</div>'+S.memberResults.map(function(m){
+      return '<div class="lrow" data-prof="'+esc(m.id)+'" style="display:flex;align-items:center;gap:12px;padding:13px 22px;border-top:1px solid #f4f6f7;cursor:pointer">'+
+        '<div style="width:38px;height:38px;border-radius:50%;background:#dfe9eb;color:#0a4958;font-weight:800;font-size:12px;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+esc(m.initials||'·')+'</div>'+
+        '<div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(m.name)+'</div><div style="font-size:12px;color:#8a929a;font-weight:600">'+esc(m.nr||'—')+(m.email?' · '+esc(m.email):'')+'</div></div>'+
+        '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#c9d3d5" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg></div>';
+    }).join('');
+  }
+  if(S.membersLoading && !S.members.length) return '<div style="padding:34px;text-align:center"><span class="spin"></span></div>';
+  if(!S.members.length) return '<div style="padding:34px 22px;text-align:center;color:#8a929a;font-size:13.5px;font-weight:600">Noch keine Mitglieder mit Vorgängen.<br>Nutze die Suche, um jemanden in Magicline zu finden.</div>';
+  return '<div style="padding:10px 18px 4px;font-size:11.5px;font-weight:700;color:#8a929a">'+S.members.length+' Mitglieder mit Vorgängen</div>'+S.members.map(function(m){
+    return '<div class="lrow" data-prof="'+esc(m.memberId)+'" style="display:flex;align-items:center;gap:12px;padding:13px 22px;border-top:1px solid #f4f6f7;cursor:pointer">'+
+      '<div style="width:40px;height:40px;border-radius:50%;background:#dfe9eb;color:#0a4958;font-weight:800;font-size:13px;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+esc(m.initials||'·')+'</div>'+
+      '<div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(m.name)+'</div><div style="font-size:12px;color:#8a929a;font-weight:600">'+esc(m.nr||'—')+' · '+esc(rel(m.lastActivity))+'</div></div>'+
+      (m.openCount?'<span style="width:21px;height:21px;border-radius:50%;background:'+ORANGE+';color:#fff;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+m.openCount+'</span>':'')+
+      '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#c9d3d5" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg></div>';
+  }).join('');
+}
+function updateMemberRows(){ var c=document.getElementById('memberrows'); if(c){ c.innerHTML=memberRowsHTML(); c.querySelectorAll('[data-prof]').forEach(function(b){ b.onclick=function(){ openProfile(b.getAttribute('data-prof')); }; }); } }
+
+function profileCard(title, rows){
+  return '<div style="background:#fff;border-radius:18px;box-shadow:0 12px 32px rgba(4,33,40,.08);padding:20px 22px"><div style="font-size:15px;font-weight:900;margin-bottom:6px">'+esc(title)+'</div>'+rows+'</div>';
+}
+function pRow(label,val){ return '<div style="display:flex;justify-content:space-between;gap:16px;padding:10px 0;border-bottom:1px solid #f0f3f4"><span style="font-size:13.5px;color:#6b7780;font-weight:600;flex-shrink:0">'+esc(label)+'</span><span style="font-size:13.5px;font-weight:700;text-align:right">'+esc(val||'—')+'</span></div>'; }
+
+function membersNode(){
+  if(S.profile || S.profileLoading){
+    var wrap=el('<div class="scrl" style="flex:1;min-height:0;overflow-y:auto;padding:22px 28px 40px"></div>');
+    if(S.profileLoading || !S.profile){ wrap.innerHTML='<div style="padding:60px;text-align:center"><span class="spin"></span></div>'; setTimeout(function(){ var b=wrap.querySelector('[data-back]'); },0); return wrap; }
+    var p=S.profile, ct=p.contract||{};
+    var statusLabel = ct.active===false ? (ct.reversed?'Widerrufen':'Ehemalig') : 'Aktiv';
+    var statusCol = ct.active===false ? '#b53a2c':'#1d7a3e', statusBg = ct.active===false ? '#fbeae7':'#e7f6ec';
+    var apptRows = (p.appointments&&p.appointments.length)
+      ? p.appointments.map(function(a){ return '<div style="display:flex;align-items:center;gap:11px;padding:9px 0;border-top:1px solid #f4f6f7"><span style="width:8px;height:8px;border-radius:50%;background:#0a4958;flex-shrink:0"></span><span style="flex:1;font-size:13.5px;font-weight:700">'+esc(a.title)+'</span><span style="font-size:12.5px;color:#6b7780;font-weight:600">'+esc(fmtDT(a.start))+'</span></div>'; }).join('')
+      : '<div style="font-size:12.5px;color:#a9b1b6;font-weight:600;padding:4px 0">Keine gebuchten Termine.</div>';
+    var histRows = (p.history&&p.history.length)
+      ? p.history.map(function(h){ var t=tm(h.type),st=sm(h.teamStatus); return '<div class="lrow" data-hist="'+esc(h.key)+'" style="display:flex;align-items:center;gap:12px;padding:12px 0;border-top:1px solid #f4f6f7;cursor:pointer"><div style="width:34px;height:34px;border-radius:10px;background:'+t.b+';color:'+t.c+';display:flex;align-items:center;justify-content:center;flex-shrink:0;font-weight:800;font-size:11px">'+esc(t.l.slice(0,2))+'</div><div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:800">'+esc(t.l)+'</div><div style="font-size:12px;color:#8a929a;font-weight:600">'+esc(h.ref)+' · '+esc(rel(h.updatedAt))+'</div></div><span style="font-size:11px;font-weight:800;color:'+st.c+';background:'+st.b+';border-radius:20px;padding:4px 10px">'+st.l+'</span></div>'; }).join('')
+      : '<div style="font-size:12.5px;color:#a9b1b6;font-weight:600;padding:4px 0">Keine Vorgänge.</div>';
+    wrap.innerHTML='<div style="max-width:1080px">'+
+      '<button data-back="1" style="display:inline-flex;align-items:center;gap:6px;background:none;border:none;color:#0a4958;font-size:13.5px;font-weight:700;margin-bottom:14px;padding:0">'+IC.back+'Alle Mitglieder</button>'+
+      '<div style="background:#fff;border-radius:20px;box-shadow:0 14px 38px rgba(4,33,40,.09);padding:22px 26px;display:flex;align-items:center;gap:18px;flex-wrap:wrap">'+
+        '<div style="width:62px;height:62px;border-radius:50%;background:linear-gradient(150deg,#0e6072,#073e4b);color:#fff;font-weight:900;font-size:21px;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+esc(p.initials)+'</div>'+
+        '<div style="flex:1;min-width:0"><div style="display:flex;align-items:center;gap:11px;flex-wrap:wrap"><div style="font-size:21px;font-weight:900;letter-spacing:-.5px">'+esc(p.name)+'</div><span style="font-size:11.5px;font-weight:800;color:'+statusCol+';background:'+statusBg+';border-radius:20px;padding:4px 12px">'+statusLabel+'</span></div>'+
+          '<div style="font-size:13px;color:#8a929a;font-weight:600;margin-top:3px">'+esc(p.nr||'—')+(ct.rateName?' · '+esc(ct.rateName):'')+(ct.startDate?' · seit '+esc(ct.startDate):'')+'</div></div></div>'+
+      '<div class="prof-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:18px;align-items:start">'+
+        profileCard('Stammdaten', pRow('E-Mail',p.email)+pRow('Telefon',p.phone)+pRow('Geburtstag',p.birthday)+pRow('Adresse',p.address))+
+        profileCard('Vertrag', pRow('Tarif',ct.rateName)+pRow('Vertragsbeginn',ct.startDate)+pRow('Status',ct.active===false?'beendet':'aktiv')+pRow('Vertragsende',ct.endDate||(ct.cancelled?ct.cancellationDate:'läuft'))+pRow('Nächstmögl. Kündigung',ct.nextCancellationDate))+
+        profileCard('Bankverbindung', pRow('IBAN',p.ibanMasked))+
+        profileCard('Termine', apptRows)+
+      '</div>'+
+      '<div style="margin-top:18px;background:#fff;border-radius:18px;box-shadow:0 12px 32px rgba(4,33,40,.08);padding:18px 22px"><div style="font-size:15px;font-weight:900;margin-bottom:4px">Vorgangs-Historie</div>'+histRows+'</div>'+
+    '</div>';
+    setTimeout(function(){
+      var b=wrap.querySelector('[data-back]'); if(b) b.onclick=backToMembers;
+      wrap.querySelectorAll('[data-hist]').forEach(function(x){ x.onclick=function(){ S.screen='inbox'; openConv(x.getAttribute('data-hist')); }; });
+    },0);
+    return wrap;
+  }
+  // list view
+  var node=el('<div class="scrl" style="flex:1;min-height:0;overflow-y:auto;padding:22px 28px 36px"></div>');
+  node.innerHTML='<div style="max-width:1000px">'+
+    '<div style="position:relative;margin-bottom:16px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8a929a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="position:absolute;left:14px;top:50%;transform:translateY(-50%)"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>'+
+      '<input id="msearch" value="'+esc(S.memberSearch)+'" placeholder="Name, Mitgliedsnummer oder E-Mail in Magicline suchen" style="width:100%;padding:12px 14px 12px 42px;border:1.5px solid #dce3e4;border-radius:12px;font-size:14.5px;background:#fff"></div>'+
+    '<div style="background:#fff;border-radius:18px;box-shadow:0 12px 32px rgba(4,33,40,.08);overflow:hidden"><div id="memberrows">'+memberRowsHTML()+'</div></div></div>';
+  setTimeout(function(){
+    var s=node.querySelector('#msearch'); if(s) s.oninput=function(){ onMemberSearch(s.value); };
+    updateMemberRows();
+  },0);
+  return node;
+}
+
+// ---------- render: appointments (Termine) ----------
+function apptsNode(){
+  var appts=S.convs.filter(function(c){ return c.type==='termin'||c.type==='probetraining'||c.type==='probe'; });
+  var open=appts.filter(function(c){ return c.teamStatus!=='abgeschlossen'; });
+  var done=appts.filter(function(c){ return c.teamStatus==='abgeschlossen'; });
+  var node=el('<div class="scrl" style="flex:1;min-height:0;overflow-y:auto;padding:24px 28px 40px"></div>');
+  function card(c){
+    var first=(c.member.name||'').split(' ')[0]||'';
+    return '<div style="background:#fff;border-radius:18px;box-shadow:0 12px 32px rgba(4,33,40,.08);padding:18px 20px">'+
+      '<div style="display:flex;align-items:center;gap:12px"><div style="width:40px;height:40px;border-radius:11px;background:#e7f1f3;color:#0a4958;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:12px;flex-shrink:0">'+esc(c.member.initials||'·')+'</div>'+
+        '<div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(c.member.name)+'</div><div style="font-size:12px;color:#8a929a;font-weight:600">'+esc(c.member.nr||'')+(c.member.nr?' · ':'')+esc(chan(c.channel))+' · '+esc(rel(c.updatedAt))+'</div></div>'+
+        '<span style="font-size:11px;font-weight:800;color:'+sm(c.teamStatus).c+';background:'+sm(c.teamStatus).b+';border-radius:20px;padding:4px 10px;flex-shrink:0">'+sm(c.teamStatus).l+'</span></div>'+
+      '<div style="margin-top:11px;background:#f7fafa;border-radius:12px;padding:11px 14px;font-size:13.5px;line-height:1.5;color:#2a3338">'+esc(c.lastText||'Terminwunsch')+'</div>'+
+      (c.teamStatus!=='abgeschlossen'?
+        '<div style="display:flex;gap:9px;margin-top:12px"><button data-confirm="'+esc(c.key)+'" data-first="'+esc(first)+'" style="flex:1;padding:10px;border:none;border-radius:11px;background:#0a4958;color:#fff;font-size:13.5px;font-weight:800">Bestätigen</button>'+
+        '<button data-open="'+esc(c.key)+'" style="padding:10px 14px;border:1.5px solid #dce3e4;border-radius:11px;background:#fff;color:#0a4958;font-size:13.5px;font-weight:700">Im Postfach</button>'+
+        '<button data-decline="'+esc(c.key)+'" data-first="'+esc(first)+'" style="padding:10px 14px;border:1.5px solid #e3b8b1;border-radius:11px;background:#fff;color:#b53a2c;font-size:13.5px;font-weight:700">Ablehnen</button></div>'
+        :'<div style="display:flex;gap:9px;margin-top:12px"><button data-open="'+esc(c.key)+'" style="flex:1;padding:9px;border:1.5px solid #dce3e4;border-radius:11px;background:#fff;color:#0a4958;font-size:13px;font-weight:700">Im Postfach ansehen</button></div>')+
+      '</div>';
+  }
+  node.innerHTML='<div style="max-width:1000px">'+
+    '<div style="display:flex;align-items:center;gap:9px;margin-bottom:14px"><span style="width:9px;height:9px;border-radius:50%;background:'+ORANGE+'"></span><div style="font-size:16px;font-weight:900;letter-spacing:-.3px">Offene Terminanfragen</div><span style="font-size:12px;font-weight:800;color:#C77A2E;background:#fbf0e3;border-radius:20px;padding:3px 10px">'+open.length+'</span></div>'+
+    (open.length?'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px">'+open.map(card).join('')+'</div>'
+      :'<div style="background:#fff;border-radius:16px;box-shadow:0 12px 32px rgba(4,33,40,.08);padding:28px;text-align:center;color:#8a929a;font-size:13.5px;font-weight:600">Keine offenen Terminanfragen. 🎉</div>')+
+    (done.length?'<div style="font-size:13px;font-weight:800;color:#42454b;text-transform:uppercase;letter-spacing:.5px;margin:26px 2px 12px">Erledigt</div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px">'+done.map(card).join('')+'</div>':'')+
+  '</div>';
+  setTimeout(function(){
+    node.querySelectorAll('[data-confirm]').forEach(function(b){ b.onclick=function(){ var k=b.getAttribute('data-confirm'); var p=k.split(':'); apptConfirm(p[0],p.slice(1).join(':'),b.getAttribute('data-first')); }; });
+    node.querySelectorAll('[data-decline]').forEach(function(b){ b.onclick=function(){ var k=b.getAttribute('data-decline'); var p=k.split(':'); apptDecline(p[0],p.slice(1).join(':'),b.getAttribute('data-first')); }; });
+    node.querySelectorAll('[data-open]').forEach(function(b){ b.onclick=function(){ S.screen='inbox'; openConv(b.getAttribute('data-open')); }; });
+  },0);
+  return node;
+}
+
 function placeholderNode(title){
   var w=el('<div style="flex:1;display:flex;align-items:center;justify-content:center;padding:40px"></div>');
   w.innerHTML='<div style="text-align:center;max-width:380px"><div style="font-size:18px;font-weight:900">'+esc(title)+'</div><div style="font-size:14px;color:#6b7780;font-weight:500;margin-top:8px;line-height:1.6">Dieser Bereich folgt als Nächstes. Der Posteingang (Empfang & Antworten) ist bereits voll funktionsfähig.</div></div>';
@@ -417,15 +572,23 @@ function render(){
   var content;
   if(S.screen==='inbox') content=inboxNode();
   else if(S.screen==='dash') content=dashNode();
+  else if(S.screen==='members') content=membersNode();
+  else if(S.screen==='appts') content=apptsNode();
   else content=placeholderNode(titles[S.screen]||'');
   renderShell(content, titles[S.screen]||'', subs[S.screen]||'');
+}
+function goScreen(k){
+  S.screen=k; S.navOpen=false;
+  if(k==='members'){ S.profile=null; if(!S.membersLoaded){ loadMembers(); return; } }
+  if(k==='appts' && !S.convs.length && !S.loading){ loadInbox(); return; }
+  render();
 }
 
 // ---------- boot ----------
 loadToken();
 if(S.token){ render(); loadInbox(); } else { render(); }
 // leichte Auto-Aktualisierung der Liste
-setInterval(function(){ if(S.token && S.screen==='inbox' && !S.busy && !(S.draft||'').trim()) loadInbox(); }, 30000);
+setInterval(function(){ if(S.token && (S.screen==='inbox'||S.screen==='appts') && !S.busy && !(S.draft||'').trim()) loadInbox(); }, 30000);
 </script>
 </body>
 </html>
