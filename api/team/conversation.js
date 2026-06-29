@@ -88,6 +88,17 @@ module.exports = async function handler(req, res) {
     v = await Inbox.setMeta(m, id, { teamStatus: 'bearbeitung' }) || v;
   } else if (action === 'read') {
     v = await Inbox.markTeamRead(m, id) || v;
+  } else if (action === 'reassign') {
+    const to = String(body.to || '').trim();
+    if (!to) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'Bitte einen Zielkunden wählen.' })); }
+    if (to === String(m)) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'Der Vorgang ist diesem Kunden bereits zugeordnet.' })); }
+    // Snapshot fürs Ziel: bevorzugt aus dem Suchergebnis, sonst frisch aus Magicline.
+    let snap = (body.snapshot && body.snapshot.name) ? body.snapshot : null;
+    if (!snap) { try { const mm = await M.getMember(to); snap = View.snapshotFromMember(mm); } catch (e) {} }
+    const moved = await Inbox.reassign(m, id, to, snap);
+    if (!moved) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'Zuordnung fehlgeschlagen.' })); }
+    res.statusCode = 200;
+    return res.end(JSON.stringify({ ok: true, reassigned: true, memberId: String(to), id: moved.id, conversation: View.fullConversation(moved, to) }));
   } else {
     res.statusCode = 400; return res.end(JSON.stringify({ ok: false, error: 'unknown_action' }));
   }

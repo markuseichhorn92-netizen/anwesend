@@ -58,6 +58,7 @@ var S={ token:null, screen:'inbox', convs:[], counts:{}, selKey:null, sel:null,
         mobileThread:false, panelOpen:false, busy:false,
         members:[], membersLoaded:false, membersLoading:false,
         memberSearch:'', memberResults:null, memberSearching:false,
+        reassignOpen:false, reassignSearch:'', reassignResults:null, reassignSearching:false, reassignBusy:false,
         profile:null, profileLoading:false,
         articles:[], articlesLoaded:false, articlesLoading:false,
         helpView:'list', editor:null, helpSearch:'', helpCat:'all',
@@ -211,6 +212,49 @@ async function openProfile(id){
   catch(e){} S.profileLoading=false; render();
 }
 function backToMembers(){ S.profile=null; render(); }
+
+// ---------- reassign (Vorgang einem anderen Kunden zuordnen) ----------
+function openReassign(){ S.reassignOpen=true; S.reassignSearch=''; S.reassignResults=null; S.reassignSearching=false; S.reassignBusy=false; render(); setTimeout(function(){ var i=document.getElementById('rasearch'); if(i) i.focus(); },30); }
+function closeReassign(){ if(S.reassignBusy) return; S.reassignOpen=false; render(); }
+function raRowsHTML(){
+  if(S.reassignBusy) return '<div style="padding:30px;text-align:center"><span class="spin"></span><div style="font-size:12.5px;color:#8a929a;font-weight:700;margin-top:10px">Wird zugeordnet …</div></div>';
+  if(S.reassignSearching) return '<div style="padding:30px;text-align:center"><span class="spin"></span></div>';
+  if(S.reassignResults===null) return '<div style="padding:26px 22px;text-align:center;color:#a9b1b6;font-size:13px;font-weight:600">Tippe oben, um einen Kunden zu suchen.</div>';
+  if(!S.reassignResults.length) return '<div style="padding:26px 22px;text-align:center;color:#8a929a;font-size:13.5px;font-weight:600">Keine Treffer in Magicline.</div>';
+  return '<div style="padding:8px 18px 2px;font-size:11.5px;font-weight:700;color:#8a929a">'+S.reassignResults.length+' Treffer</div>'+S.reassignResults.map(function(m){
+    return '<div class="lrow" data-ra="'+esc(m.id)+'" style="display:flex;align-items:center;gap:12px;padding:12px 18px;border-top:1px solid #f4f6f7;cursor:pointer">'+
+      '<div style="width:36px;height:36px;border-radius:50%;background:#dfe9eb;color:#0a4958;font-weight:800;font-size:12px;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+esc(m.initials||'·')+'</div>'+
+      '<div style="min-width:0;flex:1"><div style="font-size:14px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(m.name)+'</div>'+
+        '<div style="font-size:12px;color:#8a929a;font-weight:600">'+esc(m.nr||'—')+(m.email?' · '+esc(m.email):'')+'</div></div>'+
+      '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#bcc6c8" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M9 18l6-6-6-6"/></svg></div>';
+  }).join('');
+}
+function updateRaRows(){
+  var c=document.getElementById('rarows'); if(!c) return;
+  c.innerHTML=raRowsHTML();
+  c.querySelectorAll('[data-ra]').forEach(function(b){ b.onclick=function(){ var id=b.getAttribute('data-ra'); var mm=(S.reassignResults||[]).find(function(x){ return String(x.id)===String(id); }); doReassign(id, mm||null); }; });
+}
+var _raTimer=null;
+function onReassignSearch(v){
+  S.reassignSearch=v; clearTimeout(_raTimer); var q=(v||'').trim();
+  if(!q){ S.reassignResults=null; S.reassignSearching=false; updateRaRows(); return; }
+  S.reassignSearching=true; updateRaRows();
+  _raTimer=setTimeout(async function(){
+    try{ var r=await tapi('/api/team/members?q='+encodeURIComponent(q)); if(S.reassignSearch.trim()===q){ S.reassignResults=r.ok?(r.results||[]):[]; } }
+    catch(e){ S.reassignResults=[]; }
+    S.reassignSearching=false; updateRaRows();
+  }, 350);
+}
+async function doReassign(toId, snap){
+  if(!S.sel || S.reassignBusy) return;
+  S.reassignBusy=true; updateRaRows();
+  var r=await actOn(S.sel.memberId, S.sel.id, 'reassign', { to:toId, snapshot: snap?{ name:snap.name, nr:snap.nr, initials:snap.initials, email:snap.email, phone:snap.phone }:null });
+  S.reassignBusy=false;
+  if(r && r.ok && r.conversation){
+    S.sel=r.conversation; S.selKey=r.memberId+':'+r.id; S.reassignOpen=false;
+    render(); loadInbox();
+  } else { S.reassignBusy=false; alert((r&&r.message)||'Zuordnung fehlgeschlagen.'); updateRaRows(); }
+}
 
 // ---------- appointment quick actions (Termine) ----------
 async function apptConfirm(m, id, first){
@@ -418,8 +462,9 @@ function inboxNode(){
     panel.innerHTML=
       '<div style="padding:18px 20px 14px;border-bottom:1px solid #f0f3f4;display:flex;align-items:center;gap:12px">'+
         '<div style="width:46px;height:46px;border-radius:50%;background:#dfe9eb;color:#0a4958;font-weight:900;font-size:16px;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+esc(sel2.member.initials||'·')+'</div>'+
-        '<div style="min-width:0;flex:1"><div style="font-size:15px;font-weight:900;letter-spacing:-.3px">'+esc(sel2.member.name)+'</div>'+
-          '<div style="font-size:12px;color:#8a929a;font-weight:600">'+esc(sel2.member.nr||'—')+(sel2.member.email?' · '+esc(sel2.member.email):'')+'</div></div></div>'+
+        '<div style="min-width:0;flex:1"><div style="font-size:15px;font-weight:900;letter-spacing:-.3px;display:flex;align-items:center;gap:7px"><span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(sel2.member.name)+'</span>'+((sel2.member&&sel2.member.lead)?'<span style="font-size:10px;font-weight:800;color:#C77A2E;background:#fbf0e3;border-radius:20px;padding:2px 8px;flex-shrink:0">INTERESSENT</span>':'')+'</div>'+
+          '<div style="font-size:12px;color:#8a929a;font-weight:600">'+esc(sel2.member.nr||(sel2.member&&sel2.member.lead?'kein Mitglied':'—'))+(sel2.member.email?' · '+esc(sel2.member.email):'')+'</div></div></div>'+
+      '<div style="padding:12px 20px 0"><button data-reassign="1" style="display:flex;align-items:center;justify-content:center;gap:7px;width:100%;padding:9px;border:1.5px solid #e4eaeb;background:#fff;border-radius:11px;font-size:12.5px;font-weight:800;color:#42454b"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#6b7780" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3l4 4-4 4"/><path d="M20 7H9a4 4 0 0 0-4 4"/><path d="M8 21l-4-4 4-4"/><path d="M4 17h11a4 4 0 0 0 4-4"/></svg>Zuordnung ändern</button></div>'+
       '<div style="padding:16px 20px;display:flex;flex-direction:column;gap:18px">'+
         '<div><div style="font-size:11px;font-weight:800;color:#8a929a;text-transform:uppercase;letter-spacing:.6px;margin-bottom:9px">Status</div><div style="display:flex;flex-direction:column;gap:6px">'+statusBtns+'</div></div>'+
         '<div><div style="font-size:11px;font-weight:800;color:#8a929a;text-transform:uppercase;letter-spacing:.6px;margin-bottom:9px">Priorität</div><div style="display:flex;gap:6px">'+prioBtns+'</div></div>'+
@@ -431,6 +476,21 @@ function inboxNode(){
       '</div>';
     node.appendChild(panel);
     if(S.panelOpen){ var po=el('<div class="ctx-overlay" style="position:fixed;inset:0;background:rgba(0,18,22,.4);z-index:57"></div>'); po.onclick=function(){ S.panelOpen=false; render(); }; node.appendChild(po); }
+
+    // Modal: Vorgang neu zuordnen (Kundensuche in Magicline)
+    if(S.reassignOpen){
+      var ov=el('<div class="ra-modal" style="position:fixed;inset:0;background:rgba(0,18,22,.45);z-index:80;display:flex;align-items:flex-start;justify-content:center;padding:8vh 16px 16px"></div>');
+      var box=el('<div style="width:100%;max-width:440px;background:#fff;border-radius:18px;box-shadow:0 24px 60px rgba(0,0,0,.32);overflow:hidden;display:flex;flex-direction:column;max-height:82vh"></div>');
+      box.innerHTML=
+        '<div style="padding:18px 20px 14px;border-bottom:1px solid #eef1f2"><div style="font-size:16px;font-weight:900;letter-spacing:-.3px">Vorgang neu zuordnen</div>'+
+          '<div style="font-size:12.5px;color:#8a929a;font-weight:600;margin-top:3px">Aktuell zugeordnet: <b style="color:#5a636a">'+esc(sel2.member.name)+'</b>. Such den richtigen Kunden in Magicline.</div></div>'+
+        '<div style="padding:14px 18px 8px;position:relative"><input id="rasearch" value="'+esc(S.reassignSearch)+'" placeholder="Name, Mitgliedsnummer oder E-Mail" autocomplete="off" style="width:100%;padding:12px 14px;border:1.5px solid #dce3e4;border-radius:12px;font-size:14.5px"></div>'+
+        '<div id="rarows" class="scrl" style="flex:1;overflow-y:auto;min-height:90px;max-height:46vh"></div>'+
+        '<div style="padding:12px 18px;border-top:1px solid #eef1f2;display:flex;justify-content:flex-end"><button id="racancel" style="border:1px solid #e4eaeb;background:#fff;border-radius:11px;font-size:13.5px;font-weight:700;padding:10px 16px;color:#6b7780">Abbrechen</button></div>';
+      ov.appendChild(box);
+      ov.onclick=function(e){ if(e.target===ov) closeReassign(); };
+      node.appendChild(ov);
+    }
   }
 
   // wire inbox after attach
@@ -453,6 +513,10 @@ function wireInbox(node){
   node.querySelectorAll('[data-prio]').forEach(function(b){ b.onclick=function(){ act('priority',{value:b.getAttribute('data-prio')}); }; });
   node.querySelectorAll('[data-assign]').forEach(function(b){ b.onclick=function(){ act('assignee',{value:b.getAttribute('data-assign')||null}); }; });
   var cc=node.querySelector('#closecase'); if(cc) cc.onclick=function(){ act(S.sel.teamStatus==='abgeschlossen'?'reopen':'close'); };
+  var rb=node.querySelector('[data-reassign]'); if(rb) rb.onclick=openReassign;
+  var ras=node.querySelector('#rasearch'); if(ras){ ras.oninput=function(){ onReassignSearch(ras.value); }; }
+  var rac=node.querySelector('#racancel'); if(rac) rac.onclick=closeReassign;
+  if(S.reassignOpen) updateRaRows();
   // Chat ans Ende scrollen + „klebt unten"-Status pflegen
   var tmsg=node.querySelector('#threadmsgs');
   if(tmsg){
