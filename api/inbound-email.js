@@ -19,6 +19,7 @@
 
 const crypto = require('node:crypto');
 const SR = require('../lib/studioReply');
+const M = require('../lib/members');
 
 const RESEND_WEBHOOK_SECRET = process.env.RESEND_WEBHOOK_SECRET || '';
 const SHARED_SECRET = process.env.INBOUND_WEBHOOK_SECRET || process.env.RECORD_SECRET || '';
@@ -63,8 +64,8 @@ function firstStr() {
   for (let i = 0; i < arguments.length; i++) {
     const x = arguments[i];
     if (typeof x === 'string' && x) return x;
-    if (Array.isArray(x) && x.length) return x.map((e) => (typeof e === 'string' ? e : (e && e.address) || '')).join(', ');
-    if (x && typeof x === 'object' && typeof x.address === 'string') return x.address;
+    if (Array.isArray(x) && x.length) return x.map((e) => (typeof e === 'string' ? e : (e && (e.address || e.email)) || '')).join(', ');
+    if (x && typeof x === 'object' && (typeof x.address === 'string' || typeof x.email === 'string')) return x.address || x.email;
   }
   return '';
 }
@@ -99,10 +100,19 @@ module.exports = async function handler(req, res) {
   if (!text && d.email_id) { try { text = await SR.fetchReceivedBody(d.email_id); } catch (e) {} }
   if (!text) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, ignored: 'no_body' })); }
 
-  // Richtung anhand des Absenders: Studio-Postfach -> Team-Antwort; sonst (Kunde) ->
-  // Mitglieder-Antwort. So sind beide Richtungen der E-Mail-Konversation im Postfach.
+  // Richtung anhand des Absenders bestimmen – robust:
+  //   Absender == E-Mail des Mitglieds      -> Mitglieder-Antwort (Kunde)
+  //   jede andere Adresse (Inhaber/Team)    -> Team-Antwort
+  // So kann der Inhaber von JEDER Adresse (info@, iCloud, Gmail …) antworten; nur die
+  // E-Mail des Kunden selbst zählt als Mitglieder-Nachricht. Studio-Adresse immer Team.
   const from = firstStr(d.from, body.from, (d.headers && d.headers.from)).toLowerCase();
-  const isOwner = !!STUDIO_ADDR && from.indexOf(STUDIO_ADDR) >= 0;
+  let isOwner = true;
+  try {
+    const mem = await M.getMember(v.memberId);
+    const memEmail = String((mem && mem.email) || '').toLowerCase().trim();
+    if (memEmail && from.indexOf(memEmail) >= 0) isOwner = false;
+  } catch (e) { /* getMember-Fehler -> Standard: als Team behandeln */ }
+  if (STUDIO_ADDR && from.indexOf(STUDIO_ADDR) >= 0) isOwner = true;
   try {
     if (isOwner) await SR.applyOwnerReply(v.memberId, v.vorgangId, text);
     else await SR.applyMemberReply(v.memberId, v.vorgangId, text);
