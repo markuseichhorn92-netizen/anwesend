@@ -165,6 +165,11 @@ Das Push-Plugin ist bereits in `nativeapp/package.json` (`@capacitor/push-notifi
 Auf iOS in Xcode unter **Signing & Capabilities** die Capability **Push Notifications**
 (und **Background Modes → Remote notifications**) hinzufügen. Danach `npx cap sync`.
 
+> **Hinweis zu den Plugins:** Die App-Hülle bringt im Grundzustand bewusst nur die offiziellen
+> Capacitor-Pakete mit (damit der erste Build garantiert klappt). Die Plugins für Apple/Google
+> und Biometrie installierst du in den nächsten Abschnitten **bei Bedarf** dazu – die
+> Native-Brücke (`assets/native.js`) erkennt sie automatisch und schaltet die Funktion frei.
+
 ---
 
 ## 6. „Mit Apple anmelden"
@@ -175,7 +180,11 @@ Auf iOS in Xcode unter **Signing & Capabilities** die Capability **Push Notifica
 1. [developer.apple.com](https://developer.apple.com/account) → **Identifiers** → deine App-ID
    `de.fitinn.portal` → Capability **Sign In with Apple** aktivieren.
 2. In Xcode → **Signing & Capabilities → + Capability → Sign in with Apple**.
-3. Plugin ist schon dabei (`@capacitor-community/apple-sign-in`). `npx cap sync`.
+3. Plugin installieren (deckt **Apple und Google** zugleich ab, aktuell für Capacitor 8):
+   ```bash
+   npm install @capgo/capacitor-social-login
+   npx cap sync
+   ```
 4. In **Vercel** setzen:
    - `APPLE_CLIENT_ID` = `de.fitinn.portal` (mehrere Bundles mit Komma trennen)
 5. Fertig – die App schickt das Apple-ID-Token an `/api/member/native-login`, der Server prüft
@@ -192,9 +201,9 @@ Auf iOS in Xcode unter **Signing & Capabilities** die Capability **Push Notifica
    - eine **Android**-Client-ID (Package `de.fitinn.portal` + SHA-1-Fingerabdruck deines
      Signaturschlüssels, siehe Abschnitt 10),
    - eine **Web**-Client-ID (die wird vom Google-Plugin serverseitig als „aud" genutzt).
-2. Plugin ist dabei (`@codetrix-studio/capacitor-google-auth`). Konfiguration laut dessen
-   README: Web-Client-ID in `capacitor.config` bzw. `strings.xml`/`Info.plist` eintragen,
-   dann `npx cap sync`.
+2. Google wird vom selben Plugin wie Apple abgedeckt (`@capgo/capacitor-social-login`, siehe
+   Abschnitt 6). Du musst es einmalig mit deinen Client-IDs initialisieren (Web- + iOS-Client-ID);
+   wie genau, steht im README des Plugins. Danach `npx cap sync`.
 3. In **Vercel** setzen:
    - `GOOGLE_CLIENT_ID` = alle relevanten Client-IDs, mit Komma getrennt (iOS, Android, Web).
 4. Die App schickt das Google-ID-Token an `/api/member/native-login`; Zuordnung wie bei Apple
@@ -208,8 +217,15 @@ Auf iOS in Xcode unter **Signing & Capabilities** die Capability **Push Notifica
 
 ## 8. Biometrische Entsperrung (Face ID / Fingerabdruck)
 
-1. Plugin ist dabei (`capacitor-native-biometric`). Es legt die Sitzung im **sicheren
-   Schlüsselbund** des Geräts ab (iOS Keychain / Android Keystore) – nicht im Web-Speicher.
+1. Plugin installieren:
+   ```bash
+   npm install capacitor-native-biometric
+   npx cap sync
+   ```
+   Es legt die Sitzung im **sicheren Schlüsselbund** des Geräts ab (iOS Keychain / Android
+   Keystore) – nicht im Web-Speicher. (Sollte der iOS-/Android-Build wegen der
+   Capacitor-Version meckern, sag Bescheid – dann nehmen wir die Alternative
+   `@aparajita/capacitor-biometric-auth`.)
 2. iOS braucht in Xcode einen Nutzungstext: **Info.plist → `NSFaceIDUsageDescription`**, z. B.
    *„Zum schnellen, sicheren Entsperren deines Mitgliedskontos."*
 3. Ablauf (steckt schon in `assets/native.js`): Nach dem Login wird die Sitzung sicher
