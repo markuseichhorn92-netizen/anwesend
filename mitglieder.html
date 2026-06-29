@@ -1260,10 +1260,11 @@
       var via=(channel==='whatsapp')?'whatsapp':'email';
       setQuiet({busy:true,loginErr:'',loginVia:via});
       fetch('/api/member/login-request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:email,dob:dob,channel:via})})
-        .then(function(r){return r.json().catch(function(){return {};});})
-        .then(function(j){
-          if(j&&j.step==='number'){ setS({busy:false,liNum:'',loginStep:'confirmNumber',loginErr:''}); return; }
-          if(j&&j.challenge){ setS({busy:false,challenge:j.challenge,loginStep:'verify',otp:'',loginErr:'',loginVia:(j.via||via)}); return; }
+        .then(function(r){return r.json().then(function(j){return {s:r.status,j:j||{}};}).catch(function(){return {s:r.status,j:{}};});})
+        .then(function(x){ var j=x.j;
+          if(x.s===429||j.error==='rate_limited'){ setS({busy:false,loginErr:'Zu viele Versuche – bitte ein paar Minuten warten und dann erneut probieren.'}); return; }
+          if(j.step==='number'){ setS({busy:false,liNum:'',loginStep:'confirmNumber',loginErr:''}); return; }
+          if(j.challenge){ setS({busy:false,challenge:j.challenge,loginStep:'verify',otp:'',loginErr:'',loginVia:(j.via||via)}); return; }
           setS({busy:false,loginErr:'Es ist ein Fehler aufgetreten. Bitte später erneut.'});
         })
         .catch(function(){ setS({busy:false,loginErr:'Es ist ein Fehler aufgetreten. Bitte später erneut.'}); });
@@ -1275,10 +1276,11 @@
       var via=S.loginVia||'email';
       setQuiet({busy:true,loginErr:''});
       fetch('/api/member/login-request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:email,dob:dob,channel:via,customerNumber:num})})
-        .then(function(r){return r.json().catch(function(){return {};});})
-        .then(function(j){
-          if(j&&j.numberMismatch){ setS({busy:false,loginErr:'Diese Mitgliedsnummer passt nicht zu den angegebenen Daten.'}); return; }
-          if(j&&j.challenge){ setS({busy:false,challenge:j.challenge,loginStep:'verify',otp:'',loginErr:'',loginVia:(j.via||via)}); return; }
+        .then(function(r){return r.json().then(function(j){return {s:r.status,j:j||{}};}).catch(function(){return {s:r.status,j:{}};});})
+        .then(function(x){ var j=x.j;
+          if(x.s===429||j.error==='rate_limited'){ setS({busy:false,loginErr:'Zu viele Versuche – bitte ein paar Minuten warten und dann erneut probieren.'}); return; }
+          if(j.numberMismatch){ setS({busy:false,loginErr:'Diese Mitgliedsnummer passt nicht zu den angegebenen Daten.'}); return; }
+          if(j.challenge){ setS({busy:false,challenge:j.challenge,loginStep:'verify',otp:'',loginErr:'',loginVia:(j.via||via)}); return; }
           setS({busy:false,loginErr:'Es ist ein Fehler aufgetreten. Bitte später erneut.'});
         })
         .catch(function(){ setS({busy:false,loginErr:'Es ist ein Fehler aufgetreten.'}); });

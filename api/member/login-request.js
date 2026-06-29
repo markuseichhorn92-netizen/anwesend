@@ -22,7 +22,7 @@ module.exports = async function handler(req, res) {
   if (!M.hasStore) { res.statusCode = 503; return res.end(JSON.stringify({ error: 'no_store' })); }
 
   const ip = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim() || 'unknown';
-  if (!(await M.rateLimit('otpreq:ip:' + ip, 8, 600))) {
+  if (!(await M.rateLimit('otpreq:ip:' + ip, 15, 600))) {
     res.statusCode = 429; return res.end(JSON.stringify({ error: 'rate_limited' }));
   }
 
@@ -34,23 +34,26 @@ module.exports = async function handler(req, res) {
 
   try {
     // Pro E-Mail begrenzen (Mail-Bombing verhindern) – ohne nach außen zu verraten
-    const emailOk = email ? await M.rateLimit('otpreq:e:' + email, 5, 1800) : false;
+    const emailOk = email ? await M.rateLimit('otpreq:e:' + email, 10, 1800) : false;
     if (emailOk) {
       const matches = await M.findAllByEmailDob(email, d.dob);   // alle Datensätze zu E-Mail+Geburtsdatum
-      if (matches.length > 1 && !num) {
-        // Mehrere Konten -> Mitgliedsnummer zur Eindeutigkeit anfordern (noch kein Code).
-        res.statusCode = 200; return res.end(JSON.stringify({ ok: true, step: 'number' }));
+      let chosen = null;
+      if (num) {
+        // Mit Mitgliedsnummer eingegrenzt.
+        chosen = matches.find((c) => bareNum(c.customerNumber) === bareNum(num)) || null;
+        if (!chosen && matches.length) { res.statusCode = 200; return res.end(JSON.stringify({ ok: true, step: 'number', numberMismatch: true })); }
+      } else if (matches.length === 1) {
+        chosen = matches[0];
+      } else if (matches.length > 1) {
+        // Mehrere Konten -> automatisch das Mitgliedschaftskonto wählen; nur wenn
+        // das mehrdeutig ist (0/mehrere mit Vertrag), die Mitgliedsnummer abfragen.
+        chosen = await M.pickMembershipAccount(matches);
+        if (!chosen) { res.statusCode = 200; return res.end(JSON.stringify({ ok: true, step: 'number' })); }
       }
-      if (matches.length >= 1) {
-        const chosen = matches.length === 1 ? matches[0] : matches.find((c) => bareNum(c.customerNumber) === bareNum(num));
-        if (chosen && chosen.id != null) {
-          let phone; if (via === 'whatsapp') { try { phone = await M.phoneByEmailDob(email, d.dob); } catch (e) {} }
-          const r = await sendLoginCode(chosen, req.headers['host'], { channel: via, phone: phone });
-          if (r && r.challenge) challenge = r.challenge;
-        } else if (num) {
-          // Nummer passt nicht zu E-Mail+Geburtsdatum -> erneut fragen (Hinweis).
-          res.statusCode = 200; return res.end(JSON.stringify({ ok: true, step: 'number', numberMismatch: true }));
-        }
+      if (chosen && chosen.id != null) {
+        let phone; if (via === 'whatsapp') { try { phone = await M.phoneByEmailDob(email, d.dob); } catch (e) {} }
+        const r = await sendLoginCode(chosen, req.headers['host'], { channel: via, phone: phone });
+        if (r && r.challenge) challenge = r.challenge;
       }
       // 0 Treffer: nichts senden, aber unten so antworten, als wäre ein Code unterwegs.
     }
