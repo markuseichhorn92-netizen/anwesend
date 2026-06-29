@@ -37,6 +37,21 @@
   if (!isNative) return;   // im Browser ist hier Schluss.
 
   document.documentElement.classList.add('is-native-app');
+
+  // App-Feeling: Zoom (Pinch + Doppeltipp) abschalten und horizontales
+  // Wischen/Überscrollen unterbinden – vertikales Scrollen bleibt erhalten.
+  try {
+    var vp = document.querySelector('meta[name=viewport]');
+    if (!vp) { vp = document.createElement('meta'); vp.setAttribute('name', 'viewport'); document.head.appendChild(vp); }
+    vp.setAttribute('content', 'width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, viewport-fit=cover');
+    var st = document.createElement('style');
+    st.textContent = 'html,body{max-width:100%;overflow-x:hidden;overscroll-behavior:none;-webkit-text-size-adjust:100%;touch-action:pan-y;scrollbar-width:none;-ms-overflow-style:none;}'
+      + '::-webkit-scrollbar{width:0!important;height:0!important;display:none!important;}';
+    document.head.appendChild(st);
+    // Doppeltipp-Zoom zusätzlich hart unterbinden (manche WebViews ignorieren user-scalable).
+    document.addEventListener('gesturestart', function (e) { e.preventDefault(); }, { passive: false });
+  } catch (e) {}
+
   API.available.push = !!(P.FirebaseMessaging || P.PushNotifications);
   API.available.biometrics = !!P.NativeBiometric;
   API.available.apple = !!(P.SignInWithApple || P.SocialLogin);

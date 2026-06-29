@@ -46,6 +46,22 @@
   }
   @media (min-width:861px){ .mb-burger,.mb-overlay,.mb-back{display:none!important} }
 </style>
+<script>
+  /* In der eigenen App (Capacitor): App-Feeling – kein Zoom, kein horizontales
+     Wischen, keine sichtbare Scrollbar. Im Browser bleibt alles unverändert. */
+  (function(){ try{
+    var C=window.Capacitor;
+    if(!(C && C.isNativePlatform && C.isNativePlatform())) return;
+    document.documentElement.classList.add('is-native-app');
+    var vp=document.querySelector('meta[name=viewport]');
+    if(vp) vp.setAttribute('content','width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, viewport-fit=cover');
+    var s=document.createElement('style');
+    s.textContent='html,body{overflow-x:hidden;overscroll-behavior:none;-webkit-text-size-adjust:100%;touch-action:pan-y;scrollbar-width:none;-ms-overflow-style:none;}'
+      +'::-webkit-scrollbar{width:0!important;height:0!important;display:none!important;}';
+    document.head.appendChild(s);
+    document.addEventListener('gesturestart',function(e){e.preventDefault();},{passive:false});
+  }catch(e){} })();
+</script>
 </head>
 <body>
 <div id="root"></div>
@@ -367,6 +383,7 @@ function renderShell(content, title, sub){
       navItem('stats','Statistiken',IC.stats)+
     '</nav>'+
     '<div style="border-top:1px solid rgba(255,255,255,.10);margin-top:10px;padding-top:10px">'+
+      '<button class="navbtn" data-toapp="1" style="display:flex;align-items:center;gap:13px;padding:11px 13px;border:none;border-radius:11px;font-weight:600;font-size:13.5px;background:transparent;color:#9fc3ca;width:100%;text-align:left;margin-bottom:3px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg><span>Zur Mitglieder-App</span></button>'+
       '<button class="navbtn" data-logout="1" style="display:flex;align-items:center;gap:13px;padding:11px 13px;border:none;border-radius:11px;font-weight:600;font-size:13.5px;background:transparent;color:#9fc3ca;width:100%;text-align:left">'+IC.logout+'<span>Abmelden</span></button>'+
     '</div>';
   row.appendChild(side);
@@ -389,6 +406,7 @@ function renderShell(content, title, sub){
   // wire shell
   side.querySelectorAll('[data-nav]').forEach(function(b){ b.onclick=function(){ goScreen(b.getAttribute('data-nav')); }; });
   side.querySelector('[data-logout]').onclick=logout;
+  var toApp=side.querySelector('[data-toapp]'); if(toApp) toApp.onclick=function(){ location.assign('/mitglieder'); };
   var bg=head.querySelector('[data-burger]'); if(bg) bg.onclick=function(){ S.navOpen=true; render(); };
   head.querySelector('[data-refresh]').onclick=function(){ if(S.screen==='members') loadMembers(); else if(S.screen==='inbox'||S.screen==='appts') loadInbox(); else if(S.screen==='help') loadArticles(); else if(S.screen==='stats') loadStats(); else render(); };
 }
