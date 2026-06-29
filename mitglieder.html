@@ -261,6 +261,7 @@
     liEmail:'', liNum:'', liPhone:'', remember:(localStorage.getItem('fi_remember')==='1'),
     loginStep:'request', challenge:'', otp:'',
     liDob:'', waLogin:false, waLoginFetched:false, loginVia:'email',
+    dupNotice:null, dupDismissed:false,
     loginErr:'' };
   window.__setLi=function(f,v){ if(f==='email')S.liEmail=v; else if(f==='code'){ S.otp=v; if(S.loginStep==='verify' && !S.busy && S.challenge && String(v).replace(/\D/g,'').length===6){ ACT.verifyCode(); } } else if(f==='num')S.liNum=v; else if(f==='phone')S.liPhone=v; else if(f==='dob')S.liDob=v; };
   window.__ciDate=function(which,v){ if(which==='from')S.ciFrom=v; else S.ciTo=v; render(); };
@@ -333,7 +334,11 @@
 
   // ---- data loading ----
   function loadMe(){
-    return api('/api/member/me').then(function(d){ DATA.profile=d.profile||null; DATA.contract=d.contract||null; DATA.membershipActive=(d.membershipActive!==false); });
+    return api('/api/member/me').then(function(d){ DATA.profile=d.profile||null; DATA.contract=d.contract||null; DATA.membershipActive=(d.membershipActive!==false); checkDup(); });
+  }
+  // Mehrere Magicline-Konten zu denselben Daten? -> Hinweis-Banner im Portal.
+  function checkDup(){
+    api('/api/member/duplicates').then(function(d){ if(d&&d.ok){ S.dupNotice={ hasDuplicates:!!d.hasDuplicates, count:d.count||0, requested:!!d.requested }; render(); } }).catch(function(){});
   }
   function loadCheckins(){ api('/api/member/checkins').then(function(d){ DATA.checkins=d.checkins||[]; render(); }).catch(function(){ DATA.checkins=[]; render(); }); }
   function loadAppts(){ api('/api/member/appointments').then(function(d){ DATA.appts=d.appointments||[]; render(); }).catch(function(){ DATA.appts=[]; render(); }); }
@@ -556,9 +561,23 @@
       ['postfach','Postfach','Deine Vorgänge & Nachrichten','#E08C53,#C2702E','rgba(224,124,60,.42)','<path d="M4 5h16v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z"></path><path d="M4 6l8 6 8-6"></path>'],
       ['help','Hilfe & Kontakt','KI-Assistent, FAQ & Team kontaktieren','#7C8A99,#566372','rgba(86,99,114,.40)','<circle cx="12" cy="12" r="9"></circle><path d="M9.5 9.5a2.5 2.5 0 1 1 3.4 2.3c-.8.3-1.4 1-1.4 1.9v.3"></path><path d="M12 17h.01"></path>']
     ].map(function(t){ return '<button class="tile" data-act="nav" data-arg="'+t[0]+'">'+(t[0]==='postfach'&&pfUnread()>0?'<span style="position:absolute;top:11px;right:11px;z-index:2;background:#E08C53;color:#fff;font-size:11px;font-weight:800;border-radius:20px;min-width:20px;height:20px;padding:0 6px;display:flex;align-items:center;justify-content:center">'+pfUnread()+'</span>':'')+'<div class="chip" style="background:linear-gradient(150deg,'+t[3]+');box-shadow:0 10px 22px -6px '+t[4]+',inset 0 1px 1px rgba(255,255,255,.55)"><span class="gloss"></span>'+svg(t[5],{c:'#fff',w:1.85,s:24})+'</div><div style="position:relative;font-size:15px;font-weight:800;margin-top:14px;letter-spacing:-.2px;color:var(--text)">'+t[1]+'</div><div style="position:relative;font-size:12px;color:var(--text-muted);margin-top:3px;line-height:1.35">'+t[2]+'</div></button>'; }).join('');
+    var dupBanner='';
+    if(S.dupNotice && S.dupNotice.hasDuplicates && !S.dupDismissed){
+      if(S.dupNotice.requested){
+        dupBanner='<div style="display:flex;align-items:flex-start;gap:11px;background:#eaf6ef;border:1px solid #bfe3cd;border-radius:14px;padding:13px 15px;margin-bottom:14px">'+svg('<path d="M22 11.1V12a10 10 0 1 1-5.9-9.1"></path><path d="M22 4L12 14.01l-3-3"></path>',{c:'#1d7a3e',w:2,s:18})+'<div style="flex:1;font-size:13.5px;color:#1d6b3a;font-weight:600;line-height:1.5">Zusammenführung angefragt – wir kümmern uns darum und melden uns bei dir.</div></div>';
+      } else {
+        dupBanner='<div style="background:#fff6ec;border:1px solid #f3dcc0;border-radius:14px;padding:14px 16px;margin-bottom:14px">'+
+          '<div style="display:flex;align-items:flex-start;gap:11px">'+svg('<path d="M12 9v4M12 17h.01M10.3 3.5L1.8 18a1.5 1.5 0 0 0 1.3 2.3h17.8a1.5 1.5 0 0 0 1.3-2.3L13.7 3.5a1.5 1.5 0 0 0-2.6 0z"></path>',{c:'#C77A2E',w:2,s:18})+
+          '<div style="flex:1"><div style="font-size:14px;font-weight:800;color:#8a5a20">Mehrere Konten erkannt</div>'+
+          '<div style="font-size:13px;color:#a06a2c;font-weight:600;margin-top:2px;line-height:1.5">Wir haben mehrere Konten zu deinen Daten gefunden. Sollen wir sie für dich zusammenführen? Unser Team kümmert sich darum.</div>'+
+          '<div style="display:flex;gap:9px;margin-top:11px"><button class="btn" data-act="mergeRequest" style="width:auto;padding:10px 16px;font-size:14px">'+(S.busy?'Wird gesendet …':'Ja, zusammenführen')+'</button>'+
+          '<button class="btn2" data-act="dupDismiss" style="width:auto;padding:10px 16px;font-size:14px">Später</button></div></div></div></div>';
+      }
+    }
     return ''+
       '<div style="padding:6px 4px 16px"><div style="font-size:28px;font-weight:900;color:var(--text);letter-spacing:-.6px">'+greetLine(name)+'</div>'+
       '<div style="font-size:14px;color:var(--text-muted);margin-top:3px;font-weight:500">'+homeSub()+'</div></div>'+
+      dupBanner+
       statCards()+
       '<div style="height:14px"></div>'+
       planCard()+
@@ -1265,6 +1284,8 @@
         .catch(function(){ setS({busy:false,loginErr:'Es ist ein Fehler aufgetreten.'}); });
     },
     resendCode:function(){ if(S.loginStep==='confirmNumber'){ ACT.confirmNumber(); } else if(S.loginVia==='whatsapp' && S.liPhone && !S.liEmail){ ACT.loginPhone(); } else { ACT.reqCode(S.loginVia); } },
+    mergeRequest:function(){ if(S.busy) return; setQuiet({busy:true}); api('/api/member/duplicates',{method:'POST',body:JSON.stringify({action:'merge'})}).then(function(d){ S.busy=false; if(d&&d.ok){ S.dupNotice=S.dupNotice||{}; S.dupNotice.requested=true; setS({msg:'Anfrage gesendet – wir kümmern uns darum.'}); } else { setS({msg:(d&&d.message)||'Konnte nicht gesendet werden.'}); } }).catch(function(){ setS({busy:false,msg:'Konnte nicht gesendet werden.'}); }); },
+    dupDismiss:function(){ setS({dupDismissed:true}); },
     loginBack:function(){ setS({loginStep:'request',otp:'',loginErr:''}); },
     loginNumberMode:function(){ setS({loginStep:'number',loginErr:''}); },
     loginPhoneMode:function(){ setS({loginStep:'phone',loginErr:''}); },
