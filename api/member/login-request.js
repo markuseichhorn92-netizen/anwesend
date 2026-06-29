@@ -34,8 +34,12 @@ module.exports = async function handler(req, res) {
     const emailOk = email ? await M.rateLimit('otpreq:e:' + email, 5, 1800) : false;
     if (emailOk) {
       const m = await M.findByEmailDob(email, d.dob);
-      if (m && m.email) {
-        const r = await sendLoginCode(m, req.headers['host'], { channel: via });
+      if (m && m.id != null) {
+        // Login-Identität = primärer Treffer; die WhatsApp-Nummer darf bei Dubletten
+        // von JEDEM Datensatz derselben Person stammen.
+        let phone;
+        if (via === 'whatsapp') { try { phone = await M.phoneByEmailDob(email, d.dob); } catch (e) {} }
+        const r = await sendLoginCode(m, req.headers['host'], { channel: via, phone: phone });
         if (r && r.challenge) challenge = r.challenge;
       }
     }
