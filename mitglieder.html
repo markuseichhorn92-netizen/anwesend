@@ -261,7 +261,7 @@
     liEmail:'', liNum:'', liPhone:'', remember:(localStorage.getItem('fi_remember')==='1'),
     loginStep:'request', challenge:'', otp:'',
     liDob:'', waLogin:false, waLoginFetched:false, loginVia:'email', channels:[],
-    dupNotice:null, dupDismissed:false, hasPasskey:false, pkFailed:false,
+    dupNotice:null, dupDismissed:false,
     loginErr:'' };
   window.__setLi=function(f,v){ if(f==='email')S.liEmail=v; else if(f==='code'){ S.otp=v; if(S.loginStep==='verify' && !S.busy && S.challenge && String(v).replace(/\D/g,'').length===6){ ACT.verifyCode(); } } else if(f==='num')S.liNum=v; else if(f==='phone')S.liPhone=v; else if(f==='dob')S.liDob=v; };
   window.__ciDate=function(which,v){ if(which==='from')S.ciFrom=v; else S.ciTo=v; render(); };
@@ -334,54 +334,11 @@
 
   // ---- data loading ----
   function loadMe(){
-    return api('/api/member/me').then(function(d){ DATA.profile=d.profile||null; DATA.contract=d.contract||null; DATA.membershipActive=(d.membershipActive!==false); checkDup(); loadPasskeys(); });
+    return api('/api/member/me').then(function(d){ DATA.profile=d.profile||null; DATA.contract=d.contract||null; DATA.membershipActive=(d.membershipActive!==false); checkDup(); });
   }
   // Mehrere Magicline-Konten zu denselben Daten? -> Hinweis-Banner im Portal.
   function checkDup(){
     api('/api/member/duplicates').then(function(d){ if(d&&d.ok){ S.dupNotice={ hasDuplicates:!!d.hasDuplicates, count:d.count||0, requested:!!d.requested }; render(); } }).catch(function(){});
-  }
-
-  // ---------- Passkeys (WebAuthn) ----------
-  var PK_OK = !!(window.PublicKeyCredential && navigator.credentials && navigator.credentials.create);
-  // Eingebettet (iframe / In-App-WebView)? Dort blockieren OS/Browser WebAuthn oft.
-  var IN_APP = (function(){ try{ return window.self !== window.top; }catch(e){ return true; } })();
-  function openExternal(){ try{ var w=window.open(location.href,'_blank','noopener'); if(!w){ window.top.location.href=location.href; } }catch(e){ try{ location.href=location.href; }catch(e2){} } }
-  function _b64uToBuf(s){ s=String(s).replace(/-/g,'+').replace(/_/g,'/'); var pad=s.length%4; if(pad) s+='===='.slice(pad); var bin=atob(s); var b=new Uint8Array(bin.length); for(var i=0;i<bin.length;i++) b[i]=bin.charCodeAt(i); return b.buffer; }
-  function _bufToB64u(buf){ var b=new Uint8Array(buf); var s=''; for(var i=0;i<b.length;i++) s+=String.fromCharCode(b[i]); return btoa(s).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,''); }
-  function loadPasskeys(){ if(!PK_OK) return; api('/api/member/passkey').then(function(d){ if(d&&d.ok){ S.hasPasskey=!!(d.passkeys&&d.passkeys.length); render(); } }).catch(function(){}); }
-  async function registerPasskey(){
-    if(!PK_OK){ setS({msg:'Dein Gerät unterstützt keine Passkeys.'}); return; }
-    try{
-      var o=await api('/api/member/passkey',{method:'POST',body:JSON.stringify({action:'reg-options'})});
-      if(!o||!o.ok||!o.options) throw 0;
-      var opt=o.options; opt.challenge=_b64uToBuf(opt.challenge); opt.user.id=_b64uToBuf(opt.user.id);
-      if(opt.excludeCredentials) opt.excludeCredentials=opt.excludeCredentials.map(function(c){ return Object.assign({},c,{id:_b64uToBuf(c.id)}); });
-      var cred=await navigator.credentials.create({publicKey:opt});
-      var resp={ id:cred.id, rawId:_bufToB64u(cred.rawId), type:cred.type,
-        response:{ clientDataJSON:_bufToB64u(cred.response.clientDataJSON), attestationObject:_bufToB64u(cred.response.attestationObject), transports:(cred.response.getTransports?cred.response.getTransports():[]) },
-        clientExtensionResults:(cred.getClientExtensionResults?cred.getClientExtensionResults():{}) };
-      var r=await api('/api/member/passkey',{method:'POST',body:JSON.stringify({action:'reg-verify',response:resp})});
-      if(r&&r.ok){ setS({hasPasskey:true,msg:'Passkey eingerichtet 🔑 – beim nächsten Login tippst du einfach „Mit Passkey anmelden".'}); }
-      else setS({msg:(r&&r.message)||'Passkey konnte nicht eingerichtet werden.'});
-    }catch(e){ setS({pkFailed:true, msg: IN_APP ? 'Passkey lässt sich in der App nicht einrichten – bitte „Im Browser öffnen".' : 'Passkey-Einrichtung abgebrochen.'}); }
-  }
-  async function loginPasskey(){
-    if(!PK_OK){ setS({loginErr:'Dein Gerät unterstützt keine Passkeys.'}); return; }
-    setQuiet({busy:true,loginErr:''});
-    try{
-      var o=await fetch('/api/member/passkey-login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'options'})}).then(function(r){return r.json();});
-      if(!o||!o.ok||!o.options) throw 0;
-      var opt=o.options; opt.challenge=_b64uToBuf(opt.challenge);
-      if(opt.allowCredentials) opt.allowCredentials=opt.allowCredentials.map(function(c){ return Object.assign({},c,{id:_b64uToBuf(c.id)}); });
-      var cred=await navigator.credentials.get({publicKey:opt});
-      var resp={ id:cred.id, rawId:_bufToB64u(cred.rawId), type:cred.type,
-        response:{ clientDataJSON:_bufToB64u(cred.response.clientDataJSON), authenticatorData:_bufToB64u(cred.response.authenticatorData), signature:_bufToB64u(cred.response.signature), userHandle:(cred.response.userHandle?_bufToB64u(cred.response.userHandle):null) },
-        clientExtensionResults:(cred.getClientExtensionResults?cred.getClientExtensionResults():{}) };
-      var remember=!!S.remember;
-      var r=await fetch('/api/member/passkey-login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'verify',flowId:o.flowId,response:resp,remember:remember})}).then(function(x){return x.json();});
-      if(r&&r.ok&&r.token){ TOKEN=r.token; if(remember){ localStorage.setItem('fi_member_token',TOKEN); localStorage.setItem('fi_remember','1'); sessionStorage.removeItem('fi_member_token'); } else { sessionStorage.setItem('fi_member_token',TOKEN); localStorage.removeItem('fi_member_token'); localStorage.removeItem('fi_remember'); } S.loginStep='request'; return loadMe().then(function(){ loadAppts(); loadPlan(); loadPlanAgg(); loadInbox(); loadPrefs(); if(DATA.checkins===null) loadCheckins(); S.busy=false; nav('home'); }); }
-      setS({busy:false,loginErr:'Passkey-Anmeldung fehlgeschlagen. Nutze sonst E-Mail oder WhatsApp.'});
-    }catch(e){ setS({busy:false, pkFailed:true, loginErr: IN_APP ? 'Passkey geht in der App nicht – tippe „Im Browser öffnen" oder nutze E-Mail/WhatsApp.' : 'Passkey-Anmeldung abgebrochen.'}); }
   }
   function loadCheckins(){ api('/api/member/checkins').then(function(d){ DATA.checkins=d.checkins||[]; render(); }).catch(function(){ DATA.checkins=[]; render(); }); }
   function loadAppts(){ api('/api/member/appointments').then(function(d){ DATA.appts=d.appointments||[]; render(); }).catch(function(){ DATA.appts=[]; render(); }); }
@@ -488,10 +445,7 @@
     } else {
       inner='<div style="font-size:28px;font-weight:900;color:var(--text);letter-spacing:-.6px">Mitglieder-Login</div>'+
         '<div style="font-size:15px;color:var(--text-muted);margin-top:7px;line-height:1.5">Zur Bestätigung deiner Identität – ganz ohne Passwort.</div>'+
-        (PK_OK?'<button data-act="loginPasskey" style="margin-top:22px;width:100%;display:flex;align-items:center;justify-content:center;gap:9px;padding:15px;font-size:15px;font-weight:800;border:none;background:'+TEAL+';color:#fff;border-radius:14px;cursor:pointer"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8.5" cy="9" r="5"></circle><path d="M13 13l7 7M17.5 17.5l2-2M20.5 20.5l1.2-1.2"></path></svg>Mit Passkey anmelden</button>'+
-          ((IN_APP||S.pkFailed)?'<div style="text-align:center;margin-top:9px"><button data-act="openExternal" style="background:none;border:none;color:'+TEAL+';font-weight:700;font-size:12.5px;text-decoration:underline;cursor:pointer">Passkey klappt in der App nicht? Im Browser öffnen ›</button></div>':'')+
-          '<div style="display:flex;align-items:center;gap:12px;margin:18px 0 2px"><div style="flex:1;height:1px;background:#dde4e6"></div><span style="font-size:12px;color:var(--text-soft);font-weight:700">oder mit E-Mail</span><div style="flex:1;height:1px;background:#dde4e6"></div></div>':'')+
-        '<div style="margin-top:'+(PK_OK?'8px':'24px')+'"><label class="lbl">E-Mail-Adresse</label><input id="li_email" type="email" autocomplete="email" placeholder="du@beispiel.de" class="inp" value="'+esc(S.liEmail)+'" oninput="window.__setLi(\'email\',this.value)"></div>'+
+        '<div style="margin-top:24px"><label class="lbl">E-Mail-Adresse</label><input id="li_email" type="email" autocomplete="email" placeholder="du@beispiel.de" class="inp" value="'+esc(S.liEmail)+'" oninput="window.__setLi(\'email\',this.value)"></div>'+
         '<div style="margin-top:14px">'+dpField()+'</div>'+remember+
         '<button class="btn" id="li_btn" data-act="reqCode" style="margin-top:20px;padding:16px;font-size:16px">'+(S.busy?'Bitte warten …':'Weiter')+'</button>'+e+
         '<div style="display:flex;align-items:flex-start;gap:9px;margin-top:18px;padding:13px 15px;background:var(--surface);border:1px solid #e1e8ea;border-radius:12px">'+svg('<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>',{w:1.9,s:17})+'<span style="font-size:12.5px;color:var(--text-muted);line-height:1.5">Deine Daten werden verschlüsselt übertragen und ausschließlich zur Identitätsprüfung genutzt.</span></div>'+
@@ -634,18 +588,10 @@
           '<button class="btn2" data-act="dupDismiss" style="width:auto;padding:10px 16px;font-size:14px">Später</button></div></div></div></div>';
       }
     }
-    var pkBanner='';
-    if(PK_OK && !S.hasPasskey){
-      pkBanner='<div style="display:flex;align-items:center;gap:13px;background:linear-gradient(150deg,#0e6072,#08323d);border-radius:16px;padding:14px 16px;margin-bottom:14px;color:#fff">'+
-        '<div style="width:40px;height:40px;border-radius:12px;background:rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8.5" cy="9" r="5"></circle><path d="M13 13l7 7M17.5 17.5l2-2M20.5 20.5l1.2-1.2"></path></svg></div>'+
-        '<div style="flex:1;min-width:0"><div style="font-size:14.5px;font-weight:800">Schneller anmelden mit Passkey</div><div style="font-size:12.5px;opacity:.82;font-weight:500;margin-top:1px">'+(IN_APP?'In der App nicht möglich – im Browser einrichten.':'Einmal einrichten – ab dann per Face/Touch ID, ohne Code.')+'</div></div>'+
-        '<button data-act="'+(IN_APP?'openExternal':'registerPasskey')+'" style="flex-shrink:0;border:none;background:#fff;color:#0a4958;font-weight:800;font-size:13px;border-radius:10px;padding:9px 13px;cursor:pointer">'+(IN_APP?'Im Browser':'Einrichten')+'</button></div>';
-    }
     return ''+
       '<div style="padding:6px 4px 16px"><div style="font-size:28px;font-weight:900;color:var(--text);letter-spacing:-.6px">'+greetLine(name)+'</div>'+
       '<div style="font-size:14px;color:var(--text-muted);margin-top:3px;font-weight:500">'+homeSub()+'</div></div>'+
       dupBanner+
-      pkBanner+
       statCards()+
       '<div style="height:14px"></div>'+
       planCard()+
@@ -1376,9 +1322,6 @@
     },
     mergeRequest:function(){ if(S.busy) return; setQuiet({busy:true}); api('/api/member/duplicates',{method:'POST',body:JSON.stringify({action:'merge'})}).then(function(d){ S.busy=false; if(d&&d.ok){ S.dupNotice=S.dupNotice||{}; S.dupNotice.requested=true; setS({msg:'Anfrage gesendet – wir kümmern uns darum.'}); } else { setS({msg:(d&&d.message)||'Konnte nicht gesendet werden.'}); } }).catch(function(){ setS({busy:false,msg:'Konnte nicht gesendet werden.'}); }); },
     dupDismiss:function(){ setS({dupDismissed:true}); },
-    loginPasskey:function(){ loginPasskey(); },
-    registerPasskey:function(){ registerPasskey(); },
-    openExternal:function(){ openExternal(); },
     loginBack:function(){ setS({loginStep:'request',otp:'',loginErr:''}); },
     loginNumberMode:function(){ setS({loginStep:'number',loginErr:''}); },
     loginPhoneMode:function(){ setS({loginStep:'phone',loginErr:''}); },
