@@ -33,13 +33,10 @@ module.exports = async function handler(req, res) {
     // Pro E-Mail begrenzen (Mail-Bombing verhindern) – ohne nach außen zu verraten
     const emailOk = email ? await M.rateLimit('otpreq:e:' + email, 5, 1800) : false;
     if (emailOk) {
-      const m = await M.findByEmailDob(email, d.dob);
-      if (m && m.id != null) {
-        // Login-Identität = primärer Treffer; die WhatsApp-Nummer darf bei Dubletten
-        // von JEDEM Datensatz derselben Person stammen.
-        let phone;
-        if (via === 'whatsapp') { try { phone = await M.phoneByEmailDob(email, d.dob); } catch (e) {} }
-        const r = await sendLoginCode(m, req.headers['host'], { channel: via, phone: phone });
+      // Dubletten-robust: echten Mitglieds-Datensatz als Identität + Nummer über alle Dubletten.
+      const info = await M.resolveLogin(email, d.dob);
+      if (info && info.member && info.member.id != null) {
+        const r = await sendLoginCode(info.member, req.headers['host'], { channel: via, phone: via === 'whatsapp' ? info.phone : undefined });
         if (r && r.challenge) challenge = r.challenge;
       }
     }

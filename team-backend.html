@@ -59,7 +59,7 @@ var S={ token:null, screen:'inbox', convs:[], counts:{}, selKey:null, sel:null,
         members:[], membersLoaded:false, membersLoading:false,
         memberSearch:'', memberResults:null, memberSearching:false,
         reassignOpen:false, reassignSearch:'', reassignResults:null, reassignSearching:false, reassignBusy:false,
-        profile:null, profileLoading:false,
+        profile:null, profileLoading:false, dupLoading:false, dupData:null,
         articles:[], articlesLoaded:false, articlesLoading:false,
         helpView:'list', editor:null, helpSearch:'', helpCat:'all',
         stats:null, statsLoading:false };
@@ -218,6 +218,25 @@ async function openProfile(id){
   catch(e){} S.profileLoading=false; render();
 }
 function backToMembers(){ S.profile=null; render(); }
+
+// ---------- Dubletten-Prüfung ----------
+async function loadDuplicates(){
+  S.dupLoading=true; S.dupData=null; render();
+  try{ var r=await tapi('/api/team/duplicates'); S.dupData=r&&r.ok?r:{groups:[]}; }
+  catch(e){ S.dupData={groups:[]}; }
+  S.dupLoading=false; render();
+}
+function dupPanelHTML(){
+  if(S.dupLoading) return '<div style="padding:24px;text-align:center"><span class="spin"></span><div style="font-size:12.5px;color:#8a929a;font-weight:700;margin-top:8px">Prüfe Magicline auf Doppel-Datensätze …</div></div>';
+  if(!S.dupData) return '';
+  var g=S.dupData.groups||[];
+  if(!g.length) return '<div style="padding:20px;text-align:center;color:#1d7a3e;font-size:13.5px;font-weight:700">Keine Dubletten gefunden ('+(S.dupData.emailsChecked||0)+' Mitglieder geprüft). 🎉</div>';
+  return '<div style="padding:14px 18px 2px;font-size:12px;font-weight:800;color:#b53a2c">'+g.length+' mögliche Dublette(n)</div>'+g.map(function(grp){
+    return '<div style="border-top:1px solid #f4f6f7;padding:12px 18px"><div style="font-size:12.5px;font-weight:800;color:#42454b;margin-bottom:8px">'+esc(grp.email)+' · '+grp.count+' Datensätze</div>'+
+      grp.records.map(function(r){ return '<div style="display:flex;align-items:center;gap:10px;padding:7px 0"><div style="width:30px;height:30px;border-radius:50%;background:#dfe9eb;color:#0a4958;font-weight:800;font-size:11px;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+esc(r.initials)+'</div><div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:700">'+esc(r.name)+(r.customerNumber?' · '+esc(r.customerNumber):' · <span style="color:#C77A2E">ohne Mitgliedsnr.</span>')+'</div><div style="font-size:11.5px;color:#8a929a;font-weight:600">'+esc(r.dob||'—')+(r.phone?' · '+esc(r.phone):'')+' · ID '+esc(r.id||'?')+'</div></div></div>'; }).join('')+
+      '</div>';
+  }).join('')+'<div style="padding:12px 18px;font-size:11.5px;color:#a9b1b6;font-weight:600;border-top:1px solid #f4f6f7">Zusammenführen im Magicline-Backend.'+(S.dupData.capped?(' (Nur '+(S.dupData.emailsChecked||0)+' E-Mails geprüft.)'):'')+'</div>';
+}
 
 // ---------- reassign (Vorgang einem anderen Kunden zuordnen) ----------
 function openReassign(){ S.reassignOpen=true; S.reassignSearch=''; S.reassignResults=null; S.reassignSearching=false; S.reassignBusy=false; render(); setTimeout(function(){ var i=document.getElementById('rasearch'); if(i) i.focus(); },30); }
@@ -640,9 +659,17 @@ function membersNode(){
   node.innerHTML='<div style="max-width:1000px">'+
     '<div style="position:relative;margin-bottom:16px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8a929a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="position:absolute;left:14px;top:50%;transform:translateY(-50%)"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>'+
       '<input id="msearch" value="'+esc(S.memberSearch)+'" placeholder="Name, Mitgliedsnummer oder E-Mail in Magicline suchen" style="width:100%;padding:12px 14px 12px 42px;border:1.5px solid #dce3e4;border-radius:12px;font-size:14.5px;background:#fff"></div>'+
+    '<div style="background:#fff;border-radius:16px;box-shadow:0 12px 32px rgba(4,33,40,.08);margin-bottom:16px;overflow:hidden">'+
+      '<button data-dupcheck="1" style="display:flex;align-items:center;justify-content:space-between;width:100%;padding:14px 18px;border:none;background:#fff;cursor:pointer">'+
+        '<span style="display:flex;align-items:center;gap:10px;font-size:14px;font-weight:800;color:#42454b"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#C77A2E" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="12" height="12" rx="2"></rect><path d="M4 16V5a1 1 0 0 1 1-1h11"></path></svg>Dubletten prüfen</span>'+
+        '<span style="font-size:12px;color:#8a929a;font-weight:700">'+(S.dupData?'erneut prüfen ›':'Magicline-Doppel finden ›')+'</span>'+
+      '</button>'+
+      '<div id="dupbox">'+dupPanelHTML()+'</div>'+
+    '</div>'+
     '<div style="background:#fff;border-radius:18px;box-shadow:0 12px 32px rgba(4,33,40,.08);overflow:hidden"><div id="memberrows">'+memberRowsHTML()+'</div></div></div>';
   setTimeout(function(){
     var s=node.querySelector('#msearch'); if(s) s.oninput=function(){ onMemberSearch(s.value); };
+    var dc=node.querySelector('[data-dupcheck]'); if(dc) dc.onclick=loadDuplicates;
     updateMemberRows();
   },0);
   return node;
