@@ -948,16 +948,15 @@
   (function(){
     try{
       fetch('/api/articles').then(function(r){return r.json();}).then(function(d){
-        if(!d||!d.ok||!Array.isArray(d.articles)) return;
-        var added=0;
-        d.articles.forEach(function(a){
-          if(!a||!a.title) return;
-          if(HELP_ARTICLES.some(function(x){return x.id&&x.id===a.id;})) return;
-          var body=String(a.body||'');
-          HELP_ARTICLES.push({ id:a.id, t:a.title, cat:a.catLabel||'Mitgliedschaft', prev:body.replace(/\s+/g,' ').slice(0,120), body:body });
-          added++;
-        });
-        if(added && typeof render==='function' && S && S.screen==='help') render();
+        if(!d||!d.ok||!Array.isArray(d.articles)||!d.articles.length) return;
+        // Der vom Team gepflegte Store ist die Quelle der Wahrheit. Titel-Dubletten
+        // zu den eingebauten Artikeln werden durch die Store-Version ersetzt (so
+        // wirken Team-Bearbeitungen + Aufrufe werden gezählt), Rest bleibt erhalten.
+        var kvTitles={};
+        var kvArts=d.articles.filter(function(a){return a&&a.title;}).map(function(a){ var body=String(a.body||''); kvTitles[String(a.title).trim().toLowerCase()]=1; return { id:a.id, t:a.title, cat:a.catLabel||'Mitgliedschaft', prev:body.replace(/\s+/g,' ').slice(0,120), body:body }; });
+        var keep=HELP_ARTICLES.filter(function(x){ return !kvTitles[String(x.t||'').trim().toLowerCase()]; });
+        HELP_ARTICLES.length=0; Array.prototype.push.apply(HELP_ARTICLES, kvArts.concat(keep));
+        if(typeof render==='function' && S && S.screen==='help') render();
       }).catch(function(){});
     }catch(e){}
   })();

@@ -20,6 +20,7 @@ module.exports = async function handler(req, res) {
   if (!Articles.hasStore) { res.statusCode = 200; return res.end(JSON.stringify({ ok: true, articles: [], disabled: true })); }
 
   if (req.method === 'GET') {
+    try { await Articles.seedDefaults(); } catch (e) {}   // Standard-Artikel beim ersten Mal anlegen
     const url = new URL(req.url, 'http://x');
     const id = url.searchParams.get('id');
     if (id) {

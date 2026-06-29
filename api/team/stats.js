@@ -37,6 +37,7 @@ module.exports = async function handler(req, res) {
   };
 
   let arts = [];
+  try { await Articles.seedDefaults(); } catch (e) {}   // Standard-Artikel beim ersten Mal anlegen
   try { arts = await Articles.list(); } catch (e) {}
   const articlesPublished = arts.filter((a) => a.status === 'veröffentlicht').length;
   const articleViews = arts.reduce((s, a) => s + (a.views || 0), 0);
