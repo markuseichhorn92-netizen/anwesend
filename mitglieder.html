@@ -410,6 +410,12 @@
         '<div style="margin-top:14px">'+dpField()+'</div>'+remember+
         '<button class="btn" id="li_btn" data-act="loginPhone" style="margin-top:20px;padding:16px;font-size:16px">'+(S.busy?'Code wird gesendet …':'Code per WhatsApp anfordern')+'</button>'+e+
         '<div style="text-align:center;margin-top:16px"><button data-act="loginBack2" style="background:none;border:none;color:'+TEAL+';font-weight:700;font-size:13px;cursor:pointer">‹ Zurück zum E-Mail-Login</button></div>';
+    } else if(S.loginStep==='confirmNumber'){
+      inner='<div style="font-size:26px;font-weight:900;color:var(--text);letter-spacing:-.5px">Konto bestätigen</div>'+
+        '<div style="font-size:14px;color:var(--text-muted);margin-top:7px;line-height:1.5">Zu diesen Daten gibt es <b>mehrere Konten</b>. Bitte gib zur Sicherheit deine <b>Mitgliedsnummer</b> ein – dann senden wir den Code an genau das richtige Konto.</div>'+
+        '<div style="margin-top:22px"><label class="lbl">Mitgliedsnummer</label><input id="li_num" type="text" placeholder="z. B. M-962" class="inp" value="'+esc(S.liNum)+'" oninput="window.__setLi(\'num\',this.value)"></div>'+remember+
+        '<button class="btn" id="li_btn" data-act="confirmNumber" style="margin-top:20px;padding:16px;font-size:16px">'+(S.busy?'Prüfe …':'Code anfordern')+'</button>'+e+
+        '<div style="text-align:center;margin-top:16px"><button data-act="loginBack2" style="background:none;border:none;color:'+TEAL+';font-weight:700;font-size:13px;cursor:pointer">‹ Zurück</button></div>';
     } else if(S.loginStep==='verify'){
       inner='<div style="font-size:26px;font-weight:900;color:var(--text);letter-spacing:-.5px">Code eingeben</div>'+
         '<div style="font-size:14px;color:var(--text-muted);margin-top:7px;line-height:1.5">'+(S.loginVia==='whatsapp'?'Wir haben dir einen 6-stelligen Code <b style="color:var(--text)">per WhatsApp</b> an deine hinterlegte Handynummer geschickt (oder an deine E-Mail, falls keine Nummer hinterlegt ist).':'Wir haben dir einen 6-stelligen Code '+(S.liEmail?('an <b style="color:var(--text)">'+esc(S.liEmail)+'</b>'):'an deine hinterlegte E-Mail-Adresse')+' geschickt – oder nutze den Anmelde-Link aus der E-Mail.')+'</div>'+
@@ -1236,10 +1242,29 @@
       setQuiet({busy:true,loginErr:'',loginVia:via});
       fetch('/api/member/login-request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:email,dob:dob,channel:via})})
         .then(function(r){return r.json().catch(function(){return {};});})
-        .then(function(j){ if(j&&j.challenge){ setS({busy:false,challenge:j.challenge,loginStep:'verify',otp:'',loginErr:'',loginVia:(j.via||via)}); } else { setS({busy:false,loginErr:'Es ist ein Fehler aufgetreten. Bitte später erneut.'}); } })
+        .then(function(j){
+          if(j&&j.step==='number'){ setS({busy:false,liNum:'',loginStep:'confirmNumber',loginErr:''}); return; }
+          if(j&&j.challenge){ setS({busy:false,challenge:j.challenge,loginStep:'verify',otp:'',loginErr:'',loginVia:(j.via||via)}); return; }
+          setS({busy:false,loginErr:'Es ist ein Fehler aufgetreten. Bitte später erneut.'});
+        })
         .catch(function(){ setS({busy:false,loginErr:'Es ist ein Fehler aufgetreten. Bitte später erneut.'}); });
     },
-    resendCode:function(){ if(S.loginVia==='whatsapp' && S.liPhone && !S.liEmail){ ACT.loginPhone(); } else { ACT.reqCode(S.loginVia); } },
+    // Eindeutigkeit bei mehreren Konten: Mitgliedsnummer bestätigen -> Code ans richtige Konto.
+    confirmNumber:function(){
+      var email=(S.liEmail||'').trim(), dob=S.liDob||'', num=(S.liNum||'').trim();
+      if(!num){ setS({loginErr:'Bitte deine Mitgliedsnummer eingeben.'}); return; }
+      var via=S.loginVia||'email';
+      setQuiet({busy:true,loginErr:''});
+      fetch('/api/member/login-request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:email,dob:dob,channel:via,customerNumber:num})})
+        .then(function(r){return r.json().catch(function(){return {};});})
+        .then(function(j){
+          if(j&&j.numberMismatch){ setS({busy:false,loginErr:'Diese Mitgliedsnummer passt nicht zu den angegebenen Daten.'}); return; }
+          if(j&&j.challenge){ setS({busy:false,challenge:j.challenge,loginStep:'verify',otp:'',loginErr:'',loginVia:(j.via||via)}); return; }
+          setS({busy:false,loginErr:'Es ist ein Fehler aufgetreten. Bitte später erneut.'});
+        })
+        .catch(function(){ setS({busy:false,loginErr:'Es ist ein Fehler aufgetreten.'}); });
+    },
+    resendCode:function(){ if(S.loginStep==='confirmNumber'){ ACT.confirmNumber(); } else if(S.loginVia==='whatsapp' && S.liPhone && !S.liEmail){ ACT.loginPhone(); } else { ACT.reqCode(S.loginVia); } },
     loginBack:function(){ setS({loginStep:'request',otp:'',loginErr:''}); },
     loginNumberMode:function(){ setS({loginStep:'number',loginErr:''}); },
     loginPhoneMode:function(){ setS({loginStep:'phone',loginErr:''}); },

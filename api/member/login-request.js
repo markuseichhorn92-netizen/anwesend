@@ -1,16 +1,20 @@
 'use strict';
 
 /**
- * POST /api/member/login-request   { email, dob }
- * Schritt 1 des Logins: Mitglied über E-Mail + Geburtsdatum suchen und – bei
- * Treffer – einen 6-stelligen Einmal-Code an die hinterlegte E-Mail senden.
- * Gibt IMMER { ok:true, challenge } zurück (kein Enumeration-Leak); ob ein
- * Code verschickt wurde, ist von außen nicht unterscheidbar.
+ * POST /api/member/login-request   { email, dob, channel?, customerNumber? }
+ * Schritt 1 des Logins: Mitglied über E-Mail + Geburtsdatum suchen.
+ *   - genau 1 Treffer  -> 6-stelligen Einmal-Code senden ({ step:'code', challenge })
+ *   - mehrere Treffer  -> Mitgliedsnummer zur Eindeutigkeit anfordern ({ step:'number' })
+ *                         (mit customerNumber erneut aufrufen -> exakter Datensatz)
+ *   - 0 Treffer        -> tut so, als wäre ein Code unterwegs (kein Enumeration-Leak)
  */
 
 const crypto = require('node:crypto');
 const M = require('../../lib/members');
 const { sendLoginCode } = require('../../lib/loginCode');
+
+// Mitgliedsnummern locker vergleichen ("M-1146" == "1146" == "m1146").
+function bareNum(s) { return String(s || '').toUpperCase().replace(/\s+/g, '').replace(/^M-?/, ''); }
 
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json');
@@ -24,24 +28,34 @@ module.exports = async function handler(req, res) {
 
   const d = await M.readBody(req);
   const email = String(d.email || '').trim().toLowerCase();
-  // Gewünschter Zustellweg. Für die Anzeige IMMER zurückgegeben (kein Enumeration-Leak:
-  // ob tatsächlich gesendet wurde, bleibt von außen unsichtbar).
   const via = d.channel === 'whatsapp' ? 'whatsapp' : 'email';
+  const num = String(d.customerNumber || '').trim();
   let challenge = crypto.randomBytes(24).toString('hex');
 
   try {
     // Pro E-Mail begrenzen (Mail-Bombing verhindern) – ohne nach außen zu verraten
     const emailOk = email ? await M.rateLimit('otpreq:e:' + email, 5, 1800) : false;
     if (emailOk) {
-      // Dubletten-robust: echten Mitglieds-Datensatz als Identität + Nummer über alle Dubletten.
-      const info = await M.resolveLogin(email, d.dob);
-      if (info && info.member && info.member.id != null) {
-        const r = await sendLoginCode(info.member, req.headers['host'], { channel: via, phone: via === 'whatsapp' ? info.phone : undefined });
-        if (r && r.challenge) challenge = r.challenge;
+      const matches = await M.findAllByEmailDob(email, d.dob);   // alle Datensätze zu E-Mail+Geburtsdatum
+      if (matches.length > 1 && !num) {
+        // Mehrere Konten -> Mitgliedsnummer zur Eindeutigkeit anfordern (noch kein Code).
+        res.statusCode = 200; return res.end(JSON.stringify({ ok: true, step: 'number' }));
       }
+      if (matches.length >= 1) {
+        const chosen = matches.length === 1 ? matches[0] : matches.find((c) => bareNum(c.customerNumber) === bareNum(num));
+        if (chosen && chosen.id != null) {
+          let phone; if (via === 'whatsapp') { try { phone = await M.phoneByEmailDob(email, d.dob); } catch (e) {} }
+          const r = await sendLoginCode(chosen, req.headers['host'], { channel: via, phone: phone });
+          if (r && r.challenge) challenge = r.challenge;
+        } else if (num) {
+          // Nummer passt nicht zu E-Mail+Geburtsdatum -> erneut fragen (Hinweis).
+          res.statusCode = 200; return res.end(JSON.stringify({ ok: true, step: 'number', numberMismatch: true }));
+        }
+      }
+      // 0 Treffer: nichts senden, aber unten so antworten, als wäre ein Code unterwegs.
     }
   } catch (e) { /* still return ok to avoid leaking */ }
 
   res.statusCode = 200;
-  return res.end(JSON.stringify({ ok: true, challenge: challenge, via: via }));
+  return res.end(JSON.stringify({ ok: true, step: 'code', challenge: challenge, via: via }));
 };
