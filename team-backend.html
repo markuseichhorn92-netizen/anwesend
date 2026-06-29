@@ -60,6 +60,7 @@ var S={ token:null, screen:'inbox', convs:[], counts:{}, selKey:null, sel:null,
         memberSearch:'', memberResults:null, memberSearching:false,
         reassignOpen:false, reassignSearch:'', reassignResults:null, reassignSearching:false, reassignBusy:false,
         profile:null, profileLoading:false, dupLoading:false, dupData:null,
+        convProfile:null, convProfileLoading:false,
         articles:[], articlesLoaded:false, articlesLoading:false,
         helpView:'list', editor:null, helpSearch:'', helpCat:'all',
         stats:null, statsLoading:false };
@@ -132,13 +133,23 @@ function splitKey(key){ var i=key.indexOf(':'); return [key.slice(0,i), key.slic
 
 async function openConv(key){
   stickBottom=true;   // beim Öffnen immer ans Ende
-  S.selKey=key; S.draft=''; S.note=''; S.mobileThread=true; S.panelOpen=false; render();
+  S.selKey=key; S.draft=''; S.note=''; S.mobileThread=true; S.panelOpen=false; S.convProfile=null; S.convProfileLoading=false; render();
   var p=splitKey(key);
+  loadConvProfile(p[0], key);
   try{
     var r=await tapi('/api/team/conversation?m='+encodeURIComponent(p[0])+'&id='+encodeURIComponent(p[1]));
     if(r.ok){ S.sel=r.conversation; var c=findConv(key); if(c) c.teamUnread=false; S.replyChannel=(S.sel&&S.sel.channel==='whatsapp')?'whatsapp':'email'; }
     render();
   }catch(e){ render(); }
+}
+// Vollständiges Magicline-Profil des Mitglieds fürs Kontext-Panel laden (nicht bei
+// Interessenten/Pseudo-IDs "wa…"). Per key gegen Races abgesichert.
+function loadConvProfile(memberId, key){
+  if(!memberId || /^wa/.test(String(memberId))){ S.convProfile=null; S.convProfileLoading=false; return; }
+  S.convProfile=null; S.convProfileLoading=true;
+  tapi('/api/team/members?id='+encodeURIComponent(memberId))
+    .then(function(r){ if(S.selKey!==key) return; S.convProfile=(r&&r.ok)?r.profile:null; S.convProfileLoading=false; render(); })
+    .catch(function(){ if(S.selKey!==key) return; S.convProfileLoading=false; render(); });
 }
 
 // Nachrichten-HTML des offenen Vorgangs (für Voll-Render + Live-Update).
@@ -277,6 +288,7 @@ async function doReassign(toId, snap){
   S.reassignBusy=false;
   if(r && r.ok && r.conversation){
     S.sel=r.conversation; S.selKey=r.memberId+':'+r.id; S.reassignOpen=false;
+    loadConvProfile(r.memberId, S.selKey);
     render(); loadInbox();
   } else { S.reassignBusy=false; alert((r&&r.message)||'Zuordnung fehlgeschlagen.'); updateRaRows(); }
 }
@@ -422,6 +434,38 @@ function rowsHTML(){
 }
 function wireRows(container){ container.querySelectorAll('[data-open]').forEach(function(b){ b.onclick=function(){ openConv(b.getAttribute('data-open')); }; }); }
 
+// Eine Zeile „Label: Wert" fürs Mitgliedsdaten-Panel (leere Werte werden weggelassen).
+function pinfoRow(label, val){
+  if(val==null || val==='') return '';
+  return '<div style="display:flex;gap:8px;padding:4px 0;font-size:12.5px;align-items:baseline"><span style="color:#8a929a;font-weight:600;min-width:96px;flex-shrink:0">'+esc(label)+'</span><span style="color:#2a3338;font-weight:700;flex:1;text-align:right;word-break:break-word">'+esc(val)+'</span></div>';
+}
+// Magicline-Daten des Mitglieds (Vertrag, Kontakt, Termine) für das Kontext-Panel.
+function convProfileHTML(sel){
+  if(sel.member && sel.member.lead) return '<div style="font-size:12.5px;color:#8a929a;font-weight:600">Interessent – noch kein Magicline-Profil.'+(sel.member.phone?'<br>Tel.: '+esc(sel.member.phone):'')+'</div>';
+  if(S.convProfileLoading) return '<div style="padding:12px;text-align:center"><span class="spin"></span></div>';
+  var p=S.convProfile;
+  if(!p) return '<div style="font-size:12.5px;color:#a9b1b6;font-weight:600">Keine Magicline-Daten verfügbar.</div>';
+  var ct=p.contract||{};
+  var hasContract = !!(p.contract && (ct.rateName || ct.startDate || ct.active!=null));
+  var statusLabel = !hasContract ? null : (ct.active===false ? (ct.reversed?'Widerrufen':'Ehemalig') : 'Aktiv');
+  var rows = pinfoRow('Mitgliedsnr.',p.nr)
+    + pinfoRow('Status',statusLabel)
+    + pinfoRow('Tarif',ct.rateName)
+    + pinfoRow('Mitglied seit',ct.startDate)
+    + pinfoRow('Vertragsende',ct.endDate||(ct.active===false?null:'läuft'))
+    + pinfoRow('Nächste Kündigung',ct.nextCancellationDate)
+    + pinfoRow('Telefon',p.phone)
+    + pinfoRow('E-Mail',p.email)
+    + pinfoRow('Geburtstag',p.birthday)
+    + pinfoRow('Adresse',p.address)
+    + pinfoRow('IBAN',p.ibanMasked);
+  var appts = (p.appointments&&p.appointments.length)
+    ? '<div style="margin-top:9px;padding-top:9px;border-top:1px solid #eef3f4"><div style="font-size:10.5px;font-weight:800;color:#8a929a;letter-spacing:.5px;margin-bottom:5px">NÄCHSTE TERMINE</div>'+p.appointments.slice(0,3).map(function(a){ return '<div style="font-size:12px;color:#2a3338;font-weight:600;padding:2px 0">'+esc(a.title)+' · '+esc(fmtDT(a.start))+'</div>'; }).join('')+'</div>'
+    : '';
+  var prof = '<div style="margin-top:9px;padding-top:9px;border-top:1px solid #eef3f4"><button data-openprof="'+esc(p.id||'')+'" style="font-size:12px;font-weight:800;color:'+TEAL+';background:none;border:none;padding:0;cursor:pointer">Vollständiges Profil ›</button></div>';
+  return (rows||'<div style="font-size:12.5px;color:#a9b1b6;font-weight:600">Keine Stammdaten.</div>') + appts + prof;
+}
+
 function inboxNode(){
   var node=el('<div class="adm-inbox'+(S.mobileThread?' thread':'')+'" style="flex:1;min-height:0;display:flex;background:#fff"></div>');
 
@@ -508,6 +552,7 @@ function inboxNode(){
         '<div style="min-width:0;flex:1"><div style="font-size:15px;font-weight:900;letter-spacing:-.3px;display:flex;align-items:center;gap:7px"><span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(sel2.member.name)+'</span>'+((sel2.member&&sel2.member.lead)?'<span style="font-size:10px;font-weight:800;color:#C77A2E;background:#fbf0e3;border-radius:20px;padding:2px 8px;flex-shrink:0">INTERESSENT</span>':'')+'</div>'+
           '<div style="font-size:12px;color:#8a929a;font-weight:600">'+esc(sel2.member.nr||(sel2.member&&sel2.member.lead?'kein Mitglied':'—'))+(sel2.member.email?' · '+esc(sel2.member.email):'')+'</div></div></div>'+
       '<div style="padding:12px 20px 0"><button data-reassign="1" style="display:flex;align-items:center;justify-content:center;gap:7px;width:100%;padding:9px;border:1.5px solid #e4eaeb;background:#fff;border-radius:11px;font-size:12.5px;font-weight:800;color:#42454b"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#6b7780" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3l4 4-4 4"/><path d="M20 7H9a4 4 0 0 0-4 4"/><path d="M8 21l-4-4 4-4"/><path d="M4 17h11a4 4 0 0 0 4-4"/></svg>Zuordnung ändern</button></div>'+
+      '<div style="padding:14px 20px 0"><div style="background:#f8fafb;border:1px solid #eef3f4;border-radius:12px;padding:12px 14px"><div style="font-size:11px;font-weight:800;color:#8a929a;text-transform:uppercase;letter-spacing:.6px;margin-bottom:7px">Mitgliedsdaten</div>'+convProfileHTML(sel2)+'</div></div>'+
       '<div style="padding:16px 20px;display:flex;flex-direction:column;gap:18px">'+
         '<div><div style="font-size:11px;font-weight:800;color:#8a929a;text-transform:uppercase;letter-spacing:.6px;margin-bottom:9px">Status</div><div style="display:flex;flex-direction:column;gap:6px">'+statusBtns+'</div></div>'+
         '<div><div style="font-size:11px;font-weight:800;color:#8a929a;text-transform:uppercase;letter-spacing:.6px;margin-bottom:9px">Priorität</div><div style="display:flex;gap:6px">'+prioBtns+'</div></div>'+
@@ -558,6 +603,7 @@ function wireInbox(node){
   node.querySelectorAll('[data-assign]').forEach(function(b){ b.onclick=function(){ act('assignee',{value:b.getAttribute('data-assign')||null}); }; });
   var cc=node.querySelector('#closecase'); if(cc) cc.onclick=function(){ act(S.sel.teamStatus==='abgeschlossen'?'reopen':'close'); };
   var rb=node.querySelector('[data-reassign]'); if(rb) rb.onclick=openReassign;
+  var op=node.querySelector('[data-openprof]'); if(op) op.onclick=function(){ var id=op.getAttribute('data-openprof'); if(id){ S.screen='members'; openProfile(id); } };
   var ras=node.querySelector('#rasearch'); if(ras){ ras.oninput=function(){ onReassignSearch(ras.value); }; }
   var rac=node.querySelector('#racancel'); if(rac) rac.onclick=closeReassign;
   if(S.reassignOpen) updateRaRows();
