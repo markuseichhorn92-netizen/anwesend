@@ -930,6 +930,24 @@
       return {type:'p',text:b};
     });
   }
+  // Vom Team im Backend veröffentlichte Hilfe-Artikel live dazuladen.
+  (function(){
+    try{
+      fetch('/api/articles').then(function(r){return r.json();}).then(function(d){
+        if(!d||!d.ok||!Array.isArray(d.articles)) return;
+        var added=0;
+        d.articles.forEach(function(a){
+          if(!a||!a.title) return;
+          if(HELP_ARTICLES.some(function(x){return x.id&&x.id===a.id;})) return;
+          var body=String(a.body||'');
+          HELP_ARTICLES.push({ id:a.id, t:a.title, cat:a.catLabel||'Mitgliedschaft', prev:body.replace(/\s+/g,' ').slice(0,120), body:body });
+          added++;
+        });
+        if(added && typeof render==='function' && S && S.screen==='help') render();
+      }).catch(function(){});
+    }catch(e){}
+  })();
+
   function helpFiltered(){
     var term=(S.helpQ||'').trim().toLowerCase();
     var arr=HELP_ARTICLES.map(function(a,i){return {a:a,i:i};});
@@ -1308,7 +1326,7 @@
         .then(function(d){ DATA.appts=null; loadAppts(); })
         .catch(function(){ DATA.appts=null; loadAppts(); }); },
     // help & kontakt
-    openArticle:function(a){ setS({helpSel:+a,artFb:null}); },
+    openArticle:function(a){ var art=HELP_ARTICLES[+a]; if(art&&art.id){ try{ fetch('/api/articles?id='+encodeURIComponent(art.id)); }catch(e){} } setS({helpSel:+a,artFb:null}); },
     helpBack:function(){ setS({helpSel:null}); },
     helpCat:function(a){ S.helpCat=(S.helpCat===a?'all':a); S.helpQ=''; S.helpShowAll=false; setS({}); },
     helpToggleAll:function(){ setQuiet({helpShowAll:!S.helpShowAll}); },
