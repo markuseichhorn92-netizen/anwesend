@@ -652,11 +652,17 @@ function dashNode(){
   var attn=S.convs.filter(function(c){ return c.teamStatus!=='abgeschlossen'; })
     .sort(function(a,b){ var r={hoch:0,mittel:1,niedrig:2}; var so={neu:0,bearbeitung:1,wartet:2}; return (r[a.priority]-r[b.priority])||((so[a.teamStatus]||3)-(so[b.teamStatus]||3)); }).slice(0,6);
   var wrap=el('<div class="scrl" style="flex:1;min-height:0;overflow-y:auto;padding:26px 28px 36px"></div>');
-  var kpis=[['Offene Vorgänge',open,'#e7f1f3',TEAL,'open'],['Aktion erforderlich',neu,'#fbeae7','#b53a2c','neu'],['Erledigt',(S.counts.done||0),'#e8f6ed','#1d7a3e','done'],['Ungelesen',(S.counts.unread||0),'#fff3e8',ORANGE,'open']];
+  var ICO={
+    open:'<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="'+TEAL+'" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z"/><path d="M4 6l8 6 8-6"/></svg>',
+    neu:'<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#b53a2c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.5L1.8 18a1.5 1.5 0 0 0 1.3 2.3h17.8a1.5 1.5 0 0 0 1.3-2.3L13.7 3.5a1.5 1.5 0 0 0-2.6 0z"/><path d="M12 9v4M12 17h.01"/></svg>',
+    done:'<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#1d7a3e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.1V12a10 10 0 1 1-5.9-9.1"/><path d="M22 4L12 14.01l-3-3"/></svg>',
+    unread:'<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="'+ORANGE+'" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>'
+  };
+  var kpis=[['Offene Vorgänge',open,'#e7f1f3',TEAL,'open',ICO.open],['Aktion erforderlich',neu,'#fbeae7','#b53a2c','neu',ICO.neu],['Erledigt',(S.counts.done||0),'#e8f6ed','#1d7a3e','done',ICO.done],['Ungelesen',(S.counts.unread||0),'#fff3e8',ORANGE,'open',ICO.unread]];
   var html='<div style="max-width:1180px"><div style="font-size:24px;font-weight:900;letter-spacing:-.5px">Übersicht</div>'+
     '<div style="font-size:14px;color:#6b7780;font-weight:500;margin-top:2px">Dein Studio & Posteingang auf einen Blick.</div>'+
     '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-top:20px">'+
-    kpis.map(function(k){ return '<div class="qtile" data-gokpi="'+esc(k[4])+'" style="background:#fff;border-radius:18px;box-shadow:0 12px 32px rgba(4,33,40,.09);padding:18px 20px;border:1px solid #fff;cursor:pointer"><div style="width:36px;height:36px;border-radius:10px;background:'+k[2]+'"></div><div style="font-size:30px;font-weight:900;margin-top:14px;letter-spacing:-1px;color:'+k[3]+'">'+k[1]+'</div><div style="font-size:13px;color:#6b7780;font-weight:600">'+k[0]+'</div></div>'; }).join('')+'</div>'+
+    kpis.map(function(k){ return '<div class="qtile" data-gokpi="'+esc(k[4])+'" style="background:#fff;border-radius:18px;box-shadow:0 12px 32px rgba(4,33,40,.09);padding:18px 20px;border:1px solid #fff;cursor:pointer"><div style="width:38px;height:38px;border-radius:11px;background:'+k[2]+';display:flex;align-items:center;justify-content:center">'+k[5]+'</div><div style="font-size:30px;font-weight:900;margin-top:14px;letter-spacing:-1px;color:'+k[3]+'">'+k[1]+'</div><div style="font-size:13px;color:#6b7780;font-weight:600">'+k[0]+'</div></div>'; }).join('')+'</div>'+
     '<div class="prof-grid" style="display:grid;grid-template-columns:1.5fr 1fr;gap:18px;margin-top:18px;align-items:start">'+
       // links: Braucht deine Aufmerksamkeit
       '<div style="background:#fff;border-radius:20px;box-shadow:0 14px 38px rgba(4,33,40,.09);overflow:hidden">'+
@@ -665,12 +671,12 @@ function dashNode(){
           return '<div class="lrow" data-openk="'+esc(c.key)+'" style="display:flex;align-items:center;gap:13px;padding:13px 22px;border-top:1px solid #f0f3f4;cursor:pointer"><div style="width:38px;height:38px;border-radius:11px;background:'+t.b+';color:'+t.c+';display:flex;align-items:center;justify-content:center;font-weight:800;font-size:12px;flex-shrink:0">'+esc(c.member.initials||'·')+'</div><div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(t.l)+'</div><div style="font-size:12.5px;color:#8a929a;font-weight:600">'+esc(c.member.name)+' · '+esc(rel(c.updatedAt))+'</div></div><span style="font-size:11px;font-weight:800;color:'+st.c+';background:'+st.b+';border-radius:20px;padding:4px 10px;white-space:nowrap;flex-shrink:0">'+st.l+'</span></div>';
         }).join(''):'<div style="padding:28px;text-align:center;color:#8a929a;font-size:13.5px;font-weight:600">Alles erledigt – keine offenen Vorgänge. 🎉</div>')+
       '</div>'+
-      // rechts: Live-Auslastung + Letzte Aktivität
-      '<div style="display:flex;flex-direction:column;gap:18px">'+
-        auslastungCardHTML()+
-        '<div style="background:#fff;border-radius:20px;box-shadow:0 14px 38px rgba(4,33,40,.09);padding:16px 20px"><div style="font-size:15px;font-weight:900;letter-spacing:-.3px;margin-bottom:2px">Letzte Aktivität</div>'+activityHTML()+'</div>'+
-      '</div>'+
-    '</div></div>';
+      // rechts: Live-Auslastung
+      auslastungCardHTML()+
+    '</div>'+
+    // unten volle Breite: Letzte Aktivität
+    '<div style="background:#fff;border-radius:20px;box-shadow:0 14px 38px rgba(4,33,40,.09);padding:16px 22px;margin-top:18px"><div style="font-size:16px;font-weight:900;letter-spacing:-.3px;margin-bottom:2px">Letzte Aktivität</div>'+activityHTML()+'</div>'+
+  '</div>';
   wrap.innerHTML=html;
   setTimeout(function(){
     wrap.querySelectorAll('[data-openk]').forEach(function(b){ b.onclick=function(){ S.screen='inbox'; openConv(b.getAttribute('data-openk')); }; });
