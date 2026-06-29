@@ -29,10 +29,13 @@ function who(m) {
 }
 
 // Bestätigung ans Mitglied (best effort) – mit persönlichem Werben-Link im Promo.
-async function sendMemberContactMail(m, question, memberId) {
+async function sendMemberContactMail(m, question, memberId, vorgangId) {
   if (!hasMail || !m.email) return;
   try {
     var portal = await memberLink(memberId, 'home');
+    // Reply-To = getokte Inbound-Adresse: antwortet der Kunde auf diese Mail,
+    // landet seine Antwort im selben Vorgang im Postfach.
+    var replyTo = vorgangId ? SR.inboundAddress(memberId, vorgangId) : null;
     var cm = renderEmail({
       preheader: 'Deine Nachricht ist bei uns eingegangen.',
       name: m.firstName || '',
@@ -48,7 +51,7 @@ async function sendMemberContactMail(m, question, memberId) {
       referral: { code: m.referralCode, firstName: m.firstName },
       footer: 'member',
     });
-    await sendMailRaw({ to: m.email, subject: 'Deine Nachricht ist eingegangen – Fit-Inn Trier', text: cm.text, html: cm.html });
+    await sendMailRaw({ to: m.email, subject: 'Deine Nachricht ist eingegangen – Fit-Inn Trier', text: cm.text, html: cm.html, replyTo: replyTo || undefined });
   } catch (e) { /* Mitglied-Mail ist optional */ }
 }
 
@@ -101,7 +104,7 @@ module.exports = async function handler(req, res) {
       + (body.answer ? ('\n\n— Vorgeschlagene KI-Antwort (war nicht ausreichend) —\n' + String(body.answer).slice(0, 1200)) : '');
 
     const mail = await SR.notifyStudio({ member: m, vorgang: vorgang, subject: '✉️ Kontaktanfrage – ' + who(m), text: text });
-    if (mail.ok) await sendMemberContactMail(m, question, sess.id);
+    if (mail.ok) await sendMemberContactMail(m, question, sess.id, vorgang && vorgang.id);
 
     res.statusCode = 200;
     return res.end(JSON.stringify({

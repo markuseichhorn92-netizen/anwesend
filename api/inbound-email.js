@@ -22,6 +22,7 @@ const SR = require('../lib/studioReply');
 
 const RESEND_WEBHOOK_SECRET = process.env.RESEND_WEBHOOK_SECRET || '';
 const SHARED_SECRET = process.env.INBOUND_WEBHOOK_SECRET || process.env.RECORD_SECRET || '';
+const STUDIO_ADDR = (process.env.MAIL_TO || 'info@fit-inn-trier.de').toLowerCase();
 
 // Rohbody als String lesen (für Svix-Verifikation nötig – nicht vorparsen).
 function readRaw(req) {
@@ -98,6 +99,13 @@ module.exports = async function handler(req, res) {
   if (!text && d.email_id) { try { text = await SR.fetchReceivedBody(d.email_id); } catch (e) {} }
   if (!text) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, ignored: 'no_body' })); }
 
-  try { await SR.applyOwnerReply(v.memberId, v.vorgangId, text); } catch (e) { /* nie hart scheitern */ }
-  res.statusCode = 200; return res.end(JSON.stringify({ ok: true }));
+  // Richtung anhand des Absenders: Studio-Postfach -> Team-Antwort; sonst (Kunde) ->
+  // Mitglieder-Antwort. So sind beide Richtungen der E-Mail-Konversation im Postfach.
+  const from = firstStr(d.from, body.from, (d.headers && d.headers.from)).toLowerCase();
+  const isOwner = !!STUDIO_ADDR && from.indexOf(STUDIO_ADDR) >= 0;
+  try {
+    if (isOwner) await SR.applyOwnerReply(v.memberId, v.vorgangId, text);
+    else await SR.applyMemberReply(v.memberId, v.vorgangId, text);
+  } catch (e) { /* nie hart scheitern */ }
+  res.statusCode = 200; return res.end(JSON.stringify({ ok: true, direction: isOwner ? 'team' : 'member' }));
 };
