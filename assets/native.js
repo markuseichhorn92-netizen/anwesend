@@ -30,6 +30,7 @@
     onAuthed: function () {},
     onLogout: function () {},
     biometricUnlock: function () { return Promise.resolve(null); },
+    hasBiometricLogin: function () { return false; },
     signIn: function () { return Promise.resolve({ ok: false, unavailable: true }); },
     available: { push: false, biometrics: false, apple: false, google: false },
   };
@@ -110,14 +111,20 @@
 
   // ── Biometrie: Sitzung sicher ablegen / entsperren ──────────────────────────
   var BIO_SERVER = 'mitglieder.fit-inn-trier.de';
+  function bioFlag(on) { try { if (on) localStorage.setItem('fi_bio', '1'); else localStorage.removeItem('fi_bio'); } catch (e) {} }
   function storeBiometric(t) {
     if (!P.NativeBiometric || !t) return;
-    try { P.NativeBiometric.setCredentials({ username: 'member', password: t, server: BIO_SERVER }).catch(function () {}); } catch (e) {}
+    try { P.NativeBiometric.setCredentials({ username: 'member', password: t, server: BIO_SERVER }).then(function () { bioFlag(true); }).catch(function () {}); } catch (e) {}
   }
   function clearBiometric() {
+    bioFlag(false);
     if (!P.NativeBiometric) return;
     try { P.NativeBiometric.deleteCredentials({ server: BIO_SERVER }).catch(function () {}); } catch (e) {}
   }
+  // Soll der „Mit Face ID anmelden"-Knopf gezeigt werden? (App + Plugin + schon mal eingeloggt)
+  API.hasBiometricLogin = function () {
+    try { return isNative && API.available.biometrics && localStorage.getItem('fi_bio') === '1'; } catch (e) { return false; }
+  };
   API.biometricUnlock = function () {
     if (!P.NativeBiometric) return Promise.resolve(null);
     return P.NativeBiometric.isAvailable().then(function (res) {

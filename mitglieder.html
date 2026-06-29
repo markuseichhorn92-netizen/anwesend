@@ -460,7 +460,13 @@
         '<button class="btn" id="li_btn" data-act="verifyCode" style="margin-top:20px;padding:16px;font-size:16px">'+(S.busy?'Prüfe …':'Anmelden')+'</button>'+e+
         '<div style="display:flex;align-items:center;justify-content:space-between;margin-top:16px"><button data-act="loginBack" style="background:none;border:none;color:'+TEAL+';font-weight:700;font-size:13px;cursor:pointer">‹ E-Mail ändern</button><button data-act="resendCode" style="background:none;border:none;color:'+TEAL+';font-weight:700;font-size:13px;cursor:pointer;text-decoration:underline">'+(S.busy?'…':'Code erneut senden')+'</button></div>';
     } else {
-      inner='<div style="font-size:28px;font-weight:900;color:var(--text);letter-spacing:-.6px">Mitglieder-Login</div>'+
+      var faceBtn='';
+      if(window.FitInnNative && FitInnNative.hasBiometricLogin && FitInnNative.hasBiometricLogin()){
+        faceBtn='<button data-act="faceLogin" style="width:100%;display:flex;align-items:center;justify-content:center;gap:10px;padding:16px;font-size:15.5px;font-weight:800;border:none;background:'+TEALBG+';color:#fff;border-radius:14px;cursor:pointer;margin-bottom:18px">'+
+          '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2"></path><path d="M9 10.5v.6M15 10.5v.6M12 9.5v3l-1 .8M9.3 15s1 1 2.7 1 2.7-1 2.7-1"></path></svg>'+
+          (S.busy?'Face ID …':'Mit Face ID anmelden')+'</button>';
+      }
+      inner=faceBtn+'<div style="font-size:28px;font-weight:900;color:var(--text);letter-spacing:-.6px">Mitglieder-Login</div>'+
         '<div style="font-size:15px;color:var(--text-muted);margin-top:7px;line-height:1.5">Zur Bestätigung deiner Identität – ganz ohne Passwort.</div>'+
         '<div style="margin-top:24px"><label class="lbl">E-Mail-Adresse</label><input id="li_email" type="email" autocomplete="email" placeholder="du@beispiel.de" class="inp" value="'+esc(S.liEmail)+'" oninput="window.__setLi(\'email\',this.value)"></div>'+
         '<div style="margin-top:14px">'+dpField()+'</div>'+remember+
@@ -1284,6 +1290,22 @@
     },
     planEdit:function(){ setQuiet({planEdit:true}); },
     planEditCancel:function(){ setQuiet({planEdit:false}); },
+    // Login per Face ID / Fingerabdruck (nur in der eigenen App): holt die sicher
+    // im Gerät hinterlegte Sitzung nach erfolgreicher Biometrie-Prüfung.
+    faceLogin:function(){
+      if(!(window.FitInnNative && FitInnNative.biometricUnlock)) return;
+      setS({busy:true,loginErr:''});
+      FitInnNative.biometricUnlock().then(function(tok){
+        if(!tok){ setS({busy:false}); return; }   // abgebrochen -> normaler Login bleibt
+        TOKEN=tok;
+        try{ localStorage.setItem('fi_member_token',TOKEN); localStorage.setItem('fi_remember','1'); }catch(e){}
+        return loadMe().then(function(){ loadAppts(); loadPlan(); loadPlanAgg(); loadInbox(); loadPrefs(); if(DATA.checkins===null) loadCheckins(); S.busy=false; nav('home'); });
+      }).catch(function(){
+        TOKEN=null; try{ localStorage.removeItem('fi_member_token'); sessionStorage.removeItem('fi_member_token'); }catch(e){}
+        if(window.FitInnNative && FitInnNative.onLogout) FitInnNative.onLogout();
+        setS({busy:false,loginErr:'Anmeldung per Face ID nicht möglich. Bitte mit Code anmelden.'});
+      });
+    },
     reqCode:function(){
       var email=(S.liEmail||'').trim();
       var dob = S.liDob || '';
@@ -1553,6 +1575,18 @@
   if(MLT){ bootMagic(MLT); }
   else if(TOKEN){ loadMe().then(function(){ loadAppts(); loadPlan(); loadPlanAgg(); loadInbox(); loadPrefs(); if(DATA.checkins===null) loadCheckins(); render(); }).catch(function(){ logout(); }); }
   else render();
+
+  // Face ID: sobald die native Brücke bereit ist, Knopf zeigen und – falls eingerichtet –
+  // direkt anbieten (App öffnen -> Face ID -> drin). Greift nur in der eigenen App.
+  function onNativeReady(){
+    if(TOKEN || MLT) return;
+    if(S.screen==='login' && window.FitInnNative && FitInnNative.hasBiometricLogin && FitInnNative.hasBiometricLogin()){
+      render();
+      ACT.faceLogin();
+    }
+  }
+  window.addEventListener('fitinn-native-ready', onNativeReady);
+  if(window.FitInnNative && FitInnNative.isNative) onNativeReady();
 })();
 </script>
 <script defer src="/_vercel/insights/script.js"></script>
