@@ -316,7 +316,18 @@
 
   function logout(){ closeMenu(); try{ if(window.FitInnNative) FitInnNative.onLogout(); }catch(e){} TOKEN=null; sessionStorage.removeItem('fi_member_token'); localStorage.removeItem('fi_member_token'); DATA={profile:null,contract:null,checkins:null,appts:null}; S.screen='login'; S.loginStep='request'; S.challenge=''; S.otp=''; render(); }
   function pad2(n){ return (n<10?'0':'')+n; }
-  $('brandLogo').addEventListener('click', function(){ if(TOKEN) nav('home'); });
+  // Logo: normale Funktion (eingeloggt -> Startseite) + versteckter Team-Zugang
+  // (5× schnell tippen -> Sicherheitsabfrage -> Team-Backend unter /team).
+  (function(){
+    var taps=0, t=null;
+    $('brandLogo').addEventListener('click', function(){
+      if(TOKEN) nav('home');
+      taps++; if(t) clearTimeout(t); t=setTimeout(function(){ taps=0; }, 1500);
+      if(taps>=5){ taps=0; clearTimeout(t);
+        if(confirm('Team-Bereich öffnen?')) location.assign('/team');
+      }
+    });
+  })();
 
   // Mobiles Burger-Menü (Slide-in-Drawer) öffnen/schließen
   function openMenu(){ var o=$('navOverlay'), d=$('navDrawer'), b=$('burgerBtn'); if(o)o.classList.add('open'); if(d)d.classList.add('open'); document.body.classList.add('menu-open'); if(b)b.setAttribute('aria-expanded','true'); }
