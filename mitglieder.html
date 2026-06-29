@@ -1572,14 +1572,18 @@
       .catch(function(){ cleanMlt(); setS({loginErr:'Der Anmelde-Link konnte nicht geprüft werden. Bitte melde dich erneut an.'}); });
   }
   var MLT=null; try{ MLT=new URL(window.location.href).searchParams.get('mlt'); }catch(e){}
+  // Face-ID-Sperre: in der eigenen App mit eingerichtetem Face ID NICHT automatisch
+  // über den gespeicherten Token einloggen, sondern erst per Biometrie entsperren.
+  var inApp=!!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+  var bioGate=false; try{ bioGate = inApp && localStorage.getItem('fi_bio')==='1'; }catch(e){}
   if(MLT){ bootMagic(MLT); }
+  else if(bioGate){ S.screen='login'; render(); }
   else if(TOKEN){ loadMe().then(function(){ loadAppts(); loadPlan(); loadPlanAgg(); loadInbox(); loadPrefs(); if(DATA.checkins===null) loadCheckins(); render(); }).catch(function(){ logout(); }); }
   else render();
 
-  // Face ID: sobald die native Brücke bereit ist, Knopf zeigen und – falls eingerichtet –
-  // direkt anbieten (App öffnen -> Face ID -> drin). Greift nur in der eigenen App.
+  // Sobald die native Brücke bereit ist: Face ID anbieten (App öffnen -> Face ID -> drin).
   function onNativeReady(){
-    if(TOKEN || MLT) return;
+    if(MLT) return;
     if(S.screen==='login' && window.FitInnNative && FitInnNative.hasBiometricLogin && FitInnNative.hasBiometricLogin()){
       render();
       ACT.faceLogin();
