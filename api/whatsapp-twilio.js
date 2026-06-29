@@ -69,11 +69,19 @@ module.exports = async function handler(req, res) {
       } else {
         unmatched++;
         if (hasMail) {
+          let dbg = '';
+          try {
+            const d = await M.phoneSearchDebug(msg.from);
+            dbg = '\n\n— Magicline-Telefonsuche (Diagnose) für „' + msg.from + '" —\n'
+              + d.map((x) => '  ' + x.variant + '  →  ' + x.count + ' Treffer'
+                + (x.status && x.status !== 200 ? (' (HTTP ' + x.status + ')') : '')).join('\n');
+          } catch (e) {}
           try {
             await sendMail('💬 WhatsApp (nicht zugeordnet) – ' + (msg.name || ('+' + msg.from)),
               'Eine WhatsApp-Nachricht (Twilio) konnte keinem Mitglied zugeordnet werden.\n\n'
               + 'Von: ' + (msg.name ? (msg.name + ' · ') : '') + '+' + msg.from
               + '\n\nNachricht:\n' + msg.text
+              + dbg
               + '\n\nBitte manuell zuordnen/antworten.');
           } catch (e) {}
         }
