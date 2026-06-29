@@ -54,7 +54,7 @@
 'use strict';
 var TEAL='#0a4958', ORANGE='#E08C53';
 var S={ token:null, screen:'inbox', convs:[], counts:{}, selKey:null, sel:null,
-        filter:'all', search:'', loading:false, err:'', draft:'', note:'',
+        filter:'all', search:'', loading:false, err:'', draft:'', note:'', replyChannel:'email',
         mobileThread:false, panelOpen:false, busy:false,
         members:[], membersLoaded:false, membersLoading:false,
         memberSearch:'', memberResults:null, memberSearching:false,
@@ -136,7 +136,7 @@ async function openConv(key){
   var p=splitKey(key);
   try{
     var r=await tapi('/api/team/conversation?m='+encodeURIComponent(p[0])+'&id='+encodeURIComponent(p[1]));
-    if(r.ok){ S.sel=r.conversation; var c=findConv(key); if(c) c.teamUnread=false; }
+    if(r.ok){ S.sel=r.conversation; var c=findConv(key); if(c) c.teamUnread=false; S.replyChannel=(S.sel&&S.sel.channel==='whatsapp')?'whatsapp':'email'; }
     render();
   }catch(e){ render(); }
 }
@@ -183,7 +183,13 @@ async function act(action, extra){
   if(r.ok && r.conversation){ S.sel=r.conversation; }
   else if(r.message){ alert(r.message); }
   S.busy=false;
-  if(action==='reply'){ S.draft=''; }
+  if(action==='reply'){
+    S.draft='';
+    if(r.ok){
+      if(r.channelUsed===null) alert('Antwort gespeichert, konnte aber weder per WhatsApp noch E-Mail zugestellt werden – es fehlen Kontaktdaten.');
+      else if(r.channelFallback) alert('Konnte nicht per '+((extra&&extra.channel==='whatsapp')?'WhatsApp':'E-Mail')+' zustellen – stattdessen per '+(r.channelUsed==='whatsapp'?'WhatsApp':'E-Mail')+' verschickt.');
+    }
+  }
   if(action==='note'){ S.note=''; }
   render();
   loadInbox();   // Liste/Badges aktualisieren
@@ -434,12 +440,24 @@ function inboxNode(){
     // composer
     var comp=el('<div style="border-top:1px solid #eef1f2;padding:12px 18px 14px;flex-shrink:0;background:#fff"></div>');
     var draftOk=!!(S.draft||'').trim();
+    // Verfügbare Antwortkanäle bestimmen (E-Mail braucht Adresse, WhatsApp eine Nummer / WA-Vorgang).
+    var canMail=!!(sel.member&&sel.member.email);
+    var canWa=(sel.channel==='whatsapp')||!!(sel.member&&sel.member.phone);
+    if(S.replyChannel==='whatsapp'&&!canWa) S.replyChannel='email';
+    if(S.replyChannel==='email'&&!canMail&&canWa) S.replyChannel='whatsapp';
+    var bothCh=canMail&&canWa;
+    var seg=bothCh? '<div style="display:inline-flex;border:1.5px solid #e0e7e8;border-radius:10px;overflow:hidden;margin-bottom:9px">'+
+        [['email','E-Mail'],['whatsapp','WhatsApp']].map(function(o){ var a=S.replyChannel===o[0];
+          return '<button data-ch="'+o[0]+'" style="border:none;padding:6px 14px;font-size:12px;font-weight:800;background:'+(a?TEAL:'#fff')+';color:'+(a?'#fff':'#7b858c')+'">'+o[1]+'</button>'; }).join('')+'</div>' : '';
+    var hint=(S.replyChannel==='whatsapp')?'Antwort geht per WhatsApp an das Mitglied.':'Antwort erscheint im Postfach & geht dem Mitglied per E-Mail zu.';
+    if(bothCh) hint+=' · Kanal oben wählbar';
+    else if(!canMail&&!canWa) hint='Achtung: keine Kontaktdaten – Antwort wird nur im Postfach gespeichert.';
     comp.innerHTML=
+      seg+
       '<div style="display:flex;align-items:flex-end;gap:10px;border:1.5px solid #dce3e4;border-radius:15px;padding:8px 8px 8px 14px;background:#fff">'+
         '<textarea id="draft" rows="1" placeholder="Antwort an '+esc((sel.member.name||'').split(" ")[0]||'das Mitglied')+' schreiben …" style="flex:1;border:none;resize:none;font-size:14px;background:transparent;line-height:1.5;padding:6px 0;max-height:140px;min-height:24px">'+esc(S.draft)+'</textarea>'+
         '<button id="send" '+(S.busy?'disabled':'')+' style="display:inline-flex;align-items:center;gap:7px;border:none;border-radius:11px;background:'+(draftOk?TEAL:'#9fb4b8')+';color:#fff;font-weight:800;font-size:13.5px;padding:10px 16px;flex-shrink:0">'+(S.busy?'…':'Senden')+IC.send+'</button></div>'+
-      '<div style="font-size:11.5px;color:#a9b1b6;font-weight:600;margin-top:8px">'+
-        (sel.channel==='whatsapp'?'Antwort geht per WhatsApp an das Mitglied.':'Antwort erscheint im Postfach & geht dem Mitglied per E-Mail zu.')+'</div>';
+      '<div style="font-size:11.5px;color:#a9b1b6;font-weight:600;margin-top:8px">'+hint+'</div>';
     thread.appendChild(comp);
   }
   node.appendChild(thread);
@@ -507,6 +525,7 @@ function wireInbox(node){
   var dr=node.querySelector('#draft'); if(dr){ dr.oninput=function(){ S.draft=dr.value; var sb=node.querySelector('#send'); if(sb) sb.style.background=(dr.value.trim()?TEAL:'#9fb4b8'); };
     dr.onkeydown=function(e){ if(e.key==='Enter'&&(e.metaKey||e.ctrlKey)){ e.preventDefault(); sendReply(); } }; }
   var sd=node.querySelector('#send'); if(sd) sd.onclick=sendReply;
+  node.querySelectorAll('[data-ch]').forEach(function(b){ b.onclick=function(){ S.replyChannel=b.getAttribute('data-ch'); render(); }; });
   var nt=node.querySelector('#note'); if(nt) nt.oninput=function(){ S.note=nt.value; };
   var an=node.querySelector('#addnote'); if(an) an.onclick=function(){ var v=(S.note||'').trim(); if(v) act('note',{text:v}); };
   node.querySelectorAll('[data-status]').forEach(function(b){ b.onclick=function(){ act('status',{value:b.getAttribute('data-status')}); }; });
@@ -524,7 +543,7 @@ function wireInbox(node){
     tmsg.onscroll=function(){ lastThreadScroll=tmsg.scrollTop; stickBottom = (tmsg.scrollHeight - tmsg.scrollTop - tmsg.clientHeight) < 80; };
   }
 }
-function sendReply(){ var v=(S.draft||'').trim(); if(v && !S.busy){ stickBottom=true; act('reply',{text:v}); } }
+function sendReply(){ var v=(S.draft||'').trim(); if(v && !S.busy){ stickBottom=true; act('reply',{text:v, channel:S.replyChannel}); } }
 
 // ---------- render: dashboard ----------
 function dashNode(){

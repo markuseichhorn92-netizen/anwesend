@@ -69,9 +69,21 @@ module.exports = async function handler(req, res) {
     }
     const text = String(body.text || '').trim();
     if (!text) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'Bitte gib eine Nachricht ein.' })); }
-    const r = await SR.applyOwnerReply(m, id, text);
+    const wantCh = (body.channel === 'whatsapp' || body.channel === 'email') ? body.channel : undefined;
+    const r = await SR.applyOwnerReply(m, id, text, { channel: wantCh, author: author });
     if (!r || !r.ok) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'Antwort konnte nicht zugestellt werden.' })); }
     v = await Inbox.get(m, id);
+    if (wantCh && r.channel && r.channel !== wantCh) {
+      // Gewünschter Kanal war nicht möglich -> auf den anderen ausgewichen (UI informieren).
+      await ensureSnapshot(m, v);
+      res.statusCode = 200;
+      return res.end(JSON.stringify({ ok: true, channelUsed: r.channel, channelFallback: true, conversation: View.fullConversation(v, m) }));
+    }
+    if (r.channel === null) {
+      await ensureSnapshot(m, v);
+      res.statusCode = 200;
+      return res.end(JSON.stringify({ ok: true, channelUsed: null, conversation: View.fullConversation(v, m) }));
+    }
   } else if (action === 'status') {
     v = await Inbox.setMeta(m, id, { teamStatus: body.value }) || v;
   } else if (action === 'priority') {
