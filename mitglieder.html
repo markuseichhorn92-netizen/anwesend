@@ -258,11 +258,11 @@
     pfFilter:'all', pfSel:null, pfThread:false, pfDraft:'', pfBusy:false, pfErr:'',
     copied:false, dlMsg:false, dlMsg2:'', emailing:false,
     ciRange:'all', ciFrom:'', ciTo:'',
-    liEmail:'', liNum:'', remember:(localStorage.getItem('fi_remember')==='1'),
+    liEmail:'', liNum:'', liPhone:'', remember:(localStorage.getItem('fi_remember')==='1'),
     loginStep:'request', challenge:'', otp:'',
     liDob:'', waLogin:false, waLoginFetched:false, loginVia:'email',
     loginErr:'' };
-  window.__setLi=function(f,v){ if(f==='email')S.liEmail=v; else if(f==='code'){ S.otp=v; if(S.loginStep==='verify' && !S.busy && S.challenge && String(v).replace(/\D/g,'').length===6){ ACT.verifyCode(); } } else if(f==='num')S.liNum=v; else if(f==='dob')S.liDob=v; };
+  window.__setLi=function(f,v){ if(f==='email')S.liEmail=v; else if(f==='code'){ S.otp=v; if(S.loginStep==='verify' && !S.busy && S.challenge && String(v).replace(/\D/g,'').length===6){ ACT.verifyCode(); } } else if(f==='num')S.liNum=v; else if(f==='phone')S.liPhone=v; else if(f==='dob')S.liDob=v; };
   window.__ciDate=function(which,v){ if(which==='from')S.ciFrom=v; else S.ciTo=v; render(); };
   window.__pauseNote=function(v){ S.pauseReasonText=v; };
   window.__pauseFrom=function(v){ S.pauseFrom=v; render(); };
@@ -403,6 +403,13 @@
         '<div style="margin-top:14px">'+dpField()+'</div>'+remember+
         '<button class="btn" id="li_btn" data-act="loginNumber" style="margin-top:20px;padding:16px;font-size:16px">'+(S.busy?'Prüfe …':'Anmelden')+'</button>'+e+
         '<div style="text-align:center;margin-top:16px"><button data-act="loginBack2" style="background:none;border:none;color:'+TEAL+';font-weight:700;font-size:13px;cursor:pointer">‹ Zurück zum E-Mail-Login</button></div>';
+    } else if(S.loginStep==='phone'){
+      inner='<div style="font-size:26px;font-weight:900;color:var(--text);letter-spacing:-.5px">Mit Handynummer anmelden</div>'+
+        '<div style="font-size:14px;color:var(--text-muted);margin-top:7px;line-height:1.5">Wir senden dir den 6-stelligen Code per <b style="color:#128C4B">WhatsApp</b> an deine in Magicline hinterlegte Handynummer.</div>'+
+        '<div style="margin-top:22px"><label class="lbl">Handynummer</label><input id="li_phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="z. B. 0151 20442244" class="inp" value="'+esc(S.liPhone)+'" oninput="window.__setLi(\'phone\',this.value)"></div>'+
+        '<div style="margin-top:14px">'+dpField()+'</div>'+remember+
+        '<button class="btn" id="li_btn" data-act="loginPhone" style="margin-top:20px;padding:16px;font-size:16px">'+(S.busy?'Code wird gesendet …':'Code per WhatsApp anfordern')+'</button>'+e+
+        '<div style="text-align:center;margin-top:16px"><button data-act="loginBack2" style="background:none;border:none;color:'+TEAL+';font-weight:700;font-size:13px;cursor:pointer">‹ Zurück zum E-Mail-Login</button></div>';
     } else if(S.loginStep==='verify'){
       inner='<div style="font-size:26px;font-weight:900;color:var(--text);letter-spacing:-.5px">Code eingeben</div>'+
         '<div style="font-size:14px;color:var(--text-muted);margin-top:7px;line-height:1.5">'+(S.loginVia==='whatsapp'?'Wir haben dir einen 6-stelligen Code <b style="color:var(--text)">per WhatsApp</b> an deine hinterlegte Handynummer geschickt (oder an deine E-Mail, falls keine Nummer hinterlegt ist).':'Wir haben dir einen 6-stelligen Code '+(S.liEmail?('an <b style="color:var(--text)">'+esc(S.liEmail)+'</b>'):'an deine hinterlegte E-Mail-Adresse')+' geschickt – oder nutze den Anmelde-Link aus der E-Mail.')+'</div>'+
@@ -418,6 +425,7 @@
         (S.waLogin?'<button data-act="reqCode" data-arg="whatsapp" style="margin-top:10px;width:100%;display:flex;align-items:center;justify-content:center;gap:9px;padding:15px;font-size:15px;font-weight:800;border:1.5px solid #25D366;background:#fff;color:#128C4B;border-radius:14px;cursor:pointer"><svg width="19" height="19" viewBox="0 0 24 24" fill="#25D366"><path d="M.057 24l1.687-6.163a11.867 11.867 0 0 1-1.587-5.946C.16 5.335 5.5 0 12.05 0a11.82 11.82 0 0 1 8.413 3.488 11.82 11.82 0 0 1 3.48 8.414c-.003 6.557-5.338 11.892-11.893 11.892a11.9 11.9 0 0 1-5.688-1.448L.057 24zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884a9.86 9.86 0 0 0 1.51 5.26l-.999 3.648 3.477-.999zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.247-.694.247-1.289.173-1.413z"/></svg>Code per WhatsApp anfordern</button>':'')+e+
         '<div style="display:flex;align-items:flex-start;gap:9px;margin-top:18px;padding:13px 15px;background:var(--surface);border:1px solid #e1e8ea;border-radius:12px">'+svg('<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>',{w:1.9,s:17})+'<span style="font-size:12.5px;color:var(--text-muted);line-height:1.5">Deine Daten werden verschlüsselt übertragen und ausschließlich zur Identitätsprüfung genutzt.</span></div>'+
         '<div style="text-align:center;margin-top:16px"><button data-act="loginNumberMode" style="background:none;border:none;color:'+TEAL+';font-weight:700;font-size:13px;cursor:pointer;text-decoration:underline">Keine E-Mail hinterlegt? Mit Mitgliedsnummer anmelden</button></div>'+
+        (S.waLogin?'<div style="text-align:center;margin-top:10px"><button data-act="loginPhoneMode" style="background:none;border:none;color:'+TEAL+';font-weight:700;font-size:13px;cursor:pointer;text-decoration:underline">Oder mit Handynummer anmelden (Code per WhatsApp)</button></div>':'')+
         '<div style="text-align:center;margin-top:18px"><span style="color:var(--text-muted);font-size:14px">Noch kein Mitglied? </span><a href="/mitglied-werden" style="color:'+TEAL+';font-weight:800;font-size:14px;text-decoration:underline;text-underline-offset:3px">Jetzt online beitreten</a></div>';
     }
 
@@ -1229,10 +1237,21 @@
         .then(function(j){ if(j&&j.challenge){ setS({busy:false,challenge:j.challenge,loginStep:'verify',otp:'',loginErr:'',loginVia:(j.via||via)}); } else { setS({busy:false,loginErr:'Es ist ein Fehler aufgetreten. Bitte später erneut.'}); } })
         .catch(function(){ setS({busy:false,loginErr:'Es ist ein Fehler aufgetreten. Bitte später erneut.'}); });
     },
-    resendCode:function(){ ACT.reqCode(S.loginVia); },
+    resendCode:function(){ if(S.loginVia==='whatsapp' && S.liPhone && !S.liEmail){ ACT.loginPhone(); } else { ACT.reqCode(S.loginVia); } },
     loginBack:function(){ setS({loginStep:'request',otp:'',loginErr:''}); },
     loginNumberMode:function(){ setS({loginStep:'number',loginErr:''}); },
+    loginPhoneMode:function(){ setS({loginStep:'phone',loginErr:''}); },
     loginBack2:function(){ setS({loginStep:'request',loginErr:''}); },
+    loginPhone:function(){
+      var phone=(S.liPhone||'').trim();
+      var dob = S.liDob || '';
+      if(!phone||!dob){ setS({loginErr:'Bitte Handynummer und Geburtsdatum ausfüllen.'}); return; }
+      setQuiet({busy:true,loginErr:'',loginVia:'whatsapp'});
+      fetch('/api/member/login-phone',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone:phone,dob:dob})})
+        .then(function(r){return r.json().catch(function(){return {};});})
+        .then(function(j){ if(j&&j.challenge){ setS({busy:false,challenge:j.challenge,loginStep:'verify',otp:'',liEmail:'',loginErr:'',loginVia:'whatsapp'}); } else { setS({busy:false,loginErr:'Es ist ein Fehler aufgetreten. Bitte später erneut.'}); } })
+        .catch(function(){ setS({busy:false,loginErr:'Es ist ein Fehler aufgetreten. Bitte später erneut.'}); });
+    },
     loginNumber:function(){
       var num=(S.liNum||'').trim();
       var dob = S.liDob || '';
