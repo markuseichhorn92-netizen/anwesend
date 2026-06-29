@@ -17,7 +17,6 @@ const M = require('../lib/members');
 const Inbox = require('../lib/inbox');
 const SR = require('../lib/studioReply');
 const WA = require('../lib/whatsapp');
-const { sendMail, hasMail } = require('../lib/mail');
 
 function readRaw(req) {
   return new Promise((resolve) => {
@@ -32,13 +31,21 @@ function parseForm(raw) {
   return o;
 }
 
-async function findOrCreateWaVorgang(member, fromPhone, name) {
+function initialsOf(name) {
+  const p = String(name || '').trim().split(/\s+/).filter(Boolean);
+  if (!p.length) return '';
+  return ((p[0][0] || '') + (p.length > 1 ? (p[p.length - 1][0] || '') : '')).toUpperCase();
+}
+
+// Laufenden WhatsApp-Vorgang wiederverwenden, sonst neu anlegen. memberId ist die
+// echte Magicline-ID ODER eine Pseudo-ID "wa<phone>" für Nicht-Mitglieder (Interessenten).
+async function findOrCreateWaVorgang(memberId, fromPhone, name, snapshot) {
   let list = [];
-  try { list = await Inbox.list(member.id); } catch (e) {}
+  try { list = await Inbox.list(memberId); } catch (e) {}
   const open = (list || []).find((v) => v.channel === 'whatsapp' && v.status !== 'abgeschlossen');
   if (open) return open;
-  return Inbox.addVorgang(member.id, {
-    type: 'whatsapp', channel: 'whatsapp', phone: fromPhone,
+  return Inbox.addVorgang(memberId, {
+    type: 'whatsapp', channel: 'whatsapp', phone: fromPhone, member: snapshot || undefined,
     subject: 'WhatsApp' + (name ? (' · ' + name) : ''),
     systemText: 'WhatsApp-Konversation' + (name ? (' mit ' + name) : '') + ' gestartet.',
   });
@@ -59,33 +66,24 @@ module.exports = async function handler(req, res) {
   }
 
   const msgs = WA.parseTwilioInbound(params);
-  let handled = 0, unmatched = 0;
+  let handled = 0, leads = 0;
   for (const msg of msgs) {
     try {
       const member = await M.findByPhone(msg.from);
+      let memberId, snapshot;
       if (member && member.id != null) {
-        const v = await findOrCreateWaVorgang(member, msg.from, msg.name);
-        if (v) { await SR.applyMemberReply(member.id, v.id, msg.text); handled++; }
+        memberId = String(member.id);
+        const nm = ((member.firstName || '') + ' ' + (member.lastName || '')).trim();
+        snapshot = { name: nm || ('+' + msg.from), nr: member.customerNumber || null,
+          initials: initialsOf(nm) || initialsOf(msg.name) || 'WA', email: member.email || null, phone: msg.from };
       } else {
-        unmatched++;
-        if (hasMail) {
-          let dbg = '';
-          try {
-            const d = await M.phoneSearchDebug(msg.from);
-            dbg = '\n\n— Magicline-Telefonsuche (Diagnose) für „' + msg.from + '" —\n'
-              + d.map((x) => '  ' + x.variant + '  →  ' + x.count + ' Treffer'
-                + (x.status && x.status !== 200 ? (' (HTTP ' + x.status + ')') : '')).join('\n');
-          } catch (e) {}
-          try {
-            await sendMail('💬 WhatsApp (nicht zugeordnet) – ' + (msg.name || ('+' + msg.from)),
-              'Eine WhatsApp-Nachricht (Twilio) konnte keinem Mitglied zugeordnet werden.\n\n'
-              + 'Von: ' + (msg.name ? (msg.name + ' · ') : '') + '+' + msg.from
-              + '\n\nNachricht:\n' + msg.text
-              + dbg
-              + '\n\nBitte manuell zuordnen/antworten.');
-          } catch (e) {}
-        }
+        // Nicht-Mitglied (Interessent/Probetraining): Pseudo-ID -> landet trotzdem im Posteingang.
+        memberId = 'wa' + msg.from;
+        snapshot = { name: msg.name || ('+' + msg.from), nr: null, initials: initialsOf(msg.name) || 'WA', phone: msg.from, lead: true };
+        leads++;
       }
+      const v = await findOrCreateWaVorgang(memberId, msg.from, msg.name, snapshot);
+      if (v) { await SR.applyMemberReply(memberId, v.id, msg.text); handled++; }
     } catch (e) { /* einzelne Nachricht darf den Lauf nicht abbrechen */ }
   }
 
