@@ -24,6 +24,9 @@ module.exports = async function handler(req, res) {
 
   const d = await M.readBody(req);
   const email = String(d.email || '').trim().toLowerCase();
+  // Gewünschter Zustellweg. Für die Anzeige IMMER zurückgegeben (kein Enumeration-Leak:
+  // ob tatsächlich gesendet wurde, bleibt von außen unsichtbar).
+  const via = d.channel === 'whatsapp' ? 'whatsapp' : 'email';
   let challenge = crypto.randomBytes(24).toString('hex');
 
   try {
@@ -32,12 +35,12 @@ module.exports = async function handler(req, res) {
     if (emailOk) {
       const m = await M.findByEmailDob(email, d.dob);
       if (m && m.email) {
-        const r = await sendLoginCode(m, req.headers['host']);
+        const r = await sendLoginCode(m, req.headers['host'], { channel: via });
         if (r && r.challenge) challenge = r.challenge;
       }
     }
   } catch (e) { /* still return ok to avoid leaking */ }
 
   res.statusCode = 200;
-  return res.end(JSON.stringify({ ok: true, challenge: challenge }));
+  return res.end(JSON.stringify({ ok: true, challenge: challenge, via: via }));
 };
