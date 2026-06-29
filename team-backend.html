@@ -54,7 +54,7 @@
 'use strict';
 var TEAL='#0a4958', ORANGE='#E08C53';
 var S={ token:null, screen:'inbox', convs:[], counts:{}, selKey:null, sel:null,
-        filter:'all', search:'', loading:false, err:'', draft:'', note:'', replyChannel:'email',
+        filter:'open', search:'', loading:false, err:'', draft:'', note:'', replyChannel:'email',
         mobileThread:false, panelOpen:false, busy:false,
         members:[], membersLoaded:false, membersLoading:false,
         memberSearch:'', memberResults:null, memberSearching:false,
@@ -395,7 +395,13 @@ function filtered(){
 function rowsHTML(){
   if(S.loading && !S.convs.length) return '<div style="padding:40px;text-align:center"><span class="spin"></span></div>';
   var rows=filtered();
-  if(!rows.length) return '<div style="padding:40px 20px;text-align:center;color:#8a929a;font-size:13.5px;font-weight:600">Keine Vorgänge in diesem Filter.</div>';
+  if(!rows.length){
+    var msg = S.filter==='open' ? 'Keine offenen Vorgänge – alles erledigt! 🎉'
+      : S.filter==='neu' ? 'Nichts Neues – alles in Arbeit. 👍'
+      : S.filter==='done' ? 'Noch nichts abgeschlossen.'
+      : 'Keine Vorgänge in diesem Filter.';
+    return '<div style="padding:40px 20px;text-align:center;color:#8a929a;font-size:13.5px;font-weight:600">'+esc(msg)+'</div>';
+  }
   return rows.map(function(c){
     var t=tm(c.type), st=sm(c.teamStatus), active=c.key===S.selKey;
     var prev=(c.lastFrom==='team'?'Team: ':c.lastFrom==='system'?'• ':'')+(c.lastText||'');
@@ -422,7 +428,7 @@ function inboxNode(){
   // LIST
   var listWrap=el('<div class="inbox-list scrl" style="width:360px;flex-shrink:0;border-right:1px solid #eef1f2;display:flex;flex-direction:column;min-height:0"></div>');
   var fhead=el('<div style="padding:14px 16px 12px;border-bottom:1px solid #f0f3f4;flex-shrink:0"></div>');
-  var filters=[['all','Alle',S.counts.all],['open','Offen',S.counts.open],['neu','Neu',S.counts.neu],['done','Erledigt',S.counts.done]];
+  var filters=[['open','Offen',S.counts.open],['neu','Neu',S.counts.neu],['done','Erledigt',S.counts.done],['all','Alle',S.counts.all]];
   fhead.innerHTML='<div style="position:relative;margin-bottom:11px">'+
       '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8a929a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="position:absolute;left:13px;top:50%;transform:translateY(-50%)"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>'+
       '<input id="isearch" value="'+esc(S.search)+'" placeholder="Vorgang oder Mitglied suchen" style="width:100%;padding:10px 12px 10px 36px;border:1.5px solid #e4eaeb;border-radius:11px;font-size:13.5px;background:#fbfcfc"></div>'+
