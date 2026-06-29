@@ -173,6 +173,7 @@
   }catch(e){}
 })();
 </script>
+<script src="/assets/native.js" defer></script>
 </head>
 <body>
 <div class="shell">
@@ -313,7 +314,7 @@
   function api(path, opt){ opt=opt||{}; opt.headers=Object.assign(headers(), opt.headers||{}); opt.cache='no-store';
     return fetch(path,opt).then(function(r){ if(r.status===401){ logout(); throw new Error('unauthorized'); } return r.json(); }); }
 
-  function logout(){ closeMenu(); TOKEN=null; sessionStorage.removeItem('fi_member_token'); localStorage.removeItem('fi_member_token'); DATA={profile:null,contract:null,checkins:null,appts:null}; S.screen='login'; S.loginStep='request'; S.challenge=''; S.otp=''; render(); }
+  function logout(){ closeMenu(); try{ if(window.FitInnNative) FitInnNative.onLogout(); }catch(e){} TOKEN=null; sessionStorage.removeItem('fi_member_token'); localStorage.removeItem('fi_member_token'); DATA={profile:null,contract:null,checkins:null,appts:null}; S.screen='login'; S.loginStep='request'; S.challenge=''; S.otp=''; render(); }
   function pad2(n){ return (n<10?'0':'')+n; }
   $('brandLogo').addEventListener('click', function(){ if(TOKEN) nav('home'); });
 
@@ -334,7 +335,7 @@
 
   // ---- data loading ----
   function loadMe(){
-    return api('/api/member/me').then(function(d){ DATA.profile=d.profile||null; DATA.contract=d.contract||null; DATA.membershipActive=(d.membershipActive!==false); checkDup(); });
+    return api('/api/member/me').then(function(d){ DATA.profile=d.profile||null; DATA.contract=d.contract||null; DATA.membershipActive=(d.membershipActive!==false); checkDup(); try{ if(window.FitInnNative) FitInnNative.onAuthed(TOKEN); }catch(e){} });
   }
   // Mehrere Magicline-Konten zu denselben Daten? -> Hinweis-Banner im Portal.
   function checkDup(){
