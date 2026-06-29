@@ -11,6 +11,7 @@
 
 const M = require('../../lib/members');
 const Inbox = require('../../lib/inbox');
+const SR = require('../../lib/studioReply');
 const { sendMail, sendMailRaw, hasMail } = require('../../lib/mail');
 const { renderEmail, BASE } = require('../../lib/emailTemplate');
 const { memberLink } = require('../../lib/magic');
@@ -36,7 +37,7 @@ module.exports = async function handler(req, res) {
   const vf = M.isoDate(data.validFrom);
   const validFromDE = vf ? (function () { var p = vf.match(/^(\d{4})-(\d{2})-(\d{2})$/); return p ? (p[3] + '.' + p[2] + '.' + p[1]) : vf; })() : 'sofort / nächstmöglich';
 
-  let subject, lines = [];
+  let subject, lines = [], vorgang = null;
   if (body.type === 'address') {
     [['Straße', 'street'], ['Nr.', 'houseNumber'], ['PLZ', 'zipCode'], ['Ort', 'city']].forEach(function (f) {
       var alt = String(m[f[1]] || ''), neu = String(data[f[1]] || '');
@@ -46,7 +47,7 @@ module.exports = async function handler(req, res) {
     lines.push('Gültig ab: ' + validFromDE);
     subject = 'Adressänderung gewünscht – ' + who(m);
     var newAddr = ((data.street || '') + ' ' + (data.houseNumber || '')).trim() + ', ' + (data.zipCode || '') + ' ' + (data.city || '');
-    try { await Inbox.addVorgang(sess.id, { type: 'adresse', subject: 'Adressänderung',
+    try { vorgang = await Inbox.addVorgang(sess.id, { type: 'adresse', subject: 'Adressänderung',
       systemText: 'Du hast eine Adressänderung beantragt: ' + newAddr.replace(/^,\s*/, '').trim() + '.',
       teamText: 'Danke! Wir übernehmen deine neue Adresse zeitnah. Bei Rückfragen melden wir uns.' }); } catch (e) {}
   } else if (body.type === 'payment') {
@@ -57,7 +58,7 @@ module.exports = async function handler(req, res) {
     if (data.bic) lines.push('BIC: ' + data.bic);
     lines.push('Gültig ab: ' + validFromDE);
     subject = 'IBAN-Änderung gewünscht – ' + who(m);
-    try { await Inbox.addVorgang(sess.id, { type: 'iban', subject: 'Änderung deiner Bankverbindung',
+    try { vorgang = await Inbox.addVorgang(sess.id, { type: 'iban', subject: 'Änderung deiner Bankverbindung',
       systemText: 'Du hast eine IBAN-Änderung beantragt (' + (M.maskIban(String(data.iban || '').replace(/\s+/g, '')) || 'neue IBAN') + ').',
       teamText: 'Danke! Wir prüfen die neue Bankverbindung und ziehen den nächsten Beitrag wie gewohnt ein. Du musst nichts weiter tun.' }); } catch (e) {}
   } else {
@@ -69,7 +70,7 @@ module.exports = async function handler(req, res) {
   const text = 'Änderungswunsch über den Mitgliederbereich\n\n'
     + 'Mitglied: ' + who(m) + '\nKundennr.: ' + (m.customerNumber || '—') + '\n\n'
     + lines.join('\n') + '\n\nBitte in Magicline eintragen.';
-  const mail = await sendMail(subject, text);
+  const mail = await SR.notifyStudio({ member: m, vorgang: vorgang, subject: subject, text: text });
 
   // Bestätigung ans Mitglied (best effort) – IBAN nur maskiert, niemals vollständig
   if (mail.ok && m.email) {

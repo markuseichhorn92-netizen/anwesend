@@ -15,6 +15,7 @@
 
 const M = require('../../lib/members');
 const Inbox = require('../../lib/inbox');
+const SR = require('../../lib/studioReply');
 const AI = require('../../lib/ai');
 const HELP = require('../../lib/help');
 const { sendMailRaw, hasMail } = require('../../lib/mail');
@@ -87,7 +88,8 @@ module.exports = async function handler(req, res) {
     if (!hasMail) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'E-Mail-Versand ist noch nicht eingerichtet.' })); }
 
     const topic = String(body.topic || '').trim();
-    try { await Inbox.addVorgang(sess.id, { type: 'kontakt', subject: 'Kontaktanfrage' + (topic ? (' · ' + topic) : ''),
+    let vorgang = null;
+    try { vorgang = await Inbox.addVorgang(sess.id, { type: 'kontakt', subject: 'Kontaktanfrage' + (topic ? (' · ' + topic) : ''),
       systemText: 'Du hast unserem Team eine Nachricht geschickt' + (question ? (' zur Frage: „' + question.slice(0, 140) + '"') : '') + '.',
       teamText: 'Hallo' + (m.firstName ? (' ' + m.firstName) : '') + ', danke für deine Nachricht! Unser Team meldet sich so schnell wie möglich persönlich bei dir.' }); } catch (e) {}
     const text = 'Kontaktanfrage über den Mitgliederbereich\n\n'
@@ -96,10 +98,9 @@ module.exports = async function handler(req, res) {
       + (topic ? ('\nThema: ' + topic) : '')
       + '\n\nFrage des Mitglieds:\n' + (question || '—')
       + '\n\nNachricht:\n' + (message || '—')
-      + (body.answer ? ('\n\n— Vorgeschlagene KI-Antwort (war nicht ausreichend) —\n' + String(body.answer).slice(0, 1200)) : '')
-      + '\n\nBitte dem Mitglied persönlich antworten.';
+      + (body.answer ? ('\n\n— Vorgeschlagene KI-Antwort (war nicht ausreichend) —\n' + String(body.answer).slice(0, 1200)) : '');
 
-    const mail = await sendMailRaw({ subject: '✉️ Kontaktanfrage – ' + who(m), text: text, replyTo: replyTo || undefined });
+    const mail = await SR.notifyStudio({ member: m, vorgang: vorgang, subject: '✉️ Kontaktanfrage – ' + who(m), text: text });
     if (mail.ok) await sendMemberContactMail(m, question, sess.id);
 
     res.statusCode = 200;

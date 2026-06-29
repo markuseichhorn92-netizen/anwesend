@@ -14,7 +14,8 @@
 
 const M = require('../../lib/members');
 const Inbox = require('../../lib/inbox');
-const { sendMail, hasMail } = require('../../lib/mail');
+const SR = require('../../lib/studioReply');
+const { hasMail } = require('../../lib/mail');
 
 function who(m) {
   return ((m.firstName || '') + ' ' + (m.lastName || '')).trim()
@@ -85,13 +86,13 @@ module.exports = async function handler(req, res) {
 
     if (hasMail) {
       try {
-        await sendMail('💬 Postfach-Antwort – ' + who(m) + ' · ' + (v.ref || ''),
-          'Ein Mitglied hat im Postfach auf einen Vorgang geantwortet.\n\n'
-          + 'Mitglied: ' + who(m) + '\nKundennr.: ' + (m.customerNumber || '—')
-          + '\nVorgang: ' + (v.subject || '—') + ' (' + (v.ref || '') + ')'
-          + '\nStatus: ' + (v.status || '—')
-          + '\n\nNachricht des Mitglieds:\n' + text
-          + '\n\nBitte dem Mitglied antworten (per E-Mail an ' + (m.email || '—') + ').');
+        await SR.notifyStudio({ member: m, vorgang: v,
+          subject: '💬 Postfach-Antwort – ' + who(m) + ' · ' + (v.ref || ''),
+          text: 'Ein Mitglied hat im Postfach auf einen Vorgang geantwortet.\n\n'
+            + 'Mitglied: ' + who(m) + '\nKundennr.: ' + (m.customerNumber || '—')
+            + '\nVorgang: ' + (v.subject || '—') + ' (' + (v.ref || '') + ')'
+            + '\nStatus: ' + (v.status || '—')
+            + '\n\nNachricht des Mitglieds:\n' + text });
       } catch (e) {}
     }
     res.statusCode = 200;

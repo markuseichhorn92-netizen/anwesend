@@ -15,6 +15,7 @@ const Inbox = require('../../lib/inbox');
 const { sendMail, sendMailRaw, hasMail } = require('../../lib/mail');
 const { renderEmail, BASE } = require('../../lib/emailTemplate');
 const { memberLink } = require('../../lib/magic');
+const SR = require('../../lib/studioReply');
 
 const OFFERS = { discount10: '10 % Rabatt für 6 Monate', pause: 'Beitragspause' };
 
@@ -83,6 +84,7 @@ module.exports = async function handler(req, res) {
   if (!m) { res.statusCode = 404; return res.end(JSON.stringify({ error: 'not_found' })); }
 
   let subject, text, okMsg;
+  let vorgang = null;     // für die Studio-Benachrichtigung (Antwort -> Postfach)
   let cancelDbg = null;   // TEMP-Diagnose (PII-frei)
   if (body.action === 'offer_accepted') {
     var off = OFFERS[body.offer] || body.offer || '—';
@@ -93,7 +95,7 @@ module.exports = async function handler(req, res) {
       + '\nUrspr. Kündigungsgrund: ' + (body.reason || '—')
       + '\n\nBitte "' + off + '" in Magicline einrichten.';
     okMsg = 'Super – wir richten dein Angebot ein und melden uns bei dir.';
-    try { await Inbox.addVorgang(sess.id, { type: 'angebot', subject: 'Dein Angebot',
+    try { vorgang = await Inbox.addVorgang(sess.id, { type: 'angebot', subject: 'Dein Angebot',
       systemText: 'Du hast das Angebot „' + off + '" angenommen.',
       teamText: 'Super, dass du dabei bleibst! Wir richten „' + off + '" für dich ein und melden uns bei dir.' }); } catch (e) {}
   } else if (body.action === 'cancel') {
@@ -105,7 +107,7 @@ module.exports = async function handler(req, res) {
     if (reqDate && minISO && reqDate < minISO) reqDate = minISO;
     var dateISO = reqDate || minISO || null;
     var useNext = !!(minISO && (!reqDate || reqDate === minISO));
-    try { await Inbox.addVorgang(sess.id, { type: 'kuendigung', subject: 'Kündigung deiner Mitgliedschaft',
+    try { vorgang = await Inbox.addVorgang(sess.id, { type: 'kuendigung', subject: 'Kündigung deiner Mitgliedschaft',
       systemText: 'Du hast eine Kündigung eingereicht (zum ' + (dateISO ? dateISO.split('-').reverse().join('.') : 'nächstmöglichen Termin') + ').',
       teamText: 'Hallo' + (m.firstName ? (' ' + m.firstName) : '') + ', wir haben deine Kündigung erhalten. Eine schriftliche Bestätigung senden wir dir innerhalb von 2 Werktagen per E-Mail. Falls du es dir anders überlegst: Eine Beitragspause wäre ebenfalls möglich – melde dich gern.' }); } catch (e) {}
 
@@ -174,7 +176,7 @@ module.exports = async function handler(req, res) {
       + (ctw ? ('\nTarif: ' + (ctw.rateName || '—') + '\nGekündigt zum: ' + (ctw.cancellationDate || ctw.nextCancellationDate || '—')) : '')
       + '\n\nBitte die Kündigung in Magicline zurücknehmen/stornieren.';
     okMsg = 'Deine Kündigung wird zurückgenommen – wir bestätigen das per E-Mail.';
-    try { await Inbox.addVorgang(sess.id, { type: 'kuendigung', subject: 'Rücknahme deiner Kündigung',
+    try { vorgang = await Inbox.addVorgang(sess.id, { type: 'kuendigung', subject: 'Rücknahme deiner Kündigung',
       systemText: 'Du möchtest deine Kündigung zurücknehmen.',
       teamText: 'Schön, dass du bleibst! Wir nehmen deine Kündigung zurück und bestätigen das per E-Mail.' }); } catch (e) {}
   } else if (body.action === 'revoke') {
@@ -182,7 +184,7 @@ module.exports = async function handler(req, res) {
     // Vertrag + reCAPTCHA-Token vorhanden; 2) sonst E-Mail-Fallback ans Studio.
     var ctr = null;
     try { ctr = await M.getContract(sess.id); } catch (e) {}
-    try { await Inbox.addVorgang(sess.id, { type: 'widerruf', subject: 'Widerruf deines Vertrags',
+    try { vorgang = await Inbox.addVorgang(sess.id, { type: 'widerruf', subject: 'Widerruf deines Vertrags',
       systemText: 'Du hast deinen online abgeschlossenen Vertrag widerrufen.',
       teamText: 'Hallo' + (m.firstName ? (' ' + m.firstName) : '') + ', dein Widerruf ist eingegangen und wird bearbeitet – dein Vertrag wird rückabgewickelt und bereits gezahlte Beiträge erstatten wir dir zurück. Die Bestätigung folgt per E-Mail.' }); } catch (e) {}
     cancelDbg = {
@@ -247,7 +249,7 @@ module.exports = async function handler(req, res) {
   }
 
   if (!hasMail) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'E-Mail-Versand noch nicht eingerichtet (RESEND_API_KEY fehlt).', _debug: cancelDbg })); }
-  const mail = await sendMail(subject, text);
+  const mail = await SR.notifyStudio({ member: m, vorgang: vorgang, subject: subject, text: text });
   // Bestätigung ans Mitglied – nur bei tatsächlicher Kündigung (nicht bei Angebot/Rücknahme)
   if (mail.ok && body.action === 'cancel') {
     await sendMemberCancelMail(m, { direct: false, dateText: targetDate, ct: ct });

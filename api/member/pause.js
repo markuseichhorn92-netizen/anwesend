@@ -11,6 +11,7 @@
 
 const M = require('../../lib/members');
 const Inbox = require('../../lib/inbox');
+const SR = require('../../lib/studioReply');
 const { sendMailRaw, hasMail } = require('../../lib/mail');
 const { renderEmail, BASE } = require('../../lib/emailTemplate');
 const { memberLink } = require('../../lib/magic');
@@ -45,7 +46,8 @@ module.exports = async function handler(req, res) {
   const fromISO = /^\d{4}-\d{2}-\d{2}$/.test(String(body.from || '')) ? body.from : null;
   const toISO = fromISO ? addWeeks(fromISO, weeks) : null;
 
-  try { await Inbox.addVorgang(sess.id, { type: 'pause', subject: 'Beitragspause',
+  let vorgang = null;
+  try { vorgang = await Inbox.addVorgang(sess.id, { type: 'pause', subject: 'Beitragspause',
     systemText: 'Du hast eine Beitragspause beantragt (' + weeks + (weeks === 1 ? ' Woche' : ' Wochen') + (fromISO ? (' ab ' + fmtDE(fromISO)) : '') + ').',
     teamText: 'Hallo' + (m.firstName ? (' ' + m.firstName) : '') + ', deine Pause-Anfrage ist eingegangen. Wir prüfen den ärztlichen Nachweis und bestätigen dir die Pause per E-Mail. Deine Vertragslaufzeit verlängert sich um die Dauer der Pause.' }); } catch (e) {}
 
@@ -88,11 +90,11 @@ module.exports = async function handler(req, res) {
     + '\nBitte Beitragspause in Magicline hinterlegen und dem Mitglied bestätigen.';
 
   if (!hasMail) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'E-Mail-Versand noch nicht eingerichtet.' })); }
-  const mail = await sendMailRaw({
+  const mail = await SR.notifyStudio({
+    member: m, vorgang: vorgang,
     subject: '⏸️ Beitragspause beantragt – ' + name + (m.customerNumber ? (' (' + m.customerNumber + ')') : ''),
     text: text,
     attachments: attachments,
-    replyTo: m.email || undefined,
   });
 
   // Bestätigung ans Mitglied (best effort – ohne Attest-Anhang)

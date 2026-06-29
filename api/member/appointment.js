@@ -9,6 +9,7 @@
 
 const M = require('../../lib/members');
 const Inbox = require('../../lib/inbox');
+const SR = require('../../lib/studioReply');
 const { sendMail, sendMailRaw, hasMail } = require('../../lib/mail');
 const { renderEmail, BASE } = require('../../lib/emailTemplate');
 const { memberLink } = require('../../lib/magic');
@@ -28,7 +29,8 @@ module.exports = async function handler(req, res) {
   const m = await M.getMember(sess.id);
   if (!m) { res.statusCode = 404; return res.end(JSON.stringify({ error: 'not_found' })); }
 
-  try { await Inbox.addVorgang(sess.id, { type: 'termin', subject: 'Terminwunsch',
+  let vorgang = null;
+  try { vorgang = await Inbox.addVorgang(sess.id, { type: 'termin', subject: 'Terminwunsch',
     systemText: 'Du hast einen Terminwunsch gesendet: ' + (body.type || 'Termin') + (body.preferred ? (' – ' + body.preferred) : '') + '.',
     teamText: 'Hallo' + (m.firstName ? (' ' + m.firstName) : '') + ', dein Terminwunsch ist eingegangen. Wir melden uns mit einem konkreten Termin per E-Mail bei dir.' }); } catch (e) {}
 
@@ -36,9 +38,8 @@ module.exports = async function handler(req, res) {
   const text = 'Terminwunsch über den Mitgliederbereich\n\n'
     + 'Mitglied: ' + who(m) + '\nKundennr.: ' + (m.customerNumber || '—')
     + '\nTerminart: ' + (body.type || '—')
-    + '\nWunsch: ' + (body.preferred || '—')
-    + '\n\nBitte Termin in Magicline anlegen und dem Mitglied bestätigen.';
-  const mail = await sendMail('📅 Terminwunsch – ' + who(m), text);
+    + '\nWunsch: ' + (body.preferred || '—');
+  const mail = await SR.notifyStudio({ member: m, vorgang: vorgang, subject: '📅 Terminwunsch – ' + who(m), text: text });
 
   // Bestätigung ans Mitglied (best effort – darf den Vorgang nie scheitern lassen)
   if (mail.ok && m.email) {
