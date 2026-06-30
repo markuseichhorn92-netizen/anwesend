@@ -22,6 +22,16 @@
   var isNative = !!(Cap && typeof Cap.isNativePlatform === 'function' && Cap.isNativePlatform());
   var P = (Cap && Cap.Plugins) || {};
 
+  // Holt ein natives Plugin – funktioniert auch bei Live-URL-Apps, wo
+  // Capacitor.Plugins.X nicht vorab befüllt ist (registerPlugin erzeugt den Proxy).
+  function getPlugin(name) {
+    try {
+      if (P && P[name]) return P[name];
+      if (Cap && typeof Cap.registerPlugin === 'function') return Cap.registerPlugin(name);
+    } catch (e) {}
+    return null;
+  }
+
   // Öffentliche API – im Browser bewusst leere No-Ops, damit der Portal-Code
   // bedenkenlos FitInnNative.* aufrufen kann.
   var API = {
@@ -59,30 +69,29 @@
   API.available.biometrics = !!P.NativeBiometric;
   API.available.apple = !!(P.SignInWithApple || P.SocialLogin);
   API.available.google = !!(P.GoogleAuth || P.SocialLogin);
-  API.available.wifi = !!(P.CapacitorWifiConnect && P.CapacitorWifiConnect.connect);
-
   // ── Ein-Tipp-WLAN: offenes Studio-Netz beitreten ───────────────────────────
   // Nutzt @falconeta/capacitor-wifi-connect (Plugin-Name: CapacitorWifiConnect;
   // iOS: NEHotspotConfiguration, Android: WifiNetworkSuggestion). Liefert { ok }.
+  var WifiPlugin = getPlugin('CapacitorWifiConnect');
+  API.available.wifi = !!WifiPlugin;
   API.connectWifi = function (ssid) {
-    var W = P.CapacitorWifiConnect;
-    if (!W || !W.connect || !ssid) return Promise.resolve({ ok: false, unavailable: true });
-    return W.connect({ ssid: ssid })
+    if (!WifiPlugin || !WifiPlugin.connect || !ssid) return Promise.resolve({ ok: false, unavailable: true });
+    return WifiPlugin.connect({ ssid: ssid })
       .then(function (r) { return { ok: true, result: r }; })
       .catch(function (e) { return { ok: false, error: (e && e.message) || String(e) }; });
   };
 
   // ── Standort (nativ): zuverlässig auf iOS, wo die WebView-Geolocation fehlt ──
-  API.available.geo = !!(P.Geolocation && P.Geolocation.getCurrentPosition);
+  var GeoPlugin = getPlugin('Geolocation');
+  API.available.geo = !!GeoPlugin;
   API.getPosition = function () {
-    var G = P.Geolocation;
-    if (!G || !G.getCurrentPosition) return Promise.resolve(null);
+    if (!GeoPlugin || !GeoPlugin.getCurrentPosition) return Promise.resolve(null);
     var go = function () {
-      return G.getCurrentPosition({ enableHighAccuracy: true, timeout: 8000 })
+      return GeoPlugin.getCurrentPosition({ enableHighAccuracy: true, timeout: 8000 })
         .then(function (p) { return (p && p.coords) ? { lat: p.coords.latitude, lng: p.coords.longitude } : null; })
         .catch(function () { return null; });
     };
-    if (G.requestPermissions) { return G.requestPermissions().then(go).catch(go); }
+    if (GeoPlugin.requestPermissions) { return GeoPlugin.requestPermissions().then(go).catch(go); }
     return go();
   };
 
