@@ -47,7 +47,7 @@ module.exports = async function handler(req, res) {
   if (cid && !/^\d+$/.test(String(cid))) { try { const m = await M.findByNumberDob(String(cid), dob); if (m && (m.id != null || m.customerId != null)) cid = m.id != null ? m.id : m.customerId; } catch (e) {} }
   if (!cid) { res.statusCode = 200; return res.end('Keine Kunden-ID gefunden. Mit ?customerId=… aufrufen.'); }
 
-  const lines = ['=== Finion-Pay-Check ===', 'customerId=' + cid, ''];
+  const lines = ['=== Finion-Pay-Check (Code v2: referenceText) ===', 'customerId=' + cid, ''];
   let r = null;
   try { r = await Pay.createUserSession(cid, ['SEPA', 'CREDIT_CARD']); }
   catch (e) { lines.push('FEHLER beim Aufruf: ' + String((e && e.message) || e)); res.statusCode = 200; return res.end(lines.join('\n')); }
