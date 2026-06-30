@@ -91,14 +91,43 @@ module.exports = async function handler(req, res) {
     results.push({ scope: scope, status: st });
   }
 
+  // ── SICHERER Schreib-Test: aktuelle Self-Service-Adresse 1:1 zurückschreiben ──
+  // Ändert nichts (identische Werte), prüft aber CUSTOMER_SELF_SERVICE_WRITE.
+  // Nur ?write=1 (Opt-in), und nur wenn eine vollständige Adresse vorliegt.
+  let writeProbe = null;
+  if ((param('write') === '1') || (param('write') === 'true')) {
+    try {
+      const cur = await M.ml('GET', '/customers/' + C + '/self-service/address-data');
+      const a = (cur && cur.json) || {};
+      const addr = a.street ? a : (a.address || a.addressData || {});
+      if (addr && addr.street) {
+        const wr = await M.writeAddress(cid, {
+          street: addr.street, houseNumber: addr.houseNumber, zipCode: addr.zipCode,
+          city: addr.city, countryCode: addr.countryCode || 'DE',
+        });
+        writeProbe = { status: wr.status, body: String(wr.text || '').slice(0, 160) };
+      } else {
+        writeProbe = { status: 'skip', body: 'Keine vollständige Adresse zum Zurückschreiben gefunden.' };
+      }
+    } catch (e) { writeProbe = { status: -1, body: String((e && e.message) || e) }; }
+  }
+
   const missing = results.filter((r) => r.status === 403).map((r) => r.scope);
   const lines = ['=== Magicline Scope-Check ===', 'customerId=' + cid + '  contractId=' + (kid != null ? kid : '—'), ''];
   results.forEach((r) => {
     const tag = r.status === 403 ? 'FEHLT ❌' : (r.status === 401 ? 'AUTH ⚠️' : 'OK ✓   ');
     lines.push(tag + '  ' + r.scope + '  (HTTP ' + r.status + ')');
   });
-  lines.push('', 'Bekannt: CUSTOMER_SELF_SERVICE_WRITE -> 403 (Schreiben Adresse/Bank).', '',
-    '>>> FEHLENDE LESE-RECHTE (403): ' + (missing.length ? missing.join(', ') : 'KEINE'));
+  lines.push('', '>>> FEHLENDE LESE-RECHTE (403): ' + (missing.length ? missing.join(', ') : 'KEINE'));
+  if (writeProbe) {
+    const ok = (typeof writeProbe.status === 'number' && writeProbe.status >= 200 && writeProbe.status < 300);
+    const tag = ok ? 'OK ✓   ' : (writeProbe.status === 403 ? 'FEHLT ❌' : 'INFO   ');
+    lines.push('', '=== SCHREIB-TEST (CUSTOMER_SELF_SERVICE_WRITE) ===',
+      tag + '  Adresse zurückschreiben  (HTTP ' + writeProbe.status + ')',
+      writeProbe.body ? '   ' + writeProbe.body : '');
+  } else {
+    lines.push('', 'Schreib-Test nicht ausgeführt. Mit ?write=1 aufrufen, um CUSTOMER_SELF_SERVICE_WRITE zu prüfen (schreibt die aktuelle Adresse unverändert zurück).');
+  }
   res.statusCode = 200;
   return res.end(lines.join('\n'));
 };
