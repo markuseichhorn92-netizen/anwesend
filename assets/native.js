@@ -59,13 +59,13 @@
   API.available.biometrics = !!P.NativeBiometric;
   API.available.apple = !!(P.SignInWithApple || P.SocialLogin);
   API.available.google = !!(P.GoogleAuth || P.SocialLogin);
-  API.available.wifi = !!(P.WifiConnect && P.WifiConnect.connect);
+  API.available.wifi = !!(P.CapacitorWifiConnect && P.CapacitorWifiConnect.connect);
 
   // ── Ein-Tipp-WLAN: offenes Studio-Netz beitreten ───────────────────────────
-  // Nutzt @falconeta/capacitor-wifi-connect (iOS: NEHotspotConfiguration,
-  // Android: WifiNetworkSuggestion). Liefert { ok } zurück.
+  // Nutzt @falconeta/capacitor-wifi-connect (Plugin-Name: CapacitorWifiConnect;
+  // iOS: NEHotspotConfiguration, Android: WifiNetworkSuggestion). Liefert { ok }.
   API.connectWifi = function (ssid) {
-    var W = P.WifiConnect;
+    var W = P.CapacitorWifiConnect;
     if (!W || !W.connect || !ssid) return Promise.resolve({ ok: false, unavailable: true });
     return W.connect({ ssid: ssid })
       .then(function (r) { return { ok: true, result: r }; })
