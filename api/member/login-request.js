@@ -20,12 +20,15 @@ const { sendLoginCode } = require('../../lib/loginCode');
 
 // Demo-/Reviewer-Zugang für die App-Store-/Play-Store-Prüfung: ein fester Test-Account
 // mit festem Code – ohne echten E-Mail-/WhatsApp-Versand, damit der Prüfer reinkommt.
-// Nur aktiv, wenn ALLE vier Env-Variablen gesetzt sind (sonst völlig wirkungslos).
+// Das Konto wird über die Mitgliedsnummer (DEMO_CUSTOMER_NUMBER, z. B. M-2076) ODER
+// die interne ID (DEMO_CUSTOMER_ID) bzw. notfalls über E-Mail+Geburtsdatum aufgelöst.
+// Nur aktiv, wenn E-Mail, Geburtsdatum und Code gesetzt sind (sonst wirkungslos).
 const DEMO_EMAIL = String(process.env.DEMO_LOGIN_EMAIL || '').trim().toLowerCase();
 const DEMO_DOB = String(process.env.DEMO_LOGIN_DOB || '').trim();
 const DEMO_CODE = String(process.env.DEMO_LOGIN_CODE || '').trim();
 const DEMO_CID = String(process.env.DEMO_CUSTOMER_ID || '').trim();
-const hasDemoLogin = !!(DEMO_EMAIL && DEMO_DOB && DEMO_CODE && DEMO_CID);
+const DEMO_NUM = String(process.env.DEMO_CUSTOMER_NUMBER || '').trim();
+const hasDemoLogin = !!(DEMO_EMAIL && DEMO_DOB && DEMO_CODE);
 
 function bareNum(s) { return String(s || '').toUpperCase().replace(/\s+/g, '').replace(/^M-?/, ''); }
 function maskEmail(e) {
@@ -55,9 +58,15 @@ module.exports = async function handler(req, res) {
   let challenge = crypto.randomBytes(24).toString('hex');
 
   // Reviewer-/Demo-Zugang: direkt zur Code-Eingabe (fester Code, kein Versand).
-  if (hasDemoLogin && email === DEMO_EMAIL && String(dob || '').trim() === DEMO_DOB) {
-    await M.otpSave(challenge, { id: DEMO_CID, codeHash: M.hashCode(DEMO_CODE), exp: Date.now() + 600000, tries: 0 }, 600);
-    return send(res, { ok: true, step: 'code', challenge: challenge, via: 'email' });
+  // Datumsformat egal (isoDate normalisiert dd.mm.jjjj UND jjjj-mm-tt).
+  if (hasDemoLogin && email === DEMO_EMAIL && M.isoDate(dob) === M.isoDate(DEMO_DOB)) {
+    let cid = DEMO_CID || null;
+    if (!cid && DEMO_NUM) { try { const m = await M.findByNumberDob(DEMO_NUM, DEMO_DOB); if (m) cid = (m.id != null ? m.id : m.customerId); } catch (e) {} }
+    if (!cid) { try { const m = await M.findByEmailDob(DEMO_EMAIL, DEMO_DOB); if (m) cid = (m.id != null ? m.id : m.customerId); } catch (e) {} }
+    if (cid != null && String(cid) !== '') {
+      await M.otpSave(challenge, { id: cid, codeHash: M.hashCode(DEMO_CODE), exp: Date.now() + 600000, tries: 0 }, 600);
+      return send(res, { ok: true, step: 'code', challenge: challenge, via: 'email' });
+    }
   }
 
   try {
