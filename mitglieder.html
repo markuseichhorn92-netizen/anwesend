@@ -262,7 +262,7 @@
 
   // ---- state ----
   var TOKEN = localStorage.getItem('fi_member_token') || sessionStorage.getItem('fi_member_token') || null;
-  var DATA = { profile:null, contract:null, checkins:null, appts:null, plan:null, planAgg:null, planAggTom:null, inbox:null, prefs:null, membershipActive:true, bookable:null, slots:null };
+  var DATA = { profile:null, contract:null, checkins:null, appts:null, plan:null, planAgg:null, planAggTom:null, inbox:null, prefs:null, membershipActive:true, bookable:null, slots:null, account:null };
   // Erlaubte Screens für ehemalige Mitglieder (alles andere wird gesperrt)
   var FORMER_OK = ['home','checkins','help','postfach','settings'];
   function isFormer(){ return DATA.membershipActive===false; }
@@ -390,6 +390,7 @@
     if(s==='postfach'){ S.pfSel=null; S.pfThread=false; S.pfErr=''; S.pfDraft=''; loadInbox(); }
     if(s==='contract'){ S.cancelStep=0; S.pauseStep=0; S.pauseDone=false; S.offerDone=''; }
     if(s==='checkins'&&!DATA.checkins) loadCheckins();
+    if(s==='account') loadAccount();
     if(s==='appt'){ if(!DATA.appts) loadAppts(); if(DATA.bookable===null) loadBookable(); }
     if(s==='home') checkArrival();
     setS({}); }
@@ -410,6 +411,7 @@
     api('/api/member/duplicates').then(function(d){ if(d&&d.ok){ S.dupNotice={ hasDuplicates:!!d.hasDuplicates, count:d.count||0, requested:!!d.requested }; render(); } }).catch(function(){});
   }
   function loadCheckins(){ api('/api/member/checkins').then(function(d){ DATA.checkins=d.checkins||[]; ciSyncFromHistory(); render(); }).catch(function(){ DATA.checkins=[]; render(); }); }
+  function loadAccount(){ api('/api/member/account').then(function(d){ DATA.account=d&&d.ok?d:{ok:false,open:[]}; render(); }).catch(function(){ DATA.account={ok:false,open:[]}; render(); }); }
   // ===== Standort-Ankunft (Vordergrund): erkennt, ob das Mitglied im Studio ist =====
   var STUDIO_LAT=49.7242701, STUDIO_LNG=6.6303178, GEO_RADIUS=160; // Meter (Auf Hirtenberg 8, 54296 Trier)
   function geoDist(la1,lo1,la2,lo2){ var R=6371000,rad=Math.PI/180; var dLa=(la2-la1)*rad,dLo=(lo2-lo1)*rad; var a=Math.sin(dLa/2)*Math.sin(dLa/2)+Math.cos(la1*rad)*Math.cos(la2*rad)*Math.sin(dLo/2)*Math.sin(dLo/2); return 2*R*Math.atan2(Math.sqrt(a),Math.sqrt(1-a)); }
@@ -702,6 +704,7 @@
     var tiles=[
       ['data','Meine Daten','Adresse & Bankverbindung verwalten','#4E86E8,#2C5FB8','rgba(44,95,184,.45)','<path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8z"></path><path d="M4 21c0-3.3 3.6-6 8-6s8 2.7 8 6"></path>'],
       ['contract','Vertragsverwaltung','Vertrag, Pause & Kündigung verwalten','#29B3A6,#0F8378','rgba(15,131,120,.42)','<path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"></path><path d="M14 3v5h5M9 13h6M9 17h4"></path>'],
+      ['account','Beitragskonto','Offene Beiträge & Rechnungen','#E0A23C,#B97E12','rgba(185,126,18,.42)','<rect x="2" y="5" width="20" height="14" rx="2"></rect><path d="M2 9h20M6 15h5"></path>'],
       ['appt','Termine','Einführungstraining & Co. buchen','#43BE6B,#1F9A4E','rgba(31,154,78,.42)','<rect x="3" y="4" width="18" height="18" rx="3"></rect><path d="M16 2v4M8 2v4M3 10h18M8 15h.01M12 15h.01M16 15h.01"></path>'],
       ['referral','Freunde werben','Code teilen & Prämie sichern','#F6A964,#E07C3C','rgba(224,124,60,.45)','<rect x="3" y="8" width="18" height="13" rx="2"></rect><path d="M3 12h18M12 8v13M12 8C12 8 10 2.5 7.6 4.2 5.9 5.4 8.4 8 12 8zM12 8c0 0 2-5.5 4.4-3.8C18.1 5.4 15.6 8 12 8z"></path>'],
       ['checkins','Check-in-Verlauf','Deine Besuche ansehen & herunterladen','#8E7BF0,#5B47C9','rgba(91,71,201,.45)','<path d="M3 6h13M3 12h13M3 18h9"></path><path d="M17.5 15l2 2 3.2-3.2"></path>'],
@@ -1028,6 +1031,51 @@
       else body='<div style="display:flex;flex-direction:column;gap:12px">'+list.map(function(a){ return '<div style="background:var(--surface);border-radius:18px;box-shadow:0 12px 34px rgba(4,33,40,.18);padding:18px 20px;display:flex;align-items:center;gap:14px"><div style="width:48px;height:48px;border-radius:13px;background:var(--surface-2);display:flex;align-items:center;justify-content:center;flex-shrink:0">'+svg(IC.cal,{w:1.9})+'</div><div style="flex:1"><div style="font-size:15px;font-weight:800">'+esc(a.title)+'</div><div style="font-size:13px;color:var(--text-muted);margin-top:2px">'+deDate(a.start)+' · '+deTime(a.start)+' Uhr</div></div>'+(a.id?'<button data-act="cancelAppt" data-arg="'+esc(a.id)+'" style="padding:9px 14px;border:1.5px solid #e3b8b1;border-radius:10px;background:var(--surface);color:var(--err-fg);font-weight:700;font-size:13px;cursor:pointer">Stornieren</button>':'')+'</div>'; }).join('')+'</div>';
     }
     return backHd('Termine')+tabs+body;
+  }
+
+  // ===== Beitragskonto (offene Beiträge & Rechnungen) =====
+  function scrAccount(){
+    var head=backHd('Beitragskonto');
+    var a=DATA.account;
+    if(a===null) return head+'<div class="card" style="text-align:center;color:var(--text-soft);font-size:14px">Lade Beitragskonto …</div>';
+    if(!a.ok) return head+'<div class="card" style="text-align:center"><div style="width:56px;height:56px;border-radius:50%;background:var(--surface-2);display:flex;align-items:center;justify-content:center;margin:0 auto 14px">'+svg(IC.warn,{c:'var(--text-soft)',w:2,s:26})+'</div><div style="font-size:16px;font-weight:800">Beitragskonto nicht verfügbar</div><div style="font-size:13.5px;color:var(--text-muted);margin-top:6px;line-height:1.5">Bitte später erneut versuchen oder im Studio nachfragen.</div></div>';
+    var cur=a.currency||'EUR', sym=(cur==='EUR'?'€':' '+cur);
+    var money=function(v){ if(v==null) return '—'; return (Math.round(Math.abs(v)*100)/100).toFixed(2).replace('.',',')+' '+sym; };
+    var openTotal=a.openTotal||0;
+    var hasOpen = a.open && a.open.length && openTotal>0.0001;
+    var out='';
+    // Saldo-/Status-Karte
+    if(hasOpen){
+      out+='<div style="background:linear-gradient(150deg,#C0392B,#8E261A);border-radius:18px;box-shadow:0 14px 36px rgba(142,38,26,.28);padding:22px 20px;text-align:center;color:#fff">'
+        +'<div style="font-size:12px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:#f3c9c3">Offener Betrag</div>'
+        +'<div style="font-size:38px;font-weight:900;letter-spacing:-.5px;margin:6px 0 2px">'+money(openTotal)+'</div>'
+        +'<div style="font-size:13px;color:#f3d3ce;line-height:1.45">Offene Beträge werden automatisch per Lastschrift eingezogen. Du musst nichts weiter tun.</div></div>';
+    } else {
+      out+='<div style="background:linear-gradient(150deg,#1f9a4e,#127a3c);border-radius:18px;box-shadow:0 14px 36px rgba(18,122,60,.26);padding:22px 20px;text-align:center;color:#fff">'
+        +svg('<path d="M9 11l3 3L20 5"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>',{c:'#fff',w:2.2,s:30})
+        +'<div style="font-size:19px;font-weight:900;margin-top:8px">Alles ausgeglichen</div>'
+        +'<div style="font-size:13.5px;color:#dcf4e4;margin-top:3px">Du hast aktuell keine offenen Beiträge. 👍</div></div>';
+    }
+    // Mahnstufe / Inkasso-Hinweis
+    if(a.inDebtCollection){
+      out+='<div style="display:flex;gap:10px;background:#fbeae7;border:1px solid #e6bcb4;border-radius:14px;padding:13px 15px;margin-top:14px">'+svg(IC.warn,{c:'var(--err-fg)',w:2,s:18})+'<div style="font-size:13px;color:var(--err-fg);font-weight:600;line-height:1.45">Es besteht ein offener Vorgang beim Inkasso. Bitte kontaktiere uns – wir klären das gemeinsam.</div></div>';
+    } else if(a.dunningLevel){
+      out+='<div style="display:flex;gap:10px;background:#fbf0e3;border:1px solid #e8cfa8;border-radius:14px;padding:13px 15px;margin-top:14px">'+svg(IC.warn,{c:'#C77A2E',w:2,s:18})+'<div style="font-size:13px;color:#9a5a18;font-weight:600;line-height:1.45">Hinweis: '+esc(a.dunningLevel)+'. Bitte gleiche offene Beträge zeitnah aus.</div></div>';
+    }
+    // Verzehrguthaben (falls vorhanden)
+    if(a.credit && typeof a.credit.amount==='number' && a.credit.amount>0.0001){
+      out+='<div style="display:flex;align-items:center;justify-content:space-between;background:var(--surface);border-radius:14px;box-shadow:0 8px 24px rgba(4,33,40,.08);padding:14px 16px;margin-top:14px"><div style="font-size:14px;font-weight:700;color:var(--text)">Verzehrguthaben</div><div style="font-size:16px;font-weight:800;color:var(--teal-ink)">'+money(a.credit.amount)+'</div></div>';
+    }
+    // Liste offener Posten
+    if(hasOpen){
+      out+='<div style="font-size:13px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.5px;margin:22px 2px 10px">Offene Posten</div>'
+        +'<div style="background:var(--surface);border-radius:18px;box-shadow:0 12px 32px rgba(4,33,40,.10);overflow:hidden">'
+        +a.open.map(function(o,i){ return '<div style="display:flex;align-items:center;gap:12px;padding:15px 16px;'+(i>0?'border-top:1px solid var(--border);':'')+'"><div style="width:40px;height:40px;border-radius:11px;background:var(--surface-2);display:flex;align-items:center;justify-content:center;flex-shrink:0">'+svg('<rect x="2" y="5" width="20" height="14" rx="2"></rect><path d="M2 9h20"></path>',{c:'var(--text-soft)',w:1.8,s:19})+'</div><div style="flex:1;min-width:0"><div style="font-size:14.5px;font-weight:700;color:var(--text)">'+esc(o.description||'Beitrag')+'</div><div style="font-size:12.5px;color:var(--text-muted);margin-top:2px">'+(o.dueDate?('fällig '+deDateFull(o.dueDate)):'')+'</div></div><div style="font-size:15px;font-weight:800;color:#C0392B;white-space:nowrap">'+money(o.open)+'</div></div>'; }).join('')
+        +'</div>';
+    }
+    // Hinweis auf Rechnungen/Vertragskopie
+    out+='<div style="font-size:12.5px;color:var(--text-soft);text-align:center;margin-top:18px;line-height:1.5">Fragen zu deinen Beiträgen? Melde dich über <b>Hilfe &amp; Kontakt</b> – wir helfen gern weiter.</div>';
+    return head+out;
   }
 
   function scrReferral(){
@@ -1382,8 +1430,8 @@
 
   // ---- responsive chrome (Desktop-Sidebar + Topbar) ----
   var DASH_IC='<rect x="3" y="3" width="7" height="9" rx="1.5"></rect><rect x="14" y="3" width="7" height="5" rx="1.5"></rect><rect x="14" y="12" width="7" height="9" rx="1.5"></rect><rect x="3" y="16" width="7" height="5" rx="1.5"></rect>';
-  var NAVITEMS=[['home','Übersicht',DASH_IC],['data','Meine Daten',IC.user],['contract','Vertragsverwaltung',IC.doc],['appt','Termine',IC.cal],['referral','Freunde werben',IC.gift],['checkins','Check-ins',IC.list],['postfach','Postfach',IC.mail],['help','Hilfe',IC.help],['settings','Einstellungen',IC.cog]];
-  var TITLES={home:'Übersicht',data:'Meine Daten',contract:'Vertragsverwaltung',appt:'Termine',referral:'Freunde werben',checkins:'Check-in-Verlauf',postfach:'Postfach',help:'Hilfe & Kontakt',settings:'Einstellungen'};
+  var NAVITEMS=[['home','Übersicht',DASH_IC],['data','Meine Daten',IC.user],['contract','Vertragsverwaltung',IC.doc],['account','Beitragskonto','<rect x="2" y="5" width="20" height="14" rx="2"></rect><path d="M2 9h20M6 15h5"></path>'],['appt','Termine',IC.cal],['referral','Freunde werben',IC.gift],['checkins','Check-ins',IC.list],['postfach','Postfach',IC.mail],['help','Hilfe',IC.help],['settings','Einstellungen',IC.cog]];
+  var TITLES={home:'Übersicht',data:'Meine Daten',contract:'Vertragsverwaltung',account:'Beitragskonto',appt:'Termine',referral:'Freunde werben',checkins:'Check-in-Verlauf',postfach:'Postfach',help:'Hilfe & Kontakt',settings:'Einstellungen'};
   function initials(p){ p=p||{}; var a=(p.firstName||'').trim(),b=(p.lastName||'').trim(); return (((a?a[0]:'')+(b?b[0]:'')).toUpperCase())||'FT'; }
   // Profil-Kopf für Sidebar/Drawer
   function navProfile(){
@@ -1434,6 +1482,7 @@
       case 'contract': html=scrContract(); break;
       case 'appt': html=scrAppt(); break;
       case 'referral': html=scrReferral(); break;
+      case 'account': html=scrAccount(); break;
       case 'checkins': html=scrCheckins(); break;
       case 'help': html=scrHelp(); break;
       case 'settings': html=scrSettings(); break;
