@@ -49,6 +49,10 @@ module.exports = async function handler(req, res) {
   let cid = param('customerId') || process.env.DEMO_CUSTOMER_ID || null;
   if (!cid) { try { const m = await M.findByNumberDob(param('num') || process.env.DEMO_CUSTOMER_NUMBER, dob); if (m) cid = m.id != null ? m.id : m.customerId; } catch (e) {} }
   if (!cid) { try { const m = await M.findByEmailDob(param('email') || process.env.DEMO_LOGIN_EMAIL, dob); if (m) cid = m.id != null ? m.id : m.customerId; } catch (e) {} }
+  // Falls cid eine Mitgliedsnummer ist (z. B. "M-2076"), echte interne ID auflösen.
+  if (cid && !/^\d+$/.test(String(cid))) {
+    try { const m = await M.findByNumberDob(String(cid), dob); if (m && (m.id != null || m.customerId != null)) cid = m.id != null ? m.id : m.customerId; } catch (e) {}
+  }
   if (!cid) { res.statusCode = 200; return res.end('Keine Kunden-ID gefunden. Bitte mit ?customerId=… aufrufen (echte interne ID).'); }
 
   let kid = null;
