@@ -677,6 +677,7 @@
       '<div style="margin-top:16px"><label class="lbl">Kontoinhaber:in</label><input id="d_holder" class="inp" value="'+esc(((p.firstName||'')+' '+(p.lastName||'')).trim())+'"></div>'+
       '<div style="margin-top:12px"><label class="lbl">Neue IBAN</label><input id="d_iban" class="inp" placeholder="DE00 0000 0000 0000 0000 00" style="letter-spacing:.5px" oninput="this.value=window.__fmtIban(this.value)"></div>'+
       '<div class="row2" style="grid-template-columns:2fr 1fr;margin-top:12px"><div><label class="lbl">Bank</label><input id="d_bank" class="inp" placeholder="Sparkasse Trier"></div><div><label class="lbl">BIC</label><input id="d_bic" class="inp" placeholder="TRISDE55XXX"></div></div>'+
+      '<div style="font-size:12px;color:var(--text-soft);margin-top:5px">Bank &amp; BIC findest du in deiner Banking-App oder auf der Bankkarte.</div>'+
       '<div style="margin-top:12px"><label class="lbl">Gültig ab</label><input id="d_iban_from" type="date" class="inp" min="'+isoToday()+'"><div style="font-size:12px;color:var(--text-soft);margin-top:5px">Ab wann soll die neue Bankverbindung für den Einzug genutzt werden? Leer = ab sofort / nächstmöglich.</div></div>'+
       '<button class="btn" data-act="saveIban" style="margin-top:18px">IBAN-Änderung beantragen</button>'+
       '<div style="font-size:12px;color:var(--text-soft);text-align:center;margin-top:12px;line-height:1.4">Änderungen werden zeitnah geprüft und übernommen. Bei Rückfragen melden wir uns.</div>'+
@@ -1421,7 +1422,10 @@
     saveAddr:function(){ var data={street:val('d_street'),houseNumber:val('d_house'),zipCode:val('d_zip'),city:val('d_city'),validFrom:val('d_addr_from')};
       api('/api/member/update',{method:'POST',body:JSON.stringify({type:'address',data:data})}).then(function(d){ setS({msg:(d&&d.message)||(d&&d.ok?'Übermittelt.':'Keine Änderung erkannt.')}); }).catch(function(){}); },
     saveIban:function(){ var iban=val('d_iban'); if(!iban){ setS({msg:'Bitte neue IBAN eingeben.'}); return; }
-      var data={accountHolder:val('d_holder'),iban:iban,bankName:val('d_bank'),bic:val('d_bic'),validFrom:val('d_iban_from')};
+      var holder=val('d_holder'), bank=val('d_bank'), bic=val('d_bic');
+      if(!holder){ setS({msg:'Bitte Kontoinhaber:in angeben.'}); return; }
+      if(!bank||!bic){ setS({msg:'Bitte Bank und BIC angeben – beides steht in deiner Banking-App oder auf der Bankkarte.'}); return; }
+      var data={accountHolder:holder,iban:iban,bankName:bank,bic:bic,validFrom:val('d_iban_from')};
       api('/api/member/update',{method:'POST',body:JSON.stringify({type:'payment',data:data})}).then(function(d){ setS({msg:(d&&d.message)||'Übermittelt.'}); }).catch(function(){}); },
     logout:function(){ logout(); },
     // contract
