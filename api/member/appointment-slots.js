@@ -48,12 +48,15 @@ module.exports = async function handler(req, res) {
       return M.ml('GET', path).then(function (r) { return Array.isArray(r.json) ? r.json : []; }).catch(function () { return []; });
     }));
 
-    // Zusammenführen, nach Startzeit deduplizieren und sortieren.
+    // Zusammenführen, Vergangenes raus, nach Startzeit deduplizieren und sortieren.
     const seen = {};
     const slots = [];
+    const now = Date.now();
     results.forEach(function (arr) {
       arr.forEach(function (s) {
         if (!s || !s.startDateTime || seen[s.startDateTime]) return;
+        const t = Date.parse(s.startDateTime);
+        if (!isNaN(t) && t <= now) return; // bereits vergangene Zeiten überspringen
         seen[s.startDateTime] = 1;
         const ins = Array.isArray(s.instructors) ? s.instructors : [];
         const first = ins[0] || null;
