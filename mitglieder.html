@@ -380,6 +380,13 @@
   function loadMe(){
     return api('/api/member/me').then(function(d){ DATA.profile=d.profile||null; DATA.contract=d.contract||null; DATA.membershipActive=(d.membershipActive!==false); checkDup(); try{ if(window.FitInnNative) FitInnNative.onAuthed(TOKEN); }catch(e){} });
   }
+  // Profil + Postfach frisch laden und neu zeichnen (nach Daten-Aktionen).
+  function refreshMe(){ return loadMe().then(function(){ render(); }).catch(function(){}); }
+  // Alle Kerndaten neu laden (beim Zurückkehren in die App / nach größeren Aktionen).
+  function refreshAll(){ if(!TOKEN) return; loadMe().then(function(){ loadAppts(); loadPlan(); loadPlanAgg(); loadInbox(); loadPrefs(); render(); }).catch(function(){}); }
+  // Gedrosseltes Auto-Aktualisieren, wenn App/Tab wieder sichtbar wird.
+  var __lastRefresh=Date.now();
+  function maybeAutoRefresh(){ if(!TOKEN||S.screen==='login') return; var now=Date.now(); if(now-__lastRefresh<15000) return; __lastRefresh=now; refreshAll(); }
   // Mehrere Magicline-Konten zu denselben Daten? -> Hinweis-Banner im Portal.
   function checkDup(){
     api('/api/member/duplicates').then(function(d){ if(d&&d.ok){ S.dupNotice={ hasDuplicates:!!d.hasDuplicates, count:d.count||0, requested:!!d.requested }; render(); } }).catch(function(){});
@@ -1446,14 +1453,14 @@
     },
     toggleRemember:function(){ S.remember=!S.remember; if(!S.remember) localStorage.removeItem('fi_remember'); setQuiet({}); },
     saveAddr:function(){ var data={street:val('d_street'),houseNumber:val('d_house'),zipCode:val('d_zip'),city:val('d_city')};
-      api('/api/member/update',{method:'POST',body:JSON.stringify({type:'address',data:data})}).then(function(d){ setS({msg:(d&&d.message)||(d&&d.ok?'Übermittelt.':'Keine Änderung erkannt.')}); }).catch(function(){}); },
+      api('/api/member/update',{method:'POST',body:JSON.stringify({type:'address',data:data})}).then(function(d){ setS({msg:(d&&d.message)||(d&&d.ok?'Übermittelt.':'Keine Änderung erkannt.')}); refreshMe(); loadInbox(); }).catch(function(){}); },
     saveIban:function(){ var iban=val('d_iban'); if(!iban){ setS({msg:'Bitte neue IBAN eingeben.'}); return; }
       if(!ibanValid(iban)){ setS({msg:'Die IBAN ist ungültig – bitte prüfe deine Eingabe.'}); return; }
       var holder=val('d_holder'), bank=val('d_bank'), bic=val('d_bic');
       if(!holder){ setS({msg:'Bitte Kontoinhaber:in angeben.'}); return; }
       if(!bank||!bic){ setS({msg:'Bank/BIC konnten nicht automatisch erkannt werden – bitte ergänze sie manuell (Banking-App oder Bankkarte).'}); return; }
       var data={accountHolder:holder,iban:iban,bankName:bank,bic:bic};
-      api('/api/member/update',{method:'POST',body:JSON.stringify({type:'payment',data:data})}).then(function(d){ setS({msg:(d&&d.message)||'Übermittelt.'}); }).catch(function(){}); },
+      api('/api/member/update',{method:'POST',body:JSON.stringify({type:'payment',data:data})}).then(function(d){ setS({msg:(d&&d.message)||'Übermittelt.'}); refreshMe(); loadInbox(); }).catch(function(){}); },
     logout:function(){ logout(); },
     // contract
     contractCopy:function(){ if(S.ccBusy) return; setQuiet({ccBusy:true,ccMsg:''});
@@ -1476,7 +1483,7 @@
     confirmPauseSubmit:function(){ setQuiet({busy:true});
       var payload={ reason:S.pauseReason||'—', reasonText:S.pauseReasonText||'', from:(S.pauseFrom||isoToday()), weeks:S.pauseWeeks, photo:S.pausePhoto||'' };
       api('/api/member/pause',{method:'POST',body:JSON.stringify(payload)})
-        .then(function(d){ setS({busy:false,pauseStep:0,pauseDone:true,pausePhoto:'',pausePhotoName:'',pauseReason:'',pauseReasonText:''}); })
+        .then(function(d){ setS({busy:false,pauseStep:0,pauseDone:true,pausePhoto:'',pausePhotoName:'',pauseReason:'',pauseReasonText:''}); refreshMe(); loadInbox(); })
         .catch(function(){ setS({busy:false,pauseStep:0,pauseDone:true,pausePhoto:'',pausePhotoName:''}); }); },
     submitCancel:function(){
       var date=val('c_date');
@@ -1493,7 +1500,7 @@
     askWithdraw:function(){ setS({withdrawConfirm:true}); },
     cancelWithdraw:function(){ setS({withdrawConfirm:false}); },
     confirmWithdraw:function(){ setQuiet({busy:true});
-      api('/api/member/cancel',{method:'POST',body:JSON.stringify({action:'withdraw'})}).then(function(){ setS({busy:false,withdrawConfirm:false,withdrawDone:true}); }).catch(function(){ setS({busy:false,withdrawConfirm:false,withdrawDone:true}); }); },
+      api('/api/member/cancel',{method:'POST',body:JSON.stringify({action:'withdraw'})}).then(function(){ setS({busy:false,withdrawConfirm:false,withdrawDone:true}); refreshMe(); }).catch(function(){ setS({busy:false,withdrawConfirm:false,withdrawDone:true}); }); },
     askRevoke:function(){ setS({revokeConfirm:true}); },
     cancelRevoke:function(){ setS({revokeConfirm:false}); },
     confirmRevoke:function(){ setQuiet({busy:true});
@@ -1640,6 +1647,11 @@
   }
   window.addEventListener('fitinn-native-ready', onNativeReady);
   if(window.FitInnNative && FitInnNative.isNative) onNativeReady();
+
+  // App/Tab wird wieder sichtbar oder erhält Fokus -> Daten automatisch aktualisieren.
+  document.addEventListener('visibilitychange', function(){ if(document.visibilityState==='visible') maybeAutoRefresh(); });
+  window.addEventListener('focus', maybeAutoRefresh);
+  window.addEventListener('pageshow', function(e){ if(e && e.persisted) maybeAutoRefresh(); });
 })();
 </script>
 <script defer src="/_vercel/insights/script.js"></script>
