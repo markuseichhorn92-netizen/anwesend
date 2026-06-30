@@ -38,8 +38,9 @@ module.exports = async function handler(req, res) {
   if (req.method === 'GET') {
     let ct = null; try { ct = await M.getContract(sess.id); } catch (e) {}
     const statsLine = 'Tarif ' + ((ct && ct.rateName) || 'aktiv') + (ct && ct.active === false ? ' (ehemalig)' : ' (aktiv)');
+    let goal = ''; try { goal = new URL(req.url, 'http://x').searchParams.get('goal') || ''; } catch (e) {}
     if (AI.hasAI && (await M.rateLimit('coach-tip:' + sess.id, 30, 3600))) {
-      const r = await AI.coachTip(statsLine);
+      const r = await AI.coachTip(statsLine, goal);
       if (r.ok) { res.statusCode = 200; return res.end(JSON.stringify({ ok: true, message: r.answer, ai: true })); }
     }
     const idx = (new Date().getDate()) % STATIC_TIPS.length;   // tagesstabil, kein Zufall nötig

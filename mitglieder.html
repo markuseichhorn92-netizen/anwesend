@@ -301,6 +301,7 @@
     aiQuery:'', aiPhase:'idle', aiAsked:'', aiAnswer:'', aiFeedback:null,
     finnOpen:false, finnMsgs:[], finnBusy:false, finnTip:'', finnTipLoaded:false,
     blogSel:null, blogPost:null,
+    obStep:0, obGoal:'Gesundheit & Longevity', obFreq:3, obAge:34, obExp:'gelegentlich',
     ctOpen:false, ctSent:false, ctMsg:'', ctBusy:false, ctErr:'', ctMsgServer:'', artFb:null,
     pfFilter:'all', pfSel:null, pfThread:false, pfDraft:'', pfBusy:false, pfErr:'',
     copied:false, dlMsg:false, dlMsg2:'', emailing:false,
@@ -750,7 +751,8 @@
   // ── FINN – KI-Coach: Karte auf der Übersicht + Chat-Overlay ──
   function loadFinnTip(){
     if(S.finnTipLoaded||!TOKEN) return; S.finnTipLoaded=true;
-    api('/api/member/coach').then(function(d){ if(d&&d.message){ S.finnTip=d.message; if(S.screen==='home') render(); } }).catch(function(){});
+    var ob=obData(); var q=(ob&&ob.goal)?('?goal='+encodeURIComponent(ob.goal)):'';
+    api('/api/member/coach'+q).then(function(d){ if(d&&d.message){ S.finnTip=d.message; if(S.screen==='home') render(); } }).catch(function(){});
   }
   function finnCard(){
     var tip=S.finnTip||'';
@@ -846,6 +848,35 @@
       '<div><div style="font-size:12px;font-weight:700;color:#aed0d6;text-transform:uppercase;letter-spacing:.4px">Tipp des Tages</div><div style="font-size:14px;font-weight:600;line-height:1.4;margin-top:3px">'+esc(t)+'</div></div>'+
     '</div>';
   }
+  // ── Onboarding (4 Schritte, einmalig) – wie im Mockup ──
+  function obDone(){ try{ return !!localStorage.getItem('fi_ob_v1'); }catch(e){ return true; } }
+  function obData(){ try{ var v=localStorage.getItem('fi_ob_v1'); return v?JSON.parse(v):null; }catch(e){ return null; } }
+  function obOverlayHtml(){
+    var step=S.obStep||0;
+    var dots=''; for(var i=0;i<4;i++){ dots+='<span style="flex:1;height:5px;border-radius:4px;background:'+(i<=step?'#F6A964':'rgba(255,255,255,.18)')+'"></span>'; }
+    var goals=[['Abnehmen','🔥'],['Muskelaufbau','💪'],['Ausdauer & Fitness','🏃'],['Gesundheit & Longevity','❤️'],['Stressabbau & Kopf frei','🧘']];
+    var exps=[['einsteiger','Einsteiger:in','Neu im Studio oder Wiedereinstieg','🌱'],['gelegentlich','Gelegentlich','Ich trainiere ab und zu','⚡'],['erfahren','Erfahren','Training gehört zu meinem Alltag','🏅']];
+    var optBorder=function(sel){ return sel?'#7fe3a8':'rgba(255,255,255,.18)'; };
+    var optBg=function(sel){ return sel?'rgba(127,227,168,.12)':'rgba(255,255,255,.06)'; };
+    var inner='';
+    if(step===0){
+      inner='<div style="flex:1;display:flex;flex-direction:column;justify-content:center;text-align:center"><div style="font-size:60px">👋</div><div style="font-size:30px;font-weight:900;letter-spacing:-.6px;margin-top:14px;line-height:1.12">Willkommen bei<br>Fit-Inn Trier</div><div style="font-size:15px;color:#aed0d6;font-weight:500;line-height:1.55;margin-top:14px;max-width:300px;align-self:center">In 4 kurzen Schritten richten wir dein Training ein – damit dein Coach dich jeden Tag passend motivieren kann.</div></div>';
+    } else if(step===1){
+      inner='<div style="flex:1"><div style="font-size:24px;font-weight:900;letter-spacing:-.4px;line-height:1.15">Was ist dein<br>wichtigstes Ziel?</div><div style="font-size:14px;color:#aed0d6;font-weight:500;margin-top:8px">Daran richtet dein Coach alles aus.</div><div style="display:flex;flex-direction:column;gap:10px;margin-top:22px">'+
+        goals.map(function(g){ var sel=S.obGoal===g[0]; return '<button data-act="obGoal" data-arg="'+esc(g[0])+'" style="display:flex;align-items:center;gap:13px;width:100%;padding:15px;border:2px solid '+optBorder(sel)+';border-radius:15px;background:'+optBg(sel)+';cursor:pointer;text-align:left"><span style="font-size:23px">'+g[1]+'</span><span style="flex:1;font-size:15.5px;font-weight:800;color:#fff">'+esc(g[0])+'</span>'+(sel?svg('<path d="M5 13l4 4L19 7"></path>',{c:'#7fe3a8',w:2.6,s:20}):'')+'</button>'; }).join('')+'</div></div>';
+    } else if(step===2){
+      var freqBtns=''; for(var n=1;n<=6;n++){ var on=S.obFreq===n; freqBtns+='<button data-act="obFreq" data-arg="'+n+'" style="flex:1;padding:14px 0;border:2px solid '+optBorder(on)+';border-radius:13px;background:'+optBg(on)+';color:#fff;font-weight:800;font-size:16px;cursor:pointer">'+n+'</button>'; }
+      inner='<div style="flex:1"><div style="font-size:24px;font-weight:900;letter-spacing:-.4px;line-height:1.15">Wie oft möchtest<br>du trainieren?</div><div style="font-size:14px;color:#aed0d6;font-weight:500;margin-top:8px">Pro Woche – ehrlich, nicht perfekt.</div><div style="text-align:center;margin:22px 0"><span style="font-size:60px;font-weight:900;letter-spacing:-2px">'+S.obFreq+'</span><span style="font-size:19px;font-weight:700;color:#aed0d6"> ×/Woche</span></div><div style="display:flex;gap:8px">'+freqBtns+'</div>'+
+        '<div style="font-size:20px;font-weight:900;letter-spacing:-.4px;margin-top:28px">Wie alt bist du?</div><div style="font-size:13px;color:#aed0d6;font-weight:500;margin-top:6px">Für dein Fitness-Alter & deinen Longevity-Score.</div><div style="display:flex;align-items:center;gap:14px;margin-top:14px;background:rgba(255,255,255,.1);border-radius:15px;padding:13px 16px"><button data-act="obAge" data-arg="-1" style="width:38px;height:38px;border-radius:11px;border:none;background:rgba(255,255,255,.16);color:#fff;font-size:22px;font-weight:800;cursor:pointer">−</button><div style="flex:1;text-align:center;font-size:26px;font-weight:900">'+S.obAge+' <span style="font-size:14px;color:#aed0d6;font-weight:600">Jahre</span></div><button data-act="obAge" data-arg="1" style="width:38px;height:38px;border-radius:11px;border:none;background:rgba(255,255,255,.16);color:#fff;font-size:22px;font-weight:800;cursor:pointer">+</button></div></div>';
+    } else {
+      inner='<div style="flex:1"><div style="font-size:24px;font-weight:900;letter-spacing:-.4px;line-height:1.15">Wie viel Erfahrung<br>hast du?</div><div style="font-size:14px;color:#aed0d6;font-weight:500;margin-top:8px">So passt dein Coach die Tipps an.</div><div style="display:flex;flex-direction:column;gap:10px;margin-top:22px">'+
+        exps.map(function(e){ var sel=S.obExp===e[0]; return '<button data-act="obExp" data-arg="'+e[0]+'" style="display:flex;align-items:center;gap:13px;width:100%;padding:16px;border:2px solid '+optBorder(sel)+';border-radius:15px;background:'+optBg(sel)+';cursor:pointer;text-align:left"><span style="font-size:23px">'+e[3]+'</span><span style="flex:1"><span style="display:block;font-size:15.5px;font-weight:800;color:#fff">'+esc(e[1])+'</span><span style="display:block;font-size:12.5px;color:#aed0d6;font-weight:500">'+esc(e[2])+'</span></span></button>'; }).join('')+'</div></div>';
+    }
+    return '<div class="obOverlay" style="position:fixed;inset:0;z-index:80;background:linear-gradient(170deg,#0e6072 0%,#0a4958 50%,#063540 100%);display:flex;flex-direction:column;padding:calc(40px + env(safe-area-inset-top,0px)) 24px calc(24px + env(safe-area-inset-bottom,0px));color:#fff;overflow-y:auto;max-width:480px;margin:0 auto">'+
+      '<div style="display:flex;gap:6px;margin-bottom:28px;flex-shrink:0">'+dots+'</div>'+inner+
+      '<button data-act="obNext" style="width:100%;margin-top:20px;border:none;border-radius:15px;background:#fff;color:#0a4958;font-weight:900;font-size:16px;padding:16px;cursor:pointer;flex-shrink:0">'+(step>=3?'Los geht\'s':'Weiter')+'</button>'+
+    '</div>';
+  }
   function scrHome(){
     if(isFormer()) return scrRejoin();
     loadFinnTip(); loadBlog(); loadTypical();
@@ -880,8 +911,6 @@
       checkinBtn()+
       wifiBtn()+
       dupBanner+
-      statCards()+
-      '<div style="height:14px"></div>'+
       auslastungChart()+
       vitalCard()+
       hoursCard()+
@@ -1894,6 +1923,7 @@
     if(narrow) html='<div class="narrow">'+html+'</div>';
     if(S.ciPopup) html+=ciPopupHtml();
     if(S.finnOpen) html+=finnOverlayHtml();
+    if(TOKEN && S.screen!=='login' && !isFormer() && !obDone()) html+=obOverlayHtml();
     $('app').innerHTML=html;
     renderChrome();
     // Deep-Link „Zeit vormerken" (aus dem Widget): einmalig zur Reservierung scrollen
@@ -1912,6 +1942,11 @@
     nav:function(a){ nav(a); },
     openFinn:function(){ setS({finnOpen:true}); setTimeout(function(){ var t=$('finn_q'); if(t) t.focus(); finnScrollBottom(); },60); },
     ciToggle:function(){ if(S.screen!=='home') nav('home'); if(S.checkedInAt){ if(ACT.doCheckout) ACT.doCheckout(); } else { if(ACT.doCheckin) ACT.doCheckin(); } },
+    obGoal:function(a){ setS({obGoal:a}); },
+    obFreq:function(a){ setS({obFreq:parseInt(a,10)||3}); },
+    obAge:function(a){ var d=parseInt(a,10)||0; setS({obAge:Math.max(14,Math.min(99,(S.obAge||34)+d))}); },
+    obExp:function(a){ setS({obExp:a}); },
+    obNext:function(){ if((S.obStep||0)>=3){ try{ localStorage.setItem('fi_ob_v1',JSON.stringify({goal:S.obGoal,freq:S.obFreq,age:S.obAge,exp:S.obExp})); }catch(e){} S.finnTipLoaded=false; setS({obStep:0}); loadFinnTip(); } else { setS({obStep:(S.obStep||0)+1}); var o=document.querySelector('.obOverlay'); if(o) o.scrollTop=0; } },
     closeFinn:function(){ setS({finnOpen:false}); },
     finnSuggest:function(a){ var t=$('finn_q'); if(t) t.value=a; ACT.finnSend(); },
     finnSend:function(){ if(S.finnBusy) return; var t=$('finn_q'); var q=t?(t.value||'').trim():''; if(!q) return;
