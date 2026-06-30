@@ -41,7 +41,11 @@ module.exports = async function handler(req, res) {
   }
 
   res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-  const cid = q('customerId') || (bodyParams && bodyParams.get('customerId')) || process.env.DEMO_CUSTOMER_ID || '';
+  let cid = q('customerId') || (bodyParams && bodyParams.get('customerId')) || process.env.DEMO_CUSTOMER_ID || '';
+  // Mitgliedsnummer (z. B. M-2076) -> interne ID auflösen (Tokens liegen unter der internen ID)
+  if (cid && !/^\d+$/.test(String(cid))) {
+    try { const m = await M.findByNumberDob(String(cid), process.env.DEMO_LOGIN_DOB); if (m && (m.id != null || m.customerId != null)) cid = (m.id != null ? m.id : m.customerId); } catch (e) {}
+  }
   const lines = ['=== Push-Test ===', 'customerId=' + (cid || '—'), ''];
   lines.push('Server konfiguriert (hasPush): ' + Push.hasPush);
   lines.push('Apple/APNs aktiv (hasApns): ' + Apns.hasApns);
