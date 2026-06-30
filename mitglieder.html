@@ -274,7 +274,7 @@
 
   // ---- state ----
   var TOKEN = localStorage.getItem('fi_member_token') || sessionStorage.getItem('fi_member_token') || null;
-  var DATA = { profile:null, contract:null, checkins:null, appts:null, plan:null, planAgg:null, planAggTom:null, inbox:null, prefs:null, membershipActive:true, bookable:null, slots:null, account:null, blog:null };
+  var DATA = { profile:null, contract:null, checkins:null, appts:null, plan:null, planAgg:null, planAggTom:null, inbox:null, prefs:null, membershipActive:true, bookable:null, slots:null, account:null, blog:null, typical:null };
   // Erlaubte Screens für ehemalige Mitglieder (alles andere wird gesperrt)
   var FORMER_OK = ['home','checkins','help','postfach','settings','profil'];
   function isFormer(){ return DATA.membershipActive===false; }
@@ -782,6 +782,35 @@
       '</div>'+
     '</div>';
   }
+  // Auslastung „heute" – typische Tageskurve (öffentlicher /api/typical-Endpunkt).
+  function loadTypical(){ if(DATA.typical!==null) return; DATA.typical=false; fetch('/api/typical').then(function(r){return r.json();}).then(function(d){ DATA.typical=(d&&d.available!==false&&Array.isArray(d.day))?d:false; if(S.screen==='home') render(); }).catch(function(){}); }
+  function auslastungChart(){
+    var t=DATA.typical; if(!t||!Array.isArray(t.day)) return '';
+    var day=t.day, max=t.max||0;
+    var curSlot=(typeof t.slot==='number')?t.slot:-1, curHour=curSlot>=0?Math.floor(curSlot/2):-1;
+    var startH=7, endH=22, bars=[], peakH=startH, peakV=0;
+    for(var h=startH;h<=endH;h++){ var a=day[h*2], b=day[h*2+1]; var v=Math.max(a==null?0:a, b==null?0:b); if(v>peakV){peakV=v;peakH=h;} bars.push({h:h,v:v}); }
+    var maxV=Math.max(max||0, peakV, 1);
+    var barsHtml=bars.map(function(bar){
+      var pct=Math.max(4, Math.round(bar.v/maxV*100));
+      var ratio=bar.v/(max||maxV);
+      var col= ratio>=.8?'#e2685a':(ratio>=.5?'#E08C53':'#37b27a');
+      var now=bar.h===curHour;
+      return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;justify-content:flex-end;height:100%">'+
+        '<div style="width:100%;background:'+col+';height:'+pct+'%;border-radius:4px;min-height:6px;position:relative">'+(now?'<span style="position:absolute;top:-18px;left:50%;transform:translateX(-50%);font-size:9px;font-weight:800;color:var(--teal-ink);background:var(--surface-2);padding:1px 5px;border-radius:6px;white-space:nowrap">jetzt</span>':'')+'</div>'+
+        '<span style="font-size:9.5px;font-weight:'+(now?'800':'600')+';color:'+(now?'var(--text)':'var(--text-soft)')+'">'+bar.h+'</span>'+
+      '</div>';
+    }).join('');
+    var curVal=(typeof t.typicalCount==='number')?t.typicalCount:(curHour>=0?Math.round(day[curHour*2]||0):0);
+    var pp=t.typicalPercent;
+    var loadLabel = pp==null?'':(pp>=80?'Hoch':(pp>=50?'Mittel':'Entspannt'));
+    var loadCol = pp>=80?'#e2685a':(pp>=50?'#E08C53':'#37b27a');
+    return '<div class="card" style="border-radius:20px;box-shadow:0 12px 34px rgba(4,33,40,.10);padding:20px;margin-bottom:14px">'+
+      '<div style="display:flex;align-items:center;justify-content:space-between"><span style="font-size:13px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.5px">Auslastung heute</span>'+(loadLabel?'<span style="display:flex;align-items:center;gap:6px;background:var(--surface-2);padding:5px 11px;border-radius:20px"><span style="width:8px;height:8px;border-radius:50%;background:'+loadCol+'"></span><span style="font-size:12px;font-weight:800;color:var(--text-2)">'+loadLabel+'</span></span>':'')+'</div>'+
+      '<div style="display:flex;align-items:flex-end;gap:5px;height:78px;margin-top:20px">'+barsHtml+'</div>'+
+      '<div style="display:flex;justify-content:space-between;margin-top:10px;font-size:12px;color:var(--text-soft);font-weight:600"><span>≈ '+curVal+(max?(' von '+max):'')+' Gäste</span><span>Stoßzeit '+peakH+'–'+(peakH+2)+' Uhr</span></div>'+
+    '</div>';
+  }
   // Öffnungszeiten-Karte (feste Studiozeiten + Live „geöffnet/geschlossen").
   function hoursCard(){
     var now=new Date(); var d=now.getDay(); var hm=now.getHours()+now.getMinutes()/60;
@@ -808,7 +837,7 @@
   }
   function scrHome(){
     if(isFormer()) return scrRejoin();
-    loadFinnTip(); loadBlog();
+    loadFinnTip(); loadBlog(); loadTypical();
     var p=DATA.profile||{}; var name=p.firstName||'';
     var tiles=[
       ['card','Mitgliedskarte','Dein digitaler Ausweis mit QR-Code','#3BC6D6,#0E8A9E','rgba(14,138,158,.45)','<rect x="3" y="3" width="7" height="7" rx="1.4"></rect><rect x="14" y="3" width="7" height="7" rx="1.4"></rect><rect x="3" y="14" width="7" height="7" rx="1.4"></rect><path d="M14 14h3v3h-3z"></path><path d="M20 14v3M14 20h3M20 20v.01"></path>'],
@@ -842,6 +871,7 @@
       dupBanner+
       statCards()+
       '<div style="height:14px"></div>'+
+      auslastungChart()+
       vitalCard()+
       hoursCard()+
       planCard()+
