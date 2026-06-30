@@ -112,6 +112,25 @@ module.exports = async function handler(req, res) {
     } catch (e) { writeProbe = { status: -1, body: String((e && e.message) || e) }; }
   }
 
+  // ── SICHERER IBAN-Test: aktuelle Bankverbindung mit ALLEN Pflichtfeldern 1:1 zurück ──
+  // Schema verlangt accountHolder + bankName + bic + iban. Identische Werte = keine Änderung.
+  let payProbe = null;
+  if ((param('write') === '1') || (param('write') === 'true')) {
+    try {
+      const m = await M.getMember(cid);
+      const ba = (m && m.bankAccount) || {};
+      const holder = ba.accountHolder || (((m && m.firstName) || '') + ' ' + ((m && m.lastName) || '')).trim();
+      payProbe = { have: { iban: !!ba.iban, bic: !!ba.bic, bankName: !!ba.bankName, accountHolder: !!holder } };
+      if (ba.iban) {
+        const wr = await M.writePayment(cid, { accountHolder: holder, iban: ba.iban, bic: ba.bic, bankName: ba.bankName });
+        payProbe.status = wr.status;
+        payProbe.body = String(wr.text || '').slice(0, 180);
+      } else {
+        payProbe.status = 'skip'; payProbe.body = 'Keine IBAN im Datensatz gefunden.';
+      }
+    } catch (e) { payProbe = { status: -1, body: String((e && e.message) || e) }; }
+  }
+
   const missing = results.filter((r) => r.status === 403).map((r) => r.scope);
   const lines = ['=== Magicline Scope-Check ===', 'customerId=' + cid + '  contractId=' + (kid != null ? kid : '—'), ''];
   results.forEach((r) => {
@@ -127,6 +146,15 @@ module.exports = async function handler(req, res) {
       writeProbe.body ? '   ' + writeProbe.body : '');
   } else {
     lines.push('', 'Schreib-Test nicht ausgeführt. Mit ?write=1 aufrufen, um CUSTOMER_SELF_SERVICE_WRITE zu prüfen (schreibt die aktuelle Adresse unverändert zurück).');
+  }
+  if (payProbe) {
+    const okP = (typeof payProbe.status === 'number' && payProbe.status >= 200 && payProbe.status < 300);
+    const tagP = okP ? 'OK ✓   ' : (payProbe.status === 403 ? 'FEHLT ❌' : 'INFO   ');
+    const h = payProbe.have || {};
+    lines.push('', '=== IBAN-/BANK-TEST (payment-data) ===',
+      'Vorhandene Felder im Datensatz: iban=' + (h.iban ? 'ja' : 'NEIN') + '  bic=' + (h.bic ? 'ja' : 'NEIN') + '  bankName=' + (h.bankName ? 'ja' : 'NEIN') + '  accountHolder=' + (h.accountHolder ? 'ja' : 'NEIN'),
+      tagP + '  Bankverbindung zurückschreiben  (HTTP ' + payProbe.status + ')',
+      payProbe.body ? '   ' + payProbe.body : '');
   }
   res.statusCode = 200;
   return res.end(lines.join('\n'));
