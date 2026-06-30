@@ -45,6 +45,18 @@
     main > header{padding:14px 16px!important}
   }
   @media (min-width:861px){ .mb-burger,.mb-overlay,.mb-back{display:none!important} }
+  /* Mobile Bottom-Nav (neuer Look) */
+  .bottomnav{display:none;flex-shrink:0;border-top:1px solid #e1e8ea;background:#fff}
+  .bottomnav button:active{opacity:.6}
+  @media (max-width:860px){
+    .bottomnav{display:flex}
+    .mb-burger{display:none!important}
+    .hdr-mobile{background:linear-gradient(160deg,#0e6072,#063540)!important;border-bottom:none!important;border-radius:0 0 22px 22px;padding:calc(14px + env(safe-area-inset-top,0px)) 18px 16px!important}
+    .hdr-mobile .hdr-title{color:#fff!important}
+    .hdr-mobile .hdr-sub{color:#aed0d6!important}
+    .hdr-mobile .hdr-refresh{background:rgba(255,255,255,.14)!important;border-color:rgba(255,255,255,.2)!important}
+    .hdr-mobile .hdr-refresh svg{stroke:#fff!important}
+  }
 </style>
 <script>
   /* In der eigenen App (Capacitor): App-Feeling – kein Zoom, kein horizontales
@@ -390,20 +402,38 @@ function renderShell(content, title, sub){
   if(S.navOpen){ var ov=el('<div class="mb-overlay" style="position:fixed;inset:0;background:rgba(0,18,22,.45);z-index:55"></div>'); ov.onclick=function(){ S.navOpen=false; render(); }; row.appendChild(ov); }
 
   var main=el('<main style="flex:1;min-width:0;display:flex;flex-direction:column;height:100vh"></main>');
-  var head=el('<header style="display:flex;align-items:center;justify-content:space-between;padding:16px 26px;border-bottom:1px solid #dde4e6;background:#eef2f3;flex-shrink:0"></header>');
+  var head=el('<header class="hdr-mobile" style="display:flex;align-items:center;justify-content:space-between;padding:16px 26px;border-bottom:1px solid #dde4e6;background:#eef2f3;flex-shrink:0"></header>');
   head.innerHTML=
     '<div style="display:flex;align-items:center;gap:13px;min-width:0">'+
       '<button class="mb-burger" data-burger="1" style="display:none;align-items:center;justify-content:center;width:42px;height:42px;border:1px solid #dde4e6;background:#fff;border-radius:11px;padding:0;flex-shrink:0">'+IC.burger+'</button>'+
-      '<div style="min-width:0"><div style="font-size:21px;font-weight:900;letter-spacing:-.5px;line-height:1.1">'+esc(title)+'</div>'+
-      '<div style="font-size:12.5px;color:#8a929a;font-weight:600;margin-top:1px">'+esc(sub||'')+'</div></div></div>'+
-    '<button data-refresh="1" style="width:40px;height:40px;border:1px solid #e1e8ea;background:#fff;border-radius:12px;display:flex;align-items:center;justify-content:center" title="Aktualisieren">'+
+      '<div style="min-width:0"><div class="hdr-title" style="font-size:21px;font-weight:900;letter-spacing:-.5px;line-height:1.1">'+esc(title)+'</div>'+
+      '<div class="hdr-sub" style="font-size:12.5px;color:#8a929a;font-weight:600;margin-top:1px">'+esc(sub||'')+'</div></div></div>'+
+    '<button data-refresh="1" class="hdr-refresh" style="width:40px;height:40px;border:1px solid #e1e8ea;background:#fff;border-radius:12px;display:flex;align-items:center;justify-content:center" title="Aktualisieren">'+
       '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#42454b" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v5h-5"/></svg></button>';
   main.appendChild(head);
   var body=el('<div style="flex:1;min-height:0;display:flex;flex-direction:column"></div>');
   body.appendChild(content);
-  main.appendChild(body); row.appendChild(main); root.appendChild(row);
+  main.appendChild(body);
+
+  // Mobile Bottom-Nav (neuer Look). Liegt als letzte Zeile der main-Spalte -> kein Overlay nötig.
+  var sc=S.screen;
+  var bnDefs=[
+    {k:'dash',l:'Übersicht',ic:IC.dash,on:sc==='dash'},
+    {k:'inbox',l:'Posteingang',ic:IC.inbox,on:(sc==='inbox'||sc==='thread'),badge:open},
+    {k:'members',l:'Mitglieder',ic:IC.members,on:(sc==='members'||sc==='profile')},
+    {k:'__more',l:'Mehr',ic:IC.dots,on:(['appts','help','stats'].indexOf(sc)>=0)}
+  ];
+  var bnav=el('<nav class="bottomnav" style="align-items:stretch;padding:5px 4px calc(5px + env(safe-area-inset-bottom,0px))"></nav>');
+  bnav.innerHTML=bnDefs.map(function(it){ var c=it.on?'#0a4958':'#9aa6aa';
+    var badge=(it.badge)?'<span style="position:absolute;top:2px;left:calc(50% + 6px);background:#F6A964;color:#fff;font-size:9.5px;font-weight:800;min-width:15px;height:15px;border-radius:8px;padding:0 4px;display:flex;align-items:center;justify-content:center">'+it.badge+'</span>':'';
+    return '<button data-bn="'+it.k+'" style="position:relative;flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;border:none;background:none;padding:6px 2px;color:'+c+';font-weight:'+(it.on?'800':'600')+';font-size:10.5px;cursor:pointer"><span style="display:flex">'+it.ic+'</span>'+badge+'<span>'+it.l+'</span></button>';
+  }).join('');
+  main.appendChild(bnav);
+
+  row.appendChild(main); root.appendChild(row);
 
   // wire shell
+  bnav.querySelectorAll('[data-bn]').forEach(function(b){ b.onclick=function(){ var k=b.getAttribute('data-bn'); if(k==='__more'){ S.navOpen=true; render(); } else { goScreen(k); } }; });
   side.querySelectorAll('[data-nav]').forEach(function(b){ b.onclick=function(){ goScreen(b.getAttribute('data-nav')); }; });
   side.querySelector('[data-logout]').onclick=logout;
   var toApp=side.querySelector('[data-toapp]'); if(toApp) toApp.onclick=function(){ location.assign('/mitglieder'); };
