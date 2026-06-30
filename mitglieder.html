@@ -37,7 +37,7 @@
   input,select,textarea,button{font-family:inherit}
   @keyframes fiUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
   .shell{width:100%;max-width:480px;margin:0 auto;min-height:100dvh;display:flex;flex-direction:column}
-  .brandbar{display:flex;align-items:center;justify-content:space-between;padding:18px 20px 14px;background:linear-gradient(160deg,#0e6072,#063540)}
+  .brandbar{position:sticky;top:0;z-index:50;display:flex;align-items:center;justify-content:space-between;padding:calc(18px + env(safe-area-inset-top,0px)) 20px 14px;background:linear-gradient(160deg,#0e6072,#063540)}
   .logout{background:rgba(255,255,255,.12);border:none;color:#cfe3e7;font-weight:600;font-size:13px;padding:8px 13px;border-radius:9px;cursor:pointer}
   /* ---------- mobile burger menu ---------- */
   .burger{display:none;align-items:center;justify-content:center;width:42px;height:42px;border-radius:11px;background:rgba(255,255,255,.12);border:none;cursor:pointer;flex-shrink:0;padding:0;position:relative}
@@ -406,7 +406,7 @@
   function checkDup(){
     api('/api/member/duplicates').then(function(d){ if(d&&d.ok){ S.dupNotice={ hasDuplicates:!!d.hasDuplicates, count:d.count||0, requested:!!d.requested }; render(); } }).catch(function(){});
   }
-  function loadCheckins(){ api('/api/member/checkins').then(function(d){ DATA.checkins=d.checkins||[]; render(); }).catch(function(){ DATA.checkins=[]; render(); }); }
+  function loadCheckins(){ api('/api/member/checkins').then(function(d){ DATA.checkins=d.checkins||[]; ciSyncFromHistory(); render(); }).catch(function(){ DATA.checkins=[]; render(); }); }
   // ===== Check-in/out Status, Timer & Popups =====
   var CI_KEY='fi_checkin', CI_MAX=5*60*60*1000; // 5h Auto-Ablauf (vergessenes Auschecken)
   function ciLoad(){ try{ var v=localStorage.getItem(CI_KEY); if(!v){ S.checkedInAt=null; return; } var t=Date.parse(v); if(isNaN(t)||(Date.now()-t)>CI_MAX){ localStorage.removeItem(CI_KEY); S.checkedInAt=null; return; } S.checkedInAt=v; }catch(e){ S.checkedInAt=null; } }
@@ -417,6 +417,24 @@
   function ciAutoClose(){ try{ clearTimeout(window.__ciT); }catch(e){} window.__ciT=setTimeout(function(){ if(S.ciPopup){ S.ciPopup=null; render(); } },3600); }
   // 1-Sekunden-Ticker: aktualisiert den Timer live (ohne Voll-Render); beendet bei Ablauf.
   setInterval(function(){ if(!S.checkedInAt) return; var t=Date.parse(S.checkedInAt); if(isNaN(t)) return; if((Date.now()-t)>CI_MAX){ ciClear(); render(); return; } var el=document.getElementById('ci_timer'); if(el) el.textContent=fmtDur(Date.now()-t); },1000);
+  // Gleicht den lokalen Status mit Magicline ab: erkennt auch Check-in/out per
+  // Band vor Ort (offener Besuch = checkInDateTime ohne checkOutDateTime).
+  function ciSyncFromHistory(){
+    var list=DATA.checkins; if(!Array.isArray(list)||!list.length) return;
+    var latest=null; list.forEach(function(c){ if(c.in && (!latest||c.in>latest.in)) latest=c; });
+    if(!latest) return; var t=Date.parse(latest.in); if(isNaN(t)) return;
+    var openRecent = !latest.out && (Date.now()-t)<CI_MAX && (Date.now()-t)>=-120000;
+    if(openRecent){
+      if(window.__ciMuteIn && Date.now()<window.__ciMuteIn) return; // direkt nach App-Auschecken nicht sofort wieder einchecken
+      if(!S.checkedInAt || Math.abs(Date.parse(S.checkedInAt)-t)>60000){
+        var wasIn=!!S.checkedInAt; ciSetIn(latest.in);
+        if(!wasIn){ S.ciPopup='in'; S.ciName=(DATA.profile&&DATA.profile.firstName)||''; ciAutoClose(); }
+      }
+    } else if(S.checkedInAt){
+      var fromT=Date.parse(S.checkedInAt); ciClear();
+      S.ciPopup='out'; S.ciDur=durText(Date.now()-(isNaN(fromT)?Date.now():fromT)); ciAutoClose();
+    }
+  }
   function ciPopupHtml(){
     if(S.ciPopup==='in'){ var nm=S.ciName?(', '+S.ciName):'';
       return '<div class="ciOverlay" data-act="ciClosePopup"><div class="ciCard"><div class="ciBadge" style="background:var(--ok-bg)"><span class="ciPulse" style="background:rgba(31,154,78,.25)"></span><svg width="52" height="52" viewBox="0 0 24 24" fill="none" style="stroke:#1d7a3e;position:relative" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path class="ciChk" d="M5 12.5l4.5 4.5L19 7"></path></svg></div><div style="font-size:24px;font-weight:900">Willkommen'+esc(nm)+'!</div><div style="font-size:14.5px;color:var(--text-muted);margin-top:8px;line-height:1.5">Schön, dass du da bist. Viel Spaß beim Training 💪</div><button class="btn" data-act="ciClosePopup" style="margin-top:20px">Los geht\'s</button></div></div>';
@@ -1412,7 +1430,7 @@
       }).catch(function(){ setS({checkinBusy:false,checkinOk:false,checkinMsg:'Check-in gerade nicht möglich.'}); });
     },
     doCheckout:function(){
-      if(S.ciBusy||!S.checkedInAt) return; var fromT=Date.parse(S.checkedInAt); setS({ciBusy:true});
+      if(S.ciBusy||!S.checkedInAt) return; var fromT=Date.parse(S.checkedInAt); setS({ciBusy:true}); try{ window.__ciMuteIn=Date.now()+45000; }catch(e){}
       api('/api/member/checkout',{method:'POST'}).then(function(){ var dur=durText(Date.now()-(isNaN(fromT)?Date.now():fromT)); ciClear(); setS({ciBusy:false,ciPopup:'out',ciDur:dur,checkinOk:false,checkinMsg:''}); loadCheckins(); ciAutoClose(); })
         .catch(function(){ var dur=durText(Date.now()-(isNaN(fromT)?Date.now():fromT)); ciClear(); setS({ciBusy:false,ciPopup:'out',ciDur:dur}); ciAutoClose(); });
     },
