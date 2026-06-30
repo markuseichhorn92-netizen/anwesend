@@ -392,7 +392,7 @@
     if(s==='help'){ S.helpSel=null; S.helpCat='all'; S.helpQ=''; S.helpShowAll=false; S.aiPhase='idle'; S.aiQuery=''; S.aiAsked=''; S.aiAnswer=''; S.aiFeedback=null; S.ctOpen=false; S.ctSent=false; S.ctMsg=''; S.ctErr=''; S.artFb=null; }
     if(s==='postfach'){ S.pfSel=null; S.pfThread=false; S.pfErr=''; S.pfDraft=''; loadInbox(); }
     if(s==='contract'){ S.cancelStep=0; S.pauseStep=0; S.pauseDone=false; S.offerDone=''; }
-    if(s==='checkins'&&!DATA.checkins) loadCheckins();
+    if((s==='checkins'||s==='fort')&&!DATA.checkins) loadCheckins();
     if(s==='home') loadFinnTip();
     if(s==='account') loadAccount();
     if(s==='appt'){ if(!DATA.appts) loadAppts(); if(DATA.bookable===null) loadBookable(); }
@@ -806,6 +806,7 @@
       dupBanner+
       statCards()+
       '<div style="height:14px"></div>'+
+      vitalCard()+
       planCard()+
       '<div style="font-size:13px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.6px;margin:24px 2px 12px">Schnellzugriff</div>'+
       '<div class="gTiles">'+tiles+'</div>';
@@ -1151,6 +1152,79 @@
         '<div style="font-size:13px;opacity:.9;line-height:1.5;margin-top:10px">Halte den Code an den Scanner am Eingang.<br><span style="opacity:.75">Tipp: Stell dein Display heller.</span></div>'+
       '</div>'+
       '<div style="font-size:12.5px;color:var(--text-soft);line-height:1.55;margin:16px 6px 0;text-align:center">Dein Mitgliedsband funktioniert wie gewohnt weiter. Diese Karte ist dein digitaler Ausweis – und startklar, sobald am Eingang ein QR-Scanner ergänzt wird.</div>';
+  }
+  // ── Fortschritt & Vitalität (aus echten Check-in-Daten abgeleitet) ──
+  var VITAL_TIERS=[['Starter',0],['Aktiv',500],['Vital',1500],['Stark',3500],['Champion',7000],['Legende',12000]];
+  function mondayKey(dt){ var x=new Date(dt); if(isNaN(x.getTime())) return null; x.setHours(0,0,0,0); var day=(x.getDay()+6)%7; x.setDate(x.getDate()-day); return x.getFullYear()+'-'+pad2(x.getMonth()+1)+'-'+pad2(x.getDate()); }
+  function vitalsData(){
+    var ci=Array.isArray(DATA.checkins)?DATA.checkins:[];
+    var done=ci.filter(function(x){ return x&&x.in; });
+    var visits=done.length;
+    var points=visits*50;
+    var ti=0; for(var i=0;i<VITAL_TIERS.length;i++){ if(points>=VITAL_TIERS[i][1]) ti=i; }
+    var cur=VITAL_TIERS[ti], nxt=VITAL_TIERS[ti+1]||null;
+    var toNext=nxt?(nxt[1]-points):0;
+    var deg=nxt?Math.max(8,Math.min(360,Math.round((points-cur[1])/(nxt[1]-cur[1])*360))):360;
+    // Wochen-Streak (zusammenhängende Wochen mit mind. 1 Besuch)
+    var wk={}; done.forEach(function(x){ var k=mondayKey(x.in); if(k) wk[k]=1; });
+    var cursor=new Date(); cursor.setHours(0,0,0,0); var d0=(cursor.getDay()+6)%7; cursor.setDate(cursor.getDate()-d0);
+    var keyOf=function(d){ return d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate()); };
+    if(!wk[keyOf(cursor)]) cursor.setDate(cursor.getDate()-7);   // laufende Woche noch ohne Besuch -> ab letzter zählen
+    var streak=0; while(wk[keyOf(cursor)]){ streak++; cursor.setDate(cursor.getDate()-7); }
+    // Wochenziel (Besuche in der laufenden Woche)
+    var mon=new Date(); mon.setHours(0,0,0,0); var d1=(mon.getDay()+6)%7; mon.setDate(mon.getDate()-d1);
+    var weekVisits=done.filter(function(x){ return new Date(x.in)>=mon; }).length;
+    // Fitness-Alter: echtes Alter minus Trainings-Bonus
+    var dob=DATA.profile&&DATA.profile.dateOfBirth; var age=dob?Math.floor((Date.now()-Date.parse(dob))/(365.25*864e5)):null;
+    var recent=done.filter(function(x){ return Date.parse(x.in)>=(Date.now()-56*864e5); }).length;
+    var bonus=Math.min(12,Math.round((recent/8)*2));
+    var fitAge=(age!=null&&age>0&&age<120)?Math.max(16,age-bonus):null;
+    return {visits:visits,points:points,rankName:cur[0],nextRank:nxt?nxt[0]:null,toNext:toNext,deg:deg,streak:streak,weekVisits:weekVisits,goal:3,fitAge:fitAge,maxed:!nxt};
+  }
+  function deNum(n){ try{ return Number(n||0).toLocaleString('de-DE'); }catch(e){ return String(n); } }
+  function vitalCard(){
+    var v=vitalsData();
+    return '<div data-act="nav" data-arg="fort" style="background:var(--surface);border-radius:22px;box-shadow:0 12px 34px rgba(4,33,40,.12);padding:18px;margin-bottom:14px;cursor:pointer">'+
+      '<div style="display:flex;align-items:center;gap:15px">'+
+        '<div style="width:86px;height:86px;border-radius:50%;background:conic-gradient(#F6A964 '+v.deg+'deg,#e6edee 0);display:flex;align-items:center;justify-content:center;flex-shrink:0">'+
+          '<div style="width:68px;height:68px;border-radius:50%;background:#0a4958;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff"><span style="font-size:9px;font-weight:700;color:#aed0d6;text-transform:uppercase;letter-spacing:.5px">Rang</span><span style="font-size:14.5px;font-weight:900;letter-spacing:-.3px">'+esc(v.rankName)+'</span></div></div>'+
+        '<div style="flex:1;min-width:0">'+
+          '<div style="font-size:12px;font-weight:700;color:var(--text-soft);text-transform:uppercase;letter-spacing:.4px">Vitalpunkte</div>'+
+          '<div style="font-size:27px;font-weight:900;color:var(--text);letter-spacing:-.5px;line-height:1.1">'+deNum(v.points)+'</div>'+
+          '<div style="font-size:12.5px;color:var(--text-muted);font-weight:600;margin-top:2px">'+(v.maxed?'Höchster Rang erreicht 🏆':('Noch '+deNum(v.toNext)+' bis '+esc(v.nextRank)))+'</div>'+
+        '</div>'+
+        svg('<path d="M9 18l6-6-6-6"></path>',{c:'var(--text-soft)',w:2.2,s:20})+
+      '</div>'+
+      '<div style="display:flex;gap:9px;margin-top:15px">'+
+        '<div style="flex:1;background:#FBEFE2;border-radius:13px;padding:11px 12px"><div style="font-size:17px;font-weight:900;color:#b5631f">🔥 '+v.streak+'</div><div style="font-size:10.5px;font-weight:700;color:#b5631f;margin-top:1px">Wochen-Streak</div></div>'+
+        '<div style="flex:1;background:var(--surface-2);border-radius:13px;padding:11px 12px"><div style="font-size:17px;font-weight:900;color:var(--teal-ink)">'+v.weekVisits+'/'+v.goal+'</div><div style="font-size:10.5px;font-weight:700;color:var(--teal-ink);margin-top:1px">Wochenziel</div></div>'+
+        '<div style="flex:1;background:var(--surface-2);border-radius:13px;padding:11px 12px"><div style="font-size:17px;font-weight:900;color:var(--teal-ink)">'+(v.fitAge!=null?v.fitAge:'–')+'</div><div style="font-size:10.5px;font-weight:700;color:var(--teal-ink);margin-top:1px">Fitness-Alter</div></div>'+
+      '</div>'+
+    '</div>';
+  }
+  function fortTile(big,label){ return '<div style="background:var(--surface);border-radius:16px;box-shadow:0 10px 28px rgba(4,33,40,.09);padding:16px 18px"><div style="font-size:24px;font-weight:900;color:var(--text);letter-spacing:-.5px">'+big+'</div><div style="font-size:12.5px;color:var(--text-muted);font-weight:700;margin-top:2px">'+esc(label)+'</div></div>'; }
+  function scrFort(){
+    var v=vitalsData();
+    var pct=v.maxed?100:Math.round(v.deg/360*100);
+    return backHd('Fortschritt')+
+      '<div style="position:relative;overflow:hidden;background:linear-gradient(160deg,#0e6072,#063540);border-radius:22px;padding:24px 20px;color:#fff;text-align:center">'+
+        '<div style="position:absolute;width:220px;height:220px;right:-70px;top:-70px;border-radius:50%;background:radial-gradient(circle,rgba(246,169,100,.22),transparent 70%)"></div>'+
+        '<div style="position:relative">'+
+          '<div style="width:120px;height:120px;border-radius:50%;margin:0 auto;background:conic-gradient(#F6A964 '+v.deg+'deg,rgba(255,255,255,.16) 0);display:flex;align-items:center;justify-content:center">'+
+            '<div style="width:96px;height:96px;border-radius:50%;background:#0a3d4a;display:flex;flex-direction:column;align-items:center;justify-content:center"><span style="font-size:10px;font-weight:700;color:#aed0d6;text-transform:uppercase;letter-spacing:.6px">Rang</span><span style="font-size:19px;font-weight:900">'+esc(v.rankName)+'</span></div></div>'+
+          '<div style="font-size:34px;font-weight:900;letter-spacing:-1px;margin-top:14px">'+deNum(v.points)+'</div>'+
+          '<div style="font-size:13px;color:#aed0d6;font-weight:600">Vitalpunkte · '+v.visits+' '+(v.visits===1?'Besuch':'Besuche')+'</div>'+
+          (v.maxed?'<div style="font-size:13.5px;font-weight:700;margin-top:12px">Höchster Rang erreicht 🏆</div>':
+            ('<div style="margin-top:16px;max-width:300px;margin-left:auto;margin-right:auto"><div style="height:9px;border-radius:6px;background:rgba(255,255,255,.16);overflow:hidden"><div style="height:100%;width:'+pct+'%;background:#F6A964;border-radius:6px"></div></div><div style="font-size:12.5px;color:#cfe6ea;font-weight:600;margin-top:7px">Noch '+deNum(v.toNext)+' Punkte bis '+esc(v.nextRank)+'</div></div>'))+
+        '</div>'+
+      '</div>'+
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px">'+
+        fortTile('🔥 '+v.streak,'Wochen-Streak')+
+        fortTile(v.weekVisits+' / '+v.goal,'Diese Woche')+
+        fortTile(String(v.visits),'Besuche gesamt')+
+        fortTile(v.fitAge!=null?String(v.fitAge):'–','Fitness-Alter')+
+      '</div>'+
+      '<div class="card" style="margin-top:14px;box-shadow:0 12px 32px rgba(4,33,40,.10)"><div style="font-size:15px;font-weight:900;color:var(--text);margin-bottom:6px">So sammelst du Punkte</div><div style="font-size:13.5px;color:var(--text-muted);font-weight:600;line-height:1.6">Für jeden Studio-Besuch bekommst du <b>50 Vitalpunkte</b>. Trainier regelmäßig, halte deine Wochen-Streak – und steig Rang für Rang auf, vom Starter bis zur Legende. 💪</div></div>';
   }
   function scrAccount(){
     var head=backHd('Beitragskonto');
@@ -1556,7 +1630,7 @@
 
   // ---- responsive chrome (Desktop-Sidebar + Topbar) ----
   var DASH_IC='<rect x="3" y="3" width="7" height="9" rx="1.5"></rect><rect x="14" y="3" width="7" height="5" rx="1.5"></rect><rect x="14" y="12" width="7" height="9" rx="1.5"></rect><rect x="3" y="16" width="7" height="5" rx="1.5"></rect>';
-  var NAVITEMS=[['home','Übersicht',DASH_IC],['card','Mitgliedskarte','<rect x="3" y="3" width="7" height="7" rx="1.4"></rect><rect x="14" y="3" width="7" height="7" rx="1.4"></rect><rect x="3" y="14" width="7" height="7" rx="1.4"></rect><path d="M14 14h3v3h-3z"></path><path d="M20 14v3M14 20h3M20 20v.01"></path>'],['data','Meine Daten',IC.user],['contract','Vertragsverwaltung',IC.doc],['account','Beitragskonto','<rect x="2" y="5" width="20" height="14" rx="2"></rect><path d="M2 9h20M6 15h5"></path>'],['appt','Termine',IC.cal],['referral','Freunde werben',IC.gift],['checkins','Check-ins',IC.list],['postfach','Postfach',IC.mail],['help','Hilfe',IC.help],['settings','Einstellungen',IC.cog]];
+  var NAVITEMS=[['home','Übersicht',DASH_IC],['card','Mitgliedskarte','<rect x="3" y="3" width="7" height="7" rx="1.4"></rect><rect x="14" y="3" width="7" height="7" rx="1.4"></rect><rect x="3" y="14" width="7" height="7" rx="1.4"></rect><path d="M14 14h3v3h-3z"></path><path d="M20 14v3M14 20h3M20 20v.01"></path>'],['fort','Fortschritt','<circle cx="12" cy="8" r="6"></circle><path d="M15.5 13.5L17 22l-5-3-5 3 1.5-8.5"></path>'],['data','Meine Daten',IC.user],['contract','Vertragsverwaltung',IC.doc],['account','Beitragskonto','<rect x="2" y="5" width="20" height="14" rx="2"></rect><path d="M2 9h20M6 15h5"></path>'],['appt','Termine',IC.cal],['referral','Freunde werben',IC.gift],['checkins','Check-ins',IC.list],['postfach','Postfach',IC.mail],['help','Hilfe',IC.help],['settings','Einstellungen',IC.cog]];
   var TITLES={home:'Übersicht',data:'Meine Daten',contract:'Vertragsverwaltung',account:'Beitragskonto',appt:'Termine',referral:'Freunde werben',checkins:'Check-in-Verlauf',postfach:'Postfach',help:'Hilfe & Kontakt',settings:'Einstellungen'};
   function initials(p){ p=p||{}; var a=(p.firstName||'').trim(),b=(p.lastName||'').trim(); return (((a?a[0]:'')+(b?b[0]:'')).toUpperCase())||'FT'; }
   // Profil-Kopf für Sidebar/Drawer
@@ -1596,7 +1670,7 @@
       tb.innerHTML='<div style="font-size:23px;font-weight:900;color:var(--text);letter-spacing:-.4px">'+esc(TITLES[S.screen]||'')+'</div>'+badge;
     }
   }
-  var NARROW={contract:1,referral:1,appt:1,card:1};
+  var NARROW={contract:1,referral:1,appt:1,card:1,fort:1};
   function render(){
     // Ehemalige Mitglieder: gesperrte Screens immer auf die Übersicht (Rejoin) umleiten
     if(isFormer() && S.screen!=='login' && FORMER_OK.indexOf(S.screen)<0) S.screen='home';
@@ -1605,6 +1679,7 @@
       case 'login': html=scrLogin(); break;
       case 'home': html=scrHome(); break;
       case 'card': html=scrCard(); break;
+      case 'fort': html=scrFort(); break;
       case 'data': html=scrData(); break;
       case 'contract': html=scrContract(); break;
       case 'appt': html=scrAppt(); break;
