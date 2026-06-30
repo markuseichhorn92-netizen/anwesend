@@ -17,15 +17,14 @@ module.exports = async function handler(req, res) {
   const pw = (url.searchParams.get && url.searchParams.get('pw')) || '';
   if (!TA.verifyPassword(pw)) { res.statusCode = 401; return res.end('unauthorized'); }
 
-  // Kunden-ID bestimmen: ?customerId= ODER über den Demo-Account (Mitgliedsnummer+Geburtstag)
-  let cid = (url.searchParams.get && url.searchParams.get('customerId')) || null;
-  if (!cid) {
-    try {
-      const m = await M.findByNumberDob(process.env.DEMO_CUSTOMER_NUMBER, process.env.DEMO_LOGIN_DOB);
-      if (m) cid = m.id != null ? m.id : m.customerId;
-    } catch (e) {}
-  }
-  if (!cid) { res.statusCode = 200; return res.end('Keine Kunden-ID gefunden. Bitte ?customerId=... anhängen (oder DEMO_CUSTOMER_NUMBER/DEMO_LOGIN_DOB prüfen).'); }
+  // Kunden-ID bestimmen (wie beim Demo-Login): ?customerId= -> DEMO_CUSTOMER_ID ->
+  // Mitgliedsnummer+Geburtstag -> E-Mail+Geburtstag. Auch ?num=&dob= / ?email=&dob= möglich.
+  const q = (k) => (url.searchParams.get && url.searchParams.get(k)) || '';
+  const dob = q('dob') || process.env.DEMO_LOGIN_DOB;
+  let cid = q('customerId') || process.env.DEMO_CUSTOMER_ID || null;
+  if (!cid) { try { const m = await M.findByNumberDob(q('num') || process.env.DEMO_CUSTOMER_NUMBER, dob); if (m) cid = m.id != null ? m.id : m.customerId; } catch (e) {} }
+  if (!cid) { try { const m = await M.findByEmailDob(q('email') || process.env.DEMO_LOGIN_EMAIL, dob); if (m) cid = m.id != null ? m.id : m.customerId; } catch (e) {} }
+  if (!cid) { res.statusCode = 200; return res.end('Keine Kunden-ID gefunden. Bitte ?customerId=… anhängen (echte interne Kunden-ID) oder ?num=M-2076&dob=TT.MM.JJJJ.'); }
 
   // contractId für die membership-/idle-period-Checks
   let kid = null;
