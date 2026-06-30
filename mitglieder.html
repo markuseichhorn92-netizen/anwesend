@@ -264,7 +264,7 @@
 
   // ---- state ----
   var TOKEN = localStorage.getItem('fi_member_token') || sessionStorage.getItem('fi_member_token') || null;
-  var DATA = { profile:null, contract:null, checkins:null, appts:null, plan:null, planAgg:null, planAggTom:null, inbox:null, prefs:null, membershipActive:true, bookable:null, slots:null, account:null };
+  var DATA = { profile:null, contract:null, checkins:null, appts:null, plan:null, planAgg:null, planAggTom:null, inbox:null, prefs:null, membershipActive:true, bookable:null, slots:null, account:null, blog:null };
   // Erlaubte Screens für ehemalige Mitglieder (alles andere wird gesperrt)
   var FORMER_OK = ['home','checkins','help','postfach','settings'];
   function isFormer(){ return DATA.membershipActive===false; }
@@ -279,6 +279,7 @@
     helpSel:null, helpCat:'all', helpQ:'', helpShowAll:false,
     aiQuery:'', aiPhase:'idle', aiAsked:'', aiAnswer:'', aiFeedback:null,
     finnOpen:false, finnMsgs:[], finnBusy:false, finnTip:'', finnTipLoaded:false,
+    blogSel:null, blogPost:null,
     ctOpen:false, ctSent:false, ctMsg:'', ctBusy:false, ctErr:'', ctMsgServer:'', artFb:null,
     pfFilter:'all', pfSel:null, pfThread:false, pfDraft:'', pfBusy:false, pfErr:'',
     copied:false, dlMsg:false, dlMsg2:'', emailing:false,
@@ -393,6 +394,7 @@
     if(s==='postfach'){ S.pfSel=null; S.pfThread=false; S.pfErr=''; S.pfDraft=''; loadInbox(); }
     if(s==='contract'){ S.cancelStep=0; S.pauseStep=0; S.pauseDone=false; S.offerDone=''; }
     if((s==='checkins'||s==='fort')&&!DATA.checkins) loadCheckins();
+    if(s==='blog'){ S.blogSel=null; S.blogPost=null; loadBlog(); }
     if(s==='home') loadFinnTip();
     if(s==='account') loadAccount();
     if(s==='appt'){ if(!DATA.appts) loadAppts(); if(DATA.bookable===null) loadBookable(); }
@@ -772,7 +774,7 @@
   }
   function scrHome(){
     if(isFormer()) return scrRejoin();
-    loadFinnTip();
+    loadFinnTip(); loadBlog();
     var p=DATA.profile||{}; var name=p.firstName||'';
     var tiles=[
       ['card','Mitgliedskarte','Dein digitaler Ausweis mit QR-Code','#3BC6D6,#0E8A9E','rgba(14,138,158,.45)','<rect x="3" y="3" width="7" height="7" rx="1.4"></rect><rect x="14" y="3" width="7" height="7" rx="1.4"></rect><rect x="3" y="14" width="7" height="7" rx="1.4"></rect><path d="M14 14h3v3h-3z"></path><path d="M20 14v3M14 20h3M20 20v.01"></path>'],
@@ -808,6 +810,7 @@
       '<div style="height:14px"></div>'+
       vitalCard()+
       planCard()+
+      homeBlog()+
       '<div style="font-size:13px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.6px;margin:24px 2px 12px">Schnellzugriff</div>'+
       '<div class="gTiles">'+tiles+'</div>';
   }
@@ -1226,6 +1229,41 @@
       '</div>'+
       '<div class="card" style="margin-top:14px;box-shadow:0 12px 32px rgba(4,33,40,.10)"><div style="font-size:15px;font-weight:900;color:var(--text);margin-bottom:6px">So sammelst du Punkte</div><div style="font-size:13.5px;color:var(--text-muted);font-weight:600;line-height:1.6">Für jeden Studio-Besuch bekommst du <b>50 Vitalpunkte</b>. Trainier regelmäßig, halte deine Wochen-Streak – und steig Rang für Rang auf, vom Starter bis zur Legende. 💪</div></div>';
   }
+  // ── Sport-Blog ──
+  function loadBlog(){ if(DATA.blog||!TOKEN) return; DATA.blog=[]; api('/api/member/blog').then(function(d){ DATA.blog=(d&&d.posts)||[]; render(); }).catch(function(){ DATA.blog=[]; }); }
+  function blogCompact(p){
+    return '<div data-act="openBlog" data-arg="'+esc(p.id)+'" style="flex:0 0 230px;scroll-snap-align:start;background:var(--surface);border-radius:20px;box-shadow:0 12px 34px rgba(4,33,40,.10);overflow:hidden;cursor:pointer">'+
+      '<div style="height:104px;background:'+p.grad+';display:flex;align-items:flex-end;padding:12px"><span style="background:rgba(255,255,255,.92);color:'+p.tag+';font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;padding:5px 10px;border-radius:20px">'+esc(p.cat)+'</span></div>'+
+      '<div style="padding:13px 14px 15px"><div style="font-size:14.5px;font-weight:800;color:var(--text);line-height:1.28">'+esc(p.title)+'</div><div style="font-size:12px;color:var(--text-soft);font-weight:600;margin-top:7px">'+esc(p.mins)+' Lesezeit</div></div>'+
+    '</div>';
+  }
+  function homeBlog(){
+    var b=DATA.blog; if(!Array.isArray(b)||!b.length) return '';
+    return '<div style="display:flex;align-items:center;justify-content:space-between;margin:24px 2px 12px"><span style="font-size:18px;font-weight:900;color:var(--text);letter-spacing:-.3px">Aus unserem Blog</span><span data-act="nav" data-arg="blog" style="font-size:13px;font-weight:700;color:var(--teal-ink);cursor:pointer">Alle ansehen</span></div>'+
+      '<div style="display:flex;gap:13px;overflow-x:auto;padding-bottom:4px;scroll-snap-type:x mandatory">'+b.slice(0,4).map(blogCompact).join('')+'</div>';
+  }
+  function scrBlog(){
+    if(S.blogSel){
+      var p=S.blogPost;
+      if(!p||p.id!==S.blogSel) return backHd('Blog','blog')+'<div style="padding:50px;text-align:center;color:var(--text-soft);font-weight:600">Lade Beitrag …</div>';
+      var paras=(p.body||[]).map(function(t){ return '<p style="font-size:15px;color:var(--text-2);font-weight:500;line-height:1.7;margin:0 0 14px">'+esc(t)+'</p>'; }).join('');
+      return backHd(p.cat,'blog')+
+        '<div style="border-radius:20px;overflow:hidden;margin-bottom:16px"><div style="height:150px;background:'+p.grad+';display:flex;align-items:flex-end;padding:16px"><span style="background:rgba(255,255,255,.92);color:'+p.tag+';font-size:11.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;padding:5px 11px;border-radius:20px">'+esc(p.cat)+'</span></div></div>'+
+        '<h1 style="font-size:24px;font-weight:900;color:var(--text);letter-spacing:-.5px;line-height:1.2;margin:0 2px 6px">'+esc(p.title)+'</h1>'+
+        '<div style="font-size:12.5px;color:var(--text-soft);font-weight:700;margin:0 2px 18px">'+esc(p.mins)+' Lesezeit</div>'+
+        '<div style="padding:0 2px">'+paras+'</div>';
+    }
+    var b=Array.isArray(DATA.blog)?DATA.blog:[];
+    if(!b.length) return backHd('Blog')+'<div style="padding:40px;text-align:center;color:var(--text-soft);font-weight:600">Lade Beiträge …</div>';
+    var cards=b.map(function(p){
+      return '<div data-act="openBlog" data-arg="'+esc(p.id)+'" style="display:flex;gap:13px;align-items:center;background:var(--surface);border-radius:18px;box-shadow:0 10px 28px rgba(4,33,40,.09);padding:12px;margin-bottom:12px;cursor:pointer">'+
+        '<div style="width:64px;height:64px;border-radius:14px;background:'+p.grad+';flex-shrink:0"></div>'+
+        '<div style="flex:1;min-width:0"><div style="font-size:11px;font-weight:800;color:'+p.tag+';text-transform:uppercase;letter-spacing:.4px">'+esc(p.cat)+' · '+esc(p.mins)+'</div><div style="font-size:14.5px;font-weight:800;color:var(--text);line-height:1.3;margin-top:3px">'+esc(p.title)+'</div><div style="font-size:12.5px;color:var(--text-muted);font-weight:600;margin-top:3px;line-height:1.4">'+esc(p.excerpt)+'</div></div>'+
+        svg('<path d="M9 18l6-6-6-6"></path>',{c:'var(--text-soft)',w:2.2,s:18})+
+      '</div>';
+    }).join('');
+    return backHd('Blog')+cards;
+  }
   function scrAccount(){
     var head=backHd('Beitragskonto');
     var a=DATA.account;
@@ -1630,7 +1668,7 @@
 
   // ---- responsive chrome (Desktop-Sidebar + Topbar) ----
   var DASH_IC='<rect x="3" y="3" width="7" height="9" rx="1.5"></rect><rect x="14" y="3" width="7" height="5" rx="1.5"></rect><rect x="14" y="12" width="7" height="9" rx="1.5"></rect><rect x="3" y="16" width="7" height="5" rx="1.5"></rect>';
-  var NAVITEMS=[['home','Übersicht',DASH_IC],['card','Mitgliedskarte','<rect x="3" y="3" width="7" height="7" rx="1.4"></rect><rect x="14" y="3" width="7" height="7" rx="1.4"></rect><rect x="3" y="14" width="7" height="7" rx="1.4"></rect><path d="M14 14h3v3h-3z"></path><path d="M20 14v3M14 20h3M20 20v.01"></path>'],['fort','Fortschritt','<circle cx="12" cy="8" r="6"></circle><path d="M15.5 13.5L17 22l-5-3-5 3 1.5-8.5"></path>'],['data','Meine Daten',IC.user],['contract','Vertragsverwaltung',IC.doc],['account','Beitragskonto','<rect x="2" y="5" width="20" height="14" rx="2"></rect><path d="M2 9h20M6 15h5"></path>'],['appt','Termine',IC.cal],['referral','Freunde werben',IC.gift],['checkins','Check-ins',IC.list],['postfach','Postfach',IC.mail],['help','Hilfe',IC.help],['settings','Einstellungen',IC.cog]];
+  var NAVITEMS=[['home','Übersicht',DASH_IC],['card','Mitgliedskarte','<rect x="3" y="3" width="7" height="7" rx="1.4"></rect><rect x="14" y="3" width="7" height="7" rx="1.4"></rect><rect x="3" y="14" width="7" height="7" rx="1.4"></rect><path d="M14 14h3v3h-3z"></path><path d="M20 14v3M14 20h3M20 20v.01"></path>'],['fort','Fortschritt','<circle cx="12" cy="8" r="6"></circle><path d="M15.5 13.5L17 22l-5-3-5 3 1.5-8.5"></path>'],['blog','Blog','<path d="M4 5h16v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z"></path><path d="M8 9h8M8 13h6M8 17h4"></path>'],['data','Meine Daten',IC.user],['contract','Vertragsverwaltung',IC.doc],['account','Beitragskonto','<rect x="2" y="5" width="20" height="14" rx="2"></rect><path d="M2 9h20M6 15h5"></path>'],['appt','Termine',IC.cal],['referral','Freunde werben',IC.gift],['checkins','Check-ins',IC.list],['postfach','Postfach',IC.mail],['help','Hilfe',IC.help],['settings','Einstellungen',IC.cog]];
   var TITLES={home:'Übersicht',data:'Meine Daten',contract:'Vertragsverwaltung',account:'Beitragskonto',appt:'Termine',referral:'Freunde werben',checkins:'Check-in-Verlauf',postfach:'Postfach',help:'Hilfe & Kontakt',settings:'Einstellungen'};
   function initials(p){ p=p||{}; var a=(p.firstName||'').trim(),b=(p.lastName||'').trim(); return (((a?a[0]:'')+(b?b[0]:'')).toUpperCase())||'FT'; }
   // Profil-Kopf für Sidebar/Drawer
@@ -1670,7 +1708,7 @@
       tb.innerHTML='<div style="font-size:23px;font-weight:900;color:var(--text);letter-spacing:-.4px">'+esc(TITLES[S.screen]||'')+'</div>'+badge;
     }
   }
-  var NARROW={contract:1,referral:1,appt:1,card:1,fort:1};
+  var NARROW={contract:1,referral:1,appt:1,card:1,fort:1,blog:1};
   function render(){
     // Ehemalige Mitglieder: gesperrte Screens immer auf die Übersicht (Rejoin) umleiten
     if(isFormer() && S.screen!=='login' && FORMER_OK.indexOf(S.screen)<0) S.screen='home';
@@ -1680,6 +1718,7 @@
       case 'home': html=scrHome(); break;
       case 'card': html=scrCard(); break;
       case 'fort': html=scrFort(); break;
+      case 'blog': html=scrBlog(); break;
       case 'data': html=scrData(); break;
       case 'contract': html=scrContract(); break;
       case 'appt': html=scrAppt(); break;
@@ -1723,6 +1762,7 @@
         render(); finnScrollBottom();
       }).catch(function(){ S.finnBusy=false; S.finnMsgs.push({role:'assistant',text:'Verbindung gerade nicht möglich. Versuch es gleich nochmal.'}); render(); finnScrollBottom(); }); },
     finnToTeam:function(){ var last=''; for(var i=S.finnMsgs.length-1;i>=0;i--){ if(S.finnMsgs[i].role==='user'){ last=S.finnMsgs[i].text; break; } } setS({finnOpen:false}); nav('help'); setTimeout(function(){ setS({ctOpen:true,ctSent:false,ctErr:'',ctMsg:(last?('Meine Frage an FINN: '+last+'\n\n'):'')+'Bitte helft mir persönlich weiter.'}); },150); },
+    openBlog:function(a){ closeMenu(); S.blogSel=a; S.blogPost=null; setS({screen:'blog'}); try{ window.scrollTo(0,0); }catch(e){} api('/api/member/blog?id='+encodeURIComponent(a)).then(function(d){ if(d&&d.ok&&d.post){ S.blogPost=d.post; if(S.blogSel===a&&S.screen==='blog') render(); } }).catch(function(){}); },
     doCheckin:function(){
       if(S.checkinBusy||S.checkedInAt) return;
       setS({checkinBusy:true,checkinMsg:''});
