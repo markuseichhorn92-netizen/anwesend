@@ -111,6 +111,7 @@ async function profile(id) {
     id: String(id), name: name || 'Mitglied', initials: View.initials(name || 'Mitglied'),
     nr: p.customerNumber || null, email: p.email || null, phone: p.phonePrivate || null,
     birthday: p.dateOfBirth || null, address: addr || null, ibanMasked: p.ibanMasked || null,
+    street: p.street || '', houseNumber: p.houseNumber || '', zipCode: p.zipCode || '', city: p.city || '',
     contract: contract, appointments: appointments, history: history,
   };
 }
