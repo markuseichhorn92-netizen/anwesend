@@ -1425,7 +1425,15 @@
         ext(IC.shield,'Datenschutzerklärung','Wie wir mit deinen Daten umgehen','https://www.fit-inn-trier.de/datenschutz-fit-inn-trier')+
         ext(IC.mail,'Konto löschen / Anliegen','Schreib uns – wir kümmern uns darum','mailto:info@fit-inn-trier.de')+
       '</div></div>';
-    return backHd('Einstellungen')+appearance+'<div style="height:16px"></div>'+notif+'<div style="height:16px"></div>'+privacy;
+    var pOn=function(k){ return !(DATA.prefs && DATA.prefs[k]===false); };
+    var swt=function(on,act,arg){ return '<button data-act="'+act+'"'+(arg?(' data-arg="'+arg+'"'):'')+' role="switch" aria-checked="'+(on?'true':'false')+'" style="position:relative;width:50px;height:30px;border-radius:30px;border:none;cursor:pointer;background:'+(on?TEALBG:'var(--border)')+';flex-shrink:0;transition:background .2s"><span style="position:absolute;top:3px;left:'+(on?'23px':'3px')+';width:24px;height:24px;border-radius:50%;background:#fff;transition:left .2s;box-shadow:0 1px 3px rgba(0,0,0,.35)"></span></button>'; };
+    var pushMaster=pOn('push');
+    var catRow=function(title,sub,key){ return '<div style="display:flex;align-items:center;gap:14px;margin-top:16px"><div style="flex:1;min-width:0"><div style="font-size:14.5px;font-weight:700;color:var(--text)">'+title+'</div><div style="font-size:12.5px;color:var(--text-muted);margin-top:2px;line-height:1.4">'+sub+'</div></div>'+swt(pOn(key),'togglePushCat',key)+'</div>'; };
+    var pushCard='<div class="card">'+secHead(IC.bell,'Push-Mitteilungen','Mitteilungen direkt aufs Handy.')+
+      '<div style="display:flex;align-items:center;gap:14px;margin-top:18px"><div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:700;color:var(--text)">Push aktivieren</div><div style="font-size:13px;color:var(--text-muted);margin-top:2px;line-height:1.45">Erhalte wichtige Hinweise als Mitteilung in der App.</div></div>'+swt(pushMaster,'togglePush','')+'</div>'+
+      (pushMaster?(catRow('Postfach-Antworten','Wenn das Studio dir schreibt','pushPostfach')+catRow('Termin-Erinnerungen','Vor gebuchten Terminen','pushTermin')+catRow('Offene Beiträge','Hinweis bei offenen Rechnungen','pushKonto')+catRow('Studio-News','Aktionen & Neuigkeiten','pushNews')):'')+
+      '<div style="font-size:12.5px;color:var(--text-soft);margin-top:16px;line-height:1.5;border-top:1px solid var(--border);padding-top:13px">In der App müssen Mitteilungen erlaubt sein (wird beim ersten Öffnen abgefragt).</div></div>';
+    return backHd('Einstellungen')+appearance+'<div style="height:16px"></div>'+notif+'<div style="height:16px"></div>'+pushCard+'<div style="height:16px"></div>'+privacy;
   }
 
   // ---- responsive chrome (Desktop-Sidebar + Topbar) ----
@@ -1540,6 +1548,10 @@
       setS({});   // optimistisch
       api('/api/member/prefs',{method:'POST',body:JSON.stringify({reminders:val})}).then(function(r){ if(r&&r.prefs){ DATA.prefs=r.prefs; } }).catch(function(){});
     },
+    togglePush:function(){ var cur=!(DATA.prefs&&DATA.prefs.push===false); var val=!cur; DATA.prefs=DATA.prefs||{}; DATA.prefs.push=val; setS({});
+      api('/api/member/prefs',{method:'POST',body:JSON.stringify({push:val})}).then(function(r){ if(r&&r.prefs) DATA.prefs=r.prefs; }).catch(function(){}); },
+    togglePushCat:function(a){ if(!a) return; var cur=!(DATA.prefs&&DATA.prefs[a]===false); var val=!cur; DATA.prefs=DATA.prefs||{}; DATA.prefs[a]=val; setS({});
+      var b={}; b[a]=val; api('/api/member/prefs',{method:'POST',body:JSON.stringify(b)}).then(function(r){ if(r&&r.prefs) DATA.prefs=r.prefs; }).catch(function(){}); },
     planSet:function(a){
       var s=String(a).split('@'); var mins=parseInt(s[0],10); var off=(parseInt(s[1],10)===1)?1:0;
       if(!isFinite(mins)) return;

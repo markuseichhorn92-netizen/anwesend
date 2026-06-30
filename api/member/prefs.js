@@ -22,7 +22,7 @@ module.exports = async function handler(req, res) {
     if (!(await M.rateLimit('prefs:' + sess.id, 40, 3600))) { res.statusCode = 429; return res.end(JSON.stringify({ ok: false, error: 'rate_limited' })); }
     const body = await M.readBody(req);
     const patch = {};
-    if (typeof body.reminders === 'boolean') patch.reminders = body.reminders;
+    (Prefs.BOOL_KEYS || ['reminders']).forEach(function (k) { if (typeof body[k] === 'boolean') patch[k] = body[k]; });
     const r = await Prefs.setPrefs(sess.id, patch);
     res.statusCode = 200; return res.end(JSON.stringify(r));
   }
