@@ -42,6 +42,15 @@
   .brandbar{position:fixed;top:0;left:0;right:0;z-index:50;max-width:480px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:calc(14px + env(safe-area-inset-top,0px)) 20px 14px;background:linear-gradient(160deg,#0e6072,#063540)}
   /* Platz für den fest fixierten Header schaffen (Header-Höhe inkl. Statusleisten-Abstand) */
   @media(max-width:999px){ .app-in .maincol{padding-top:calc(70px + env(safe-area-inset-top,0px))} }
+  /* Mobile Bottom-Nav (neuer Look) */
+  .btmnav{display:none}
+  @media(max-width:999px){
+    .app-in .btmnav{position:fixed;bottom:0;left:0;right:0;z-index:50;max-width:480px;margin:0 auto;display:flex;align-items:flex-start;height:calc(72px + env(safe-area-inset-bottom,0px));padding:8px 10px env(safe-area-inset-bottom,0px);background:rgba(255,255,255,.97);backdrop-filter:saturate(180%) blur(12px);-webkit-backdrop-filter:saturate(180%) blur(12px);border-top:1px solid var(--border)}
+    html[data-theme="dark"] .app-in .btmnav{background:rgba(20,30,29,.97)}
+    .app-in .body{padding-bottom:calc(78px + env(safe-area-inset-bottom,0px))}
+    .app-in .legalfoot{padding-bottom:calc(84px + env(safe-area-inset-bottom,0px))}
+  }
+  .app-guest .btmnav{display:none!important}
   .logout{background:rgba(255,255,255,.12);border:none;color:#cfe3e7;font-weight:600;font-size:13px;padding:8px 13px;border-radius:9px;cursor:pointer}
   /* ---------- mobile burger menu ---------- */
   .burger{display:none;align-items:center;justify-content:center;width:42px;height:42px;border-radius:11px;background:rgba(255,255,255,.12);border:none;cursor:pointer;flex-shrink:0;padding:0;position:relative}
@@ -211,6 +220,7 @@
     </div>
     <div class="topbar" id="topbar"></div>
     <div class="body" id="app"></div>
+    <nav class="btmnav" id="btmnav"></nav>
     <div class="legalfoot">
       <a href="https://www.fit-inn-trier.de/impressum-fit-inn-trier" target="_blank" rel="noopener">Impressum</a><span>·</span>
       <a href="https://www.fit-inn-trier.de/datenschutz-fit-inn-trier" target="_blank" rel="noopener">Datenschutz</a><span>·</span>
@@ -266,7 +276,7 @@
   var TOKEN = localStorage.getItem('fi_member_token') || sessionStorage.getItem('fi_member_token') || null;
   var DATA = { profile:null, contract:null, checkins:null, appts:null, plan:null, planAgg:null, planAggTom:null, inbox:null, prefs:null, membershipActive:true, bookable:null, slots:null, account:null, blog:null };
   // Erlaubte Screens für ehemalige Mitglieder (alles andere wird gesperrt)
-  var FORMER_OK = ['home','checkins','help','postfach','settings'];
+  var FORMER_OK = ['home','checkins','help','postfach','settings','profil'];
   function isFormer(){ return DATA.membershipActive===false; }
   var S = { screen: TOKEN?'home':'login',
     msg:'', // generic success on data screen
@@ -772,6 +782,30 @@
       '</div>'+
     '</div>';
   }
+  // Öffnungszeiten-Karte (feste Studiozeiten + Live „geöffnet/geschlossen").
+  function hoursCard(){
+    var now=new Date(); var d=now.getDay(); var hm=now.getHours()+now.getMinutes()/60;
+    var wd=(d>=1&&d<=5);
+    var open= wd ? (hm>=6&&hm<23) : (hm>=8&&hm<22);
+    var pill = open
+      ? '<span style="display:flex;align-items:center;gap:6px;background:#E7F6EC;padding:5px 11px;border-radius:20px"><span style="width:8px;height:8px;border-radius:50%;background:#1d7a3e"></span><span style="font-size:12px;font-weight:800;color:#176b37">Jetzt geöffnet</span></span>'
+      : '<span style="display:flex;align-items:center;gap:6px;background:#FCEBEA;padding:5px 11px;border-radius:20px"><span style="width:8px;height:8px;border-radius:50%;background:#b53a2c"></span><span style="font-size:12px;font-weight:800;color:#b53a2c">Geschlossen</span></span>';
+    var hrow=function(day,time,active){ var col=active?'var(--text)':'var(--text-muted)'; var w=active?'800':'600'; return '<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-top:1px solid var(--border)"><span style="font-size:14px;font-weight:'+w+';color:'+col+'">'+day+'</span><span style="font-size:14px;font-weight:'+w+';color:'+col+';font-variant-numeric:tabular-nums">'+time+'</span></div>'; };
+    return '<div class="card" style="border-radius:20px;box-shadow:0 12px 34px rgba(4,33,40,.10);padding:20px;margin-bottom:14px">'+
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><div style="display:flex;align-items:center;gap:9px">'+svg('<circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path>',{c:TEAL,w:1.9,s:19})+'<span style="font-size:16px;font-weight:900;color:var(--text)">Öffnungszeiten</span></div>'+pill+'</div>'+
+      hrow('Mo – Fr','06:00 – 23:00',wd)+hrow('Sa & So','08:00 – 22:00',!wd)+
+      '<div style="display:flex;align-items:center;gap:8px;margin-top:14px;background:var(--surface-2);border-radius:13px;padding:12px 14px">'+svg('<path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"></path><circle cx="12" cy="10" r="3"></circle>',{c:TEAL,w:1.9,s:18})+'<span style="font-size:13px;font-weight:600;color:var(--text-2)">Auf Hirtenberg 8 · 54296 Trier</span></div>'+
+    '</div>';
+  }
+  // Tipp des Tages – rotierend (tagesstabil).
+  function tippCard(){
+    var tips=['Trink vor dem Training ein großes Glas Wasser – das steigert deine Leistung spürbar.','Schon 20 Minuten Training zählen. Jeder Besuch bringt dich weiter.','Wärm dich 5 Minuten auf – das beugt Verletzungen vor und macht jede Übung effektiver.','Konstanz schlägt Intensität: lieber 3× kurz als 1× lang.','Nach dem Training ist Erholung Teil des Fortschritts – gönn dir Schlaf und Eiweiß.','Setz dir für heute ein kleines, erreichbares Ziel – und feiere es danach.','Ein fester Trainingspartner hält dich am Ball.'];
+    var t=tips[(new Date().getDate())%tips.length];
+    return '<div style="display:flex;gap:13px;align-items:center;background:linear-gradient(135deg,#0e6072,#073e4b);border-radius:20px;padding:18px;margin-top:18px;color:#fff">'+
+      '<div style="width:44px;height:44px;border-radius:14px;background:rgba(255,255,255,.13);display:flex;align-items:center;justify-content:center;flex-shrink:0">'+svg('<path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.3 1 2.1h6c0-.8.4-1.6 1-2.1A7 7 0 0 0 12 2z"></path>',{c:'#F6A964',w:1.9,s:22})+'</div>'+
+      '<div><div style="font-size:12px;font-weight:700;color:#aed0d6;text-transform:uppercase;letter-spacing:.4px">Tipp des Tages</div><div style="font-size:14px;font-weight:600;line-height:1.4;margin-top:3px">'+esc(t)+'</div></div>'+
+    '</div>';
+  }
   function scrHome(){
     if(isFormer()) return scrRejoin();
     loadFinnTip(); loadBlog();
@@ -809,8 +843,10 @@
       statCards()+
       '<div style="height:14px"></div>'+
       vitalCard()+
+      hoursCard()+
       planCard()+
       homeBlog()+
+      tippCard()+
       '<div style="font-size:13px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.6px;margin:24px 2px 12px">Schnellzugriff</div>'+
       '<div class="gTiles">'+tiles+'</div>';
   }
@@ -1274,6 +1310,38 @@
     }).join('');
     return backHd('Blog')+cards;
   }
+  // ── Profil-Hub (Bottom-Nav „Profil"): Übersicht + Sprungbrett zu den Unterseiten ──
+  function scrProfil(){
+    var p=DATA.profile||{}; var c=DATA.contract||{};
+    var name=((p.firstName||'')+' '+(p.lastName||'')).trim()||'Mitglied';
+    var ini=((((p.firstName||'').charAt(0))+((p.lastName||'').charAt(0))).toUpperCase())||'·';
+    var v=vitalsData();
+    var status=isFormer()?'Ehemalig':(c.cancelled?'Gekündigt':'Aktiv');
+    var stCol=(isFormer()||c.cancelled)?'#f0c987':'#7fe3a8';
+    var stat=function(big,lab,col){ return '<div style="flex:1;background:rgba(255,255,255,.1);border-radius:13px;padding:12px;text-align:center"><div style="font-size:18px;font-weight:900;color:'+(col||'#fff')+';letter-spacing:-.3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+big+'</div><div style="font-size:10.5px;color:#aed0d6;font-weight:600;margin-top:1px">'+lab+'</div></div>'; };
+    var hero='<div style="background:linear-gradient(150deg,#0e6072,#073e4b);border-radius:22px;padding:22px;color:#fff;box-shadow:0 16px 40px rgba(4,33,40,.2)">'+
+      '<div style="display:flex;align-items:center;gap:15px"><div style="width:58px;height:58px;border-radius:50%;background:#fff;color:#0a4958;font-weight:900;font-size:20px;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+esc(ini)+'</div>'+
+      '<div style="min-width:0"><div style="font-size:19px;font-weight:900;letter-spacing:-.3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(name)+'</div><div style="font-size:13px;color:#aed0d6;font-weight:600;margin-top:1px">Mitgliedsnr. '+esc(p.customerNumber||'—')+'</div></div></div>'+
+      '<div style="display:flex;gap:10px;margin-top:18px">'+stat(esc((c&&c.rateName)||'—'),'Tarif')+stat(String(v.visits),'Besuche '+(new Date()).getFullYear())+stat(status,'Status',stCol)+'</div>'+
+    '</div>';
+    var row=function(key,t,d,icon){ return '<button data-act="nav" data-arg="'+key+'" style="display:flex;align-items:center;gap:13px;width:100%;padding:15px 16px;border:none;border-top:1px solid var(--border);background:var(--surface);cursor:pointer;text-align:left">'+
+      '<div style="width:38px;height:38px;border-radius:11px;background:var(--surface-2);display:flex;align-items:center;justify-content:center;flex-shrink:0">'+svg(icon,{c:TEAL,w:1.9,s:19})+'</div>'+
+      '<div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:700;color:var(--text)">'+t+'</div><div style="font-size:12.5px;color:var(--text-soft);font-weight:500">'+d+'</div></div>'+
+      svg('<path d="M9 18l6-6-6-6"></path>',{c:'var(--text-soft)',w:2.2,s:18})+'</button>'; };
+    var QR='<rect x="3" y="3" width="7" height="7" rx="1.4"></rect><rect x="14" y="3" width="7" height="7" rx="1.4"></rect><rect x="3" y="14" width="7" height="7" rx="1.4"></rect><path d="M14 14h3v3h-3z"></path><path d="M20 14v3M14 20h3M20 20v.01"></path>';
+    var list='<div style="background:var(--surface);border-radius:18px;box-shadow:0 12px 32px rgba(4,33,40,.08);overflow:hidden;margin-top:16px">'+
+      row('card','Mitgliedskarte','Dein digitaler Ausweis',QR)+
+      row('data','Meine Daten','Adresse & Bankverbindung',IC.user)+
+      row('contract','Vertragsverwaltung','Vertrag, Pause & Kündigung',IC.doc)+
+      row('account','Beitragskonto','Offene Beiträge & Rechnungen','<rect x="2" y="5" width="20" height="14" rx="2"></rect><path d="M2 9h20M6 15h5"></path>')+
+      row('referral','Freunde werben','Code teilen & Prämie',IC.gift)+
+      row('fort','Fortschritt','Vitalpunkte & Ränge','<circle cx="12" cy="8" r="6"></circle><path d="M15.5 13.5L17 22l-5-3-5 3 1.5-8.5"></path>')+
+      row('help','Hilfe & Kontakt','FINN, FAQ & Team',IC.help)+
+      row('settings','Einstellungen','Benachrichtigungen & mehr',IC.cog)+
+    '</div>';
+    return '<div style="font-size:24px;font-weight:900;color:var(--text);letter-spacing:-.5px;margin:2px 2px 14px">Profil</div>'+hero+list+
+      '<button data-act="logout" style="width:100%;margin-top:14px;border:1.5px solid var(--border);border-radius:14px;background:var(--surface);color:var(--err-fg);font-weight:800;font-size:15px;padding:14px;cursor:pointer">Abmelden</button>';
+  }
   function scrAccount(){
     var head='';
     // Kompakter Teal-Gradient-Header (Zurück-Pfeil + Titel), passend zum Mockup.
@@ -1709,7 +1777,7 @@
   // ---- responsive chrome (Desktop-Sidebar + Topbar) ----
   var DASH_IC='<rect x="3" y="3" width="7" height="9" rx="1.5"></rect><rect x="14" y="3" width="7" height="5" rx="1.5"></rect><rect x="14" y="12" width="7" height="9" rx="1.5"></rect><rect x="3" y="16" width="7" height="5" rx="1.5"></rect>';
   var NAVITEMS=[['home','Übersicht',DASH_IC],['card','Mitgliedskarte','<rect x="3" y="3" width="7" height="7" rx="1.4"></rect><rect x="14" y="3" width="7" height="7" rx="1.4"></rect><rect x="3" y="14" width="7" height="7" rx="1.4"></rect><path d="M14 14h3v3h-3z"></path><path d="M20 14v3M14 20h3M20 20v.01"></path>'],['fort','Fortschritt','<circle cx="12" cy="8" r="6"></circle><path d="M15.5 13.5L17 22l-5-3-5 3 1.5-8.5"></path>'],['blog','Blog','<path d="M4 5h16v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z"></path><path d="M8 9h8M8 13h6M8 17h4"></path>'],['data','Meine Daten',IC.user],['contract','Vertragsverwaltung',IC.doc],['account','Beitragskonto','<rect x="2" y="5" width="20" height="14" rx="2"></rect><path d="M2 9h20M6 15h5"></path>'],['appt','Termine',IC.cal],['referral','Freunde werben',IC.gift],['checkins','Check-ins',IC.list],['postfach','Postfach',IC.mail],['help','Hilfe',IC.help],['settings','Einstellungen',IC.cog]];
-  var TITLES={home:'Übersicht',data:'Meine Daten',contract:'Vertragsverwaltung',account:'Beitragskonto',appt:'Termine',referral:'Freunde werben',checkins:'Check-in-Verlauf',postfach:'Postfach',help:'Hilfe & Kontakt',settings:'Einstellungen'};
+  var TITLES={home:'Übersicht',data:'Meine Daten',contract:'Vertragsverwaltung',account:'Beitragskonto',appt:'Termine',referral:'Freunde werben',checkins:'Check-in-Verlauf',postfach:'Postfach',help:'Hilfe & Kontakt',settings:'Einstellungen',profil:'Profil',card:'Mitgliedskarte',fort:'Fortschritt',blog:'Blog'};
   function initials(p){ p=p||{}; var a=(p.firstName||'').trim(),b=(p.lastName||'').trim(); return (((a?a[0]:'')+(b?b[0]:'')).toUpperCase())||'FT'; }
   // Profil-Kopf für Sidebar/Drawer
   function navProfile(){
@@ -1747,8 +1815,20 @@
       else if(c) badge=pill('#54e08a','Mitgliedschaft aktiv');
       tb.innerHTML='<div style="font-size:23px;font-weight:900;color:var(--text);letter-spacing:-.4px">'+esc(TITLES[S.screen]||'')+'</div>'+badge;
     }
+    var bn=$('btmnav');
+    if(bn){
+      var sc=S.screen;
+      var profActive = (sc==='profil'||['data','contract','account','referral','fort','card','help','settings'].indexOf(sc)>=0);
+      var ni=function(key,label,icon,active){ var col=active?'var(--teal-ink)':'var(--text-soft)';
+        return '<button data-act="nav" data-arg="'+key+'" style="flex:1;background:none;border:none;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;padding:5px 0">'+svg(icon,{c:col,w:1.9,s:23})+'<span style="font-size:10.5px;font-weight:'+(active?'800':'600')+';color:'+col+'">'+label+'</span></button>'; };
+      var unread=pfUnread()>0;
+      var pfCol=(sc==='postfach')?'var(--teal-ink)':'var(--text-soft)';
+      var pfBtn='<button data-act="nav" data-arg="postfach" style="flex:1;background:none;border:none;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;padding:5px 0"><span style="position:relative;display:flex">'+svg(IC.mail,{c:pfCol,w:1.9,s:23})+(unread?'<span style="position:absolute;top:-3px;right:-5px;width:8px;height:8px;border-radius:50%;background:#F6A964;border:1.5px solid var(--surface)"></span>':'')+'</span><span style="font-size:10.5px;font-weight:'+(sc==='postfach'?'800':'600')+';color:'+pfCol+'">Postfach</span></button>';
+      var finnBtn='<button data-act="openFinn" aria-label="FINN" style="flex:1;background:none;border:none;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px;padding:0"><span style="width:54px;height:54px;border-radius:50%;background:linear-gradient(150deg,#0e6072,#063540);box-shadow:0 10px 24px -4px rgba(10,73,88,.55);display:flex;align-items:center;justify-content:center;margin-top:-26px;border:4px solid var(--surface);overflow:hidden"><img src="/assets/brand/finn-mark.svg" alt="FINN" style="width:100%;height:100%;display:block"></span><span style="font-size:10.5px;font-weight:800;color:var(--teal-ink)">FINN</span></button>';
+      bn.innerHTML = ni('home','Start',DASH_IC,sc==='home') + ni('appt','Termine',IC.cal,sc==='appt') + finnBtn + pfBtn + ni('profil','Profil',IC.user,profActive);
+    }
   }
-  var NARROW={contract:1,referral:1,appt:1,card:1,fort:1,blog:1};
+  var NARROW={contract:1,referral:1,appt:1,card:1,fort:1,blog:1,profil:1};
   function render(){
     // Ehemalige Mitglieder: gesperrte Screens immer auf die Übersicht (Rejoin) umleiten
     if(isFormer() && S.screen!=='login' && FORMER_OK.indexOf(S.screen)<0) S.screen='home';
@@ -1758,6 +1838,7 @@
       case 'home': html=scrHome(); break;
       case 'card': html=scrCard(); break;
       case 'fort': html=scrFort(); break;
+      case 'profil': html=scrProfil(); break;
       case 'blog': html=scrBlog(); break;
       case 'data': html=scrData(); break;
       case 'contract': html=scrContract(); break;
