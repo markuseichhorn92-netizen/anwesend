@@ -278,6 +278,7 @@
     apptTab:'book', bookType:'', bookTypeTitle:'', bookDay:'', bookSlot:null, bookDone:false, bookErr:'', apptMsg:'',
     helpSel:null, helpCat:'all', helpQ:'', helpShowAll:false,
     aiQuery:'', aiPhase:'idle', aiAsked:'', aiAnswer:'', aiFeedback:null,
+    finnOpen:false, finnMsgs:[], finnBusy:false, finnTip:'', finnTipLoaded:false,
     ctOpen:false, ctSent:false, ctMsg:'', ctBusy:false, ctErr:'', ctMsgServer:'', artFb:null,
     pfFilter:'all', pfSel:null, pfThread:false, pfDraft:'', pfBusy:false, pfErr:'',
     copied:false, dlMsg:false, dlMsg2:'', emailing:false,
@@ -392,6 +393,7 @@
     if(s==='postfach'){ S.pfSel=null; S.pfThread=false; S.pfErr=''; S.pfDraft=''; loadInbox(); }
     if(s==='contract'){ S.cancelStep=0; S.pauseStep=0; S.pauseDone=false; S.offerDone=''; }
     if(s==='checkins'&&!DATA.checkins) loadCheckins();
+    if(s==='home') loadFinnTip();
     if(s==='account') loadAccount();
     if(s==='appt'){ if(!DATA.appts) loadAppts(); if(DATA.bookable===null) loadBookable(); }
     if(s==='home') checkArrival();
@@ -722,8 +724,55 @@
       '</div>'+
     '</div>';
   }
+  // ── FINN – KI-Coach: Karte auf der Übersicht + Chat-Overlay ──
+  function loadFinnTip(){
+    if(S.finnTipLoaded||!TOKEN) return; S.finnTipLoaded=true;
+    api('/api/member/coach').then(function(d){ if(d&&d.message){ S.finnTip=d.message; if(S.screen==='home') render(); } }).catch(function(){});
+  }
+  function finnCard(){
+    var tip=S.finnTip||'';
+    return '<div data-act="openFinn" style="position:relative;overflow:hidden;background:var(--surface);border-radius:20px;box-shadow:0 12px 34px rgba(4,33,40,.12);padding:16px;margin-bottom:14px;cursor:pointer">'+
+      '<div style="display:flex;align-items:center;gap:11px">'+
+        '<div style="width:42px;height:42px;border-radius:50%;overflow:hidden;flex-shrink:0;box-shadow:0 4px 12px rgba(4,33,40,.18)"><img src="/assets/brand/finn-mark.svg" alt="FINN" style="width:100%;height:100%;display:block"></div>'+
+        '<div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:900;color:var(--text)">FINN · dein Coach</div><div style="font-size:11.5px;color:var(--text-soft);font-weight:600">Frag mich alles rund ums Training</div></div>'+
+        svg('<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>',{c:TEAL,w:1.9,s:20})+
+      '</div>'+
+      '<div style="font-size:14px;color:var(--text-2);font-weight:600;line-height:1.5;margin-top:12px">'+(tip?esc(tip):'Tippen und loslegen 💬')+'</div>'+
+    '</div>';
+  }
+  function finnScrollBottom(){ setTimeout(function(){ var e=$('finn_scroll'); if(e) e.scrollTop=e.scrollHeight; },30); }
+  function finnOverlayHtml(){
+    var msgs=S.finnMsgs||[];
+    var FA='<div style="width:30px;height:30px;border-radius:50%;overflow:hidden;flex-shrink:0"><img src="/assets/brand/finn-mark.svg" style="width:100%;height:100%;display:block"></div>';
+    var bubbles=msgs.map(function(m){
+      if(m.role==='assistant') return '<div style="display:flex;gap:9px;align-items:flex-start;max-width:90%">'+FA+'<div style="background:var(--surface-2);border-radius:4px 16px 16px 16px;padding:10px 13px;font-size:14px;line-height:1.5;color:var(--text);white-space:pre-wrap">'+esc(m.text)+'</div></div>';
+      return '<div style="display:flex;justify-content:flex-end"><div style="background:'+TEALBG+';color:#fff;border-radius:16px 4px 16px 16px;padding:10px 13px;font-size:14px;line-height:1.5;max-width:90%;white-space:pre-wrap">'+esc(m.text)+'</div></div>';
+    }).join('');
+    var thinking=S.finnBusy?('<div style="display:flex;gap:9px;align-items:center">'+FA+'<div style="background:var(--surface-2);border-radius:14px;padding:11px 14px;font-size:13px;color:var(--text-soft);font-weight:600">FINN denkt nach …</div></div>'):'';
+    var sugg=['Wie oft sollte ich trainieren?','Wann ist es am leersten?','Wie buche ich einen Termin?'];
+    return '<div class="ciOverlay" style="align-items:stretch;justify-content:center;padding:0">'+
+      '<div style="width:100%;max-width:480px;margin:0 auto;height:90dvh;align-self:flex-end;background:var(--bg);border-radius:24px 24px 0 0;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 -10px 50px rgba(0,0,0,.4)">'+
+        '<div style="display:flex;align-items:center;gap:12px;padding:calc(14px + env(safe-area-inset-top,0px)) 18px 14px;background:linear-gradient(160deg,#0e6072,#063540);color:#fff">'+
+          '<div style="width:40px;height:40px;border-radius:50%;overflow:hidden;flex-shrink:0;background:#0a3d4a"><img src="/assets/brand/finn-mark.svg" style="width:100%;height:100%;display:block"></div>'+
+          '<div style="flex:1;min-width:0"><div style="font-size:16px;font-weight:900">FINN</div><div style="font-size:12px;color:#aed0d6;font-weight:600">dein Fit-Inn Coach</div></div>'+
+          '<button data-act="closeFinn" aria-label="Schließen" style="width:36px;height:36px;border-radius:11px;border:none;background:rgba(255,255,255,.14);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer">'+svg('<path d="M18 6L6 18M6 6l12 12"></path>',{c:'#fff',w:2.2,s:18})+'</button>'+
+        '</div>'+
+        '<div id="finn_scroll" style="flex:1;overflow-y:auto;padding:16px 16px 8px;display:flex;flex-direction:column;gap:12px">'+
+          (msgs.length?'':'<div style="text-align:center;color:var(--text-soft);font-size:13px;font-weight:600;padding:16px 10px;line-height:1.6">Hi! Ich bin FINN, dein Coach 💪<br>Frag mich zu Training, Terminen, Vertrag oder Studio.</div>')+
+          bubbles+thinking+
+        '</div>'+
+        (msgs.length?'':'<div style="display:flex;gap:8px;overflow-x:auto;padding:0 16px 10px">'+sugg.map(function(s){return '<button data-act="finnSuggest" data-arg="'+esc(s)+'" style="flex:0 0 auto;border:1.5px solid var(--border);background:var(--surface);color:var(--teal-ink);border-radius:20px;font-size:12.5px;font-weight:700;padding:8px 13px;cursor:pointer;white-space:nowrap">'+esc(s)+'</button>';}).join('')+'</div>')+
+        '<div style="padding:0 16px 8px"><button data-act="finnToTeam" style="width:100%;border:none;border-radius:11px;background:var(--surface-2);color:var(--teal-ink);font-weight:800;font-size:13px;padding:10px;cursor:pointer">An unser Team übergeben</button></div>'+
+        '<div style="display:flex;gap:9px;align-items:flex-end;padding:10px 14px calc(12px + env(safe-area-inset-bottom,0px));border-top:1px solid var(--border);background:var(--surface)">'+
+          '<textarea id="finn_q" rows="1" placeholder="Frag FINN …" style="flex:1;border:1.5px solid var(--border);border-radius:18px;padding:11px 14px;font-size:15px;resize:none;max-height:120px;background:var(--surface);color:var(--text);outline:none"></textarea>'+
+          '<button data-act="finnSend" '+(S.finnBusy?'disabled ':'')+'style="width:46px;height:46px;border-radius:50%;border:none;background:'+TEALBG+';color:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0;cursor:pointer">'+svg('<path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"></path>',{c:'#fff',w:2,s:20})+'</button>'+
+        '</div>'+
+      '</div>'+
+    '</div>';
+  }
   function scrHome(){
     if(isFormer()) return scrRejoin();
+    loadFinnTip();
     var p=DATA.profile||{}; var name=p.firstName||'';
     var tiles=[
       ['card','Mitgliedskarte','Dein digitaler Ausweis mit QR-Code','#3BC6D6,#0E8A9E','rgba(14,138,158,.45)','<rect x="3" y="3" width="7" height="7" rx="1.4"></rect><rect x="14" y="3" width="7" height="7" rx="1.4"></rect><rect x="3" y="14" width="7" height="7" rx="1.4"></rect><path d="M14 14h3v3h-3z"></path><path d="M20 14v3M14 20h3M20 20v.01"></path>'],
@@ -751,6 +800,7 @@
     }
     return ''+
       homeHero()+
+      finnCard()+
       checkinBtn()+
       wifiBtn()+
       dupBanner+
@@ -1569,6 +1619,7 @@
     var narrow = NARROW[S.screen];
     if(narrow) html='<div class="narrow">'+html+'</div>';
     if(S.ciPopup) html+=ciPopupHtml();
+    if(S.finnOpen) html+=finnOverlayHtml();
     $('app').innerHTML=html;
     renderChrome();
     // Deep-Link „Zeit vormerken" (aus dem Widget): einmalig zur Reservierung scrollen
@@ -1585,6 +1636,18 @@
 
   var ACT={
     nav:function(a){ nav(a); },
+    openFinn:function(){ setS({finnOpen:true}); setTimeout(function(){ var t=$('finn_q'); if(t) t.focus(); finnScrollBottom(); },60); },
+    closeFinn:function(){ setS({finnOpen:false}); },
+    finnSuggest:function(a){ var t=$('finn_q'); if(t) t.value=a; ACT.finnSend(); },
+    finnSend:function(){ if(S.finnBusy) return; var t=$('finn_q'); var q=t?(t.value||'').trim():''; if(!q) return;
+      S.finnMsgs.push({role:'user',text:q}); if(t) t.value=''; S.finnBusy=true; render(); finnScrollBottom();
+      var hist=S.finnMsgs.slice(0,-1).map(function(m){ return {role:m.role,text:m.text}; });
+      api('/api/member/coach',{method:'POST',body:JSON.stringify({question:q,history:hist})}).then(function(d){
+        S.finnBusy=false;
+        S.finnMsgs.push({role:'assistant',text:(d&&d.ok&&d.answer)?d.answer:((d&&d.message)||'Da komme ich gerade nicht weiter. Magst du es unserem Team schreiben?')});
+        render(); finnScrollBottom();
+      }).catch(function(){ S.finnBusy=false; S.finnMsgs.push({role:'assistant',text:'Verbindung gerade nicht möglich. Versuch es gleich nochmal.'}); render(); finnScrollBottom(); }); },
+    finnToTeam:function(){ var last=''; for(var i=S.finnMsgs.length-1;i>=0;i--){ if(S.finnMsgs[i].role==='user'){ last=S.finnMsgs[i].text; break; } } setS({finnOpen:false}); nav('help'); setTimeout(function(){ setS({ctOpen:true,ctSent:false,ctErr:'',ctMsg:(last?('Meine Frage an FINN: '+last+'\n\n'):'')+'Bitte helft mir persönlich weiter.'}); },150); },
     doCheckin:function(){
       if(S.checkinBusy||S.checkedInAt) return;
       setS({checkinBusy:true,checkinMsg:''});
