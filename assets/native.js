@@ -44,6 +44,7 @@
     signIn: function () { return Promise.resolve({ ok: false, unavailable: true }); },
     connectWifi: function () { return Promise.resolve({ ok: false, unavailable: true }); },
     getPosition: function () { return Promise.resolve(null); },
+    pushStatus: function () { return ''; },
     available: { push: false, biometrics: false, apple: false, google: false, wifi: false, geo: false },
   };
   window.FitInnNative = API;
@@ -111,8 +112,14 @@
   // Android -> passt zum FCM-Versand im Backend). Fällt auf @capacitor/push-
   // notifications zurück, falls nur das installiert ist.
   var pushReady = false;
+  function pdbg(s) { try { localStorage.setItem('fi_push_dbg', String(s)); } catch (e) {} }
+  API.pushStatus = function () { try { return localStorage.getItem('fi_push_dbg') || ''; } catch (e) { return ''; } };
   function registerPushToken(tok) {
-    if (tok) post('/api/push/register', { token: tok, platform: API.platform }, true);
+    if (!tok) { pdbg('kein-token'); return; }
+    pdbg('token erhalten (len=' + String(tok).length + '), sende …');
+    post('/api/push/register', { token: tok, platform: API.platform }, true)
+      .then(function (r) { pdbg('registriert ok=' + !!(r && r.ok)); })
+      .catch(function () { pdbg('senden fehlgeschlagen'); });
   }
   function setupPush() {
     if (pushReady) return;
@@ -130,20 +137,24 @@
       } catch (e) {}
       return;
     }
-    if (!P.PushNotifications) return;
+    if (!P.PushNotifications) { pdbg('kein PushNotifications-Plugin'); return; }
     pushReady = true;
+    pdbg('setup gestartet');
     try {
       P.PushNotifications.addListener('registration', function (t) { registerPushToken(t && t.value); });
+      P.PushNotifications.addListener('registrationError', function (e) { pdbg('registrierungs-fehler: ' + JSON.stringify((e && (e.error || e.message)) || e).slice(0, 160)); });
       P.PushNotifications.addListener('pushNotificationActionPerformed', function (ev) {
         try { var url = ev && ev.notification && ev.notification.data && ev.notification.data.url; if (url) location.assign(url); } catch (e) {}
       });
       P.PushNotifications.checkPermissions().then(function (st) {
+        pdbg('berechtigung: ' + (st && st.receive));
         if (st && st.receive === 'granted') return P.PushNotifications.register();
         return P.PushNotifications.requestPermissions().then(function (r) {
+          pdbg('nach abfrage: ' + (r && r.receive));
           if (r && r.receive === 'granted') return P.PushNotifications.register();
         });
-      }).catch(function () {});
-    } catch (e) {}
+      }).catch(function (e) { pdbg('perm-fehler: ' + ((e && e.message) || e)); });
+    } catch (e) { pdbg('setup-exception: ' + ((e && e.message) || e)); }
   }
 
   // ── Biometrie: Sitzung sicher ablegen / entsperren ──────────────────────────

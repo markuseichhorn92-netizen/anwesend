@@ -192,7 +192,7 @@
   }catch(e){}
 })();
 </script>
-<script src="/assets/native.js?v=3" defer></script>
+<script src="/assets/native.js?v=4" defer></script>
 </head>
 <body>
 <div class="shell">
@@ -1432,7 +1432,8 @@
     var pushCard='<div class="card">'+secHead(IC.bell,'Push-Mitteilungen','Mitteilungen direkt aufs Handy.')+
       '<div style="display:flex;align-items:center;gap:14px;margin-top:18px"><div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:700;color:var(--text)">Push aktivieren</div><div style="font-size:13px;color:var(--text-muted);margin-top:2px;line-height:1.45">Erhalte wichtige Hinweise als Mitteilung in der App.</div></div>'+swt(pushMaster,'togglePush','')+'</div>'+
       (pushMaster?(catRow('Postfach-Antworten','Wenn das Studio dir schreibt','pushPostfach')+catRow('Termin-Erinnerungen','Vor gebuchten Terminen','pushTermin')+catRow('Offene Beiträge','Hinweis bei offenen Rechnungen','pushKonto')+catRow('Studio-News','Aktionen & Neuigkeiten','pushNews')):'')+
-      '<div style="font-size:12.5px;color:var(--text-soft);margin-top:16px;line-height:1.5;border-top:1px solid var(--border);padding-top:13px">In der App müssen Mitteilungen erlaubt sein (wird beim ersten Öffnen abgefragt).</div></div>';
+      '<div style="font-size:12.5px;color:var(--text-soft);margin-top:16px;line-height:1.5;border-top:1px solid var(--border);padding-top:13px">In der App müssen Mitteilungen erlaubt sein (wird beim ersten Öffnen abgefragt).</div>'+
+      ((window.FitInnNative&&FitInnNative.isNative)?'<div style="font-size:11.5px;color:var(--text-soft);margin-top:10px;font-family:ui-monospace,Menlo,monospace;word-break:break-all;background:var(--surface-2);border-radius:8px;padding:8px 10px">Push-Status: '+esc((FitInnNative.pushStatus&&FitInnNative.pushStatus())||'—')+'</div>':'')+'</div>';
     return backHd('Einstellungen')+appearance+'<div style="height:16px"></div>'+notif+'<div style="height:16px"></div>'+pushCard+'<div style="height:16px"></div>'+privacy;
   }
 
@@ -1881,7 +1882,8 @@
     // Brücke ist (jetzt) da -> neu zeichnen, damit native-abhängige Elemente
     // (WLAN-Button etc.) erscheinen, auch wenn native.js nach dem ersten Render lud.
     try{ if(S.screen!=='login') render(); }catch(e){}
-    if(TOKEN) { try{ checkArrival(); }catch(e){} }
+    // Push-Setup nachholen, falls native.js erst nach dem Login-/Boot-Render kam.
+    if(TOKEN){ try{ if(window.FitInnNative && FitInnNative.onAuthed) FitInnNative.onAuthed(TOKEN); }catch(e){} try{ checkArrival(); }catch(e){} }
     if(MLT) return;
     if(S.screen==='login' && window.FitInnNative && FitInnNative.hasBiometricLogin && FitInnNative.hasBiometricLogin()){
       render();
