@@ -247,7 +247,7 @@
 
   // ---- state ----
   var TOKEN = localStorage.getItem('fi_member_token') || sessionStorage.getItem('fi_member_token') || null;
-  var DATA = { profile:null, contract:null, checkins:null, appts:null, plan:null, planAgg:null, planAggTom:null, inbox:null, prefs:null, membershipActive:true };
+  var DATA = { profile:null, contract:null, checkins:null, appts:null, plan:null, planAgg:null, planAggTom:null, inbox:null, prefs:null, membershipActive:true, bookable:null, slots:null };
   // Erlaubte Screens für ehemalige Mitglieder (alles andere wird gesperrt)
   var FORMER_OK = ['home','checkins','help','postfach','settings'];
   function isFormer(){ return DATA.membershipActive===false; }
@@ -257,7 +257,7 @@
     cancelStep:0, cancelReason:'', pauseWeeks:6, offerDone:'', withdrawConfirm:false, withdrawDone:false, cancelDone:false, revokeConfirm:false, revokeDone:false, busy:false,
     pauseStep:0, pauseReason:'', pauseReasonText:'', pauseFrom:'', pausePhoto:'', pausePhotoName:'', pauseDone:false,
     ccBusy:false, ccMsg:'',
-    apptTab:'book', bookType:'', apptMsg:'',
+    apptTab:'book', bookType:'', bookTypeTitle:'', bookSlot:null, bookDone:false, bookErr:'', apptMsg:'',
     helpSel:null, helpCat:'all', helpQ:'', helpShowAll:false,
     aiQuery:'', aiPhase:'idle', aiAsked:'', aiAnswer:'', aiFeedback:null,
     ctOpen:false, ctSent:false, ctMsg:'', ctBusy:false, ctErr:'', ctMsgServer:'', artFb:null,
@@ -373,7 +373,7 @@
     if(s==='postfach'){ S.pfSel=null; S.pfThread=false; S.pfErr=''; S.pfDraft=''; loadInbox(); }
     if(s==='contract'){ S.cancelStep=0; S.pauseStep=0; S.pauseDone=false; S.offerDone=''; }
     if(s==='checkins'&&!DATA.checkins) loadCheckins();
-    if(s==='appt'&&!DATA.appts) loadAppts();
+    if(s==='appt'){ if(!DATA.appts) loadAppts(); if(DATA.bookable===null) loadBookable(); }
     setS({}); }
 
   // ---- data loading ----
@@ -393,6 +393,10 @@
   }
   function loadCheckins(){ api('/api/member/checkins').then(function(d){ DATA.checkins=d.checkins||[]; render(); }).catch(function(){ DATA.checkins=[]; render(); }); }
   function loadAppts(){ api('/api/member/appointments').then(function(d){ DATA.appts=d.appointments||[]; render(); }).catch(function(){ DATA.appts=[]; render(); }); }
+  // Buchbare Termin-Arten laden (echte Buchung). [] = keine konfiguriert -> E-Mail-Fallback.
+  function loadBookable(){ api('/api/member/bookable').then(function(d){ DATA.bookable=(d&&d.types)||[]; render(); }).catch(function(){ DATA.bookable=[]; render(); }); }
+  // Freie Slots der gewählten Termin-Art laden.
+  function loadSlots(id){ DATA.slots=null; render(); api('/api/member/appointment-slots?id='+encodeURIComponent(id)+'&days=21').then(function(d){ DATA.slots=(d&&d.slots)||[]; render(); }).catch(function(){ DATA.slots=[]; render(); }); }
   function loadPlan(){ api('/api/member/plan').then(function(d){ DATA.plan=(d&&d.plan)||null; if(DATA.plan&&typeof DATA.plan.remind==='boolean')S.planRemind=DATA.plan.remind; render(); }).catch(function(){ DATA.plan=null; }); }
   function loadPlanAgg(){
     fetch('/api/plan',{cache:'no-store'}).then(function(r){return r.json();}).then(function(d){ DATA.planAgg=d||null; render(); }).catch(function(){});
@@ -864,12 +868,37 @@
     var tabs='<div style="display:flex;gap:5px;background:var(--border);border-radius:13px;padding:5px;margin-bottom:16px"><button data-act="apptTab" data-arg="book" style="flex:1;padding:11px;border:none;border-radius:9px;background:'+(tab==='book'?'var(--surface)':'transparent')+';color:'+(tab==='book'?TEAL:'var(--text-muted)')+';font-weight:700;font-size:14px;cursor:pointer">Termin buchen</button><button data-act="apptTab" data-arg="mine" style="flex:1;padding:11px;border:none;border-radius:9px;background:'+(tab==='mine'?'var(--surface)':'transparent')+';color:'+(tab==='mine'?TEAL:'var(--text-muted)')+';font-weight:700;font-size:14px;cursor:pointer">Meine Termine</button></div>';
     var body='';
     if(tab==='book'){
-      if(S.apptMsg){ body='<div class="card" style="padding:32px 24px;text-align:center"><div style="width:64px;height:64px;border-radius:50%;background:var(--ok-bg);display:flex;align-items:center;justify-content:center;margin:0 auto 16px">'+svg(IC.check,{c:'var(--ok-fg)',w:2.4,s:32})+'</div><div style="font-size:21px;font-weight:900">Terminwunsch gesendet!</div><div style="font-size:14px;color:var(--text-muted);margin-top:6px;line-height:1.5">'+esc(S.apptMsg)+'</div><button class="btn" data-act="apptTab" data-arg="mine" style="margin-top:20px">Zu meinen Terminen</button></div>'; }
-      else {
+      if(S.apptMsg){ body='<div class="card" style="padding:32px 24px;text-align:center"><div style="width:64px;height:64px;border-radius:50%;background:var(--ok-bg);display:flex;align-items:center;justify-content:center;margin:0 auto 16px">'+svg(IC.check,{c:'var(--ok-fg)',w:2.4,s:32})+'</div><div style="font-size:21px;font-weight:900">'+(S.bookDone?'Termin gebucht!':'Terminwunsch gesendet!')+'</div><div style="font-size:14px;color:var(--text-muted);margin-top:6px;line-height:1.5">'+esc(S.apptMsg)+'</div><button class="btn" data-act="apptTab" data-arg="mine" style="margin-top:20px">Zu meinen Terminen</button></div>'; }
+      else if(DATA.bookable===null){ body='<div class="card" style="text-align:center;color:var(--text-soft);font-size:14px">Lade buchbare Termine …</div>'; }
+      else if(!DATA.bookable.length){
+        // Fallback: keine buchbaren Termine in Magicline konfiguriert -> Terminwunsch per E-Mail
         var types='<div style="font-size:13px;font-weight:700;color:var(--text-soft);text-transform:uppercase;letter-spacing:.5px;margin:2px 2px 10px">Terminart wählen</div><div style="display:flex;flex-direction:column;gap:11px">'+
         APPT_TYPES.map(function(a){ var sel=S.bookType===a[0]; return '<button data-act="bookType" data-arg="'+a[0]+'" style="display:flex;align-items:center;gap:13px;width:100%;padding:16px;border:1.5px solid '+(sel?TEAL:'var(--border)')+';border-radius:16px;background:'+(sel?'var(--row-sel)':'var(--surface)')+';cursor:pointer;text-align:left"><span style="width:22px;height:22px;border-radius:50%;border:2px solid '+(sel?TEAL:'var(--border)')+';display:flex;align-items:center;justify-content:center;flex-shrink:0"><span style="width:11px;height:11px;border-radius:50%;background:'+(sel?TEALBG:'transparent')+'"></span></span><span style="flex:1"><span style="display:block;font-size:15px;font-weight:700">'+a[1]+'</span><span style="display:block;font-size:13px;color:var(--text-muted);margin-top:1px">'+a[2]+'</span></span></button>'; }).join('')+'</div>';
         var pick = S.bookType ? '<div class="card" style="margin-top:20px"><div style="font-size:15px;font-weight:800">Wunschzeit angeben</div><div style="font-size:13px;color:var(--text-muted);margin-top:4px;line-height:1.45">Sag uns, wann es dir am besten passt – wir bestätigen deinen Termin per E-Mail.</div><div style="margin-top:14px"><label class="lbl">Wunschtag / -zeit</label><input id="a_pref" class="inp" placeholder="z. B. Di nachmittags oder 30.06. 17:30"></div><button class="btn" data-act="reqAppt" style="margin-top:16px">'+(S.busy?'Wird gesendet …':'Terminwunsch senden')+'</button></div>' : '';
         body=types+pick;
+      }
+      else {
+        // Echte Buchung über Magicline
+        var typeHeader=function(){ var t=(DATA.bookable.filter(function(x){return String(x.id)===String(S.bookType);})[0])||{}; var sub=[t.category,(t.duration?(t.duration+' Min'):'')].filter(Boolean).join(' · '); return '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--surface-2);border-radius:13px;padding:13px 15px"><div><div style="font-size:15px;font-weight:800">'+esc(t.title||'Termin')+'</div>'+(sub?'<div style="font-size:12.5px;color:var(--text-muted);margin-top:2px">'+esc(sub)+'</div>':'')+'</div><button data-act="bookBack" style="border:none;background:transparent;color:'+TEAL+';font-weight:700;font-size:13px;cursor:pointer">ändern</button></div>'; };
+        if(!S.bookType){
+          body='<div style="font-size:13px;font-weight:700;color:var(--text-soft);text-transform:uppercase;letter-spacing:.5px;margin:2px 2px 10px">Terminart wählen</div><div style="display:flex;flex-direction:column;gap:11px">'+
+          DATA.bookable.map(function(t){ var sub=[t.category,(t.duration?(t.duration+' Min'):'')].filter(Boolean).join(' · ')||(t.description||''); return '<button data-act="pickBookType" data-arg="'+esc(t.id)+'" style="display:flex;align-items:center;gap:13px;width:100%;padding:16px;border:1.5px solid var(--border);border-radius:16px;background:var(--surface);cursor:pointer;text-align:left"><span style="width:44px;height:44px;border-radius:12px;background:var(--surface-2);display:flex;align-items:center;justify-content:center;flex-shrink:0">'+svg(IC.cal,{w:1.9})+'</span><span style="flex:1"><span style="display:block;font-size:15px;font-weight:700">'+esc(t.title)+'</span>'+(sub?'<span style="display:block;font-size:13px;color:var(--text-muted);margin-top:1px">'+esc(sub)+'</span>':'')+'</span><span style="color:var(--text-soft)">'+svg('<path d="M9 6l6 6-6 6"></path>',{w:2,s:18})+'</span></button>'; }).join('')+'</div>';
+        } else if(!S.bookSlot){
+          var errBan=S.bookErr?'<div style="background:#fbeae7;color:var(--err-fg);border-radius:12px;padding:12px 14px;margin-top:14px;font-size:13.5px;font-weight:600;line-height:1.4">'+esc(S.bookErr)+'</div>':'';
+          if(DATA.slots===null) body=typeHeader()+errBan+'<div class="card" style="text-align:center;color:var(--text-soft);font-size:14px;margin-top:14px">Lade freie Zeiten …</div>';
+          else if(!DATA.slots.length) body=typeHeader()+errBan+'<div class="card" style="text-align:center;margin-top:14px"><div style="font-size:15px;font-weight:700">Keine freien Termine</div><div style="font-size:13px;color:var(--text-muted);margin-top:4px">In den nächsten 3 Wochen ist hier nichts frei. Bitte später erneut versuchen.</div></div>';
+          else {
+            var byDay={}, order=[]; DATA.slots.forEach(function(s,i){ var d=(s.start||'').slice(0,10); if(!byDay[d]){byDay[d]=[];order.push(d);} byDay[d].push({s:s,i:i}); });
+            var slotHtml=order.map(function(d){ return '<div style="font-size:13px;font-weight:800;color:var(--text-soft);margin:16px 2px 8px">'+deDate(byDay[d][0].s.start)+'</div><div style="display:flex;flex-wrap:wrap;gap:8px">'+byDay[d].map(function(o){ return '<button data-act="pickSlot" data-arg="'+o.i+'" style="padding:11px 14px;border:1.5px solid var(--border);border-radius:12px;background:var(--surface);font-weight:700;font-size:14px;color:var(--teal-ink);cursor:pointer">'+deTime(o.s.start)+' Uhr</button>'; }).join('')+'</div>'; }).join('');
+            body=typeHeader()+errBan+'<div style="font-size:13px;color:var(--text-muted);margin:16px 2px 0;line-height:1.45">Wähle einen freien Termin:</div>'+slotHtml;
+          }
+        } else {
+          var sl=S.bookSlot;
+          body=typeHeader()+'<div class="card" style="margin-top:14px"><div style="font-size:13px;font-weight:700;color:var(--text-soft);text-transform:uppercase;letter-spacing:.5px">Dein Termin</div>'+
+          '<div style="display:flex;align-items:center;gap:12px;margin-top:12px"><div style="width:48px;height:48px;border-radius:13px;background:var(--surface-2);display:flex;align-items:center;justify-content:center;flex-shrink:0">'+svg(IC.cal,{w:1.9})+'</div><div><div style="font-size:16px;font-weight:800">'+deDate(sl.start)+'</div><div style="font-size:14px;color:var(--text-muted);margin-top:2px">'+deTime(sl.start)+(sl.end?('–'+deTime(sl.end)):'')+' Uhr'+(sl.instructor?(' · mit '+esc(sl.instructor)):'')+'</div></div></div>'+
+          '<button class="btn" data-act="confirmBook" style="margin-top:18px">'+(S.busy?'Wird gebucht …':'Termin verbindlich buchen')+'</button>'+
+          '<button class="btn2" data-act="bookBack" style="margin-top:10px">Andere Zeit wählen</button></div>';
+        }
       }
     } else {
       var list=DATA.appts;
@@ -1510,10 +1539,20 @@
     closeOffer:function(){ setS({offerDone:'',cancelStep:0}); },
     // appointments
     openMyAppts:function(){ S.screen='appt'; S.apptTab='mine'; S.apptMsg=''; loadAppts(); setS({}); },
-    apptTab:function(a){ setS({apptTab:a,apptMsg:''}); if(a==='mine') loadAppts(); },
+    apptTab:function(a){ S.apptTab=a; S.apptMsg=''; S.bookDone=false; S.bookType=''; S.bookTypeTitle=''; S.bookSlot=null; S.bookErr='';
+      if(a==='mine') loadAppts(); else if(DATA.bookable===null) loadBookable();
+      setS({}); },
     bookType:function(a){ setS({bookType:a}); },
     reqAppt:function(){ var pref=val('a_pref'); var t=(APPT_TYPES.filter(function(x){return x[0]===S.bookType;})[0]||[])[1]||''; setQuiet({busy:true});
-      api('/api/member/appointment',{method:'POST',body:JSON.stringify({type:t,preferred:pref})}).then(function(d){ setS({busy:false,apptMsg:d.message||'Dein Terminwunsch ist eingegangen.',bookType:''}); }).catch(function(){ setS({busy:false,apptMsg:'Dein Terminwunsch ist eingegangen.'}); }); },
+      api('/api/member/appointment',{method:'POST',body:JSON.stringify({type:t,preferred:pref})}).then(function(d){ setS({busy:false,apptMsg:d.message||'Dein Terminwunsch ist eingegangen.',bookDone:false,bookType:''}); }).catch(function(){ setS({busy:false,apptMsg:'Dein Terminwunsch ist eingegangen.'}); }); },
+    // ---- echte Buchung ----
+    pickBookType:function(a){ var t=(DATA.bookable||[]).filter(function(x){return String(x.id)===String(a);})[0]||{}; S.bookType=a; S.bookTypeTitle=t.title||''; S.bookSlot=null; S.bookErr=''; loadSlots(a); },
+    pickSlot:function(a){ var sl=(DATA.slots||[])[+a]; if(sl) setS({bookSlot:sl,bookErr:''}); },
+    bookBack:function(){ if(S.bookSlot) setS({bookSlot:null,bookErr:''}); else setS({bookType:'',bookTypeTitle:'',bookSlot:null,bookErr:''}); },
+    confirmBook:function(){ var sl=S.bookSlot; if(!sl||S.busy) return; var bid=S.bookType; setQuiet({busy:true,bookErr:''});
+      api('/api/member/appointment-book',{method:'POST',body:JSON.stringify({bookableAppointmentId:bid,startDateTime:sl.start,endDateTime:sl.end,instructorIds:(sl.instructorIds||[]).slice(0,1),title:S.bookTypeTitle})})
+        .then(function(d){ if(d&&d.ok){ DATA.appts=null; loadAppts(); setS({busy:false,apptMsg:d.message||'Dein Termin ist gebucht!',bookDone:true,bookType:'',bookTypeTitle:'',bookSlot:null,bookErr:''}); } else { DATA.slots=null; setS({busy:false,bookSlot:null,bookErr:(d&&d.message)||'Buchung fehlgeschlagen – bitte anderen Termin wählen.'}); loadSlots(bid); } })
+        .catch(function(){ setS({busy:false,bookErr:'Buchung fehlgeschlagen – bitte später erneut.'}); }); },
     // referral
     copyRef:function(){ var p=DATA.profile||{}; var code=p.referralCode||''; var link=window.location.origin+'/einladung?ref='+encodeURIComponent(code)+(p.firstName?('&name='+encodeURIComponent(p.firstName)):''); copyText(link); setS({copied:true}); setTimeout(function(){ S.copied=false; render(); },1800); },
     shareRef:function(){ var p=DATA.profile||{}; var code=p.referralCode||''; var link=window.location.origin+'/einladung?ref='+encodeURIComponent(code)+(p.firstName?('&name='+encodeURIComponent(p.firstName)):''); var txt='Trainier mit mir im Fit-Inn Trier! 💪 Mit meinem Code '+code+' bekommst du 2 Wochen gratis: '+link; if(navigator.share){ navigator.share({title:'Fit-Inn Trier',text:txt,url:link}).catch(function(){}); } else { copyText(txt); setS({copied:true}); setTimeout(function(){ S.copied=false; render(); },1800); } },
