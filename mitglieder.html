@@ -40,8 +40,11 @@
   @keyframes fiUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
   .shell{width:100%;max-width:480px;margin:0 auto;min-height:100dvh;display:flex;flex-direction:column}
   .brandbar{position:fixed;top:0;left:0;right:0;z-index:50;max-width:480px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:calc(14px + env(safe-area-inset-top,0px)) 20px 14px;background:linear-gradient(160deg,#0e6072,#063540)}
-  /* Platz für den fest fixierten Header schaffen (Header-Höhe inkl. Statusleisten-Abstand) */
-  @media(max-width:999px){ .app-in .maincol{padding-top:calc(70px + env(safe-area-inset-top,0px))} }
+  /* Mobil (eingeloggt): KEINE Logo-Leiste – der Hero ist der Kopf (Full-Bleed, wie im Mockup). */
+  @media(max-width:999px){ .app-in .brandbar{display:none} .app-in .maincol{padding-top:0} .app-in .body{padding-top:env(safe-area-inset-top,0px)} }
+  /* Home-Hero */
+  .homeHero{position:relative;overflow:hidden;background:linear-gradient(165deg,#0e6072 0%,#0a4958 55%,#063540 100%);border-radius:24px;padding:22px 20px;margin-bottom:16px;box-shadow:0 16px 40px rgba(4,33,40,.20)}
+  @media(max-width:999px){ .app-in .homeHero{margin:calc(-1 * env(safe-area-inset-top,0px)) -16px 16px;border-radius:0 0 28px 28px;padding:calc(env(safe-area-inset-top,0px) + 26px) 22px 24px;box-shadow:none} }
   /* Mobile Bottom-Nav (neuer Look) */
   .btmnav{display:none}
   @media(max-width:999px){
@@ -51,6 +54,13 @@
     .app-in .legalfoot{padding-bottom:calc(84px + env(safe-area-inset-bottom,0px))}
   }
   .app-guest .btmnav{display:none!important}
+  /* FINN-FAB (schwebender Coach-Button, mobil) */
+  .finnFab{display:none}
+  .finnFab img{width:100%;height:100%;display:block}
+  @media(max-width:999px){
+    .app-in .finnFab{position:fixed;right:16px;bottom:calc(88px + env(safe-area-inset-bottom,0px));z-index:49;width:54px;height:54px;border-radius:50%;border:3px solid var(--surface);background:linear-gradient(150deg,#0e6072,#063540);box-shadow:0 12px 28px -6px rgba(10,73,88,.6);cursor:pointer;padding:0;overflow:hidden;display:flex;align-items:center;justify-content:center}
+  }
+  .app-guest .finnFab{display:none!important}
   .logout{background:rgba(255,255,255,.12);border:none;color:#cfe3e7;font-weight:600;font-size:13px;padding:8px 13px;border-radius:9px;cursor:pointer}
   /* ---------- mobile burger menu ---------- */
   .burger{display:none;align-items:center;justify-content:center;width:42px;height:42px;border-radius:11px;background:rgba(255,255,255,.12);border:none;cursor:pointer;flex-shrink:0;padding:0;position:relative}
@@ -220,6 +230,7 @@
     </div>
     <div class="topbar" id="topbar"></div>
     <div class="body" id="app"></div>
+    <button class="finnFab" id="finnFab" data-act="openFinn" aria-label="FINN fragen"><img src="/assets/brand/finn-mark.svg" alt="FINN"></button>
     <nav class="btmnav" id="btmnav"></nav>
     <div class="legalfoot">
       <a href="https://www.fit-inn-trier.de/impressum-fit-inn-trier" target="_blank" rel="noopener">Impressum</a><span>·</span>
@@ -724,7 +735,7 @@
     var mn=['Jan.','Feb.','März','Apr.','Mai','Juni','Juli','Aug.','Sept.','Okt.','Nov.','Dez.'][d.getMonth()];
     var todayLabel=wd+', '+d.getDate()+'. '+mn;
     var unread=pfUnread()>0;
-    return '<div style="position:relative;overflow:hidden;background:linear-gradient(165deg,#0e6072 0%,#0a4958 55%,#063540 100%);border-radius:24px;padding:22px 20px;margin-bottom:16px;box-shadow:0 16px 40px rgba(4,33,40,.20)">'+
+    return '<div class="homeHero">'+
       '<div style="position:absolute;width:230px;height:230px;right:-80px;top:-70px;border-radius:50%;background:radial-gradient(circle,rgba(246,169,100,.22),transparent 70%);pointer-events:none"></div>'+
       '<div style="position:relative;display:flex;align-items:center;justify-content:space-between;gap:12px">'+
         '<div style="min-width:0"><div style="font-size:13px;font-weight:600;color:#aed0d6">'+esc(todayLabel)+'</div>'+
@@ -908,11 +919,8 @@
         +'</div>'
         +(S.checkinMsg && !S.checkinOk ? '<div class="err" style="margin-bottom:14px">'+svg(IC.warn,{c:'var(--err-fg)',w:2,s:17})+'<span>'+esc(S.checkinMsg)+'</span></div>' : '');
     }
-    var label = S.checkinBusy ? 'Checkt ein …' : 'Jetzt einchecken';
-    var bg = TEALBG;
-    var ic = svg('<path d="M9 11l3 3L20 5"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>',{c:'#fff',w:2.1,s:20});
-    return '<button class="btn" data-act="doCheckin" '+(S.checkinBusy?'disabled ':'')+'style="width:100%;display:flex;align-items:center;justify-content:center;gap:10px;padding:16px;font-size:16px;margin-bottom:14px;background:'+bg+'">'+ic+label+'</button>'+
-      (S.checkinMsg && !S.checkinOk ? '<div class="err" style="margin-bottom:14px">'+svg(IC.warn,{c:'var(--err-fg)',w:2,s:17})+'<span>'+esc(S.checkinMsg)+'</span></div>' : '');
+    // Check-in läuft jetzt über den Mittel-Button der Bottom-Nav – kein großer Button mehr.
+    return (S.checkinMsg && !S.checkinOk ? '<div class="err" style="margin-bottom:14px">'+svg(IC.warn,{c:'var(--err-fg)',w:2,s:17})+'<span>'+esc(S.checkinMsg)+'</span></div>' : '');
   }
   function statCard(eyebrow, icon, value, sub, attrs){
     return '<div class="statCard" '+(attrs||'')+' style="cursor:pointer;background:var(--surface);border-radius:18px;box-shadow:0 12px 32px rgba(4,33,40,.10);padding:18px 18px 20px">'+
@@ -1854,8 +1862,9 @@
       var unread=pfUnread()>0;
       var pfCol=(sc==='postfach')?'var(--teal-ink)':'var(--text-soft)';
       var pfBtn='<button data-act="nav" data-arg="postfach" style="flex:1;background:none;border:none;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;padding:5px 0"><span style="position:relative;display:flex">'+svg(IC.mail,{c:pfCol,w:1.9,s:23})+(unread?'<span style="position:absolute;top:-3px;right:-5px;width:8px;height:8px;border-radius:50%;background:#F6A964;border:1.5px solid var(--surface)"></span>':'')+'</span><span style="font-size:10.5px;font-weight:'+(sc==='postfach'?'800':'600')+';color:'+pfCol+'">Postfach</span></button>';
-      var finnBtn='<button data-act="openFinn" aria-label="FINN" style="flex:1;background:none;border:none;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px;padding:0"><span style="width:54px;height:54px;border-radius:50%;background:linear-gradient(150deg,#0e6072,#063540);box-shadow:0 10px 24px -4px rgba(10,73,88,.55);display:flex;align-items:center;justify-content:center;margin-top:-26px;border:4px solid var(--surface);overflow:hidden"><img src="/assets/brand/finn-mark.svg" alt="FINN" style="width:100%;height:100%;display:block"></span><span style="font-size:10.5px;font-weight:800;color:var(--teal-ink)">FINN</span></button>';
-      bn.innerHTML = ni('home','Start',DASH_IC,sc==='home') + ni('appt','Termine',IC.cal,sc==='appt') + finnBtn + pfBtn + ni('profil','Profil',IC.user,profActive);
+      var ciIn=!!S.checkedInAt;
+      var ciCenter='<button data-act="ciToggle" aria-label="'+(ciIn?'Auschecken':'Check-in')+'" style="flex:1;background:none;border:none;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px;padding:0"><span style="width:54px;height:54px;border-radius:50%;background:'+(ciIn?'linear-gradient(150deg,#1f9a4e,#127a3c)':'linear-gradient(150deg,#0e6072,#063540)')+';box-shadow:0 10px 24px -4px rgba(10,73,88,.55);display:flex;align-items:center;justify-content:center;margin-top:-26px;border:4px solid var(--surface)">'+svg('<path d="M9 11l3 3L20 5"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>',{c:'#fff',w:2.1,s:24})+'</span><span style="font-size:10.5px;font-weight:800;color:var(--teal-ink)">'+(ciIn?'Auschecken':'Check-in')+'</span></button>';
+      bn.innerHTML = ni('home','Start',DASH_IC,sc==='home') + ni('appt','Termine',IC.cal,sc==='appt') + ciCenter + pfBtn + ni('profil','Profil',IC.user,profActive);
     }
   }
   var NARROW={contract:1,referral:1,appt:1,card:1,fort:1,blog:1,profil:1};
@@ -1902,6 +1911,7 @@
   var ACT={
     nav:function(a){ nav(a); },
     openFinn:function(){ setS({finnOpen:true}); setTimeout(function(){ var t=$('finn_q'); if(t) t.focus(); finnScrollBottom(); },60); },
+    ciToggle:function(){ if(S.screen!=='home') nav('home'); if(S.checkedInAt){ if(ACT.doCheckout) ACT.doCheckout(); } else { if(ACT.doCheckin) ACT.doCheckin(); } },
     closeFinn:function(){ setS({finnOpen:false}); },
     finnSuggest:function(a){ var t=$('finn_q'); if(t) t.value=a; ACT.finnSend(); },
     finnSend:function(){ if(S.finnBusy) return; var t=$('finn_q'); var q=t?(t.value||'').trim():''; if(!q) return;
