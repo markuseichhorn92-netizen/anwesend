@@ -32,7 +32,9 @@
     biometricUnlock: function () { return Promise.resolve(null); },
     hasBiometricLogin: function () { return false; },
     signIn: function () { return Promise.resolve({ ok: false, unavailable: true }); },
-    available: { push: false, biometrics: false, apple: false, google: false },
+    connectWifi: function () { return Promise.resolve({ ok: false, unavailable: true }); },
+    getPosition: function () { return Promise.resolve(null); },
+    available: { push: false, biometrics: false, apple: false, google: false, wifi: false, geo: false },
   };
   window.FitInnNative = API;
   if (!isNative) return;   // im Browser ist hier Schluss.
@@ -57,6 +59,32 @@
   API.available.biometrics = !!P.NativeBiometric;
   API.available.apple = !!(P.SignInWithApple || P.SocialLogin);
   API.available.google = !!(P.GoogleAuth || P.SocialLogin);
+  API.available.wifi = !!(P.WifiConnect && P.WifiConnect.connect);
+
+  // ── Ein-Tipp-WLAN: offenes Studio-Netz beitreten ───────────────────────────
+  // Nutzt @falconeta/capacitor-wifi-connect (iOS: NEHotspotConfiguration,
+  // Android: WifiNetworkSuggestion). Liefert { ok } zurück.
+  API.connectWifi = function (ssid) {
+    var W = P.WifiConnect;
+    if (!W || !W.connect || !ssid) return Promise.resolve({ ok: false, unavailable: true });
+    return W.connect({ ssid: ssid })
+      .then(function (r) { return { ok: true, result: r }; })
+      .catch(function (e) { return { ok: false, error: (e && e.message) || String(e) }; });
+  };
+
+  // ── Standort (nativ): zuverlässig auf iOS, wo die WebView-Geolocation fehlt ──
+  API.available.geo = !!(P.Geolocation && P.Geolocation.getCurrentPosition);
+  API.getPosition = function () {
+    var G = P.Geolocation;
+    if (!G || !G.getCurrentPosition) return Promise.resolve(null);
+    var go = function () {
+      return G.getCurrentPosition({ enableHighAccuracy: true, timeout: 8000 })
+        .then(function (p) { return (p && p.coords) ? { lat: p.coords.latitude, lng: p.coords.longitude } : null; })
+        .catch(function () { return null; });
+    };
+    if (G.requestPermissions) { return G.requestPermissions().then(go).catch(go); }
+    return go();
+  };
 
   function token() {
     try { return localStorage.getItem('fi_member_token') || sessionStorage.getItem('fi_member_token') || null; } catch (e) { return null; }
