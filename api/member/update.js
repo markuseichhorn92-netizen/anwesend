@@ -3,23 +3,67 @@
 /**
  * POST /api/member/update   (Authorization: Bearer <token>)
  *   { type: "address"|"payment", data: {...} }
- * Da direktes Schreiben in Magicline (noch) gesperrt ist (403), wird der
- * Änderungswunsch als E-Mail mit "vorher → jetzt" an das Studio geschickt.
- * Sobald der Self-Service-Schreibzugriff frei ist, kann hier direkt geschrieben
- * werden (Code in lib/members.js liegt bereit).
+ * Schreibt zuerst DIREKT in Magicline (Self-Service: CUSTOMER_SELF_SERVICE_WRITE).
+ * Klappt das, wird die Änderung sofort übernommen und das Mitglied bestätigt.
+ * Lehnt die API ab (z. B. Rechte/Validierung), fällt das System auf den bewährten
+ * Weg zurück: Änderungswunsch als E-Mail mit "vorher → jetzt" ans Studio.
  */
 
 const M = require('../../lib/members');
 const Inbox = require('../../lib/inbox');
 const SR = require('../../lib/studioReply');
-const { sendMail, sendMailRaw, hasMail } = require('../../lib/mail');
-const { renderEmail, BASE } = require('../../lib/emailTemplate');
+const { sendMailRaw, hasMail } = require('../../lib/mail');
+const { renderEmail } = require('../../lib/emailTemplate');
 const { memberLink } = require('../../lib/magic');
 
 function who(m) {
   return ((m.firstName || '') + ' ' + (m.lastName || '')).trim()
     + (m.customerNumber ? ' (' + m.customerNumber + ')' : '')
     + (m.email ? ' · ' + m.email : '');
+}
+
+// Bestätigungsmail ans Mitglied. done=true: bereits übernommen; done=false: eingegangen.
+// IBAN wird NIEMALS vollständig versendet – nur maskiert.
+async function sendMemberConfirm(m, id, type, data, validFromDE, done) {
+  if (!(hasMail && m.email)) return;
+  const portal = await memberLink(id, 'data');
+  let cm;
+  if (type === 'payment') {
+    const newIbanMasked = M.maskIban(String(data.iban || '').replace(/\s+/g, '')) || '—';
+    cm = renderEmail({
+      preheader: done ? 'Deine Bankverbindung wurde aktualisiert.' : 'Deine Bankverbindung-Änderung ist eingegangen.',
+      name: m.firstName || '', eyebrow: 'Bankverbindung',
+      headline: done ? 'Deine Bankverbindung wurde aktualisiert' : 'Deine IBAN-Änderung ist eingegangen',
+      intro: done ? 'Wir haben deine neue Bankverbindung übernommen. Künftige Beiträge ziehen wir von diesem Konto ein.'
+                  : 'Wir haben deinen Änderungswunsch erhalten und tragen ihn zeitnah ein.',
+      panel: [
+        { label: 'Neue IBAN', value: newIbanMasked },
+        { label: 'Kontoinhaber', value: data.accountHolder || (((m.firstName || '') + ' ' + (m.lastName || '')).trim() || '—') },
+        { label: 'Gültig ab', value: validFromDE },
+      ],
+      note: 'Das warst nicht du? Bitte kontaktiere uns umgehend unter info@fit-inn-trier.de.',
+      button: { label: 'Meine Daten ansehen', href: portal },
+      promo: true, referral: { code: m.referralCode, firstName: m.firstName }, footer: 'member',
+    });
+  } else {
+    const newAddr = ((data.street || '') + ' ' + (data.houseNumber || '')).trim() + ', ' + (data.zipCode || '') + ' ' + (data.city || '');
+    cm = renderEmail({
+      preheader: done ? 'Deine Adresse wurde aktualisiert.' : 'Deine Adressänderung ist eingegangen.',
+      name: m.firstName || '', eyebrow: 'Adressänderung',
+      headline: done ? 'Deine Adresse wurde aktualisiert' : 'Deine Adressänderung ist eingegangen',
+      intro: done ? 'Wir haben deine neue Adresse übernommen.' : 'Wir haben deinen Änderungswunsch erhalten und tragen ihn zeitnah für dich ein.',
+      panel: [
+        { label: 'Neue Adresse', value: newAddr.replace(/^,\s*/, '').trim() || '—' },
+        { label: 'Gültig ab', value: validFromDE },
+      ],
+      button: { label: 'Meine Daten ansehen', href: portal },
+      promo: true, referral: { code: m.referralCode, firstName: m.firstName }, footer: 'member',
+    });
+  }
+  const subj = type === 'payment'
+    ? (done ? 'Deine Bankverbindung wurde aktualisiert – Fit-Inn Trier' : 'Deine IBAN-Änderung ist eingegangen – Fit-Inn Trier')
+    : (done ? 'Deine Adresse wurde aktualisiert – Fit-Inn Trier' : 'Deine Adressänderung ist eingegangen – Fit-Inn Trier');
+  await sendMailRaw({ to: m.email, subject: subj, text: cm.text, html: cm.html });
 }
 
 module.exports = async function handler(req, res) {
@@ -30,6 +74,9 @@ module.exports = async function handler(req, res) {
 
   const body = await M.readBody(req);
   const data = body.data || {};
+  if (body.type !== 'address' && body.type !== 'payment') {
+    res.statusCode = 400; return res.end(JSON.stringify({ error: 'unknown_type' }));
+  }
   const m = await M.getMember(sess.id);
   if (!m) { res.statusCode = 404; return res.end(JSON.stringify({ error: 'not_found' })); }
 
@@ -37,20 +84,49 @@ module.exports = async function handler(req, res) {
   const vf = M.isoDate(data.validFrom);
   const validFromDE = vf ? (function () { var p = vf.match(/^(\d{4})-(\d{2})-(\d{2})$/); return p ? (p[3] + '.' + p[2] + '.' + p[1]) : vf; })() : 'sofort / nächstmöglich';
 
-  let subject, lines = [], vorgang = null;
+  // Adresse: nichts tun, wenn sich nichts geändert hat.
+  if (body.type === 'address') {
+    const changed = ['street', 'houseNumber', 'zipCode', 'city'].some(function (f) { return String(m[f] || '') !== String(data[f] || ''); });
+    if (!changed) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'Keine Änderung erkannt.' })); }
+  }
+
+  // ── 1) Direkt in Magicline schreiben (Self-Service freigeschaltet) ──
+  let wrote = false;
+  try {
+    const wr = body.type === 'address' ? await M.writeAddress(sess.id, data) : await M.writePayment(sess.id, data);
+    wrote = !!(wr && wr.status >= 200 && wr.status < 300);
+  } catch (e) { wrote = false; }
+
+  if (wrote) {
+    try {
+      if (body.type === 'address') {
+        const na = (((data.street || '') + ' ' + (data.houseNumber || '')).trim() + ', ' + (data.zipCode || '') + ' ' + (data.city || '')).replace(/^,\s*/, '').trim();
+        await Inbox.addVorgang(sess.id, { type: 'adresse', subject: 'Adresse aktualisiert', systemText: 'Deine Adresse wurde aktualisiert: ' + na + '.' });
+      } else {
+        await Inbox.addVorgang(sess.id, { type: 'iban', subject: 'Bankverbindung aktualisiert', systemText: 'Deine Bankverbindung wurde aktualisiert (' + (M.maskIban(String(data.iban || '').replace(/\s+/g, '')) || 'neue IBAN') + ').' });
+      }
+    } catch (e) {}
+    try { await sendMemberConfirm(m, sess.id, body.type, data, validFromDE, true); } catch (e) {}
+    res.statusCode = 200;
+    return res.end(JSON.stringify({ ok: true, updated: true,
+      message: body.type === 'payment' ? 'Deine Bankverbindung wurde aktualisiert.' : 'Deine Adresse wurde aktualisiert.' }));
+  }
+
+  // ── 2) Fallback: Änderungswunsch ans Studio (E-Mail + Vorgang) ──
+  let subject, vorgang = null;
+  const lines = [];
   if (body.type === 'address') {
     [['Straße', 'street'], ['Nr.', 'houseNumber'], ['PLZ', 'zipCode'], ['Ort', 'city']].forEach(function (f) {
       var alt = String(m[f[1]] || ''), neu = String(data[f[1]] || '');
       if (alt !== neu) lines.push(f[0] + ': ' + (alt || '—') + '  →  ' + (neu || '—'));
     });
-    if (!lines.length) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'Keine Änderung erkannt.' })); }
     lines.push('Gültig ab: ' + validFromDE);
     subject = 'Adressänderung gewünscht – ' + who(m);
     var newAddr = ((data.street || '') + ' ' + (data.houseNumber || '')).trim() + ', ' + (data.zipCode || '') + ' ' + (data.city || '');
     try { vorgang = await Inbox.addVorgang(sess.id, { type: 'adresse', subject: 'Adressänderung',
       systemText: 'Du hast eine Adressänderung beantragt: ' + newAddr.replace(/^,\s*/, '').trim() + '.',
       teamText: 'Danke! Wir übernehmen deine neue Adresse zeitnah. Bei Rückfragen melden wir uns.' }); } catch (e) {}
-  } else if (body.type === 'payment') {
+  } else {
     lines.push('Kontoinhaber: ' + (data.accountHolder || '—'));
     lines.push('IBAN ALT:    ' + (M.maskIban(m.bankAccount && m.bankAccount.iban) || '—'));
     lines.push('IBAN NEU:    ' + (String(data.iban || '').replace(/\s+/g, '') || '—'));
@@ -61,63 +137,16 @@ module.exports = async function handler(req, res) {
     try { vorgang = await Inbox.addVorgang(sess.id, { type: 'iban', subject: 'Änderung deiner Bankverbindung',
       systemText: 'Du hast eine IBAN-Änderung beantragt (' + (M.maskIban(String(data.iban || '').replace(/\s+/g, '')) || 'neue IBAN') + ').',
       teamText: 'Danke! Wir prüfen die neue Bankverbindung und ziehen den nächsten Beitrag wie gewohnt ein. Du musst nichts weiter tun.' }); } catch (e) {}
-  } else {
-    res.statusCode = 400; return res.end(JSON.stringify({ error: 'unknown_type' }));
   }
 
-  if (!hasMail) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'E-Mail-Versand noch nicht eingerichtet (RESEND_API_KEY fehlt).' })); }
+  if (!hasMail) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'Änderung konnte gerade nicht übernommen werden. Bitte später erneut.' })); }
 
   const text = 'Änderungswunsch über den Mitgliederbereich\n\n'
     + 'Mitglied: ' + who(m) + '\nKundennr.: ' + (m.customerNumber || '—') + '\n\n'
     + lines.join('\n') + '\n\nBitte in Magicline eintragen.';
   const mail = await SR.notifyStudio({ member: m, vorgang: vorgang, subject: subject, text: text });
 
-  // Bestätigung ans Mitglied (best effort) – IBAN nur maskiert, niemals vollständig
-  if (mail.ok && m.email) {
-    try {
-      const portal = await memberLink(sess.id, 'data');
-      let cm;
-      if (body.type === 'payment') {
-        const newIbanMasked = M.maskIban(String(data.iban || '').replace(/\s+/g, '')) || '—';
-        cm = renderEmail({
-          preheader: 'Deine Bankverbindung-Änderung ist eingegangen.',
-          name: m.firstName || '',
-          eyebrow: 'Bankverbindung',
-          headline: 'Deine IBAN-Änderung ist eingegangen',
-          intro: 'Wir haben deinen Änderungswunsch erhalten und tragen ihn zeitnah ein. Künftige Beiträge ziehen wir dann von diesem Konto ein.',
-          panel: [
-            { label: 'Neue IBAN', value: newIbanMasked },
-            { label: 'Kontoinhaber', value: data.accountHolder || (((m.firstName || '') + ' ' + (m.lastName || '')).trim() || '—') },
-            { label: 'Gültig ab', value: validFromDE },
-          ],
-          note: 'Das warst nicht du? Bitte kontaktiere uns umgehend unter info@fit-inn-trier.de.',
-          button: { label: 'Meine Daten ansehen', href: portal },
-          promo: true,
-          referral: { code: m.referralCode, firstName: m.firstName },
-          footer: 'member',
-        });
-      } else {
-        const newAddr = ((data.street || '') + ' ' + (data.houseNumber || '')).trim() + ', ' + (data.zipCode || '') + ' ' + (data.city || '');
-        cm = renderEmail({
-          preheader: 'Deine Adressänderung ist eingegangen.',
-          name: m.firstName || '',
-          eyebrow: 'Adressänderung',
-          headline: 'Deine Adressänderung ist eingegangen',
-          intro: 'Wir haben deinen Änderungswunsch erhalten und tragen ihn zeitnah für dich ein.',
-          panel: [
-            { label: 'Neue Adresse', value: newAddr.replace(/^,\s*/, '').trim() || '—' },
-            { label: 'Gültig ab', value: validFromDE },
-          ],
-          button: { label: 'Meine Daten ansehen', href: portal },
-          promo: true,
-          referral: { code: m.referralCode, firstName: m.firstName },
-          footer: 'member',
-        });
-      }
-      const subj = body.type === 'payment' ? 'Deine IBAN-Änderung ist eingegangen – Fit-Inn Trier' : 'Deine Adressänderung ist eingegangen – Fit-Inn Trier';
-      await sendMailRaw({ to: m.email, subject: subj, text: cm.text, html: cm.html });
-    } catch (e) { /* Mitglied-Mail ist optional */ }
-  }
+  if (mail.ok) { try { await sendMemberConfirm(m, sess.id, body.type, data, validFromDE, false); } catch (e) {} }
 
   res.statusCode = 200;
   return res.end(JSON.stringify({
