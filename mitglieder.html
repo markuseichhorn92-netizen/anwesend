@@ -702,6 +702,7 @@
     if(isFormer()) return scrRejoin();
     var p=DATA.profile||{}; var name=p.firstName||'';
     var tiles=[
+      ['card','Mitgliedskarte','Dein digitaler Ausweis mit QR-Code','#3BC6D6,#0E8A9E','rgba(14,138,158,.45)','<rect x="3" y="3" width="7" height="7" rx="1.4"></rect><rect x="14" y="3" width="7" height="7" rx="1.4"></rect><rect x="3" y="14" width="7" height="7" rx="1.4"></rect><path d="M14 14h3v3h-3z"></path><path d="M20 14v3M14 20h3M20 20v.01"></path>'],
       ['data','Meine Daten','Adresse & Bankverbindung verwalten','#4E86E8,#2C5FB8','rgba(44,95,184,.45)','<path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8z"></path><path d="M4 21c0-3.3 3.6-6 8-6s8 2.7 8 6"></path>'],
       ['contract','Vertragsverwaltung','Vertrag, Pause & Kündigung verwalten','#29B3A6,#0F8378','rgba(15,131,120,.42)','<path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"></path><path d="M14 3v5h5M9 13h6M9 17h4"></path>'],
       ['account','Beitragskonto','Offene Beiträge & Rechnungen','#E0A23C,#B97E12','rgba(185,126,18,.42)','<rect x="2" y="5" width="20" height="14" rx="2"></rect><path d="M2 9h20M6 15h5"></path>'],
@@ -1034,6 +1035,50 @@
   }
 
   // ===== Beitragskonto (offene Beiträge & Rechnungen) =====
+  // ── Digitale Mitgliedskarte (QR-Code der Mitgliedsnummer) ──
+  // QR-Bibliothek (MIT, lokal) erst beim Öffnen der Karte laden – nicht beim App-Start.
+  var _qrLib=null;
+  function loadQrLib(){
+    if(window.qrcode) return Promise.resolve();
+    if(_qrLib) return _qrLib;
+    _qrLib=new Promise(function(resolve,reject){
+      var s=document.createElement('script'); s.src='/assets/qrcode.min.js?v=1'; s.async=true;
+      s.onload=function(){ resolve(); }; s.onerror=function(){ _qrLib=null; reject(new Error('qr_load')); };
+      document.head.appendChild(s);
+    });
+    return _qrLib;
+  }
+  function renderMemberCard(code){
+    if(!document.getElementById('mcard_qr')) return;
+    loadQrLib().then(function(){
+      var el=document.getElementById('mcard_qr'); if(!el) return;
+      try{
+        var qr=window.qrcode(0,'M'); qr.addData(String(code)); qr.make();
+        el.innerHTML=qr.createSvgTag({cellSize:6, margin:0, scalable:true});
+        var s=el.querySelector('svg'); if(s){ s.style.width='100%'; s.style.height='100%'; s.style.display='block'; }
+      }catch(e){ el.textContent='Code konnte nicht erzeugt werden.'; }
+    }).catch(function(){ var el=document.getElementById('mcard_qr'); if(el) el.textContent='Code konnte nicht geladen werden.'; });
+  }
+  function scrCard(){
+    var p=DATA.profile||{};
+    var name=((p.firstName||'')+' '+(p.lastName||'')).trim()||'Mitglied';
+    var nr=p.customerNumber||'';
+    if(!nr){
+      return backHd('Mitgliedskarte')+'<div class="card" style="text-align:center;padding:28px 20px"><div style="font-size:14px;color:var(--text-muted);line-height:1.6">Für die digitale Karte fehlt deine Mitgliedsnummer.<br>Bitte wende dich kurz ans Studio.</div></div>';
+    }
+    setTimeout(function(){ renderMemberCard(nr); },0);
+    return backHd('Mitgliedskarte')+
+      '<div style="background:linear-gradient(155deg,#0e6b7e,#062f39);border-radius:22px;box-shadow:0 18px 44px rgba(4,33,40,.26);padding:24px 22px;color:#fff;text-align:center">'+
+        '<div style="font-size:11.5px;font-weight:800;letter-spacing:1.2px;opacity:.85;text-transform:uppercase">Fit-Inn Trier · Mitgliedskarte</div>'+
+        '<div style="font-size:21px;font-weight:900;letter-spacing:-.4px;margin-top:12px">'+esc(name)+'</div>'+
+        '<div style="font-size:13.5px;opacity:.85;font-weight:600;margin-top:2px">Mitgliedsnr. '+esc(nr)+'</div>'+
+        '<div style="background:#fff;border-radius:16px;padding:14px;margin:18px auto 4px;width:236px;height:236px;box-sizing:border-box;display:flex;align-items:center;justify-content:center">'+
+          '<div id="mcard_qr" style="width:208px;height:208px;display:flex;align-items:center;justify-content:center;color:#0a3d4a;font-size:12px;font-weight:600">Code wird erzeugt …</div>'+
+        '</div>'+
+        '<div style="font-size:13px;opacity:.9;line-height:1.5;margin-top:10px">Halte den Code an den Scanner am Eingang.<br><span style="opacity:.75">Tipp: Stell dein Display heller.</span></div>'+
+      '</div>'+
+      '<div style="font-size:12.5px;color:var(--text-soft);line-height:1.55;margin:16px 6px 0;text-align:center">Dein Mitgliedsband funktioniert wie gewohnt weiter. Diese Karte ist dein digitaler Ausweis – und startklar, sobald am Eingang ein QR-Scanner ergänzt wird.</div>';
+  }
   function scrAccount(){
     var head=backHd('Beitragskonto');
     var a=DATA.account;
@@ -1438,7 +1483,7 @@
 
   // ---- responsive chrome (Desktop-Sidebar + Topbar) ----
   var DASH_IC='<rect x="3" y="3" width="7" height="9" rx="1.5"></rect><rect x="14" y="3" width="7" height="5" rx="1.5"></rect><rect x="14" y="12" width="7" height="9" rx="1.5"></rect><rect x="3" y="16" width="7" height="5" rx="1.5"></rect>';
-  var NAVITEMS=[['home','Übersicht',DASH_IC],['data','Meine Daten',IC.user],['contract','Vertragsverwaltung',IC.doc],['account','Beitragskonto','<rect x="2" y="5" width="20" height="14" rx="2"></rect><path d="M2 9h20M6 15h5"></path>'],['appt','Termine',IC.cal],['referral','Freunde werben',IC.gift],['checkins','Check-ins',IC.list],['postfach','Postfach',IC.mail],['help','Hilfe',IC.help],['settings','Einstellungen',IC.cog]];
+  var NAVITEMS=[['home','Übersicht',DASH_IC],['card','Mitgliedskarte','<rect x="3" y="3" width="7" height="7" rx="1.4"></rect><rect x="14" y="3" width="7" height="7" rx="1.4"></rect><rect x="3" y="14" width="7" height="7" rx="1.4"></rect><path d="M14 14h3v3h-3z"></path><path d="M20 14v3M14 20h3M20 20v.01"></path>'],['data','Meine Daten',IC.user],['contract','Vertragsverwaltung',IC.doc],['account','Beitragskonto','<rect x="2" y="5" width="20" height="14" rx="2"></rect><path d="M2 9h20M6 15h5"></path>'],['appt','Termine',IC.cal],['referral','Freunde werben',IC.gift],['checkins','Check-ins',IC.list],['postfach','Postfach',IC.mail],['help','Hilfe',IC.help],['settings','Einstellungen',IC.cog]];
   var TITLES={home:'Übersicht',data:'Meine Daten',contract:'Vertragsverwaltung',account:'Beitragskonto',appt:'Termine',referral:'Freunde werben',checkins:'Check-in-Verlauf',postfach:'Postfach',help:'Hilfe & Kontakt',settings:'Einstellungen'};
   function initials(p){ p=p||{}; var a=(p.firstName||'').trim(),b=(p.lastName||'').trim(); return (((a?a[0]:'')+(b?b[0]:'')).toUpperCase())||'FT'; }
   // Profil-Kopf für Sidebar/Drawer
@@ -1478,7 +1523,7 @@
       tb.innerHTML='<div style="font-size:23px;font-weight:900;color:var(--text);letter-spacing:-.4px">'+esc(TITLES[S.screen]||'')+'</div>'+badge;
     }
   }
-  var NARROW={contract:1,referral:1,appt:1};
+  var NARROW={contract:1,referral:1,appt:1,card:1};
   function render(){
     // Ehemalige Mitglieder: gesperrte Screens immer auf die Übersicht (Rejoin) umleiten
     if(isFormer() && S.screen!=='login' && FORMER_OK.indexOf(S.screen)<0) S.screen='home';
@@ -1486,6 +1531,7 @@
     switch(S.screen){
       case 'login': html=scrLogin(); break;
       case 'home': html=scrHome(); break;
+      case 'card': html=scrCard(); break;
       case 'data': html=scrData(); break;
       case 'contract': html=scrContract(); break;
       case 'appt': html=scrAppt(); break;
