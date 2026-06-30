@@ -18,6 +18,15 @@ const M = require('../../lib/members');
 const WA = require('../../lib/whatsapp');
 const { sendLoginCode } = require('../../lib/loginCode');
 
+// Demo-/Reviewer-Zugang für die App-Store-/Play-Store-Prüfung: ein fester Test-Account
+// mit festem Code – ohne echten E-Mail-/WhatsApp-Versand, damit der Prüfer reinkommt.
+// Nur aktiv, wenn ALLE vier Env-Variablen gesetzt sind (sonst völlig wirkungslos).
+const DEMO_EMAIL = String(process.env.DEMO_LOGIN_EMAIL || '').trim().toLowerCase();
+const DEMO_DOB = String(process.env.DEMO_LOGIN_DOB || '').trim();
+const DEMO_CODE = String(process.env.DEMO_LOGIN_CODE || '').trim();
+const DEMO_CID = String(process.env.DEMO_CUSTOMER_ID || '').trim();
+const hasDemoLogin = !!(DEMO_EMAIL && DEMO_DOB && DEMO_CODE && DEMO_CID);
+
 function bareNum(s) { return String(s || '').toUpperCase().replace(/\s+/g, '').replace(/^M-?/, ''); }
 function maskEmail(e) {
   e = String(e || ''); const at = e.indexOf('@');
@@ -44,6 +53,12 @@ module.exports = async function handler(req, res) {
   const num = String(d.customerNumber || '').trim();
   const deliver = (d.deliver === 'whatsapp' || d.deliver === 'email') ? d.deliver : null;
   let challenge = crypto.randomBytes(24).toString('hex');
+
+  // Reviewer-/Demo-Zugang: direkt zur Code-Eingabe (fester Code, kein Versand).
+  if (hasDemoLogin && email === DEMO_EMAIL && String(dob || '').trim() === DEMO_DOB) {
+    await M.otpSave(challenge, { id: DEMO_CID, codeHash: M.hashCode(DEMO_CODE), exp: Date.now() + 600000, tries: 0 }, 600);
+    return send(res, { ok: true, step: 'code', challenge: challenge, via: 'email' });
+  }
 
   try {
     const emailOk = email ? await M.rateLimit('otpreq:e:' + email, 10, 1800) : false;
