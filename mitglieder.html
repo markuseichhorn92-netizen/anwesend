@@ -270,7 +270,7 @@
     cancelStep:0, cancelReason:'', pauseWeeks:6, offerDone:'', withdrawConfirm:false, withdrawDone:false, cancelDone:false, revokeConfirm:false, revokeDone:false, busy:false,
     pauseStep:0, pauseReason:'', pauseReasonText:'', pauseFrom:'', pausePhoto:'', pausePhotoName:'', pauseDone:false,
     ccBusy:false, ccMsg:'',
-    checkinBusy:false, checkinOk:false, checkinMsg:'', checkedInAt:null, ciBusy:false, ciPopup:null, ciName:'', ciDur:'',
+    checkinBusy:false, checkinOk:false, checkinMsg:'', checkedInAt:null, ciBusy:false, ciPopup:null, ciName:'', ciDur:'', atStudio:false,
     apptTab:'book', bookType:'', bookTypeTitle:'', bookDay:'', bookSlot:null, bookDone:false, bookErr:'', apptMsg:'',
     helpSel:null, helpCat:'all', helpQ:'', helpShowAll:false,
     aiQuery:'', aiPhase:'idle', aiAsked:'', aiAnswer:'', aiFeedback:null,
@@ -389,6 +389,7 @@
     if(s==='contract'){ S.cancelStep=0; S.pauseStep=0; S.pauseDone=false; S.offerDone=''; }
     if(s==='checkins'&&!DATA.checkins) loadCheckins();
     if(s==='appt'){ if(!DATA.appts) loadAppts(); if(DATA.bookable===null) loadBookable(); }
+    if(s==='home') checkArrival();
     setS({}); }
 
   // ---- data loading ----
@@ -401,12 +402,26 @@
   function refreshAll(){ if(!TOKEN) return; loadMe().then(function(){ loadAppts(); loadPlan(); loadPlanAgg(); loadInbox(); loadPrefs(); render(); }).catch(function(){}); }
   // Gedrosseltes Auto-Aktualisieren, wenn App/Tab wieder sichtbar wird.
   var __lastRefresh=Date.now();
-  function maybeAutoRefresh(){ if(!TOKEN||S.screen==='login') return; var now=Date.now(); if(now-__lastRefresh<15000) return; __lastRefresh=now; refreshAll(); }
+  function maybeAutoRefresh(){ if(!TOKEN||S.screen==='login') return; var now=Date.now(); if(now-__lastRefresh<15000) return; __lastRefresh=now; refreshAll(); checkArrival(); }
   // Mehrere Magicline-Konten zu denselben Daten? -> Hinweis-Banner im Portal.
   function checkDup(){
     api('/api/member/duplicates').then(function(d){ if(d&&d.ok){ S.dupNotice={ hasDuplicates:!!d.hasDuplicates, count:d.count||0, requested:!!d.requested }; render(); } }).catch(function(){});
   }
   function loadCheckins(){ api('/api/member/checkins').then(function(d){ DATA.checkins=d.checkins||[]; ciSyncFromHistory(); render(); }).catch(function(){ DATA.checkins=[]; render(); }); }
+  // ===== Standort-Ankunft (Vordergrund): erkennt, ob das Mitglied im Studio ist =====
+  var STUDIO_LAT=49.7242701, STUDIO_LNG=6.6303178, GEO_RADIUS=160; // Meter (Auf Hirtenberg 8, 54296 Trier)
+  function geoDist(la1,lo1,la2,lo2){ var R=6371000,rad=Math.PI/180; var dLa=(la2-la1)*rad,dLo=(lo2-lo1)*rad; var a=Math.sin(dLa/2)*Math.sin(dLa/2)+Math.cos(la1*rad)*Math.cos(la2*rad)*Math.sin(dLo/2)*Math.sin(dLo/2); return 2*R*Math.atan2(Math.sqrt(a),Math.sqrt(1-a)); }
+  function checkArrival(){
+    if(!TOKEN || S.checkedInAt) return;                       // nur eingeloggt & noch nicht eingecheckt
+    if(!navigator.geolocation) return;
+    var now=Date.now(); if(window.__geoLast && (now-window.__geoLast)<300000) return; // max. alle 5 Min
+    window.__geoLast=now;
+    navigator.geolocation.getCurrentPosition(function(pos){
+      var d=geoDist(pos.coords.latitude,pos.coords.longitude,STUDIO_LAT,STUDIO_LNG);
+      var here=(d<=GEO_RADIUS);
+      if(here!==S.atStudio){ S.atStudio=here; render(); }
+    }, function(){ /* abgelehnt/Fehler: still ignorieren, manueller Button bleibt */ }, {enableHighAccuracy:true,timeout:8000,maximumAge:60000});
+  }
   // ===== Check-in/out Status, Timer & Popups =====
   var CI_KEY='fi_checkin', CI_MAX=5*60*60*1000; // 5h Auto-Ablauf (vergessenes Auschecken)
   function ciLoad(){ try{ var v=localStorage.getItem(CI_KEY); if(!v){ S.checkedInAt=null; return; } var t=Date.parse(v); if(isNaN(t)||(Date.now()-t)>CI_MAX){ localStorage.removeItem(CI_KEY); S.checkedInAt=null; return; } S.checkedInAt=v; }catch(e){ S.checkedInAt=null; } }
@@ -722,6 +737,14 @@
         +'<div style="font-size:13px;color:#cfe8ec">Viel Spaß beim Training 💪</div>'
         +'<button class="btn" data-act="doCheckout" '+(S.ciBusy?'disabled ':'')+'style="margin-top:16px;background:#fff;color:#0a3d4a">'+(S.ciBusy?'Checkt aus …':'Auschecken')+'</button>'
         +'</div>';
+    }
+    if(S.atStudio){
+      return '<div style="background:linear-gradient(150deg,#1f9a4e,#127a3c);border-radius:18px;box-shadow:0 14px 36px rgba(18,122,60,.28);padding:20px;margin-bottom:14px;text-align:center;color:#fff">'
+        +'<div style="font-size:17px;font-weight:900">📍 Willkommen im Fit-Inn!</div>'
+        +'<div style="font-size:13.5px;color:#dcf4e4;margin-top:4px">Du bist da – check dich mit einem Tipp ein.</div>'
+        +'<button class="btn" data-act="doCheckin" '+(S.checkinBusy?'disabled ':'')+'style="margin-top:14px;background:#fff;color:#127a3c">'+(S.checkinBusy?'Checkt ein …':'Jetzt einchecken')+'</button>'
+        +'</div>'
+        +(S.checkinMsg && !S.checkinOk ? '<div class="err" style="margin-bottom:14px">'+svg(IC.warn,{c:'var(--err-fg)',w:2,s:17})+'<span>'+esc(S.checkinMsg)+'</span></div>' : '');
     }
     var label = S.checkinBusy ? 'Checkt ein …' : 'Jetzt einchecken';
     var bg = TEALBG;
@@ -1765,7 +1788,7 @@
   ciLoad();
   if(MLT){ bootMagic(MLT); }
   else if(bioGate){ S.screen='login'; render(); }
-  else if(TOKEN){ loadMe().then(function(){ loadAppts(); loadPlan(); loadPlanAgg(); loadInbox(); loadPrefs(); if(DATA.checkins===null) loadCheckins(); render(); }).catch(function(){ logout(); }); }
+  else if(TOKEN){ loadMe().then(function(){ loadAppts(); loadPlan(); loadPlanAgg(); loadInbox(); loadPrefs(); if(DATA.checkins===null) loadCheckins(); render(); checkArrival(); }).catch(function(){ logout(); }); }
   else render();
 
   // Sobald die native Brücke bereit ist: Face ID anbieten (App öffnen -> Face ID -> drin).
