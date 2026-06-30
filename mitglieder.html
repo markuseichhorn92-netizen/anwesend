@@ -17,6 +17,7 @@
     --text:#15171B; --text-2:#42454b; --text-muted:#6b7780; --text-soft:#8a929a;
     --border:#d6dee0; --placeholder:#a9b1b6;
     --teal:#0a4958; --teal-ink:#0a4958;
+    --tile-bg:#fffdfb; --apricot:#E08C53; --apricot-2:#F6A964;
     --ok-bg:#E7F6EC; --ok-fg:#1d7a3e; --err-bg:#FCEBEA; --err-fg:#b53a2c;
     --row-sel:rgba(10,73,88,.06);
   }
@@ -26,6 +27,7 @@
     --text:#e9f0f0; --text-2:#c2cdcd; --text-muted:#97a5a5; --text-soft:#7c8a8a;
     --border:#2d3c3b; --placeholder:#6f7d7d;
     --teal:#0f5b6b; --teal-ink:#5cc0d0;
+    --tile-bg:var(--surface);
     --ok-bg:#143726; --ok-fg:#5fe0a0; --err-bg:#3a201d; --err-fg:#f0a89c;
     --row-sel:rgba(255,255,255,.06);
   }
@@ -77,7 +79,7 @@
   .err{display:flex;align-items:flex-start;gap:8px;background:var(--err-bg);border-radius:12px;padding:12px 14px}
   .err span{font-size:13px;color:var(--err-fg);font-weight:600;line-height:1.4}
   .muted{font-size:12px;color:var(--text-soft)}
-  .tile{position:relative;overflow:hidden;background:var(--surface);border-radius:20px;box-shadow:0 12px 34px rgba(4,33,40,.20);padding:18px 16px 18px;cursor:pointer;min-height:128px;min-width:0;display:flex;flex-direction:column;transition:transform .12s,box-shadow .12s;border:none;text-align:left;overflow-wrap:break-word;word-break:break-word}
+  .tile{position:relative;overflow:hidden;background:var(--tile-bg);border-radius:20px;box-shadow:0 12px 34px rgba(4,33,40,.20);padding:18px 16px 18px;cursor:pointer;min-height:128px;min-width:0;display:flex;flex-direction:column;transition:transform .12s,box-shadow .12s;border:none;text-align:left;overflow-wrap:break-word;word-break:break-word}
   .tile:hover{transform:translateY(-2px);box-shadow:0 18px 44px rgba(4,33,40,.28)}
   .tile::after{content:"";position:absolute;width:190px;height:190px;right:-54px;bottom:-66px;border-radius:50%;background:radial-gradient(circle,rgba(246,169,100,.30),rgba(246,169,100,.10) 45%,transparent 72%);pointer-events:none}
   .chip{position:relative;width:44px;height:44px;border-radius:14px;display:flex;align-items:center;justify-content:center;margin-bottom:auto}
@@ -698,6 +700,28 @@
       '</div>';
   }
 
+  // Gradient-Hero auf der Übersicht (neues Branding): Datum, Begrüßung, Postfach + Avatar.
+  function homeHero(){
+    var p=DATA.profile||{};
+    var name=p.firstName||'';
+    var ini=((((p.firstName||'').charAt(0))+((p.lastName||'').charAt(0))).toUpperCase())||'·';
+    var d=new Date();
+    var wd=['Sonntag','Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag'][d.getDay()];
+    var mn=['Jan.','Feb.','März','Apr.','Mai','Juni','Juli','Aug.','Sept.','Okt.','Nov.','Dez.'][d.getMonth()];
+    var todayLabel=wd+', '+d.getDate()+'. '+mn;
+    var unread=pfUnread()>0;
+    return '<div style="position:relative;overflow:hidden;background:linear-gradient(165deg,#0e6072 0%,#0a4958 55%,#063540 100%);border-radius:24px;padding:22px 20px;margin-bottom:16px;box-shadow:0 16px 40px rgba(4,33,40,.20)">'+
+      '<div style="position:absolute;width:230px;height:230px;right:-80px;top:-70px;border-radius:50%;background:radial-gradient(circle,rgba(246,169,100,.22),transparent 70%);pointer-events:none"></div>'+
+      '<div style="position:relative;display:flex;align-items:center;justify-content:space-between;gap:12px">'+
+        '<div style="min-width:0"><div style="font-size:13px;font-weight:600;color:#aed0d6">'+esc(todayLabel)+'</div>'+
+          '<div style="font-size:25px;font-weight:900;color:#fff;letter-spacing:-.5px;margin-top:3px;line-height:1.1">'+esc(greetLine(name))+'</div></div>'+
+        '<div style="display:flex;align-items:center;gap:10px;flex-shrink:0">'+
+          '<button data-act="nav" data-arg="postfach" aria-label="Postfach" style="position:relative;width:42px;height:42px;border-radius:14px;border:none;background:rgba(255,255,255,.13);display:flex;align-items:center;justify-content:center;cursor:pointer">'+svg('<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.7 21a2 2 0 0 1-3.4 0"></path>',{c:'#fff',w:1.9,s:20})+(unread?'<span style="position:absolute;top:9px;right:10px;width:8px;height:8px;border-radius:50%;background:#F6A964;border:2px solid #0a4958"></span>':'')+'</button>'+
+          '<div style="width:42px;height:42px;border-radius:50%;background:#fff;color:#0a4958;font-weight:900;font-size:15px;display:flex;align-items:center;justify-content:center">'+esc(ini)+'</div>'+
+        '</div>'+
+      '</div>'+
+    '</div>';
+  }
   function scrHome(){
     if(isFormer()) return scrRejoin();
     var p=DATA.profile||{}; var name=p.firstName||'';
@@ -726,8 +750,7 @@
       }
     }
     return ''+
-      '<div style="padding:6px 4px 16px"><div style="font-size:28px;font-weight:900;color:var(--text);letter-spacing:-.6px">'+greetLine(name)+'</div>'+
-      '<div style="font-size:14px;color:var(--text-muted);margin-top:3px;font-weight:500">'+homeSub()+'</div></div>'+
+      homeHero()+
       checkinBtn()+
       wifiBtn()+
       dupBanner+
