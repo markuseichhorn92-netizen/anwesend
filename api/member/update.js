@@ -91,11 +91,11 @@ module.exports = async function handler(req, res) {
   }
 
   // ── 1) Direkt in Magicline schreiben (Self-Service freigeschaltet) ──
-  let wrote = false;
+  let wrote = false, wr = null;
   try {
-    const wr = body.type === 'address' ? await M.writeAddress(sess.id, data) : await M.writePayment(sess.id, data);
+    wr = body.type === 'address' ? await M.writeAddress(sess.id, data) : await M.writePayment(sess.id, data);
     wrote = !!(wr && wr.status >= 200 && wr.status < 300);
-  } catch (e) { wrote = false; }
+  } catch (e) { wr = { status: 0, text: String((e && e.message) || e) }; }
 
   if (wrote) {
     try {
@@ -108,7 +108,7 @@ module.exports = async function handler(req, res) {
     } catch (e) {}
     try { await sendMemberConfirm(m, sess.id, body.type, data, validFromDE, true); } catch (e) {}
     res.statusCode = 200;
-    return res.end(JSON.stringify({ ok: true, updated: true,
+    return res.end(JSON.stringify({ ok: true, updated: true, via: 'magicline',
       message: body.type === 'payment' ? 'Deine Bankverbindung wurde aktualisiert.' : 'Deine Adresse wurde aktualisiert.' }));
   }
 
@@ -149,9 +149,11 @@ module.exports = async function handler(req, res) {
   if (mail.ok) { try { await sendMemberConfirm(m, sess.id, body.type, data, validFromDE, false); } catch (e) {} }
 
   res.statusCode = 200;
-  return res.end(JSON.stringify({
-    ok: mail.ok,
+  const out = {
+    ok: mail.ok, via: 'studio', mlStatus: (wr && wr.status) || 0,
     message: mail.ok ? 'Dein Änderungswunsch wurde übermittelt – wir tragen ihn zeitnah ein.'
                      : 'Konnte gerade nicht übermittelt werden. Bitte später erneut.',
-  }));
+  };
+  if (body.debug === true) out.mlBody = String((wr && wr.text) || '').slice(0, 200);
+  return res.end(JSON.stringify(out));
 };

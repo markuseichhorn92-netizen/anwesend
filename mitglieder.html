@@ -614,12 +614,22 @@
     return ''+
       '<div style="padding:6px 4px 16px"><div style="font-size:28px;font-weight:900;color:var(--text);letter-spacing:-.6px">'+greetLine(name)+'</div>'+
       '<div style="font-size:14px;color:var(--text-muted);margin-top:3px;font-weight:500">'+homeSub()+'</div></div>'+
+      checkinBtn()+
       dupBanner+
       statCards()+
       '<div style="height:14px"></div>'+
       planCard()+
       '<div style="font-size:13px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.6px;margin:24px 2px 12px">Schnellzugriff</div>'+
       '<div class="gTiles">'+tiles+'</div>';
+  }
+  // „Jetzt einchecken"-Button (In-App-Check-in über Magicline)
+  function checkinBtn(){
+    var done = !!(S.checkinMsg && S.checkinOk);
+    var label = S.checkinBusy ? 'Checkt ein …' : (done ? 'Eingecheckt ✓' : 'Jetzt einchecken');
+    var bg = done ? '#1d7a3e' : TEALBG;
+    var ic = svg('<path d="M9 11l3 3L20 5"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>',{c:'#fff',w:2.1,s:20});
+    return '<button class="btn" data-act="doCheckin" '+(S.checkinBusy||done?'disabled ':'')+'style="width:100%;display:flex;align-items:center;justify-content:center;gap:10px;padding:16px;font-size:16px;margin-bottom:14px;background:'+bg+'">'+ic+label+'</button>'+
+      (S.checkinMsg && !S.checkinOk ? '<div class="err" style="margin-bottom:14px">'+svg(IC.warn,{c:'var(--err-fg)',w:2,s:17})+'<span>'+esc(S.checkinMsg)+'</span></div>' : '');
   }
   function statCard(eyebrow, icon, value, sub, attrs){
     return '<div class="statCard" '+(attrs||'')+' style="cursor:pointer;background:var(--surface);border-radius:18px;box-shadow:0 12px 32px rgba(4,33,40,.10);padding:18px 18px 20px">'+
@@ -1264,6 +1274,14 @@
 
   var ACT={
     nav:function(a){ nav(a); },
+    doCheckin:function(){
+      if(S.checkinBusy||S.checkinOk) return;
+      setS({checkinBusy:true,checkinMsg:''});
+      api('/api/member/checkin',{method:'POST'}).then(function(d){
+        setS({checkinBusy:false,checkinOk:!!(d&&d.ok),checkinMsg:(d&&d.message)||''});
+        if(d&&d.ok) loadCheckins();
+      }).catch(function(){ setS({checkinBusy:false,checkinOk:false,checkinMsg:'Check-in gerade nicht möglich.'}); });
+    },
     menu:function(){ openMenu(); },
     menuClose:function(){ closeMenu(); },
     setTheme:function(a){ if(window.__setTheme) window.__setTheme(a); setS({}); },
