@@ -9,11 +9,34 @@
  *   optional ?customerId=… (sonst DEMO_CUSTOMER_ID)
  */
 
-// redeploy-marker v2
+// redeploy-marker v3
 const M = require('../lib/members');
 const TA = require('../lib/teamAuth');
 const Push = require('../lib/push');
 const Apns = require('../lib/apns');
+const { redisPipeline } = require('../lib/store');
+
+// Alle Mitglieder-IDs ermitteln, die aktuell einen Push-Token hinterlegt haben.
+// Liefert [{ id, count, platforms }]. (Upstash KEYS – hier nur eine Handvoll Keys.)
+async function registeredMembers() {
+  let keys = [];
+  try { const [k] = await redisPipeline([['KEYS', 'push:tok:*']]); keys = Array.isArray(k) ? k : []; } catch (e) {}
+  const out = [];
+  for (const key of keys) {
+    const id = String(key).replace(/^push:tok:/, '');
+    let toks = [];
+    try { const [t] = await redisPipeline([['SMEMBERS', key]]); toks = Array.isArray(t) ? t : []; } catch (e) {}
+    if (!toks.length) continue;
+    const platforms = [];
+    for (const tk of toks) {
+      let plat = '?';
+      try { const [v] = await redisPipeline([['GET', 'push:meta:' + tk]]); if (v) { const meta = JSON.parse(v); plat = (meta && meta.platform) || '?'; } } catch (e) {}
+      platforms.push(plat);
+    }
+    out.push({ id, count: toks.length, platforms });
+  }
+  return out;
+}
 
 function readRaw(req) {
   return new Promise((resolve) => { let b = ''; req.on('data', (c) => { b += c; if (b.length > 1e5) req.destroy(); }); req.on('end', () => resolve(b)); req.on('error', () => resolve('')); });
@@ -22,7 +45,7 @@ function readRaw(req) {
 const FORM = '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
   + '<body style="font-family:system-ui;max-width:420px;margin:60px auto;padding:0 16px">'
   + '<h2>Push-Test</h2><p>Team-Passwort eingeben:</p>'
-  + '<form method="post"><input type="password" name="pw" autofocus style="width:100%;padding:12px;font-size:16px;border:1px solid #ccc;border-radius:8px">'
+  + '<form method="post"><input type="hidden" name="list" value="1"><input type="password" name="pw" autofocus style="width:100%;padding:12px;font-size:16px;border:1px solid #ccc;border-radius:8px">'
   + '<button style="margin-top:12px;padding:12px 18px;font-size:16px;border:0;border-radius:8px;background:#0e6072;color:#fff">Test-Push senden</button></form></body>';
 
 module.exports = async function handler(req, res) {
@@ -41,6 +64,33 @@ module.exports = async function handler(req, res) {
   }
 
   res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+
+  // ── Listen-Modus: zeigt ALLE Mitglieder mit registriertem Token (unabhängig von
+  //    der Mitgliedsnummer) und schickt jedem eine Test-Push. So sehen wir sofort,
+  //    unter welcher internen ID das iPhone seinen Token abgelegt hat. ?list=1 ──
+  if (q('list') || (bodyParams && bodyParams.get('list'))) {
+    const members = await registeredMembers();
+    const lines = ['=== Push-Test (Liste aller registrierten Geräte) ===', ''];
+    lines.push('Server konfiguriert (hasPush): ' + Push.hasPush);
+    lines.push('Apple/APNs aktiv (hasApns): ' + Apns.hasApns);
+    lines.push('APNS_ENV: ' + (process.env.APNS_ENV || 'production'));
+    lines.push('');
+    if (!members.length) {
+      lines.push('>>> Es ist KEIN einziger Push-Token registriert.');
+      lines.push('    D. h. die App hat den Token noch nicht an den Server geschickt.');
+      res.statusCode = 200; return res.end(lines.join('\n'));
+    }
+    lines.push('Registrierte Mitglieder (' + members.length + '):');
+    for (const m of members) {
+      let result;
+      try { result = await Push.sendToMember(m.id, { title: 'Fit-Inn Trier', body: 'Test-Push – läuft! 🎉', url: 'https://mitglieder.fit-inn-trier.de/mitglieder' }); }
+      catch (e) { result = { ok: false, error: String((e && e.message) || e) }; }
+      lines.push('  • ID ' + m.id + ' – ' + m.count + ' Token (' + m.platforms.join(', ') + ') → ' + JSON.stringify(result));
+    }
+    lines.push('', '>>> Wenn oben ein „ok:true" steht, schau aufs iPhone – die Push ist unterwegs.');
+    res.statusCode = 200; return res.end(lines.join('\n'));
+  }
+
   let cid = q('customerId') || (bodyParams && bodyParams.get('customerId')) || process.env.DEMO_CUSTOMER_ID || '';
   // Mitgliedsnummer (z. B. M-2076) -> interne ID auflösen (Tokens liegen unter der internen ID)
   if (cid && !/^\d+$/.test(String(cid))) {
