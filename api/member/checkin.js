@@ -20,12 +20,13 @@ module.exports = async function handler(req, res) {
     res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'Du hast dich gerade erst eingecheckt.' }));
   }
 
+  const at = new Date().toISOString();
   let r;
-  try { r = await M.checkinCustomer(sess.id, new Date().toISOString()); } catch (e) { r = { status: 0 }; }
+  try { r = await M.checkinCustomer(sess.id, at); } catch (e) { r = { status: 0 }; }
 
   if (r && r.status >= 200 && r.status < 300) {
     res.statusCode = 200;
-    return res.end(JSON.stringify({ ok: true, message: 'Eingecheckt – viel Spaß beim Training! 💪' }));
+    return res.end(JSON.stringify({ ok: true, at: at, message: 'Eingecheckt – viel Spaß beim Training! 💪' }));
   }
   res.statusCode = 200;
   return res.end(JSON.stringify({ ok: false, message: 'Check-in gerade nicht möglich. Bitte an der Theke einchecken.' }));

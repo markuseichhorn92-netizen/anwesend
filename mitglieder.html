@@ -143,6 +143,19 @@
   @keyframes fiRise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
   @keyframes fiSpin{to{transform:rotate(360deg)}}
   @keyframes fiPulse{0%,100%{opacity:1}50%{opacity:.55}}
+  /* Check-in / Check-out Popups */
+  @keyframes ciBg{from{opacity:0}to{opacity:1}}
+  @keyframes ciPop{0%{transform:scale(.6);opacity:0}55%{transform:scale(1.06)}100%{transform:scale(1);opacity:1}}
+  @keyframes ciRing{0%{transform:scale(.5);opacity:.7}100%{transform:scale(2.2);opacity:0}}
+  @keyframes ciDraw{to{stroke-dashoffset:0}}
+  @keyframes ciWave{0%,100%{transform:rotate(0)}20%{transform:rotate(20deg)}40%{transform:rotate(-12deg)}60%{transform:rotate(16deg)}80%{transform:rotate(-8deg)}}
+  @keyframes ciPopOut{0%{transform:scale(1);opacity:1}100%{transform:scale(.9);opacity:0}}
+  .ciOverlay{position:fixed;inset:0;z-index:80;background:rgba(6,33,40,.55);display:flex;align-items:center;justify-content:center;padding:24px;animation:ciBg .2s ease}
+  .ciCard{position:relative;width:100%;max-width:340px;background:var(--surface);border-radius:24px;padding:34px 26px 28px;text-align:center;box-shadow:0 24px 70px rgba(4,33,40,.4);animation:ciPop .42s cubic-bezier(.22,1,.36,1)}
+  .ciBadge{position:relative;width:96px;height:96px;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 18px}
+  .ciBadge .ciPulse{position:absolute;inset:0;border-radius:50%;animation:ciRing 1s ease-out .15s}
+  .ciChk{stroke-dasharray:34;stroke-dashoffset:34;animation:ciDraw .5s ease .25s forwards}
+  .ciWaveEmoji{font-size:54px;display:inline-block;transform-origin:70% 70%;animation:ciWave 1.4s ease .1s 2}
   .pfGrid{display:block}
   .pfHideMobile{display:none}
   .pfBackBtn{display:flex}
@@ -257,6 +270,7 @@
     cancelStep:0, cancelReason:'', pauseWeeks:6, offerDone:'', withdrawConfirm:false, withdrawDone:false, cancelDone:false, revokeConfirm:false, revokeDone:false, busy:false,
     pauseStep:0, pauseReason:'', pauseReasonText:'', pauseFrom:'', pausePhoto:'', pausePhotoName:'', pauseDone:false,
     ccBusy:false, ccMsg:'',
+    checkinBusy:false, checkinOk:false, checkinMsg:'', checkedInAt:null, ciBusy:false, ciPopup:null, ciName:'', ciDur:'',
     apptTab:'book', bookType:'', bookTypeTitle:'', bookDay:'', bookSlot:null, bookDone:false, bookErr:'', apptMsg:'',
     helpSel:null, helpCat:'all', helpQ:'', helpShowAll:false,
     aiQuery:'', aiPhase:'idle', aiAsked:'', aiAnswer:'', aiFeedback:null,
@@ -347,7 +361,7 @@
   function api(path, opt){ opt=opt||{}; opt.headers=Object.assign(headers(), opt.headers||{}); opt.cache='no-store';
     return fetch(path,opt).then(function(r){ if(r.status===401){ logout(); throw new Error('unauthorized'); } return r.json(); }); }
 
-  function logout(){ closeMenu(); try{ if(window.FitInnNative) FitInnNative.onLogout(); }catch(e){} TOKEN=null; sessionStorage.removeItem('fi_member_token'); localStorage.removeItem('fi_member_token'); DATA={profile:null,contract:null,checkins:null,appts:null}; S.screen='login'; S.loginStep='request'; S.challenge=''; S.otp=''; render(); }
+  function logout(){ closeMenu(); try{ if(window.FitInnNative) FitInnNative.onLogout(); }catch(e){} TOKEN=null; sessionStorage.removeItem('fi_member_token'); localStorage.removeItem('fi_member_token'); try{ localStorage.removeItem('fi_checkin'); }catch(e){} S.checkedInAt=null; S.ciPopup=null; DATA={profile:null,contract:null,checkins:null,appts:null}; S.screen='login'; S.loginStep='request'; S.challenge=''; S.otp=''; render(); }
   function pad2(n){ return (n<10?'0':'')+n; }
   // Logo: normale Funktion (eingeloggt -> Startseite) + versteckter Team-Zugang
   // (5× schnell tippen -> Sicherheitsabfrage -> Team-Backend unter /team).
@@ -393,6 +407,25 @@
     api('/api/member/duplicates').then(function(d){ if(d&&d.ok){ S.dupNotice={ hasDuplicates:!!d.hasDuplicates, count:d.count||0, requested:!!d.requested }; render(); } }).catch(function(){});
   }
   function loadCheckins(){ api('/api/member/checkins').then(function(d){ DATA.checkins=d.checkins||[]; render(); }).catch(function(){ DATA.checkins=[]; render(); }); }
+  // ===== Check-in/out Status, Timer & Popups =====
+  var CI_KEY='fi_checkin', CI_MAX=5*60*60*1000; // 5h Auto-Ablauf (vergessenes Auschecken)
+  function ciLoad(){ try{ var v=localStorage.getItem(CI_KEY); if(!v){ S.checkedInAt=null; return; } var t=Date.parse(v); if(isNaN(t)||(Date.now()-t)>CI_MAX){ localStorage.removeItem(CI_KEY); S.checkedInAt=null; return; } S.checkedInAt=v; }catch(e){ S.checkedInAt=null; } }
+  function ciSetIn(iso){ S.checkedInAt=iso; try{ localStorage.setItem(CI_KEY,iso); }catch(e){} }
+  function ciClear(){ S.checkedInAt=null; try{ localStorage.removeItem(CI_KEY); }catch(e){} }
+  function fmtDur(ms){ if(ms<0)ms=0; var s=Math.floor(ms/1000),h=Math.floor(s/3600),m=Math.floor((s%3600)/60),ss=s%60,p=function(n){return(n<10?'0':'')+n;}; return (h>0?(h+':'):'')+p(m)+':'+p(ss); }
+  function durText(ms){ var min=Math.round(ms/60000); if(min<1) return 'ein paar Minuten'; if(min<60) return min+' Minute'+(min===1?'':'n'); var h=Math.floor(min/60),r=min%60; return h+' Std'+(r?(' '+r+' Min'):''); }
+  function ciAutoClose(){ try{ clearTimeout(window.__ciT); }catch(e){} window.__ciT=setTimeout(function(){ if(S.ciPopup){ S.ciPopup=null; render(); } },3600); }
+  // 1-Sekunden-Ticker: aktualisiert den Timer live (ohne Voll-Render); beendet bei Ablauf.
+  setInterval(function(){ if(!S.checkedInAt) return; var t=Date.parse(S.checkedInAt); if(isNaN(t)) return; if((Date.now()-t)>CI_MAX){ ciClear(); render(); return; } var el=document.getElementById('ci_timer'); if(el) el.textContent=fmtDur(Date.now()-t); },1000);
+  function ciPopupHtml(){
+    if(S.ciPopup==='in'){ var nm=S.ciName?(', '+S.ciName):'';
+      return '<div class="ciOverlay" data-act="ciClosePopup"><div class="ciCard"><div class="ciBadge" style="background:var(--ok-bg)"><span class="ciPulse" style="background:rgba(31,154,78,.25)"></span><svg width="52" height="52" viewBox="0 0 24 24" fill="none" style="stroke:#1d7a3e;position:relative" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path class="ciChk" d="M5 12.5l4.5 4.5L19 7"></path></svg></div><div style="font-size:24px;font-weight:900">Willkommen'+esc(nm)+'!</div><div style="font-size:14.5px;color:var(--text-muted);margin-top:8px;line-height:1.5">Schön, dass du da bist. Viel Spaß beim Training 💪</div><button class="btn" data-act="ciClosePopup" style="margin-top:20px">Los geht\'s</button></div></div>';
+    }
+    if(S.ciPopup==='out'){
+      return '<div class="ciOverlay" data-act="ciClosePopup"><div class="ciCard"><div class="ciBadge" style="background:var(--surface-2)"><span class="ciWaveEmoji">👋</span></div><div style="font-size:24px;font-weight:900">Tschüss!</div><div style="font-size:14.5px;color:var(--text-muted);margin-top:8px;line-height:1.5">'+(S.ciDur?('Du warst '+esc(S.ciDur)+' da. '):'')+'Bis zum nächsten Mal! 🙌</div><button class="btn" data-act="ciClosePopup" style="margin-top:20px">Schließen</button></div></div>';
+    }
+    return '';
+  }
   function loadAppts(){ api('/api/member/appointments').then(function(d){ DATA.appts=d.appointments||[]; render(); }).catch(function(){ DATA.appts=[]; render(); }); }
   // Buchbare Termin-Arten laden (echte Buchung). [] = keine konfiguriert -> E-Mail-Fallback.
   function loadBookable(){ api('/api/member/bookable').then(function(d){ DATA.bookable=(d&&d.types)||[]; render(); }).catch(function(){ DATA.bookable=[]; render(); }); }
@@ -661,13 +694,21 @@
       '<div style="font-size:13px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.6px;margin:24px 2px 12px">Schnellzugriff</div>'+
       '<div class="gTiles">'+tiles+'</div>';
   }
-  // „Jetzt einchecken"-Button (In-App-Check-in über Magicline)
+  // Check-in-Bereich: Timer-Karte wenn eingecheckt, sonst „Jetzt einchecken"-Button.
   function checkinBtn(){
-    var done = !!(S.checkinMsg && S.checkinOk);
-    var label = S.checkinBusy ? 'Checkt ein …' : (done ? 'Eingecheckt ✓' : 'Jetzt einchecken');
-    var bg = done ? '#1d7a3e' : TEALBG;
+    if(S.checkedInAt){
+      var t=Date.parse(S.checkedInAt); var dur=fmtDur(Date.now()-(isNaN(t)?Date.now():t)); var since=deTime(S.checkedInAt);
+      return '<div style="background:linear-gradient(150deg,#0e6b7e,#0a3d4a);border-radius:18px;box-shadow:0 14px 36px rgba(4,33,40,.22);padding:22px 20px;margin-bottom:14px;text-align:center;color:#fff">'
+        +'<div style="font-size:12px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:#bfe0e6">Eingecheckt seit '+since+' Uhr</div>'
+        +'<div id="ci_timer" style="font-size:44px;font-weight:900;letter-spacing:1px;margin:6px 0 2px;font-variant-numeric:tabular-nums">'+dur+'</div>'
+        +'<div style="font-size:13px;color:#cfe8ec">Viel Spaß beim Training 💪</div>'
+        +'<button class="btn" data-act="doCheckout" '+(S.ciBusy?'disabled ':'')+'style="margin-top:16px;background:#fff;color:#0a3d4a">'+(S.ciBusy?'Checkt aus …':'Auschecken')+'</button>'
+        +'</div>';
+    }
+    var label = S.checkinBusy ? 'Checkt ein …' : 'Jetzt einchecken';
+    var bg = TEALBG;
     var ic = svg('<path d="M9 11l3 3L20 5"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>',{c:'#fff',w:2.1,s:20});
-    return '<button class="btn" data-act="doCheckin" '+(S.checkinBusy||done?'disabled ':'')+'style="width:100%;display:flex;align-items:center;justify-content:center;gap:10px;padding:16px;font-size:16px;margin-bottom:14px;background:'+bg+'">'+ic+label+'</button>'+
+    return '<button class="btn" data-act="doCheckin" '+(S.checkinBusy?'disabled ':'')+'style="width:100%;display:flex;align-items:center;justify-content:center;gap:10px;padding:16px;font-size:16px;margin-bottom:14px;background:'+bg+'">'+ic+label+'</button>'+
       (S.checkinMsg && !S.checkinOk ? '<div class="err" style="margin-bottom:14px">'+svg(IC.warn,{c:'var(--err-fg)',w:2,s:17})+'<span>'+esc(S.checkinMsg)+'</span></div>' : '');
   }
   function statCard(eyebrow, icon, value, sub, attrs){
@@ -1345,6 +1386,7 @@
     }
     var narrow = NARROW[S.screen];
     if(narrow) html='<div class="narrow">'+html+'</div>';
+    if(S.ciPopup) html+=ciPopupHtml();
     $('app').innerHTML=html;
     renderChrome();
     // Deep-Link „Zeit vormerken" (aus dem Widget): einmalig zur Reservierung scrollen
@@ -1362,13 +1404,19 @@
   var ACT={
     nav:function(a){ nav(a); },
     doCheckin:function(){
-      if(S.checkinBusy||S.checkinOk) return;
+      if(S.checkinBusy||S.checkedInAt) return;
       setS({checkinBusy:true,checkinMsg:''});
       api('/api/member/checkin',{method:'POST'}).then(function(d){
-        setS({checkinBusy:false,checkinOk:!!(d&&d.ok),checkinMsg:(d&&d.message)||''});
-        if(d&&d.ok) loadCheckins();
+        if(d&&d.ok){ ciSetIn(d.at||new Date().toISOString()); var nm=(DATA.profile&&DATA.profile.firstName)||''; setS({checkinBusy:false,checkinOk:true,checkinMsg:'',ciPopup:'in',ciName:nm}); loadCheckins(); ciAutoClose(); }
+        else { setS({checkinBusy:false,checkinOk:false,checkinMsg:(d&&d.message)||'Check-in gerade nicht möglich.'}); }
       }).catch(function(){ setS({checkinBusy:false,checkinOk:false,checkinMsg:'Check-in gerade nicht möglich.'}); });
     },
+    doCheckout:function(){
+      if(S.ciBusy||!S.checkedInAt) return; var fromT=Date.parse(S.checkedInAt); setS({ciBusy:true});
+      api('/api/member/checkout',{method:'POST'}).then(function(){ var dur=durText(Date.now()-(isNaN(fromT)?Date.now():fromT)); ciClear(); setS({ciBusy:false,ciPopup:'out',ciDur:dur,checkinOk:false,checkinMsg:''}); loadCheckins(); ciAutoClose(); })
+        .catch(function(){ var dur=durText(Date.now()-(isNaN(fromT)?Date.now():fromT)); ciClear(); setS({ciBusy:false,ciPopup:'out',ciDur:dur}); ciAutoClose(); });
+    },
+    ciClosePopup:function(){ setS({ciPopup:null}); },
     menu:function(){ openMenu(); },
     menuClose:function(){ closeMenu(); },
     setTheme:function(a){ if(window.__setTheme) window.__setTheme(a); setS({}); },
@@ -1696,6 +1744,7 @@
   // über den gespeicherten Token einloggen, sondern erst per Biometrie entsperren.
   var inApp=!!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
   var bioGate=false; try{ bioGate = inApp && localStorage.getItem('fi_bio')==='1'; }catch(e){}
+  ciLoad();
   if(MLT){ bootMagic(MLT); }
   else if(bioGate){ S.screen='login'; render(); }
   else if(TOKEN){ loadMe().then(function(){ loadAppts(); loadPlan(); loadPlanAgg(); loadInbox(); loadPrefs(); if(DATA.checkins===null) loadCheckins(); render(); }).catch(function(){ logout(); }); }
