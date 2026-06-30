@@ -10,6 +10,7 @@
  */
 
 const M = require('../../lib/members');
+const Bank = require('../../lib/bank');
 const Inbox = require('../../lib/inbox');
 const SR = require('../../lib/studioReply');
 const { sendMailRaw, hasMail } = require('../../lib/mail');
@@ -39,7 +40,6 @@ async function sendMemberConfirm(m, id, type, data, validFromDE, done) {
       panel: [
         { label: 'Neue IBAN', value: newIbanMasked },
         { label: 'Kontoinhaber', value: data.accountHolder || (((m.firstName || '') + ' ' + (m.lastName || '')).trim() || '—') },
-        { label: 'Gültig ab', value: validFromDE },
       ],
       note: 'Das warst nicht du? Bitte kontaktiere uns umgehend unter info@fit-inn-trier.de.',
       button: { label: 'Meine Daten ansehen', href: portal },
@@ -54,7 +54,6 @@ async function sendMemberConfirm(m, id, type, data, validFromDE, done) {
       intro: done ? 'Wir haben deine neue Adresse übernommen.' : 'Wir haben deinen Änderungswunsch erhalten und tragen ihn zeitnah für dich ein.',
       panel: [
         { label: 'Neue Adresse', value: newAddr.replace(/^,\s*/, '').trim() || '—' },
-        { label: 'Gültig ab', value: validFromDE },
       ],
       button: { label: 'Meine Daten ansehen', href: portal },
       promo: true, referral: { code: m.referralCode, firstName: m.firstName }, footer: 'member',
@@ -90,6 +89,23 @@ module.exports = async function handler(req, res) {
     if (!changed) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'Keine Änderung erkannt.' })); }
   }
 
+  // Bankverbindung: IBAN prüfen und BIC/Bankname bei Bedarf aus der BLZ ergänzen.
+  if (body.type === 'payment') {
+    const v = Bank.validateIban(data.iban);
+    if (!v.valid) {
+      res.statusCode = 200;
+      const why = v.reason === 'pruefziffer' ? 'Die IBAN ist ungültig (Prüfziffer stimmt nicht).'
+        : v.reason === 'laenge' ? 'Die IBAN hat eine ungültige Länge.'
+        : 'Bitte eine gültige IBAN eingeben.';
+      return res.end(JSON.stringify({ ok: false, message: why }));
+    }
+    data.iban = Bank.normalizeIban(data.iban);
+    if (v.country === 'DE') {
+      const b = Bank.bankByBlz(data.iban.slice(4, 12));
+      if (b) { if (!data.bic) data.bic = b.bic; if (!data.bankName) data.bankName = b.bankName; }
+    }
+  }
+
   // ── 1) Direkt in Magicline schreiben (Self-Service freigeschaltet) ──
   let wrote = false, wr = null;
   try {
@@ -120,7 +136,6 @@ module.exports = async function handler(req, res) {
       var alt = String(m[f[1]] || ''), neu = String(data[f[1]] || '');
       if (alt !== neu) lines.push(f[0] + ': ' + (alt || '—') + '  →  ' + (neu || '—'));
     });
-    lines.push('Gültig ab: ' + validFromDE);
     subject = 'Adressänderung gewünscht – ' + who(m);
     var newAddr = ((data.street || '') + ' ' + (data.houseNumber || '')).trim() + ', ' + (data.zipCode || '') + ' ' + (data.city || '');
     try { vorgang = await Inbox.addVorgang(sess.id, { type: 'adresse', subject: 'Adressänderung',
@@ -132,7 +147,6 @@ module.exports = async function handler(req, res) {
     lines.push('IBAN NEU:    ' + (String(data.iban || '').replace(/\s+/g, '') || '—'));
     if (data.bankName) lines.push('Bank: ' + data.bankName);
     if (data.bic) lines.push('BIC: ' + data.bic);
-    lines.push('Gültig ab: ' + validFromDE);
     subject = 'IBAN-Änderung gewünscht – ' + who(m);
     try { vorgang = await Inbox.addVorgang(sess.id, { type: 'iban', subject: 'Änderung deiner Bankverbindung',
       systemText: 'Du hast eine IBAN-Änderung beantragt (' + (M.maskIban(String(data.iban || '').replace(/\s+/g, '')) || 'neue IBAN') + ').',
