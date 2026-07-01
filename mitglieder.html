@@ -429,8 +429,8 @@
     if(s==='contract'){ S.cancelStep=0; S.pauseStep=0; S.pauseDone=false; S.offerDone=''; }
     if((s==='checkins'||s==='fort')&&!DATA.checkins) loadCheckins();
     if(s==='blog'){ S.blogSel=null; S.blogPost=null; loadBlog(); }
-    if(s==='insta'){ S.instaSel=null; loadInsta(); }
-    if(s==='home') loadFinnTip();
+    if(s==='insta'){ S.instaSel=null; loadInsta(); maybeRefreshInsta(); }
+    if(s==='home'){ loadFinnTip(); maybeRefreshInsta(); }
     if(s==='account') loadAccount();
     if(s==='appt'){ if(!DATA.appts) loadAppts(); if(DATA.bookable===null) loadBookable(); }
     if(s==='home'||s==='checkin') checkArrival();
@@ -1558,8 +1558,22 @@
   }
   // ── Instagram – neueste Beiträge live (/api/instagram) ──
   var IG_ICON='<rect x="3" y="3" width="18" height="18" rx="5"></rect><circle cx="12" cy="12" r="4"></circle><circle cx="17.5" cy="6.5" r="1.2"></circle>';
-  function loadInsta(){ if(DATA.insta!==null) return; DATA.insta=false;
-    fetch('/api/instagram',{cache:'no-store'}).then(function(r){ return r.ok?r.json():null; }).then(function(d){ DATA.insta=(d&&d.available&&Array.isArray(d.posts)&&d.posts.length)?d:false; if(S.screen==='home'||S.screen==='insta') render(); }).catch(function(){ DATA.insta=false; }); }
+  var instaTs=0, instaBusy=false;
+  // force=true -> im Hintergrund neu synchronisieren, alte Beiträge bleiben sichtbar bis neue da sind
+  function loadInsta(force){
+    if(instaBusy) return;
+    if(!force && DATA.insta!==null) return;      // schon geladen -> nichts tun
+    instaBusy=true;
+    if(DATA.insta===null) DATA.insta=false;      // nur beim allerersten Mal „leer" anzeigen
+    fetch('/api/instagram'+(force?('?t='+Date.now()):''),{cache:'no-store'}).then(function(r){ return r.ok?r.json():null; }).then(function(d){
+      instaBusy=false; instaTs=Date.now();
+      if(d&&d.available&&Array.isArray(d.posts)&&d.posts.length){ DATA.insta=d; }      // neue Beiträge übernehmen
+      else if(DATA.insta===false){ DATA.insta=false; }                                 // nichts vorhanden -> Sektion aus
+      if(S.screen==='home'||S.screen==='insta') render();
+    }).catch(function(){ instaBusy=false; if(DATA.insta===null) DATA.insta=false; });
+  }
+  // Beim Öffnen von Start/Instagram automatisch nachladen, aber höchstens alle 5 Min
+  function maybeRefreshInsta(){ if(DATA.insta && (Date.now()-instaTs)>300000) loadInsta(true); }
   function instaCard(p,w){
     var play=p.video?'<span style="position:absolute;top:8px;right:8px;width:26px;height:26px;border-radius:50%;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center"><svg width="12" height="12" viewBox="0 0 24 24" fill="#fff"><path d="M8 5v14l11-7z"></path></svg></span>':'';
     return '<div data-act="openInsta" data-arg="'+esc(p.id)+'" style="flex:0 0 '+(w||'200px')+';scroll-snap-align:start;background:var(--surface);border-radius:20px;box-shadow:0 12px 34px rgba(4,33,40,.10);overflow:hidden;cursor:pointer;display:block">'+
@@ -1569,9 +1583,11 @@
   }
   function homeInsta(){
     var d=DATA.insta; if(!d||!d.available||!Array.isArray(d.posts)||!d.posts.length) return '';
-    var prof=d.profile||('https://www.instagram.com/'+(d.handle||''));
-    return '<div style="display:flex;align-items:center;justify-content:space-between;margin:24px 2px 12px"><span style="font-size:18px;font-weight:900;color:var(--text);letter-spacing:-.3px">Auf Instagram</span><a href="'+esc(prof)+'" target="_blank" rel="noopener" style="font-size:13px;font-weight:700;color:var(--teal-ink);text-decoration:none">Alle ansehen</a></div>'+
-      '<div style="display:flex;gap:13px;overflow-x:auto;padding-bottom:4px;scroll-snap-type:x mandatory">'+d.posts.slice(0,8).map(function(p){ return instaCard(p,'200px'); }).join('')+'</div>';
+    var cards=d.posts.slice(0,5).map(function(p){ return instaCard(p,'200px'); }).join('');
+    var more=(d.posts.length>5)?'<button data-act="nav" data-arg="insta" style="flex:0 0 132px;scroll-snap-align:start;border:none;background:var(--surface);border-radius:20px;box-shadow:0 12px 34px rgba(4,33,40,.10);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:11px;color:var(--teal-ink);font-weight:800;font-size:14px">'+
+      '<span style="width:46px;height:46px;border-radius:50%;background:var(--surface-2);display:flex;align-items:center;justify-content:center">'+svg('<path d="M5 12h14M13 6l6 6-6 6"></path>',{c:TEAL,w:2.2,s:22})+'</span>Alle entdecken</button>':'';
+    return '<div style="display:flex;align-items:center;justify-content:space-between;margin:24px 2px 12px"><span style="font-size:18px;font-weight:900;color:var(--text);letter-spacing:-.3px">Auf Instagram</span><button data-act="nav" data-arg="insta" style="border:none;background:none;font-size:13px;font-weight:700;color:var(--teal-ink);cursor:pointer;padding:0">Alle ansehen</button></div>'+
+      '<div style="display:flex;gap:13px;overflow-x:auto;padding-bottom:4px;scroll-snap-type:x mandatory">'+cards+more+'</div>';
   }
   function instaDetail(p,d){
     var handle=(d&&d.handle)||'fit_inn_trier';
@@ -1610,7 +1626,9 @@
       if(sel) return instaDetail(sel,d);
       S.instaSel=null; // Beitrag nicht (mehr) vorhanden -> zurück zur Übersicht
     }
-    var head=subHeader('Instagram',(d&&d.handle)?('@'+d.handle):'Unsere neuesten Beiträge','home');
+    var cnt=(d&&Array.isArray(d.posts))?d.posts.length:0;
+    var sub=(d&&d.handle)?('@'+d.handle+(cnt?(' · '+cnt+' Beiträge'):'')):'Unsere neuesten Beiträge';
+    var head=subHeader('Instagram',sub,'home');
     var follow='<a href="'+esc(prof)+'" target="_blank" rel="noopener" style="display:flex;align-items:center;justify-content:center;gap:9px;background:linear-gradient(135deg,#F6A964,#E07C3C);color:#fff;border-radius:16px;padding:15px;font-weight:800;font-size:15px;text-decoration:none;margin-bottom:16px;box-shadow:0 12px 30px -6px rgba(224,124,60,.5)">'+svg(IG_ICON,{c:'#fff',w:2,s:20})+'Auf Instagram folgen</a>';
     if(!d||!d.available||!Array.isArray(d.posts)||!d.posts.length){
       return head+follow+'<div class="card" style="text-align:center;padding:26px 22px"><div style="font-size:15px;font-weight:800;color:var(--text)">Beiträge werden geladen …</div><div style="font-size:13px;color:var(--text-soft);margin-top:5px;line-height:1.5">Schau solange gern direkt auf unserem Profil vorbei.</div></div>';

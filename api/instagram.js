@@ -37,6 +37,10 @@ let cache = { data: null, ts: 0 };
 
 function profileUrl(handle) { return handle ? ('https://www.instagram.com/' + handle + '/') : null; }
 
+// Neueste zuerst; Beiträge ohne Zeitstempel ans Ende
+function byNewest(a, b) { return (Date.parse(b && b.timestamp) || 0) - (Date.parse(a && a.timestamp) || 0); }
+const MAX_POSTS = 60; // faktisch „alle" – deckelt nur die Nutzlast
+
 // ── Behold-/Feed-JSON auf unser Post-Format bringen ──
 function mapFeedPost(p) {
   const sizes = p.sizes || {};
@@ -71,14 +75,15 @@ async function fetchFeed() {
   const json = await r.json();
   const list = Array.isArray(json) ? json : (Array.isArray(json.posts) ? json.posts : []);
   const handle = (json && (json.username || (json.profile && (json.profile.username || json.profile.handle)))) || HANDLE || null;
-  const posts = list.map(mapFeedPost).filter(function (p) { return p.image && p.permalink; }).slice(0, 12);
-  return { available: posts.length > 0, handle: handle, profile: profileUrl(handle), posts: posts };
+  const all = list.map(mapFeedPost).filter(function (p) { return p.image && p.permalink; }).sort(byNewest);
+  const posts = all.slice(0, MAX_POSTS);
+  return { available: posts.length > 0, handle: handle, profile: profileUrl(handle), posts: posts, total: all.length };
 }
 
 async function fetchGraph() {
   const fields = 'id,caption,media_type,media_url,thumbnail_url,permalink,timestamp';
   const url = 'https://' + HOST + '/' + VERSION + '/' + encodeURIComponent(USER_ID) +
-    '/media?fields=' + fields + '&limit=12&access_token=' + encodeURIComponent(TOKEN);
+    '/media?fields=' + fields + '&limit=' + MAX_POSTS + '&access_token=' + encodeURIComponent(TOKEN);
   const r = await fetch(url, { headers: { Accept: 'application/json' } });
   const text = await r.text().catch(function () { return ''; });
   let json = null; try { json = JSON.parse(text); } catch (e) {}
@@ -103,8 +108,8 @@ async function fetchGraph() {
       likes: null,
       comments: null,
     };
-  }).filter(function (p) { return p.image; }).slice(0, 12);
-  return { available: posts.length > 0, handle: HANDLE || null, profile: profileUrl(HANDLE), posts: posts };
+  }).filter(function (p) { return p.image; }).sort(byNewest).slice(0, MAX_POSTS);
+  return { available: posts.length > 0, handle: HANDLE || null, profile: profileUrl(HANDLE), posts: posts, total: posts.length };
 }
 
 module.exports = async function handler(req, res) {
