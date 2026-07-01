@@ -296,7 +296,7 @@
     pauseStep:0, pauseReason:'', pauseReasonText:'', pauseFrom:'', pausePhoto:'', pausePhotoName:'', pauseDone:false,
     ccBusy:false, ccMsg:'',
     checkinBusy:false, checkinOk:false, checkinMsg:'', checkedInAt:null, ciBusy:false, ciPopup:null, ciName:'', ciDur:'', atStudio:false, wifiBusy:false, wifiMsg:'',
-    apptTab:'book', bookType:'', bookTypeTitle:'', bookDay:'', bookSlot:null, bookDone:false, bookErr:'', apptMsg:'',
+    apptTab:'book', bookType:'', bookTypeTitle:'', bookDay:'', bookSlot:null, bookDone:false, bookErr:'', apptMsg:'', fallbackBook:false,
     helpSel:null, helpCat:'all', helpQ:'', helpShowAll:false,
     aiQuery:'', aiPhase:'idle', aiAsked:'', aiAnswer:'', aiFeedback:null,
     finnOpen:false, finnMsgs:[], finnBusy:false, finnTip:'', finnTipLoaded:false,
@@ -1175,64 +1175,84 @@
     [/massage|physio|reha|regener/i,'Behandlung zur Regeneration und für dein Wohlbefinden.']
   ];
   function apptDesc(t){ if(t&&t.description&&String(t.description).trim()) return String(t.description).trim(); var ti=(t&&t.title)||''; for(var i=0;i<APPT_DESC.length;i++){ if(APPT_DESC[i][0].test(ti)) return APPT_DESC[i][1]; } return ''; }
+  // Synthetische Wunschzeit-Slots für den E-Mail-Fallback (keine Magicline-Terminarten konfiguriert).
+  // Standard-Zeitfenster wie im Design; ab morgen 14 Tage, damit die Auswahl stabil bleibt.
+  function synthSlots(){
+    var out=[], base=new Date(); base.setHours(0,0,0,0);
+    var times=[[9,0],[11,30],[14,0],[17,0],[18,30],[20,0]];
+    for(var d=1; d<=14; d++){ var day=new Date(base.getTime()+d*864e5);
+      times.forEach(function(t){ var s=new Date(day); s.setHours(t[0],t[1],0,0); var e=new Date(s.getTime()+45*60000); out.push({start:s.toISOString(),end:e.toISOString(),fallback:true}); }); }
+    return out;
+  }
+  function apptAvail(n){ if(n>=4) return {k:'frei',col:'#43BE6B'}; if(n>=2) return {k:'mittel',col:'#E0A23C'}; return {k:'voll',col:'#D8543F'}; }
+  function apptDaypart(h){ return h<12?0:(h<17?1:2); }
   function scrAppt(){
-    var tab=S.apptTab;
-    var tabs='<div style="display:flex;gap:6px;background:var(--surface-2);border:1px solid var(--border);border-radius:15px;padding:5px;margin-bottom:16px;box-shadow:0 8px 24px rgba(4,33,40,.06)"><button data-act="apptTab" data-arg="book" style="flex:1;padding:12px;border:none;border-radius:11px;background:'+(tab==='book'?TEALBG:'transparent')+';color:'+(tab==='book'?'#fff':'var(--text-muted)')+';font-weight:800;font-size:14px;letter-spacing:-.2px;cursor:pointer;'+(tab==='book'?'box-shadow:0 8px 20px rgba(4,33,40,.18)':'')+'">Termin buchen</button><button data-act="apptTab" data-arg="mine" style="flex:1;padding:12px;border:none;border-radius:11px;background:'+(tab==='mine'?TEALBG:'transparent')+';color:'+(tab==='mine'?'#fff':'var(--text-muted)')+';font-weight:800;font-size:14px;letter-spacing:-.2px;cursor:pointer;'+(tab==='mine'?'box-shadow:0 8px 20px rgba(4,33,40,.18)':'')+'">Meine Termine</button></div>';
-    var SECLBL='font-size:13px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.4px';
-    var CARD='background:var(--surface);border-radius:20px;box-shadow:0 14px 38px rgba(4,33,40,.10);padding:18px';
-    var body='';
-    if(tab==='book'){
-      if(S.apptMsg){ body='<div style="'+CARD+';text-align:center;padding:32px 24px"><div style="width:64px;height:64px;border-radius:50%;background:linear-gradient(150deg,#F6A964,#E08C53);display:flex;align-items:center;justify-content:center;margin:0 auto 16px;box-shadow:0 12px 30px rgba(224,140,83,.34)">'+svg(IC.check,{c:'#fff',w:2.6,s:32})+'</div><div style="font-size:21px;font-weight:900;letter-spacing:-.4px">'+(S.bookDone?'Termin gebucht!':'Terminwunsch gesendet!')+'</div><div style="font-size:14px;color:var(--text-muted);margin-top:6px;line-height:1.5">'+esc(S.apptMsg)+'</div><button class="btn" data-act="apptTab" data-arg="mine" style="margin-top:20px">Zu meinen Terminen</button></div>'; }
-      else if(DATA.bookable===null){ body='<div style="'+CARD+';text-align:center;color:var(--text-soft);font-size:14px;font-weight:600">Lade buchbare Termine …</div>'; }
-      else if(!DATA.bookable.length){
-        // Fallback: keine buchbaren Termine in Magicline konfiguriert -> Terminwunsch per E-Mail
-        var types='<div style="'+CARD+'"><div style="'+SECLBL+';margin-bottom:12px">Terminart wählen</div><div style="display:flex;flex-direction:column;gap:9px">'+
-        APPT_TYPES.map(function(a){ var sel=S.bookType===a[0]; return '<button data-act="bookType" data-arg="'+a[0]+'" style="display:flex;align-items:center;gap:12px;width:100%;padding:14px;border:1.5px solid '+(sel?TEAL:'var(--border)')+';border-radius:14px;background:'+(sel?'var(--row-sel)':'var(--surface)')+';cursor:pointer;text-align:left"><span style="width:22px;height:22px;border-radius:50%;border:2px solid '+(sel?TEAL:'var(--border)')+';display:flex;align-items:center;justify-content:center;flex-shrink:0"><span style="width:11px;height:11px;border-radius:50%;background:'+(sel?TEALBG:'transparent')+'"></span></span><span style="flex:1"><span style="display:block;font-size:14.5px;font-weight:800;color:var(--text)">'+a[1]+'</span><span style="display:block;font-size:12.5px;color:var(--text-muted);font-weight:500;margin-top:1px">'+a[2]+'</span></span></button>'; }).join('')+'</div></div>';
-        var pick = S.bookType ? '<div style="'+CARD+';margin-top:14px"><div style="font-size:16px;font-weight:900;letter-spacing:-.3px;color:var(--text)">Wunschzeit angeben</div><div style="font-size:13px;color:var(--text-muted);margin-top:4px;line-height:1.45">Sag uns, wann es dir am besten passt – wir bestätigen deinen Termin per E-Mail.</div><div style="margin-top:14px"><label class="lbl">Wunschtag / -zeit</label><input id="a_pref" class="inp" placeholder="z. B. Di nachmittags oder 30.06. 17:30"></div><button class="btn" data-act="reqAppt" style="margin-top:16px">'+(S.busy?'Wird gesendet …':'Terminwunsch senden')+'</button></div>' : '';
-        body=types+pick;
-      }
-      else {
-        // Echte Buchung über Magicline
-        var typeHeader=function(){ var t=(DATA.bookable.filter(function(x){return String(x.id)===String(S.bookType);})[0])||{}; var sub=[t.category,(t.duration?(t.duration+' Min'):'')].filter(Boolean).join(' · '); return '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--surface);border-radius:16px;box-shadow:0 12px 30px rgba(4,33,40,.08);padding:14px 16px"><div style="display:flex;align-items:center;gap:12px;min-width:0"><div style="width:42px;height:42px;border-radius:13px;background:linear-gradient(150deg,#0e6072,#063540);display:flex;align-items:center;justify-content:center;flex-shrink:0">'+svg(IC.cal,{c:'#fff',w:1.9,s:21})+'</div><div style="min-width:0"><div style="font-size:15px;font-weight:900;letter-spacing:-.3px;color:var(--text)">'+esc(t.title||'Termin')+'</div>'+(sub?'<div style="font-size:12.5px;color:var(--text-muted);font-weight:600;margin-top:2px">'+esc(sub)+'</div>':'')+'</div></div><button data-act="bookBack" style="border:none;background:var(--surface-2);color:'+TEAL+';font-weight:800;font-size:13px;cursor:pointer;border-radius:10px;padding:8px 13px;flex-shrink:0">ändern</button></div>'; };
-        if(!S.bookType){
-          body='<div style="'+CARD+'"><div style="'+SECLBL+';margin-bottom:12px">Terminart wählen</div><div style="display:flex;flex-direction:column;gap:9px">'+
-          DATA.bookable.map(function(t){ var meta=[t.category,(t.duration?(t.duration+' Min'):'')].filter(Boolean).join(' · '); var desc=apptDesc(t); return '<button data-act="pickBookType" data-arg="'+esc(t.id)+'" style="display:flex;align-items:flex-start;gap:13px;width:100%;padding:15px;border:1.5px solid var(--border);border-radius:16px;background:var(--surface);cursor:pointer;text-align:left"><span style="width:44px;height:44px;border-radius:13px;background:var(--surface-2);display:flex;align-items:center;justify-content:center;flex-shrink:0">'+svg(IC.cal,{w:1.9})+'</span><span style="flex:1;min-width:0"><span style="display:block;font-size:15px;font-weight:800;color:var(--text)">'+esc(t.title)+'</span>'+(meta?'<span style="display:block;font-size:12.5px;color:var(--text-soft);font-weight:700;margin-top:2px">'+esc(meta)+'</span>':'')+(desc?'<span style="display:block;font-size:13px;color:var(--text-muted);margin-top:5px;line-height:1.45">'+esc(desc)+'</span>':'')+'</span><span style="color:var(--text-soft);align-self:center;flex-shrink:0">'+svg('<path d="M9 6l6 6-6 6"></path>',{w:2,s:18})+'</span></button>'; }).join('')+'</div></div>';
-        } else if(!S.bookSlot){
-          var errBan=S.bookErr?'<div style="background:var(--err-bg);color:var(--err-fg);border-radius:13px;padding:12px 14px;margin-top:14px;font-size:13.5px;font-weight:700;line-height:1.4">'+esc(S.bookErr)+'</div>':'';
-          if(DATA.slots===null) body=typeHeader()+errBan+'<div style="'+CARD+';text-align:center;color:var(--text-soft);font-size:14px;font-weight:600;margin-top:14px">Lade freie Zeiten …</div>';
-          else if(!DATA.slots.length) body=typeHeader()+errBan+'<div style="'+CARD+';text-align:center;margin-top:14px"><div style="font-size:16px;font-weight:900;letter-spacing:-.3px;color:var(--text)">Keine freien Termine</div><div style="font-size:13px;color:var(--text-muted);margin-top:4px;line-height:1.45">In den nächsten 3 Wochen ist hier nichts frei. Bitte später erneut versuchen.</div></div>';
-          else {
-            var byDay={}, order=[]; DATA.slots.forEach(function(s,i){ var d=(s.start||'').slice(0,10); if(!byDay[d]){byDay[d]=[];order.push(d);} byDay[d].push({s:s,i:i}); });
-            if(!S.bookDay || !byDay[S.bookDay]){
-              // Tag wählen
-              var dayList=order.map(function(d){ var c=byDay[d].length; return '<button data-act="pickDay" data-arg="'+d+'" style="display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;padding:15px 16px;border:1.5px solid var(--border);border-radius:14px;background:var(--surface);cursor:pointer;text-align:left"><span style="font-size:15px;font-weight:800;color:var(--text);text-transform:capitalize">'+deDateLong(byDay[d][0].s.start)+'</span><span style="display:inline-flex;align-items:center;gap:7px;font-size:12.5px;color:var(--text-muted);font-weight:700;white-space:nowrap">'+c+(c===1?' Zeit':' Zeiten')+svg('<path d="M9 6l6 6-6 6"></path>',{c:'var(--text-soft)',w:2,s:16})+'</span></button>'; }).join('');
-              body=typeHeader()+errBan+'<div style="'+CARD+';margin-top:14px"><div style="'+SECLBL+';margin-bottom:11px">Tag wählen</div><div style="display:flex;flex-direction:column;gap:9px">'+dayList+'</div></div>';
-            } else {
-              // Uhrzeit am gewählten Tag
-              var times=byDay[S.bookDay];
-              var dayBar='<button data-act="bookBack" style="display:inline-flex;align-items:center;gap:5px;border:none;background:transparent;color:'+TEAL+';font-weight:800;font-size:13px;cursor:pointer;padding:0;margin:0 0 12px">'+svg('<path d="M15 18l-6-6 6-6"></path>',{c:TEAL,w:2.2,s:16})+'Andere Tage</button>';
-              var dHead='<div style="font-size:16px;font-weight:900;letter-spacing:-.3px;color:var(--text);margin:0 0 12px;text-transform:capitalize">'+deDateLong(times[0].s.start)+'</div>';
-              var timeBtns='<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:9px">'+times.map(function(o){ return '<button data-act="pickSlot" data-arg="'+o.i+'" style="padding:13px 0;border:1.5px solid var(--border);border-radius:12px;background:var(--surface);font-weight:800;font-size:15px;color:var(--teal-ink);cursor:pointer">'+deTime(o.s.start)+'</button>'; }).join('')+'</div>';
-              body=typeHeader()+errBan+'<div style="'+CARD+';margin-top:14px">'+dayBar+dHead+timeBtns+'</div>';
-            }
-          }
-        } else {
-          var sl=S.bookSlot;
-          var ct=(DATA.bookable.filter(function(x){return String(x.id)===String(S.bookType);})[0])||{}; var cdesc=apptDesc(ct);
-          body=typeHeader()+'<div style="'+CARD+';margin-top:14px"><div style="'+SECLBL+'">Dein Termin</div>'+
-          '<div style="display:flex;align-items:center;gap:12px;margin-top:12px"><div style="width:48px;height:48px;border-radius:14px;background:linear-gradient(150deg,#0e6072,#063540);display:flex;align-items:center;justify-content:center;flex-shrink:0">'+svg(IC.cal,{c:'#fff',w:1.9})+'</div><div><div style="font-size:16px;font-weight:900;letter-spacing:-.3px;color:var(--text)">'+deDate(sl.start)+'</div><div style="font-size:14px;color:var(--text-muted);font-weight:600;margin-top:2px">'+deTime(sl.start)+(sl.end?('–'+deTime(sl.end)):'')+' Uhr'+(sl.instructor?(' · mit '+esc(sl.instructor)):'')+'</div></div></div>'+
-          (cdesc?'<div style="font-size:13px;color:var(--text-muted);line-height:1.5;margin-top:14px;border-top:1px solid var(--border);padding-top:14px">'+esc(cdesc)+'</div>':'')+
-          '<button class="btn" data-act="confirmBook" style="margin-top:18px">'+(S.busy?'Wird gebucht …':'Termin verbindlich buchen')+'</button>'+
-          '<button class="btn2" data-act="bookBack" style="margin-top:10px">Andere Zeit wählen</button></div>';
-        }
-      }
-    } else {
-      var list=DATA.appts;
-      if(list===null) body='<div style="'+CARD+';text-align:center;color:var(--text-soft);font-size:14px;font-weight:600">Lade Termine …</div>';
-      else if(!list.length) body='<div style="'+CARD+';text-align:center"><div style="font-size:16px;font-weight:900;letter-spacing:-.3px;color:var(--text)">Noch keine Termine</div><div style="font-size:13px;color:var(--text-muted);margin-top:4px;line-height:1.45">Buche dir oben deinen ersten Termin.</div></div>';
-      else body='<div style="display:flex;flex-direction:column;gap:11px">'+list.map(function(a){ var dt=new Date(a.start); var MON=['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez']; var mon=isNaN(dt.getTime())?'':MON[dt.getMonth()]; var dn=isNaN(dt.getTime())?'':dt.getDate(); return '<div style="display:flex;align-items:center;gap:13px;background:var(--surface);border-radius:16px;box-shadow:0 10px 28px rgba(4,33,40,.08);padding:14px"><div style="width:46px;height:46px;border-radius:13px;background:var(--surface-2);display:flex;flex-direction:column;align-items:center;justify-content:center;flex-shrink:0"><span style="font-size:11px;font-weight:800;color:var(--text-soft);text-transform:uppercase">'+esc(mon)+'</span><span style="font-size:17px;font-weight:900;color:var(--teal-ink);line-height:1">'+esc(dn)+'</span></div><div style="flex:1;min-width:0"><div style="font-size:14.5px;font-weight:800;color:var(--text)">'+esc(a.title)+'</div><div style="font-size:12.5px;color:var(--text-muted);font-weight:600;margin-top:2px">'+deDate(a.start)+' · '+deTime(a.start)+' Uhr</div></div>'+(a.id?'<button data-act="cancelAppt" data-arg="'+esc(a.id)+'" style="border:none;background:transparent;color:var(--err-fg);font-weight:800;font-size:12.5px;cursor:pointer;flex-shrink:0">Stornieren</button>':'')+'</div>'; }).join('')+'</div>';
+    var CARD='background:var(--surface);border-radius:20px;box-shadow:0 14px 38px rgba(4,33,40,.10);padding:20px';
+    var EY='font-size:13px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.5px';
+    var out='';
+
+    // Erfolgs-Bestätigung (bleibt oben stehen, „Meine Termine" darunter aktualisiert sich)
+    if(S.apptMsg){
+      out+='<div style="'+CARD+';text-align:center;padding:30px 24px;margin-bottom:16px"><div style="width:60px;height:60px;border-radius:50%;background:linear-gradient(150deg,#43BE6B,#1F9A4E);display:flex;align-items:center;justify-content:center;margin:0 auto 14px;box-shadow:0 12px 30px rgba(31,154,78,.34)">'+svg(IC.check,{c:'#fff',w:2.6,s:30})+'</div><div style="font-size:20px;font-weight:900;letter-spacing:-.4px">'+(S.bookDone?'Termin gebucht!':'Terminwunsch gesendet!')+'</div><div style="font-size:14px;color:var(--text-muted);margin-top:6px;line-height:1.5">'+esc(S.apptMsg)+'</div><button class="btn2" data-act="apptReset" style="margin-top:18px;width:auto;padding:12px 22px">Weiteren Termin buchen</button></div>';
     }
-    return subHeader('Termine','Einführungstraining, Beratung & Co.')+tabs+body;
+
+    // ── TERMINART ──
+    var loading=DATA.bookable===null;
+    var types=(DATA.bookable&&DATA.bookable.length)
+      ? DATA.bookable.map(function(t){ return {id:String(t.id), title:t.title||'Termin', sub:[t.category,(t.duration?(t.duration+' Min'):'')].filter(Boolean).join(' · '), fb:false}; })
+      : APPT_TYPES.map(function(a){ return {id:a[0], title:a[1], sub:a[2], fb:true}; });
+    var typeRows=loading
+      ? '<div style="text-align:center;color:var(--text-soft);font-size:14px;font-weight:600;padding:6px 0">Lade buchbare Termine …</div>'
+      : types.map(function(t,ix){ var sel=String(S.bookType)===String(t.id);
+        return '<button data-act="'+(t.fb?'bookTypeFb':'pickBookType')+'" data-arg="'+esc(t.id)+'" style="display:flex;align-items:center;gap:14px;width:100%;padding:16px;border:1.5px solid '+(sel?TEAL:'var(--border)')+';border-radius:15px;background:'+(sel?'var(--row-sel)':'var(--surface)')+';cursor:pointer;text-align:left'+(ix?';margin-top:10px':'')+'">'+
+          '<span style="width:24px;height:24px;border-radius:50%;border:2px solid '+(sel?TEAL:'var(--border)')+';display:flex;align-items:center;justify-content:center;flex-shrink:0">'+(sel?'<span style="width:12px;height:12px;border-radius:50%;background:'+TEALBG+'"></span>':'')+'</span>'+
+          '<span style="flex:1;min-width:0"><span style="display:block;font-size:16px;font-weight:900;color:var(--text);letter-spacing:-.2px">'+esc(t.title)+'</span>'+(t.sub?'<span style="display:block;font-size:13px;color:var(--text-muted);font-weight:500;margin-top:2px">'+esc(t.sub)+'</span>':'')+'</span></button>';
+      }).join('');
+    out+='<div style="'+CARD+';margin-bottom:16px"><div style="'+EY+';margin-bottom:14px">Terminart</div>'+typeRows+'</div>';
+
+    // ── TAG WÄHLEN + Zeiten ──
+    if(S.bookType && !loading){
+      var slots=S.fallbackBook?synthSlots():DATA.slots;
+      if(slots===null){
+        out+='<div style="'+CARD+';margin-bottom:16px;text-align:center;color:var(--text-soft);font-size:14px;font-weight:600">Lade freie Zeiten …</div>';
+      } else if(!slots.length){
+        out+='<div style="'+CARD+';margin-bottom:16px;text-align:center"><div style="font-size:16px;font-weight:900;color:var(--text)">Keine freien Termine</div><div style="font-size:13px;color:var(--text-muted);margin-top:4px;line-height:1.45">In den nächsten Wochen ist hier nichts frei. Bitte später erneut versuchen.</div></div>';
+      } else {
+        var byDay={}, order=[]; slots.forEach(function(s,i){ var d=(s.start||'').slice(0,10); if(!byDay[d]){byDay[d]=[];order.push(d);} byDay[d].push({s:s,i:i}); });
+        var selDay=(S.bookDay&&byDay[S.bookDay])?S.bookDay:order[0];
+        var legend='<div style="display:flex;gap:12px">'+[['frei','#43BE6B'],['mittel','#E0A23C'],['voll','#D8543F']].map(function(l){ return '<span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:var(--text-soft)"><span style="width:8px;height:8px;border-radius:50%;background:'+l[1]+'"></span>'+l[0]+'</span>'; }).join('')+'</div>';
+        var chips=order.map(function(d){ var arr=byDay[d]; var dt=new Date(arr[0].s.start); var dow=['SO','MO','DI','MI','DO','FR','SA'][dt.getDay()]; var dnum=(dt.getDate()<10?'0':'')+dt.getDate(); var av=S.fallbackBook?{k:'frei',col:'#43BE6B'}:apptAvail(arr.length); var sel=(d===selDay);
+          return '<button data-act="pickDay" data-arg="'+d+'" style="flex-shrink:0;width:64px;padding:12px 0;border-radius:16px;border:1.5px solid '+(sel?'transparent':'var(--border)')+';background:'+(sel?'linear-gradient(160deg,#0e6072,#063540)':'var(--surface)')+';cursor:pointer;text-align:center"><div style="font-size:11px;font-weight:800;letter-spacing:.5px;color:'+(sel?'#aed0d6':'var(--text-soft)')+'">'+dow+'</div><div style="font-size:22px;font-weight:900;letter-spacing:-.5px;color:'+(sel?'#fff':'var(--text)')+';line-height:1.1;margin-top:2px">'+dnum+'</div><div style="display:flex;justify-content:center;margin-top:5px"><span style="width:7px;height:7px;border-radius:50%;background:'+av.col+'"></span></div></button>';
+        }).join('');
+        var times=byDay[selDay]||[];
+        var groups=[[],[],[]]; times.forEach(function(o){ groups[apptDaypart(new Date(o.s.start).getHours())].push(o); });
+        var GL=[['🌅','Vormittag'],['☀️','Nachmittag'],['🌙','Abend']];
+        var timeHtml=GL.map(function(g,gi){ if(!groups[gi].length) return '';
+          var btns=groups[gi].map(function(o){ var sel=S.bookSlot&&S.bookSlot.start===o.s.start; return '<button data-act="pickSlot" data-arg="'+(o.s.fallback?esc(o.s.start):o.i)+'" style="padding:14px 22px;border:1.5px solid '+(sel?TEAL:'var(--border)')+';border-radius:14px;background:'+(sel?'var(--row-sel)':'var(--surface)')+';font-weight:800;font-size:16px;color:'+(sel?TEAL:'var(--text)')+';cursor:pointer">'+deTime(o.s.start)+'</button>'; }).join('');
+          return '<div style="margin-top:'+(gi&&groups.slice(0,gi).some(function(x){return x.length;})?'18px':'0')+'"><div style="display:flex;align-items:center;gap:8px;font-size:12px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.4px;margin-bottom:10px"><span style="font-size:15px">'+g[0]+'</span>'+g[1]+'</div><div style="display:flex;flex-wrap:wrap;gap:10px">'+btns+'</div></div>';
+        }).join('');
+        var freeCount=times.length;
+        out+='<div style="'+CARD+';margin-bottom:16px">'+
+          '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px"><div style="'+EY+'">Tag wählen</div>'+legend+'</div>'+
+          '<div style="display:flex;gap:9px;overflow-x:auto;padding-bottom:4px;-webkit-overflow-scrolling:touch">'+chips+'</div>'+
+          '<div style="display:flex;align-items:center;justify-content:space-between;margin:18px 0 16px"><div style="font-size:17px;font-weight:900;color:var(--text);letter-spacing:-.3px">'+deDate(byDay[selDay][0].s.start)+'</div><div style="font-size:13px;color:var(--text-soft);font-weight:700">'+freeCount+(freeCount===1?' freie Zeit':' freie Zeiten')+'</div></div>'+
+          timeHtml+
+        '</div>';
+        if(S.bookErr) out+='<div style="background:var(--err-bg);color:var(--err-fg);border-radius:13px;padding:12px 14px;margin-bottom:12px;font-size:13.5px;font-weight:700;line-height:1.4">'+esc(S.bookErr)+'</div>';
+        var can=!!S.bookSlot;
+        out+='<button data-act="confirmBook" '+((can&&!S.busy)?'':'disabled ')+'style="width:100%;border:none;border-radius:16px;background:'+(can?'linear-gradient(160deg,#0e6072,#063540)':'var(--surface-2)')+';color:'+(can?'#fff':'var(--text-soft)')+';font-weight:900;font-size:16px;padding:17px;cursor:'+(can?'pointer':'default')+';box-shadow:'+(can?'0 12px 30px rgba(4,33,40,.2)':'none')+'">'+(S.busy?'Wird gebucht …':(S.fallbackBook?'Termin anfragen':'Termin bestätigen'))+'</button>';
+      }
+    }
+
+    // ── MEINE TERMINE ──
+    var list=DATA.appts;
+    if(list && list.length){
+      out+='<div style="'+EY+';margin:24px 2px 12px">Meine Termine</div><div style="display:flex;flex-direction:column;gap:11px">'+list.map(function(a){ var dt=new Date(a.start); var MON=['JAN','FEB','MÄR','APR','MAI','JUN','JUL','AUG','SEP','OKT','NOV','DEZ']; var mon=isNaN(dt.getTime())?'':MON[dt.getMonth()]; var dn=isNaN(dt.getTime())?'':dt.getDate(); return '<div style="display:flex;align-items:center;gap:14px;background:var(--surface);border-radius:18px;box-shadow:0 12px 32px rgba(4,33,40,.08);padding:16px"><div style="width:52px;height:52px;border-radius:14px;background:var(--surface-2);display:flex;flex-direction:column;align-items:center;justify-content:center;flex-shrink:0"><span style="font-size:11px;font-weight:800;color:var(--text-soft);letter-spacing:.4px">'+esc(mon)+'</span><span style="font-size:20px;font-weight:900;color:var(--teal-ink);line-height:1">'+esc(dn)+'</span></div><div style="flex:1;min-width:0"><div style="font-size:16px;font-weight:900;letter-spacing:-.2px;color:var(--text)">'+esc(a.title)+'</div><div style="font-size:13px;color:var(--text-muted);font-weight:600;margin-top:2px">'+deDate(a.start)+' · '+deTime(a.start)+' Uhr</div></div>'+(a.id?'<button data-act="cancelAppt" data-arg="'+esc(a.id)+'" style="border:none;background:transparent;color:var(--err-fg);font-weight:800;font-size:13.5px;cursor:pointer;flex-shrink:0">Stornieren</button>':'')+'</div>'; }).join('')+'</div>';
+    } else if(list && !list.length && !S.apptMsg){
+      out+='<div style="'+EY+';margin:24px 2px 12px">Meine Termine</div><div style="'+CARD+';text-align:center"><div style="font-size:15px;font-weight:800;color:var(--text)">Noch keine Termine</div><div style="font-size:13px;color:var(--text-muted);margin-top:4px;line-height:1.45">Buche dir oben deinen ersten Termin.</div></div>';
+    }
+
+    return subHeader('Termine','Buchen & verwalten')+out;
   }
 
   // ===== Beitragskonto (offene Beiträge & Rechnungen) =====
@@ -2199,11 +2219,20 @@
     reqAppt:function(){ var pref=val('a_pref'); var t=(APPT_TYPES.filter(function(x){return x[0]===S.bookType;})[0]||[])[1]||''; setQuiet({busy:true});
       api('/api/member/appointment',{method:'POST',body:JSON.stringify({type:t,preferred:pref})}).then(function(d){ setS({busy:false,apptMsg:d.message||'Dein Terminwunsch ist eingegangen.',bookDone:false,bookType:''}); }).catch(function(){ setS({busy:false,apptMsg:'Dein Terminwunsch ist eingegangen.'}); }); },
     // ---- echte Buchung ----
-    pickBookType:function(a){ var t=(DATA.bookable||[]).filter(function(x){return String(x.id)===String(a);})[0]||{}; S.bookType=a; S.bookTypeTitle=t.title||''; S.bookDay=''; S.bookSlot=null; S.bookErr=''; loadSlots(a); },
-    pickDay:function(a){ setS({bookDay:a,bookErr:''}); },
-    pickSlot:function(a){ var sl=(DATA.slots||[])[+a]; if(sl) setS({bookSlot:sl,bookErr:''}); },
-    bookBack:function(){ if(S.bookSlot) setS({bookSlot:null,bookErr:''}); else if(S.bookDay) setS({bookDay:'',bookErr:''}); else setS({bookType:'',bookTypeTitle:'',bookDay:'',bookSlot:null,bookErr:''}); },
-    confirmBook:function(){ var sl=S.bookSlot; if(!sl||S.busy) return; var bid=S.bookType; setQuiet({busy:true,bookErr:''});
+    pickBookType:function(a){ var t=(DATA.bookable||[]).filter(function(x){return String(x.id)===String(a);})[0]||{}; S.bookType=a; S.bookTypeTitle=t.title||''; S.fallbackBook=false; S.bookDay=''; S.bookSlot=null; S.bookErr=''; loadSlots(a); },
+    // ---- Fallback (Terminwunsch per E-Mail, wenn keine Magicline-Terminarten konfiguriert sind) ----
+    bookTypeFb:function(a){ var t=(APPT_TYPES.filter(function(x){return x[0]===a;})[0]||[]); setS({bookType:a,bookTypeTitle:t[1]||'',fallbackBook:true,bookDay:'',bookSlot:null,bookErr:''}); },
+    apptReset:function(){ setS({apptMsg:'',bookDone:false,bookType:'',bookTypeTitle:'',bookDay:'',bookSlot:null,fallbackBook:false,bookErr:''}); },
+    pickDay:function(a){ setS({bookDay:a,bookSlot:null,bookErr:''}); },
+    pickSlot:function(a){ var sl; if(String(a).indexOf('T')>0){ sl={start:a,end:a,fallback:true}; } else { sl=(DATA.slots||[])[+a]; } if(sl) setS({bookSlot:sl,bookErr:''}); },
+    bookBack:function(){ if(S.bookSlot) setS({bookSlot:null,bookErr:''}); else if(S.bookDay) setS({bookDay:'',bookErr:''}); else setS({bookType:'',bookTypeTitle:'',bookDay:'',bookSlot:null,fallbackBook:false,bookErr:''}); },
+    confirmBook:function(){ var sl=S.bookSlot; if(!sl||S.busy) return;
+      if(sl.fallback){ var tt=(APPT_TYPES.filter(function(x){return x[0]===S.bookType;})[0]||[])[1]||S.bookTypeTitle||''; var pref=deDateLong(sl.start)+', '+deTime(sl.start)+' Uhr'; setQuiet({busy:true,bookErr:''});
+        api('/api/member/appointment',{method:'POST',body:JSON.stringify({type:tt,preferred:pref})})
+          .then(function(d){ DATA.appts=null; loadAppts(); setS({busy:false,apptMsg:(d&&d.message)||('Wir melden uns zur Bestätigung deines Wunschtermins ('+pref+').'),bookDone:false,bookType:'',bookTypeTitle:'',bookSlot:null,fallbackBook:false,bookErr:''}); })
+          .catch(function(){ setS({busy:false,apptMsg:'Dein Terminwunsch ist eingegangen.',bookType:'',bookTypeTitle:'',bookSlot:null,fallbackBook:false}); });
+        return; }
+      var bid=S.bookType; setQuiet({busy:true,bookErr:''});
       api('/api/member/appointment-book',{method:'POST',body:JSON.stringify({bookableAppointmentId:bid,startDateTime:sl.start,endDateTime:sl.end,instructorIds:(sl.instructorIds||[]).slice(0,1),title:S.bookTypeTitle})})
         .then(function(d){ if(d&&d.ok){ DATA.appts=null; loadAppts(); setS({busy:false,apptMsg:d.message||'Dein Termin ist gebucht!',bookDone:true,bookType:'',bookTypeTitle:'',bookSlot:null,bookErr:''}); } else { DATA.slots=null; setS({busy:false,bookSlot:null,bookErr:(d&&d.message)||'Buchung fehlgeschlagen – bitte anderen Termin wählen.'}); loadSlots(bid); } })
         .catch(function(){ setS({busy:false,bookErr:'Buchung fehlgeschlagen – bitte später erneut.'}); }); },
