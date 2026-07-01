@@ -544,6 +544,10 @@
 
   // ========================= SCREENS =========================
   function backHd(title, target){ return '<div class="hd"><button class="back" data-act="nav" data-arg="'+(target||'home')+'">'+svg(IC.back,{c:TEAL,w:2,s:20})+'</button><div class="h1w">'+esc(title)+'</div></div>'; }
+  // Teal-Gradient-Kopf für Unterseiten (einheitlicher Mockup-Look).
+  function subHeader(title, sub, target){ return '<div style="display:flex;align-items:center;gap:13px;background:linear-gradient(165deg,#0e6072,#063540);border-radius:20px;box-shadow:0 12px 34px rgba(4,33,40,.18);padding:16px 18px;color:#fff;margin-bottom:16px">'+
+    '<button data-act="nav" data-arg="'+(target||'home')+'" aria-label="Zurück" style="width:40px;height:40px;border-radius:12px;border:none;background:rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'+svg(IC.back,{c:'#fff',w:2.1,s:20})+'</button>'+
+    '<div style="min-width:0"><div style="font-size:20px;font-weight:900;letter-spacing:-.4px;line-height:1.1">'+esc(title)+'</div>'+(sub?'<div style="font-size:12.5px;color:#aed0d6;font-weight:600;margin-top:2px">'+esc(sub)+'</div>':'')+'</div></div>'; }
 
   function dpField(){
     return '<div><label class="lbl">Geburtsdatum</label>'+
@@ -648,26 +652,18 @@
     // Tageskontext: bestehende Vormerkung -> deren Tag; sonst heute, und falls heute
     // kein Slot mehr frei ist (abends/geschlossen) automatisch morgen.
     var tomorrowMode = (plan && planActive(plan)) ? planIsTomorrow(plan) : !openSlotsToday().length;
-    var clock='<circle cx="12" cy="12" r="9"></circle><path d="M12 7.5v5l3 1.8"></path>';
-    var eyebrow='<div style="position:relative;display:inline-flex;align-items:center;gap:9px">'+
-      '<div style="width:32px;height:32px;border-radius:10px;background:rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center">'+svg(clock,{c:'#F6A964',w:1.9,s:18})+'</div>'+
-      '<span style="font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#F6C79A">Auslastung · '+(tomorrowMode?'morgen':'heute')+'</span></div>';
-    // „Live-Auslastung ansehen" -> die Mitgliederbereich-Version der Live-Übersicht
-    // (/auslastung-mitglieder, inkl. Zurück-Button). Gleiche Ansicht wie die Startseite,
-    // aber mit Rücksprung in den Mitgliederbereich. Öffnet im selben Fenster, damit der
-    // Zurück-Button zurückführt. Steht in JEDEM Karten-Zustand zur Verfügung.
-    var ausLink='<a href="/auslastung-mitglieder" style="position:relative;display:inline-flex;align-items:center;gap:7px;margin-top:16px;font-weight:700;font-size:13px;color:#F6C79A;text-decoration:none">'+svg('<path d="M3 3v18h18"></path><path d="M7 13l3-3 3 3 4-5"></path>',{c:'#F6C79A',w:2,s:15})+'Live-Auslastung ansehen</a>';
-    var wrap=function(inner){ return '<div id="vormerken" style="position:relative;overflow:hidden;border-radius:20px;background:linear-gradient(155deg,#0e6072,#073e4b);box-shadow:0 18px 44px rgba(4,33,40,.22);padding:22px">'+
-      '<div style="position:absolute;width:220px;height:220px;right:-70px;top:-90px;border-radius:50%;background:radial-gradient(circle,rgba(246,169,100,.18),transparent 70%);pointer-events:none"></div>'+eyebrow+inner+ausLink+'</div>'; };
+    var eyebrow='<div style="display:flex;align-items:center;justify-content:space-between"><span style="font-size:13px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:var(--text-soft)">Wunschzeit vormerken · '+(tomorrowMode?'morgen':'heute')+'</span>'+
+      '<a href="/auslastung-mitglieder" style="display:inline-flex;align-items:center;gap:6px;font-weight:700;font-size:12.5px;color:var(--teal-ink);text-decoration:none">'+svg('<path d="M3 3v18h18"></path><path d="M7 13l3-3 3 3 4-5"></path>',{c:'var(--teal-ink)',w:2,s:14})+'Live</a></div>';
+    var wrap=function(inner){ return '<div id="vormerken" class="card" style="border-radius:20px;box-shadow:0 12px 34px rgba(4,33,40,.10);padding:20px;margin-bottom:14px">'+eyebrow+inner+'</div>'; };
 
     // Bereits vorgemerkt -> Bestätigung
     if(plan && planActive(plan) && !S.planEdit){
       var whenWord=planIsTomorrow(plan)?'Morgen':'Heute';
       return wrap(
-        '<div style="position:relative;font-size:21px;font-weight:900;color:#fff;letter-spacing:-.4px;margin-top:12px">'+whenWord+' um '+fmtMin(plan.slot)+' Uhr 👍</div>'+
-        '<div style="position:relative;font-size:13px;color:#aed0d6;margin-top:4px;line-height:1.45">'+(S.planRemind?'Wir erinnern dich rechtzeitig per E-Mail.':'Ohne E-Mail-Benachrichtigung.')+'</div>'+
-        '<div style="position:relative;display:flex;gap:10px;margin-top:16px">'+
-          '<button data-act="planEdit" style="flex:1;padding:12px;border:1px solid rgba(255,255,255,.3);border-radius:11px;background:rgba(255,255,255,.08);color:#fff;font-weight:700;font-size:14px;cursor:pointer">Zeit ändern</button>'+
+        '<div style="font-size:20px;font-weight:900;color:var(--text);letter-spacing:-.4px;margin-top:12px">'+whenWord+' um '+fmtMin(plan.slot)+' Uhr 👍</div>'+
+        '<div style="font-size:13px;color:var(--text-muted);margin-top:4px;line-height:1.45">'+(S.planRemind?'Wir erinnern dich rechtzeitig per E-Mail.':'Ohne E-Mail-Benachrichtigung.')+'</div>'+
+        '<div style="display:flex;gap:10px;margin-top:16px">'+
+          '<button data-act="planEdit" style="flex:1;padding:12px;border:1.5px solid var(--border);border-radius:11px;background:var(--surface);color:var(--teal-ink);font-weight:700;font-size:14px;cursor:pointer">Zeit ändern</button>'+
           '<button data-act="planCancel"'+(S.planBusy?' disabled':'')+' style="flex:1;padding:12px;border:none;border-radius:11px;background:#E08C53;color:#fff;font-weight:800;font-size:14px;cursor:pointer">Absagen</button>'+
         '</div>');
     }
@@ -675,18 +671,17 @@
     var dayOffset=tomorrowMode?1:0;
     var slots=openSlotsForDay(dayOffset);
     var agg=tomorrowMode?DATA.planAggTom:DATA.planAgg;
-    var title='<div style="position:relative;font-size:21px;font-weight:900;color:#fff;letter-spacing:-.4px;margin-top:12px">'+(tomorrowMode?'Trainingszeit für morgen vorreservieren':'Trainingszeit vorreservieren')+'</div>';
+    var title='<div style="font-size:18px;font-weight:900;color:var(--text);letter-spacing:-.3px;margin-top:12px">'+(tomorrowMode?'Wunschzeit für morgen':'Deine Wunschzeit')+'</div>';
     if(!slots.length){
-      // Nie eine leere/„tote" Karte – außerhalb der Öffnungszeiten klare Info
       return wrap(title+
-        '<div style="position:relative;font-size:13px;color:#aed0d6;margin-top:6px;line-height:1.5">Aktuell ist kein Zeitfenster verfügbar. Schau zu den Öffnungszeiten wieder vorbei – dann kannst du deine Wunschzeit vormerken.</div>');
+        '<div style="font-size:13px;color:var(--text-muted);margin-top:6px;line-height:1.5">Aktuell ist kein Zeitfenster verfügbar. Schau zu den Öffnungszeiten wieder vorbei – dann kannst du deine Wunschzeit vormerken.</div>');
     }
-    var chips=slots.map(function(m){ var L=slotLoad(m,agg); return '<button class="planSlot" data-act="planSet" data-arg="'+m+(dayOffset?('@'+dayOffset):'')+'"'+(S.planBusy?' disabled':'')+' style="flex-shrink:0;min-width:74px;padding:10px 8px;border-radius:12px;border:1px solid rgba(255,255,255,.22);background:rgba(255,255,255,.08);color:#fff;cursor:pointer;text-align:center"><div style="font-size:15px;font-weight:800">'+fmtMin(m)+'</div><div style="display:flex;align-items:center;justify-content:center;gap:5px;margin-top:3px"><span style="width:7px;height:7px;border-radius:50%;background:'+L.col+'"></span><span style="font-size:11px;color:#cfe3e7;font-weight:600">'+L.k+'</span></div></button>'; }).join('');
+    var chips=slots.map(function(m){ var L=slotLoad(m,agg); return '<button class="planSlot" data-act="planSet" data-arg="'+m+(dayOffset?('@'+dayOffset):'')+'"'+(S.planBusy?' disabled':'')+' style="flex-shrink:0;min-width:74px;padding:10px 8px;border-radius:12px;border:1.5px solid var(--border);background:var(--surface);color:var(--text);cursor:pointer;text-align:center"><div style="font-size:15px;font-weight:800">'+fmtMin(m)+'</div><div style="display:flex;align-items:center;justify-content:center;gap:5px;margin-top:3px"><span style="width:7px;height:7px;border-radius:50%;background:'+L.col+'"></span><span style="font-size:11px;color:var(--text-muted);font-weight:600">'+L.k+'</span></div></button>'; }).join('');
     return wrap(title+
-      '<div style="position:relative;font-size:13px;color:#aed0d6;margin-top:6px;line-height:1.45">'+(tomorrowMode?'Für heute haben wir schon geschlossen – sichere dir direkt deine Wunschzeit für morgen.':'Wähl deine Wunschzeit – wir halten dir den Platz im Studio frei.')+'</div>'+
-      '<div style="position:relative;display:flex;gap:8px;margin-top:14px;overflow-x:auto;padding-bottom:4px;-webkit-overflow-scrolling:touch">'+chips+'</div>'+
-      '<label style="position:relative;display:flex;align-items:center;gap:9px;margin-top:14px;cursor:pointer;font-size:13px;color:#cfe3e7;font-weight:600"><input type="checkbox" '+(S.planRemind?'checked':'')+' onclick="window.__planRemind(this.checked)" style="width:17px;height:17px;accent-color:#E08C53"> Benachrichtigungen per E-Mail (Bestätigung + Erinnerung)</label>'+
-      ((S.planEdit&&plan)?'<div style="position:relative;margin-top:10px"><button data-act="planEditCancel" style="background:none;border:none;color:#aed0d6;font-size:13px;font-weight:600;cursor:pointer;text-decoration:underline">Abbrechen</button></div>':''));
+      '<div style="font-size:13px;color:var(--text-muted);margin-top:6px;line-height:1.45">'+(tomorrowMode?'Für heute haben wir schon geschlossen – sichere dir direkt deine Wunschzeit für morgen.':'Wähl deine Wunschzeit – wir halten dir den Platz im Studio frei.')+'</div>'+
+      '<div style="display:flex;gap:8px;margin-top:14px;overflow-x:auto;padding-bottom:4px;-webkit-overflow-scrolling:touch">'+chips+'</div>'+
+      '<label style="display:flex;align-items:center;gap:9px;margin-top:14px;cursor:pointer;font-size:13px;color:var(--text-muted);font-weight:600"><input type="checkbox" '+(S.planRemind?'checked':'')+' onclick="window.__planRemind(this.checked)" style="width:17px;height:17px;accent-color:#E08C53"> Benachrichtigungen per E-Mail (Bestätigung + Erinnerung)</label>'+
+      ((S.planEdit&&plan)?'<div style="margin-top:10px"><button data-act="planEditCancel" style="background:none;border:none;color:var(--text-muted);font-size:13px;font-weight:600;cursor:pointer;text-decoration:underline">Abbrechen</button></div>':''));
   }
 
   // Tages-/situationsabhängige Begrüßung (Berliner Zeit)
@@ -1016,7 +1011,7 @@
   function pauseDoneBox(){ return '<div class="card" style="padding:32px 24px;text-align:center"><div style="width:64px;height:64px;border-radius:50%;background:var(--ok-bg);display:flex;align-items:center;justify-content:center;margin:0 auto 16px">'+svg(IC.check,{c:'var(--ok-fg)',w:2.4,s:32})+'</div><div style="font-size:22px;font-weight:900">Pause beantragt!</div><div style="font-size:14px;color:var(--text-muted);margin-top:8px;line-height:1.55">Deine Beitragspause ist eingegangen. Wir prüfen den Nachweis und bestätigen dir die Pause per E-Mail. Dein Tarif und deine Konditionen bleiben erhalten.</div><button class="btn" data-act="closePauseDone" style="margin-top:22px">Zurück zur Vertragsverwaltung</button></div>'; }
   function scrContract(){
     var c=DATA.contract; var p=DATA.profile||{};
-    var head=backHd('Vertragsverwaltung');
+    var head=subHeader('Vertragsverwaltung','Vertrag, Pause & Kündigung');
     // success states
     if(S.offerDone){
       return head+'<div class="card" style="padding:34px 24px;text-align:center"><div style="font-size:44px;line-height:1">🎉</div><div style="font-size:23px;font-weight:900;letter-spacing:-.4px;margin-top:12px">Angebot angenommen!</div><div style="font-size:15px;font-weight:800;color:'+TEAL+';margin-top:10px">10 % Rabatt für 6 Monate</div><div style="font-size:14px;color:var(--text-muted);margin-top:6px;line-height:1.55">Du sparst 6 Monate lang 10 % auf deinen Beitrag. Stark, dass du dabei bleibst!</div><button class="btn" data-act="closeOffer" style="margin-top:22px">Zurück zur Vertragsverwaltung</button></div>'; }
@@ -1221,7 +1216,7 @@
       else if(!list.length) body='<div style="'+CARD+';text-align:center"><div style="font-size:16px;font-weight:900;letter-spacing:-.3px;color:var(--text)">Noch keine Termine</div><div style="font-size:13px;color:var(--text-muted);margin-top:4px;line-height:1.45">Buche dir oben deinen ersten Termin.</div></div>';
       else body='<div style="display:flex;flex-direction:column;gap:11px">'+list.map(function(a){ var dt=new Date(a.start); var MON=['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez']; var mon=isNaN(dt.getTime())?'':MON[dt.getMonth()]; var dn=isNaN(dt.getTime())?'':dt.getDate(); return '<div style="display:flex;align-items:center;gap:13px;background:var(--surface);border-radius:16px;box-shadow:0 10px 28px rgba(4,33,40,.08);padding:14px"><div style="width:46px;height:46px;border-radius:13px;background:var(--surface-2);display:flex;flex-direction:column;align-items:center;justify-content:center;flex-shrink:0"><span style="font-size:11px;font-weight:800;color:var(--text-soft);text-transform:uppercase">'+esc(mon)+'</span><span style="font-size:17px;font-weight:900;color:var(--teal-ink);line-height:1">'+esc(dn)+'</span></div><div style="flex:1;min-width:0"><div style="font-size:14.5px;font-weight:800;color:var(--text)">'+esc(a.title)+'</div><div style="font-size:12.5px;color:var(--text-muted);font-weight:600;margin-top:2px">'+deDate(a.start)+' · '+deTime(a.start)+' Uhr</div></div>'+(a.id?'<button data-act="cancelAppt" data-arg="'+esc(a.id)+'" style="border:none;background:transparent;color:var(--err-fg);font-weight:800;font-size:12.5px;cursor:pointer;flex-shrink:0">Stornieren</button>':'')+'</div>'; }).join('')+'</div>';
     }
-    return backHd('Termine')+tabs+body;
+    return subHeader('Termine','Einführungstraining, Beratung & Co.')+tabs+body;
   }
 
   // ===== Beitragskonto (offene Beiträge & Rechnungen) =====
@@ -1595,7 +1590,7 @@
 
   function scrCheckins(){
     var all=DATA.checkins;
-    var head=backHd('Check-in-Verlauf');
+    var head=subHeader('Check-in-Verlauf','Deine Besuche & PDF');
     if(all===null) return head+'<div class="card" style="text-align:center;color:var(--text-soft);font-size:14px">Lade Verlauf …</div>';
     if(!all.length) return head+'<div class="card" style="text-align:center"><div style="font-size:16px;font-weight:800">Noch keine Besuche</div><div style="font-size:13px;color:var(--text-muted);margin-top:6px;line-height:1.5">Sobald du eincheckst, erscheinen deine Besuche hier.</div></div>';
     var sel=ciSelector();
