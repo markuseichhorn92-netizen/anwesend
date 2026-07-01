@@ -295,7 +295,7 @@
     cancelStep:0, cancelReason:'', pauseWeeks:6, offerDone:'', withdrawConfirm:false, withdrawDone:false, cancelDone:false, revokeConfirm:false, revokeDone:false, busy:false,
     pauseStep:0, pauseReason:'', pauseReasonText:'', pauseFrom:'', pausePhoto:'', pausePhotoName:'', pauseDone:false,
     ccBusy:false, ccMsg:'',
-    checkinBusy:false, checkinOk:false, checkinMsg:'', checkedInAt:null, ciBusy:false, ciPopup:null, ciName:'', ciDur:'', atStudio:false, wifiBusy:false, wifiMsg:'',
+    checkinBusy:false, checkinOk:false, checkinMsg:'', checkedInAt:null, ciBusy:false, ciPopup:null, ciName:'', ciDur:'', atStudio:false, ciDistance:null, wifiBusy:false, wifiMsg:'',
     apptTab:'book', bookType:'', bookTypeTitle:'', bookDay:'', bookSlot:null, bookDone:false, bookErr:'', apptMsg:'', fallbackBook:false,
     helpSel:null, helpCat:'all', helpQ:'', helpShowAll:false,
     aiQuery:'', aiPhase:'idle', aiAsked:'', aiAnswer:'', aiFeedback:null,
@@ -420,7 +420,7 @@
     if(s==='home') loadFinnTip();
     if(s==='account') loadAccount();
     if(s==='appt'){ if(!DATA.appts) loadAppts(); if(DATA.bookable===null) loadBookable(); }
-    if(s==='home') checkArrival();
+    if(s==='home'||s==='checkin') checkArrival();
     setS({}); }
 
   // ---- data loading ----
@@ -447,7 +447,7 @@
     if(!TOKEN || S.checkedInAt) return;                       // nur eingeloggt & noch nicht eingecheckt
     var now=Date.now(); if(window.__geoLast && (now-window.__geoLast)<300000) return; // max. alle 5 Min
     window.__geoLast=now;
-    var handle=function(lat,lng){ var here=(geoDist(lat,lng,STUDIO_LAT,STUDIO_LNG)<=GEO_RADIUS); if(here!==S.atStudio){ S.atStudio=here; render(); } };
+    var handle=function(lat,lng){ var dist=Math.round(geoDist(lat,lng,STUDIO_LAT,STUDIO_LNG)); var here=(dist<=GEO_RADIUS); var changed=(here!==S.atStudio)||(S.ciDistance!==dist); S.atStudio=here; S.ciDistance=dist; if(changed) render(); };
     // iPhone-App: natives Plugin (WebView-Geolocation fehlt dort); sonst Browser-API.
     if(window.FitInnNative && FitInnNative.available && FitInnNative.available.geo){
       FitInnNative.getPosition().then(function(p){ if(p) handle(p.lat,p.lng); }).catch(function(){});
@@ -1300,6 +1300,66 @@
       '</div>'+
       '<div style="font-size:12.5px;color:var(--text-soft);line-height:1.55;margin:16px 6px 0;text-align:center">Dein Mitgliedsband funktioniert wie gewohnt weiter. Diese Karte ist dein digitaler Ausweis – und startklar, sobald am Eingang ein QR-Scanner ergänzt wird.</div>';
   }
+  // QR für die Check-in-Seite (Teal-Module, wie im Design).
+  function renderCheckinQr(code){
+    if(!document.getElementById('ci_qr')) return;
+    loadQrLib().then(function(){
+      var el=document.getElementById('ci_qr'); if(!el) return;
+      try{
+        var qr=window.qrcode(0,'M'); qr.addData(String(code)); qr.make();
+        el.innerHTML=qr.createSvgTag({cellSize:6, margin:0, scalable:true}).replace(/fill="black"/g,'fill="#0a4958"');
+        var s=el.querySelector('svg'); if(s){ s.style.width='100%'; s.style.height='100%'; s.style.display='block'; }
+      }catch(e){ el.textContent='Code konnte nicht erzeugt werden.'; }
+    }).catch(function(){ var el=document.getElementById('ci_qr'); if(el) el.textContent='Code konnte nicht geladen werden.'; });
+  }
+  // ── Check-in-Screen (Bottom-Nav-Mitte): QR-Code + „Jetzt einchecken" / Timer + „Auschecken" ──
+  function scrCheckin(){
+    var p=DATA.profile||{}; var nr=p.customerNumber||'';
+    var head='<div style="background:linear-gradient(165deg,#0e6072,#063540);border-radius:20px;box-shadow:0 12px 34px rgba(4,33,40,.18);padding:18px 20px;color:#fff;margin-bottom:16px"><div style="font-size:22px;font-weight:900;letter-spacing:-.4px">Check-in</div></div>';
+
+    // Eingecheckt -> Timer-Karte + Auschecken
+    if(S.checkedInAt){
+      var t=Date.parse(S.checkedInAt); var dur=fmtDur(Date.now()-(isNaN(t)?Date.now():t)); var since=deTime(S.checkedInAt);
+      return head+
+        '<div style="background:linear-gradient(160deg,#0e6072,#063540);border-radius:24px;padding:30px 24px;text-align:center;color:#fff;box-shadow:0 18px 44px rgba(4,33,40,.22)">'+
+          '<div style="width:64px;height:64px;border-radius:50%;background:rgba(70,200,120,.18);display:flex;align-items:center;justify-content:center;margin:0 auto"><span style="width:14px;height:14px;border-radius:50%;background:#46c878;box-shadow:0 0 0 6px rgba(70,200,120,.18)"></span></div>'+
+          '<div style="font-size:13px;color:#aed0d6;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-top:16px">Eingecheckt seit</div>'+
+          '<div id="ci_timer" style="font-size:46px;font-weight:900;letter-spacing:-1px;margin-top:6px;font-variant-numeric:tabular-nums">'+dur+'</div>'+
+          '<div style="font-size:13px;color:#aed0d6;font-weight:600;margin-top:4px">Check-in um '+esc(since)+' Uhr · Auf Hirtenberg 8</div>'+
+          '<button data-act="doCheckout" '+(S.ciBusy?'disabled ':'')+'style="width:100%;margin-top:22px;border:none;border-radius:14px;background:#fff;color:#0a4958;font-weight:800;font-size:16px;padding:15px;cursor:pointer">'+(S.ciBusy?'Checkt aus …':'Auschecken')+'</button>'+
+        '</div>'+
+        '<div style="font-size:12px;color:var(--text-soft);font-weight:600;text-align:center;margin-top:14px;line-height:1.5">Automatisches Auschecken nach 1,5 Std,<br>falls du es vergisst.</div>';
+    }
+
+    // Nicht eingecheckt -> QR-Code + Einchecken
+    var qrCard;
+    if(nr){
+      setTimeout(function(){ renderCheckinQr(nr); },0);
+      qrCard='<div style="background:var(--surface);border-radius:24px;padding:26px 24px;text-align:center;box-shadow:0 14px 38px rgba(4,33,40,.10)">'+
+        '<div style="font-size:18px;font-weight:900;color:var(--text)">Dein Check-in-Code</div>'+
+        '<div style="font-size:13px;color:var(--text-muted);font-weight:600;margin-top:5px;line-height:1.5">Scanne am Drehkreuz oder tippe auf Einchecken, wenn du im Studio bist.</div>'+
+        '<div style="width:210px;height:210px;margin:22px auto 0;border-radius:20px;background:#fff;border:1px solid var(--border);padding:16px;box-sizing:border-box;display:flex;align-items:center;justify-content:center"><div id="ci_qr" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:var(--text-soft);font-size:12px;font-weight:600">Code …</div></div>'+
+        '<div style="font-size:15px;font-weight:800;color:var(--teal-ink);letter-spacing:3px;margin-top:16px">'+esc(nr)+'</div>'+
+        '<button data-act="doCheckin" '+(S.checkinBusy?'disabled ':'')+'style="width:100%;margin-top:20px;border:none;border-radius:14px;background:#0a4958;color:#fff;font-weight:800;font-size:16px;padding:15px;cursor:pointer">'+(S.checkinBusy?'Checkt ein …':'Jetzt einchecken')+'</button>'+
+      '</div>';
+    } else {
+      qrCard='<div style="background:var(--surface);border-radius:24px;padding:26px 24px;text-align:center;box-shadow:0 14px 38px rgba(4,33,40,.10)">'+
+        '<div style="font-size:18px;font-weight:900;color:var(--text)">Check-in</div>'+
+        '<div style="font-size:13px;color:var(--text-muted);font-weight:600;margin-top:5px;line-height:1.5">Tippe auf Einchecken, wenn du im Studio bist.</div>'+
+        '<button data-act="doCheckin" '+(S.checkinBusy?'disabled ':'')+'style="width:100%;margin-top:20px;border:none;border-radius:14px;background:#0a4958;color:#fff;font-weight:800;font-size:16px;padding:15px;cursor:pointer">'+(S.checkinBusy?'Checkt ein …':'Jetzt einchecken')+'</button>'+
+      '</div>';
+    }
+
+    // Standort-Check-in-Karte (zeigt Entfernung, sobald Standort bekannt ist)
+    var locSub = S.atStudio ? 'Du bist im Studio – bereit zum Einchecken 💪'
+      : (S.ciDistance!=null ? ('Du bist '+(S.ciDistance>=1000?((S.ciDistance/1000).toFixed(1).replace('.',',')+' km'):(S.ciDistance+' m'))+' entfernt') : 'Erkennt automatisch, ob du im Studio bist');
+    var loc='<div style="display:flex;align-items:center;gap:11px;background:var(--surface);border-radius:18px;padding:16px;margin-top:14px;box-shadow:0 10px 30px rgba(4,33,40,.08)">'+
+      '<div style="width:42px;height:42px;border-radius:13px;background:#FBEFE2;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+svg('<path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"></path><circle cx="12" cy="10" r="3"></circle>',{c:'#E08C53',w:1.9,s:20})+'</div>'+
+      '<div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:800;color:var(--text)">Standort-Check-in</div><div style="font-size:12px;color:var(--text-soft);font-weight:600">'+esc(locSub)+'</div></div></div>';
+
+    var err = (S.checkinMsg && !S.checkinOk) ? '<div class="err" style="margin-top:14px">'+svg(IC.warn,{c:'var(--err-fg)',w:2,s:17})+'<span>'+esc(S.checkinMsg)+'</span></div>' : '';
+    return head+qrCard+loc+err;
+  }
   // ── Fortschritt & Vitalität (aus echten Check-in-Daten abgeleitet) ──
   var VITAL_TIERS=[['Starter',0],['Aktiv',500],['Vital',1500],['Stark',3500],['Champion',7000],['Legende',12000]];
   function mondayKey(dt){ var x=new Date(dt); if(isNaN(x.getTime())) return null; x.setHours(0,0,0,0); var day=(x.getDay()+6)%7; x.setDate(x.getDate()-day); return x.getFullYear()+'-'+pad2(x.getMonth()+1)+'-'+pad2(x.getDate()); }
@@ -1875,7 +1935,7 @@
   // ---- responsive chrome (Desktop-Sidebar + Topbar) ----
   var DASH_IC='<rect x="3" y="3" width="7" height="9" rx="1.5"></rect><rect x="14" y="3" width="7" height="5" rx="1.5"></rect><rect x="14" y="12" width="7" height="9" rx="1.5"></rect><rect x="3" y="16" width="7" height="5" rx="1.5"></rect>';
   var NAVITEMS=[['home','Übersicht',DASH_IC],['card','Mitgliedskarte','<rect x="3" y="3" width="7" height="7" rx="1.4"></rect><rect x="14" y="3" width="7" height="7" rx="1.4"></rect><rect x="3" y="14" width="7" height="7" rx="1.4"></rect><path d="M14 14h3v3h-3z"></path><path d="M20 14v3M14 20h3M20 20v.01"></path>'],['fort','Fortschritt','<circle cx="12" cy="8" r="6"></circle><path d="M15.5 13.5L17 22l-5-3-5 3 1.5-8.5"></path>'],['blog','Blog','<path d="M4 5h16v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z"></path><path d="M8 9h8M8 13h6M8 17h4"></path>'],['data','Meine Daten',IC.user],['contract','Vertragsverwaltung',IC.doc],['account','Beitragskonto','<rect x="2" y="5" width="20" height="14" rx="2"></rect><path d="M2 9h20M6 15h5"></path>'],['appt','Termine',IC.cal],['referral','Freunde werben',IC.gift],['checkins','Check-ins',IC.list],['postfach','Postfach',IC.mail],['help','Hilfe',IC.help],['settings','Einstellungen',IC.cog]];
-  var TITLES={home:'Übersicht',data:'Meine Daten',contract:'Vertragsverwaltung',account:'Beitragskonto',appt:'Termine',referral:'Freunde werben',checkins:'Check-in-Verlauf',postfach:'Postfach',help:'Hilfe & Kontakt',settings:'Einstellungen',profil:'Profil',card:'Mitgliedskarte',fort:'Fortschritt',blog:'Blog'};
+  var TITLES={home:'Übersicht',data:'Meine Daten',contract:'Vertragsverwaltung',account:'Beitragskonto',appt:'Termine',checkin:'Check-in',referral:'Freunde werben',checkins:'Check-in-Verlauf',postfach:'Postfach',help:'Hilfe & Kontakt',settings:'Einstellungen',profil:'Profil',card:'Mitgliedskarte',fort:'Fortschritt',blog:'Blog'};
   function initials(p){ p=p||{}; var a=(p.firstName||'').trim(),b=(p.lastName||'').trim(); return (((a?a[0]:'')+(b?b[0]:'')).toUpperCase())||'FT'; }
   // Profil-Kopf für Sidebar/Drawer
   function navProfile(){
@@ -1922,12 +1982,12 @@
       var unread=pfUnread()>0;
       var pfCol=(sc==='postfach')?'var(--teal-ink)':'var(--text-soft)';
       var pfBtn='<button data-act="nav" data-arg="postfach" style="flex:1;background:none;border:none;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;padding:5px 0"><span style="position:relative;display:flex">'+svg(IC.mail,{c:pfCol,w:1.9,s:23})+(unread?'<span style="position:absolute;top:-3px;right:-5px;width:8px;height:8px;border-radius:50%;background:#F6A964;border:1.5px solid var(--surface)"></span>':'')+'</span><span style="font-size:10.5px;font-weight:'+(sc==='postfach'?'800':'600')+';color:'+pfCol+'">Postfach</span></button>';
-      var ciIn=!!S.checkedInAt;
-      var ciCenter='<button data-act="ciToggle" aria-label="'+(ciIn?'Auschecken':'Check-in')+'" style="flex:1;background:none;border:none;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px;padding:0"><span style="width:54px;height:54px;border-radius:50%;background:'+(ciIn?'linear-gradient(150deg,#1f9a4e,#127a3c)':'linear-gradient(150deg,#0e6072,#063540)')+';box-shadow:0 10px 24px -4px rgba(10,73,88,.55);display:flex;align-items:center;justify-content:center;margin-top:-26px;border:4px solid var(--surface)">'+svg('<path d="M9 11l3 3L20 5"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>',{c:'#fff',w:2.1,s:24})+'</span><span style="font-size:10.5px;font-weight:800;color:var(--teal-ink)">'+(ciIn?'Auschecken':'Check-in')+'</span></button>';
+      var ciIn=!!S.checkedInAt; var onCi=(sc==='checkin');
+      var ciCenter='<button data-act="nav" data-arg="checkin" aria-label="Check-in" style="flex:1;background:none;border:none;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px;padding:0"><span style="width:54px;height:54px;border-radius:50%;background:'+(ciIn?'linear-gradient(150deg,#1f9a4e,#127a3c)':'linear-gradient(150deg,#0e6072,#063540)')+';box-shadow:0 10px 24px -4px rgba(10,73,88,.55);display:flex;align-items:center;justify-content:center;margin-top:-26px;border:4px solid var(--surface)">'+svg('<path d="M9 11l3 3L20 5"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>',{c:'#fff',w:2.1,s:24})+'</span><span style="font-size:10.5px;font-weight:800;color:'+((onCi||ciIn)?'var(--teal-ink)':'var(--text-soft)')+'">'+(ciIn?'Auschecken':'Check-in')+'</span></button>';
       bn.innerHTML = ni('home','Start',DASH_IC,sc==='home') + ni('appt','Termine',IC.cal,sc==='appt') + ciCenter + pfBtn + ni('profil','Profil',IC.user,profActive);
     }
   }
-  var NARROW={contract:1,referral:1,appt:1,card:1,fort:1,blog:1,profil:1};
+  var NARROW={contract:1,referral:1,appt:1,card:1,fort:1,blog:1,profil:1,checkin:1};
   function render(){
     // Ehemalige Mitglieder: gesperrte Screens immer auf die Übersicht (Rejoin) umleiten
     if(isFormer() && S.screen!=='login' && FORMER_OK.indexOf(S.screen)<0) S.screen='home';
@@ -1942,6 +2002,7 @@
       case 'data': html=scrData(); break;
       case 'contract': html=scrContract(); break;
       case 'appt': html=scrAppt(); break;
+      case 'checkin': html=scrCheckin(); break;
       case 'referral': html=scrReferral(); break;
       case 'account': html=scrAccount(); break;
       case 'checkins': html=scrCheckins(); break;
