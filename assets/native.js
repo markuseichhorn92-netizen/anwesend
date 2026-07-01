@@ -66,6 +66,18 @@
     document.addEventListener('gesturestart', function (e) { e.preventDefault(); }, { passive: false });
   } catch (e) {}
 
+  // ── Statusleiste: WebView bis UNTER die Statusleiste ziehen, weiße Symbole, teal Hintergrund ──
+  // Ohne Overlay lässt iOS einen weißen Native-Streifen über der WebView stehen (der „blöde" Rand oben).
+  // Style 'DARK' = heller/weißer Text – passt zum dunklen Teal hinter der Statusleiste.
+  try {
+    var SB = getPlugin('StatusBar');
+    if (SB) {
+      if (SB.setOverlaysWebView) SB.setOverlaysWebView({ overlay: true }).catch(function () {});
+      if (SB.setStyle) SB.setStyle({ style: 'DARK' }).catch(function () {});
+      if (SB.setBackgroundColor) SB.setBackgroundColor({ color: '#0e6072' }).catch(function () {}); // nur Android
+    }
+  } catch (e) {}
+
   API.available.push = !!(P.FirebaseMessaging || P.PushNotifications);
   API.available.biometrics = !!P.NativeBiometric;
   API.available.apple = !!(P.SignInWithApple || P.SocialLogin);
