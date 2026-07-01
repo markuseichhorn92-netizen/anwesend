@@ -297,7 +297,7 @@
 
   // ---- state ----
   var TOKEN = localStorage.getItem('fi_member_token') || sessionStorage.getItem('fi_member_token') || null;
-  var DATA = { profile:null, contract:null, checkins:null, appts:null, plan:null, planAgg:null, planAggTom:null, inbox:null, prefs:null, membershipActive:true, bookable:null, slots:null, account:null, blog:null, typical:null };
+  var DATA = { profile:null, contract:null, checkins:null, appts:null, plan:null, planAgg:null, planAggTom:null, inbox:null, prefs:null, membershipActive:true, bookable:null, slots:null, account:null, blog:null, typical:null, hours:null, insta:null };
   // Erlaubte Screens für ehemalige Mitglieder (alles andere wird gesperrt)
   var FORMER_OK = ['home','checkins','help','postfach','settings','profil'];
   function isFormer(){ return DATA.membershipActive===false; }
@@ -429,6 +429,7 @@
     if(s==='contract'){ S.cancelStep=0; S.pauseStep=0; S.pauseDone=false; S.offerDone=''; }
     if((s==='checkins'||s==='fort')&&!DATA.checkins) loadCheckins();
     if(s==='blog'){ S.blogSel=null; S.blogPost=null; loadBlog(); }
+    if(s==='insta') loadInsta();
     if(s==='home') loadFinnTip();
     if(s==='account') loadAccount();
     if(s==='appt'){ if(!DATA.appts) loadAppts(); if(DATA.bookable===null) loadBookable(); }
@@ -840,17 +841,44 @@
     '</div>';
   }
   // Öffnungszeiten-Karte (feste Studiozeiten + Live „geöffnet/geschlossen").
+  // Öffnungszeiten live aus Magicline (/api/hours). Fällt auf feste Zeiten zurück, falls nicht verfügbar.
+  var HRS_DOW={MONDAY:0,TUESDAY:1,WEDNESDAY:2,THURSDAY:3,FRIDAY:4,SATURDAY:5,SUNDAY:6};
+  function hmMin(s){ var p=String(s).split(':'); return parseInt(p[0],10)*60+parseInt(p[1]||'0',10); }
+  function fmtHM(m){ var h=Math.floor(m/60),mm=m%60; return (h<10?'0':'')+h+':'+(mm<10?'0':'')+mm; }
+  function loadHours(){
+    if(DATA.hours!==null) return; DATA.hours=false;
+    fetch('/api/hours',{cache:'no-store'}).then(function(r){ return r.ok?r.json():null; }).then(function(h){
+      if(!h||!h.available||!Array.isArray(h.openingHours)||!h.openingHours.length){ DATA.hours=false; return; }
+      var iv=[[],[],[],[],[],[],[]];   // Mo=0 … So=6
+      h.openingHours.forEach(function(e){ var a=HRS_DOW[e.dayOfWeekFrom], b=HRS_DOW[e.dayOfWeekTo]; if(a==null||b==null) return; var f=hmMin(e.timeFrom), t=hmMin(e.timeTo); for(var d=a;;d=(d+1)%7){ iv[d].push([f,t]); if(d===b) break; } });
+      for(var d=0;d<7;d++) iv[d].sort(function(x,y){ return x[0]-y[0]; });
+      DATA.hours={iv:iv};
+      if(S.screen==='home') render();
+    }).catch(function(){ DATA.hours=false; });
+  }
   function hoursCard(){
-    var now=new Date(); var d=now.getDay(); var hm=now.getHours()+now.getMinutes()/60;
-    var wd=(d>=1&&d<=5);
-    var open= wd ? (hm>=6&&hm<23) : (hm>=8&&hm<22);
+    var now=new Date(); var d=(now.getDay()+6)%7; var hm=now.getHours()*60+now.getMinutes();   // d: Mo=0 … So=6
+    var DAYL=['Mo','Di','Mi','Do','Fr','Sa','So'];
+    var H=DATA.hours, open=false, rowsHtml='';
+    var hrow=function(day,time,active){ var col=active?'var(--text)':'var(--text-muted)'; var w=active?'800':'600'; return '<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-top:1px solid var(--border)"><span style="font-size:14px;font-weight:'+w+';color:'+col+'">'+day+'</span><span style="font-size:14px;font-weight:'+w+';color:'+col+';font-variant-numeric:tabular-nums">'+time+'</span></div>'; };
+    if(H&&H.iv){
+      var iv=H.iv;
+      (iv[d]||[]).forEach(function(p){ if(hm>=p[0]&&hm<p[1]) open=true; });
+      var txt=[]; for(var i=0;i<7;i++){ txt[i]=iv[i].length?iv[i].map(function(p){ return fmtHM(p[0])+' – '+fmtHM(p[1]); }).join(' · '):'Geschlossen'; }
+      var groups=[]; for(var i=0;i<7;i++){ var last=groups[groups.length-1]; if(last&&last.txt===txt[i]) last.end=i; else groups.push({start:i,end:i,txt:txt[i]}); }
+      rowsHtml=groups.map(function(g){ var lbl=g.start===g.end?DAYL[g.start]:(DAYL[g.start]+' – '+DAYL[g.end]); return hrow(lbl,g.txt,(d>=g.start&&d<=g.end)); }).join('');
+    } else {
+      // Fallback (feste Zeiten), bis /api/hours verfügbar ist
+      var wd=(d<=4);
+      open= wd ? (hm>=360&&hm<1380) : (hm>=480&&hm<1320);
+      rowsHtml=hrow('Mo – Fr','06:00 – 23:00',wd)+hrow('Samstag','08:00 – 22:00',d===5)+hrow('Sonntag','08:00 – 22:00',d===6);
+    }
     var pill = open
       ? '<span style="display:flex;align-items:center;gap:6px;background:#E7F6EC;padding:5px 11px;border-radius:20px"><span style="width:8px;height:8px;border-radius:50%;background:#1d7a3e"></span><span style="font-size:12px;font-weight:800;color:#176b37">Jetzt geöffnet</span></span>'
       : '<span style="display:flex;align-items:center;gap:6px;background:#FCEBEA;padding:5px 11px;border-radius:20px"><span style="width:8px;height:8px;border-radius:50%;background:#b53a2c"></span><span style="font-size:12px;font-weight:800;color:#b53a2c">Geschlossen</span></span>';
-    var hrow=function(day,time,active){ var col=active?'var(--text)':'var(--text-muted)'; var w=active?'800':'600'; return '<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-top:1px solid var(--border)"><span style="font-size:14px;font-weight:'+w+';color:'+col+'">'+day+'</span><span style="font-size:14px;font-weight:'+w+';color:'+col+';font-variant-numeric:tabular-nums">'+time+'</span></div>'; };
     return '<div class="card" style="border-radius:20px;box-shadow:0 12px 34px rgba(4,33,40,.10);padding:20px;margin-bottom:14px">'+
       '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><div style="display:flex;align-items:center;gap:9px">'+svg('<circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path>',{c:TEAL,w:1.9,s:19})+'<span style="font-size:16px;font-weight:900;color:var(--text)">Öffnungszeiten</span></div>'+pill+'</div>'+
-      hrow('Mo – Fr','06:00 – 23:00',wd)+hrow('Samstag','08:00 – 22:00',d===6)+hrow('Sonntag','08:00 – 22:00',d===0)+
+      rowsHtml+
       '<div style="display:flex;align-items:center;gap:8px;margin-top:14px;background:var(--surface-2);border-radius:13px;padding:12px 14px">'+svg('<path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"></path><circle cx="12" cy="10" r="3"></circle>',{c:TEAL,w:1.9,s:18})+'<span style="font-size:13px;font-weight:600;color:var(--text-2)">Auf Hirtenberg 8 · 54296 Trier</span></div>'+
     '</div>';
   }
@@ -894,7 +922,7 @@
   }
   function scrHome(){
     if(isFormer()) return scrRejoin();
-    loadFinnTip(); loadBlog(); loadTypical();
+    loadFinnTip(); loadInsta(); loadTypical(); loadHours();
     var p=DATA.profile||{}; var name=p.firstName||'';
     // Schnellzugriff – 4 Kacheln mit Live-Daten (wie im Design). Rest liegt im Profil-Hub + Bottom-Nav.
     if(DATA.account===null) loadAccount();
@@ -938,7 +966,7 @@
       auslastungChart()+
       vitalCard()+
       hoursCard()+
-      homeBlog()+
+      homeInsta()+
       tippCard()+
       '<div style="font-size:18px;font-weight:900;color:var(--text);letter-spacing:-.3px;margin:24px 2px 12px">Schnellzugriff</div>'+
       '<div class="gTiles">'+tiles+'</div>';
@@ -1528,6 +1556,33 @@
     return '<div style="display:flex;align-items:center;justify-content:space-between;margin:24px 2px 12px"><span style="font-size:18px;font-weight:900;color:var(--text);letter-spacing:-.3px">Aus unserem Blog</span><span data-act="nav" data-arg="blog" style="font-size:13px;font-weight:700;color:var(--teal-ink);cursor:pointer">Alle ansehen</span></div>'+
       '<div style="display:flex;gap:13px;overflow-x:auto;padding-bottom:4px;scroll-snap-type:x mandatory">'+b.slice(0,4).map(blogCompact).join('')+'</div>';
   }
+  // ── Instagram – neueste Beiträge live (/api/instagram) ──
+  var IG_ICON='<rect x="3" y="3" width="18" height="18" rx="5"></rect><circle cx="12" cy="12" r="4"></circle><circle cx="17.5" cy="6.5" r="1.2"></circle>';
+  function loadInsta(){ if(DATA.insta!==null) return; DATA.insta=false;
+    fetch('/api/instagram',{cache:'no-store'}).then(function(r){ return r.ok?r.json():null; }).then(function(d){ DATA.insta=(d&&d.available&&Array.isArray(d.posts)&&d.posts.length)?d:false; if(S.screen==='home'||S.screen==='insta') render(); }).catch(function(){ DATA.insta=false; }); }
+  function instaCard(p,w){
+    var play=p.video?'<span style="position:absolute;top:8px;right:8px;width:26px;height:26px;border-radius:50%;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center"><svg width="12" height="12" viewBox="0 0 24 24" fill="#fff"><path d="M8 5v14l11-7z"></path></svg></span>':'';
+    return '<a href="'+esc(p.permalink)+'" target="_blank" rel="noopener" style="flex:0 0 '+(w||'200px')+';scroll-snap-align:start;background:var(--surface);border-radius:20px;box-shadow:0 12px 34px rgba(4,33,40,.10);overflow:hidden;text-decoration:none;display:block">'+
+      '<div style="position:relative;width:100%;aspect-ratio:1/1;background:var(--surface-2)"><img src="'+esc(p.image)+'" alt="" loading="lazy" style="width:100%;height:100%;object-fit:cover;display:block">'+play+'</div>'+
+      '<div style="padding:11px 13px 13px"><div style="font-size:13px;color:var(--text-2);font-weight:600;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:36px">'+(p.caption?esc(p.caption):'')+'</div><div style="display:flex;align-items:center;gap:6px;margin-top:8px;font-size:11px;color:var(--text-soft);font-weight:700">'+svg(IG_ICON,{c:'var(--text-soft)',w:1.8,s:14})+(p.timestamp?esc(relTime(Date.parse(p.timestamp))):'Instagram')+'</div></div>'+
+    '</a>';
+  }
+  function homeInsta(){
+    var d=DATA.insta; if(!d||!d.available||!Array.isArray(d.posts)||!d.posts.length) return '';
+    var prof=d.profile||('https://www.instagram.com/'+(d.handle||''));
+    return '<div style="display:flex;align-items:center;justify-content:space-between;margin:24px 2px 12px"><span style="font-size:18px;font-weight:900;color:var(--text);letter-spacing:-.3px">Auf Instagram</span><a href="'+esc(prof)+'" target="_blank" rel="noopener" style="font-size:13px;font-weight:700;color:var(--teal-ink);text-decoration:none">Alle ansehen</a></div>'+
+      '<div style="display:flex;gap:13px;overflow-x:auto;padding-bottom:4px;scroll-snap-type:x mandatory">'+d.posts.slice(0,8).map(function(p){ return instaCard(p,'200px'); }).join('')+'</div>';
+  }
+  function scrInsta(){
+    var d=DATA.insta;
+    var prof=(d&&d.profile)||('https://www.instagram.com/'+((d&&d.handle)||''));
+    var head=subHeader('Instagram',(d&&d.handle)?('@'+d.handle):'Unsere neuesten Beiträge','home');
+    var follow='<a href="'+esc(prof)+'" target="_blank" rel="noopener" style="display:flex;align-items:center;justify-content:center;gap:9px;background:linear-gradient(135deg,#F6A964,#E07C3C);color:#fff;border-radius:16px;padding:15px;font-weight:800;font-size:15px;text-decoration:none;margin-bottom:16px;box-shadow:0 12px 30px -6px rgba(224,124,60,.5)">'+svg(IG_ICON,{c:'#fff',w:2,s:20})+'Auf Instagram folgen</a>';
+    if(!d||!d.available||!Array.isArray(d.posts)||!d.posts.length){
+      return head+follow+'<div class="card" style="text-align:center;padding:26px 22px"><div style="font-size:15px;font-weight:800;color:var(--text)">Beiträge werden geladen …</div><div style="font-size:13px;color:var(--text-soft);margin-top:5px;line-height:1.5">Schau solange gern direkt auf unserem Profil vorbei.</div></div>';
+    }
+    return head+follow+'<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">'+d.posts.map(function(p){ return instaCard(p,'auto'); }).join('')+'</div>';
+  }
   function scrBlog(){
     if(S.blogSel){
       var p=S.blogPost;
@@ -2030,8 +2085,8 @@
 
   // ---- responsive chrome (Desktop-Sidebar + Topbar) ----
   var DASH_IC='<rect x="3" y="3" width="7" height="9" rx="1.5"></rect><rect x="14" y="3" width="7" height="5" rx="1.5"></rect><rect x="14" y="12" width="7" height="9" rx="1.5"></rect><rect x="3" y="16" width="7" height="5" rx="1.5"></rect>';
-  var NAVITEMS=[['home','Übersicht',DASH_IC],['card','Mitgliedskarte','<rect x="3" y="3" width="7" height="7" rx="1.4"></rect><rect x="14" y="3" width="7" height="7" rx="1.4"></rect><rect x="3" y="14" width="7" height="7" rx="1.4"></rect><path d="M14 14h3v3h-3z"></path><path d="M20 14v3M14 20h3M20 20v.01"></path>'],['fort','Fortschritt','<circle cx="12" cy="8" r="6"></circle><path d="M15.5 13.5L17 22l-5-3-5 3 1.5-8.5"></path>'],['blog','Blog','<path d="M4 5h16v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z"></path><path d="M8 9h8M8 13h6M8 17h4"></path>'],['data','Meine Daten',IC.user],['contract','Vertragsverwaltung',IC.doc],['account','Beitragskonto','<rect x="2" y="5" width="20" height="14" rx="2"></rect><path d="M2 9h20M6 15h5"></path>'],['appt','Termine',IC.cal],['referral','Freunde werben',IC.gift],['checkins','Check-ins',IC.list],['postfach','Postfach',IC.mail],['help','Hilfe',IC.help],['settings','Einstellungen',IC.cog]];
-  var TITLES={home:'Übersicht',data:'Meine Daten',contract:'Vertragsverwaltung',account:'Beitragskonto',appt:'Termine',checkin:'Check-in',referral:'Freunde werben',checkins:'Check-in-Verlauf',postfach:'Postfach',help:'Hilfe & Kontakt',settings:'Einstellungen',profil:'Profil',card:'Mitgliedskarte',fort:'Fortschritt',blog:'Blog'};
+  var NAVITEMS=[['home','Übersicht',DASH_IC],['card','Mitgliedskarte','<rect x="3" y="3" width="7" height="7" rx="1.4"></rect><rect x="14" y="3" width="7" height="7" rx="1.4"></rect><rect x="3" y="14" width="7" height="7" rx="1.4"></rect><path d="M14 14h3v3h-3z"></path><path d="M20 14v3M14 20h3M20 20v.01"></path>'],['fort','Fortschritt','<circle cx="12" cy="8" r="6"></circle><path d="M15.5 13.5L17 22l-5-3-5 3 1.5-8.5"></path>'],['insta','Instagram',IG_ICON],['data','Meine Daten',IC.user],['contract','Vertragsverwaltung',IC.doc],['account','Beitragskonto','<rect x="2" y="5" width="20" height="14" rx="2"></rect><path d="M2 9h20M6 15h5"></path>'],['appt','Termine',IC.cal],['referral','Freunde werben',IC.gift],['checkins','Check-ins',IC.list],['postfach','Postfach',IC.mail],['help','Hilfe',IC.help],['settings','Einstellungen',IC.cog]];
+  var TITLES={home:'Übersicht',data:'Meine Daten',contract:'Vertragsverwaltung',account:'Beitragskonto',appt:'Termine',checkin:'Check-in',referral:'Freunde werben',checkins:'Check-in-Verlauf',postfach:'Postfach',help:'Hilfe & Kontakt',settings:'Einstellungen',profil:'Profil',card:'Mitgliedskarte',fort:'Fortschritt',blog:'Blog',insta:'Instagram'};
   function initials(p){ p=p||{}; var a=(p.firstName||'').trim(),b=(p.lastName||'').trim(); return (((a?a[0]:'')+(b?b[0]:'')).toUpperCase())||'FT'; }
   // Profil-Kopf für Sidebar/Drawer
   function navProfile(){
@@ -2083,7 +2138,7 @@
       bn.innerHTML = ni('home','Start',DASH_IC,sc==='home') + ni('appt','Termine',IC.cal,sc==='appt') + ciCenter + pfBtn + ni('profil','Profil',IC.user,profActive);
     }
   }
-  var NARROW={contract:1,referral:1,appt:1,card:1,fort:1,blog:1,profil:1,checkin:1};
+  var NARROW={contract:1,referral:1,appt:1,card:1,fort:1,blog:1,profil:1,checkin:1,insta:1};
   function render(){
     // Ehemalige Mitglieder: gesperrte Screens immer auf die Übersicht (Rejoin) umleiten
     if(isFormer() && S.screen!=='login' && FORMER_OK.indexOf(S.screen)<0) S.screen='home';
@@ -2095,6 +2150,7 @@
       case 'fort': html=scrFort(); break;
       case 'profil': html=scrProfil(); break;
       case 'blog': html=scrBlog(); break;
+      case 'insta': html=scrInsta(); break;
       case 'data': html=scrData(); break;
       case 'contract': html=scrContract(); break;
       case 'appt': html=scrAppt(); break;
