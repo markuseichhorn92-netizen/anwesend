@@ -49,7 +49,7 @@ function mapFeedPost(p) {
   return {
     id: p.id || p.permalink || String(Math.random()),
     image: image,
-    caption: String(p.caption || p.prunedCaption || '').slice(0, 220),
+    caption: String(p.prunedCaption || p.caption || '').replace(/^\s*📋\s*Caption:\s*/i, '').slice(0, 200),
     permalink: p.permalink || p.link || '',
     timestamp: p.timestamp || p.date || null,
     video: (p.mediaType === 'VIDEO' || p.media_type === 'VIDEO'),
@@ -61,7 +61,7 @@ async function fetchFeed() {
   if (!r.ok) throw new Error('feed_status_' + r.status);
   const json = await r.json();
   const list = Array.isArray(json) ? json : (Array.isArray(json.posts) ? json.posts : []);
-  const handle = (json && json.profile && (json.profile.username || json.profile.handle)) || HANDLE || null;
+  const handle = (json && (json.username || (json.profile && (json.profile.username || json.profile.handle)))) || HANDLE || null;
   const posts = list.map(mapFeedPost).filter(function (p) { return p.image && p.permalink; }).slice(0, 12);
   return { available: posts.length > 0, handle: handle, profile: profileUrl(handle), posts: posts };
 }
