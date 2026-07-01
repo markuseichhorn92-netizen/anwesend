@@ -40,19 +40,28 @@ function profileUrl(handle) { return handle ? ('https://www.instagram.com/' + ha
 // ── Behold-/Feed-JSON auf unser Post-Format bringen ──
 function mapFeedPost(p) {
   const sizes = p.sizes || {};
-  const image =
+  const med =
     (sizes.medium && sizes.medium.mediaUrl) ||
-    (sizes.small && sizes.small.mediaUrl) ||
+    (sizes.small && sizes.small.mediaUrl) || null;
+  const big =
     (sizes.large && sizes.large.mediaUrl) ||
-    (sizes.full && sizes.full.mediaUrl) ||
-    p.thumbnailUrl || p.thumbnail_url || p.mediaUrl || p.media_url || null;
+    (sizes.full && sizes.full.mediaUrl) || null;
+  const base = med || big || p.thumbnailUrl || p.thumbnail_url || p.mediaUrl || p.media_url || null;
+  const type = p.mediaType || p.media_type || '';
+  const isVideo = (type === 'VIDEO');
+  const num = function (v) { return (typeof v === 'number' && isFinite(v)) ? v : null; };
   return {
     id: p.id || p.permalink || String(Math.random()),
-    image: image,
-    caption: String(p.prunedCaption || p.caption || '').replace(/^\s*📋\s*Caption:\s*/i, '').slice(0, 200),
+    image: med || base,          // mittlere Größe für die Kacheln
+    imageLg: big || med || base, // große Größe für die Detailansicht
+    caption: String(p.prunedCaption || p.caption || '').replace(/^\s*📋\s*Caption:\s*/i, '').slice(0, 2200),
     permalink: p.permalink || p.link || '',
     timestamp: p.timestamp || p.date || null,
-    video: (p.mediaType === 'VIDEO' || p.media_type === 'VIDEO'),
+    type: type,
+    video: isVideo,
+    videoUrl: isVideo ? (p.mediaUrl || p.media_url || null) : null,
+    likes: num(p.likeCount != null ? p.likeCount : p.like_count),
+    comments: num(p.commentsCount != null ? p.commentsCount : p.comments_count),
   };
 }
 
@@ -79,13 +88,20 @@ async function fetchGraph() {
   }
   const list = Array.isArray(json.data) ? json.data : [];
   const posts = list.map(function (m) {
+    const img = m.thumbnail_url || m.media_url || null;
+    const isVideo = m.media_type === 'VIDEO';
     return {
       id: m.id,
-      image: m.thumbnail_url || m.media_url || null,
-      caption: String(m.caption || '').slice(0, 220),
+      image: img,
+      imageLg: m.media_url || img,
+      caption: String(m.caption || '').slice(0, 2200),
       permalink: m.permalink || profileUrl(HANDLE) || '',
       timestamp: m.timestamp || null,
-      video: m.media_type === 'VIDEO',
+      type: m.media_type || '',
+      video: isVideo,
+      videoUrl: isVideo ? (m.media_url || null) : null,
+      likes: null,
+      comments: null,
     };
   }).filter(function (p) { return p.image; }).slice(0, 12);
   return { available: posts.length > 0, handle: HANDLE || null, profile: profileUrl(HANDLE), posts: posts };

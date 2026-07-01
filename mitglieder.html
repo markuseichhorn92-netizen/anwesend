@@ -312,7 +312,7 @@
     helpSel:null, helpCat:'all', helpQ:'', helpShowAll:false,
     aiQuery:'', aiPhase:'idle', aiAsked:'', aiAnswer:'', aiFeedback:null,
     finnOpen:false, finnMsgs:[], finnBusy:false, finnTip:'', finnTipLoaded:false,
-    blogSel:null, blogPost:null,
+    blogSel:null, blogPost:null, instaSel:null,
     obStep:0, obGoal:'Gesundheit & Longevity', obFreq:3, obAge:34, obExp:'gelegentlich',
     ctOpen:false, ctSent:false, ctMsg:'', ctBusy:false, ctErr:'', ctMsgServer:'', artFb:null,
     pfFilter:'all', pfSel:null, pfThread:false, pfDraft:'', pfBusy:false, pfErr:'',
@@ -429,7 +429,7 @@
     if(s==='contract'){ S.cancelStep=0; S.pauseStep=0; S.pauseDone=false; S.offerDone=''; }
     if((s==='checkins'||s==='fort')&&!DATA.checkins) loadCheckins();
     if(s==='blog'){ S.blogSel=null; S.blogPost=null; loadBlog(); }
-    if(s==='insta') loadInsta();
+    if(s==='insta'){ S.instaSel=null; loadInsta(); }
     if(s==='home') loadFinnTip();
     if(s==='account') loadAccount();
     if(s==='appt'){ if(!DATA.appts) loadAppts(); if(DATA.bookable===null) loadBookable(); }
@@ -1562,10 +1562,10 @@
     fetch('/api/instagram',{cache:'no-store'}).then(function(r){ return r.ok?r.json():null; }).then(function(d){ DATA.insta=(d&&d.available&&Array.isArray(d.posts)&&d.posts.length)?d:false; if(S.screen==='home'||S.screen==='insta') render(); }).catch(function(){ DATA.insta=false; }); }
   function instaCard(p,w){
     var play=p.video?'<span style="position:absolute;top:8px;right:8px;width:26px;height:26px;border-radius:50%;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center"><svg width="12" height="12" viewBox="0 0 24 24" fill="#fff"><path d="M8 5v14l11-7z"></path></svg></span>':'';
-    return '<a href="'+esc(p.permalink)+'" target="_blank" rel="noopener" style="flex:0 0 '+(w||'200px')+';scroll-snap-align:start;background:var(--surface);border-radius:20px;box-shadow:0 12px 34px rgba(4,33,40,.10);overflow:hidden;text-decoration:none;display:block">'+
+    return '<div data-act="openInsta" data-arg="'+esc(p.id)+'" style="flex:0 0 '+(w||'200px')+';scroll-snap-align:start;background:var(--surface);border-radius:20px;box-shadow:0 12px 34px rgba(4,33,40,.10);overflow:hidden;cursor:pointer;display:block">'+
       '<div style="position:relative;width:100%;aspect-ratio:1/1;background:var(--surface-2)"><img src="'+esc(p.image)+'" alt="" loading="lazy" style="width:100%;height:100%;object-fit:cover;display:block">'+play+'</div>'+
       '<div style="padding:11px 13px 13px"><div style="font-size:13px;color:var(--text-2);font-weight:600;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:36px">'+(p.caption?esc(p.caption):'')+'</div><div style="display:flex;align-items:center;gap:6px;margin-top:8px;font-size:11px;color:var(--text-soft);font-weight:700">'+svg(IG_ICON,{c:'var(--text-soft)',w:1.8,s:14})+(p.timestamp?esc(relTime(Date.parse(p.timestamp))):'Instagram')+'</div></div>'+
-    '</a>';
+    '</div>';
   }
   function homeInsta(){
     var d=DATA.insta; if(!d||!d.available||!Array.isArray(d.posts)||!d.posts.length) return '';
@@ -1573,9 +1573,43 @@
     return '<div style="display:flex;align-items:center;justify-content:space-between;margin:24px 2px 12px"><span style="font-size:18px;font-weight:900;color:var(--text);letter-spacing:-.3px">Auf Instagram</span><a href="'+esc(prof)+'" target="_blank" rel="noopener" style="font-size:13px;font-weight:700;color:var(--teal-ink);text-decoration:none">Alle ansehen</a></div>'+
       '<div style="display:flex;gap:13px;overflow-x:auto;padding-bottom:4px;scroll-snap-type:x mandatory">'+d.posts.slice(0,8).map(function(p){ return instaCard(p,'200px'); }).join('')+'</div>';
   }
+  function instaDetail(p,d){
+    var handle=(d&&d.handle)||'fit_inn_trier';
+    var when=p.timestamp?esc(relTime(Date.parse(p.timestamp))):'';
+    var media;
+    if(p.video && p.videoUrl){
+      media='<video controls playsinline preload="metadata"'+(p.image?' poster="'+esc(p.image)+'"':'')+' style="width:100%;display:block;background:#000;max-height:78vh"><source src="'+esc(p.videoUrl)+'" type="video/mp4"></video>';
+    } else {
+      var badge=p.video?'<a href="'+esc(p.permalink)+'" target="_blank" rel="noopener" aria-label="Video auf Instagram ansehen" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-decoration:none"><span style="width:60px;height:60px;border-radius:50%;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center"><svg width="26" height="26" viewBox="0 0 24 24" fill="#fff"><path d="M8 5v14l11-7z"></path></svg></span></a>':'';
+      media='<div style="position:relative;background:var(--surface-2)"><img src="'+esc(p.imageLg||p.image)+'" alt="" style="width:100%;display:block">'+badge+'</div>';
+    }
+    var heartIco='<svg width="17" height="17" viewBox="0 0 24 24" fill="#E0577B" stroke="#E0577B" stroke-width="1.5" stroke-linejoin="round"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 1 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8z"></path></svg>';
+    var cmtIco='<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--text-soft)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9 9 0 0 1-4.2-1L3 20l1.2-3.6A8.4 8.4 0 1 1 21 11.5z"></path></svg>';
+    var stats='';
+    if(p.likes!=null||p.comments!=null){
+      var parts=[];
+      if(p.likes!=null) parts.push('<span style="display:inline-flex;align-items:center;gap:6px;font-size:13.5px;font-weight:800;color:var(--text)">'+heartIco+deNum(p.likes)+'</span>');
+      if(p.comments!=null) parts.push('<span style="display:inline-flex;align-items:center;gap:6px;font-size:13.5px;font-weight:800;color:var(--text)">'+cmtIco+deNum(p.comments)+'</span>');
+      stats='<div style="display:flex;gap:20px;margin:15px 2px 0">'+parts.join('')+'</div>';
+    }
+    var author='<div style="display:flex;align-items:center;gap:10px;margin:16px 2px 0">'+
+      '<div style="width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,#F6A964,#E07C3C);display:flex;align-items:center;justify-content:center;flex-shrink:0">'+svg(IG_ICON,{c:'#fff',w:2,s:17})+'</div>'+
+      '<div style="min-width:0"><div style="font-size:14px;font-weight:800;color:var(--text)">@'+esc(handle)+'</div>'+(when?'<div style="font-size:11.5px;color:var(--text-soft);font-weight:600">'+when+'</div>':'')+'</div></div>';
+    var cap=p.caption?'<div style="font-size:14.5px;color:var(--text-2);font-weight:500;line-height:1.65;white-space:pre-wrap;word-break:break-word;margin:14px 2px 0">'+esc(p.caption)+'</div>':'';
+    var openBtn=p.permalink?'<a href="'+esc(p.permalink)+'" target="_blank" rel="noopener" style="display:flex;align-items:center;justify-content:center;gap:9px;background:linear-gradient(135deg,#F6A964,#E07C3C);color:#fff;border-radius:16px;padding:14px;font-weight:800;font-size:15px;text-decoration:none;margin-top:18px;box-shadow:0 12px 30px -6px rgba(224,124,60,.5)">'+svg(IG_ICON,{c:'#fff',w:2,s:19})+(p.video?'Video auf Instagram ansehen':'Auf Instagram öffnen')+'</a>':'';
+    return backHd('Beitrag','insta')+
+      '<div style="background:var(--surface);border-radius:20px;box-shadow:0 12px 34px rgba(4,33,40,.10);overflow:hidden">'+media+'</div>'+
+      author+stats+cap+openBtn;
+  }
   function scrInsta(){
     var d=DATA.insta;
     var prof=(d&&d.profile)||('https://www.instagram.com/'+((d&&d.handle)||''));
+    if(S.instaSel){
+      var posts=(d&&Array.isArray(d.posts))?d.posts:[];
+      var sel=null; for(var pi=0;pi<posts.length;pi++){ if(String(posts[pi].id)===String(S.instaSel)){ sel=posts[pi]; break; } }
+      if(sel) return instaDetail(sel,d);
+      S.instaSel=null; // Beitrag nicht (mehr) vorhanden -> zurück zur Übersicht
+    }
     var head=subHeader('Instagram',(d&&d.handle)?('@'+d.handle):'Unsere neuesten Beiträge','home');
     var follow='<a href="'+esc(prof)+'" target="_blank" rel="noopener" style="display:flex;align-items:center;justify-content:center;gap:9px;background:linear-gradient(135deg,#F6A964,#E07C3C);color:#fff;border-radius:16px;padding:15px;font-weight:800;font-size:15px;text-decoration:none;margin-bottom:16px;box-shadow:0 12px 30px -6px rgba(224,124,60,.5)">'+svg(IG_ICON,{c:'#fff',w:2,s:20})+'Auf Instagram folgen</a>';
     if(!d||!d.available||!Array.isArray(d.posts)||!d.posts.length){
@@ -2205,6 +2239,7 @@
       }).catch(function(){ S.finnBusy=false; S.finnMsgs.push({role:'assistant',text:'Verbindung gerade nicht möglich. Versuch es gleich nochmal.'}); render(); finnScrollBottom(); }); },
     finnToTeam:function(){ var last=''; for(var i=S.finnMsgs.length-1;i>=0;i--){ if(S.finnMsgs[i].role==='user'){ last=S.finnMsgs[i].text; break; } } setS({finnOpen:false}); nav('help'); setTimeout(function(){ setS({ctOpen:true,ctSent:false,ctErr:'',ctMsg:(last?('Meine Frage an FINN: '+last+'\n\n'):'')+'Bitte helft mir persönlich weiter.'}); },150); },
     openBlog:function(a){ closeMenu(); S.blogSel=a; S.blogPost=null; setS({screen:'blog'}); try{ window.scrollTo(0,0); }catch(e){} api('/api/member/blog?id='+encodeURIComponent(a)).then(function(d){ if(d&&d.ok&&d.post){ S.blogPost=d.post; if(S.blogSel===a&&S.screen==='blog') render(); } }).catch(function(){}); },
+    openInsta:function(a){ closeMenu(); S.instaSel=a; setS({screen:'insta'}); loadInsta(); },
     doCheckin:function(){
       if(S.checkinBusy||S.checkedInAt) return;
       setS({checkinBusy:true,checkinMsg:''});
