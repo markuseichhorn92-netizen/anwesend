@@ -297,7 +297,7 @@
 
   // ---- state ----
   var TOKEN = localStorage.getItem('fi_member_token') || sessionStorage.getItem('fi_member_token') || null;
-  var DATA = { profile:null, contract:null, checkins:null, appts:null, plan:null, planAgg:null, planAggTom:null, inbox:null, prefs:null, membershipActive:true, bookable:null, slots:null, account:null, blog:null, typical:null, hours:null, insta:null };
+  var DATA = { profile:null, contract:null, checkins:null, appts:null, plan:null, planAgg:null, planAggTom:null, inbox:null, prefs:null, membershipActive:true, bookable:null, slots:null, account:null, blog:null, typical:null, hours:null, insta:null, live:null };
   // Erlaubte Screens für ehemalige Mitglieder (alles andere wird gesperrt)
   var FORMER_OK = ['home','checkins','help','postfach','settings','profil'];
   function isFormer(){ return DATA.membershipActive===false; }
@@ -430,7 +430,7 @@
     if((s==='checkins'||s==='fort')&&!DATA.checkins) loadCheckins();
     if(s==='blog'){ S.blogSel=null; S.blogPost=null; loadBlog(); }
     if(s==='insta'){ S.instaSel=null; loadInsta(); maybeRefreshInsta(); }
-    if(s==='home'){ loadFinnTip(); maybeRefreshInsta(); }
+    if(s==='home'){ loadFinnTip(); maybeRefreshInsta(); maybeRefreshLive(); }
     if(s==='account') loadAccount();
     if(s==='appt'){ if(!DATA.appts) loadAppts(); if(DATA.bookable===null) loadBookable(); }
     if(s==='home'||s==='checkin') checkArrival();
@@ -803,40 +803,68 @@
   }
   // Auslastung „heute" – typische Tageskurve (öffentlicher /api/typical-Endpunkt).
   function loadTypical(){ if(DATA.typical!==null) return; DATA.typical=false; fetch('/api/typical').then(function(r){return r.json();}).then(function(d){ DATA.typical=(d&&d.available!==false&&Array.isArray(d.day))?d:false; if(S.screen==='home') render(); }).catch(function(){}); }
+  // Live-Auslastung – aktuelle Personenzahl aus Magicline (/api/auslastung).
+  var liveTs=0;
+  function loadLive(force){
+    if(!force && DATA.live!==null) return;
+    if(DATA.live===null) DATA.live=false;
+    fetch('/api/auslastung',{cache:'no-store'}).then(function(r){ return r.ok?r.json():null; }).then(function(d){
+      liveTs=Date.now();
+      if(d&&typeof d.count==='number'&&!d.error) DATA.live=d;
+      if(S.screen==='home') render();
+    }).catch(function(){ if(DATA.live===null) DATA.live=false; });
+  }
+  // Live-Zahl ist zeitkritisch -> beim Öffnen der Startseite höchstens 1×/Min neu holen.
+  function maybeRefreshLive(){ if(DATA.live && (Date.now()-liveTs)>60000) loadLive(true); }
   function auslastungChart(){
     var t=DATA.typical;
-    // Ohne Live-Daten trotzdem die Wunschzeit-Karte zeigen (Vormerken funktioniert eigenständig).
-    if(!t||!Array.isArray(t.day)){
+    var live=(DATA.live&&typeof DATA.live.count==='number')?DATA.live:null;
+    // Weder Live- noch Verlaufsdaten -> trotzdem die Wunschzeit-Karte zeigen (Vormerken läuft eigenständig).
+    if((!t||!Array.isArray(t.day)) && !live){
       return '<div id="vormerken" class="card" style="border-radius:20px;box-shadow:0 12px 34px rgba(4,33,40,.10);padding:20px 20px 18px;margin-bottom:14px">'+planInner().replace('margin:20px 0 10px','margin:0 0 10px')+'</div>';
     }
-    var day=t.day, max=t.max||0;
-    var curSlot=(typeof t.slot==='number')?t.slot:-1, curHour=curSlot>=0?Math.floor(curSlot/2):-1;
-    // Balken im 2-Stunden-Raster (7–9, 9–11, … 21–23) → 8 Balken wie im Design.
-    var bars=[], peakH=7, peakV=0;
-    for(var h=7;h<=21;h+=2){
-      var v=0, idx=[h*2,h*2+1,h*2+2,h*2+3];
-      idx.forEach(function(i){ var x=day[i]; if(x!=null&&x>v) v=x; });
-      if(v>peakV){peakV=v;peakH=h;} bars.push({h:h,v:v});
+    var day=(t&&Array.isArray(t.day))?t.day:null;
+    var max=(live&&live.max)||(t&&t.max)||40;
+    var curSlot=(t&&typeof t.slot==='number')?t.slot:-1;
+    var curHour=curSlot>=0?Math.floor(curSlot/2):(new Date().getHours());
+
+    // Zeitfenster: heutige Öffnungszeiten (sonst 7–22 Uhr).
+    var openH=7, closeH=22, H=DATA.hours;
+    if(H&&H.iv){ var dw=(new Date().getDay()+6)%7; var arr=H.iv[dw]||[]; if(arr.length){ var lo=arr[0][0],hi=arr[0][1]; arr.forEach(function(x){ if(x[0]<lo)lo=x[0]; if(x[1]>hi)hi=x[1]; }); openH=Math.max(5,Math.floor(lo/60)); closeH=Math.min(23,Math.ceil(hi/60)); } }
+    if(closeH-openH<4){ openH=7; closeH=22; }
+
+    // Stündliche Balken (ein Balken = eine Stunde) statt 2-Stunden-Raster.
+    var bars=[], peakH=openH, peakV=0;
+    for(var h=openH; h<closeH; h++){
+      var v=0; if(day){ var a=day[h*2], b=day[h*2+1]; if(a!=null&&a>v)v=a; if(b!=null&&b>v)v=b; }
+      if(v>peakV){ peakV=v; peakH=h; } bars.push({h:h,v:v});
     }
     var maxV=Math.max(max||0, peakV, 1);
     var barsHtml=bars.map(function(bar){
       var pct=Math.max(4, Math.round(bar.v/maxV*100));
       var ratio=bar.v/(max||maxV);
       var col= ratio>=.8?'#e2685a':(ratio>=.5?'#E08C53':'#37b27a');
-      var now=(curHour>=bar.h&&curHour<bar.h+2);
+      var now=(bar.h===curHour);
+      var showLab=((bar.h-openH)%3===0)||(bar.h===closeH-1);
       return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;justify-content:flex-end;height:100%">'+
-        '<div style="width:100%;background:'+col+';height:'+pct+'%;border-radius:4px;min-height:6px;position:relative">'+(now?'<span style="position:absolute;top:-18px;left:50%;transform:translateX(-50%);font-size:9px;font-weight:800;color:var(--teal-ink);background:var(--surface-2);padding:1px 5px;border-radius:6px;white-space:nowrap">jetzt</span>':'')+'</div>'+
-        '<span style="font-size:9.5px;font-weight:'+(now?'800':'600')+';color:'+(now?'var(--text)':'var(--text-soft)')+'">'+bar.h+'</span>'+
+        '<div style="width:100%;max-width:16px;background:'+(now?'var(--teal-ink)':col)+';height:'+pct+'%;border-radius:3px;min-height:5px;position:relative">'+(now?'<span style="position:absolute;top:-18px;left:50%;transform:translateX(-50%);font-size:9px;font-weight:800;color:#fff;background:var(--teal-ink);padding:1px 6px;border-radius:6px;white-space:nowrap">jetzt</span>':'')+'</div>'+
+        '<span style="font-size:9px;font-weight:'+(now?'800':'600')+';color:'+(now?'var(--text)':'var(--text-soft)')+';height:11px">'+(showLab?(''+bar.h):'')+'</span>'+
       '</div>';
     }).join('');
-    var curVal=(typeof t.typicalCount==='number')?t.typicalCount:(curHour>=0?Math.round(day[curHour*2]||0):0);
-    var pp=t.typicalPercent;
+
+    // Große Kennzahl: bevorzugt Live-Wert, sonst typischer Wert.
+    var num, sub, pp, liveMode=!!live;
+    if(live){ num=live.count; pp=(typeof live.percent==='number')?live.percent:Math.round(live.count/max*100); sub='gerade im Studio'; }
+    else { num=(typeof t.typicalCount==='number')?t.typicalCount:(curHour>=0?Math.round((day&&day[curHour*2])||0):0); pp=t.typicalPercent; sub='üblich um diese Zeit'; }
     var loadLabel = pp==null?'':(pp>=80?'Hoch':(pp>=50?'Mittel':'Entspannt'));
     var loadStyle = pp>=80?['#FCEBEA','#e2685a','#b53a2c']:(pp>=50?['#FBEFE2','#E08C53','#b5631f']:['#E7F6EC','#37b27a','#176b37']);
+    var numCol = pp>=80?'#b53a2c':(pp>=50?'#b5631f':'#176b37');
+
     return '<div id="vormerken" class="card" style="border-radius:20px;box-shadow:0 12px 34px rgba(4,33,40,.10);padding:20px;margin-bottom:14px">'+
       '<div style="display:flex;align-items:center;justify-content:space-between"><span style="font-size:13px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.5px">Auslastung jetzt</span>'+(loadLabel?'<span style="display:flex;align-items:center;gap:6px;background:'+loadStyle[0]+';padding:5px 11px;border-radius:20px"><span style="width:8px;height:8px;border-radius:50%;background:'+loadStyle[1]+'"></span><span style="font-size:12px;font-weight:800;color:'+loadStyle[2]+'">'+loadLabel+'</span></span>':'')+'</div>'+
-      '<div style="display:flex;align-items:flex-end;gap:5px;height:78px;margin-top:20px">'+barsHtml+'</div>'+
-      '<div style="display:flex;justify-content:space-between;margin-top:10px;font-size:12px;color:var(--text-soft);font-weight:600"><span>≈ '+curVal+(max?(' von '+max):'')+' Gäste</span><span>Stoßzeit '+peakH+'–'+(peakH+2)+' Uhr</span></div>'+
+      '<div style="display:flex;align-items:baseline;gap:7px;margin-top:12px"><span style="font-size:34px;font-weight:900;letter-spacing:-1px;color:'+numCol+';line-height:1">'+num+'</span><span style="font-size:16px;font-weight:800;color:var(--text-soft)">von '+max+'</span><span style="font-size:13px;font-weight:600;color:var(--text-muted);margin-left:2px">'+sub+'</span></div>'+
+      '<div style="display:flex;align-items:flex-end;gap:4px;height:74px;margin-top:18px">'+barsHtml+'</div>'+
+      '<div style="display:flex;justify-content:space-between;margin-top:10px;font-size:11.5px;color:var(--text-soft);font-weight:600"><span>'+(peakV>0?('Stoßzeit '+peakH+'–'+(peakH+1)+' Uhr'):'gleichmäßig über den Tag')+'</span><span>'+(liveMode?'Live · gerade eben':'Schnitt der letzten Wochen')+'</span></div>'+
       planInner()+
     '</div>';
   }
@@ -922,7 +950,7 @@
   }
   function scrHome(){
     if(isFormer()) return scrRejoin();
-    loadFinnTip(); loadInsta(); loadTypical(); loadHours();
+    loadFinnTip(); loadInsta(); loadTypical(); loadLive(); loadHours();
     var p=DATA.profile||{}; var name=p.firstName||'';
     // Schnellzugriff – 4 Kacheln mit Live-Daten (wie im Design). Rest liegt im Profil-Hub + Bottom-Nav.
     if(DATA.account===null) loadAccount();
