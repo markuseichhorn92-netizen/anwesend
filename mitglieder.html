@@ -1363,11 +1363,45 @@
   // ── Fortschritt & Vitalität (aus echten Check-in-Daten abgeleitet) ──
   var VITAL_TIERS=[['Starter',0,'🌱'],['Aktiv',500,'⚡'],['Vital',1500,'💚'],['Stark',3000,'💪'],['Ausdauernd',5000,'🏅'],['Elite',8000,'👑']];
   function mondayKey(dt){ var x=new Date(dt); if(isNaN(x.getTime())) return null; x.setHours(0,0,0,0); var day=(x.getDay()+6)%7; x.setDate(x.getDate()-day); return x.getFullYear()+'-'+pad2(x.getMonth()+1)+'-'+pad2(x.getDate()); }
+  var MONTHS_DE=['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
+  function isoWeek(date){ var d=new Date(Date.UTC(date.getFullYear(),date.getMonth(),date.getDate())); var dn=(d.getUTCDay()+6)%7; d.setUTCDate(d.getUTCDate()-dn+3); var ft=new Date(Date.UTC(d.getUTCFullYear(),0,4)); return 1+Math.round(((d-ft)/864e5-3+((ft.getUTCDay()+6)%7))/7); }
+  // ── Vitalpunkte-Engine: leitet Punkte + „Punkte-Verlauf" deterministisch aus den echten Check-ins ab ──
+  // Check-in +50 · Wochenziel (3×/Woche) +150 · Streak-Bonus alle 5 Wochen +75 · Inaktivität (ab 2 leeren Wochen) −40/Woche
+  var GOAL_WEEK=3;
+  function gamify(){
+    var ci=(Array.isArray(DATA.checkins)?DATA.checkins:[]).filter(function(x){ return x&&x.in&&!isNaN(Date.parse(x.in)); });
+    var entries=[];
+    // 1) jeder Check-in +50
+    ci.forEach(function(x){ entries.push({t:Date.parse(x.in),emoji:'✅',bg:'#E7F6EC',title:'Check-in',sub:deDate(x.in)+' · '+deTime(x.in),pts:50,color:'#176b37'}); });
+    // 2) wochenweise Boni/Abzüge über die Zeitachse vom ersten Check-in bis heute
+    var byWeek={}; ci.forEach(function(x){ var k=mondayKey(x.in); if(k){ (byWeek[k]=byWeek[k]||[]).push(x); } });
+    var keys=Object.keys(byWeek).sort();
+    if(keys.length){
+      var firstM=Date.parse(keys[0]);
+      var cm=new Date(); cm.setHours(0,0,0,0); cm.setDate(cm.getDate()-((cm.getDay()+6)%7)); var curM=cm.getTime();
+      var streak=0, inactive=0, gapStart=null, WK=7*864e5;
+      var closeGap=function(atMs){ if(inactive>=2 && gapStart!=null){ entries.push({t:atMs,emoji:'💤',bg:'#FBF0E8',title:'Inaktivität',sub:inactive+' Wochen im '+MONTHS_DE[new Date(gapStart).getMonth()],pts:-40*(inactive-1),color:'#b5402f'}); } inactive=0; gapStart=null; };
+      for(var wm=firstM; wm<=curM+1; wm+=WK){
+        var arr=byWeek[mondayKey(new Date(wm))]||[];
+        var wkDate=new Date(wm);
+        if(arr.length){
+          closeGap(wm-1); streak++;
+          var srt=arr.slice().sort(function(a,b){ return Date.parse(a.in)-Date.parse(b.in); });
+          if(arr.length>=GOAL_WEEK){ entries.push({t:Date.parse(srt[GOAL_WEEK-1].in)+1000,emoji:'🎯',bg:'#E7F1F3',title:'Wochenziel erreicht',sub:'KW '+isoWeek(wkDate),pts:150,color:'#176b37'}); }
+          if(streak%5===0){ entries.push({t:Date.parse(srt[srt.length-1].in)+2000,emoji:'🔥',bg:'#FBEFE2',title:'Streak-Bonus · '+streak+' Wochen',sub:'KW '+isoWeek(wkDate),pts:75,color:'#176b37'}); }
+        } else { if(inactive===0) gapStart=wm; inactive++; streak=0; }
+      }
+      closeGap(curM);
+    }
+    var points=entries.reduce(function(s,e){ return s+e.pts; },0); if(points<0) points=0;
+    entries.sort(function(a,b){ return b.t-a.t; });
+    return {points:points, ledger:entries};
+  }
   function vitalsData(){
     var ci=Array.isArray(DATA.checkins)?DATA.checkins:[];
     var done=ci.filter(function(x){ return x&&x.in; });
     var visits=done.length;
-    var points=visits*50;
+    var points=gamify().points;
     var ti=0; for(var i=0;i<VITAL_TIERS.length;i++){ if(points>=VITAL_TIERS[i][1]) ti=i; }
     var cur=VITAL_TIERS[ti], nxt=VITAL_TIERS[ti+1]||null;
     var toNext=nxt?(nxt[1]-points):0;
@@ -1454,14 +1488,14 @@
     // 4) Was regelmäßiges Training bewirkt
     var benefits=[['❤️','Herz & Kreislauf werden gestärkt'],['🧠','Besserer Schlaf & klarer Kopf'],['🦴','Knochen & Muskeln bleiben stabil'],['⏳','Studien verbinden regelmäßige Bewegung mit mehr gesunden Lebensjahren']];
     var ben='<div style="'+CARD+'"><div style="font-size:16px;font-weight:900;color:var(--text);margin-bottom:4px">Was regelmäßiges Training bewirkt</div><div style="font-size:12.5px;color:var(--text-soft);font-weight:500;margin-bottom:14px">Allgemeine Effekte von 2–3 Einheiten pro Woche – keine personenbezogene Messung.</div>'+benefits.map(function(b,i){ return '<div style="display:flex;align-items:center;gap:12px;padding:10px 0'+(i?';border-top:1px solid var(--border)':'')+'"><div style="width:36px;height:36px;border-radius:11px;background:var(--surface-2);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:17px">'+b[0]+'</div><div style="flex:1;font-size:13.5px;font-weight:600;color:var(--text-2);line-height:1.4">'+esc(b[1])+'</div></div>'; }).join('')+'</div>';
-    // 5) Punkte-Verlauf (echte Check-ins, je +50)
-    var done=(Array.isArray(DATA.checkins)?DATA.checkins:[]).filter(function(x){return x&&x.in;}).slice().sort(function(a,b){return Date.parse(b.in)-Date.parse(a.in);}).slice(0,8);
+    // 5) Punkte-Verlauf (Check-in +50, Wochenziel +150, Streak-Bonus +75, Inaktivität −40)
+    var led=gamify().ledger.slice(0,12);
     var ledger='';
-    if(done.length){
-      ledger='<div style="'+CARD.replace('padding:20px','padding:8px 18px 14px')+'"><div style="font-size:12px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.5px;padding:14px 0 4px">Punkte-Verlauf</div>'+done.map(function(x,i){ return '<div style="display:flex;align-items:center;gap:12px;padding:12px 0'+(i?';border-top:1px solid var(--border)':'')+'"><div style="width:34px;height:34px;border-radius:10px;background:#E7F6EC;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:15px">✅</div><div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:700;color:var(--text)">Check-in</div><div style="font-size:11.5px;color:var(--text-soft);font-weight:600">'+deDate(x.in)+' · '+deTime(x.in)+'</div></div><div style="font-size:14px;font-weight:900;color:#176b37">+50</div></div>'; }).join('')+'</div>';
+    if(led.length){
+      ledger='<div style="'+CARD.replace('padding:20px','padding:8px 18px 14px')+'"><div style="font-size:12px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.5px;padding:14px 0 4px">Punkte-Verlauf</div>'+led.map(function(e,i){ var sign=(e.pts>=0?'+':'−'); return '<div style="display:flex;align-items:center;gap:12px;padding:12px 0'+(i?';border-top:1px solid var(--border)':'')+'"><div style="width:34px;height:34px;border-radius:10px;background:'+e.bg+';display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:15px">'+e.emoji+'</div><div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:700;color:var(--text)">'+esc(e.title)+'</div><div style="font-size:11.5px;color:var(--text-soft);font-weight:600">'+esc(e.sub)+'</div></div><div style="font-size:14px;font-weight:900;color:'+e.color+'">'+sign+Math.abs(e.pts)+'</div></div>'; }).join('')+'</div>';
     }
     // 6) Bleib dran
-    var warn='<div style="display:flex;gap:11px;background:#FBF0E8;border:1px solid #F3D9C4;border-radius:16px;padding:15px">'+svg('<path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"></path>',{c:'#b5631f',w:1.9,s:20})+'<div><div style="font-size:13.5px;font-weight:800;color:#8a4a14">Bleib dran für deinen Rang</div><div style="font-size:12.5px;color:#9a6a3a;font-weight:500;line-height:1.5;margin-top:2px">Schon ein Besuch pro Woche hält deine Streak am Leben – und deinen Fortschritt sichtbar. Für jeden Check-in gibt es 50 Vitalpunkte.</div></div></div>';
+    var warn='<div style="display:flex;gap:11px;background:#FBF0E8;border:1px solid #F3D9C4;border-radius:16px;padding:15px">'+svg('<path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"></path>',{c:'#b5631f',w:1.9,s:20})+'<div><div style="font-size:13.5px;font-weight:800;color:#8a4a14">Bleib dran für deine Punkte</div><div style="font-size:12.5px;color:#9a6a3a;font-weight:500;line-height:1.5;margin-top:2px">Wenn du länger als 10 Tage nicht trainierst, verlierst du wöchentlich Vitalpunkte – genau wie dein Körper Fitness verliert. Schon 1 Besuch hält deinen Rang.</div></div></div>';
     // 7) Ränge
     var ranks='<div style="'+CARD.replace('padding:20px','padding:18px')+'"><div style="font-size:16px;font-weight:900;color:var(--text);margin-bottom:8px">Ränge</div>'+VITAL_TIERS.map(function(t,i){ var cur=(i===v.rankIdx); var passed=(i<=v.rankIdx); return '<div style="display:flex;align-items:center;gap:12px;padding:9px 0"><div style="width:32px;height:32px;border-radius:50%;background:'+(passed?'#0a4958':'var(--surface-2)')+';display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:15px">'+t[2]+'</div><div style="flex:1;font-size:14px;font-weight:'+(cur?'900':'600')+';color:'+(cur?'var(--teal-ink)':'var(--text-2)')+'">'+esc(t[0])+'</div><div style="font-size:12.5px;font-weight:700;color:var(--text-soft)">'+(t[1]===0?'Start':(deNum(t[1])+' VP'))+'</div></div>'; }).join('')+'</div>';
 
