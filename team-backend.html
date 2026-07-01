@@ -85,7 +85,7 @@
 var TEAL='#0a4958', ORANGE='#E08C53';
 var S={ token:null, screen:'inbox', convs:[], counts:{}, selKey:null, sel:null,
         filter:'open', search:'', loading:false, err:'', draft:'', note:'', replyChannel:'email',
-        mobileThread:false, panelOpen:false, busy:false,
+        mobileThread:false, panelOpen:false, busy:false, quickOpen:false,
         members:[], membersLoaded:false, membersLoading:false,
         memberSearch:'', memberResults:null, memberSearching:false,
         reassignOpen:false, reassignSearch:'', reassignResults:null, reassignSearching:false, reassignBusy:false,
@@ -134,6 +134,30 @@ var PRIO={ hoch:{l:'Hoch',c:'#b53a2c',b:'#fbeae7'}, mittel:{l:'Mittel',c:'#C77A2
 var CHAN={ portal:'Mitgliederbereich', whatsapp:'WhatsApp', email:'E-Mail', kontakt:'Kontaktformular' };
 function chan(c){ return CHAN[c]||'Mitgliederbereich'; }
 var ASSIGNEES=['Markus','Nina','Jonas'];   // anpassbar – echte Teamnamen später
+
+// Textbausteine (Schnellantworten) + KI-Entwurf für die Antwort-Komposition.
+var TEMPLATES=[
+  'Vielen Dank für deine Nachricht! Wir kümmern uns darum und melden uns zeitnah bei dir.',
+  'Gerne kannst du dazu direkt bei uns an der Theke vorbeikommen – wir helfen dir sofort weiter.',
+  'Deinen Vorgang haben wir aufgenommen und bearbeiten ihn schnellstmöglich. Wir geben dir Bescheid, sobald es Neuigkeiten gibt.',
+  'Kein Problem – wir haben das für dich erledigt. Melde dich jederzeit, wenn du noch etwas brauchst.'
+];
+function firstName(sel){ return ((sel && sel.member && sel.member.name)||'').split(' ')[0]||'du'; }
+// Einfacher, editierbarer KI-Entwurf je Vorgangstyp (Platzhalter für echten LLM-Aufruf).
+function aiDraftFor(sel){
+  var f=firstName(sel), ty=(sel&&sel.type)||'allgemein';
+  var map={
+    kuendigung:'Hallo '+f+', danke für deine Nachricht. Wir haben deine Kündigung erhalten und prüfen den nächstmöglichen Termin – die Bestätigung schicken wir dir zeitnah. Falls du magst, sprich uns gern auf Alternativen an.',
+    widerruf:'Hallo '+f+', danke für deine Nachricht. Wir haben deinen Widerruf aufgenommen und melden uns mit einer Bestätigung bei dir.',
+    termin:'Hallo '+f+', gerne vereinbaren wir einen Termin mit dir. Passt dir einer der nächsten Tage? Sag uns kurz, was dir am besten passt – dann bestätigen wir dir alles.',
+    probetraining:'Hallo '+f+', schön, dass du ein Probetraining machen möchtest! Sag uns kurz, wann es dir passt, dann reservieren wir dir einen Termin.',
+    iban:'Hallo '+f+', danke – wir haben deine neue Bankverbindung übernommen. Bei Fragen sind wir jederzeit für dich da.',
+    adresse:'Hallo '+f+', danke – wir haben deine neue Adresse übernommen. Melde dich gern, falls sonst noch etwas ist.',
+    pause:'Hallo '+f+', danke für deine Anfrage zur Beitragspause. Wir prüfen die Möglichkeiten und melden uns mit den nächsten Schritten bei dir.',
+    kontakt:'Hallo '+f+', danke für deine Nachricht! Wir kümmern uns darum und melden uns so schnell wie möglich bei dir.'
+  };
+  return map[ty]||('Hallo '+f+', danke für deine Nachricht! Wir kümmern uns darum und melden uns zeitnah bei dir.');
+}
 
 // ---------- auth ----------
 function loadToken(){ try{ S.token=localStorage.getItem('fi_team_token')||null; }catch(e){} }
@@ -596,6 +620,11 @@ function inboxNode(){
       '<div style="display:flex;align-items:flex-end;gap:10px;background:#fff;border-radius:20px;padding:8px 8px 8px 16px;box-shadow:0 10px 28px rgba(4,33,40,.07)">'+
         '<textarea id="draft" rows="1" placeholder="Antwort an '+esc((sel.member.name||'').split(" ")[0]||'das Mitglied')+' schreiben …" style="flex:1;border:none;resize:none;font-size:14px;background:transparent;line-height:1.5;padding:8px 0;max-height:140px;min-height:24px;outline:none">'+esc(S.draft)+'</textarea>'+
         '<button id="send" '+(S.busy?'disabled':'')+' style="display:inline-flex;align-items:center;justify-content:center;width:46px;height:46px;border:none;border-radius:50%;background:'+(draftOk?TEAL:'#9fb4b8')+';color:#fff;flex-shrink:0;cursor:pointer">'+(S.busy?'…':IC.send)+'</button></div>'+
+      '<div style="display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap">'+
+        '<button data-aidraft="1" style="display:inline-flex;align-items:center;gap:6px;border:1.5px solid #F1DFC2;background:#FBF4E9;color:#b5631f;border-radius:100px;padding:7px 13px;font-size:12.5px;font-weight:800;cursor:pointer"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#E08C53" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.6L18.5 9l-4.6 1.9L12 15.5l-1.9-4.6L5.5 9l4.6-1.4L12 3z"/></svg>KI-Entwurf</button>'+
+        '<button data-quick="1" style="display:inline-flex;align-items:center;gap:6px;border:1.5px solid '+(S.quickOpen?TEAL:'#d6dee0')+';background:'+(S.quickOpen?'#f1f6f7':'#fff')+';color:'+(S.quickOpen?TEAL:'#42454b')+';border-radius:100px;padding:7px 13px;font-size:12.5px;font-weight:800;cursor:pointer"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg>Textbausteine</button>'+
+      '</div>'+
+      (S.quickOpen?'<div style="display:flex;flex-direction:column;gap:6px;margin-top:9px">'+TEMPLATES.map(function(tp,i){ return '<button data-tpl="'+i+'" style="text-align:left;border:1px solid #e4eaeb;background:#fff;border-radius:12px;padding:9px 12px;font-size:12.5px;color:#42454b;font-weight:600;cursor:pointer;line-height:1.45">'+esc(tp)+'</button>'; }).join('')+'</div>':'')+
       '<div style="font-size:11.5px;color:#a9b1b6;font-weight:600;margin-top:9px;padding:0 4px">'+hint+'</div>';
     thread.appendChild(comp);
   }
@@ -667,6 +696,9 @@ function wireInbox(node){
     dr.onkeydown=function(e){ if(e.key==='Enter'&&(e.metaKey||e.ctrlKey)){ e.preventDefault(); sendReply(); } }; }
   var sd=node.querySelector('#send'); if(sd) sd.onclick=sendReply;
   node.querySelectorAll('[data-ch]').forEach(function(b){ b.onclick=function(){ S.replyChannel=b.getAttribute('data-ch'); render(); }; });
+  var aid=node.querySelector('[data-aidraft]'); if(aid) aid.onclick=function(){ if(S.sel){ S.draft=aiDraftFor(S.sel); S.quickOpen=false; render(); var d=root.querySelector('#draft'); if(d){ d.focus(); d.setSelectionRange(d.value.length,d.value.length); } } };
+  var qk=node.querySelector('[data-quick]'); if(qk) qk.onclick=function(){ S.quickOpen=!S.quickOpen; render(); };
+  node.querySelectorAll('[data-tpl]').forEach(function(b){ b.onclick=function(){ var i=+b.getAttribute('data-tpl'); var tp=TEMPLATES[i]||''; S.draft=(S.draft&&S.draft.trim())?(S.draft.replace(/\s+$/,'')+'\n\n'+tp):tp; S.quickOpen=false; render(); var d=root.querySelector('#draft'); if(d){ d.focus(); d.setSelectionRange(d.value.length,d.value.length); } }; });
   var nt=node.querySelector('#note'); if(nt) nt.oninput=function(){ S.note=nt.value; };
   var an=node.querySelector('#addnote'); if(an) an.onclick=function(){ var v=(S.note||'').trim(); if(v) act('note',{text:v}); };
   node.querySelectorAll('[data-status]').forEach(function(b){ b.onclick=function(){ act('status',{value:b.getAttribute('data-status')}); }; });
