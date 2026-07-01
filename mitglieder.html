@@ -1361,7 +1361,7 @@
     return head+qrCard+loc+err;
   }
   // ── Fortschritt & Vitalität (aus echten Check-in-Daten abgeleitet) ──
-  var VITAL_TIERS=[['Starter',0],['Aktiv',500],['Vital',1500],['Stark',3500],['Champion',7000],['Legende',12000]];
+  var VITAL_TIERS=[['Starter',0,'🌱'],['Aktiv',500,'⚡'],['Vital',1500,'💚'],['Stark',3000,'💪'],['Ausdauernd',5000,'🏅'],['Elite',8000,'👑']];
   function mondayKey(dt){ var x=new Date(dt); if(isNaN(x.getTime())) return null; x.setHours(0,0,0,0); var day=(x.getDay()+6)%7; x.setDate(x.getDate()-day); return x.getFullYear()+'-'+pad2(x.getMonth()+1)+'-'+pad2(x.getDate()); }
   function vitalsData(){
     var ci=Array.isArray(DATA.checkins)?DATA.checkins:[];
@@ -1386,7 +1386,23 @@
     var recent=done.filter(function(x){ return Date.parse(x.in)>=(Date.now()-56*864e5); }).length;
     var bonus=Math.min(12,Math.round((recent/8)*2));
     var fitAge=(age!=null&&age>0&&age<120)?Math.max(16,age-bonus):null;
-    return {visits:visits,points:points,rankName:cur[0],nextRank:nxt?nxt[0]:null,toNext:toNext,deg:deg,streak:streak,weekVisits:weekVisits,goal:3,fitAge:fitAge,maxed:!nxt};
+    var fitAgeDelta=(age!=null&&fitAge!=null)?Math.max(0,age-fitAge):0;
+    // Aktive Wochen (laufendes Jahr) + längste Wochen-Streak
+    var year=(new Date()).getFullYear();
+    var weekKeys=Object.keys(wk).sort();
+    var activeWeeks=weekKeys.filter(function(k){ return k.slice(0,4)===String(year); }).length;
+    var longest=0, run=0, prevT=null;
+    weekKeys.forEach(function(k){ var t=Date.parse(k); if(prevT!=null && Math.round((t-prevT)/864e5)===7){ run++; } else { run=1; } if(run>longest) longest=run; prevT=t; });
+    // Ø Besuche/Woche seit dem ersten Check-in
+    var firstIn=null; done.forEach(function(x){ var t=Date.parse(x.in); if(t&&(firstIn==null||t<firstIn)) firstIn=t; });
+    var weeksSpan=firstIn?Math.max(1,Math.ceil((Date.now()-firstIn)/(7*864e5))):1;
+    var avgPerWeek=visits/weeksSpan;
+    var avgPerWeekLabel=(Math.round(avgPerWeek*10)/10).toFixed(1).replace('.',',');
+    // Ø Dauer je Besuch (nur Check-ins mit Aus-Zeit)
+    var durs=done.map(function(x){ return (x.in&&x.out)?(Date.parse(x.out)-Date.parse(x.in)):0; }).filter(function(ms){ return ms>0&&ms<6*3600e3; });
+    var avgDurationLabel='–';
+    if(durs.length){ var avgMs=durs.reduce(function(a,b){return a+b;},0)/durs.length; var mins=Math.round(avgMs/60000); avgDurationLabel=Math.floor(mins/60)+':'+pad2(mins%60); }
+    return {visits:visits,points:points,rankName:cur[0],rankIcon:cur[2]||'',rankIdx:ti,nextRank:nxt?nxt[0]:null,toNext:toNext,deg:deg,streak:streak,weekVisits:weekVisits,goal:3,fitAge:fitAge,age:age,fitAgeDelta:fitAgeDelta,activeWeeks:activeWeeks,longestStreak:longest,avgPerWeekLabel:avgPerWeekLabel,avgDurationLabel:avgDurationLabel,maxed:!nxt};
   }
   function deNum(n){ try{ return Number(n||0).toLocaleString('de-DE'); }catch(e){ return String(n); } }
   function vitalCard(){
@@ -1409,29 +1425,47 @@
       '</div>'+
     '</div>';
   }
-  function fortTile(big,label){ return '<div style="background:var(--surface);border-radius:16px;box-shadow:0 10px 28px rgba(4,33,40,.09);padding:16px 18px"><div style="font-size:24px;font-weight:900;color:var(--text);letter-spacing:-.5px">'+big+'</div><div style="font-size:12.5px;color:var(--text-muted);font-weight:700;margin-top:2px">'+esc(label)+'</div></div>'; }
   function scrFort(){
     var v=vitalsData();
-    var pct=v.maxed?100:Math.round(v.deg/360*100);
-    return backHd('Fortschritt')+
-      '<div style="position:relative;overflow:hidden;background:linear-gradient(160deg,#0e6072,#063540);border-radius:22px;padding:24px 20px;color:#fff;text-align:center">'+
-        '<div style="position:absolute;width:220px;height:220px;right:-70px;top:-70px;border-radius:50%;background:radial-gradient(circle,rgba(246,169,100,.22),transparent 70%)"></div>'+
-        '<div style="position:relative">'+
-          '<div style="width:120px;height:120px;border-radius:50%;margin:0 auto;background:conic-gradient(#F6A964 '+v.deg+'deg,rgba(255,255,255,.16) 0);display:flex;align-items:center;justify-content:center">'+
-            '<div style="width:96px;height:96px;border-radius:50%;background:#0a3d4a;display:flex;flex-direction:column;align-items:center;justify-content:center"><span style="font-size:10px;font-weight:700;color:#aed0d6;text-transform:uppercase;letter-spacing:.6px">Rang</span><span style="font-size:19px;font-weight:900">'+esc(v.rankName)+'</span></div></div>'+
-          '<div style="font-size:34px;font-weight:900;letter-spacing:-1px;margin-top:14px">'+deNum(v.points)+'</div>'+
-          '<div style="font-size:13px;color:#aed0d6;font-weight:600">Vitalpunkte · '+v.visits+' '+(v.visits===1?'Besuch':'Besuche')+'</div>'+
-          (v.maxed?'<div style="font-size:13.5px;font-weight:700;margin-top:12px">Höchster Rang erreicht 🏆</div>':
-            ('<div style="margin-top:16px;max-width:300px;margin-left:auto;margin-right:auto"><div style="height:9px;border-radius:6px;background:rgba(255,255,255,.16);overflow:hidden"><div style="height:100%;width:'+pct+'%;background:#F6A964;border-radius:6px"></div></div><div style="font-size:12.5px;color:#cfe6ea;font-weight:600;margin-top:7px">Noch '+deNum(v.toNext)+' VP bis '+esc(v.nextRank)+'</div></div>'))+
-        '</div>'+
-      '</div>'+
-      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px">'+
-        fortTile('🔥 '+v.streak,'Wochen-Streak')+
-        fortTile(v.weekVisits+' / '+v.goal,'Diese Woche')+
-        fortTile(String(v.visits),'Besuche gesamt')+
-        fortTile(v.fitAge!=null?String(v.fitAge):'–','Fitness-Alter')+
-      '</div>'+
-      '<div class="card" style="margin-top:14px;box-shadow:0 12px 32px rgba(4,33,40,.10)"><div style="font-size:15px;font-weight:900;color:var(--text);margin-bottom:6px">So sammelst du Punkte</div><div style="font-size:13.5px;color:var(--text-muted);font-weight:600;line-height:1.6">Für jeden Studio-Besuch bekommst du <b>50 Vitalpunkte</b>. Trainier regelmäßig, halte deine Wochen-Streak – und steig Rang für Rang auf, vom Starter bis zur Legende. 💪</div></div>';
+    var CARD='background:var(--surface);border-radius:20px;box-shadow:0 14px 38px rgba(4,33,40,.10);padding:20px';
+    // 1) Vitalpunkte-Ring
+    var ring='<div style="background:linear-gradient(150deg,#0e6072,#063540);border-radius:22px;padding:22px;color:#fff;box-shadow:0 16px 40px rgba(4,33,40,.2)"><div style="display:flex;align-items:center;gap:16px">'+
+      '<div style="width:96px;height:96px;border-radius:50%;background:conic-gradient(#F6A964 '+v.deg+'deg,rgba(255,255,255,.16) 0);display:flex;align-items:center;justify-content:center;flex-shrink:0"><div style="width:78px;height:78px;border-radius:50%;background:#073e4b;display:flex;align-items:center;justify-content:center"><span style="font-size:19px;font-weight:900;letter-spacing:-.5px">'+esc(v.rankName)+'</span></div></div>'+
+      '<div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:700;color:#aed0d6;text-transform:uppercase;letter-spacing:.5px">Vitalpunkte</div>'+
+        '<div style="font-size:34px;font-weight:900;letter-spacing:-1px;line-height:1.05">'+deNum(v.points)+' VP</div>'+
+        '<div style="font-size:13px;color:#aed0d6;font-weight:600;margin-top:3px">'+(v.maxed?'Höchster Rang erreicht 🏆':('Noch '+deNum(v.toNext)+' VP bis '+esc(v.nextRank)))+'</div></div>'+
+    '</div></div>';
+    // 2) Fitness-Alter
+    var fa;
+    if(v.fitAge!=null){
+      var deltaLine=v.fitAgeDelta>0
+        ? '<div style="font-size:14px;font-weight:800;color:#176b37">'+v.fitAgeDelta+' '+(v.fitAgeDelta===1?'Jahr':'Jahre')+' jünger als dein echtes Alter</div>'
+        : '<div style="font-size:14px;font-weight:800;color:var(--text)">Dein Fitness-Alter</div>';
+      fa='<div style="'+CARD+'"><div style="display:flex;align-items:center;gap:16px">'+
+        '<div style="text-align:center;flex-shrink:0"><div style="font-size:11px;font-weight:700;color:var(--text-soft);text-transform:uppercase;letter-spacing:.4px">Fitness-Alter</div><div style="font-size:46px;font-weight:900;color:var(--teal-ink);letter-spacing:-1.5px;line-height:1">'+v.fitAge+'</div></div>'+
+        '<div style="flex:1;min-width:0">'+deltaLine+'<div style="font-size:13px;color:var(--text-muted);font-weight:500;line-height:1.5;margin-top:4px">Geschätzt aus deiner Trainingshäufigkeit und Besuchsdauer (Check-ins) – keine medizinische Messung.</div></div>'+
+      '</div><div style="display:flex;align-items:center;gap:9px;background:#E7F6EC;border-radius:13px;padding:12px 14px;margin-top:16px">'+svg('<path d="M3 12h4l3 8 4-16 3 8h4"></path>',{c:'#176b37',w:1.9,s:18})+'<span style="font-size:13px;font-weight:700;color:#176b37">Bleib dran: Wer regelmäßig trainiert, gewinnt laut Studien gesunde Lebensjahre.</span></div></div>';
+    } else {
+      fa='<div style="'+CARD+'"><div style="font-size:16px;font-weight:900;color:var(--text)">Fitness-Alter</div><div style="font-size:13px;color:var(--text-muted);font-weight:500;line-height:1.5;margin-top:6px">Ergänze in „Meine Daten" dein Geburtsdatum – dann berechnen wir dein Fitness-Alter aus deiner Trainingshäufigkeit und Besuchsdauer.</div></div>';
+    }
+    // 3) Deine Aktivität
+    var stats=[[v.avgPerWeekLabel,'Ø Besuche / Woche'],[String(v.activeWeeks),'Aktive Wochen '+(new Date()).getFullYear()],[String(v.longestStreak),'Längste Streak (Wo.)'],[v.avgDurationLabel,'Ø Dauer / Besuch']];
+    var act='<div style="'+CARD+'"><div style="font-size:16px;font-weight:900;color:var(--text);margin-bottom:4px">Deine Aktivität</div><div style="font-size:12.5px;color:var(--text-soft);font-weight:500;margin-bottom:16px">Aus deinen Check-ins – das Wichtigste zählt: dass du da bist.</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:11px">'+stats.map(function(s){ return '<div style="background:var(--surface-2);border-radius:14px;padding:14px 15px"><div style="font-size:24px;font-weight:900;color:var(--teal-ink);letter-spacing:-.5px">'+esc(s[0])+'</div><div style="font-size:11.5px;color:var(--text-muted);font-weight:700;margin-top:2px">'+esc(s[1])+'</div></div>'; }).join('')+'</div></div>';
+    // 4) Was regelmäßiges Training bewirkt
+    var benefits=[['❤️','Herz & Kreislauf werden gestärkt'],['🧠','Besserer Schlaf & klarer Kopf'],['🦴','Knochen & Muskeln bleiben stabil'],['⏳','Studien verbinden regelmäßige Bewegung mit mehr gesunden Lebensjahren']];
+    var ben='<div style="'+CARD+'"><div style="font-size:16px;font-weight:900;color:var(--text);margin-bottom:4px">Was regelmäßiges Training bewirkt</div><div style="font-size:12.5px;color:var(--text-soft);font-weight:500;margin-bottom:14px">Allgemeine Effekte von 2–3 Einheiten pro Woche – keine personenbezogene Messung.</div>'+benefits.map(function(b,i){ return '<div style="display:flex;align-items:center;gap:12px;padding:10px 0'+(i?';border-top:1px solid var(--border)':'')+'"><div style="width:36px;height:36px;border-radius:11px;background:var(--surface-2);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:17px">'+b[0]+'</div><div style="flex:1;font-size:13.5px;font-weight:600;color:var(--text-2);line-height:1.4">'+esc(b[1])+'</div></div>'; }).join('')+'</div>';
+    // 5) Punkte-Verlauf (echte Check-ins, je +50)
+    var done=(Array.isArray(DATA.checkins)?DATA.checkins:[]).filter(function(x){return x&&x.in;}).slice().sort(function(a,b){return Date.parse(b.in)-Date.parse(a.in);}).slice(0,8);
+    var ledger='';
+    if(done.length){
+      ledger='<div style="'+CARD.replace('padding:20px','padding:8px 18px 14px')+'"><div style="font-size:12px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.5px;padding:14px 0 4px">Punkte-Verlauf</div>'+done.map(function(x,i){ return '<div style="display:flex;align-items:center;gap:12px;padding:12px 0'+(i?';border-top:1px solid var(--border)':'')+'"><div style="width:34px;height:34px;border-radius:10px;background:#E7F6EC;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:15px">✅</div><div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:700;color:var(--text)">Check-in</div><div style="font-size:11.5px;color:var(--text-soft);font-weight:600">'+deDate(x.in)+' · '+deTime(x.in)+'</div></div><div style="font-size:14px;font-weight:900;color:#176b37">+50</div></div>'; }).join('')+'</div>';
+    }
+    // 6) Bleib dran
+    var warn='<div style="display:flex;gap:11px;background:#FBF0E8;border:1px solid #F3D9C4;border-radius:16px;padding:15px">'+svg('<path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"></path>',{c:'#b5631f',w:1.9,s:20})+'<div><div style="font-size:13.5px;font-weight:800;color:#8a4a14">Bleib dran für deinen Rang</div><div style="font-size:12.5px;color:#9a6a3a;font-weight:500;line-height:1.5;margin-top:2px">Schon ein Besuch pro Woche hält deine Streak am Leben – und deinen Fortschritt sichtbar. Für jeden Check-in gibt es 50 Vitalpunkte.</div></div></div>';
+    // 7) Ränge
+    var ranks='<div style="'+CARD.replace('padding:20px','padding:18px')+'"><div style="font-size:16px;font-weight:900;color:var(--text);margin-bottom:8px">Ränge</div>'+VITAL_TIERS.map(function(t,i){ var cur=(i===v.rankIdx); var passed=(i<=v.rankIdx); return '<div style="display:flex;align-items:center;gap:12px;padding:9px 0"><div style="width:32px;height:32px;border-radius:50%;background:'+(passed?'#0a4958':'var(--surface-2)')+';display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:15px">'+t[2]+'</div><div style="flex:1;font-size:14px;font-weight:'+(cur?'900':'600')+';color:'+(cur?'var(--teal-ink)':'var(--text-2)')+'">'+esc(t[0])+'</div><div style="font-size:12.5px;font-weight:700;color:var(--text-soft)">'+(t[1]===0?'Start':(deNum(t[1])+' VP'))+'</div></div>'; }).join('')+'</div>';
+
+    return subHeader('Fortschritt','Rang · Longevity · Punkte','profil')+'<div style="display:flex;flex-direction:column;gap:14px">'+ring+fa+act+ben+ledger+warn+ranks+'</div>';
   }
   // ── Sport-Blog ──
   function loadBlog(){ if(DATA.blog||!TOKEN) return; DATA.blog=[]; api('/api/member/blog').then(function(d){ DATA.blog=(d&&d.posts)||[]; render(); }).catch(function(){ DATA.blog=[]; }); }
@@ -1482,22 +1516,23 @@
       '<div style="min-width:0"><div style="font-size:19px;font-weight:900;letter-spacing:-.3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(name)+'</div><div style="font-size:13px;color:#aed0d6;font-weight:600;margin-top:1px">Mitgliedsnr. '+esc(p.customerNumber||'—')+'</div></div></div>'+
       '<div style="display:flex;gap:10px;margin-top:18px">'+stat(esc((c&&c.rateName)||'—'),'Tarif')+stat(String(v.visits),'Besuche '+(new Date()).getFullYear())+stat(status,'Status',stCol)+'</div>'+
     '</div>';
-    var row=function(key,t,d,icon){ return '<button data-act="nav" data-arg="'+key+'" style="display:flex;align-items:center;gap:13px;width:100%;padding:15px 16px;border:none;border-top:1px solid var(--border);background:var(--surface);cursor:pointer;text-align:left">'+
-      '<div style="width:38px;height:38px;border-radius:11px;background:var(--surface-2);display:flex;align-items:center;justify-content:center;flex-shrink:0">'+svg(icon,{c:TEAL,w:1.9,s:19})+'</div>'+
+    var row=function(key,t,d,icon,accent){ return '<button data-act="nav" data-arg="'+key+'" style="display:flex;align-items:center;gap:13px;width:100%;padding:15px 16px;border:none;border-top:1px solid var(--border);background:var(--surface);cursor:pointer;text-align:left">'+
+      '<div style="width:38px;height:38px;border-radius:11px;background:'+(accent?'#FBEFE2':'var(--surface-2)')+';display:flex;align-items:center;justify-content:center;flex-shrink:0">'+svg(icon,{c:(accent?'#E08C53':TEAL),w:1.9,s:19})+'</div>'+
       '<div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:700;color:var(--text)">'+t+'</div><div style="font-size:12.5px;color:var(--text-soft);font-weight:500">'+d+'</div></div>'+
       svg('<path d="M9 18l6-6-6-6"></path>',{c:'var(--text-soft)',w:2.2,s:18})+'</button>'; };
-    var QR='<rect x="3" y="3" width="7" height="7" rx="1.4"></rect><rect x="14" y="3" width="7" height="7" rx="1.4"></rect><rect x="3" y="14" width="7" height="7" rx="1.4"></rect><path d="M14 14h3v3h-3z"></path><path d="M20 14v3M14 20h3M20 20v.01"></path>';
+    var AWARD='<circle cx="12" cy="8" r="6"></circle><path d="M15.5 13.5L17 22l-5-3-5 3 1.5-8.5"></path>';
     var list='<div style="background:var(--surface);border-radius:18px;box-shadow:0 12px 32px rgba(4,33,40,.08);overflow:hidden;margin-top:16px">'+
-      row('card','Mitgliedskarte','Dein digitaler Ausweis',QR)+
+      row('fort','Fortschritt & Vitalität','Rang, Punkte, Fitness-Alter',AWARD,true)+
       row('data','Meine Daten','Adresse & Bankverbindung',IC.user)+
-      row('contract','Vertragsverwaltung','Vertrag, Pause & Kündigung',IC.doc)+
-      row('account','Beitragskonto','Offene Beiträge & Rechnungen','<rect x="2" y="5" width="20" height="14" rx="2"></rect><path d="M2 9h20M6 15h5"></path>')+
-      row('referral','Freunde werben','Code teilen & Prämie',IC.gift)+
-      row('fort','Fortschritt','Vitalpunkte & Ränge','<circle cx="12" cy="8" r="6"></circle><path d="M15.5 13.5L17 22l-5-3-5 3 1.5-8.5"></path>')+
-      row('help','Hilfe & Kontakt','FINN, FAQ & Team',IC.help)+
-      row('settings','Einstellungen','Benachrichtigungen & mehr',IC.cog)+
+      row('contract','Vertrag','Tarif, Kündigung, Pause',IC.doc)+
+      row('account','Beitragskonto','Offene Posten & Rechnungen','<rect x="2" y="5" width="20" height="14" rx="2"></rect><path d="M2 9h20M6 15h5"></path>')+
+      row('referral','Freunde werben','Code teilen & Prämien',IC.gift)+
+      row('checkins','Check-in-Verlauf','Besuche & Nachweis',IC.list)+
+      row('help','Hilfe & Kontakt','KI-Assistent, FAQ, Team',IC.help)+
+      row('settings','Einstellungen','Benachrichtigungen, Datenschutz',IC.cog)+
     '</div>';
-    return hero+list+
+    var head='<div style="background:linear-gradient(165deg,#0e6072,#063540);border-radius:20px;box-shadow:0 12px 34px rgba(4,33,40,.18);padding:18px 20px;color:#fff;margin-bottom:16px"><div style="font-size:22px;font-weight:900;letter-spacing:-.4px">Profil</div><div style="font-size:13px;color:#aed0d6;font-weight:600;margin-top:1px">Mitgliedschaft verwalten</div></div>';
+    return head+hero+list+
       '<button data-act="logout" style="width:100%;margin-top:14px;border:1.5px solid var(--border);border-radius:14px;background:var(--surface);color:var(--err-fg);font-weight:800;font-size:15px;padding:14px;cursor:pointer">Abmelden</button>';
   }
   function scrAccount(){
