@@ -41,6 +41,7 @@
   @keyframes pulseDot{0%,100%{opacity:1}50%{opacity:.35}}
   @keyframes scanLine{from{top:38px}to{bottom:38px;top:auto}}
   @keyframes micRing{0%{transform:scale(1);opacity:.55}100%{transform:scale(1.7);opacity:0}}
+  @keyframes spin{to{transform:rotate(360deg)}}
   .fadein{animation:cardIn .3s ease}
 </style>
 </head>
@@ -61,6 +62,7 @@
     captureMethod:'cam', captureTarget:'Frühstück',
     scanning:false, scanKind:'photo', scanResultOpen:false,
     recording:false, transcript:'', searchQ:'',
+    searchResults:null, searchLoading:false, searchSource:'popular', scanProduct:null,
     extraKcal:0, extraP:0, extraC:0, extraF:0,
     water:5, waterGoal:10,
     chat:[{from:'finn', text:'Hey Lena! 🥗 Ich bin FINN, dein Ernährungscoach. Frag mich alles rund um Essen, Makros oder Rezepte — oder erzähl mir einfach, was du heute gegessen hast.'}],
@@ -129,8 +131,15 @@
     {id:'r4', cat:'lowcarb', title:'Zoodles mit Lachs', kcal:480, min:20, ingredients:[{name:'Zucchini',amount:'250 g'},{name:'Lachsfilet',amount:'150 g'},{name:'Feta',amount:'40 g'}]}
   ]; }
 
+  // Aktuelle Trefferliste in der Suche (Live-Ergebnisse oder Favoriten-Default).
+  function currentFoodList(){ return (S.searchResults && S.searchResults.length!=null) ? S.searchResults : foodDb(); }
+
   function currentScanItems(){
-    if(S.scanKind==='barcode') return [{emoji:'🥛', name:'Skyr Vanille (Arla)', portion:'1 Becher (150 g)', kcal:98, p:15, c:8, f:0, bg:'#EAF4FB'}];
+    if(S.scanKind==='barcode'){
+      var pr=S.scanProduct;
+      if(pr) return [{emoji:pr.emoji||'📦', name:pr.name, portion:pr.per||'1 Portion', kcal:pr.kcal, p:pr.p, c:pr.c, f:pr.f, bg:pr.bg||'#EAF4FB'}];
+      return [{emoji:'🥛', name:'Skyr Vanille (Arla)', portion:'1 Becher (150 g)', kcal:98, p:15, c:8, f:0, bg:'#EAF4FB'}];
+    }
     if(S.scanKind==='voice') return [
       {emoji:'🍝', name:'Spaghetti Bolognese', portion:'1 Teller (350 g)', kcal:520, p:24, c:62, f:18, bg:'#FBEFE8'},
       {emoji:'🧃', name:'Orangensaft', portion:'1 Glas (250 ml)', kcal:112, p:2, c:26, f:0, bg:'#FBF2E1'}
@@ -173,19 +182,19 @@
       else { set({fasting:true, fastStart:Date.now(), now:Date.now()}); toast('Fasten gestartet · '+S.fastPlan); }
     },
     // capture
-    openCapture:function(target){ S.captureTarget=target||S.captureTarget; set({screen:'erfassen', captureMethod:'cam', scanning:false, recording:false, transcript:'', searchQ:''}); },
+    openCapture:function(target){ S.captureTarget=target||S.captureTarget; set({screen:'erfassen', captureMethod:'cam', scanning:false, recording:false, transcript:'', searchQ:'', searchResults:null, searchSource:'popular'}); },
     closeCapture:function(){ ACT.go('heute'); },
     pickCam:function(){ set({captureMethod:'cam', transcript:'', recording:false}); },
     pickVoice:function(){ set({captureMethod:'voice', transcript:'', recording:false}); },
     pickSearch:function(){ set({captureMethod:'search', transcript:'', recording:false}); },
     pickBarcode:function(){ set({captureMethod:'barcode', transcript:'', recording:false}); },
     doScan:function(){ if(S.scanning) return; set({scanning:true}); setTimeout(function(){ set({scanning:false, scanResultOpen:true, scanKind:'photo'}); },1900); },
-    doBarcode:function(){ if(S.scanning) return; set({scanning:true}); setTimeout(function(){ set({scanning:false, scanResultOpen:true, scanKind:'barcode'}); },1500); },
+    doBarcode:function(){ if(S.scanning) return; set({scanning:true}); loadBarcode(); },
     toggleRec:function(){
       if(S.recording){ set({recording:false, transcript:'Ein Teller Spaghetti Bolognese und ein Glas Orangensaft'}); setTimeout(function(){ set({scanResultOpen:true, scanKind:'voice'}); },700); }
       else { set({recording:true, transcript:''}); setTimeout(function(){ if(S.recording) ACT.toggleRec(); },2600); }
     },
-    addFood:function(i){ var f=foodDb()[+i]; set({extraKcal:S.extraKcal+f.kcal, extraP:S.extraP+f.p, extraC:S.extraC+f.c, extraF:S.extraF+f.f, screen:'heute'}); toast(f.name+' protokolliert · '+f.kcal+' kcal'); },
+    addFood:function(i){ var f=currentFoodList()[+i]; if(!f) return; set({extraKcal:S.extraKcal+f.kcal, extraP:S.extraP+f.p, extraC:S.extraC+f.c, extraF:S.extraF+f.f, screen:'heute'}); toast(f.name+' protokolliert · '+f.kcal+' kcal'); },
     closeScanResult:function(){ set({scanResultOpen:false}); },
     confirmScan:function(){ var items=currentScanItems(); var sum=items.reduce(function(a,b){return {k:a.k+b.kcal,p:a.p+b.p,c:a.c+b.c,f:a.f+b.f};},{k:0,p:0,c:0,f:0}); set({scanResultOpen:false, extraKcal:S.extraKcal+sum.k, extraP:S.extraP+sum.p, extraC:S.extraC+sum.c, extraF:S.extraF+sum.f, screen:'heute', transcript:''}); toast(items.length+' Einträge protokolliert · '+sum.k+' kcal'); },
     // plan
@@ -229,6 +238,30 @@
     scrollChat();
   }
   function scrollChat(){ setTimeout(function(){ var el=document.querySelector('.chatscroll'); if(el) el.scrollTop=el.scrollHeight; },30); }
+
+  // ---- Spoonacular: Lebensmittel-Suche (debounced) ----
+  var searchT=null, searchSeq=0;
+  function loadFoodSearch(q){
+    q=String(q||'').trim();
+    if(q.length<2){ S.searchResults=null; S.searchLoading=false; S.searchSource='popular'; render(); refocusSearch(); return; }
+    S.searchLoading=true; render(); refocusSearch();
+    var seq=++searchSeq;
+    fetch('/api/nutrition/food?q='+encodeURIComponent(q)).then(function(r){return r.json();}).then(function(j){
+      if(seq!==searchSeq) return; // veraltete Antwort verwerfen
+      S.searchLoading=false; S.searchResults=(j&&j.foods)||[]; S.searchSource=(j&&j.source)||'demo';
+      render(); refocusSearch();
+    }).catch(function(){ if(seq!==searchSeq) return; S.searchLoading=false; S.searchResults=[]; S.searchSource='error'; render(); refocusSearch(); });
+  }
+  function refocusSearch(){ setTimeout(function(){ var el=document.getElementById('foodSearch'); if(el){ var v=el.value; el.focus(); try{ el.setSelectionRange(v.length,v.length); }catch(e){} } },0); }
+
+  // ---- Spoonacular: Barcode/UPC ----
+  function loadBarcode(){
+    // Beispiel-EAN (ohne echte Kamera): FINN zieht das Produkt aus der Datenbank.
+    var demoUpc='028000217129';
+    fetch('/api/nutrition/food?upc='+encodeURIComponent(demoUpc)).then(function(r){return r.json();}).then(function(j){
+      S.scanProduct=(j&&j.product)||null; set({scanning:false, scanResultOpen:true, scanKind:'barcode'});
+    }).catch(function(){ S.scanProduct=null; set({scanning:false, scanResultOpen:true, scanKind:'barcode'}); });
+  }
 
   // ==================================================================
   // ICONS
@@ -556,12 +589,23 @@
         (S.transcript?'<div style="width:100%;margin-top:20px;background:#fff;border-radius:16px;padding:14px 16px;box-shadow:0 10px 24px rgba(4,33,40,.08)"><div style="font-size:11px;font-weight:800;color:#8a929a;text-transform:uppercase;letter-spacing:.5px">Erkannt</div><div style="font-size:14.5px;font-weight:600;color:#2c3338;font-style:italic;margin-top:6px;line-height:1.4">„'+esc(S.transcript)+'“</div></div>':'')+
       '</div>';
     } else if(m==='search'){
-      var q=S.searchQ.trim().toLowerCase();
-      var res=foodDb().map(function(f,idx){return {f:f,idx:idx};}).filter(function(x){ return !q || x.f.name.toLowerCase().indexOf(q)>=0; });
+      var q=S.searchQ.trim();
+      var list=currentFoodList();
+      var heading = S.searchLoading ? 'Sucht…' : (q.length>=2 ? (list.length?'Treffer':'Keine Treffer') : 'Häufig gegessen');
+      var srcBadge = (!S.searchLoading && S.searchSource==='spoonacular')
+        ? '<span style="font-size:10px;font-weight:800;color:#0f7a4a;background:#e9f6ee;padding:3px 8px;border-radius:8px">echte Nährwerte</span>' : '';
+      var rows;
+      if(S.searchLoading){
+        rows='<div style="display:flex;align-items:center;gap:10px;padding:16px 4px;color:#8a929a;font-size:13.5px;font-weight:700"><span style="width:16px;height:16px;border:2.5px solid #cdd6d6;border-top-color:#0f7a4a;border-radius:50%;display:inline-block;animation:spin .7s linear infinite"></span>FINN sucht in der Nährwert-Datenbank…</div>';
+      } else if(q.length>=2 && !list.length){
+        rows='<div style="text-align:center;padding:24px 12px;color:#8a929a;font-size:13.5px;font-weight:600">Nichts gefunden — versuch einen anderen Begriff oder scanne den Teller. 🍽️</div>';
+      } else {
+        rows=list.map(function(f,idx){ return '<button data-act="addFood" data-arg="'+idx+'" class="tapc" style="width:100%;display:flex;align-items:center;gap:12px;background:#fff;border:none;border-radius:14px;padding:12px 14px;margin-bottom:8px;cursor:pointer;text-align:left;box-shadow:0 6px 16px rgba(4,33,40,.05)"><span style="width:38px;height:38px;border-radius:11px;background:'+(f.bg||'#eef3f4')+';display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">'+(f.emoji||'🍽️')+'</span><div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:800;color:#15171B">'+esc(f.name)+'</div><div style="font-size:11.5px;font-weight:600;color:#9aa2a8">'+esc(f.per||'100 g')+' · E '+f.p+' · K '+f.c+' · F '+f.f+'</div></div><span style="font-size:13px;font-weight:900;color:#42454b">'+f.kcal+'</span>'+svg(IC.plus,{w:20,s:'#22a866',sw:2.4})+'</button>'; }).join('');
+      }
       inner='<div>'+
         '<div style="display:flex;align-items:center;gap:10px;background:#fff;border-radius:15px;padding:13px 15px;box-shadow:0 10px 24px rgba(4,33,40,.07)">'+svg(IC.search,{w:19,s:'#8a929a',sw:2.2})+'<input id="foodSearch" value="'+esc(S.searchQ)+'" placeholder="Lebensmittel suchen…" style="flex:1;border:none;outline:none;font-size:15px;font-weight:600;color:#15171B;background:transparent"/></div>'+
-        '<div style="font-size:11px;font-weight:800;color:#8a929a;text-transform:uppercase;letter-spacing:.5px;margin:16px 4px 8px">'+(q?'Treffer':'Häufig gegessen')+'</div>'+
-        res.map(function(x){ var f=x.f; return '<button data-act="addFood" data-arg="'+x.idx+'" class="tapc" style="width:100%;display:flex;align-items:center;gap:12px;background:#fff;border:none;border-radius:14px;padding:12px 14px;margin-bottom:8px;cursor:pointer;text-align:left;box-shadow:0 6px 16px rgba(4,33,40,.05)"><span style="width:38px;height:38px;border-radius:11px;background:'+f.bg+';display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">'+f.emoji+'</span><div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:800;color:#15171B">'+f.name+'</div><div style="font-size:11.5px;font-weight:600;color:#9aa2a8">'+f.per+' · E '+f.p+' · K '+f.c+' · F '+f.f+'</div></div><span style="font-size:13px;font-weight:900;color:#42454b">'+f.kcal+'</span>'+svg(IC.plus,{w:20,s:'#22a866',sw:2.4})+'</button>'; }).join('')+
+        '<div style="display:flex;align-items:center;justify-content:space-between;margin:16px 4px 8px"><span style="font-size:11px;font-weight:800;color:#8a929a;text-transform:uppercase;letter-spacing:.5px">'+heading+'</span>'+srcBadge+'</div>'+
+        rows+
       '</div>';
     } else {
       var bars=''; [3,6,2,5,3,7,2,4,6,3].forEach(function(w){ bars+='<div style="width:'+w+'px;height:70px;background:#cfeadd"></div>'; });
@@ -805,7 +849,7 @@
     var ci=document.getElementById('chatInput');
     if(ci){ ci.oninput=function(){ S.chatInput=ci.value; }; ci.onkeydown=function(e){ if(e.key==='Enter'){ e.preventDefault(); sendChat(ci.value); } }; }
     var fs=document.getElementById('foodSearch');
-    if(fs){ fs.oninput=function(){ var v=fs.value; S.searchQ=v; render(); var el=document.getElementById('foodSearch'); if(el){ el.focus(); el.setSelectionRange(v.length,v.length); } }; }
+    if(fs){ fs.oninput=function(){ var v=fs.value; S.searchQ=v; clearTimeout(searchT); searchT=setTimeout(function(){ loadFoodSearch(v); }, 450); }; }
   }
 
   render();

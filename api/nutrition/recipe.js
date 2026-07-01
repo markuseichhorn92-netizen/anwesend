@@ -17,9 +17,26 @@
  * ist aber leicht IP-ratenbegrenzt. Nutzt ANTHROPIC_API_KEY / AI_MODEL wie lib/ai.js.
  */
 
+const SP = require('../../lib/spoonacular');
+
 const KEY = process.env.ANTHROPIC_API_KEY;
 const MODEL = process.env.AI_MODEL || 'claude-haiku-4-5-20251001';
 const hasAI = Boolean(KEY);
+
+// Ersetzt die KI-geschätzten Nährwerte durch echte Spoonacular-Werte (falls Key & Daten da).
+async function verifyNutrition(recipe) {
+  try {
+    if (!SP.hasKey || !recipe || !Array.isArray(recipe.ingredients) || !recipe.ingredients.length) return recipe;
+    const r = await SP.nutritionForList(recipe.ingredients, recipe.portions || 1);
+    if (r && r.ok && r.perServing && r.perServing.kcal) {
+      recipe.nutrition = r.perServing;
+      recipe.nutritionSource = 'spoonacular';
+    } else {
+      recipe.nutritionSource = 'ai_estimate';
+    }
+  } catch (e) { recipe.nutritionSource = 'ai_estimate'; }
+  return recipe;
+}
 
 // Einfache In-Memory-Ratenbremse pro warmer Instanz (kein Store nötig).
 const hits = new Map();
@@ -131,8 +148,9 @@ module.exports = async function handler(req, res) {
     const out = json && Array.isArray(json.content)
       ? json.content.filter(function (b) { return b && b.type === 'text'; }).map(function (b) { return b.text; }).join('\n')
       : '';
-    const recipe = extractJson(out);
+    let recipe = extractJson(out);
     if (r.ok && recipe && recipe.title && Array.isArray(recipe.ingredients)) {
+      recipe = await verifyNutrition(recipe);   // echte Nährwerte via Spoonacular (falls Key)
       res.statusCode = 200;
       return res.end(JSON.stringify({ ok: true, ai: true, recipe: recipe, model: MODEL }));
     }
