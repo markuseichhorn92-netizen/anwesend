@@ -26,8 +26,28 @@ module.exports = async function handler(req, res) {
     return res.end(JSON.stringify({ error: 'method_not_allowed' }));
   }
 
+  // Diagnose: ?debug=1 zeigt die Roh-Antwort von Magicline (nur Belegungszahlen,
+  // keine Secrets) + wie wir sie interpretieren. Hilft zu unterscheiden, ob das
+  // Feld-Mapping falsch ist oder Magicline tatsächlich 0 liefert.
+  const wantDebug = /(?:\?|&)debug=1(?:&|$)/.test(req.url || '');
+
   try {
     const payload = await fetchUtilization();
+    if (wantDebug) {
+      const scaled = presentScaled(payload);
+      res.statusCode = 200;
+      res.setHeader('Content-Type', 'application/json');
+      res.setHeader('Cache-Control', 'no-store');
+      return res.end(JSON.stringify({
+        debug: true,
+        mlBody: payload.mlBody != null ? payload.mlBody : null,   // exakt das, was Magicline schickt
+        extractedCount: payload.count,                            // daraus gelesene Personenzahl (roh)
+        extractedCapacity: payload.rawCapacity,                   // daraus gelesene Kapazität (falls vorhanden)
+        scaled: { count: scaled.count, percent: scaled.percent, status: scaled.status, factor: scaled.factor, max: scaled.max },
+        cached: payload.cached === true,
+        updatedAt: payload.updatedAt,
+      }, null, 2));
+    }
     res.statusCode = 200;
     res.setHeader('Content-Type', 'application/json');
     res.setHeader('Cache-Control', 'no-store');
