@@ -612,7 +612,7 @@
         '<div style="text-align:center;margin-top:16px"><button data-act="loginBack2" style="background:none;border:none;color:'+TEAL+';font-weight:700;font-size:13px;cursor:pointer">‹ Zurück</button></div>';
     } else if(S.loginStep==='verify'){
       inner='<div style="font-size:26px;font-weight:900;color:var(--text);letter-spacing:-.5px">Code eingeben</div>'+
-        '<div style="font-size:14px;color:var(--text-muted);margin-top:7px;line-height:1.5">'+(S.loginVia==='whatsapp'?'Wir haben dir einen 6-stelligen Code <b style="color:var(--text)">per WhatsApp</b> an deine hinterlegte Handynummer geschickt (oder an deine E-Mail, falls keine Nummer hinterlegt ist).':'Wir haben dir einen 6-stelligen Code '+(S.liEmail?('an <b style="color:var(--text)">'+esc(S.liEmail)+'</b>'):'an deine hinterlegte E-Mail-Adresse')+' geschickt – oder nutze den Anmelde-Link aus der E-Mail.')+'</div>'+
+        '<div style="font-size:14px;color:var(--text-muted);margin-top:7px;line-height:1.5">'+(S.loginDemo?'Reviewer-/Demo-Zugang: Bitte gib den <b style="color:var(--text)">bereitgestellten Zugangscode</b> ein. Für dieses Konto wird keine E-Mail versendet.':(S.loginVia==='whatsapp'?'Wir haben dir einen 6-stelligen Code <b style="color:var(--text)">per WhatsApp</b> an deine hinterlegte Handynummer geschickt (oder an deine E-Mail, falls keine Nummer hinterlegt ist).':'Wir haben dir einen 6-stelligen Code '+(S.liEmail?('an <b style="color:var(--text)">'+esc(S.liEmail)+'</b>'):'an deine hinterlegte E-Mail-Adresse')+' geschickt – oder nutze den Anmelde-Link aus der E-Mail.'))+'</div>'+
         '<div style="margin-top:22px"><label class="lbl">Einmal-Code</label><input id="li_code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="• • • • • •" class="inp" style="letter-spacing:8px;text-align:center;font-size:24px;font-weight:800" value="'+esc(S.otp)+'" oninput="window.__setLi(\'code\',this.value)"></div>'+remember+
         '<button class="btn" id="li_btn" data-act="verifyCode" style="margin-top:20px;padding:16px;font-size:16px">'+(S.busy?'Prüfe …':'Anmelden')+'</button>'+e+
         '<div style="display:flex;align-items:center;justify-content:space-between;margin-top:16px"><button data-act="loginBack" style="background:none;border:none;color:'+TEAL+';font-weight:700;font-size:13px;cursor:pointer">‹ E-Mail ändern</button><button data-act="resendCode" style="background:none;border:none;color:'+TEAL+';font-weight:700;font-size:13px;cursor:pointer;text-decoration:underline">'+(S.busy?'…':'Code erneut senden')+'</button></div>';
@@ -2358,15 +2358,18 @@
     reqCode:function(){
       var email=(S.liEmail||'').trim();
       var dob = S.liDob || '';
-      if(!email||!dob){ setS({loginErr:'Bitte E-Mail und Geburtsdatum ausfüllen.'}); return; }
+      if(!email){ setS({loginErr:'Bitte E-Mail-Adresse eingeben.'}); return; }
       setQuiet({busy:true,loginErr:''});
+      // Geburtsdatum darf leer bleiben: der Server entscheidet (Demo-/Reviewer-Konto
+      // kommt ohne Datum durch; normale Konten bekommen den Hinweis 'needdob' zurück).
       fetch('/api/member/login-request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:email,dob:dob})})
         .then(function(r){return r.json().then(function(j){return {s:r.status,j:j||{}};}).catch(function(){return {s:r.status,j:{}};});})
         .then(function(x){ var j=x.j;
           if(x.s===429||j.error==='rate_limited'){ setS({busy:false,loginErr:'Zu viele Versuche – bitte ein paar Minuten warten und dann erneut probieren.'}); return; }
+          if(j.step==='needdob'){ setS({busy:false,loginErr:'Bitte Geburtsdatum ausfüllen.'}); return; }
           if(j.step==='number'){ setS({busy:false,liNum:'',loginStep:'confirmNumber',loginErr:''}); return; }
           if(j.step==='channel'){ setS({busy:false,channels:(j.channels||[]),loginStep:'channel',loginErr:''}); return; }
-          if(j.challenge){ setS({busy:false,challenge:j.challenge,loginStep:'verify',otp:'',loginErr:''}); return; }
+          if(j.challenge){ setS({busy:false,challenge:j.challenge,loginStep:'verify',otp:'',loginErr:'',loginDemo:!!j.demo}); return; }
           setS({busy:false,loginErr:'Es ist ein Fehler aufgetreten. Bitte später erneut.'});
         })
         .catch(function(){ setS({busy:false,loginErr:'Es ist ein Fehler aufgetreten. Bitte später erneut.'}); });

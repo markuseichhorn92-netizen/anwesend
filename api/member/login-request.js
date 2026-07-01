@@ -57,17 +57,22 @@ module.exports = async function handler(req, res) {
   const deliver = (d.deliver === 'whatsapp' || d.deliver === 'email') ? d.deliver : null;
   let challenge = crypto.randomBytes(24).toString('hex');
 
-  // Reviewer-/Demo-Zugang: direkt zur Code-Eingabe (fester Code, kein Versand).
-  // Datumsformat egal (isoDate normalisiert dd.mm.jjjj UND jjjj-mm-tt).
-  if (hasDemoLogin && email === DEMO_EMAIL && M.isoDate(dob) === M.isoDate(DEMO_DOB)) {
+  // Reviewer-/Demo-Zugang wie Benutzername + Passwort: allein die Demo-E-Mail
+  // führt direkt zur Code-Eingabe (fester Code als "Passwort", kein Versand,
+  // KEIN Geburtsdatum nötig – der App-Store-Prüfer bekommt nur E-Mail + Code).
+  if (hasDemoLogin && email === DEMO_EMAIL) {
     let cid = DEMO_CID || null;
     if (!cid && DEMO_NUM) { try { const m = await M.findByNumberDob(DEMO_NUM, DEMO_DOB); if (m) cid = (m.id != null ? m.id : m.customerId); } catch (e) {} }
     if (!cid) { try { const m = await M.findByEmailDob(DEMO_EMAIL, DEMO_DOB); if (m) cid = (m.id != null ? m.id : m.customerId); } catch (e) {} }
     if (cid != null && String(cid) !== '') {
       await M.otpSave(challenge, { id: cid, codeHash: M.hashCode(DEMO_CODE), exp: Date.now() + 600000, tries: 0 }, 600);
-      return send(res, { ok: true, step: 'code', challenge: challenge, via: 'email' });
+      return send(res, { ok: true, step: 'code', challenge: challenge, via: 'email', demo: true });
     }
   }
+
+  // Ohne Geburtsdatum (und kein Demo-Konto): dem Client sagen, dass das Datum fehlt.
+  // Kein Enumeration-Leak – reiner UI-Hinweis, unabhängig davon, ob es das Konto gibt.
+  if (!dob) { return send(res, { ok: true, step: 'needdob' }); }
 
   try {
     const emailOk = email ? await M.rateLimit('otpreq:e:' + email, 10, 1800) : false;
