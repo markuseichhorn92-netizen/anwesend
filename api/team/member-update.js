@@ -2,12 +2,17 @@
 
 /**
  * POST /api/team/member-update   (Bearer Team-Token)
- *   { id, street, houseNumber, zipCode, city }
+ *   { id, street, houseNumber, zipCode, city }   -> Adresse ändern
+ *   { id, action:'anonymise' }                   -> DSGVO: Kunde anonymisieren
  *
  * Team-Bearbeitung der Mitglieder-Adresse über die Magicline Open API
  * (CUSTOMER_SELF_SERVICE_WRITE, CHANGES_WITHOUT_VERIFICATION). E-Mail/Telefon
  * sind hier bewusst NICHT enthalten – ob die Open API das schreiben kann, ist noch
  * offen; sobald geklärt, lässt sich das hier ergänzen.
+ *
+ * Anonymisieren (Scope CUSTOMER_PRIVACY_WRITE): unwiderruflich, Magicline
+ * anonymisiert alle personenbezogenen Daten des (archivierten) Kunden.
+ * Fehlt der Scope (403) -> { ok:false, error:'forbidden' }, kein harter Fehler.
  */
 
 const TA = require('../../lib/teamAuth');
@@ -22,6 +27,19 @@ module.exports = async function handler(req, res) {
   const body = await M.readBody(req);
   const id = body.id;
   if (!id) { res.statusCode = 400; return res.end(JSON.stringify({ ok: false, error: 'missing_id' })); }
+
+  // ── DSGVO: Kunde anonymisieren ──
+  if (body.action === 'anonymise') {
+    let r; try { r = await M.ml('PUT', '/customers/' + encodeURIComponent(id) + '/anonymise'); } catch (e) { r = { status: 0 }; }
+    res.statusCode = 200;
+    if (r.status >= 200 && r.status < 300) {
+      return res.end(JSON.stringify({ ok: true, message: 'Mitglied wurde anonymisiert.' }));
+    }
+    if (r.status === 403) {
+      return res.end(JSON.stringify({ ok: false, error: 'forbidden', message: 'Nicht freigeschaltet.' }));
+    }
+    return res.end(JSON.stringify({ ok: false, status: r.status || 0, message: 'Magicline hat die Anonymisierung abgelehnt (Status ' + (r.status || 0) + '). Hinweis: Anonymisiert werden können nur archivierte Kunden.' }));
+  }
 
   const d = {
     street: String(body.street || '').trim(),

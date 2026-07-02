@@ -97,6 +97,7 @@ var S={ token:null, screen:'inbox', convs:[], counts:{}, selKey:null, sel:null,
         articles:[], articlesLoaded:false, articlesLoading:false,
         helpView:'list', editor:null, helpSearch:'', helpCat:'all',
         stats:null, statsLoading:false,
+        employees:null, employeesLoaded:false,
         editMember:false, edStreet:'', edHouse:'', edZip:'', edCity:'', editBusy:false, editMsg:'' };
 var root=document.getElementById('root');
 var stickBottom=true;   // Chat klebt am unteren Rand, solange der Nutzer nicht hochscrollt
@@ -146,7 +147,8 @@ var CHIC={
   kontakt:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3" width="14" height="18" rx="2.5"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>'
 };
 function chic(ch){ return CHIC[ch]||CHIC.portal; }
-var ASSIGNEES=['Markus','Nina','Jonas'];   // anpassbar – echte Teamnamen später
+// Zuständigkeit: neues Format {id,name} (Magicline-Mitarbeiter), Alt-Format einfacher Name.
+function assigneeName(a){ if(!a) return ''; if(typeof a==='string') return a; return String(a.name||''); }
 
 // Textbausteine (Schnellantworten) + KI-Entwurf für die Antwort-Komposition.
 var TEMPLATES=[
@@ -181,7 +183,7 @@ async function doLogin(pw){
   S.err=''; S.busy=true; render();
   try{
     var r=await tapi('/api/team/login',{method:'POST',body:{password:pw}});
-    if(r.ok && r.token){ saveToken(r.token); S.busy=false; await loadInbox(); return; }
+    if(r.ok && r.token){ saveToken(r.token); S.busy=false; loadEmployees(); await loadInbox(); return; }
     S.err=r.message||'Login fehlgeschlagen.'; S.busy=false; render();
   }catch(e){ S.err='Verbindungsfehler.'; S.busy=false; render(); }
 }
@@ -195,6 +197,17 @@ async function loadInbox(){
     S.loading=false; render();
     if(S.screen==='inbox' && !S.selKey && S.convs.length && window.innerWidth>860){ openConv(S.convs[0].key); }
   }catch(e){ S.loading=false; render(); }
+}
+// Mitarbeiter (Magicline, Scope EMPLOYEE_READ) einmalig laden und in S cachen.
+// available:false (Scope fehlt) -> S.employees bleibt null, die Auswahl wird nicht gerendert.
+async function loadEmployees(){
+  if(S.employeesLoaded) return;
+  S.employeesLoaded=true;
+  try{
+    var r=await tapi('/api/team/employees');
+    if(r && r.ok && r.available && Array.isArray(r.employees) && r.employees.length){ S.employees=r.employees; }
+  }catch(e){}
+  if(S.employees && S.sel) render();
 }
 function findConv(key){ for(var i=0;i<S.convs.length;i++) if(S.convs[i].key===key) return S.convs[i]; return null; }
 function splitKey(key){ var i=key.indexOf(':'); return [key.slice(0,i), key.slice(i+1)]; }
@@ -535,7 +548,7 @@ function rowsHTML(){
           '<div style="font-size:12px;color:#8a929a;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(prev)+'</div></div></div>'+
       '<div style="display:flex;align-items:center;gap:6px;margin-top:9px;padding-left:48px">'+
         '<span style="font-size:10.5px;font-weight:800;color:'+st.c+';background:'+st.b+';border-radius:20px;padding:3px 9px">'+st.l+'</span>'+
-        (c.assignee?'<span style="font-size:11px;color:#6b7780;font-weight:700">'+esc(c.assignee)+'</span>':'')+
+        (assigneeName(c.assignee)?'<span title="Zuständig: '+esc(assigneeName(c.assignee))+'" style="display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:800;color:#0a4958;background:#e7f1f3;border-radius:20px;padding:3px 9px"><span style="width:6px;height:6px;border-radius:50%;background:#2f7d8c"></span>'+esc(assigneeName(c.assignee).split(' ')[0])+'</span>':'')+
         (c.teamUnread?'<span style="margin-left:auto;width:8px;height:8px;border-radius:50%;background:'+ORANGE+'"></span>':'')+'</div></div>';
   }).join('');
 }
@@ -653,9 +666,18 @@ function inboxNode(){
     var prioBtns=['hoch','mittel','niedrig'].map(function(k){ var o=PRIO[k],a=sel2.priority===k;
       return '<button data-prio="'+k+'" style="flex:1;padding:8px;border:1.5px solid '+(a?o.c:'#e4eaeb')+';background:'+(a?o.b:'#fff')+';color:'+(a?o.c:'#8a929a')+';border-radius:10px;font-size:12.5px;font-weight:800;cursor:pointer">'+o.l+'</button>';
     }).join('');
-    var assignBtns=[null].concat(ASSIGNEES).map(function(k){ var a=(sel2.assignee||null)===k; var label=k||'Niemand';
-      return '<button class="miniact" data-assign="'+esc(k||'')+'" style="display:flex;align-items:center;gap:7px;padding:6px 11px;border:1.5px solid '+(a?TEAL:'#e4eaeb')+';background:'+(a?'#f4f8f8':'#fff')+';border-radius:100px;cursor:pointer"><span style="font-size:12.5px;font-weight:700;color:'+(a?'#15171B':'#6b7780')+'">'+esc(label)+'</span></button>';
-    }).join('');
+    // „Zuständig"-Auswahl nur rendern, wenn Magicline-Mitarbeiter verfügbar sind (Scope EMPLOYEE_READ).
+    var assignHtml='';
+    if(S.employees && S.employees.length){
+      var curA=sel2.assignee||null;
+      var curId=(curA&&typeof curA==='object'&&curA.id!=null)?String(curA.id):'';
+      var curName=assigneeName(curA);
+      var assignBtns=[{id:'',name:'Niemand',none:true}].concat(S.employees).map(function(emp){
+        var a=emp.none ? (!curId&&!curName) : (curId?String(emp.id)===curId:(!!curName&&emp.name===curName));
+        return '<button class="miniact" data-assignid="'+esc(emp.none?'':(emp.id||''))+'" data-assignname="'+esc(emp.none?'':emp.name)+'" style="display:flex;align-items:center;gap:7px;padding:6px 11px;border:1.5px solid '+(a?TEAL:'#e4eaeb')+';background:'+(a?'#f4f8f8':'#fff')+';border-radius:100px;cursor:pointer"><span style="font-size:12.5px;font-weight:700;color:'+(a?'#15171B':'#6b7780')+'">'+esc(emp.name)+'</span></button>';
+      }).join('');
+      assignHtml='<div><div style="font-size:11px;font-weight:800;color:#8a929a;text-transform:uppercase;letter-spacing:.5px;margin-bottom:9px">Zuständig</div><div style="display:flex;flex-wrap:wrap;gap:6px">'+assignBtns+'</div></div>';
+    }
     var notesHtml=(sel2.notes||[]).map(function(n){ return '<div style="background:#FBF4E9;border:1px solid #F1DFC2;border-radius:13px;padding:11px 13px"><div style="font-size:13px;line-height:1.5;color:#7a5326;font-weight:600;white-space:pre-wrap">'+esc(n.text)+'</div><div style="font-size:11px;color:#b5631f;font-weight:700;margin-top:5px">'+esc(n.author)+' · '+esc(rel(n.at))+'</div></div>'; }).join('')
       || '<div style="font-size:12.5px;color:#a9b1b6;font-weight:600;padding:2px">Noch keine Notizen.</div>';
     panel.innerHTML=
@@ -669,7 +691,7 @@ function inboxNode(){
       '<div style="background:#fff;border-radius:18px;box-shadow:0 12px 32px rgba(4,33,40,.08);padding:16px 18px;display:flex;flex-direction:column;gap:18px">'+
         '<div><div style="font-size:11px;font-weight:800;color:#8a929a;text-transform:uppercase;letter-spacing:.5px;margin-bottom:9px">Status</div><div style="display:flex;flex-direction:column;gap:6px">'+statusBtns+'</div></div>'+
         '<div><div style="font-size:11px;font-weight:800;color:#8a929a;text-transform:uppercase;letter-spacing:.5px;margin-bottom:9px">Priorität</div><div style="display:flex;gap:6px">'+prioBtns+'</div></div>'+
-        '<div><div style="font-size:11px;font-weight:800;color:#8a929a;text-transform:uppercase;letter-spacing:.5px;margin-bottom:9px">Zugewiesen an</div><div style="display:flex;flex-wrap:wrap;gap:6px">'+assignBtns+'</div></div>'+
+        assignHtml+
         '<div><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:9px"><div style="font-size:11px;font-weight:800;color:#8a929a;text-transform:uppercase;letter-spacing:.5px">Interne Notizen</div><span style="font-size:10.5px;font-weight:800;color:#b5631f;background:#FBEFE2;border-radius:11px;padding:2px 8px">nur Team</span></div>'+
           '<div style="display:flex;flex-direction:column;gap:8px">'+notesHtml+'</div>'+
           '<div style="display:flex;align-items:flex-end;gap:7px;border:1.5px solid #e4eaeb;border-radius:12px;padding:6px 6px 6px 11px;margin-top:9px"><textarea id="note" rows="1" placeholder="Notiz hinzufügen …" style="flex:1;border:none;resize:none;font-size:13px;background:transparent;line-height:1.45;padding:4px 0;max-height:90px;min-height:20px;outline:none">'+esc(S.note)+'</textarea><button id="addnote" style="border:none;border-radius:10px;background:'+((S.note||'').trim()?'#E08C53':'#dab98a')+';color:#fff;font-weight:800;font-size:12.5px;padding:8px 11px;flex-shrink:0;cursor:pointer">+</button></div></div>'+
@@ -716,7 +738,7 @@ function wireInbox(node){
   var an=node.querySelector('#addnote'); if(an) an.onclick=function(){ var v=(S.note||'').trim(); if(v) act('note',{text:v}); };
   node.querySelectorAll('[data-status]').forEach(function(b){ b.onclick=function(){ act('status',{value:b.getAttribute('data-status')}); }; });
   node.querySelectorAll('[data-prio]').forEach(function(b){ b.onclick=function(){ act('priority',{value:b.getAttribute('data-prio')}); }; });
-  node.querySelectorAll('[data-assign]').forEach(function(b){ b.onclick=function(){ act('assignee',{value:b.getAttribute('data-assign')||null}); }; });
+  node.querySelectorAll('[data-assignid]').forEach(function(b){ b.onclick=function(){ act('assign',{assigneeId:b.getAttribute('data-assignid')||null, assigneeName:b.getAttribute('data-assignname')||null}); }; });
   var cc=node.querySelector('#closecase'); if(cc) cc.onclick=function(){ act(S.sel.teamStatus==='abgeschlossen'?'reopen':'close'); };
   var rb=node.querySelector('[data-reassign]'); if(rb) rb.onclick=openReassign;
   var op=node.querySelector('[data-openprof]'); if(op) op.onclick=function(){ var id=op.getAttribute('data-openprof'); if(id){ S.screen='members'; openProfile(id); } };
@@ -863,6 +885,20 @@ function zahlstatusCard(a){
     +'<div style="display:flex;justify-content:space-between;gap:16px;padding:10px 0"><span style="font-size:13.5px;color:#6b7780;font-weight:600">Saldo</span><span style="font-size:13.5px;font-weight:700;color:'+(a.balance<0?'#b53a2c':'#15171B')+'">'+money(a.balance,a.currency)+'</span></div>';
   return '<div style="background:#fff;border-radius:18px;box-shadow:0 12px 32px rgba(4,33,40,.08);padding:20px 22px"><div style="font-size:15px;font-weight:900;margin-bottom:6px">Zahlstatus</div>'+rows+'</div>';
 }
+// Benefits-Karte (Scope CUSTOMER_BENEFIT_READ). Fehlt der Scope oder gibt es keine
+// Benefits -> Karte komplett ausblenden.
+function benefitsCard(b){
+  if(!b || !b.available || !(b.items&&b.items.length)) return '';
+  var rows=b.items.map(function(x){
+    return '<div style="display:flex;align-items:center;justify-content:space-between;gap:14px;padding:10px 0;border-bottom:1px solid #f0f3f4"><span style="font-size:13.5px;font-weight:700;color:#15171B;word-break:break-word">'+esc(x.name)+'</span><span style="font-size:11px;font-weight:800;color:'+(x.valid?'#1d7a3e':'#8a929a')+';background:'+(x.valid?'#e7f6ec':'#eef1f2')+';border-radius:20px;padding:4px 11px;flex-shrink:0">'+(x.valid?'Aktiv':'Inaktiv')+'</span></div>';
+  }).join('');
+  return '<div style="background:#fff;border-radius:18px;box-shadow:0 12px 32px rgba(4,33,40,.08);padding:20px 22px"><div style="font-size:15px;font-weight:900;margin-bottom:6px">Benefits</div>'+rows+'</div>';
+}
+// Zusatzinfos-Karte (Scope ADDITIONAL_INFORMATION_READ). Nur rendern, wenn Daten da sind.
+function zusatzinfoCard(z){
+  if(!z || !z.available || !(z.fields&&z.fields.length)) return '';
+  return profileCard('Zusatzinfos', z.fields.map(function(f){ return pRow(f.name,f.value); }).join(''));
+}
 // Stammdaten-Karte mit Bearbeiten (Adresse via Magicline schreibbar).
 function stammdatenCard(p){
   if(S.editMember){
@@ -896,6 +932,26 @@ async function saveMember(id){
     else { S.editMsg=(r&&r.message)||'Konnte nicht gespeichert werden.'; render(); }
   }catch(e){ S.editBusy=false; S.editMsg='Verbindung fehlgeschlagen.'; render(); }
 }
+// DSGVO: Mitglied anonymisieren – zweistufige Bestätigung (Warn-Dialog + exakte
+// Eingabe der Mitgliedsnummer), erst dann geht der Aufruf an Magicline.
+async function anonymiseMember(p){
+  if(!p || !p.id) return;
+  if(!window.confirm('Mitglied „'+p.name+'“ wirklich anonymisieren?\n\nACHTUNG: Dieser Schritt ist unwiderruflich. Alle personenbezogenen Daten werden in Magicline anonymisiert und können nicht wiederhergestellt werden.')) return;
+  var nr=p.nr!=null?String(p.nr):'';
+  if(!nr){ alert('Keine Mitgliedsnummer vorhanden – Anonymisierung hier nicht möglich.'); return; }
+  var typed=window.prompt('Zur Bestätigung bitte die Mitgliedsnummer exakt eintippen ('+nr+'):','');
+  if(typed==null) return;
+  if(typed.trim()!==nr){ alert('Die Eingabe stimmt nicht mit der Mitgliedsnummer überein – Vorgang abgebrochen.'); return; }
+  try{
+    var r=await tapi('/api/team/member-update',{method:'POST',body:{id:p.id, action:'anonymise'}});
+    if(r&&r.ok){
+      alert('Mitglied wurde anonymisiert.');
+      S.profile=null; S.membersLoaded=false; S.screen='members'; loadMembers();
+    } else {
+      alert((r&&r.message)||'Anonymisierung fehlgeschlagen.');
+    }
+  }catch(e){ alert('Verbindung fehlgeschlagen.'); }
+}
 
 function membersNode(){
   if(S.profile || S.profileLoading){
@@ -921,9 +977,13 @@ function membersNode(){
         profileCard('Vertrag', pRow('Tarif',ct.rateName)+pRow('Vertragsbeginn',ct.startDate)+pRow('Status',ct.active===false?'beendet':'aktiv')+pRow('Vertragsende',ct.endDate||(ct.cancelled?ct.cancellationDate:'läuft'))+pRow('Nächstmögl. Kündigung',ct.nextCancellationDate))+
         profileCard('Bankverbindung', pRow('IBAN',p.ibanMasked))+
         zahlstatusCard(p.account)+
+        benefitsCard(p.benefits)+
+        zusatzinfoCard(p.additionalInfo)+
         profileCard('Termine', apptRows)+
       '</div>'+
       '<div style="margin-top:18px;background:#fff;border-radius:20px;box-shadow:0 14px 38px rgba(4,33,40,.09);padding:20px 24px"><div style="font-size:15px;font-weight:900;letter-spacing:-.2px;margin-bottom:4px;color:#15171B">Vorgangs-Historie</div>'+histRows+'</div>'+
+      // DSGVO-Zone: bewusst dezent, ganz unten – Anonymisieren ist unwiderruflich.
+      '<div style="margin-top:20px;display:flex;justify-content:flex-end;padding:0 2px"><button data-anon="1" style="display:inline-flex;align-items:center;gap:7px;border:1.5px solid #e3b8b1;background:#fff;color:#b5402f;border-radius:11px;font-size:12.5px;font-weight:800;padding:9px 14px;cursor:pointer"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#b5402f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>DSGVO: Mitglied anonymisieren</button></div>'+
     '</div>';
     setTimeout(function(){
       var b=wrap.querySelector('[data-back]'); if(b) b.onclick=backToMembers;
@@ -931,6 +991,7 @@ function membersNode(){
       var em=wrap.querySelector('[data-editmember]'); if(em) em.onclick=function(){ S.edStreet=p.street||''; S.edHouse=p.houseNumber||''; S.edZip=p.zipCode||''; S.edCity=p.city||''; S.editMsg=''; S.editMember=true; render(); };
       var ec=wrap.querySelector('[data-edcancel]'); if(ec) ec.onclick=function(){ S.editMember=false; S.editMsg=''; render(); };
       var es=wrap.querySelector('[data-edsave]'); if(es) es.onclick=function(){ saveMember(p.id); };
+      var anb=wrap.querySelector('[data-anon]'); if(anb) anb.onclick=function(){ anonymiseMember(p); };
     },0);
     return wrap;
   }
@@ -1151,7 +1212,7 @@ function goScreen(k){
 
 // ---------- boot ----------
 loadToken();
-if(S.token){ render(); loadInbox(); } else { render(); }
+if(S.token){ render(); loadEmployees(); loadInbox(); } else { render(); }
 // Offenen Chat live nachladen (neue Nachrichten erscheinen automatisch).
 setInterval(pollThread, 6000);
 // Liste/Badges seltener aktualisieren (kein Voll-Render, wenn gerade getippt wird).

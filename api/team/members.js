@@ -56,6 +56,63 @@ async function searchMembers(q) {
   } catch (e) { return []; }
 }
 
+// „BENEFIT_KEY" -> „Benefit key" (Fallback-Anzeigename, wenn die API nur den Key liefert).
+function niceKey(k) {
+  const s = String(k || '').replace(/[_-]+/g, ' ').trim().toLowerCase();
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
+}
+
+// Benefit-Eintrag robust normalisieren (Feldnamen der API können variieren).
+function mapBenefit(b) {
+  if (b == null) return null;
+  if (typeof b === 'string') return { name: b, valid: true };
+  const name = b.name || b.description || b.title || niceKey(b.key || b.benefitKey);
+  if (!name) return null;
+  return { name: String(name), valid: b.valid !== false };
+}
+
+// Benefits des Kunden (Scope CUSTOMER_BENEFIT_READ) – degradiert bei 403/404 zu available:false.
+async function customerBenefits(id) {
+  try {
+    const r = await M.ml('GET', '/customers/' + encodeURIComponent(id) + '/benefits');
+    if (r.status !== 200) return { available: false };
+    const arr = Array.isArray(r.json) ? r.json : (r.json && Array.isArray(r.json.result) ? r.json.result : []);
+    return { available: true, items: arr.map(mapBenefit).filter(Boolean) };
+  } catch (e) { return { available: false }; }
+}
+
+// Zusatzfelder (Scope ADDITIONAL_INFORMATION_READ): Die Zuweisungen samt Wert liegen
+// bereits im Kundenobjekt (additionalInformationFieldAssignments); die Felddefinitionen
+// liefern Typ + Listen-Optionen, um IDs in lesbare Werte zu übersetzen.
+async function additionalInfoOf(m) {
+  try {
+    const assigns = (m && Array.isArray(m.additionalInformationFieldAssignments)) ? m.additionalInformationFieldAssignments : [];
+    if (!assigns.length) return { available: false };
+    const defs = {};
+    try {
+      const r = await M.ml('GET', '/customers/additional-information-fields');
+      if (r.status === 200) {
+        const list = Array.isArray(r.json) ? r.json : (r.json && Array.isArray(r.json.result) ? r.json.result : []);
+        list.forEach((f) => { if (f && f.id != null) defs[String(f.id)] = f; });
+      }
+    } catch (e) {}
+    const fields = assigns.map((a) => {
+      if (!a) return null;
+      const def = defs[String(a.additionalInformationFieldId)] || null;
+      const name = String(a.name || (def && def.name) || '').trim();
+      let value = a.value != null ? String(a.value).trim() : '';
+      if (def && def.type === 'LIST' && Array.isArray(def.listItems)) {
+        const item = def.listItems.find((li) => li && String(li.id) === value);
+        if (item && item.name) value = String(item.name);
+      } else if (def && def.type === 'BOOLEAN') {
+        value = value === 'true' ? 'Ja' : 'Nein';
+      }
+      return (name && value) ? { name, value } : null;
+    }).filter(Boolean);
+    return fields.length ? { available: true, fields } : { available: false };
+  } catch (e) { return { available: false }; }
+}
+
 // Verzeichnis aus den Vorgängen (Mitglieder, mit denen wir Kontakt hatten).
 async function directory() {
   const all = await Inbox.listAll({ limit: 400 });
@@ -109,6 +166,12 @@ async function profile(id) {
   // Zahlstatus (Scope CUSTOMER_ACCOUNT_READ) – degradiert bei 403 zu available:false.
   let account = { available: false };
   try { account = await MLAccount.accountSummary(id); } catch (e) {}
+  // Benefits (CUSTOMER_BENEFIT_READ) + Zusatzfelder (ADDITIONAL_INFORMATION_READ) –
+  // beide degradieren zu available:false, die UI blendet die Karten dann aus.
+  let benefits = { available: false };
+  try { benefits = await customerBenefits(id); } catch (e) {}
+  let additionalInfo = { available: false };
+  try { additionalInfo = await additionalInfoOf(m); } catch (e) {}
   const name = ((p.firstName || '') + ' ' + (p.lastName || '')).trim();
   const addr = [((p.street || '') + (p.houseNumber ? (' ' + p.houseNumber) : '')).trim(), ((p.zipCode || '') + ' ' + (p.city || '')).trim()].filter((s) => s).join(', ');
   return {
@@ -117,6 +180,7 @@ async function profile(id) {
     birthday: p.dateOfBirth || null, address: addr || null, ibanMasked: p.ibanMasked || null,
     street: p.street || '', houseNumber: p.houseNumber || '', zipCode: p.zipCode || '', city: p.city || '',
     contract: contract, appointments: appointments, history: history, account: account,
+    benefits: benefits, additionalInfo: additionalInfo,
   };
 }
 

@@ -9,7 +9,8 @@
  *   reply    { text }                 -> Antwort an Mitglied (kanalbewusst: Portal/E-Mail/WhatsApp)
  *   status   { value }                -> teamStatus (neu|bearbeitung|wartet|abgeschlossen)
  *   priority { value }                -> hoch|mittel|niedrig
- *   assignee { value|null }           -> Zuweisung
+ *   assignee { value|null }           -> Zuweisung (freier Name, Alt-Format)
+ *   assign   { assigneeId, assigneeName } -> Zuweisung an Magicline-Mitarbeiter ({id,name}; leer = entfernen)
  *   note     { text }                 -> interne Notiz (nur Team)
  *   close                             -> Vorgang abschließen
  *   reopen                            -> wieder öffnen
@@ -31,6 +32,25 @@ async function ensureSnapshot(memberId, v) {
     if (s) { v.member = s; await Inbox.setMemberSnapshot(memberId, v.id, s); }
   } catch (e) {}
   return v;
+}
+
+// Team-Antwort zusätzlich in der Magicline-Kundenhistorie protokollieren
+// (Scope COMMUNICATION_WRITE). Best effort: Fehler (z. B. 403 ohne Scope)
+// werden still geschluckt – die Antwort an den Client hängt NICHT davon ab.
+// Pseudo-Mitglieder ("wa…" = WhatsApp-Leads) haben keine Magicline-ID -> überspringen.
+const CRM_CHANNEL = { whatsapp: 'TEXT_MESSAGE', email: 'EMAIL', portal: 'CHAT' };
+async function logToMagicline(memberId, v, text, channel, author) {
+  try {
+    if (!memberId || /^wa/.test(String(memberId))) return;
+    await M.ml('POST', '/communications/' + encodeURIComponent(memberId) + '/threads', {
+      communicationThreadStatus: 'ONGOING',
+      subject: (((v && v.subject) || 'Vorgang') + ((v && v.ref) ? (' ' + v.ref) : '')).slice(0, 200),
+      content: String(text || '').slice(0, 4000),
+      communicationDirection: 'OUTGOING',
+      communicationChannel: CRM_CHANNEL[channel] || 'OTHER',
+      agent: String(author || 'Team').slice(0, 80),
+    });
+  } catch (e) {}
 }
 
 module.exports = async function handler(req, res) {
@@ -73,6 +93,7 @@ module.exports = async function handler(req, res) {
     const r = await SR.applyOwnerReply(m, id, text, { channel: wantCh, author: author });
     if (!r || !r.ok) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'Antwort konnte nicht zugestellt werden.' })); }
     v = await Inbox.get(m, id);
+    await logToMagicline(m, v, text, r.channel || 'portal', author);
     if (wantCh && r.channel && r.channel !== wantCh) {
       // Gewünschter Kanal war nicht möglich -> auf den anderen ausgewichen (UI informieren).
       await ensureSnapshot(m, v);
@@ -90,6 +111,13 @@ module.exports = async function handler(req, res) {
     v = await Inbox.setMeta(m, id, { priority: body.value }) || v;
   } else if (action === 'assignee') {
     v = await Inbox.setMeta(m, id, { assignee: body.value || null }) || v;
+  } else if (action === 'assign') {
+    // Mitarbeiter-Zuweisung (Auswahl aus /api/team/employees). Leer -> Zuweisung entfernen.
+    const aid = body.assigneeId != null ? String(body.assigneeId).trim() : '';
+    const aname = String(body.assigneeName || '').trim().slice(0, 80);
+    v.assignee = (aid || aname) ? { id: aid || null, name: aname || null } : null;
+    v.updatedAt = Date.now();
+    v = await Inbox.save(m, v) || v;
   } else if (action === 'note') {
     const nv = await Inbox.addNote(m, id, { text: body.text, author: author });
     if (!nv) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'Notiz ist leer.' })); }
