@@ -10,6 +10,7 @@
  */
 
 const M = require('../../lib/members');
+const MC = require('../../lib/mlCancel');
 const C = require('../../lib/connect');
 const Inbox = require('../../lib/inbox');
 const { sendMail, sendMailRaw, hasMail } = require('../../lib/mail');
@@ -18,6 +19,8 @@ const { memberLink } = require('../../lib/magic');
 const SR = require('../../lib/studioReply');
 
 const OFFERS = { discount10: '10 % Rabatt für 6 Monate', pause: 'Beitragspause' };
+
+function toPosInt(v) { var n = parseInt(v, 10); return (isFinite(n) && n > 0) ? n : null; }
 
 function who(m) {
   return ((m.firstName || '') + ' ' + (m.lastName || '')).trim()
@@ -75,9 +78,18 @@ async function sendMemberRevokeMail(m, direct) {
 
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json');
-  if (req.method !== 'POST') { res.statusCode = 405; return res.end(JSON.stringify({ error: 'method_not_allowed' })); }
+  if (req.method !== 'POST' && req.method !== 'GET') { res.statusCode = 405; return res.end(JSON.stringify({ error: 'method_not_allowed' })); }
   const sess = await M.getSession(M.bearer(req));
   if (!sess) { res.statusCode = 401; return res.end(JSON.stringify({ error: 'unauthorized' })); }
+
+  // GET: Kündigungsgründe des Studios für das Formular (Open API). Fehlt der Scope
+  // (403) oder ist die API nicht verfügbar -> leere Liste, das Formular fällt still
+  // auf den bestehenden Ablauf zurück.
+  if (req.method === 'GET') {
+    const rr = await MC.cancelReasons();
+    res.statusCode = 200;
+    return res.end(JSON.stringify({ ok: !!rr.ok, forbidden: !!rr.forbidden, reasons: rr.reasons || [] }));
+  }
 
   const body = await M.readBody(req);
   const m = await M.getMember(sess.id);
@@ -107,20 +119,54 @@ module.exports = async function handler(req, res) {
     if (reqDate && minISO && reqDate < minISO) reqDate = minISO;
     var dateISO = reqDate || minISO || null;
     var useNext = !!(minISO && (!reqDate || reqDate === minISO));
-    try { vorgang = await Inbox.addVorgang(sess.id, { type: 'kuendigung', subject: 'Kündigung deiner Mitgliedschaft',
-      systemText: 'Du hast eine Kündigung eingereicht (zum ' + (dateISO ? dateISO.split('-').reverse().join('.') : 'nächstmöglichen Termin') + ').',
-      teamText: 'Hallo' + (m.firstName ? (' ' + m.firstName) : '') + ', wir haben deine Kündigung erhalten. Eine schriftliche Bestätigung senden wir dir innerhalb von 2 Werktagen per E-Mail. Falls du es dir anders überlegst: Eine Beitragspause wäre ebenfalls möglich – melde dich gern.' }); } catch (e) {}
+    var cancelReasonId = toPosInt(body.cancelationReasonId);
 
     cancelDbg = {
       contractFound: !!ct,
       contractId: (ct && ct.contractId) ? 'ja' : 'nein',
       cancelledAlready: !!(ct && ct.cancelled),
       dateISO: dateISO || null,
+      hadReasonId: !!cancelReasonId,
       hadToken: !!body.recaptchaToken,
       tokenLen: body.recaptchaToken ? String(body.recaptchaToken).length : 0,
+      attemptedOpen: false,
       attemptedDirect: false,
       path: 'fallback',
     };
+
+    // 0) Open API (Scope MEMBERSHIP_SELF_SERVICE_WRITE) – verbindlich & sofort bestätigt,
+    //    kein reCAPTCHA nötig. Nur wenn Vertrag, Datum UND ein Kündigungsgrund vorliegen.
+    //    Bei 403/Fehler unverändert weiter zum Connect-/E-Mail-Weg.
+    if (ct && ct.contractId && dateISO && cancelReasonId) {
+      cancelDbg.attemptedOpen = true;
+      var oc = await MC.ordinaryCancel(sess.id, { contractId: ct.contractId, cancelationReasonId: cancelReasonId, cancelationDate: dateISO });
+      cancelDbg.openStatus = oc.status;
+      cancelDbg.openForbidden = !!oc.forbidden;
+      if (oc.ok) {
+        cancelDbg.path = 'magicline';
+        var cdDE = dateISO.split('-').reverse().join('.');
+        try { vorgang = await Inbox.addVorgang(sess.id, { type: 'kuendigung', subject: 'Kündigung bestätigt', status: 'abgeschlossen',
+          systemText: 'Deine Kündigung ist bestätigt – zum ' + cdDE + '.',
+          teamText: 'Hallo' + (m.firstName ? (' ' + m.firstName) : '') + ', deine Kündigung ist bei uns eingegangen und verbindlich bestätigt – zum ' + cdDE + '. Bis dahin bleibt dein Zugang voll aktiv. Schade, dass du gehst – du bist jederzeit willkommen zurück!' }); } catch (e) {}
+        if (hasMail) {
+          try {
+            await sendMail('✅ Kündigung direkt eingetragen – ' + who(m),
+              'Ein Mitglied hat über den Mitgliederbereich gekündigt – die Kündigung wurde DIREKT in Magicline eingetragen (Open API, Self-Service).\n\n'
+              + 'Mitglied: ' + who(m) + '\nKundennr.: ' + (m.customerNumber || '—')
+              + '\nKündigung zum: ' + cdDE + '\nGrund: ' + (body.reason || '—')
+              + '\n\nKeine manuelle Aktion nötig – nur zur Info.');
+          } catch (e) {}
+        }
+        await sendMemberCancelMail(m, { direct: true, dateText: cdDE, ct: ct });
+        res.statusCode = 200;
+        return res.end(JSON.stringify({ ok: true, via: 'magicline', direct: true, message: 'Deine Kündigung wurde verbindlich eingereicht – zum ' + cdDE + '. Du erhältst eine Bestätigung per E-Mail.', effectiveDate: cdDE, _debug: cancelDbg }));
+      }
+      if (!oc.forbidden) cancelDbg.openError = String(oc.error || '').slice(0, 240);
+    }
+
+    try { vorgang = await Inbox.addVorgang(sess.id, { type: 'kuendigung', subject: 'Kündigung deiner Mitgliedschaft',
+      systemText: 'Du hast eine Kündigung eingereicht (zum ' + (dateISO ? dateISO.split('-').reverse().join('.') : 'nächstmöglichen Termin') + ').',
+      teamText: 'Hallo' + (m.firstName ? (' ' + m.firstName) : '') + ', wir haben deine Kündigung erhalten. Eine schriftliche Bestätigung senden wir dir innerhalb von 2 Werktagen per E-Mail. Falls du es dir anders überlegst: Eine Beitragspause wäre ebenfalls möglich – melde dich gern.' }); } catch (e) {}
 
     // 1) Direkteintrag über die Connect API (wenn Vertrag + reCAPTCHA-Token da sind)
     if (ct && ct.contractId && body.recaptchaToken && dateISO) {
@@ -184,9 +230,6 @@ module.exports = async function handler(req, res) {
     // Vertrag + reCAPTCHA-Token vorhanden; 2) sonst E-Mail-Fallback ans Studio.
     var ctr = null;
     try { ctr = await M.getContract(sess.id); } catch (e) {}
-    try { vorgang = await Inbox.addVorgang(sess.id, { type: 'widerruf', subject: 'Widerruf deines Vertrags',
-      systemText: 'Du hast deinen online abgeschlossenen Vertrag widerrufen.',
-      teamText: 'Hallo' + (m.firstName ? (' ' + m.firstName) : '') + ', dein Widerruf ist eingegangen und wird bearbeitet – dein Vertrag wird rückabgewickelt und bereits gezahlte Beiträge erstatten wir dir zurück. Die Bestätigung folgt per E-Mail.' }); } catch (e) {}
     cancelDbg = {
       action: 'revoke',
       contractFound: !!ctr,
@@ -195,9 +238,43 @@ module.exports = async function handler(req, res) {
       withdrawalEligible: !!(ctr && ctr.withdrawalEligible),
       hadToken: !!body.recaptchaToken,
       tokenLen: body.recaptchaToken ? String(body.recaptchaToken).length : 0,
+      attemptedOpen: false,
       attemptedDirect: false,
       path: 'fallback',
     };
+
+    // 0) Open API Widerruf (Scope MEMBERSHIP_SELF_SERVICE_WRITE) – verbindlich & sofort
+    //    bestätigt, kein reCAPTCHA nötig. Bei 403/Fehler weiter zum Connect-/E-Mail-Weg.
+    if (ctr && ctr.contractId) {
+      cancelDbg.attemptedOpen = true;
+      var ow = await MC.contractWithdrawal(sess.id, ctr.contractId);
+      cancelDbg.openStatus = ow.status;
+      cancelDbg.openForbidden = !!ow.forbidden;
+      if (ow.ok) {
+        cancelDbg.path = 'magicline';
+        try { vorgang = await Inbox.addVorgang(sess.id, { type: 'widerruf', subject: 'Widerruf bestätigt', status: 'abgeschlossen',
+          systemText: 'Dein Widerruf ist bestätigt – dein Vertrag wird rückabgewickelt.',
+          teamText: 'Hallo' + (m.firstName ? (' ' + m.firstName) : '') + ', dein Widerruf ist eingegangen und verbindlich bestätigt. Dein online abgeschlossener Vertrag wird vollständig rückabgewickelt und bereits gezahlte Beiträge erstatten wir dir zurück.' }); } catch (e) {}
+        await sendMemberRevokeMail(m, true);
+        if (hasMail) {
+          try {
+            await sendMail('✅ Widerruf direkt eingetragen – ' + who(m),
+              'Ein Mitglied hat seinen Vertrag über den Mitgliederbereich WIDERRUFEN – der Widerruf wurde DIREKT in Magicline eingetragen (Open API, Self-Service).\n\n'
+              + 'Mitglied: ' + who(m) + '\nKundennr.: ' + (m.customerNumber || '—')
+              + (ctr.rateName ? ('\nTarif: ' + ctr.rateName) : '') + '\nContractId: ' + (ctr.contractId || '—')
+              + '\n\nKeine manuelle Aktion nötig – nur zur Info. Bereits eingezogene Beiträge ggf. erstatten.');
+          } catch (e) {}
+        }
+        res.statusCode = 200;
+        return res.end(JSON.stringify({ ok: true, via: 'magicline', direct: true, message: 'Dein Widerruf wurde verbindlich eingereicht. Du erhältst eine Bestätigung per E-Mail.', _debug: cancelDbg }));
+      }
+      if (!ow.forbidden) cancelDbg.openError = String(ow.error || '').slice(0, 240);
+    }
+
+    try { vorgang = await Inbox.addVorgang(sess.id, { type: 'widerruf', subject: 'Widerruf deines Vertrags',
+      systemText: 'Du hast deinen online abgeschlossenen Vertrag widerrufen.',
+      teamText: 'Hallo' + (m.firstName ? (' ' + m.firstName) : '') + ', dein Widerruf ist eingegangen und wird bearbeitet – dein Vertrag wird rückabgewickelt und bereits gezahlte Beiträge erstatten wir dir zurück. Die Bestätigung folgt per E-Mail.' }); } catch (e) {}
+
     if (ctr && ctr.contractId && body.recaptchaToken) {
       cancelDbg.attemptedDirect = true;
       var dw = null;

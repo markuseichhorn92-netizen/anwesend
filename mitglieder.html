@@ -297,14 +297,14 @@
 
   // ---- state ----
   var TOKEN = localStorage.getItem('fi_member_token') || sessionStorage.getItem('fi_member_token') || null;
-  var DATA = { profile:null, contract:null, checkins:null, appts:null, plan:null, planAgg:null, planAggTom:null, inbox:null, prefs:null, membershipActive:true, bookable:null, slots:null, account:null, blog:null, typical:null, hours:null, insta:null, live:null, pauseInfo:null };
+  var DATA = { profile:null, contract:null, checkins:null, appts:null, plan:null, planAgg:null, planAggTom:null, inbox:null, prefs:null, membershipActive:true, bookable:null, slots:null, account:null, blog:null, typical:null, hours:null, insta:null, live:null, pauseInfo:null, cancelReasons:null };
   // Erlaubte Screens für ehemalige Mitglieder (alles andere wird gesperrt)
   var FORMER_OK = ['home','checkins','help','postfach','settings','profil'];
   function isFormer(){ return DATA.membershipActive===false; }
   var S = { screen: TOKEN?'home':'login',
     msg:'', // generic success on data screen
     planEdit:false, planRemind:true, planBusy:false,
-    cancelStep:0, cancelReason:'', pauseWeeks:6, offerDone:'', withdrawConfirm:false, withdrawDone:false, cancelDone:false, revokeConfirm:false, revokeDone:false, busy:false,
+    cancelStep:0, cancelReason:'', cancelReasonId:'', pauseWeeks:6, offerDone:'', withdrawConfirm:false, withdrawDone:false, withdrawMsg:'', withdrawErr:'', cancelDone:false, revokeConfirm:false, revokeDone:false, busy:false,
     pauseStep:0, pauseReason:'', pauseReasonText:'', pauseFrom:'', pausePhoto:'', pausePhotoName:'', pauseDone:false,
     pauseReasonId:'', pauseTerm:1, pauseDoneVia:'', pauseDoneMsg:'',
     ccBusy:false, ccMsg:'',
@@ -454,6 +454,10 @@
   }
   function loadCheckins(){ api('/api/member/checkins').then(function(d){ DATA.checkins=d.checkins||[]; ciSyncFromHistory(); render(); }).catch(function(){ DATA.checkins=[]; render(); }); }
   function loadAccount(){ api('/api/member/account').then(function(d){ DATA.account=d&&d.ok?d:{ok:false,open:[]}; render(); }).catch(function(){ DATA.account={ok:false,open:[]}; render(); }); }
+  // Kündigungsgründe (Magicline Open API) einmal je Sitzung laden. Fehlt der Scope
+  // (403) oder ist die API nicht verfügbar, bleibt es bei einer leeren Liste und das
+  // Formular fällt still auf den bisherigen Ablauf zurück.
+  function loadCancelReasons(){ if(DATA.cancelReasons!==null) return; DATA.cancelReasons=[]; api('/api/member/cancel').then(function(d){ DATA.cancelReasons=(d&&d.ok&&Array.isArray(d.reasons))?d.reasons:[]; render(); }).catch(function(){ DATA.cancelReasons=[]; }); }
   // Beitragspause-Optionen (Magicline) – einmal je Sitzung cachen; bei Fehlern
   // still auf das bisherige E-Mail-Formular zurückfallen (available:false).
   var pauseInfoBusy=false;
@@ -1126,13 +1130,14 @@
       return head+'<div class="card" style="padding:30px 22px;text-align:center"><div style="width:60px;height:60px;border-radius:18px;background:var(--err-bg);display:flex;align-items:center;justify-content:center;margin:0 auto 16px">'+svg(IC.warn,{c:'var(--err-fg)',w:2,s:28})+'</div><div style="font-size:19px;font-weight:900;letter-spacing:-.3px">Vertragsdaten nicht verfügbar</div><div style="font-size:14px;color:var(--text-muted);margin-top:7px;line-height:1.55">Wir konnten keinen laufenden Vertrag automatisch zuordnen. Du kannst trotzdem pausieren oder kündigen – wir melden uns.</div>'+pauseBtn(20)+'<button class="btnDanger" data-act="startCancel" style="margin-top:12px">Mitgliedschaft kündigen</button><div style="font-size:12px;color:var(--text-soft);margin-top:14px">Oder ruf uns an: <b style="color:'+TEAL+'">0651 308524</b></div></div>'+(S.cancelDone?okBox('Deine Kündigung wurde eingereicht. Du erhältst eine Bestätigung per E-Mail.'):'')+(S.pauseDone?okBox('Deine Pause-Anfrage ist eingegangen.'):'');
     }
     var cancelled=!!c.cancelled;
-    var msgs=(S.cancelDone?okBox('Deine Kündigung wurde verbindlich eingereicht. Du erhältst eine Bestätigung per E-Mail.'):'')+(S.withdrawDone?okBox('Deine Kündigung wurde zurückgenommen. Schön, dass du dabei bleibst!'):'')+(S.revokeDone?okBox('Dein Widerruf ist eingegangen. Wir wickeln deinen Vertrag rück und bestätigen das per E-Mail.'):'');
+    var msgs=(S.cancelDone?okBox('Deine Kündigung wurde verbindlich eingereicht. Du erhältst eine Bestätigung per E-Mail.'):'')+(S.withdrawDone?okBox(S.withdrawMsg||'Schön, dass du bleibst! Deine Kündigung ist zurückgezogen – deine Mitgliedschaft läuft ganz normal weiter.'):'')+(S.withdrawErr?noteBox(S.withdrawErr):'')+(S.revokeDone?okBox('Dein Widerruf ist eingegangen. Wir wickeln deinen Vertrag rück und bestätigen das per E-Mail.'):'');
     var badge=cancelled?'<span style="font-size:12px;font-weight:800;color:var(--err-fg);background:var(--err-bg);padding:5px 12px;border-radius:20px">Gekündigt</span>':'<span style="font-size:12px;font-weight:800;color:var(--ok-fg);background:var(--ok-bg);padding:5px 12px;border-radius:20px">Aktiv</span>';
     var box='<div class="card" style="padding:22px"><div style="display:flex;align-items:center;justify-content:space-between;gap:12px"><div style="font-size:20px;font-weight:900;letter-spacing:-.4px">'+esc(c.rateName||'Mitgliedschaft')+'</div>'+badge+'</div>'+
       '<div style="margin-top:14px">'+row('Mitgliedsnummer',p.customerNumber)+row('Vertragsbeginn',c.startDate)+row('Vertragsende',c.endDate)+row('Kündigungsfrist',c.cancellationPeriod)+'</div>'+
       '<div style="background:var(--surface-2);border-radius:14px;padding:14px 16px;margin-top:14px"><div style="font-size:12px;color:var(--text-soft);font-weight:700">Nächstmöglich kündbar zum</div><div style="font-size:18px;font-weight:900;color:'+TEAL+';margin-top:2px">'+esc(c.nextCancellationDate||'—')+'</div></div>';
     if(cancelled){ box+='<div style="display:flex;align-items:center;gap:9px;background:var(--err-bg);border-radius:14px;padding:12px 14px;margin-top:14px">'+svg('<circle cx="12" cy="12" r="9"></circle><path d="M12 8v4M12 16h.01"></path>',{c:'var(--err-fg)',w:2,s:18})+'<span style="font-size:13px;color:var(--err-fg);font-weight:700">Gekündigt zum '+esc(c.cancellationDate||c.nextCancellationDate||'—')+'</span></div>'+
-      '<button class="btn" data-act="askWithdraw" style="margin-top:14px">Kündigung zurücknehmen</button>'; }
+      // Rückgewinnung: „Kündigung zurückziehen" nur solange der Vertrag noch läuft.
+      ((c.active!==false)?'<button class="btn" data-act="askWithdraw" style="margin-top:14px">Kündigung zurückziehen</button>':''); }
     box+='</div>';
     var copyBtn='<button class="btn2" data-act="contractCopy" style="display:flex;align-items:center;justify-content:center;gap:9px">'+svg('<rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="M3 7l9 6 9-6"></path>',{w:2,s:18})+(S.ccBusy?'Wird gesendet …':'Vertragskopie per E-Mail')+'</button>'+
       (S.ccMsg?'<div style="font-size:13px;color:var(--teal-ink);font-weight:700;text-align:center;margin-top:2px">'+esc(S.ccMsg)+'</div>':'');
@@ -1152,6 +1157,7 @@
     return head+msgs+wd+box+actionCard+dialog;
   }
   function okBox(t){ return '<div class="ok" style="margin-bottom:14px">'+svg(IC.check,{c:'var(--ok-fg)',w:2.1,s:18})+'<span>'+esc(t)+'</span></div>'; }
+  function noteBox(t){ return '<div style="display:flex;align-items:center;gap:9px;background:var(--err-bg);border-radius:14px;padding:12px 14px;margin-bottom:14px">'+svg('<circle cx="12" cy="12" r="9"></circle><path d="M12 8v4M12 16h.01"></path>',{c:'var(--err-fg)',w:2,s:18})+'<span style="font-size:13px;color:var(--err-fg);font-weight:700">'+esc(t)+'</span></div>'; }
 
   var REASONS=['Zu teuer','Keine Zeit','Umzug / zu weit weg','Gesundheit / Verletzung','Unzufrieden','Sonstiges'];
   var REASONINFO={
@@ -1186,8 +1192,12 @@
       '<div style="display:flex;gap:10px;margin-top:14px"><button class="btn2" data-act="cancelBack" style="flex:1;padding:13px;font-size:14px">Zurück</button><button data-act="cancelNext" style="flex:1;padding:13px;border:none;border-radius:11px;background:transparent;color:var(--text-soft);font-weight:600;font-size:14px;cursor:pointer">Trotzdem kündigen</button></div>';
     } else if(n===5){
       var c=DATA.contract||{};
+      // Magicline-Kündigungsgründe anbieten, falls die Open API sie liefert (sonst leer).
+      var crs=DATA.cancelReasons;
+      var cReasonSel=(crs&&crs.length)?('<div style="margin-top:14px"><label class="lbl">Kündigungsgrund</label><select id="c_reason" class="inp" onchange="window.__setCReason&&window.__setCReason(this.value)"><option value="">Bitte wählen …</option>'+crs.map(function(r){ return '<option value="'+esc(r.id)+'"'+(String(S.cancelReasonId)===String(r.id)?' selected':'')+'>'+esc(r.name)+'</option>'; }).join('')+'</select></div>'):'';
       inner='<div style="font-size:20px;font-weight:800;letter-spacing:-.3px">Kündigung bestätigen</div><div style="font-size:14px;color:var(--text-muted);margin-top:5px;line-height:1.45">Bitte prüfe die Angaben, bevor du verbindlich kündigst.</div>'+
       '<div style="background:var(--surface-2);border-radius:14px;padding:16px 18px;margin-top:18px"><div style="display:flex;justify-content:space-between;padding:7px 0"><span style="font-size:14px;color:var(--text-muted)">Vertrag</span><span style="font-size:14px;font-weight:700">'+esc(c.rateName||'Mitgliedschaft')+((DATA.profile&&DATA.profile.customerNumber)?(' · '+esc(DATA.profile.customerNumber)):'')+'</span></div><div style="display:flex;justify-content:space-between;padding:7px 0"><span style="font-size:14px;color:var(--text-muted)">Grund</span><span style="font-size:14px;font-weight:700">'+esc(S.cancelReason||'—')+'</span></div></div>'+
+      cReasonSel+
       '<div style="margin-top:14px"><label class="lbl">Kündigungsdatum</label><input id="c_date" type="date" class="inp" value="'+esc((c.nextCancellationDateISO)||'')+'"'+(c.nextCancellationDateISO?(' min="'+esc(c.nextCancellationDateISO)+'"'):'')+' onchange="window.__clampCDate&&window.__clampCDate(this)" oninput="window.__clampCDate&&window.__clampCDate(this)"><div style="font-size:12px;color:var(--text-soft);margin-top:6px">Frühestens zum nächstmöglichen Termin laut Vertrag ('+esc(c.nextCancellationDate||'—')+') – ein späteres Datum ist möglich.</div></div>'+
       '<button class="btnDanger" data-act="submitCancel" style="margin-top:20px">'+(S.busy?'Wird übermittelt …':'Kündigung verbindlich einreichen')+'</button>'+
       '<button class="btn2" data-act="abortCancel" style="margin-top:10px">Abbrechen – ich bleibe</button>';
@@ -1321,7 +1331,7 @@
     return '<div class="card"><div style="display:flex;gap:6px;margin-bottom:6px">'+segs+'</div><div style="font-size:12px;color:var(--text-soft);font-weight:600;margin-bottom:18px">Schritt '+n+' von 4</div>'+inner+nav+'</div>';
   }
   function withdrawDialog(){
-    return '<div style="position:fixed;inset:0;z-index:60;background:rgba(6,33,40,.55);display:flex;align-items:flex-end;justify-content:center"><div data-act="cancelWithdraw" style="position:absolute;inset:0"></div><div style="position:relative;z-index:2;width:100%;max-width:480px;background:var(--surface);border-radius:22px 22px 0 0;padding:26px 22px 28px;box-shadow:0 -10px 40px rgba(4,33,40,.30)"><div style="width:42px;height:5px;border-radius:3px;background:var(--border);margin:0 auto 18px"></div><div style="font-size:20px;font-weight:900">Kündigung zurücknehmen?</div><div style="font-size:14px;color:var(--text-muted);margin-top:8px;line-height:1.5">Deine Mitgliedschaft läuft dann ganz normal weiter – zu deinen aktuellen Konditionen.</div><button class="btn" data-act="confirmWithdraw" style="margin-top:20px">'+(S.busy?'…':'Ja, Kündigung zurücknehmen')+'</button><button class="btn2" data-act="cancelWithdraw" style="margin-top:10px">Abbrechen</button></div></div>';
+    return '<div style="position:fixed;inset:0;z-index:60;background:rgba(6,33,40,.55);display:flex;align-items:flex-end;justify-content:center"><div data-act="cancelWithdraw" style="position:absolute;inset:0"></div><div style="position:relative;z-index:2;width:100%;max-width:480px;background:var(--surface);border-radius:22px 22px 0 0;padding:26px 22px 28px;box-shadow:0 -10px 40px rgba(4,33,40,.30)"><div style="width:42px;height:5px;border-radius:3px;background:var(--border);margin:0 auto 18px"></div><div style="font-size:20px;font-weight:900">Schön, dass du bleibst!</div><div style="font-size:14px;color:var(--text-muted);margin-top:8px;line-height:1.5">Deine Mitgliedschaft läuft dann ganz normal weiter – zu deinen aktuellen Konditionen. Wir freuen uns auf dein nächstes Training!</div><button class="btn" data-act="confirmWithdraw" style="margin-top:20px">'+(S.busy?'…':'Ja, Kündigung zurückziehen')+'</button><button class="btn2" data-act="cancelWithdraw" style="margin-top:10px">Abbrechen</button></div></div>';
   }
   function revokeDialog(){
     return '<div style="position:fixed;inset:0;z-index:60;background:rgba(6,33,40,.55);display:flex;align-items:flex-end;justify-content:center"><div data-act="cancelRevoke" style="position:absolute;inset:0"></div><div style="position:relative;z-index:2;width:100%;max-width:480px;background:var(--surface);border-radius:22px 22px 0 0;padding:26px 22px 28px;box-shadow:0 -10px 40px rgba(4,33,40,.30)"><div style="width:42px;height:5px;border-radius:3px;background:var(--border);margin:0 auto 18px"></div><div style="font-size:20px;font-weight:900">Vertrag widerrufen?</div><div style="font-size:14px;color:var(--text-muted);margin-top:8px;line-height:1.5">Du widerrufst deinen online abgeschlossenen Vertrag im Rahmen des gesetzlichen 14-tägigen Widerrufsrechts. Der Vertrag wird vollständig rückabgewickelt und bereits gezahlte Beiträge werden dir erstattet. Du erhältst eine Bestätigung per E-Mail.</div><button class="btnDanger" data-act="confirmRevoke" style="margin-top:20px">'+(S.busy?'Wird übermittelt …':'Widerruf verbindlich absenden')+'</button><button class="btn2" data-act="cancelRevoke" style="margin-top:10px">Abbrechen</button></div></div>';
@@ -2354,6 +2364,7 @@
   window.__fmtIban=fmtIban;
   window.__ibanInput=ibanInput;
   window.__clampCDate=function(el){ try{ var m=el.getAttribute('min'); if(m&&el.value&&el.value<m) el.value=m; }catch(e){} };
+  window.__setCReason=function(v){ S.cancelReasonId=v||''; };
   window.__kbFilter=function(q){ S.helpQ=q||''; var t=$('help_title'); if(t) t.textContent=helpListTitle(); var b=$('help_box'); if(b) b.innerHTML=helpBoxHtml(); };
 
   function val(id){ var e=$(id); return e?(e.value||'').trim():''; }
@@ -2567,7 +2578,7 @@
     // contract
     contractCopy:function(){ if(S.ccBusy) return; setQuiet({ccBusy:true,ccMsg:''});
       api('/api/member/contract-copy',{method:'POST',body:JSON.stringify({})}).then(function(d){ setS({ccBusy:false,ccMsg:d.message||(d.ok?'Gesendet.':'Versand fehlgeschlagen.')}); }).catch(function(){ setS({ccBusy:false,ccMsg:'Versand fehlgeschlagen.'}); }); },
-    startCancel:function(){ setS({cancelStep:1,cancelReason:'',cancelDone:false,offerDone:'',pauseStep:0,pauseDone:false}); },
+    startCancel:function(){ loadCancelReasons(); setS({cancelStep:1,cancelReason:'',cancelReasonId:'',cancelDone:false,offerDone:'',pauseStep:0,pauseDone:false}); },
     pickReason:function(a){ setS({cancelReason:a}); },
     cancelNext:function(){ if(S.cancelStep<5) setS({cancelStep:S.cancelStep+1}); },
     cancelBack:function(){ if(S.cancelStep>1) setS({cancelStep:S.cancelStep-1}); else setS({cancelStep:0}); },
@@ -2601,20 +2612,31 @@
         .catch(function(){ setS({busy:false,pauseStep:0,pauseDone:true,pauseDoneVia:'',pauseDoneMsg:'',pausePhoto:'',pausePhotoName:''}); }); },
     submitCancel:function(){
       var date=val('c_date');
+      var rid=val('c_reason');   // Magicline-Kündigungsgrund (nur wenn Auswahl angeboten)
       var minISO=(DATA.contract&&DATA.contract.nextCancellationDateISO)||'';
       if(minISO && (!date || date<minISO)) date=minISO;   // nie vor dem nächstmöglichen Termin
       setQuiet({busy:true});
       rcToken().then(function(tok){
-        return api('/api/member/cancel',{method:'POST',body:JSON.stringify({action:'cancel',reason:S.cancelReason||'—',date:date,recaptchaToken:tok})});
+        var b={action:'cancel',reason:S.cancelReason||'—',date:date,recaptchaToken:tok};
+        if(rid) b.cancelationReasonId=rid;
+        return api('/api/member/cancel',{method:'POST',body:JSON.stringify(b)});
       })
         .then(function(){ S.busy=false; S.cancelStep=0; S.cancelDone=true; return loadMe(); })
         .then(function(){ render(); window.scrollTo(0,0); })
         .catch(function(){ setS({busy:false,cancelStep:0,cancelDone:true}); });
     },
-    askWithdraw:function(){ setS({withdrawConfirm:true}); },
+    askWithdraw:function(){ setS({withdrawConfirm:true,withdrawDone:false,withdrawErr:'',withdrawMsg:''}); },
     cancelWithdraw:function(){ setS({withdrawConfirm:false}); },
     confirmWithdraw:function(){ setQuiet({busy:true});
-      api('/api/member/cancel',{method:'POST',body:JSON.stringify({action:'withdraw'})}).then(function(){ setS({busy:false,withdrawConfirm:false,withdrawDone:true}); refreshMe(); }).catch(function(){ setS({busy:false,withdrawConfirm:false,withdrawDone:true}); }); },
+      // Rückgewinnung über die Open API. Klappt es (2xx) -> direkt zurückgezogen.
+      // Fehlt der Scope (forbidden) oder klappt es nicht -> ehrlicher Hinweis; der
+      // Wunsch ist serverseitig trotzdem best effort ans Studio gespiegelt.
+      api('/api/member/cancel-withdraw',{method:'POST',body:JSON.stringify({})})
+        .then(function(j){
+          if(j&&j.ok){ setS({busy:false,withdrawConfirm:false,withdrawDone:true,withdrawErr:'',withdrawMsg:(j.message||'')}); refreshMe(); }
+          else { setS({busy:false,withdrawConfirm:false,withdrawDone:false,withdrawMsg:'',withdrawErr:(j&&j.message)||'Das lässt sich hier gerade nicht zurücknehmen – bitte kurz im Studio melden.'}); refreshMe(); }
+        })
+        .catch(function(){ setS({busy:false,withdrawConfirm:false,withdrawDone:false,withdrawMsg:'',withdrawErr:'Das hat gerade nicht geklappt – bitte versuch es später erneut oder melde dich kurz im Studio.'}); }); },
     askRevoke:function(){ setS({revokeConfirm:true}); },
     cancelRevoke:function(){ setS({revokeConfirm:false}); },
     confirmRevoke:function(){ setQuiet({busy:true});
