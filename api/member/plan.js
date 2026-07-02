@@ -21,7 +21,8 @@ async function sendConfirmation(memberId, email, firstName, slot, date, referral
   if (!hasMail || !email) return;
   const Word = dayOffset === 1 ? 'Morgen' : 'Heute';     // „Heute" / „Morgen"
   const word = Word.toLowerCase();                         // „heute" / „morgen"
-  const cancelUrl = BASE + '/api/plan-cancel?t=' + encodeURIComponent(P.cancelToken(memberId, date));
+  const cancelTok = P.cancelToken(memberId, date);   // null ohne Storno-Secret
+  const cancelUrl = cancelTok ? (BASE + '/api/plan-cancel?t=' + encodeURIComponent(cancelTok)) : null;
   const portal = await memberLink(memberId, 'home', '#vormerken');
   try {
     const mail = renderEmail({
@@ -34,7 +35,7 @@ async function sendConfirmation(memberId, email, firstName, slot, date, referral
         { label: 'Wann', value: Word + ', ' + fmtSlot(slot) + ' Uhr' },
       ],
       button: { label: 'Zeit ändern', href: portal },
-      secondary: { label: 'Vormerkung stornieren', href: cancelUrl },
+      secondary: cancelUrl ? { label: 'Vormerkung stornieren', href: cancelUrl } : undefined,
       promo: true,
       referral: { code: referralCode, firstName: firstName },
       footer: 'member',
