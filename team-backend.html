@@ -848,6 +848,21 @@ function profileCard(title, rows){
   return '<div style="background:#fff;border-radius:18px;box-shadow:0 12px 32px rgba(4,33,40,.08);padding:20px 22px"><div style="font-size:15px;font-weight:900;margin-bottom:6px">'+esc(title)+'</div>'+rows+'</div>';
 }
 function pRow(label,val){ return '<div style="display:flex;justify-content:space-between;gap:16px;padding:10px 0;border-bottom:1px solid #f0f3f4"><span style="font-size:13.5px;color:#6b7780;font-weight:600;flex-shrink:0">'+esc(label)+'</span><span style="font-size:13.5px;font-weight:700;text-align:right">'+esc(val||'—')+'</span></div>'; }
+// Zahlstatus-Karte (Scope CUSTOMER_ACCOUNT_READ). Fehlt der Scope -> account.available=false -> Karte ausblenden.
+function money(v,cur){ if(v==null) return '—'; var s=(cur==='EUR'||!cur)?'€':(' '+esc(cur)); return (Math.round(Math.abs(v)*100)/100).toFixed(2).replace('.',',')+' '+s; }
+function zahlstatusCard(a){
+  if(!a || !a.available) return '';   // Scope (noch) nicht freigeschaltet -> nichts anzeigen
+  var badge, bc, bb;
+  if(a.inDebtCollection){ badge='Inkasso'; bc='#b53a2c'; bb='#fbeae7'; }
+  else if(a.dunningLevel){ badge='Mahnstufe '+esc(a.dunningLevel); bc='#b5631f'; bb='#fbefe2'; }
+  else if(a.openTotal>0.0001){ badge=(a.openCount||1)+' offen'; bc='#b5631f'; bb='#fbefe2'; }
+  else { badge='Alles bezahlt'; bc='#1d7a3e'; bb='#e7f6ec'; }
+  var rows=''
+    +'<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid #f0f3f4"><span style="font-size:13.5px;color:#6b7780;font-weight:600">Status</span><span style="font-size:11.5px;font-weight:800;color:'+bc+';background:'+bb+';border-radius:20px;padding:4px 12px">'+badge+'</span></div>'
+    +pRow('Offener Betrag', a.openTotal>0.0001?money(a.openTotal,a.currency):'0,00 €')
+    +'<div style="display:flex;justify-content:space-between;gap:16px;padding:10px 0"><span style="font-size:13.5px;color:#6b7780;font-weight:600">Saldo</span><span style="font-size:13.5px;font-weight:700;color:'+(a.balance<0?'#b53a2c':'#15171B')+'">'+money(a.balance,a.currency)+'</span></div>';
+  return '<div style="background:#fff;border-radius:18px;box-shadow:0 12px 32px rgba(4,33,40,.08);padding:20px 22px"><div style="font-size:15px;font-weight:900;margin-bottom:6px">Zahlstatus</div>'+rows+'</div>';
+}
 // Stammdaten-Karte mit Bearbeiten (Adresse via Magicline schreibbar).
 function stammdatenCard(p){
   if(S.editMember){
@@ -905,6 +920,7 @@ function membersNode(){
         stammdatenCard(p)+
         profileCard('Vertrag', pRow('Tarif',ct.rateName)+pRow('Vertragsbeginn',ct.startDate)+pRow('Status',ct.active===false?'beendet':'aktiv')+pRow('Vertragsende',ct.endDate||(ct.cancelled?ct.cancellationDate:'läuft'))+pRow('Nächstmögl. Kündigung',ct.nextCancellationDate))+
         profileCard('Bankverbindung', pRow('IBAN',p.ibanMasked))+
+        zahlstatusCard(p.account)+
         profileCard('Termine', apptRows)+
       '</div>'+
       '<div style="margin-top:18px;background:#fff;border-radius:20px;box-shadow:0 14px 38px rgba(4,33,40,.09);padding:20px 24px"><div style="font-size:15px;font-weight:900;letter-spacing:-.2px;margin-bottom:4px;color:#15171B">Vorgangs-Historie</div>'+histRows+'</div>'+

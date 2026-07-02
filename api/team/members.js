@@ -15,6 +15,7 @@ const TA = require('../../lib/teamAuth');
 const Inbox = require('../../lib/inbox');
 const M = require('../../lib/members');
 const View = require('../../lib/teamView');
+const MLAccount = require('../../lib/mlAccount');
 
 const ENRICH_CAP = 16;
 
@@ -105,6 +106,9 @@ async function profile(id) {
       teamStatus: v.teamStatus || 'neu', updatedAt: v.updatedAt || 0,
     }));
   } catch (e) {}
+  // Zahlstatus (Scope CUSTOMER_ACCOUNT_READ) – degradiert bei 403 zu available:false.
+  let account = { available: false };
+  try { account = await MLAccount.accountSummary(id); } catch (e) {}
   const name = ((p.firstName || '') + ' ' + (p.lastName || '')).trim();
   const addr = [((p.street || '') + (p.houseNumber ? (' ' + p.houseNumber) : '')).trim(), ((p.zipCode || '') + ' ' + (p.city || '')).trim()].filter((s) => s).join(', ');
   return {
@@ -112,7 +116,7 @@ async function profile(id) {
     nr: p.customerNumber || null, email: p.email || null, phone: p.phonePrivate || null,
     birthday: p.dateOfBirth || null, address: addr || null, ibanMasked: p.ibanMasked || null,
     street: p.street || '', houseNumber: p.houseNumber || '', zipCode: p.zipCode || '', city: p.city || '',
-    contract: contract, appointments: appointments, history: history,
+    contract: contract, appointments: appointments, history: history, account: account,
   };
 }
 
