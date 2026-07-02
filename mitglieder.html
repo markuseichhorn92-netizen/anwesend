@@ -1077,6 +1077,12 @@
       '<button class="btn" data-act="saveAddr" style="margin-top:18px">Adressänderung beantragen</button>'+
     '</div>'+
     '<div class="card" style="background:var(--surface);border-radius:20px;box-shadow:0 12px 34px rgba(4,33,40,.10);padding:20px 22px">'+
+      '<div style="font-size:17px;font-weight:900;color:var(--text);letter-spacing:-.3px">Kontaktdaten</div>'+
+      '<div style="margin-top:16px"><label class="lbl">E-Mail</label><input id="d_email" class="inp" type="email" inputmode="email" value="'+esc(p.email||'')+'"></div>'+
+      '<div style="margin-top:12px"><label class="lbl">Telefon</label><input id="d_phone" class="inp" type="tel" inputmode="tel" value="'+esc(p.phone||p.phonePrivate||'')+'"></div>'+
+      '<button class="btn" data-act="saveContact" style="margin-top:18px">Kontaktdaten aktualisieren</button>'+
+    '</div>'+
+    '<div class="card" style="background:var(--surface);border-radius:20px;box-shadow:0 12px 34px rgba(4,33,40,.10);padding:20px 22px">'+
       '<div style="font-size:17px;font-weight:900;color:var(--text);letter-spacing:-.3px">Bankverbindung</div>'+
       '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--surface-2);border-radius:14px;padding:13px 15px;margin-top:14px"><div><div style="font-size:11.5px;color:var(--text-soft);font-weight:700;text-transform:uppercase;letter-spacing:.4px">Aktuelle IBAN</div><div style="font-size:16px;font-weight:800;color:var(--text);letter-spacing:1px;margin-top:2px">'+esc(p.ibanMasked||'nicht hinterlegt')+'</div></div>'+svg(IC.lock,{c:'var(--text-soft)',w:1.9,s:20})+'</div>'+
       '<div style="margin-top:16px"><label class="lbl">Kontoinhaber:in</label><input id="d_holder" class="inp" value="'+esc(((p.firstName||'')+' '+(p.lastName||'')).trim())+'"></div>'+
@@ -2456,6 +2462,10 @@
     toggleRemember:function(){ S.remember=!S.remember; if(!S.remember) localStorage.removeItem('fi_remember'); setQuiet({}); },
     saveAddr:function(){ var data={street:val('d_street'),houseNumber:val('d_house'),zipCode:val('d_zip'),city:val('d_city')};
       api('/api/member/update',{method:'POST',body:JSON.stringify({type:'address',data:data})}).then(function(d){ setS({msg:(d&&d.message)||(d&&d.ok?'Übermittelt.':'Keine Änderung erkannt.')}); refreshMe(); loadInbox(); }).catch(function(){}); },
+    saveContact:function(){ var email=val('d_email'), phone=val('d_phone');
+      if(!email&&!phone){ setS({msg:'Bitte E-Mail oder Telefonnummer angeben.'}); return; }
+      if(email&&!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){ setS({msg:'Bitte eine gültige E-Mail-Adresse eingeben.'}); return; }
+      api('/api/member/update',{method:'POST',body:JSON.stringify({type:'contact',data:{email:email,phone:phone}})}).then(function(d){ setS({msg:(d&&d.message)||'Übermittelt.'}); refreshMe(); loadInbox(); }).catch(function(){}); },
     saveIban:function(){ var iban=val('d_iban'); if(!iban){ setS({msg:'Bitte neue IBAN eingeben.'}); return; }
       if(!ibanValid(iban)){ setS({msg:'Die IBAN ist ungültig – bitte prüfe deine Eingabe.'}); return; }
       var holder=val('d_holder'), bank=val('d_bank'), bic=val('d_bic');

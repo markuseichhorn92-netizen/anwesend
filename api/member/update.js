@@ -45,6 +45,19 @@ async function sendMemberConfirm(m, id, type, data, validFromDE, done) {
       button: { label: 'Meine Daten ansehen', href: portal },
       promo: true, referral: { code: m.referralCode, firstName: m.firstName }, footer: 'member',
     });
+  } else if (type === 'contact') {
+    const parts = [];
+    if (String(data.email || '').trim()) parts.push({ label: 'Neue E-Mail', value: String(data.email).trim() });
+    if (String(data.phone || '').trim()) parts.push({ label: 'Neue Telefonnummer', value: String(data.phone).trim() });
+    cm = renderEmail({
+      preheader: done ? 'Deine Kontaktdaten wurden aktualisiert.' : 'Deine Kontaktdaten-Änderung ist eingegangen.',
+      name: m.firstName || '', eyebrow: 'Kontaktdaten',
+      headline: done ? 'Deine Kontaktdaten wurden aktualisiert' : 'Deine Kontaktdaten-Änderung ist eingegangen',
+      intro: done ? 'Wir haben deine neuen Kontaktdaten übernommen.' : 'Wir haben deinen Änderungswunsch erhalten und tragen ihn zeitnah ein.',
+      panel: parts.length ? parts : [{ label: 'Kontaktdaten', value: 'aktualisiert' }],
+      button: { label: 'Meine Daten ansehen', href: portal },
+      promo: true, referral: { code: m.referralCode, firstName: m.firstName }, footer: 'member',
+    });
   } else {
     const newAddr = ((data.street || '') + ' ' + (data.houseNumber || '')).trim() + ', ' + (data.zipCode || '') + ' ' + (data.city || '');
     cm = renderEmail({
@@ -61,6 +74,8 @@ async function sendMemberConfirm(m, id, type, data, validFromDE, done) {
   }
   const subj = type === 'payment'
     ? (done ? 'Deine Bankverbindung wurde aktualisiert – Fit-Inn Trier' : 'Deine IBAN-Änderung ist eingegangen – Fit-Inn Trier')
+    : type === 'contact'
+    ? (done ? 'Deine Kontaktdaten wurden aktualisiert – Fit-Inn Trier' : 'Deine Kontaktdaten-Änderung ist eingegangen – Fit-Inn Trier')
     : (done ? 'Deine Adresse wurde aktualisiert – Fit-Inn Trier' : 'Deine Adressänderung ist eingegangen – Fit-Inn Trier');
   await sendMailRaw({ to: m.email, subject: subj, text: cm.text, html: cm.html });
 }
@@ -73,7 +88,7 @@ module.exports = async function handler(req, res) {
 
   const body = await M.readBody(req);
   const data = body.data || {};
-  if (body.type !== 'address' && body.type !== 'payment') {
+  if (body.type !== 'address' && body.type !== 'payment' && body.type !== 'contact') {
     res.statusCode = 400; return res.end(JSON.stringify({ error: 'unknown_type' }));
   }
   const m = await M.getMember(sess.id);
@@ -87,6 +102,17 @@ module.exports = async function handler(req, res) {
   if (body.type === 'address') {
     const changed = ['street', 'houseNumber', 'zipCode', 'city'].some(function (f) { return String(m[f] || '') !== String(data[f] || ''); });
     if (!changed) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'Keine Änderung erkannt.' })); }
+  }
+
+  // Kontakt: E-Mail/Telefon. E-Mail-Format prüfen; leere Werte ignorieren (kein Überschreiben).
+  if (body.type === 'contact') {
+    const email = String(data.email || '').trim();
+    if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+      res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'Bitte eine gültige E-Mail-Adresse eingeben.' }));
+    }
+    if (!email && !String(data.phone || '').trim() && !String(data.phoneMobile || '').trim()) {
+      res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'Bitte E-Mail oder Telefonnummer angeben.' }));
+    }
   }
 
   // Bankverbindung: IBAN prüfen und BIC/Bankname bei Bedarf aus der BLZ ergänzen.
@@ -109,7 +135,9 @@ module.exports = async function handler(req, res) {
   // ── 1) Direkt in Magicline schreiben (Self-Service freigeschaltet) ──
   let wrote = false, wr = null;
   try {
-    wr = body.type === 'address' ? await M.writeAddress(sess.id, data) : await M.writePayment(sess.id, data);
+    wr = body.type === 'address' ? await M.writeAddress(sess.id, data)
+       : body.type === 'contact' ? await M.writeContact(sess.id, data)
+       : await M.writePayment(sess.id, data);
     wrote = !!(wr && wr.status >= 200 && wr.status < 300);
   } catch (e) { wr = { status: 0, text: String((e && e.message) || e) }; }
 
@@ -118,6 +146,8 @@ module.exports = async function handler(req, res) {
       if (body.type === 'address') {
         const na = (((data.street || '') + ' ' + (data.houseNumber || '')).trim() + ', ' + (data.zipCode || '') + ' ' + (data.city || '')).replace(/^,\s*/, '').trim();
         await Inbox.addVorgang(sess.id, { type: 'adresse', subject: 'Adresse aktualisiert', systemText: 'Deine Adresse wurde aktualisiert: ' + na + '.' });
+      } else if (body.type === 'contact') {
+        await Inbox.addVorgang(sess.id, { type: 'kontakt', subject: 'Kontaktdaten aktualisiert', systemText: 'Deine Kontaktdaten wurden aktualisiert.' });
       } else {
         await Inbox.addVorgang(sess.id, { type: 'iban', subject: 'Bankverbindung aktualisiert', systemText: 'Deine Bankverbindung wurde aktualisiert (' + (M.maskIban(String(data.iban || '').replace(/\s+/g, '')) || 'neue IBAN') + ').' });
       }
@@ -125,7 +155,9 @@ module.exports = async function handler(req, res) {
     try { await sendMemberConfirm(m, sess.id, body.type, data, validFromDE, true); } catch (e) {}
     res.statusCode = 200;
     return res.end(JSON.stringify({ ok: true, updated: true, via: 'magicline',
-      message: body.type === 'payment' ? 'Deine Bankverbindung wurde aktualisiert.' : 'Deine Adresse wurde aktualisiert.' }));
+      message: body.type === 'payment' ? 'Deine Bankverbindung wurde aktualisiert.'
+             : body.type === 'contact' ? 'Deine Kontaktdaten wurden aktualisiert.'
+             : 'Deine Adresse wurde aktualisiert.' }));
   }
 
   // ── 2) Fallback: Änderungswunsch ans Studio (E-Mail + Vorgang) ──
@@ -141,6 +173,14 @@ module.exports = async function handler(req, res) {
     try { vorgang = await Inbox.addVorgang(sess.id, { type: 'adresse', subject: 'Adressänderung',
       systemText: 'Du hast eine Adressänderung beantragt: ' + newAddr.replace(/^,\s*/, '').trim() + '.',
       teamText: 'Danke! Wir übernehmen deine neue Adresse zeitnah. Bei Rückfragen melden wir uns.' }); } catch (e) {}
+  } else if (body.type === 'contact') {
+    if (String(data.email || '').trim()) lines.push('E-Mail: ' + (m.email || '—') + '  →  ' + String(data.email).trim());
+    if (String(data.phone || '').trim()) lines.push('Telefon: ' + (m.phonePrivate || m.phone || '—') + '  →  ' + String(data.phone).trim());
+    if (String(data.phoneMobile || '').trim()) lines.push('Mobil: ' + String(data.phoneMobile).trim());
+    subject = 'Kontaktdaten-Änderung gewünscht – ' + who(m);
+    try { vorgang = await Inbox.addVorgang(sess.id, { type: 'kontakt', subject: 'Kontaktdaten-Änderung',
+      systemText: 'Du hast eine Änderung deiner Kontaktdaten beantragt.',
+      teamText: 'Danke! Wir aktualisieren deine Kontaktdaten zeitnah.' }); } catch (e) {}
   } else {
     lines.push('Kontoinhaber: ' + (data.accountHolder || '—'));
     lines.push('IBAN ALT:    ' + (M.maskIban(m.bankAccount && m.bankAccount.iban) || '—'));
