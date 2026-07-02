@@ -9,6 +9,7 @@
  */
 
 const C = require('../../lib/connect');
+const M = require('../../lib/members');   // rateLimit (Missbrauchsschutz)
 const { sendMailRaw, hasMail } = require('../../lib/mail');
 const { renderEmail, BASE } = require('../../lib/emailTemplate');
 
@@ -63,6 +64,14 @@ const REQUIRED = ['firstname', 'lastname', 'email', 'phone', 'gender', 'dateOfBi
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json');
   if (req.method !== 'POST') { res.statusCode = 405; return res.end(JSON.stringify({ ok: false, error: 'method_not_allowed' })); }
+
+  // Missbrauchsschutz: öffentlicher Buchungs-Endpunkt (legt Lead in Magicline an
+  // + versendet Mail). IP-Drossel; ohne KV-Store no-op.
+  const ip = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim() || 'ip';
+  if (!(await M.rateLimit('trial-book:' + ip, 10, 900))) {
+    res.statusCode = 429;
+    return res.end(JSON.stringify({ ok: false, message: 'Zu viele Anfragen. Bitte in ein paar Minuten erneut versuchen.' }));
+  }
 
   const b = await readBody(req);
   for (const f of REQUIRED) {

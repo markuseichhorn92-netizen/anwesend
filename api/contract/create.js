@@ -70,6 +70,15 @@ const REQUIRED = ['rateBundleTermId', 'startDate', 'firstname', 'lastname', 'ema
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json');
   if (req.method !== 'POST') { res.statusCode = 405; return res.end(JSON.stringify({ ok: false, error: 'method_not_allowed' })); }
+
+  // Missbrauchsschutz: unauthentifizierter Schreib-Endpunkt (legt echte Verträge an
+  // + versendet Mail). IP-Drossel; ohne KV-Store no-op (blockiert keine echten Nutzer).
+  const ip = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim() || 'ip';
+  if (!(await M.rateLimit('contract-create:' + ip, 8, 900))) {
+    res.statusCode = 429;
+    return res.end(JSON.stringify({ ok: false, message: 'Zu viele Anfragen. Bitte in ein paar Minuten erneut versuchen.' }));
+  }
+
   const b = await readBody(req);
 
   for (const f of REQUIRED) {
