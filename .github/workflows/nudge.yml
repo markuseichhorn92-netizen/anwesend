@@ -1,0 +1,34 @@
+name: Reaktivierungs-Nudges senden
+
+# Ruft einmal täglich /api/nudge auf, damit aktive Mitglieder, die länger nicht
+# mehr da waren, eine freundliche „Wir vermissen dich"-Push bekommen.
+#
+# Hinweise:
+#  - Geplante Workflows laufen nur auf dem Default-Branch des Repos.
+#  - GitHub kann geplante Läufe bei hoher Last etwas verzögern — bei einem
+#    Tages-Nudge unkritisch (der Endpunkt ist über nudge:sent anti-spam-gesichert).
+#  - Nach 60 Tagen ohne Repo-Aktivität deaktiviert GitHub den Zeitplan;
+#    dann im Tab "Actions" einmalig wieder aktivieren.
+#  - Optionaler Schutz: Repo-Secret RECORD_SECRET anlegen UND in Vercel
+#    dieselbe Env-Variable RECORD_SECRET setzen. Ohne Secret ist der
+#    Endpunkt offen.
+
+on:
+  schedule:
+    - cron: '0 15 * * *'   # täglich ~15:00 UTC
+  workflow_dispatch: {}
+
+concurrency:
+  group: nudge
+  cancel-in-progress: false
+
+jobs:
+  nudge:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Reaktivierungs-Nudges senden
+        env:
+          RECORD_SECRET: ${{ secrets.RECORD_SECRET }}
+        run: |
+          curl -fsS -m 30 "https://anwesend.vercel.app/api/nudge" \
+            ${RECORD_SECRET:+-H "Authorization: Bearer $RECORD_SECRET"}
