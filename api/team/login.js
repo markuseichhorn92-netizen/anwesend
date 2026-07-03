@@ -16,6 +16,7 @@ const TA = require('../../lib/teamAuth');
 const M = require('../../lib/members');       // readBody + rateLimit (wiederverwenden)
 const TS = require('../../lib/teamStaff');     // Trainer-Login per E-Mail-Code
 const { hasMail } = require('../../lib/mail');
+const WA = require('../../lib/whatsapp');      // Code optional per WhatsApp
 
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json');
@@ -36,17 +37,20 @@ module.exports = async function handler(req, res) {
       res.statusCode = 200;
       return res.end(JSON.stringify({ ok: false, message: 'Diese E-Mail gehört zu keinem Mitarbeiter.' }));
     }
-    if (!hasMail) {
+    if (!hasMail && !WA.hasWaLogin) {
       res.statusCode = 200;
-      return res.end(JSON.stringify({ ok: false, message: 'E-Mail-Versand ist nicht eingerichtet.' }));
+      return res.end(JSON.stringify({ ok: false, message: 'Code-Versand ist noch nicht eingerichtet.' }));
     }
-    const r = await TS.sendStaffCode(emp, req.headers['host'] || '');
+    // Gewünschter Kanal ('whatsapp'|'email'); ohne WhatsApp-Setup oder ohne
+    // hinterlegte Nummer fällt sendStaffCode still auf E-Mail zurück.
+    const channel = (body.channel === 'whatsapp') ? 'whatsapp' : 'email';
+    const r = await TS.sendStaffCode(emp, req.headers['host'] || '', { channel: channel });
     if (!r || !r.ok) {
       res.statusCode = 200;
       return res.end(JSON.stringify({ ok: false, message: 'Code konnte nicht gesendet werden. Bitte später erneut versuchen.' }));
     }
     res.statusCode = 200;
-    return res.end(JSON.stringify({ ok: true, challenge: r.challenge, channel: 'email' }));
+    return res.end(JSON.stringify({ ok: true, challenge: r.challenge, channel: r.channel || 'email' }));
   }
 
   // ── Weg 3: Trainer – Code prüfen ──

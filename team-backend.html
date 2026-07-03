@@ -92,7 +92,7 @@ var TAG_PRESETS=['VIP','Stammkunde','Beschwerde','Risiko','Beobachten','Interess
 var S={ token:null, screen:'inbox', convs:[], counts:{}, selKey:null, sel:null,
         filter:'open', search:'', loading:false, err:'', draft:'', note:'', replyChannel:'email',
         // Login: Admin (Passwort) <-> Trainer (E-Mail-Code). Additiv, bricht den Passwort-Login nicht.
-        loginMode:'admin', liEmail:'', liChallenge:'', liCode:'', liErr:'', liBusy:false,
+        loginMode:'admin', liEmail:'', liChallenge:'', liCode:'', liErr:'', liBusy:false, liChannelUsed:'email',
         mobileThread:false, panelOpen:false, busy:false, quickOpen:false,
         // Textbausteine (verwaltbare Schnellantworten; Fallback: TEMPLATES)
         snippets:null, snippetsLoaded:false, snippetsLoading:false, snippetsBusy:false,
@@ -220,12 +220,12 @@ async function doLogin(pw){
 }
 
 // Trainer-Login Schritt 1: Code an die (in Magicline hinterlegte) E-Mail anfordern.
-async function doStaffRequest(email){
+async function doStaffRequest(email, channel){
   S.liErr=''; S.liBusy=true; render();
   try{
-    var r=await tapi('/api/team/login',{method:'POST',body:{action:'requestCode',email:email}});
+    var r=await tapi('/api/team/login',{method:'POST',body:{action:'requestCode',email:email,channel:channel||'email'}});
     S.liBusy=false;
-    if(r && r.ok && r.challenge){ S.liChallenge=r.challenge; S.liCode=''; render(); return; }
+    if(r && r.ok && r.challenge){ S.liChallenge=r.challenge; S.liChannelUsed=r.channel||'email'; S.liCode=''; render(); return; }
     S.liErr=(r&&r.message)||'Code konnte nicht gesendet werden.'; render();
   }catch(e){ S.liBusy=false; S.liErr='Verbindungsfehler.'; render(); }
 }
@@ -754,7 +754,7 @@ function renderLogin(){
   var body;
   if(mode==='trainer' && S.liChallenge){
     body=
-      '<div style="font-size:13.5px;color:#42454b;font-weight:500;line-height:1.55;margin-bottom:16px">Wir haben dir einen 6-stelligen Code an <b>'+esc(S.liEmail||'deine E-Mail')+'</b> geschickt. Er ist 10 Minuten gültig.</div>'+
+      '<div style="font-size:13.5px;color:#42454b;font-weight:500;line-height:1.55;margin-bottom:16px">Wir haben dir einen 6-stelligen Code '+((S.liChannelUsed==='whatsapp')?'per <b>WhatsApp</b>':('per E-Mail an <b>'+esc(S.liEmail||'deine E-Mail')+'</b>'))+' geschickt. Er ist 10 Minuten gültig.</div>'+
       '<label style="display:block;font-size:12px;font-weight:800;color:#8a929a;text-transform:uppercase;letter-spacing:.5px;margin-bottom:7px">Anmelde-Code</label>'+
       '<input id="licode" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="123456" value="'+esc(S.liCode||'')+'" style="width:100%;padding:13px 15px;border:1.5px solid #dce3e4;border-radius:12px;font-size:22px;letter-spacing:8px;text-align:center;font-weight:800;background:#fbfcfc">'+
       (S.liErr?'<div style="margin-top:11px;font-size:13px;font-weight:700;color:#b53a2c;background:#fbeae7;border-radius:10px;padding:9px 12px">'+esc(S.liErr)+'</div>':'')+
@@ -765,7 +765,8 @@ function renderLogin(){
       '<label style="display:block;font-size:12px;font-weight:800;color:#8a929a;text-transform:uppercase;letter-spacing:.5px;margin-bottom:7px">Deine E-Mail (in Magicline hinterlegt)</label>'+
       '<input id="liemail" type="email" autocomplete="email" placeholder="name@fit-inn-trier.de" value="'+esc(S.liEmail||'')+'" style="width:100%;padding:13px 15px;border:1.5px solid #dce3e4;border-radius:12px;font-size:15px;background:#fbfcfc">'+
       (S.liErr?'<div style="margin-top:11px;font-size:13px;font-weight:700;color:#b53a2c;background:#fbeae7;border-radius:10px;padding:9px 12px">'+esc(S.liErr)+'</div>':'')+
-      '<button id="lireq" style="margin-top:16px;width:100%;padding:13px;border:none;border-radius:12px;background:'+TEAL+';color:#fff;font-size:15px;font-weight:800">'+(S.liBusy?'Code wird gesendet …':'Code anfordern')+'</button>';
+      '<button id="lireq" style="margin-top:16px;width:100%;padding:13px;border:none;border-radius:12px;background:'+TEAL+';color:#fff;font-size:15px;font-weight:800">'+(S.liBusy?'Code wird gesendet …':'Code per E-Mail')+'</button>'+
+      '<button id="lireqwa" style="margin-top:9px;width:100%;padding:12px;border:1.5px solid #1F9A4E;border-radius:12px;background:#e8f6ed;color:#1F9A4E;font-size:14px;font-weight:800;cursor:pointer">Code per WhatsApp</button>';
   } else {
     body=
       '<label style="display:block;font-size:12px;font-weight:800;color:#8a929a;text-transform:uppercase;letter-spacing:.5px;margin-bottom:7px">Team-Passwort</label>'+
@@ -795,10 +796,11 @@ function renderLogin(){
     lb.onclick=function(){ S.liChallenge=''; S.liCode=''; S.liErr=''; render(); };
     lc.focus();
   } else if(mode==='trainer'){
-    var le=card.querySelector('#liemail'), lr=card.querySelector('#lireq');
-    function subReq(){ var v=(le.value||'').trim(); S.liEmail=v; if(v && !S.liBusy) doStaffRequest(v); }
+    var le=card.querySelector('#liemail'), lr=card.querySelector('#lireq'), lrw=card.querySelector('#lireqwa');
+    function subReq(ch){ var v=(le.value||'').trim(); S.liEmail=v; if(v && !S.liBusy) doStaffRequest(v, ch); }
     le.oninput=function(){ S.liEmail=le.value; };
-    lr.onclick=subReq; le.onkeydown=function(e){ if(e.key==='Enter') subReq(); }; le.focus();
+    lr.onclick=function(){ subReq('email'); }; if(lrw) lrw.onclick=function(){ subReq('whatsapp'); };
+    le.onkeydown=function(e){ if(e.key==='Enter') subReq('email'); }; le.focus();
   } else {
     var pw=card.querySelector('#pw'), go=card.querySelector('#go');
     function submit(){ var v=pw.value.trim(); if(v) doLogin(v); }
