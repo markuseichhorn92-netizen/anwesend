@@ -87,6 +87,7 @@ module.exports = async function handler(req, res) {
     if (check.ok && check.creatable) {
       const created = await MM.idleCreate(ct.contractId, Object.assign({ reasonId: reasonId }, data), hasPhoto ? photoB64 : null);
       if (created.ok) {
+        try { require('../../lib/handled').record('system', sess.id, 'pause'); } catch (e) {}
         const ip = created.idlePeriod || {};
         const start = ip.startDate || startISO;
         const end = ip.endDate || null;

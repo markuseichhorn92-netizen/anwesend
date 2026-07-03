@@ -74,7 +74,7 @@ module.exports = async function handler(req, res) {
     if (question.length < 3) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'empty_question' })); }
     const r = await AI.askHelp(question, HELP);
     res.statusCode = 200;
-    if (r.ok) return res.end(JSON.stringify({ ok: true, answer: r.answer }));
+    if (r.ok) { try { require('../../lib/handled').record('ai', sess.id, 'faq'); } catch (e) {} return res.end(JSON.stringify({ ok: true, answer: r.answer })); }
     return res.end(JSON.stringify({ ok: false, error: r.error || 'ai_failed' }));
   }
 

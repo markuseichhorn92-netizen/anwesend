@@ -16,6 +16,7 @@ const TA = require('../../lib/teamAuth');
 const Inbox = require('../../lib/inbox');
 const Articles = require('../../lib/articles');
 const Store = require('../../lib/store');
+const Handled = require('../../lib/handled');
 
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json');
@@ -119,6 +120,10 @@ module.exports = async function handler(req, res) {
     avgUtil = n ? Math.round(sum / n) : 0;
   }
 
+  // Automatisch bearbeitete Anfragen (KI/System vs. Team) – best effort, nie brechend.
+  let handled = { ai: 0, system: 0, team: 0, quote: 0 };
+  try { handled = await Handled.totals(); } catch (e) {}
+
   res.statusCode = 200;
-  return res.end(JSON.stringify({ ok: true, counts, vorgangBreakdown, topArticles, articlesPublished, articleViews, checkinDays, avgUtil, employeeStats }));
+  return res.end(JSON.stringify({ ok: true, counts, vorgangBreakdown, topArticles, articlesPublished, articleViews, checkinDays, avgUtil, employeeStats, handled }));
 };

@@ -1372,6 +1372,16 @@ function profileCard(title, rows){
   return '<div style="background:#fff;border-radius:18px;box-shadow:0 12px 32px rgba(4,33,40,.08);padding:20px 22px"><div style="font-size:15px;font-weight:900;margin-bottom:6px">'+esc(title)+'</div>'+rows+'</div>';
 }
 function pRow(label,val){ return '<div style="display:flex;justify-content:space-between;gap:16px;padding:10px 0;border-bottom:1px solid #f0f3f4"><span style="font-size:13.5px;color:#6b7780;font-weight:600;flex-shrink:0">'+esc(label)+'</span><span style="font-size:13.5px;font-weight:700;text-align:right">'+esc(val||'—')+'</span></div>'; }
+// Kompakte Zeile „Automatisch gelöst" im Mitgliedsprofil (nur wenn KI/System > 0).
+function handledLineHTML(p){
+  var h=(p&&p.handled)||{ai:0,system:0,team:0};
+  var auto=(h.ai||0)+(h.system||0);
+  if(auto<=0) return '';
+  var parts=[];
+  if(h.ai) parts.push(deNum(h.ai)+' KI');
+  if(h.system) parts.push(deNum(h.system)+' System');
+  return '<div style="margin-top:14px;display:inline-flex;align-items:center;gap:8px;background:#e7f6ec;border-radius:12px;padding:9px 14px;font-size:12.5px;font-weight:800;color:#1d7a3e"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#1d7a3e" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>Automatisch gelöst: '+esc(deNum(auto)+(parts.length?(' ('+parts.join(' · ')+')'):''))+'</div>';
+}
 // Zahlstatus-Karte (Scope CUSTOMER_ACCOUNT_READ). Fehlt der Scope -> account.available=false -> Karte ausblenden.
 function money(v,cur){ if(v==null) return '—'; var s=(cur==='EUR'||!cur)?'€':(' '+esc(cur)); return (Math.round(Math.abs(v)*100)/100).toFixed(2).replace('.',',')+' '+s; }
 function zahlstatusCard(a){
@@ -1507,6 +1517,7 @@ function membersNode(){
         '<button data-msgsend="1" style="display:inline-flex;align-items:center;gap:8px;border:none;border-radius:12px;background:'+TEAL+';color:#fff;font-size:13.5px;font-weight:800;padding:11px 16px;cursor:pointer">'+IC.send+'Nachricht senden</button>'+
       '</div>'+
       tagsRowHTML()+
+      handledLineHTML(p)+
       '<div class="prof-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:18px;align-items:start">'+
         stammdatenCard(p)+
         profileCard('Vertrag', pRow('Tarif',ct.rateName)+pRow('Vertragsbeginn',ct.startDate)+pRow('Status',ct.active===false?'beendet':'aktiv')+pRow('Vertragsende',ct.endDate||(ct.cancelled?ct.cancellationDate:'läuft'))+pRow('Nächstmögl. Kündigung',ct.nextCancellationDate))+
@@ -2005,9 +2016,20 @@ function statsNode(){
   var empHead='<div style="display:flex;align-items:center;gap:11px;padding:6px 0 8px;font-size:10.5px;font-weight:800;color:#a3abb0;text-transform:uppercase;letter-spacing:.4px"><div style="flex:1;min-width:0">Mitarbeiter</div><span style="width:64px;text-align:right;flex-shrink:0">Zugew.</span><span style="width:76px;text-align:right;flex-shrink:0">Abgeschl.</span><span style="width:52px;text-align:right;flex-shrink:0">Offen</span><span style="width:84px;text-align:right;flex-shrink:0">Ø Reaktion</span></div>';
   var empRows=emp.map(function(e){ return '<div style="display:flex;align-items:center;gap:11px;padding:10px 0;border-top:1px solid #f0f3f4"><div style="flex:1;min-width:0;font-size:13px;font-weight:700;color:#15171B;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(e.name)+'</div><span style="width:64px;text-align:right;font-size:12.5px;font-weight:800;color:#0a4958;flex-shrink:0">'+deNum(e.assigned)+'</span><span style="width:76px;text-align:right;font-size:12.5px;font-weight:800;color:#1d7a3e;flex-shrink:0">'+deNum(e.resolved)+'</span><span style="width:52px;text-align:right;font-size:12.5px;font-weight:800;color:#6b7780;flex-shrink:0">'+deNum(e.open)+'</span><span style="width:84px;text-align:right;font-size:12.5px;font-weight:800;color:#0a4958;flex-shrink:0">'+esc(rtLabel(e.avgResponseMin))+'</span></div>'; }).join('');
   var empCard=emp.length?('<div style="background:#fff;border-radius:18px;box-shadow:0 12px 32px rgba(4,33,40,.08);padding:18px"><div style="font-size:14px;font-weight:900;color:#15171B;margin-bottom:4px">Mitarbeiter-Leistung</div><div style="font-size:11.5px;color:#8a929a;font-weight:600;margin-bottom:8px">Bearbeitete Vorgänge & Ø Reaktionszeit</div>'+empHead+empRows+'</div>'):'';
+  // Automatisierung: automatisch (KI/System) vs. vom Team gelöste Anfragen + Quote.
+  var h=s.handled||{ai:0,system:0,team:0,quote:0};
+  var hAuto=(h.ai||0)+(h.system||0); var hSum=hAuto+(h.team||0);
+  var hPct=hSum>0?Math.round((typeof h.quote==='number'?h.quote:(hAuto/hSum))*100):0;
+  var hTile=function(label,val,col){ return '<div style="flex:1;background:#f4f7f7;border-radius:13px;padding:12px;text-align:center"><div style="font-size:20px;font-weight:900;color:'+col+'">'+deNum(val)+'</div><div style="font-size:11px;color:#8a929a;font-weight:700;margin-top:2px">'+label+'</div></div>'; }
+  var autoCard=hSum>0
+    ?('<div style="background:#fff;border-radius:18px;box-shadow:0 12px 32px rgba(4,33,40,.08);padding:18px"><div style="font-size:14px;font-weight:900;color:#15171B;margin-bottom:4px">Automatisierung</div><div style="font-size:11.5px;color:#8a929a;font-weight:600;margin-bottom:14px">Automatisch gelöste Anfragen – ohne Team</div>'
+      +'<div style="display:flex;align-items:center;gap:16px;margin-bottom:14px"><div style="font-size:40px;font-weight:900;letter-spacing:-1px;color:#1d7a3e;line-height:1">'+hPct+' %</div><div style="font-size:12.5px;color:#6b7780;font-weight:600;line-height:1.45">Automatisierungsquote<br>('+deNum(hAuto)+' von '+deNum(hSum)+' ohne Team gelöst)</div></div>'
+      +'<div style="display:flex;gap:9px">'+hTile('KI',h.ai||0,'#0e6072')+hTile('System',h.system||0,'#b5631f')+hTile('Team',h.team||0,'#6b7780')+'</div></div>')
+    :'<div style="background:#fff;border-radius:18px;box-shadow:0 12px 32px rgba(4,33,40,.08);padding:18px"><div style="font-size:14px;font-weight:900;color:#15171B;margin-bottom:4px">Automatisierung</div><div style="font-size:12.5px;color:#a3abb0;font-weight:600">Noch keine Daten – sobald Anfragen automatisch oder vom Team gelöst werden, erscheint hier die Automatisierungsquote.</div></div>';
   node.innerHTML='<div style="max-width:1000px;display:flex;flex-direction:column;gap:14px">'+
     '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:13px">'+
     kpis.map(function(k){ return '<div style="background:#fff;border-radius:18px;box-shadow:0 12px 32px rgba(4,33,40,.08);padding:17px"><div style="font-size:12.5px;font-weight:700;color:#6b7780">'+k[0]+'</div><div style="font-size:28px;font-weight:900;margin-top:8px;letter-spacing:-.5px;color:'+k[2]+'">'+(typeof k[1]==='number'?deNum(k[1]):esc(k[1]))+'</div></div>'; }).join('')+'</div>'+
+    autoCard+
     '<div class="prof-grid" style="display:grid;grid-template-columns:1.3fr 1fr;gap:14px;align-items:start">'+
       '<div style="background:#fff;border-radius:18px;box-shadow:0 12px 32px rgba(4,33,40,.08);padding:18px"><div style="font-size:14px;font-weight:900;color:#15171B;margin-bottom:4px">Typische Auslastung</div><div style="font-size:11.5px;color:#8a929a;font-weight:600;margin-bottom:14px">Ø Spitzenwert pro Wochentag · '+(s.avgUtil||0)+' Personen</div><div style="display:flex;align-items:flex-end;gap:7px;height:160px">'+(ciHtml||'<div style="margin:auto;color:#a3abb0;font-size:12.5px;font-weight:600">Noch keine Auslastungsdaten.</div>')+'</div></div>'+
       '<div style="background:#fff;border-radius:18px;box-shadow:0 12px 32px rgba(4,33,40,.08);padding:18px"><div style="font-size:14px;font-weight:900;color:#15171B;margin-bottom:4px">Vorgänge nach Art</div><div style="font-size:11.5px;color:#8a929a;font-weight:600;margin-bottom:16px">Aktueller Posteingang</div>'+vbHtml+'</div>'+

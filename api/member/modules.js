@@ -116,6 +116,7 @@ module.exports = async function handler(req, res) {
     catch (e) { r = { ok: false, forbidden: false }; }
 
     if (r && r.ok) {
+      try { require('../../lib/handled').record('system', sess.id, 'modul'); } catch (e) {}
       // Erfolg -> abgeschlossenen Vorgang ins Postfach + Bestätigung.
       try {
         await Inbox.addVorgang(sess.id, {

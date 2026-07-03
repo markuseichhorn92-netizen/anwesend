@@ -80,6 +80,7 @@ module.exports = async function handler(req, res) {
 
   let v = await Inbox.get(m, id);
   if (!v) { res.statusCode = 404; return res.end(JSON.stringify({ ok: false, error: 'not_found' })); }
+  const prevTeamStatus = v && v.teamStatus;   // für die „automatisch bearbeitet"-Statistik (team)
 
   const author = sess.user === 'team' ? 'Team' : String(sess.user || 'Team');
 
@@ -107,6 +108,7 @@ module.exports = async function handler(req, res) {
     }
   } else if (action === 'status') {
     v = await Inbox.setMeta(m, id, { teamStatus: body.value }) || v;
+    if (body.value === 'abgeschlossen' && prevTeamStatus !== 'abgeschlossen') { try { require('../../lib/handled').record('team', m, 'vorgang'); } catch (e) {} }
   } else if (action === 'priority') {
     v = await Inbox.setMeta(m, id, { priority: body.value }) || v;
   } else if (action === 'assignee') {
@@ -124,6 +126,7 @@ module.exports = async function handler(req, res) {
     v = nv;
   } else if (action === 'close') {
     v = await Inbox.resolve(m, id) || v;
+    if (prevTeamStatus !== 'abgeschlossen') { try { require('../../lib/handled').record('team', m, 'vorgang'); } catch (e) {} }
   } else if (action === 'reopen') {
     v = await Inbox.setMeta(m, id, { teamStatus: 'bearbeitung' }) || v;
   } else if (action === 'read') {

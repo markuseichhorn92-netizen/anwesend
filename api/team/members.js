@@ -16,6 +16,7 @@ const Inbox = require('../../lib/inbox');
 const M = require('../../lib/members');
 const View = require('../../lib/teamView');
 const MLAccount = require('../../lib/mlAccount');
+const Handled = require('../../lib/handled');
 
 const ENRICH_CAP = 16;
 
@@ -270,6 +271,9 @@ async function profile(id) {
   // Körpermaße/Fortschritt (CUSTOMER_MEASUREMENT_READ) – degradiert zu available:false.
   let measurements = { available: false };
   try { measurements = await measurementsOf(id); } catch (e) {}
+  // Automatisch gelöste Anfragen dieses Kunden (KI/System/Team) – best effort.
+  let handled = { ai: 0, system: 0, team: 0 };
+  try { handled = await Handled.forMember(id); } catch (e) {}
   const name = ((p.firstName || '') + ' ' + (p.lastName || '')).trim();
   const addr = [((p.street || '') + (p.houseNumber ? (' ' + p.houseNumber) : '')).trim(), ((p.zipCode || '') + ' ' + (p.city || '')).trim()].filter((s) => s).join(', ');
   return {
@@ -279,6 +283,7 @@ async function profile(id) {
     street: p.street || '', houseNumber: p.houseNumber || '', zipCode: p.zipCode || '', city: p.city || '',
     contract: contract, appointments: appointments, history: history, account: account,
     benefits: benefits, additionalInfo: additionalInfo, measurements: measurements,
+    handled: handled,
   };
 }
 

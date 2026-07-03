@@ -144,6 +144,7 @@ module.exports = async function handler(req, res) {
       cancelDbg.openForbidden = !!oc.forbidden;
       if (oc.ok) {
         cancelDbg.path = 'magicline';
+        try { require('../../lib/handled').record('system', sess.id, 'kuendigung'); } catch (e) {}
         var cdDE = dateISO.split('-').reverse().join('.');
         try { vorgang = await Inbox.addVorgang(sess.id, { type: 'kuendigung', subject: 'Kündigung bestätigt', status: 'abgeschlossen',
           systemText: 'Deine Kündigung ist bestätigt – zum ' + cdDE + '.',
@@ -252,6 +253,7 @@ module.exports = async function handler(req, res) {
       cancelDbg.openForbidden = !!ow.forbidden;
       if (ow.ok) {
         cancelDbg.path = 'magicline';
+        try { require('../../lib/handled').record('system', sess.id, 'widerruf'); } catch (e) {}
         try { vorgang = await Inbox.addVorgang(sess.id, { type: 'widerruf', subject: 'Widerruf bestätigt', status: 'abgeschlossen',
           systemText: 'Dein Widerruf ist bestätigt – dein Vertrag wird rückabgewickelt.',
           teamText: 'Hallo' + (m.firstName ? (' ' + m.firstName) : '') + ', dein Widerruf ist eingegangen und verbindlich bestätigt. Dein online abgeschlossener Vertrag wird vollständig rückabgewickelt und bereits gezahlte Beiträge erstatten wir dir zurück.' }); } catch (e) {}

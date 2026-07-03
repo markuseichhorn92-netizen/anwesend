@@ -60,7 +60,7 @@ module.exports = async function handler(req, res) {
     const member = { firstName: m.firstName, lastName: m.lastName, customerNumber: m.customerNumber, rateName: ct && ct.rateName };
     const r = await AI.coachReply(member, Array.isArray(body.history) ? body.history : [], question, HELP);
     res.statusCode = 200;
-    if (r.ok) return res.end(JSON.stringify({ ok: true, answer: r.answer }));
+    if (r.ok) { try { require('../../lib/handled').record('ai', sess.id, 'chat'); } catch (e) {} return res.end(JSON.stringify({ ok: true, answer: r.answer })); }
     return res.end(JSON.stringify({ ok: false, error: r.error || 'ai_failed', message: 'Da komme ich gerade nicht weiter. Magst du es unserem Team schreiben?' }));
   }
 

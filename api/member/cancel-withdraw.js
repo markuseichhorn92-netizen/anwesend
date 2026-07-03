@@ -66,6 +66,7 @@ module.exports = async function handler(req, res) {
   const w = await MC.withdrawCancel(sess.id, ct.contractId);
 
   if (w.ok) {
+    try { require('../../lib/handled').record('system', sess.id, 'widerruf-zurueck'); } catch (e) {}
     try { await Inbox.addVorgang(sess.id, { type: 'kuendigung', subject: 'Kündigung zurückgezogen', status: 'abgeschlossen',
       systemText: 'Du hast deine Kündigung zurückgezogen – deine Mitgliedschaft läuft normal weiter.',
       teamText: 'Schön, dass du bleibst! Deine Kündigung ist zurückgezogen – deine Mitgliedschaft läuft ganz normal weiter, zu deinen gewohnten Konditionen. Willkommen zurück!' }); } catch (e) {}

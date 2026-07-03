@@ -142,6 +142,7 @@ module.exports = async function handler(req, res) {
   } catch (e) { wr = { status: 0, text: String((e && e.message) || e) }; }
 
   if (wrote) {
+    try { require('../../lib/handled').record('system', sess.id, 'selfservice'); } catch (e) {}
     try {
       if (body.type === 'address') {
         const na = (((data.street || '') + ' ' + (data.houseNumber || '')).trim() + ', ' + (data.zipCode || '') + ' ' + (data.city || '')).replace(/^,\s*/, '').trim();
