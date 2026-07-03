@@ -1561,6 +1561,42 @@
     });
     return _qrLib;
   }
+  // ── Dynamischer Check-in-Code (Magicline access-code, läuft ab) ──
+  // Erneuert sich automatisch vor Ablauf; fällt auf die statische Mitgliedsnummer
+  // zurück, wenn kein dynamischer Code verfügbar ist (403/kein Scanner freigeschaltet).
+  var _qrTimer=null;
+  function qrStop(){ if(_qrTimer){ clearTimeout(_qrTimer); _qrTimer=null; } }
+  function qrDraw(elId, code, tint){
+    var el=document.getElementById(elId); if(!el) return;
+    loadQrLib().then(function(){
+      var e=document.getElementById(elId); if(!e) return;
+      try{
+        var qr=window.qrcode(0,'M'); qr.addData(String(code)); qr.make();
+        var svg=qr.createSvgTag({cellSize:6, margin:0, scalable:true});
+        if(tint) svg=svg.replace(/fill="black"/g,'fill="'+tint+'"');
+        e.innerHTML=svg; var s=e.querySelector('svg'); if(s){ s.style.width='100%'; s.style.height='100%'; s.style.display='block'; }
+      }catch(err){ e.textContent='Code konnte nicht erzeugt werden.'; }
+    }).catch(function(){ var e=document.getElementById(elId); if(e) e.textContent='Code konnte nicht geladen werden.'; });
+  }
+  // Zeigt den dynamischen Code in elId und erneuert ihn vor Ablauf. Verlässt der
+  // Nutzer den Screen (Element weg), stoppt der Timer von selbst.
+  function startDynamicQr(elId, fallback, tint){
+    qrStop();
+    (function tick(){
+      if(!document.getElementById(elId)){ qrStop(); return; }
+      api('/api/member/access-code').then(function(d){
+        if(!document.getElementById(elId)){ qrStop(); return; }
+        if(d && d.available && d.content){
+          qrDraw(elId, d.content, tint);
+          var ttl=45000;
+          if(d.expiresAt){ var t=Date.parse(d.expiresAt); if(!isNaN(t)) ttl=Math.max(10000, t-Date.now()-5000); }
+          qrStop(); _qrTimer=setTimeout(tick, Math.min(ttl, 300000));
+        } else {
+          qrDraw(elId, fallback, tint);   // statischer Fallback (Mitgliedsnummer), kein Refresh
+        }
+      }).catch(function(){ qrDraw(elId, fallback, tint); });
+    })();
+  }
   function renderMemberCard(code){
     if(!document.getElementById('mcard_qr')) return;
     loadQrLib().then(function(){
@@ -1579,7 +1615,7 @@
     if(!nr){
       return backHd('Mitgliedskarte')+'<div class="card" style="text-align:center;padding:28px 20px"><div style="font-size:14px;color:var(--text-muted);line-height:1.6">Für die digitale Karte fehlt deine Mitgliedsnummer.<br>Bitte wende dich kurz ans Studio.</div></div>';
     }
-    setTimeout(function(){ renderMemberCard(nr); },0);
+    setTimeout(function(){ startDynamicQr('mcard_qr', nr); },0);
     return backHd('Mitgliedskarte')+
       '<div style="background:linear-gradient(155deg,#0e6b7e,#062f39);border-radius:22px;box-shadow:0 18px 44px rgba(4,33,40,.26);padding:24px 22px;color:#fff;text-align:center">'+
         '<div style="font-size:11.5px;font-weight:800;letter-spacing:1.2px;opacity:.85;text-transform:uppercase">Fit-Inn Trier · Mitgliedskarte</div>'+
@@ -1607,6 +1643,9 @@
   // ── Check-in-Screen (Bottom-Nav-Mitte): QR-Code + „Jetzt einchecken" / Timer + „Auschecken" ──
   function scrCheckin(){
     var p=DATA.profile||{}; var nr=p.customerNumber||'';
+    // Biometrie-Hinweis nur, wenn Face ID / Fingerabdruck in der App eingerichtet ist.
+    var _bio=!!(window.FitInnNative && FitInnNative.biometricUnlock && (!FitInnNative.hasBiometricLogin || FitInnNative.hasBiometricLogin()));
+    var bioHint=_bio?('<div style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--text-soft);font-weight:700;margin-top:12px">'+svg('<rect x="5" y="11" width="14" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path>',{w:2,s:14})+'Check-in wird per Face ID / Fingerabdruck bestätigt</div>'):'';
     var head='<div style="background:linear-gradient(165deg,#0e6072,#063540);border-radius:20px;box-shadow:0 12px 34px rgba(4,33,40,.18);padding:18px 20px;color:#fff;margin-bottom:16px"><div style="font-size:22px;font-weight:900;letter-spacing:-.4px">Check-in</div></div>';
 
     // Eingecheckt -> Timer-Karte + Auschecken
@@ -1626,19 +1665,19 @@
     // Nicht eingecheckt -> QR-Code + Einchecken
     var qrCard;
     if(nr){
-      setTimeout(function(){ renderCheckinQr(nr); },0);
+      setTimeout(function(){ startDynamicQr('ci_qr', nr, '#0a4958'); },0);
       qrCard='<div style="background:var(--surface);border-radius:24px;padding:26px 24px;text-align:center;box-shadow:0 14px 38px rgba(4,33,40,.10)">'+
         '<div style="font-size:18px;font-weight:900;color:var(--text)">Dein Check-in-Code</div>'+
         '<div style="font-size:13px;color:var(--text-muted);font-weight:600;margin-top:5px;line-height:1.5">Scanne am Drehkreuz oder tippe auf Einchecken, wenn du im Studio bist.</div>'+
         '<div style="width:210px;height:210px;margin:22px auto 0;border-radius:20px;background:#fff;border:1px solid var(--border);padding:16px;box-sizing:border-box;display:flex;align-items:center;justify-content:center"><div id="ci_qr" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:var(--text-soft);font-size:12px;font-weight:600">Code …</div></div>'+
         '<div style="font-size:15px;font-weight:800;color:var(--teal-ink);letter-spacing:3px;margin-top:16px">'+esc(nr)+'</div>'+
-        '<button data-act="doCheckin" '+(S.checkinBusy?'disabled ':'')+'style="width:100%;margin-top:20px;border:none;border-radius:14px;background:#0a4958;color:#fff;font-weight:800;font-size:16px;padding:15px;cursor:pointer">'+(S.checkinBusy?'Checkt ein …':'Jetzt einchecken')+'</button>'+
+        '<button data-act="doCheckin" '+(S.checkinBusy?'disabled ':'')+'style="width:100%;margin-top:20px;border:none;border-radius:14px;background:#0a4958;color:#fff;font-weight:800;font-size:16px;padding:15px;cursor:pointer">'+(S.checkinBusy?'Checkt ein …':'Jetzt einchecken')+'</button>'+bioHint+
       '</div>';
     } else {
       qrCard='<div style="background:var(--surface);border-radius:24px;padding:26px 24px;text-align:center;box-shadow:0 14px 38px rgba(4,33,40,.10)">'+
         '<div style="font-size:18px;font-weight:900;color:var(--text)">Check-in</div>'+
         '<div style="font-size:13px;color:var(--text-muted);font-weight:600;margin-top:5px;line-height:1.5">Tippe auf Einchecken, wenn du im Studio bist.</div>'+
-        '<button data-act="doCheckin" '+(S.checkinBusy?'disabled ':'')+'style="width:100%;margin-top:20px;border:none;border-radius:14px;background:#0a4958;color:#fff;font-weight:800;font-size:16px;padding:15px;cursor:pointer">'+(S.checkinBusy?'Checkt ein …':'Jetzt einchecken')+'</button>'+
+        '<button data-act="doCheckin" '+(S.checkinBusy?'disabled ':'')+'style="width:100%;margin-top:20px;border:none;border-radius:14px;background:#0a4958;color:#fff;font-weight:800;font-size:16px;padding:15px;cursor:pointer">'+(S.checkinBusy?'Checkt ein …':'Jetzt einchecken')+'</button>'+bioHint+
       '</div>';
     }
 
@@ -2532,11 +2571,29 @@
     openInsta:function(a){ closeMenu(); S.instaSel=a; setS({screen:'insta'}); loadInsta(); },
     doCheckin:function(){
       if(S.checkinBusy||S.checkedInAt) return;
-      setS({checkinBusy:true,checkinMsg:''});
-      api('/api/member/checkin',{method:'POST'}).then(function(d){
-        if(d&&d.ok){ ciSetIn(d.at||new Date().toISOString()); var nm=(DATA.profile&&DATA.profile.firstName)||''; setS({checkinBusy:false,checkinOk:true,checkinMsg:'',ciPopup:'in',ciName:nm}); loadCheckins(); ciAutoClose(); }
-        else { setS({checkinBusy:false,checkinOk:false,checkinMsg:(d&&d.message)||'Check-in gerade nicht möglich.'}); }
-      }).catch(function(){ setS({checkinBusy:false,checkinOk:false,checkinMsg:'Check-in gerade nicht möglich.'}); });
+      function go(){
+        setS({checkinBusy:true,checkinMsg:''});
+        api('/api/member/checkin',{method:'POST'}).then(function(d){
+          if(d&&d.ok){ ciSetIn(d.at||new Date().toISOString()); var nm=(DATA.profile&&DATA.profile.firstName)||''; setS({checkinBusy:false,checkinOk:true,checkinMsg:'',ciPopup:'in',ciName:nm}); loadCheckins(); ciAutoClose(); }
+          else { setS({checkinBusy:false,checkinOk:false,checkinMsg:(d&&d.message)||'Check-in gerade nicht möglich.'}); }
+        }).catch(function(){ setS({checkinBusy:false,checkinOk:false,checkinMsg:'Check-in gerade nicht möglich.'}); });
+      }
+      // Biometrie-Gate: in der eigenen App und wenn Face ID / Fingerabdruck eingerichtet
+      // ist, muss der manuelle Check-in biometrisch bestätigt werden. Bei Abbruch/Fehler
+      // KEIN Logout – nur Hinweis. Im Browser (keine Biometrie) direkt einchecken.
+      var N=window.FitInnNative;
+      var needBio=!!(N && N.biometricUnlock && (!N.hasBiometricLogin || N.hasBiometricLogin()));
+      if(needBio){
+        setS({checkinBusy:true,checkinMsg:'',checkinOk:false});
+        try{
+          N.biometricUnlock().then(function(tok){
+            if(!tok){ setS({checkinBusy:false,checkinOk:false,checkinMsg:'Check-in abgebrochen.'}); return; }
+            go();
+          }).catch(function(){ setS({checkinBusy:false,checkinOk:false,checkinMsg:'Nicht bestätigt – bitte per Face ID / Fingerabdruck freigeben.'}); });
+        }catch(e){ setS({checkinBusy:false,checkinOk:false,checkinMsg:'Nicht bestätigt – bitte per Face ID / Fingerabdruck freigeben.'}); }
+      } else {
+        go();
+      }
     },
     doCheckout:function(){
       if(S.ciBusy||!S.checkedInAt) return; var fromT=Date.parse(S.checkedInAt); setS({ciBusy:true}); try{ window.__ciMuteIn=Date.now()+45000; }catch(e){}
