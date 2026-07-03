@@ -297,7 +297,7 @@
 
   // ---- state ----
   var TOKEN = localStorage.getItem('fi_member_token') || sessionStorage.getItem('fi_member_token') || null;
-  var DATA = { profile:null, contract:null, checkins:null, appts:null, plan:null, planAgg:null, planAggTom:null, inbox:null, prefs:null, membershipActive:true, bookable:null, slots:null, account:null, blog:null, typical:null, hours:null, insta:null, live:null, pauseInfo:null, cancelReasons:null, documents:null, modules:null };
+  var DATA = { profile:null, contract:null, checkins:null, appts:null, plan:null, planAgg:null, planAggTom:null, inbox:null, prefs:null, membershipActive:true, bookable:null, slots:null, account:null, blog:null, typical:null, hours:null, insta:null, live:null, pauseInfo:null, cancelReasons:null, documents:null, modules:null, commPrefs:null };
   // Erlaubte Screens für ehemalige Mitglieder (alles andere wird gesperrt)
   var FORMER_OK = ['home','checkins','help','postfach','settings','profil'];
   function isFormer(){ return DATA.membershipActive===false; }
@@ -308,6 +308,7 @@
     pauseStep:0, pauseReason:'', pauseReasonText:'', pauseFrom:'', pausePhoto:'', pausePhotoName:'', pauseDone:false,
     pauseReasonId:'', pauseTerm:1, pauseDoneVia:'', pauseDoneMsg:'',
     ccBusy:false, ccMsg:'',
+    commBusy:'', commMsg:'', commErr:false,
     docUpBusy:false, docMsg:'', docErr:false, docDlId:'',
     modMsg:'', modErr:false, modBusyId:'',
     checkinBusy:false, checkinOk:false, checkinMsg:'', checkedInAt:null, ciBusy:false, ciPopup:null, ciName:'', ciDur:'', atStudio:false, ciDistance:null, wifiBusy:false, wifiMsg:'',
@@ -447,6 +448,7 @@
     if(s==='help'){ S.helpSel=null; S.helpCat='all'; S.helpQ=''; S.helpShowAll=false; S.aiPhase='idle'; S.aiQuery=''; S.aiAsked=''; S.aiAnswer=''; S.aiFeedback=null; S.ctOpen=false; S.ctSent=false; S.ctMsg=''; S.ctErr=''; S.artFb=null; }
     if(s==='postfach'){ S.pfSel=null; S.pfThread=false; S.pfErr=''; S.pfDraft=''; loadInbox(); }
     if(s==='contract'){ S.cancelStep=0; S.pauseStep=0; S.pauseDone=false; S.offerDone=''; S.docMsg=''; S.docErr=false; S.modMsg=''; S.modErr=false; S.modBusyId=''; loadDocuments(); loadModules(); }
+    if(s==='settings'){ S.commMsg=''; S.commErr=false; loadCommPrefs(); }
     if((s==='checkins'||s==='fort')&&!DATA.checkins) loadCheckins();
     if(s==='blog'){ S.blogSel=null; S.blogPost=null; loadBlog(); }
     if(s==='insta'){ S.instaSel=null; loadInsta(); maybeRefreshInsta(); }
@@ -486,6 +488,13 @@
   // Dokumente (Magicline, Scope CUSTOMER_DOCUMENT_READ) einmal je Sitzung laden.
   // 403/nicht verfügbar -> {available:false}; die UI blendet die Karte dann still
   // aus und der bestehende contract-copy-Weg bleibt als Fallback erhalten.
+  // Kommunikations-/Marketing-Einwilligungen (Magicline, Scopes COMMUNICATION_
+  // PREFERENCES_READ/WRITE) einmal je Sitzung laden. 403/nicht verfügbar ->
+  // {available:false}; die UI blendet den Abschnitt dann still komplett aus.
+  var commPrefsBusy=false;
+  function loadCommPrefs(){ if(commPrefsBusy) return; if(DATA.commPrefs&&typeof DATA.commPrefs==='object') return; commPrefsBusy=true;
+    api('/api/member/comm-prefs').then(function(d){ commPrefsBusy=false; DATA.commPrefs=(d&&d.ok&&d.available)?{available:true,prefs:(d.prefs||{})}:{available:false}; render(); })
+      .catch(function(){ commPrefsBusy=false; DATA.commPrefs={available:false}; render(); }); }
   var docsBusy=false;
   function loadDocuments(){ if(docsBusy) return; if(DATA.documents&&typeof DATA.documents==='object') return; docsBusy=true;
     api('/api/member/documents').then(function(d){ docsBusy=false; DATA.documents=(d&&d.ok&&d.available)?{available:true,items:(d.items||[])}:{available:false}; render(); })
@@ -2370,12 +2379,29 @@
       '<div style="display:flex;align-items:center;gap:14px;margin-top:18px"><div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:800;color:var(--text)">Push aktivieren</div><div style="font-size:13px;color:var(--text-muted);margin-top:2px;line-height:1.45">Erhalte wichtige Hinweise als Mitteilung in der App.</div></div>'+swt(pushMaster,'togglePush','')+'</div>'+
       (pushMaster?(catRow('Postfach-Antworten','Wenn das Studio dir schreibt','pushPostfach')+catRow('Termin-Erinnerungen','Vor gebuchten Terminen','pushTermin')+catRow('Offene Beiträge','Hinweis bei offenen Rechnungen','pushKonto')+catRow('Studio-News','Aktionen & Neuigkeiten','pushNews')):'')+
       '<div style="font-size:12.5px;color:var(--text-soft);margin-top:16px;line-height:1.5;border-top:1px solid var(--border);padding-top:13px">In der App müssen Mitteilungen erlaubt sein (wird beim ersten Öffnen abgefragt).</div>'+'</div>';
+    // Kommunikation & Werbung (Magicline-Einwilligungen). Nur die von der API
+    // gelieferten Kanäle; bei available:false wird der Abschnitt komplett ausgeblendet.
+    var cp=DATA.commPrefs;
+    var commCard='';
+    if(cp && cp.available && cp.prefs){
+      var commOn=function(ch){ return cp.prefs[ch]===true; };
+      var commRow=function(ch,title,sub){ return '<div style="display:flex;align-items:center;gap:14px;margin-top:16px"><div style="flex:1;min-width:0"><div style="font-size:14.5px;font-weight:800;color:var(--text)">'+esc(title)+'</div><div style="font-size:12.5px;color:var(--text-muted);margin-top:2px;line-height:1.4">'+esc(sub)+'</div></div>'+swt(commOn(ch),'toggleComm',ch)+'</div>'; };
+      var commDefs=[['email','E-Mail','Angebote & Neuigkeiten per E-Mail'],['phone','Telefon','Beratung & Angebote per Telefon'],['post','Post','Angebote & Infos per Briefpost'],['sms','SMS & WhatsApp','Kurznachrichten & Aktionen aufs Handy']];
+      var commRows='';
+      commDefs.forEach(function(d){ if(Object.prototype.hasOwnProperty.call(cp.prefs,d[0])) commRows+=commRow(d[0],d[1],d[2]); });
+      if(commRows){
+        commCard='<div class="card" style="border-radius:20px;box-shadow:0 12px 34px rgba(4,33,40,.10)">'+secHead(IC.mail,'Kommunikation & Werbung','Wie dürfen wir dich über Angebote informieren?')+
+          commRows+
+          (S.commMsg?('<div style="font-size:12.5px;color:'+(S.commErr?'#c0392b':TEAL)+';font-weight:700;margin-top:15px;line-height:1.5">'+esc(S.commMsg)+'</div>'):'')+
+          '<div style="font-size:12.5px;color:var(--text-soft);margin-top:16px;line-height:1.5;border-top:1px solid var(--border);padding-top:13px">Du kannst deine Einwilligungen jederzeit ändern. Wichtige Vertrags- und Kontoinfos senden wir unabhängig davon.</div></div>';
+      }
+    }
     // Training & Ziele – Onboarding erneut durchlaufen (Wochenziel / Trainingsziel ändern)
     var gv=weekGoal(); var od=obData()||{};
     var goalSub='Wochenziel '+gv+'×/Woche'+(od.goal?(' · '+esc(od.goal)):'');
     var goalsCard='<div class="card" style="border-radius:20px;box-shadow:0 12px 34px rgba(4,33,40,.10)">'+secHead('<circle cx="12" cy="8" r="6"></circle><path d="M15.5 13.5L17 22l-5-3-5 3 1.5-8.5"></path>','Training & Ziele','Dein Wochenziel & Coaching-Fokus.')+
       '<div style="margin-top:8px">'+row('<path d="M6 20v-5M12 20V8M18 20v-9"></path><path d="M4 20h16"></path>','Ziele & Onboarding anpassen',goalSub,'replayOnboarding','')+'</div></div>';
-    return gradHd+appearance+'<div style="height:16px"></div>'+notif+'<div style="height:16px"></div>'+pushCard+'<div style="height:16px"></div>'+goalsCard+'<div style="height:16px"></div>'+privacy;
+    return gradHd+appearance+'<div style="height:16px"></div>'+notif+(commCard?('<div style="height:16px"></div>'+commCard):'')+'<div style="height:16px"></div>'+pushCard+'<div style="height:16px"></div>'+goalsCard+'<div style="height:16px"></div>'+privacy;
   }
 
   // ---- responsive chrome (Desktop-Sidebar + Topbar) ----
@@ -2540,6 +2566,20 @@
       api('/api/member/prefs',{method:'POST',body:JSON.stringify({push:val})}).then(function(r){ if(r&&r.prefs) DATA.prefs=r.prefs; }).catch(function(){}); },
     togglePushCat:function(a){ if(!a) return; var cur=!(DATA.prefs&&DATA.prefs[a]===false); var val=!cur; DATA.prefs=DATA.prefs||{}; DATA.prefs[a]=val; setS({});
       var b={}; b[a]=val; api('/api/member/prefs',{method:'POST',body:JSON.stringify(b)}).then(function(r){ if(r&&r.prefs) DATA.prefs=r.prefs; }).catch(function(){}); },
+    // Kommunikations-/Marketing-Einwilligung je Kanal (Magicline). Optimistisch mit
+    // Rücksetzen bei Fehler; bei 403 ehrlicher Hinweis „aktuell nicht möglich".
+    toggleComm:function(a){ if(!a) return; var cp=DATA.commPrefs;
+      if(!cp||!cp.available||!cp.prefs||!Object.prototype.hasOwnProperty.call(cp.prefs,a)) return;
+      if(S.commBusy===a) return;
+      var prev=cp.prefs[a]===true, val=!prev;
+      cp.prefs[a]=val; S.commBusy=a; S.commMsg=''; S.commErr=false; render();
+      var b={}; b[a]=val;
+      api('/api/member/comm-prefs',{method:'POST',body:JSON.stringify({prefs:b})}).then(function(r){
+        S.commBusy='';
+        if(r&&r.ok){ S.commMsg=(r.message||'Gespeichert.'); S.commErr=false; }
+        else { cp.prefs[a]=prev; S.commErr=true; S.commMsg=(r&&r.message)||'Konnte nicht gespeichert werden – bitte später erneut.'; }
+        render();
+      }).catch(function(){ S.commBusy=''; cp.prefs[a]=prev; S.commErr=true; S.commMsg='Konnte nicht gespeichert werden – bitte später erneut.'; render(); }); },
     planSet:function(a){
       var s=String(a).split('@'); var mins=parseInt(s[0],10); var off=(parseInt(s[1],10)===1)?1:0;
       if(!isFinite(mins)) return;
