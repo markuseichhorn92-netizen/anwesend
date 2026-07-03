@@ -89,6 +89,9 @@ var TEAL='#0a4958', ORANGE='#E08C53';
 var S={ token:null, screen:'inbox', convs:[], counts:{}, selKey:null, sel:null,
         filter:'open', search:'', loading:false, err:'', draft:'', note:'', replyChannel:'email',
         mobileThread:false, panelOpen:false, busy:false, quickOpen:false,
+        // Textbausteine (verwaltbare Schnellantworten; Fallback: TEMPLATES)
+        snippets:null, snippetsLoaded:false, snippetsLoading:false, snippetsBusy:false,
+        manageOpen:false, snipEdit:null, snipNew:'',
         members:[], membersLoaded:false, membersLoading:false,
         memberSearch:'', memberResults:null, memberSearching:false,
         reassignOpen:false, reassignSearch:'', reassignResults:null, reassignSearching:false, reassignBusy:false,
@@ -161,6 +164,9 @@ function chic(ch){ return CHIC[ch]||CHIC.portal; }
 function assigneeName(a){ if(!a) return ''; if(typeof a==='string') return a; return String(a.name||''); }
 
 // Textbausteine (Schnellantworten) + KI-Entwurf für die Antwort-Komposition.
+// TEMPLATES ist der Default-/Fallback-Satz: Er wird serverseitig (lib/snippets.js)
+// als Seed genutzt und dient hier als Rückfallebene, falls das Laden der
+// verwaltbaren Bausteine (S.snippets) scheitert. Nicht entfernen.
 var TEMPLATES=[
   'Vielen Dank für deine Nachricht! Wir kümmern uns darum und melden uns zeitnah bei dir.',
   'Gerne kannst du dazu direkt bei uns an der Theke vorbeikommen – wir helfen dir sofort weiter.',
@@ -200,6 +206,7 @@ async function doLogin(pw){
 
 // ---------- data ----------
 async function loadInbox(){
+  if(!S.snippetsLoaded && !S.snippetsLoading) loadSnippets();   // Bausteine einmalig laden
   S.loading=true; render();
   try{
     var r=await tapi('/api/team/conversations');
@@ -706,7 +713,7 @@ function inboxNode(){
         (S.aiUnavailable?'':'<button data-aidraft="1" '+(S.aiBusy?'disabled':'')+' style="display:inline-flex;align-items:center;gap:6px;border:1.5px solid #F1DFC2;background:#FBF4E9;color:#b5631f;border-radius:100px;padding:7px 13px;font-size:12.5px;font-weight:800;cursor:pointer;opacity:'+(S.aiBusy?'.65':'1')+'"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#E08C53" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.6L18.5 9l-4.6 1.9L12 15.5l-1.9-4.6L5.5 9l4.6-1.4L12 3z"/></svg>'+(S.aiBusy?'FINN denkt …':'KI-Antwort vorschlagen')+'</button>')+
         '<button data-quick="1" style="display:inline-flex;align-items:center;gap:6px;border:1.5px solid '+(S.quickOpen?TEAL:'#d6dee0')+';background:'+(S.quickOpen?'#f1f6f7':'#fff')+';color:'+(S.quickOpen?TEAL:'#42454b')+';border-radius:100px;padding:7px 13px;font-size:12.5px;font-weight:800;cursor:pointer"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg>Textbausteine</button>'+
       '</div>'+
-      (S.quickOpen?'<div style="display:flex;flex-direction:column;gap:6px;margin-top:9px">'+TEMPLATES.map(function(tp,i){ return '<button data-tpl="'+i+'" style="text-align:left;border:1px solid #e4eaeb;background:#fff;border-radius:12px;padding:9px 12px;font-size:12.5px;color:#42454b;font-weight:600;cursor:pointer;line-height:1.45">'+esc(tp)+'</button>'; }).join('')+'</div>':'')+
+      (S.quickOpen?quickPanelHTML():'')+
       '<div style="font-size:11.5px;color:#a9b1b6;font-weight:600;margin-top:9px;padding:0 4px">'+hint+'</div>';
     thread.appendChild(comp);
   }
@@ -772,10 +779,97 @@ function inboxNode(){
     }
   }
 
+  // Modal: Textbausteine verwalten (persistent, teamweit)
+  if(S.manageOpen){
+    var sov=el('<div class="snip-modal" style="position:fixed;inset:0;background:rgba(0,18,22,.45);z-index:82;display:flex;align-items:flex-start;justify-content:center;padding:7vh 16px 16px"></div>');
+    var sbox=el('<div style="width:100%;max-width:520px;background:#fff;border-radius:20px;box-shadow:0 24px 60px rgba(4,33,40,.32);overflow:hidden;display:flex;flex-direction:column;max-height:84vh"></div>');
+    sbox.innerHTML=snippetManagerHTML();
+    sov.appendChild(sbox);
+    sov.onclick=function(e){ if(e.target===sov){ S.manageOpen=false; S.snipEdit=null; render(); } };
+    node.appendChild(sov);
+  }
+
   // wire inbox after attach
   setTimeout(function(){ wireInbox(node); },0);
   return node;
 }
+
+// ---------- Textbausteine (verwaltbare Schnellantworten) ----------
+// Aktive Baustein-Liste: geladene Bausteine (auch bewusst leer) – sonst Fallback
+// auf die eingebauten TEMPLATES (vor dem Laden bzw. bei Ladefehler).
+function snipItems(){
+  if(S.snippets) return S.snippets;
+  return TEMPLATES.map(function(t){ return { id:null, text:t }; });
+}
+// Inhalt des aufklappbaren Vorlagen-Panels (data-tpl-Buttons + „verwalten").
+function quickPanelHTML(){
+  var items=snipItems();
+  var rows=items.length
+    ? items.map(function(tp,i){ return '<button data-tpl="'+i+'" style="text-align:left;border:1px solid #e4eaeb;background:#fff;border-radius:12px;padding:9px 12px;font-size:12.5px;color:#42454b;font-weight:600;cursor:pointer;line-height:1.45">'+esc(tp.text)+'</button>'; }).join('')
+    : '<div style="font-size:12px;color:#a9b1b6;font-weight:600;padding:5px 2px">Noch keine Bausteine – lege im Verwalten-Dialog welche an.</div>';
+  return '<div style="display:flex;flex-direction:column;gap:6px;margin-top:9px">'+rows+
+    '<button data-managesnip="1" style="display:inline-flex;align-items:center;justify-content:center;gap:6px;margin-top:2px;border:1px dashed #cdd6d8;background:#f7fafb;color:#0a4958;border-radius:12px;padding:9px 12px;font-size:12px;font-weight:800;cursor:pointer"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>Bausteine verwalten</button>'+
+    '</div>';
+}
+// HTML des Verwalten-Dialogs (Liste mit Bearbeiten/Löschen + Neuanlage).
+function snippetManagerHTML(){
+  var head='<div style="padding:18px 20px 14px;border-bottom:1px solid #eef1f2;display:flex;align-items:flex-start;justify-content:space-between;gap:10px">'+
+    '<div><div style="font-size:16px;font-weight:900;letter-spacing:-.3px;color:#15171B">Textbausteine verwalten</div>'+
+    '<div style="font-size:12.5px;color:#8a929a;font-weight:600;margin-top:3px">Schnellantworten für den Posteingang – teamweit gespeichert.</div></div>'+
+    '<button data-snipclose="1" title="Schließen" style="border:none;background:#f1f4f5;border-radius:10px;width:32px;height:32px;font-size:19px;line-height:1;color:#6b7780;cursor:pointer;flex-shrink:0">×</button></div>';
+  var listInner;
+  if(!S.snippets){
+    listInner='<div style="padding:26px;text-align:center;color:#8a929a;font-size:13px;font-weight:600">Lädt …</div>';
+  } else if(!S.snippets.length){
+    listInner='<div style="padding:22px 4px;text-align:center;color:#8a929a;font-size:13px;font-weight:600">Noch keine Bausteine. Lege unten deinen ersten an.</div>';
+  } else {
+    listInner=S.snippets.map(function(s){
+      if(S.snipEdit && String(S.snipEdit.id)===String(s.id)){
+        return '<div style="border:1.5px solid '+TEAL+';border-radius:14px;padding:11px 12px;background:#f7fafb">'+
+          '<textarea id="snipeditbox" rows="3" style="width:100%;border:1px solid #d6dee0;border-radius:10px;padding:9px 11px;font-size:13.5px;line-height:1.5;resize:vertical;outline:none;box-sizing:border-box">'+esc(S.snipEdit.text)+'</textarea>'+
+          '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:9px">'+
+            '<button id="snipeditcancel" style="border:1.5px solid #d6dee0;background:#fff;border-radius:10px;font-size:12.5px;font-weight:800;padding:8px 14px;color:#6b7780;cursor:pointer">Abbrechen</button>'+
+            '<button id="snipeditsave" '+(S.snippetsBusy?'disabled':'')+' style="border:none;background:'+TEAL+';color:#fff;border-radius:10px;font-size:12.5px;font-weight:800;padding:8px 16px;cursor:pointer;opacity:'+(S.snippetsBusy?'.6':'1')+'">Speichern</button>'+
+          '</div></div>';
+      }
+      return '<div style="border:1px solid #e4eaeb;border-radius:14px;padding:11px 13px;display:flex;align-items:flex-start;gap:10px">'+
+        '<div style="flex:1;min-width:0;font-size:13.5px;line-height:1.5;color:#42454b;font-weight:600;white-space:pre-wrap;word-break:break-word">'+esc(s.text)+'</div>'+
+        '<div style="display:flex;gap:6px;flex-shrink:0">'+
+          '<button data-snipedit="'+esc(s.id)+'" style="border:1.5px solid #d6dee0;background:#fff;border-radius:9px;padding:6px 10px;font-size:12px;font-weight:800;color:#0a4958;cursor:pointer">Bearbeiten</button>'+
+          '<button data-snipdelete="'+esc(s.id)+'" style="border:1.5px solid #f0d9d4;background:#fff;border-radius:9px;padding:6px 10px;font-size:12px;font-weight:800;color:#b53a2c;cursor:pointer">Löschen</button>'+
+        '</div></div>';
+    }).join('');
+  }
+  var list='<div class="scrl" style="flex:1;overflow-y:auto;padding:14px 18px;display:flex;flex-direction:column;gap:9px;min-height:120px">'+listInner+'</div>';
+  var add='<div style="padding:13px 18px;border-top:1px solid #eef1f2;background:#fafbfb">'+
+    '<div style="font-size:11px;font-weight:800;color:#8a929a;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Neuer Baustein</div>'+
+    '<textarea id="snipnew" rows="2" placeholder="Text des neuen Bausteins …" style="width:100%;border:1.5px solid #d6dee0;border-radius:11px;padding:10px 12px;font-size:13.5px;line-height:1.5;resize:vertical;outline:none;box-sizing:border-box">'+esc(S.snipNew||'')+'</textarea>'+
+    '<div style="display:flex;justify-content:flex-end;margin-top:9px">'+
+      '<button id="snipadd" '+(S.snippetsBusy?'disabled':'')+' style="border:none;background:'+ORANGE+';color:#fff;border-radius:11px;font-size:13px;font-weight:800;padding:9px 18px;cursor:pointer;opacity:'+(S.snippetsBusy?'.6':'1')+'">Hinzufügen</button>'+
+    '</div></div>';
+  return head+list+add;
+}
+// Bausteine vom Server laden; bei Fehler bleibt S.snippets=null -> TEMPLATES-Fallback.
+async function loadSnippets(){
+  if(S.snippetsLoading) return;
+  S.snippetsLoading=true;
+  try{ var r=await tapi('/api/team/snippets'); if(r && Array.isArray(r.snippets)) S.snippets=r.snippets; }
+  catch(e){}
+  S.snippetsLoaded=true; S.snippetsLoading=false; render();
+}
+// Mutation an den Server schicken; Antwort enthält immer die frische Liste.
+async function snipMutate(body){
+  S.snippetsBusy=true; render();
+  var r=null;
+  try{ r=await tapi('/api/team/snippets',{method:'POST',body:body}); }catch(e){}
+  if(r && Array.isArray(r.snippets)) S.snippets=r.snippets;
+  S.snippetsBusy=false; S.snippetsLoaded=true;
+  if(r && r.ok===false && r.message) alert(r.message);
+  return r;
+}
+async function addSnip(text){ var t=(text||'').trim(); if(!t) return; await snipMutate({action:'add', text:t}); S.snipNew=''; render(); }
+async function updateSnip(id, text){ var t=(text||'').trim(); if(!t||!id) return; await snipMutate({action:'update', id:id, text:t}); S.snipEdit=null; render(); }
+async function deleteSnip(id){ if(!id) return; if(!window.confirm('Diesen Baustein wirklich löschen?')) return; await snipMutate({action:'delete', id:id}); if(S.snipEdit && String(S.snipEdit.id)===String(id)) S.snipEdit=null; render(); }
 
 function wireInbox(node){
   var is=node.querySelector('#isearch'); if(is) is.oninput=function(){ S.search=is.value; var c=node.querySelector('#convrows'); if(c){ c.innerHTML=rowsHTML(); wireRows(c); } };
@@ -788,8 +882,18 @@ function wireInbox(node){
   var sd=node.querySelector('#send'); if(sd) sd.onclick=sendReply;
   node.querySelectorAll('[data-ch]').forEach(function(b){ b.onclick=function(){ S.replyChannel=b.getAttribute('data-ch'); render(); }; });
   var aid=node.querySelector('[data-aidraft]'); if(aid) aid.onclick=suggestReply;
-  var qk=node.querySelector('[data-quick]'); if(qk) qk.onclick=function(){ S.quickOpen=!S.quickOpen; render(); };
-  node.querySelectorAll('[data-tpl]').forEach(function(b){ b.onclick=function(){ var i=+b.getAttribute('data-tpl'); var tp=TEMPLATES[i]||''; S.draft=(S.draft&&S.draft.trim())?(S.draft.replace(/\s+$/,'')+'\n\n'+tp):tp; S.quickOpen=false; render(); var d=root.querySelector('#draft'); if(d){ d.focus(); d.setSelectionRange(d.value.length,d.value.length); } }; });
+  var qk=node.querySelector('[data-quick]'); if(qk) qk.onclick=function(){ S.quickOpen=!S.quickOpen; if(S.quickOpen && !S.snippetsLoaded) loadSnippets(); render(); };
+  node.querySelectorAll('[data-tpl]').forEach(function(b){ b.onclick=function(){ var i=+b.getAttribute('data-tpl'); var items=snipItems(); var tp=(items[i]&&items[i].text)||''; S.draft=(S.draft&&S.draft.trim())?(S.draft.replace(/\s+$/,'')+'\n\n'+tp):tp; S.quickOpen=false; render(); var d=root.querySelector('#draft'); if(d){ d.focus(); d.setSelectionRange(d.value.length,d.value.length); } }; });
+  // Textbausteine verwalten (Dialog)
+  var msb=node.querySelector('[data-managesnip]'); if(msb) msb.onclick=function(){ S.manageOpen=true; S.snipEdit=null; if(!S.snippetsLoaded) loadSnippets(); render(); };
+  var scl=node.querySelector('[data-snipclose]'); if(scl) scl.onclick=function(){ S.manageOpen=false; S.snipEdit=null; render(); };
+  var snn=node.querySelector('#snipnew'); if(snn) snn.oninput=function(){ S.snipNew=snn.value; };
+  var sna=node.querySelector('#snipadd'); if(sna) sna.onclick=function(){ addSnip(S.snipNew); };
+  node.querySelectorAll('[data-snipedit]').forEach(function(b){ b.onclick=function(){ var id=b.getAttribute('data-snipedit'); var it=(S.snippets||[]).filter(function(s){ return String(s.id)===String(id); })[0]; S.snipEdit={id:id, text:it?it.text:''}; render(); }; });
+  node.querySelectorAll('[data-snipdelete]').forEach(function(b){ b.onclick=function(){ deleteSnip(b.getAttribute('data-snipdelete')); }; });
+  var seb=node.querySelector('#snipeditbox'); if(seb) seb.oninput=function(){ if(S.snipEdit) S.snipEdit.text=seb.value; };
+  var ses=node.querySelector('#snipeditsave'); if(ses) ses.onclick=function(){ if(S.snipEdit) updateSnip(S.snipEdit.id, S.snipEdit.text); };
+  var sec=node.querySelector('#snipeditcancel'); if(sec) sec.onclick=function(){ S.snipEdit=null; render(); };
   var nt=node.querySelector('#note'); if(nt) nt.oninput=function(){ S.note=nt.value; };
   var an=node.querySelector('#addnote'); if(an) an.onclick=function(){ var v=(S.note||'').trim(); if(v) act('note',{text:v}); };
   node.querySelectorAll('[data-status]').forEach(function(b){ b.onclick=function(){ act('status',{value:b.getAttribute('data-status')}); }; });
