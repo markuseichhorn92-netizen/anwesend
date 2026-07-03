@@ -1565,6 +1565,8 @@ var ASTAT={ 'veröffentlicht':{l:'Veröffentlicht',c:'#1d7a3e',b:'#e7f6ec',dot:'
 function hcat(k){ return HCAT[k]||HCAT.mitglied; }
 function helpfulPct(a){ var y=a.helpfulYes||0,n=a.helpfulNo||0; return (y+n)>0?Math.round(y/(y+n)*100)+'%':'–'; }
 function deNum(n){ return Number(n||0).toLocaleString('de-DE'); }
+// Ø Reaktionszeit in Minuten -> lesbares Label ("18 Min.", "2,5 h") bzw. "—" wenn nicht berechenbar.
+function rtLabel(min){ if(min==null||isNaN(min)) return '—'; var m=Number(min); if(m<60) return Math.round(m)+' Min.'; var h=m/60; return (h>=10?Math.round(h):Number(h.toFixed(1))).toLocaleString('de-DE')+' h'; }
 
 async function loadArticles(){ S.articlesLoading=true; render(); try{ var r=await tapi('/api/team/articles'); if(r.ok) S.articles=r.articles||[]; S.articlesLoaded=true; }catch(e){} S.articlesLoading=false; render(); }
 async function loadStats(){ S.statsLoading=true; render(); try{ var r=await tapi('/api/team/stats'); if(r.ok) S.stats=r; }catch(e){} S.statsLoading=false; render(); }
@@ -1671,7 +1673,7 @@ function helpNode(){
 function statsNode(){
   var node=el('<div class="scrl" style="flex:1;min-height:0;overflow-y:auto;padding:18px 18px 28px"></div>');
   if(S.statsLoading && !S.stats){ node.innerHTML='<div style="padding:60px;text-align:center"><span class="spin"></span></div>'; return node; }
-  var s=S.stats||{counts:{},vorgangBreakdown:[],checkinDays:[],topArticles:[],avgUtil:0,articlesPublished:0,articleViews:0};
+  var s=S.stats||{counts:{},vorgangBreakdown:[],checkinDays:[],topArticles:[],avgUtil:0,articlesPublished:0,articleViews:0,employeeStats:[]};
   var c=s.counts||{};
   var kpis=[['Offene Vorgänge',c.open||0,TEAL],['Aktion erforderlich',c.neu||0,'#b53a2c'],['Ø Auslastung',(s.avgUtil||0)+' Pers.','#1d7a3e'],['Veröffentl. Artikel',s.articlesPublished||0,ORANGE]];
   if(S.util && S.util.percent!=null) kpis.splice(2,0,['Auslastung jetzt',S.util.percent+' %','#0e6072']);
@@ -1680,6 +1682,11 @@ function statsNode(){
   var maxC=Math.max.apply(null,(s.checkinDays||[]).map(function(d){return d.v;}).concat([1]));
   var ciHtml=(s.checkinDays||[]).map(function(d){ var h=Math.round(d.v/maxC*100); return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;height:100%;justify-content:flex-end"><div style="font-size:11px;font-weight:800;color:#0a4958">'+d.v+'</div><div style="width:100%;background:linear-gradient(180deg,#0e6072,#063540);border-radius:5px;height:'+Math.max(h,5)+'%;min-height:6px"></div><div style="font-size:9.5px;font-weight:800;color:#a3abb0">'+esc(d.d)+'</div></div>'; }).join('');
   var topHtml=(s.topArticles||[]).filter(function(a){return a.title;}).map(function(a,i){ var cc=hcat(a.cat); return '<div style="display:flex;align-items:center;gap:11px;padding:10px 0;border-top:1px solid #f0f3f4"><span style="font-size:13px;font-weight:900;color:#c9d3d5;width:18px;flex-shrink:0">'+(i+1)+'</span><div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:700;color:#15171B;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(a.title)+'</div><div style="font-size:11px;font-weight:800;color:'+cc.c+';margin-top:2px">'+cc.l+'</div></div><span style="font-size:12.5px;font-weight:800;color:#0a4958;flex-shrink:0">'+deNum(a.views)+'</span></div>'; }).join('') || '<div style="font-size:12.5px;color:#a3abb0;font-weight:600;padding:10px 0;border-top:1px solid #f0f3f4">Noch keine Artikel-Aufrufe.</div>';
+  // Mitarbeiter-Leistung (nur echte Daten; Karte entfällt, wenn keine Aggregation vorliegt).
+  var emp=(s.employeeStats||[]);
+  var empHead='<div style="display:flex;align-items:center;gap:11px;padding:6px 0 8px;font-size:10.5px;font-weight:800;color:#a3abb0;text-transform:uppercase;letter-spacing:.4px"><div style="flex:1;min-width:0">Mitarbeiter</div><span style="width:64px;text-align:right;flex-shrink:0">Zugew.</span><span style="width:76px;text-align:right;flex-shrink:0">Abgeschl.</span><span style="width:52px;text-align:right;flex-shrink:0">Offen</span><span style="width:84px;text-align:right;flex-shrink:0">Ø Reaktion</span></div>';
+  var empRows=emp.map(function(e){ return '<div style="display:flex;align-items:center;gap:11px;padding:10px 0;border-top:1px solid #f0f3f4"><div style="flex:1;min-width:0;font-size:13px;font-weight:700;color:#15171B;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(e.name)+'</div><span style="width:64px;text-align:right;font-size:12.5px;font-weight:800;color:#0a4958;flex-shrink:0">'+deNum(e.assigned)+'</span><span style="width:76px;text-align:right;font-size:12.5px;font-weight:800;color:#1d7a3e;flex-shrink:0">'+deNum(e.resolved)+'</span><span style="width:52px;text-align:right;font-size:12.5px;font-weight:800;color:#6b7780;flex-shrink:0">'+deNum(e.open)+'</span><span style="width:84px;text-align:right;font-size:12.5px;font-weight:800;color:#0a4958;flex-shrink:0">'+esc(rtLabel(e.avgResponseMin))+'</span></div>'; }).join('');
+  var empCard=emp.length?('<div style="background:#fff;border-radius:18px;box-shadow:0 12px 32px rgba(4,33,40,.08);padding:18px"><div style="font-size:14px;font-weight:900;color:#15171B;margin-bottom:4px">Mitarbeiter-Leistung</div><div style="font-size:11.5px;color:#8a929a;font-weight:600;margin-bottom:8px">Bearbeitete Vorgänge & Ø Reaktionszeit</div>'+empHead+empRows+'</div>'):'';
   node.innerHTML='<div style="max-width:1000px;display:flex;flex-direction:column;gap:14px">'+
     '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:13px">'+
     kpis.map(function(k){ return '<div style="background:#fff;border-radius:18px;box-shadow:0 12px 32px rgba(4,33,40,.08);padding:17px"><div style="font-size:12.5px;font-weight:700;color:#6b7780">'+k[0]+'</div><div style="font-size:28px;font-weight:900;margin-top:8px;letter-spacing:-.5px;color:'+k[2]+'">'+(typeof k[1]==='number'?deNum(k[1]):esc(k[1]))+'</div></div>'; }).join('')+'</div>'+
@@ -1688,6 +1695,7 @@ function statsNode(){
       '<div style="background:#fff;border-radius:18px;box-shadow:0 12px 32px rgba(4,33,40,.08);padding:18px"><div style="font-size:14px;font-weight:900;color:#15171B;margin-bottom:4px">Vorgänge nach Art</div><div style="font-size:11.5px;color:#8a929a;font-weight:600;margin-bottom:16px">Aktueller Posteingang</div>'+vbHtml+'</div>'+
     '</div>'+
     '<div style="background:#fff;border-radius:18px;box-shadow:0 12px 32px rgba(4,33,40,.08);padding:18px"><div style="font-size:14px;font-weight:900;color:#15171B;margin-bottom:4px">Meistgelesene Artikel</div><div style="font-size:11.5px;color:#8a929a;font-weight:600;margin-bottom:4px">Top-Artikel nach Aufrufen</div>'+topHtml+'</div>'+
+    empCard+
   '</div>';
   return node;
 }
