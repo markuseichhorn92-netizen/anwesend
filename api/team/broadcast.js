@@ -3,7 +3,7 @@
 /**
  * Team-Backend: Rundnachricht (Broadcast).
  *   GET  ?segment=…                          -> { ok, count, segment }   Empfänger-Vorschau
- *   POST { segment, title, body, channels }  -> { ok, recipients, pushSent, mailSent, capped }
+ *   POST { segment, title, body, channels }  -> { ok, recipients, pushSent, mailSent, waSent, capped }
  *
  * Empfänger-Ermittlung + Versand liegen in lib/outreach (403-/fehlersicher).
  * Ohne den Scope MEMBER_LIST_READ (bewusst nicht angefragt) sind nur uns bereits
@@ -50,6 +50,6 @@ module.exports = async function handler(req, res) {
   res.statusCode = 200;
   return res.end(JSON.stringify({
     ok: true,
-    recipients: r.recipients, pushSent: r.pushSent, mailSent: r.mailSent, capped: r.capped,
+    recipients: r.recipients, pushSent: r.pushSent, mailSent: r.mailSent, waSent: r.waSent, capped: r.capped,
   }));
 };

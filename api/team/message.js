@@ -2,11 +2,12 @@
 
 /**
  * Team-Backend: Direktnachricht an ein einzelnes Mitglied.
- *   POST { memberId, title?, body, channels:{push?, email?} } -> { ok, via }
+ *   POST { memberId, title?, body, channels:{push?, email?, whatsapp?} } -> { ok, via }
  *
- * Legt einen Inbox-Vorgang an (erscheint im Postfach), sendet Push (pushPostfach)
- * und optional E-Mail – alles best-effort in lib/outreach.sendDirect (wirft nie,
- * respektiert Einwilligung + hinterlegte Adresse). 405 für andere Methoden.
+ * Legt einen Inbox-Vorgang an (erscheint im Postfach), sendet Push (pushPostfach),
+ * optional E-Mail und optional WhatsApp (Freitext-Vorlage) – alles best-effort in
+ * lib/outreach.sendDirect (wirft nie, respektiert Einwilligung + hinterlegte Adresse/
+ * Nummer). via kann 'inbox' | 'push' | 'email' | 'whatsapp' enthalten. 405 für andere Methoden.
  */
 
 const TA = require('../../lib/teamAuth');

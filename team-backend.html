@@ -113,9 +113,9 @@ var S={ token:null, screen:'inbox', convs:[], counts:{}, selKey:null, sel:null,
         aiBusy:false, aiUnavailable:false,
         churn:null, dues:null,
         // Nachrichten: Rundnachricht (Broadcast)
-        bcSegment:'app', bcCount:null, bcCountLoading:false, bcTitle:'', bcBody:'', bcPush:true, bcEmail:false, bcBusy:false, bcResult:null,
+        bcSegment:'app', bcCount:null, bcCountLoading:false, bcTitle:'', bcBody:'', bcPush:true, bcEmail:false, bcWa:false, bcBusy:false, bcResult:null,
         // Nachrichten: Direktnachricht (Compose-Dialog)
-        dmOpen:false, dmMemberId:null, dmMemberName:'', dmTitle:'', dmBody:'', dmPush:true, dmEmail:false, dmBusy:false, dmResult:null,
+        dmOpen:false, dmMemberId:null, dmMemberName:'', dmTitle:'', dmBody:'', dmPush:true, dmEmail:false, dmWa:false, dmBusy:false, dmResult:null,
         // Leads: Interessenten-Pipeline
         leads:[], leadsLoaded:false, leadsLoading:false, leadFilter:'all', leadBusy:'',
         // Aufgaben: interne To-do-Liste (getrennt von Kunden-Vorgängen)
@@ -1731,13 +1731,13 @@ async function doSendBroadcast(){
   if(S.bcBusy) return;
   var title=(S.bcTitle||'').trim(), body=(S.bcBody||'').trim();
   if(!title||!body){ alert('Bitte Titel und Text ausfüllen.'); return; }
-  if(!S.bcPush && !S.bcEmail){ alert('Bitte mindestens einen Kanal (Push oder E-Mail) wählen.'); return; }
+  if(!S.bcPush && !S.bcEmail && !S.bcWa){ alert('Bitte mindestens einen Kanal (Push, E-Mail oder WhatsApp) wählen.'); return; }
   var seg=(BCSEG.find(function(s){ return s.k===S.bcSegment; })||{}).l||S.bcSegment;
   var n=(S.bcCount!=null)?S.bcCount:'?';
   if(!window.confirm('Rundnachricht an Segment „'+seg+'“ ('+n+' Empfänger) senden?')) return;
   S.bcBusy=true; S.bcResult=null; render();
   try{
-    var r=await tapi('/api/team/broadcast',{method:'POST',body:{segment:S.bcSegment,title:title,body:body,channels:{push:!!S.bcPush,email:!!S.bcEmail}}});
+    var r=await tapi('/api/team/broadcast',{method:'POST',body:{segment:S.bcSegment,title:title,body:body,channels:{push:!!S.bcPush,email:!!S.bcEmail,whatsapp:!!S.bcWa}}});
     S.bcBusy=false;
     if(r && r.ok){ S.bcResult=r; S.bcTitle=''; S.bcBody=''; }
     else { alert((r&&r.message)||'Rundnachricht konnte nicht gesendet werden.'); }
@@ -1755,7 +1755,7 @@ function msgNode(){
   var resultPanel=res
     ? '<div style="margin-top:16px;background:#e7f6ec;border-radius:14px;padding:16px 18px">'+
         '<div style="font-size:14px;font-weight:900;color:#1d7a3e">Rundnachricht gesendet</div>'+
-        '<div style="font-size:13px;color:#2a3338;font-weight:600;margin-top:5px;line-height:1.6">An '+esc(String(res.recipients))+' Empfänger · '+esc(String(res.pushSent))+' Push · '+esc(String(res.mailSent))+' E-Mail'+(res.capped?' · auf 500 begrenzt':'')+'</div></div>'
+        '<div style="font-size:13px;color:#2a3338;font-weight:600;margin-top:5px;line-height:1.6">An '+esc(String(res.recipients))+' Empfänger · '+esc(String(res.pushSent))+' Push · '+esc(String(res.mailSent))+' E-Mail'+((res.waSent!=null)?' · '+esc(String(res.waSent))+' WhatsApp':'')+(res.capped?' · auf 500 begrenzt':'')+'</div></div>'
     : '';
   node.innerHTML='<div style="max-width:760px">'+
     '<div style="background:#fff;border-radius:20px;box-shadow:0 12px 32px rgba(4,33,40,.08);padding:22px 24px">'+
@@ -1771,11 +1771,12 @@ function msgNode(){
       '<div style="display:flex;gap:18px;margin-top:14px;flex-wrap:wrap">'+
         '<label style="display:flex;align-items:center;gap:8px;font-size:14px;font-weight:700;cursor:pointer"><input type="checkbox" id="bcpush"'+(S.bcPush?' checked':'')+' style="width:18px;height:18px;accent-color:#0a4958">Push-Nachricht</label>'+
         '<label style="display:flex;align-items:center;gap:8px;font-size:14px;font-weight:700;cursor:pointer"><input type="checkbox" id="bcemail"'+(S.bcEmail?' checked':'')+' style="width:18px;height:18px;accent-color:#0a4958">E-Mail</label>'+
+        '<label style="display:flex;align-items:center;gap:8px;font-size:14px;font-weight:700;cursor:pointer"><input type="checkbox" id="bcwa"'+(S.bcWa?' checked':'')+' style="width:18px;height:18px;accent-color:#0a4958">WhatsApp</label>'+
       '</div>'+
       '<button data-bcsend="1"'+(S.bcBusy?' disabled':'')+' style="margin-top:18px;width:100%;padding:14px;border:none;border-radius:13px;background:'+TEAL+';color:#fff;font-size:15px;font-weight:800;cursor:pointer">'+(S.bcBusy?'Wird gesendet …':'Rundnachricht senden')+'</button>'+
       resultPanel+
     '</div>'+
-    '<div style="font-size:11.5px;color:#a9b1b6;font-weight:600;line-height:1.6;margin-top:14px;padding:0 4px">Push nur an Mitglieder mit App + Einwilligung. E-Mail nur an Mitglieder mit hinterlegter Adresse. Ohne vollständiges Verzeichnis (Scope MEMBER_LIST_READ) erreichen wir nur uns bekannte Mitglieder; die Sende-Menge ist auf 500 Empfänger begrenzt.</div>'+
+    '<div style="font-size:11.5px;color:#a9b1b6;font-weight:600;line-height:1.6;margin-top:14px;padding:0 4px">Push nur an Mitglieder mit App + Einwilligung. E-Mail nur an Mitglieder mit hinterlegter Adresse. WhatsApp nur an Mitglieder mit hinterlegter Handynummer und nur, wenn eine genehmigte Vorlage eingerichtet ist (sonst still übersprungen). Ohne vollständiges Verzeichnis (Scope MEMBER_LIST_READ) erreichen wir nur uns bekannte Mitglieder; die Sende-Menge ist auf 500 Empfänger begrenzt.</div>'+
   '</div>';
   setTimeout(function(){
     node.querySelectorAll('[data-bcseg]').forEach(function(b){ b.onclick=function(){ setBcSegment(b.getAttribute('data-bcseg')); }; });
@@ -1783,6 +1784,7 @@ function msgNode(){
     var bd=node.querySelector('#bcbody'); if(bd) bd.oninput=function(){ S.bcBody=bd.value; };
     var cp=node.querySelector('#bcpush'); if(cp) cp.onchange=function(){ S.bcPush=cp.checked; };
     var ce=node.querySelector('#bcemail'); if(ce) ce.onchange=function(){ S.bcEmail=ce.checked; };
+    var cw=node.querySelector('#bcwa'); if(cw) cw.onchange=function(){ S.bcWa=cw.checked; };
     var sb=node.querySelector('[data-bcsend]'); if(sb) sb.onclick=doSendBroadcast;
     updateBroadcastCount();
     if(S.bcCount==null && !S.bcCountLoading) loadBroadcastCount();
@@ -2039,7 +2041,7 @@ function wireTodos(node){
 // ---- Direktnachricht an ein Mitglied (Compose-Dialog aus dem Profil) ----
 function openDirectMsg(id,name){
   S.dmMemberId=String(id); S.dmMemberName=name||''; S.dmTitle=''; S.dmBody='';
-  S.dmPush=true; S.dmEmail=false; S.dmBusy=false; S.dmResult=null; S.dmOpen=true;
+  S.dmPush=true; S.dmEmail=false; S.dmWa=false; S.dmBusy=false; S.dmResult=null; S.dmOpen=true;
   render(); setTimeout(function(){ var t=document.getElementById('dmbody'); if(t) t.focus(); },30);
 }
 function closeDirectMsg(){ if(S.dmBusy) return; S.dmOpen=false; S.dmResult=null; render(); }
@@ -2049,7 +2051,7 @@ async function doSendDirect(){
   if(!body){ alert('Bitte eine Nachricht eingeben.'); return; }
   S.dmBusy=true; render();
   try{
-    var r=await tapi('/api/team/message',{method:'POST',body:{memberId:S.dmMemberId,title:title,body:body,channels:{push:!!S.dmPush,email:!!S.dmEmail}}});
+    var r=await tapi('/api/team/message',{method:'POST',body:{memberId:S.dmMemberId,title:title,body:body,channels:{push:!!S.dmPush,email:!!S.dmEmail,whatsapp:!!S.dmWa}}});
     S.dmBusy=false;
     if(r && r.ok){ S.dmResult=r; }
     else { alert((r&&r.message)||'Nachricht konnte nicht zugestellt werden.'); }
@@ -2058,7 +2060,7 @@ async function doSendDirect(){
 }
 function dmModalHTML(){
   if(!S.dmOpen) return '';
-  var viaLabel={inbox:'Postfach',push:'Push',email:'E-Mail'};
+  var viaLabel={inbox:'Postfach',push:'Push',email:'E-Mail',whatsapp:'WhatsApp'};
   var result=S.dmResult
     ? '<div style="margin-top:14px;background:#e7f6ec;border-radius:12px;padding:13px 15px;font-size:13px;font-weight:700;color:#1d7a3e;line-height:1.5">Nachricht gesendet'+((S.dmResult.via&&S.dmResult.via.length)?' – zugestellt über '+S.dmResult.via.map(function(v){ return viaLabel[v]||v; }).join(', ')+'.':'. Sie erscheint im Postfach des Mitglieds.')+'</div>'
     : '';
@@ -2073,8 +2075,9 @@ function dmModalHTML(){
       '<div style="display:flex;gap:16px;margin-top:12px;flex-wrap:wrap">'+
         '<label style="display:flex;align-items:center;gap:7px;font-size:13.5px;font-weight:700;cursor:pointer"><input type="checkbox" id="dmpush"'+(S.dmPush?' checked':'')+' style="width:17px;height:17px;accent-color:#0a4958">Push</label>'+
         '<label style="display:flex;align-items:center;gap:7px;font-size:13.5px;font-weight:700;cursor:pointer"><input type="checkbox" id="dmemail"'+(S.dmEmail?' checked':'')+' style="width:17px;height:17px;accent-color:#0a4958">E-Mail</label>'+
+        '<label style="display:flex;align-items:center;gap:7px;font-size:13.5px;font-weight:700;cursor:pointer"><input type="checkbox" id="dmwa"'+(S.dmWa?' checked':'')+' style="width:17px;height:17px;accent-color:#0a4958">WhatsApp</label>'+
       '</div>'+
-      '<div style="font-size:11px;color:#a9b1b6;font-weight:600;margin-top:8px;line-height:1.5">Die Nachricht landet immer im Postfach. Push nur mit App + Einwilligung, E-Mail nur mit hinterlegter Adresse.</div>'+
+      '<div style="font-size:11px;color:#a9b1b6;font-weight:600;margin-top:8px;line-height:1.5">Die Nachricht landet immer im Postfach. Push nur mit App + Einwilligung, E-Mail nur mit hinterlegter Adresse, WhatsApp nur mit hinterlegter Handynummer und eingerichteter Vorlage.</div>'+
       result+
       '<div style="display:flex;gap:9px;margin-top:16px">'+
         '<button data-dmcancel="1" style="flex:1;border:1.5px solid #d6dee0;border-radius:11px;background:#fff;color:#42454b;font-weight:800;font-size:13.5px;padding:11px;cursor:pointer">'+(S.dmResult?'Schließen':'Abbrechen')+'</button>'+
@@ -2092,6 +2095,7 @@ function wireDm(scope){
   var bd=scope.querySelector('#dmbody'); if(bd) bd.oninput=function(){ S.dmBody=bd.value; };
   var cp=scope.querySelector('#dmpush'); if(cp) cp.onchange=function(){ S.dmPush=cp.checked; };
   var ce=scope.querySelector('#dmemail'); if(ce) ce.onchange=function(){ S.dmEmail=ce.checked; };
+  var cw=scope.querySelector('#dmwa'); if(cw) cw.onchange=function(){ S.dmWa=cw.checked; };
   var sd=scope.querySelector('[data-dmsend]'); if(sd) sd.onclick=doSendDirect;
 }
 
