@@ -91,6 +91,8 @@ var TEAL='#0a4958', ORANGE='#E08C53';
 var TAG_PRESETS=['VIP','Stammkunde','Beschwerde','Risiko','Beobachten','Interessent'];
 var S={ token:null, screen:'inbox', convs:[], counts:{}, selKey:null, sel:null,
         filter:'open', search:'', loading:false, err:'', draft:'', note:'', replyChannel:'email',
+        // Login: Admin (Passwort) <-> Trainer (E-Mail-Code). Additiv, bricht den Passwort-Login nicht.
+        loginMode:'admin', liEmail:'', liChallenge:'', liCode:'', liErr:'', liBusy:false,
         mobileThread:false, panelOpen:false, busy:false, quickOpen:false,
         // Textbausteine (verwaltbare Schnellantworten; Fallback: TEMPLATES)
         snippets:null, snippetsLoaded:false, snippetsLoading:false, snippetsBusy:false,
@@ -215,6 +217,28 @@ async function doLogin(pw){
     if(r.ok && r.token){ saveToken(r.token); S.busy=false; loadEmployees(); await loadInbox(); return; }
     S.err=r.message||'Login fehlgeschlagen.'; S.busy=false; render();
   }catch(e){ S.err='Verbindungsfehler.'; S.busy=false; render(); }
+}
+
+// Trainer-Login Schritt 1: Code an die (in Magicline hinterlegte) E-Mail anfordern.
+async function doStaffRequest(email){
+  S.liErr=''; S.liBusy=true; render();
+  try{
+    var r=await tapi('/api/team/login',{method:'POST',body:{action:'requestCode',email:email}});
+    S.liBusy=false;
+    if(r && r.ok && r.challenge){ S.liChallenge=r.challenge; S.liCode=''; render(); return; }
+    S.liErr=(r&&r.message)||'Code konnte nicht gesendet werden.'; render();
+  }catch(e){ S.liBusy=false; S.liErr='Verbindungsfehler.'; render(); }
+}
+// Trainer-Login Schritt 2: Code prüfen -> eigene Trainer-Session + App laden.
+async function doStaffVerify(){
+  var code=String(S.liCode||'').trim();
+  if(!code){ return; }
+  S.liErr=''; S.liBusy=true; render();
+  try{
+    var r=await tapi('/api/team/login',{method:'POST',body:{action:'verifyCode',challenge:S.liChallenge,code:code}});
+    if(r && r.ok && r.token){ saveToken(r.token); S.liBusy=false; S.liChallenge=''; S.liCode=''; S.liEmail=''; loadEmployees(); await loadInbox(); return; }
+    S.liBusy=false; S.liErr=(r&&r.message)||'Code falsch oder abgelaufen.'; render();
+  }catch(e){ S.liBusy=false; S.liErr='Verbindungsfehler.'; render(); }
 }
 
 // ---------- data ----------
@@ -720,22 +744,66 @@ async function loadStudioAppts(){
 // ---------- render: login ----------
 function renderLogin(){
   root.innerHTML='';
+  var mode=(S.loginMode==='trainer')?'trainer':'admin';
   var wrap=el('<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;background:linear-gradient(160deg,#0e6072,#063540)"></div>');
   var card=el('<div style="width:100%;max-width:400px;background:#fff;border-radius:22px;box-shadow:0 30px 70px rgba(0,0,0,.30);padding:34px 30px"></div>');
+  function tabBtn(key,label){
+    var on=mode===key;
+    return '<button data-limode="'+key+'" style="flex:1;padding:9px 10px;border:none;border-radius:9px;font-size:13px;font-weight:800;cursor:pointer;background:'+(on?'#fff':'transparent')+';color:'+(on?TEAL:'#6b7780')+';box-shadow:'+(on?'0 1px 4px rgba(4,33,40,.12)':'none')+'">'+esc(label)+'</button>';
+  }
+  var body;
+  if(mode==='trainer' && S.liChallenge){
+    body=
+      '<div style="font-size:13.5px;color:#42454b;font-weight:500;line-height:1.55;margin-bottom:16px">Wir haben dir einen 6-stelligen Code an <b>'+esc(S.liEmail||'deine E-Mail')+'</b> geschickt. Er ist 10 Minuten gültig.</div>'+
+      '<label style="display:block;font-size:12px;font-weight:800;color:#8a929a;text-transform:uppercase;letter-spacing:.5px;margin-bottom:7px">Anmelde-Code</label>'+
+      '<input id="licode" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="123456" value="'+esc(S.liCode||'')+'" style="width:100%;padding:13px 15px;border:1.5px solid #dce3e4;border-radius:12px;font-size:22px;letter-spacing:8px;text-align:center;font-weight:800;background:#fbfcfc">'+
+      (S.liErr?'<div style="margin-top:11px;font-size:13px;font-weight:700;color:#b53a2c;background:#fbeae7;border-radius:10px;padding:9px 12px">'+esc(S.liErr)+'</div>':'')+
+      '<button id="liverify" style="margin-top:16px;width:100%;padding:13px;border:none;border-radius:12px;background:'+TEAL+';color:#fff;font-size:15px;font-weight:800">'+(S.liBusy?'Anmelden …':'Anmelden')+'</button>'+
+      '<button id="liback" style="margin-top:9px;width:100%;padding:9px;border:none;border-radius:12px;background:transparent;color:#6b7780;font-size:13px;font-weight:700;cursor:pointer">Andere E-Mail verwenden</button>';
+  } else if(mode==='trainer'){
+    body=
+      '<label style="display:block;font-size:12px;font-weight:800;color:#8a929a;text-transform:uppercase;letter-spacing:.5px;margin-bottom:7px">Deine E-Mail (in Magicline hinterlegt)</label>'+
+      '<input id="liemail" type="email" autocomplete="email" placeholder="name@fit-inn-trier.de" value="'+esc(S.liEmail||'')+'" style="width:100%;padding:13px 15px;border:1.5px solid #dce3e4;border-radius:12px;font-size:15px;background:#fbfcfc">'+
+      (S.liErr?'<div style="margin-top:11px;font-size:13px;font-weight:700;color:#b53a2c;background:#fbeae7;border-radius:10px;padding:9px 12px">'+esc(S.liErr)+'</div>':'')+
+      '<button id="lireq" style="margin-top:16px;width:100%;padding:13px;border:none;border-radius:12px;background:'+TEAL+';color:#fff;font-size:15px;font-weight:800">'+(S.liBusy?'Code wird gesendet …':'Code anfordern')+'</button>';
+  } else {
+    body=
+      '<label style="display:block;font-size:12px;font-weight:800;color:#8a929a;text-transform:uppercase;letter-spacing:.5px;margin-bottom:7px">Team-Passwort</label>'+
+      '<input id="pw" type="password" autocomplete="current-password" placeholder="••••••••" style="width:100%;padding:13px 15px;border:1.5px solid #dce3e4;border-radius:12px;font-size:15px;background:#fbfcfc">'+
+      (S.err?'<div style="margin-top:11px;font-size:13px;font-weight:700;color:#b53a2c;background:#fbeae7;border-radius:10px;padding:9px 12px">'+esc(S.err)+'</div>':'')+
+      '<button id="go" style="margin-top:16px;width:100%;padding:13px;border:none;border-radius:12px;background:'+TEAL+';color:#fff;font-size:15px;font-weight:800">'+(S.busy?'Anmelden …':'Anmelden')+'</button>';
+  }
   card.innerHTML=
     '<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">'+
       '<span style="font-size:11px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;color:#0e6072;background:#F6A964;border-radius:6px;padding:3px 8px">Team</span>'+
       '<span style="font-size:13px;font-weight:700;color:#8a929a">Fit-Inn Trier</span></div>'+
     '<div style="font-size:24px;font-weight:900;letter-spacing:-.5px">Team-Backend</div>'+
-    '<div style="font-size:13.5px;color:#6b7780;font-weight:500;margin-top:3px;margin-bottom:20px">Melde dich an, um Anfragen zu bearbeiten.</div>'+
-    '<label style="display:block;font-size:12px;font-weight:800;color:#8a929a;text-transform:uppercase;letter-spacing:.5px;margin-bottom:7px">Team-Passwort</label>'+
-    '<input id="pw" type="password" autocomplete="current-password" placeholder="••••••••" style="width:100%;padding:13px 15px;border:1.5px solid #dce3e4;border-radius:12px;font-size:15px;background:#fbfcfc">'+
-    (S.err?'<div style="margin-top:11px;font-size:13px;font-weight:700;color:#b53a2c;background:#fbeae7;border-radius:10px;padding:9px 12px">'+esc(S.err)+'</div>':'')+
-    '<button id="go" style="margin-top:16px;width:100%;padding:13px;border:none;border-radius:12px;background:'+TEAL+';color:#fff;font-size:15px;font-weight:800">'+(S.busy?'Anmelden …':'Anmelden')+'</button>';
+    '<div style="font-size:13.5px;color:#6b7780;font-weight:500;margin-top:3px;margin-bottom:18px">'+(mode==='trainer'?'Melde dich mit deiner E-Mail an.':'Melde dich an, um Anfragen zu bearbeiten.')+'</div>'+
+    '<div style="display:flex;gap:4px;background:#eef2f3;border-radius:12px;padding:4px;margin-bottom:20px">'+tabBtn('admin','Admin')+tabBtn('trainer','Trainer')+'</div>'+
+    body;
   wrap.appendChild(card); root.appendChild(wrap);
-  var pw=card.querySelector('#pw'), go=card.querySelector('#go');
-  function submit(){ var v=pw.value.trim(); if(v) doLogin(v); }
-  go.onclick=submit; pw.onkeydown=function(e){ if(e.key==='Enter') submit(); }; pw.focus();
+
+  Array.prototype.forEach.call(card.querySelectorAll('[data-limode]'), function(b){
+    b.onclick=function(){ var k=b.getAttribute('data-limode'); if(k===S.loginMode) return; S.loginMode=k; S.err=''; S.liErr=''; render(); };
+  });
+
+  if(mode==='trainer' && S.liChallenge){
+    var lc=card.querySelector('#licode'), lv=card.querySelector('#liverify'), lb=card.querySelector('#liback');
+    lc.oninput=function(){ S.liCode=lc.value; var d=String(lc.value||'').replace(/\D/g,''); if(d.length===6 && !S.liBusy){ S.liCode=d; doStaffVerify(); } };
+    lv.onclick=function(){ S.liCode=(lc.value||'').trim(); if(!S.liBusy) doStaffVerify(); };
+    lc.onkeydown=function(e){ if(e.key==='Enter'){ S.liCode=(lc.value||'').trim(); if(!S.liBusy) doStaffVerify(); } };
+    lb.onclick=function(){ S.liChallenge=''; S.liCode=''; S.liErr=''; render(); };
+    lc.focus();
+  } else if(mode==='trainer'){
+    var le=card.querySelector('#liemail'), lr=card.querySelector('#lireq');
+    function subReq(){ var v=(le.value||'').trim(); S.liEmail=v; if(v && !S.liBusy) doStaffRequest(v); }
+    le.oninput=function(){ S.liEmail=le.value; };
+    lr.onclick=subReq; le.onkeydown=function(e){ if(e.key==='Enter') subReq(); }; le.focus();
+  } else {
+    var pw=card.querySelector('#pw'), go=card.querySelector('#go');
+    function submit(){ var v=pw.value.trim(); if(v) doLogin(v); }
+    go.onclick=submit; pw.onkeydown=function(e){ if(e.key==='Enter') submit(); }; pw.focus();
+  }
 }
 
 // ---------- render: shell ----------
