@@ -26,6 +26,12 @@
   .qtile{transition:transform .15s,box-shadow .15s}
   @keyframes fiSpin{to{transform:rotate(360deg)}}
   .spin{width:18px;height:18px;border-radius:50%;border:2.5px solid #cfe0e3;border-top-color:#0a4958;display:inline-block;animation:fiSpin .8s linear infinite}
+  /* Schichtplan (Design-Vorgabe): Tap-Feedback, versteckte horizontale Scrollbars, Overlay-/KI-Animationen */
+  .hsnap{scrollbar-width:none}.hsnap::-webkit-scrollbar{display:none}
+  .tapc{transition:transform .12s ease}.tapc:active{transform:scale(.97)}
+  @keyframes pulseDot{0%,100%{opacity:1}50%{opacity:.35}}
+  @keyframes popIn{0%{transform:scale(.92) translateY(10px)}100%{transform:scale(1) translateY(0)}}
+  @keyframes spin{to{transform:rotate(360deg)}}
   @media (max-width:1100px){
     .ctx-panel{position:fixed;top:0;right:0;height:100dvh;width:330px;max-width:88vw;z-index:58;transform:translateX(100%);transition:transform .25s ease;box-shadow:-8px 0 60px rgba(0,0,0,.30);border-left:none}
     .ctx-panel.open{transform:none}
@@ -126,7 +132,14 @@ var S={ token:null, screen:'inbox', convs:[], counts:{}, selKey:null, sel:null,
         // Dokumente: im Mitgliedsprofil (Scope CUSTOMER_DOCUMENT_READ/WRITE, blendet sich bei available:false aus)
         profileDocs:null, profileDocsLoading:false, profileDocsAvailable:false, docUploadBusy:false, docUploadMsg:'',
         // Zugangsmedium: im Mitgliedsprofil (Scope CUSTOMER_ACCESS_MEDIUM_WRITE, blendet sich bei available:false aus)
-        accessMedia:null, accessMediaLoading:false, accessMediaAvailable:false, accessMediumBusy:'' };
+        accessMedia:null, accessMediaLoading:false, accessMediaAvailable:false, accessMediumBusy:'',
+        // Schichtplan: Dienstplan, Tausch (Schwarzes Brett), Verfügbarkeiten, Team-Chat
+        shWeek:null, shTab:'plan', shView:'tag', shDay:'', shData:null, shLoaded:false, shLoading:false, shBusy:'',
+        shSwap:null, shSwapLoading:false, shThreads:[], shChatMe:null,
+        shAvail:null, shAvailLoading:false, shAvailFor:'', shAvailBusy:false, shAvailSaved:false,
+        shKiOpen:false, shKiPhase:'', shKiResult:null, shKiBusy:false,
+        shEdOpen:false, shEdId:null, shEdDate:'', shEdStart:'', shEdEnd:'', shEdRole:'theke', shEdWho:'', shEdApplicants:[], shEdBusy:false,
+        shChatOpen:false, shChatWith:null, shChatThread:null, shChatShiftStr:'', shChatInput:'', shChatBusy:false, shChatLoading:false };
 var root=document.getElementById('root');
 var stickBottom=true;   // Chat klebt am unteren Rand, solange der Nutzer nicht hochscrollt
 var lastThreadScroll=0; // letzte Scroll-Position (über Voll-Renders hinweg erhalten)
@@ -825,6 +838,7 @@ var IC={
   msg:'<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l18-5v12L3 14z"/><path d="M11.5 16.5a3 3 0 0 1-5.6-1.5"/></svg>',
   leads:'<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h18l-7 8v6l-4 2v-8z"/></svg>',
   todo:'<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>',
+  shift:'<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="3"/><path d="M16 2v4M8 2v4M3 10h18"/><path d="M12 13.5v2.5l1.8 1.2"/></svg>',
   logout:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>',
   back:'<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#0a4958" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>',
   send:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4z"/></svg>',
@@ -858,6 +872,7 @@ function renderShell(content, title, sub){
       navItem('msg','Nachrichten',IC.msg)+
       navItem('leads','Leads',IC.leads)+
       navItem('todo','Aufgaben',IC.todo)+
+      navItem('schicht','Schichtplan',IC.shift)+
     '</nav>'+
     '<div style="border-top:1px solid rgba(255,255,255,.10);margin-top:10px;padding-top:10px">'+
       '<button class="navbtn" data-toapp="1" style="display:flex;align-items:center;gap:13px;padding:11px 13px;border:none;border-radius:11px;font-weight:600;font-size:13.5px;background:transparent;color:#9fc3ca;width:100%;text-align:left;margin-bottom:3px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg><span>Zur Mitglieder-App</span></button>'+
@@ -895,7 +910,7 @@ function renderShell(content, title, sub){
     {k:'dash',l:'Übersicht',ic:IC.dash,on:sc==='dash'},
     {k:'inbox',l:'Posteingang',ic:IC.inbox,on:(sc==='inbox'||sc==='thread'),badge:open},
     {k:'members',l:'Mitglieder',ic:IC.members,on:(sc==='members'||sc==='profile')},
-    {k:'__more',l:'Mehr',ic:IC.dots,on:(['appts','help','stats','msg','leads','todo'].indexOf(sc)>=0)}
+    {k:'__more',l:'Mehr',ic:IC.dots,on:(['appts','help','stats','msg','leads','todo','schicht'].indexOf(sc)>=0)}
   ];
   var bnav=el('<nav class="bottomnav" style="align-items:stretch;padding:5px 4px calc(5px + env(safe-area-inset-bottom,0px))"></nav>');
   bnav.innerHTML=bnDefs.map(function(it){ var c=it.on?'#0a4958':'#9aa6aa';
@@ -912,7 +927,7 @@ function renderShell(content, title, sub){
   side.querySelector('[data-logout]').onclick=logout;
   var toApp=side.querySelector('[data-toapp]'); if(toApp) toApp.onclick=function(){ location.assign('/mitglieder'); };
   var bg=head.querySelector('[data-burger]'); if(bg) bg.onclick=function(){ S.navOpen=true; render(); };
-  head.querySelector('[data-refresh]').onclick=function(){ if(S.screen==='members') loadMembers(); else if(S.screen==='inbox'||S.screen==='appts') loadInbox(); else if(S.screen==='help') loadArticles(); else if(S.screen==='stats') loadStats(); else if(S.screen==='msg') loadBroadcastCount(); else if(S.screen==='leads') loadLeads(); else if(S.screen==='todo') loadTodos(); else render(); };
+  head.querySelector('[data-refresh]').onclick=function(){ if(S.screen==='members') loadMembers(); else if(S.screen==='inbox'||S.screen==='appts') loadInbox(); else if(S.screen==='help') loadArticles(); else if(S.screen==='stats') loadStats(); else if(S.screen==='msg') loadBroadcastCount(); else if(S.screen==='leads') loadLeads(); else if(S.screen==='todo') loadTodos(); else if(S.screen==='schicht'){ loadShifts(); if(S.shTab==='tausch') loadShSwaps(); } else render(); };
   var bell=head.querySelector('[data-bell]'); if(bell) bell.onclick=function(){ goScreen('inbox'); };
 }
 
@@ -2038,6 +2053,629 @@ function wireTodos(node){
   node.querySelectorAll('[data-tdel]').forEach(function(b){ b.onclick=function(){ todoDelete(b.getAttribute('data-tdel')); }; });
 }
 
+// ---------- Schichtplan (Dienstplan, Tausch, Verfügbarkeiten, Team-Chat) ----------
+// Eigener Store (lib/shifts.js, Upstash) – bewusst ohne Magicline-Abhängigkeit.
+// UI 1:1 nach Design-Vorgabe (Phone-Layout, zentrierte Spalte max. 520px).
+var SH_ROLES={ theke:{label:'Theke',chipColor:'#2f6fd6',chipBg:'#E7F0FB',accent:'#F6A964'},
+  flaeche:{label:'Fläche',chipColor:'#176b37',chipBg:'#E7F6EC',accent:'#0e6072'},
+  kurs:{label:'Kurs',chipColor:'#6b4fd8',chipBg:'#EFEBFB',accent:'#8E7BF0'} };
+function shRole(r){ return SH_ROLES[r]||SH_ROLES.theke; }
+var SH_DOW=['So','Mo','Di','Mi','Do','Fr','Sa'];
+var SH_DOWFULL=['Sonntag','Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag'];
+function shPad(n){ return (n<10?'0':'')+n; }
+function shParse(iso){ var m=String(iso||'').match(/^(\d{4})-(\d{2})-(\d{2})/); if(!m) return new Date(); return new Date(+m[1],+m[2]-1,+m[3]); }
+function shISO(d){ return d.getFullYear()+'-'+shPad(d.getMonth()+1)+'-'+shPad(d.getDate()); }
+function shToday(){ return shISO(new Date()); }
+function shMonday(iso){ var d=shParse(iso||shToday()); d.setDate(d.getDate()-((d.getDay()+6)%7)); return shISO(d); }
+function shAddDays(iso,n){ var d=shParse(iso); d.setDate(d.getDate()+n); return shISO(d); }
+function shWeekDates(){ var out=[],mon=S.shWeek||shMonday(); for(var i=0;i<7;i++) out.push(shAddDays(mon,i)); return out; }
+// ISO-Kalenderwoche (Donnerstags-Regel) fürs "KW n"-Label.
+function shKW(iso){ var d=shParse(iso); var t=new Date(d.getFullYear(),d.getMonth(),d.getDate());
+  t.setDate(t.getDate()+3-((t.getDay()+6)%7));
+  var firstThu=new Date(t.getFullYear(),0,4);
+  firstThu.setDate(firstThu.getDate()+3-((firstThu.getDay()+6)%7));
+  return 1+Math.round((t-firstThu)/604800000); }
+function shDM(iso){ var d=shParse(iso); return shPad(d.getDate())+'.'+shPad(d.getMonth()+1)+'.'; }
+function shStr(sh){ return SH_DOW[shParse(sh.date).getDay()]+' '+shDM(sh.date)+' · '+sh.start+'–'+sh.end+' '+shRole(sh.role).label; }
+function shInitials(nm){ var p=String(nm||'').trim().split(/\s+/).filter(Boolean); if(!p.length) return '?'; return ((p[0][0]||'')+(p.length>1?(p[p.length-1][0]||''):'')).toUpperCase(); }
+function shFirstName(nm){ return String(nm||'').split(' ')[0]||''; }
+function shMe(){ return (S.shData&&S.shData.me)||{employeeId:null,name:'Team',role:'admin',initials:'FI'}; }
+function shFindShift(id){ var found=null; (((S.shData||{}).days)||[]).forEach(function(x){ (x.shifts||[]).forEach(function(sh){ if(String(sh.id)===String(id)) found=sh; }); }); return found; }
+function shSunIcon(sz){ return '<svg width="'+sz+'" height="'+sz+'" viewBox="0 0 24 24" fill="none" stroke="#F6A964" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M12 3v2M12 19v2M5 12H3M21 12h-2M6 6l1.5 1.5M18 18l-1.5-1.5M6 18l1.5-1.5M18 6l-1.5 1.5"/></svg>'; }
+
+// ---- Laden ----
+async function loadShifts(){
+  if(!S.shWeek) S.shWeek=shMonday(shToday());
+  if(S.shLoading) return;
+  S.shLoading=true; render();
+  try{
+    var r=await tapi('/api/team/shifts?week='+encodeURIComponent(S.shWeek));
+    if(r && r.days){ S.shData=r; }
+    S.shLoaded=true;
+  }catch(e){}
+  if(!S.shDay || shMonday(S.shDay)!==S.shWeek){ var t=shToday(); S.shDay=(shMonday(t)===S.shWeek)?t:S.shWeek; }
+  S.shLoading=false; render();
+}
+async function loadShSwaps(){
+  S.shSwapLoading=true; render();
+  loadShThreads();
+  try{ var r=await tapi('/api/team/swap?week='+encodeURIComponent(S.shWeek||shMonday())); if(r && r.incoming!==undefined){ S.shSwap=r; } }catch(e){}
+  S.shSwapLoading=false; render();
+}
+async function loadShThreads(){
+  try{ var r=await tapi('/api/team/tchat'); if(r && r.ok){ S.shThreads=r.threads||[]; S.shChatMe=r.me||S.shChatMe; render(); } }catch(e){}
+}
+async function loadShAvail(empId){
+  S.shAvailLoading=true; render();
+  try{
+    var r=await tapi('/api/team/availability'+(empId?('?employeeId='+encodeURIComponent(empId)):''));
+    if(r && r.ok){ S.shAvail=r.days||{}; if(r.employeeId) S.shAvailFor=String(r.employeeId); }
+  }catch(e){}
+  S.shAvailLoading=false; render();
+}
+
+// ---- Aktionen ----
+// Mutation an /api/team/shifts; Server antwortet mit der frischen Woche.
+async function shPost(body){
+  body=body||{}; body.week=S.shWeek||shMonday();
+  try{
+    var r=await tapi('/api/team/shifts',{method:'POST',body:body});
+    if(r && r.days){ S.shData=r; }
+    if(r && r.ok===false && r.message) alert(r.message);
+    return r;
+  }catch(e){ alert('Verbindung fehlgeschlagen.'); return null; }
+}
+function shSetTab(t){
+  if(S.shTab!==t){
+    S.shTab=t;
+    if(t==='tausch') loadShSwaps();
+    if(t==='zeiten'){ S.shAvailSaved=false; var me=shMe(); if(me.employeeId){ loadShAvail(); return; } if(S.shAvailFor){ loadShAvail(S.shAvailFor); return; } }
+  }
+  render();
+}
+function shShiftWeek(n){
+  S.shWeek=shAddDays(S.shWeek||shMonday(),n); S.shDay='';
+  loadShifts();
+  if(S.shTab==='tausch') loadShSwaps();
+}
+async function shClaim(id){
+  if(S.shBusy) return;
+  S.shBusy=id; render();
+  await shPost({action:'claim',id:id});
+  S.shBusy=''; render();
+}
+async function shBoardToggle(id,on){
+  if(S.shBusy) return;
+  S.shBusy=id; render();
+  await shPost({action:on?'board':'unboard',id:id});
+  S.shBusy='';
+  if(S.shTab==='tausch') loadShSwaps(); else render();
+}
+function shEditById(id){ var sh=shFindShift(id); if(sh) shOpenEditor(sh); }
+function shMsgById(id){ var sh=shFindShift(id); if(sh && sh.assignee) shOpenChat({id:String(sh.assignee.id),name:sh.assignee.name,initials:sh.assignee.initials}, shStr(sh)); }
+
+// Tausch (Schwarzes Brett)
+async function shSwapPost(body){
+  body=body||{}; body.week=S.shWeek||shMonday();
+  try{
+    var r=await tapi('/api/team/swap',{method:'POST',body:body});
+    if(r && r.incoming!==undefined){ S.shSwap=r; }
+    if(r && r.ok===false && r.message) alert(r.message);
+    return r;
+  }catch(e){ alert('Verbindung fehlgeschlagen.'); return null; }
+}
+async function shSwapRequest(shiftId){
+  if(S.shBusy) return;
+  var note=prompt('Kurze Nachricht dazu (optional):','');
+  if(note===null) return;
+  S.shBusy=shiftId; render();
+  await shSwapPost({action:'request',shiftId:shiftId,note:note});
+  S.shBusy=''; render();
+}
+async function shSwapAct(swapId,action){
+  if(S.shBusy) return;
+  S.shBusy=swapId; render();
+  await shSwapPost({action:action,swapId:swapId});
+  S.shBusy='';
+  loadShifts();   // accept ändert Zuweisung + Badges
+}
+
+// KI-Planung: Phase 1 (~1,6 s Puls-Schritte) parallel zum echten plan-Call.
+function shRunKi(){
+  if(S.shKiOpen) return;
+  S.shKiOpen=true; S.shKiPhase='think'; S.shKiResult=null; render();
+  var minWait=new Promise(function(res){ setTimeout(res,1600); });
+  var call=tapi('/api/team/shifts',{method:'POST',body:{action:'plan',week:S.shWeek||shMonday()}}).catch(function(){ return null; });
+  Promise.all([call,minWait]).then(function(rr){
+    if(!S.shKiOpen) return;
+    var r=rr[0];
+    S.shKiResult=(r&&r.ok)?r:{proposals:[],leftover:[],summary:'Der Vorschlag konnte nicht erstellt werden. Bitte später erneut versuchen.'};
+    S.shKiPhase='result'; render();
+  });
+}
+function shCloseKi(){ if(S.shKiBusy) return; S.shKiOpen=false; S.shKiPhase=''; S.shKiResult=null; render(); }
+async function shAcceptKi(){
+  var r=S.shKiResult;
+  if(!r || !(r.proposals||[]).length){ shCloseKi(); return; }
+  if(S.shKiBusy) return;
+  S.shKiBusy=true; render();
+  await shPost({action:'apply',assignments:r.proposals.map(function(p){ return {shiftId:p.shiftId, employee:p.employee}; })});
+  S.shKiBusy=false; shCloseKi();
+}
+
+// Schicht-Editor (Bottom-Sheet)
+function shOpenEditor(sh,date){
+  if(sh){ S.shEdId=sh.id; S.shEdDate=sh.date; S.shEdStart=sh.start; S.shEdEnd=sh.end; S.shEdRole=sh.role; S.shEdWho=sh.assignee?String(sh.assignee.id):''; S.shEdApplicants=sh.applicants||[]; }
+  else { S.shEdId=null; S.shEdDate=date||S.shDay||S.shWeek||shMonday(); S.shEdStart='06:00'; S.shEdEnd='14:00'; S.shEdRole='theke'; S.shEdWho=''; S.shEdApplicants=[]; }
+  S.shEdOpen=true; render();
+}
+function shCloseEditor(){ if(S.shEdBusy) return; S.shEdOpen=false; render(); }
+function shEdAssignee(){
+  if(!S.shEdWho) return null;
+  if(S.employees){ for(var i=0;i<S.employees.length;i++){ var e=S.employees[i]; if(String(e.id)===String(S.shEdWho)) return {id:String(e.id),name:e.name,initials:shInitials(e.name)}; } }
+  for(var j=0;j<(S.shEdApplicants||[]).length;j++){ var a=S.shEdApplicants[j]; if(String(a.id)===String(S.shEdWho)) return {id:String(a.id),name:a.name,initials:a.initials||shInitials(a.name)}; }
+  var me=shMe();
+  if(me.employeeId && String(me.employeeId)===String(S.shEdWho)) return {id:String(me.employeeId),name:me.name,initials:me.initials||shInitials(me.name)};
+  return {id:String(S.shEdWho),name:'Mitarbeiter '+S.shEdWho,initials:'?'};
+}
+async function shSaveShift(){
+  if(S.shEdBusy) return;
+  var start=(S.shEdStart||'').trim(), end=(S.shEdEnd||'').trim();
+  if(!/^\d{1,2}[:.]\d{2}$/.test(start) || !/^\d{1,2}[:.]\d{2}$/.test(end)){ alert('Bitte Zeiten im Format HH:MM angeben (z. B. 06:00).'); return; }
+  S.shEdBusy=true; render();
+  var body={ date:S.shEdDate, start:start, end:end, role:S.shEdRole, assignee:shEdAssignee() };
+  if(S.shEdId){ body.action='update'; body.id=S.shEdId; } else { body.action='create'; body.note=''; }
+  var r=await shPost(body);
+  S.shEdBusy=false;
+  if(r && r.ok!==false) S.shEdOpen=false;
+  render();
+}
+async function shDeleteShift(){
+  if(S.shEdBusy || !S.shEdId) return;
+  if(!confirm('Diese Schicht löschen?')) return;
+  S.shEdBusy=true; render();
+  var r=await shPost({action:'delete',id:S.shEdId});
+  S.shEdBusy=false;
+  if(r && r.ok!==false) S.shEdOpen=false;
+  render();
+}
+
+// Verfügbarkeit (Zeiten-Tab)
+function shAvailPick(day,val){ if(!S.shAvail) S.shAvail={}; S.shAvail[day]=val; S.shAvailSaved=false; render(); }
+async function shSaveAvail(){
+  if(S.shAvailBusy) return;
+  var me=shMe(); var empId=me.employeeId||S.shAvailFor;
+  if(!empId){ alert('Bitte zuerst einen Mitarbeiter wählen.'); return; }
+  S.shAvailBusy=true; render();
+  var body={ days:S.shAvail||{} };
+  if(!me.employeeId){ body.employeeId=empId; var nm=''; (S.employees||[]).forEach(function(e){ if(String(e.id)===String(empId)) nm=e.name; }); if(nm) body.name=nm; }
+  try{
+    var r=await tapi('/api/team/availability',{method:'POST',body:body});
+    if(r && r.ok){ S.shAvail=r.days||S.shAvail; S.shAvailSaved=true; }
+    else alert((r&&r.message)||'Verfügbarkeit konnte nicht gespeichert werden.');
+  }catch(e){ alert('Verbindung fehlgeschlagen.'); }
+  S.shAvailBusy=false; render();
+}
+
+// Team-Chat (Panel)
+function shOpenChat(emp,shiftStr){
+  S.shChatOpen=true; S.shChatWith=emp; S.shChatShiftStr=shiftStr||''; S.shChatThread=null; S.shChatInput=''; S.shChatLoading=true; render();
+  tapi('/api/team/tchat?with='+encodeURIComponent(String(emp.id))).then(function(r){
+    if(!S.shChatOpen) return;
+    if(r && r.ok){
+      S.shChatMe=r.me||S.shChatMe;
+      if(r.thread){ S.shChatThread=r.thread; if(r.thread.shiftStr && !shiftStr) S.shChatShiftStr=r.thread.shiftStr; if(r.thread.other && r.thread.other.name) S.shChatWith=r.thread.other; }
+    }
+    S.shChatLoading=false; render();
+  }).catch(function(){ if(S.shChatOpen){ S.shChatLoading=false; render(); } });
+}
+function shCloseChat(){ S.shChatOpen=false; S.shChatThread=null; S.shChatInput=''; render(); if(S.shTab==='tausch') loadShThreads(); }
+async function shSendChat(text){
+  var t=String(text!=null?text:(S.shChatInput||'')).trim();
+  if(!t || S.shChatBusy || !S.shChatWith) return;
+  S.shChatBusy=true; render();
+  try{
+    var r=await tapi('/api/team/tchat',{method:'POST',body:{with:String(S.shChatWith.id),withName:S.shChatWith.name,withInitials:S.shChatWith.initials,text:t,shiftStr:S.shChatShiftStr||undefined}});
+    if(r && r.ok){ S.shChatThread=r.thread; S.shChatMe=r.me||S.shChatMe; S.shChatInput=''; }
+    else alert((r&&r.message)||'Nachricht konnte nicht gesendet werden.');
+  }catch(e){ alert('Verbindung fehlgeschlagen.'); }
+  S.shChatBusy=false; render();
+}
+
+// ---- HTML: Header (Gradient, Wochen-Schalter, Tab-Leiste mit Badges) ----
+function shHeaderHTML(){
+  var d=S.shData||{};
+  var tabs=[{k:'plan',l:'Plan'},{k:'offen',l:'Offen',badge:d.openCount||0},{k:'tausch',l:'Tausch',badge:d.swapBadge||0},{k:'zeiten',l:'Zeiten'}];
+  var tabsHtml=tabs.map(function(t){ var a=S.shTab===t.k;
+    return '<button data-shtab="'+t.k+'" style="flex:1;position:relative;padding:9px 0;border:none;border-radius:10px;background:'+(a?'#fff':'transparent')+';color:'+(a?'#0a4958':'#cfe3e7')+';font-weight:800;font-size:12.5px;cursor:pointer">'+t.l+
+      (t.badge?'<span style="position:absolute;top:1px;right:6px;min-width:15px;height:15px;border-radius:8px;background:#F6A964;color:#0a4958;font-size:9px;font-weight:900;display:inline-flex;align-items:center;justify-content:center;padding:0 3px">'+esc(String(t.badge))+'</span>':'')+'</button>';
+  }).join('');
+  return '<div style="background:linear-gradient(165deg,#0e6072,#0a4958);padding:18px 18px 14px;border-radius:26px">'+
+    '<div style="display:flex;align-items:center;justify-content:space-between">'+
+      '<div style="font-size:22px;font-weight:900;color:#fff;letter-spacing:-.4px">Schichtplan</div>'+
+      '<div style="display:flex;align-items:center;gap:4px">'+
+        '<button data-shprev="1" class="tapc" style="width:32px;height:32px;border-radius:9px;border:none;background:rgba(255,255,255,.13);display:flex;align-items:center;justify-content:center;cursor:pointer"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button>'+
+        '<div style="font-size:12px;font-weight:800;color:#aed0d6;min-width:58px;text-align:center">KW '+esc(String(shKW(S.shWeek||shMonday())))+'</div>'+
+        '<button data-shnext="1" class="tapc" style="width:32px;height:32px;border-radius:9px;border:none;background:rgba(255,255,255,.13);display:flex;align-items:center;justify-content:center;cursor:pointer"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg></button>'+
+      '</div></div>'+
+    '<div style="display:flex;gap:5px;background:rgba(255,255,255,.1);border-radius:13px;padding:4px;margin-top:14px">'+tabsHtml+'</div></div>';
+}
+
+// ---- HTML: Schichtkarte (Tagesansicht) ----
+function shShiftCardHTML(sh){
+  var me=shMe(), role=shRole(sh.role);
+  var open=!sh.assignee;
+  var own=!!(sh.assignee && me.employeeId && String(sh.assignee.id)===String(me.employeeId));
+  var avatarBg=open?'#fff':role.chipBg, avatarColor=open?'#b5631f':role.chipColor;
+  var avatarBorder=open?'1.5px dashed #e0a06c':'none';
+  var whoInitials=open?'?':(sh.assignee.initials||shInitials(sh.assignee.name));
+  var whoName=open?'Offen':sh.assignee.name;
+  var whoNameColor=open?'#b5631f':'#15171B';
+  var noteHtml='';
+  if(open && (sh.applicants||[]).length){ var n=sh.applicants.length; noteHtml='<div style="font-size:11.5px;font-weight:700;color:#b5631f;margin-top:10px">'+esc(n+' Bewerbung'+(n>1?'en':'')+' · im Editor zuweisen')+'</div>'; }
+  else if(sh.note){ noteHtml='<div style="font-size:11.5px;font-weight:700;color:#8a929a;margin-top:10px">'+esc(sh.note)+'</div>'; }
+  else if(sh.board){ noteHtml='<div style="font-size:11.5px;font-weight:700;color:#b5631f;margin-top:10px">Steht am Schwarzen Brett</div>'; }
+  var act;
+  if(open){
+    act = me.employeeId
+      ? {label:'Übernehmen', attr:'data-shclaim="'+esc(sh.id)+'"', border:'#0a4958', bg:'#0a4958', color:'#fff'}
+      : {label:'Zuweisen', attr:'data-shedit="'+esc(sh.id)+'"', border:'#0a4958', bg:'#0a4958', color:'#fff'};
+  } else if(own){
+    act = sh.board
+      ? {label:'Vom Brett nehmen', attr:'data-shunboard="'+esc(sh.id)+'"', border:'#d6dee0', bg:'#fff', color:'#42454b'}
+      : {label:'Zum Tausch anbieten', attr:'data-shboard="'+esc(sh.id)+'"', border:'#0a4958', bg:'#fff', color:'#0a4958'};
+  } else {
+    act = {label:'Nachricht an '+shFirstName(sh.assignee.name), attr:'data-shmsg="'+esc(sh.id)+'"', border:'#d6dee0', bg:'#fff', color:'#0a4958'};
+  }
+  var busy=(S.shBusy===sh.id);
+  return '<div style="background:#fff;border-radius:16px;box-shadow:0 10px 28px rgba(4,33,40,.07);border-left:4px solid '+(open?'#F6A964':role.accent)+';padding:14px">'+
+    '<div style="display:flex;align-items:center;gap:12px">'+
+      '<div style="display:flex;flex-direction:column;align-items:center;width:50px;flex-shrink:0"><span style="font-size:13.5px;font-weight:900;color:#15171B">'+esc(sh.start)+'</span><span style="width:1px;height:9px;background:#d6dee0;margin:2px 0"></span><span style="font-size:13.5px;font-weight:900;color:#8a929a">'+esc(sh.end)+'</span></div>'+
+      '<div style="flex:1;min-width:0">'+
+        '<span style="font-size:10.5px;font-weight:800;color:'+role.chipColor+';background:'+role.chipBg+';padding:3px 9px;border-radius:10px">'+esc(role.label)+'</span>'+
+        '<div style="display:flex;align-items:center;gap:8px;margin-top:9px">'+
+          '<div style="width:28px;height:28px;border-radius:50%;background:'+avatarBg+';color:'+avatarColor+';border:'+avatarBorder+';font-weight:900;font-size:11px;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+esc(whoInitials)+'</div>'+
+          '<span style="font-size:13.5px;font-weight:800;color:'+whoNameColor+'">'+esc(whoName)+'</span>'+
+        '</div></div>'+
+      '<button data-shedit="'+esc(sh.id)+'" class="tapc" style="width:30px;height:30px;border-radius:9px;border:1px solid #e3eaeb;background:#f7f9fa;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;align-self:flex-start"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6b7780" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></button>'+
+    '</div>'+noteHtml+
+    '<button '+act.attr+' class="tapc"'+(busy?' disabled':'')+' style="width:100%;margin-top:12px;border:1.5px solid '+act.border+';border-radius:11px;background:'+act.bg+';color:'+act.color+';font-weight:800;font-size:13px;padding:10px;cursor:pointer">'+(busy?'…':esc(act.label))+'</button></div>';
+}
+
+// ---- HTML: Plan-Tab (KI-Karte, Toggle, Tages-/Wochenansicht) ----
+function shDayViewHTML(){
+  var dates=shWeekDates(), today=shToday();
+  var byDate={}; (((S.shData||{}).days)||[]).forEach(function(x){ byDate[x.date]=x.shifts||[]; });
+  var strip='<div class="hsnap" style="display:flex;gap:8px;overflow-x:auto;margin:12px 0 4px;padding-bottom:2px">'+dates.map(function(dt){
+    var sel=dt===S.shDay, shifts=byDate[dt]||[], dj=shParse(dt);
+    var dot = dt===today ? '#F6A964' : (shifts.length ? (sel?'rgba(255,255,255,.45)':'#cfdadd') : 'transparent');
+    return '<button data-shday="'+dt+'" style="flex:0 0 auto;width:50px;padding:9px 0;border:1.5px solid '+(sel?'#0a4958':'#e3eaeb')+';border-radius:14px;background:'+(sel?'#0a4958':'#fff')+';cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px">'+
+      '<span style="font-size:11px;font-weight:800;color:'+(sel?'#aed0d6':'#8a929a')+'">'+SH_DOW[dj.getDay()]+'</span>'+
+      '<span style="font-size:14px;font-weight:900;color:'+(sel?'#fff':'#15171B')+';line-height:1">'+shPad(dj.getDate())+'</span>'+
+      '<span style="width:6px;height:6px;border-radius:50%;background:'+dot+'"></span></button>';
+  }).join('')+'</div>';
+  var day=S.shDay||dates[0], dj=shParse(day);
+  var head='<div style="display:flex;align-items:center;justify-content:space-between;margin:16px 2px 12px">'+
+    '<span style="font-size:15px;font-weight:900;color:#15171B">'+esc(SH_DOWFULL[dj.getDay()]+', '+shDM(day))+'</span>'+
+    '<button data-shnew="1" class="tapc" style="display:flex;align-items:center;gap:5px;border:1.5px solid #0a4958;border-radius:10px;background:#fff;color:#0a4958;font-weight:800;font-size:12px;padding:7px 11px;cursor:pointer"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0a4958" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Schicht</button></div>';
+  var shifts=byDate[day]||[];
+  var cards=shifts.map(shShiftCardHTML).join('') || '<div style="text-align:center;color:#8a929a;font-weight:600;font-size:13.5px;padding:30px 0">Keine Schichten an diesem Tag.</div>';
+  return strip+head+'<div style="display:flex;flex-direction:column;gap:11px">'+cards+'</div>';
+}
+function shWeekViewHTML(){
+  var dates=shWeekDates(), today=shToday();
+  var byDate={}; (((S.shData||{}).days)||[]).forEach(function(x){ byDate[x.date]=x.shifts||[]; });
+  var rows=dates.map(function(dt){
+    var dj=shParse(dt), isToday=dt===today;
+    var chips=(byDate[dt]||[]).map(function(sh){
+      var role=shRole(sh.role), open=!sh.assignee;
+      var bg=open?'#FBEFE2':role.chipBg, border=open?'#F3D9C4':role.chipBg, color=open?'#b5631f':role.chipColor;
+      var who=open?'Offen':shFirstName(sh.assignee.name);
+      return '<span style="display:inline-flex;align-items:center;gap:5px;padding:5px 8px;border-radius:9px;background:'+bg+';border:1px solid '+border+'"><span style="font-size:10.5px;font-weight:900;color:'+color+'">'+esc(sh.start)+'</span><span style="font-size:10.5px;font-weight:700;color:'+color+'">'+esc(who)+'</span></span>';
+    }).join('');
+    return '<div data-shday="'+dt+'" class="tapc" style="background:#fff;border-radius:16px;box-shadow:0 10px 28px rgba(4,33,40,.07);padding:12px 13px;cursor:pointer;display:flex;gap:12px">'+
+      '<div style="display:flex;flex-direction:column;align-items:center;width:38px;flex-shrink:0;padding-top:2px"><span style="font-size:10.5px;font-weight:800;color:'+(isToday?'#b5631f':'#8a929a')+'">'+SH_DOW[dj.getDay()]+'</span><span style="font-size:17px;font-weight:900;color:#15171B;line-height:1.1">'+shPad(dj.getDate())+'</span>'+(isToday?'<span style="width:5px;height:5px;border-radius:50%;background:#F6A964;margin-top:3px"></span>':'')+'</div>'+
+      '<div style="flex:1;min-width:0;display:flex;flex-wrap:wrap;gap:6px;align-content:flex-start">'+(chips||'<span style="font-size:11.5px;color:#a3abb0;font-weight:600;padding:4px 0">frei</span>')+'</div></div>';
+  }).join('');
+  var legend=[['#2f6fd6','Theke'],['#176b37','Fläche'],['#6b4fd8','Kurs'],['#F6A964','Offen']].map(function(l){
+    return '<span style="display:inline-flex;align-items:center;gap:6px"><span style="width:9px;height:9px;border-radius:3px;background:'+l[0]+'"></span><span style="font-size:11px;font-weight:700;color:#6b7780">'+l[1]+'</span></span>';
+  }).join('');
+  return '<div style="display:flex;flex-direction:column;gap:10px;margin-top:12px">'+rows+'</div>'+
+    '<div style="display:flex;gap:14px;justify-content:center;margin-top:16px;flex-wrap:wrap">'+legend+'</div>';
+}
+function shPlanTabHTML(){
+  var open=(S.shData&&S.shData.openCount)||0;
+  var kiCard='<div style="background:linear-gradient(120deg,#0e6072,#073e4b);border-radius:18px;padding:16px;color:#fff;display:flex;align-items:center;gap:13px">'+
+    '<div style="width:40px;height:40px;border-radius:12px;background:rgba(246,169,100,.22);display:flex;align-items:center;justify-content:center;flex-shrink:0">'+shSunIcon(21)+'</div>'+
+    '<div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:900">KI-Schichtplanung</div><div style="font-size:11.5px;color:#aed0d6;font-weight:600">'+esc(String(open))+' offene Schichten · nutzt Verfügbarkeiten</div></div>'+
+    '<button data-shki="1" class="tapc" style="border:none;border-radius:11px;background:#F6A964;color:#0a4958;font-weight:900;font-size:12.5px;padding:9px 14px;cursor:pointer;flex-shrink:0">Planen</button></div>';
+  var toggle='<div style="display:flex;gap:6px;background:#e4ebec;border-radius:12px;padding:4px;margin:16px 0 2px">'+[['tag','Tagesansicht'],['woche','Wochenansicht']].map(function(v){ var a=S.shView===v[0];
+    return '<button data-shview="'+v[0]+'" style="flex:1;padding:8px 0;border:none;border-radius:9px;background:'+(a?'#fff':'transparent')+';color:'+(a?'#0a4958':'#6b7780')+';font-weight:800;font-size:12.5px;cursor:pointer">'+v[1]+'</button>';
+  }).join('')+'</div>';
+  return '<div style="padding:16px 18px 24px">'+kiCard+toggle+(S.shView==='woche'?shWeekViewHTML():shDayViewHTML())+'</div>';
+}
+
+// ---- HTML: Offen-Tab ----
+function shOffenTabHTML(){
+  var me=shMe(), isTrainer=!!me.employeeId;
+  var list=[]; (((S.shData||{}).days)||[]).forEach(function(x){ (x.shifts||[]).forEach(function(sh){ if(!sh.assignee) list.push(sh); }); });
+  var cards=list.map(function(sh){
+    var role=shRole(sh.role), dj=shParse(sh.date), n=(sh.applicants||[]).length, busy=S.shBusy===sh.id;
+    var appHtml=n?'<div style="font-size:11.5px;font-weight:700;color:#b5631f;margin-top:4px">'+esc(n+' Bewerbung'+(n>1?'en':''))+' · zum Zuweisen im Plan ✎</div>':'';
+    return '<div style="background:#fff;border-radius:16px;box-shadow:0 10px 28px rgba(4,33,40,.07);border-left:4px solid #F6A964;padding:14px">'+
+      '<div style="display:flex;align-items:center;gap:12px">'+
+        '<div style="width:46px;height:46px;border-radius:13px;background:#FBEFE2;display:flex;flex-direction:column;align-items:center;justify-content:center;flex-shrink:0"><span style="font-size:10px;font-weight:800;color:#b5631f">'+SH_DOW[dj.getDay()]+'</span><span style="font-size:16px;font-weight:900;color:#b5631f;line-height:1">'+shPad(dj.getDate())+'</span></div>'+
+        '<div style="flex:1;min-width:0"><span style="font-size:10.5px;font-weight:800;color:'+role.chipColor+';background:'+role.chipBg+';padding:3px 9px;border-radius:10px">'+esc(role.label)+'</span><div style="font-size:14px;font-weight:800;color:#15171B;margin-top:7px">'+esc(sh.start)+' – '+esc(sh.end)+' Uhr</div>'+appHtml+'</div></div>'+
+      '<button '+(isTrainer?('data-shclaim="'+esc(sh.id)+'"'):('data-shedit="'+esc(sh.id)+'"'))+' class="tapc"'+(busy?' disabled':'')+' style="width:100%;margin-top:12px;border:1.5px solid #0a4958;border-radius:11px;background:#0a4958;color:#fff;font-weight:800;font-size:13px;padding:11px;cursor:pointer">'+(busy?'…':(isTrainer?'Übernehmen':'Zuweisen'))+'</button></div>';
+  }).join('');
+  return '<div style="padding:16px 18px 24px"><div style="font-size:13px;font-weight:800;color:#8a929a;text-transform:uppercase;letter-spacing:.4px;margin-bottom:12px">Offene Schichten · diese Woche</div>'+
+    '<div style="display:flex;flex-direction:column;gap:11px">'+(cards||'<div style="text-align:center;color:#8a929a;font-weight:600;font-size:13.5px;padding:36px 0">Aktuell keine offenen Schichten 🎉</div>')+'</div></div>';
+}
+
+// ---- HTML: Tausch-Tab (Anfragen, Schwarzes Brett, Team-Chat-Liste) ----
+function shTauschTabHTML(){
+  var me=shMe();
+  if(!S.shSwap && S.shSwapLoading) return '<div style="padding:40px;text-align:center"><span class="spin"></span></div>';
+  var sw=S.shSwap||{incoming:[],sent:[],board:[]};
+  var inc=sw.incoming||[], snt=sw.sent||[];
+  var reqHtml='';
+  if(inc.length||snt.length){
+    reqHtml='<div style="font-size:13px;font-weight:800;color:#8a929a;text-transform:uppercase;letter-spacing:.4px;margin-bottom:11px">Tauschanfragen</div>'+
+      '<div style="display:flex;flex-direction:column;gap:11px;margin-bottom:24px">'+
+      inc.map(function(r){
+        var mine=!!(r.to && me.employeeId && String(r.to.id)===String(me.employeeId));
+        var desc=mine?(r.from.name+' möchte deine Schicht übernehmen'):(r.from.name+' möchte die Schicht von '+shFirstName((r.to&&r.to.name)||'?')+' übernehmen');
+        var busy=S.shBusy===r.id;
+        return '<div style="background:#fff;border-radius:16px;box-shadow:0 10px 28px rgba(4,33,40,.07);border-left:4px solid #F6A964;padding:14px">'+
+          '<div style="display:flex;align-items:center;gap:12px">'+
+            '<div style="width:40px;height:40px;border-radius:50%;background:#FBEFE2;color:#b5631f;font-weight:900;font-size:13px;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+esc(r.from.initials||shInitials(r.from.name))+'</div>'+
+            '<div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:800;color:#15171B">'+esc(desc)+'</div><div style="font-size:12px;color:#8a929a;font-weight:600;margin-top:2px">'+esc(r.shiftStr)+'</div></div></div>'+
+          (r.note?'<div style="font-size:12px;color:#7a5326;font-weight:600;background:#FBF4E9;border:1px solid #F1DFC2;border-radius:11px;padding:9px 11px;margin-top:10px;line-height:1.4">„'+esc(r.note)+'"</div>':'')+
+          '<div style="display:flex;gap:8px;margin-top:12px">'+
+            '<button data-shswdec="'+esc(r.id)+'" class="tapc"'+(busy?' disabled':'')+' style="flex:1;border:1.5px solid #e3b8b1;border-radius:11px;background:#fff;color:#b5402f;font-weight:800;font-size:13px;padding:11px;cursor:pointer">Ablehnen</button>'+
+            '<button data-shswacc="'+esc(r.id)+'" class="tapc"'+(busy?' disabled':'')+' style="flex:1.3;border:none;border-radius:11px;background:#0a4958;color:#fff;font-weight:800;font-size:13px;padding:11px;cursor:pointer">Annehmen</button></div></div>';
+      }).join('')+
+      snt.map(function(r){
+        return '<div style="background:#fff;border-radius:16px;box-shadow:0 10px 28px rgba(4,33,40,.07);padding:14px;display:flex;align-items:center;gap:12px">'+
+          '<div style="width:40px;height:40px;border-radius:50%;background:#e7f1f3;color:#0a4958;font-weight:900;font-size:13px;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+esc((r.to&&(r.to.initials||shInitials(r.to.name)))||'?')+'</div>'+
+          '<div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:800;color:#15171B">'+esc('Du möchtest die Schicht von '+shFirstName((r.to&&r.to.name)||'?')+' übernehmen')+'</div><div style="font-size:12px;color:#8a929a;font-weight:600;margin-top:2px">'+esc(r.shiftStr)+'</div></div>'+
+          '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0"><span style="font-size:10.5px;font-weight:800;color:#b5631f;background:#FBEFE2;padding:3px 9px;border-radius:10px">Ausstehend</span><button data-shswwd="'+esc(r.id)+'" class="tapc" style="border:none;background:none;color:#8a929a;font-weight:700;font-size:11.5px;cursor:pointer;padding:0;text-decoration:underline">Zurückziehen</button></div></div>';
+      }).join('')+'</div>';
+  }
+  var boardCards=(sw.board||[]).map(function(b){
+    var own=!!(me.employeeId && String(b.owner.id)===String(me.employeeId));
+    var dj=shParse(b.date), role=shRole(b.role);
+    var title=role.label+' · '+SH_DOW[dj.getDay()]+' '+shDM(b.date)+', '+b.start+'–'+b.end;
+    var sub=own?'Deine Schicht – wartet auf Übernahme':(b.owner.name+' bietet diese Schicht an');
+    var act=(own||!me.employeeId)
+      ? {label:'Vom Brett nehmen', attr:'data-shunboard="'+esc(b.id)+'"', border:'#d6dee0', bg:'#fff', color:'#42454b'}
+      : {label:'Übernehmen', attr:'data-shswreq="'+esc(b.id)+'"', border:'#0a4958', bg:'#0a4958', color:'#fff'};
+    var busy=S.shBusy===b.id;
+    return '<div style="background:#fff;border-radius:16px;box-shadow:0 10px 28px rgba(4,33,40,.07);padding:14px;display:flex;align-items:center;gap:12px">'+
+      '<div style="width:40px;height:40px;border-radius:50%;background:#e7f1f3;color:#0a4958;font-weight:900;font-size:13px;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+esc(b.owner.initials||shInitials(b.owner.name))+'</div>'+
+      '<div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:800;color:#15171B">'+esc(title)+'</div><div style="font-size:12px;color:#8a929a;font-weight:600;margin-top:2px">'+esc(sub)+'</div></div>'+
+      '<button '+act.attr+' class="tapc"'+(busy?' disabled':'')+' style="border:1.5px solid '+act.border+';border-radius:11px;background:'+act.bg+';color:'+act.color+';font-weight:800;font-size:12.5px;padding:9px 13px;cursor:pointer;flex-shrink:0">'+esc(act.label)+'</button></div>';
+  }).join('');
+  var chats=(S.shThreads||[]).map(function(c){
+    var o=c.other||{}, last=c.last||{};
+    var prev=last.text||'';
+    if(last.from && S.shChatMe && String(last.from)===String(S.shChatMe.id)) prev='Du: '+prev;
+    return '<div data-shtc="'+esc(String(o.id||''))+'" data-shtcname="'+esc(o.name||'')+'" data-shtcini="'+esc(o.initials||'')+'" class="tapc" style="background:#fff;border-radius:16px;box-shadow:0 10px 28px rgba(4,33,40,.07);padding:14px;cursor:pointer;display:flex;align-items:center;gap:12px">'+
+      '<div style="width:44px;height:44px;border-radius:50%;background:#e7f1f3;color:#0a4958;font-weight:900;font-size:14px;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+esc(o.initials||shInitials(o.name))+'</div>'+
+      '<div style="flex:1;min-width:0"><div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><span style="font-size:14px;font-weight:800;color:#15171B">'+esc(o.name||'Team')+'</span><span style="font-size:11px;color:#a3abb0;font-weight:600">'+esc(rel(c.updatedAt))+'</span></div><div style="font-size:12.5px;color:#6b7780;font-weight:600;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(prev)+'</div></div></div>';
+  }).join('');
+  return '<div style="padding:16px 18px 24px">'+reqHtml+
+    '<div style="font-size:13px;font-weight:800;color:#8a929a;text-transform:uppercase;letter-spacing:.4px;margin-bottom:11px">Schwarzes Brett · Schichten zum Tausch</div>'+
+    '<div style="display:flex;flex-direction:column;gap:11px">'+(boardCards||'<div style="text-align:center;color:#8a929a;font-weight:600;font-size:13.5px;padding:24px 0">Keine Schichten am Schwarzen Brett.</div>')+'</div>'+
+    '<div style="font-size:13px;font-weight:800;color:#8a929a;text-transform:uppercase;letter-spacing:.4px;margin:24px 0 11px">Team-Chat</div>'+
+    '<div style="display:flex;flex-direction:column;gap:11px">'+(chats||'<div style="text-align:center;color:#8a929a;font-weight:600;font-size:13.5px;padding:16px 0">Noch keine Chats – starte einen über „Nachricht an …&#8220; im Plan.</div>')+'</div></div>';
+}
+
+// ---- HTML: Zeiten-Tab (Verfügbarkeit) ----
+function shZeitenTabHTML(){
+  var me=shMe();
+  var picker='';
+  if(!me.employeeId){
+    picker=(S.employees&&S.employees.length)
+      ? '<div style="background:#fff;border-radius:16px;box-shadow:0 10px 28px rgba(4,33,40,.07);padding:13px 14px;margin-bottom:12px">'+
+        '<div style="font-size:13.5px;font-weight:800;color:#15171B;margin-bottom:9px">Mitarbeiter wählen</div>'+
+        '<div style="display:flex;flex-wrap:wrap;gap:6px">'+S.employees.map(function(e){ var a=String(S.shAvailFor)===String(e.id);
+          return '<button data-shavemp="'+esc(String(e.id))+'" style="padding:9px 13px;border:1.5px solid '+(a?'#0a4958':'#d6dee0')+';border-radius:10px;background:'+(a?'#0a4958':'#fff')+';color:'+(a?'#fff':'#42454b')+';font-weight:800;font-size:12.5px;cursor:pointer">'+esc(e.name)+'</button>';
+        }).join('')+'</div></div>'
+      : '<div style="background:#fff;border-radius:16px;box-shadow:0 10px 28px rgba(4,33,40,.07);padding:13px 14px;margin-bottom:12px;font-size:12.5px;color:#8a929a;font-weight:600;line-height:1.5">Als Admin pflegst du hier die Verfügbarkeit einzelner Mitarbeiter – die Mitarbeiterliste ist gerade nicht verfügbar.</div>';
+  }
+  var info='<div style="background:linear-gradient(120deg,#0e6072,#073e4b);border-radius:18px;padding:16px;color:#fff;margin-bottom:16px">'+
+    '<div style="font-size:14px;font-weight:900">Meine Verfügbarkeit</div>'+
+    '<div style="font-size:12px;color:#aed0d6;font-weight:600;line-height:1.5;margin-top:5px">Trage ein, wann du arbeiten kannst. Die KI-Schichtplanung nutzt diese Zeiten für faire Vorschläge.</div></div>';
+  var body='';
+  if(S.shAvailLoading){ body='<div style="padding:30px;text-align:center"><span class="spin"></span></div>'; }
+  else if(me.employeeId || S.shAvailFor){
+    var av=S.shAvail||{};
+    var days=[['mo','Montag'],['di','Dienstag'],['mi','Mittwoch'],['do','Donnerstag'],['fr','Freitag'],['sa','Samstag'],['so','Sonntag']];
+    var opts=[['frueh','Früh'],['spaet','Spät'],['egal','Egal'],['frei','Frei']];
+    body='<div style="display:flex;flex-direction:column;gap:10px">'+days.map(function(dd){
+      var cur=av[dd[0]]||'egal';
+      return '<div style="background:#fff;border-radius:16px;box-shadow:0 10px 28px rgba(4,33,40,.07);padding:13px 14px">'+
+        '<div style="font-size:13.5px;font-weight:800;color:#15171B;margin-bottom:9px">'+dd[1]+'</div>'+
+        '<div style="display:flex;gap:5px">'+opts.map(function(o){ var a=cur===o[0];
+          return '<button data-shav="'+dd[0]+':'+o[0]+'" style="flex:1;padding:8px 0;border:1.5px solid '+(a?'#0a4958':'#d6dee0')+';border-radius:9px;background:'+(a?'#0a4958':'#fff')+';color:'+(a?'#fff':'#42454b')+';font-weight:800;font-size:11px;cursor:pointer">'+o[1]+'</button>';
+        }).join('')+'</div></div>';
+    }).join('')+'</div>'+
+    '<button data-shavsave="1" class="tapc"'+(S.shAvailBusy?' disabled':'')+' style="width:100%;margin-top:16px;border:none;border-radius:13px;background:#0a4958;color:#fff;font-weight:800;font-size:15px;padding:14px;cursor:pointer">'+(S.shAvailBusy?'Speichert …':(S.shAvailSaved?'Gespeichert ✓':'Speichern &amp; für KI freigeben'))+'</button>';
+  }
+  return '<div style="padding:16px 18px 24px">'+picker+info+body+'</div>';
+}
+
+// ---- HTML: Team-Chat-Panel (Vollbild-Overlay im Design des Team-Chat-Screens) ----
+function shChatHTML(){
+  if(!S.shChatOpen) return '';
+  var w=S.shChatWith||{};
+  var meId=(S.shChatMe&&S.shChatMe.id)||(shMe().employeeId||'admin');
+  var msgs=(S.shChatThread&&S.shChatThread.messages)||[];
+  var bubbles=msgs.map(function(m){
+    var mine=String(m.from)===String(meId);
+    return '<div style="display:flex;flex-direction:column;align-items:'+(mine?'flex-end':'flex-start')+';gap:3px">'+
+      '<div style="max-width:82%;background:'+(mine?'#0a4958':'#fff')+';color:'+(mine?'#fff':'#15171B')+';border-radius:16px;padding:11px 14px;font-size:14px;font-weight:500;line-height:1.45;box-shadow:0 6px 18px rgba(4,33,40,.06)">'+esc(m.text)+'</div>'+
+      '<span style="font-size:10.5px;font-weight:600;color:#a3abb0;padding:0 6px">'+esc(timeShort(m.at))+'</span></div>';
+  }).join('');
+  var pill=S.shChatShiftStr?'<div style="align-self:center;background:#e1e8ea;color:#42454b;font-size:11.5px;font-weight:700;padding:7px 13px;border-radius:12px">Betrifft: '+esc(S.shChatShiftStr)+'</div>':'';
+  var quick=['Passt, mach ich 👍','Kann leider nicht','Ruf mich kurz an'].map(function(q){
+    return '<button data-shtcq="'+esc(q)+'" style="flex:0 0 auto;padding:7px 11px;border:1.5px solid #d6dee0;border-radius:11px;background:#fff;color:#0a4958;font-weight:700;font-size:12px;cursor:pointer;white-space:nowrap">'+esc(q)+'</button>';
+  }).join('');
+  var sendBg=(S.shChatInput||'').trim()?'#0a4958':'#9fb4b9';
+  return '<div style="position:fixed;inset:0;z-index:72;background:rgba(4,28,34,.55);display:flex;align-items:stretch;justify-content:center">'+
+    '<div style="width:100%;max-width:520px;background:#eef2f3;display:flex;flex-direction:column;min-height:100%">'+
+      '<div style="background:linear-gradient(165deg,#0e6072,#0a4958);padding:16px;display:flex;align-items:center;gap:12px">'+
+        '<button data-shtcback="1" class="tapc" style="width:40px;height:40px;border-radius:13px;border:none;background:rgba(255,255,255,.13);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button>'+
+        '<div style="width:40px;height:40px;border-radius:50%;background:#fff;color:#0a4958;font-weight:900;font-size:13px;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+esc(w.initials||shInitials(w.name))+'</div>'+
+        '<div style="flex:1;min-width:0"><div style="font-size:16px;font-weight:900;color:#fff">'+esc(w.name||'Team')+'</div><div style="font-size:11.5px;color:#aed0d6;font-weight:600">Team</div></div></div>'+
+      '<div id="shtcmsgs" class="scrl" style="flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:11px">'+pill+
+        (S.shChatLoading?'<div style="padding:30px;text-align:center"><span class="spin"></span></div>':bubbles)+'</div>'+
+      '<div style="background:#eef2f3;border-top:1px solid #e1e8ea">'+
+        '<div class="hsnap" style="display:flex;gap:7px;overflow-x:auto;padding:10px 16px 0">'+quick+'</div>'+
+        '<div style="padding:10px 16px 12px;display:flex;gap:9px;align-items:center">'+
+          '<input id="shtcinput" value="'+esc(S.shChatInput)+'" placeholder="Nachricht schreiben …" style="flex:1;padding:13px 15px;border:1.5px solid #d6dee0;border-radius:22px;font-size:14.5px;outline:none;background:#fff">'+
+          '<button data-shtcsend="1" class="tapc" style="width:46px;height:46px;border-radius:50%;border:none;background:'+sendBg+';display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg></button>'+
+        '</div></div></div></div>';
+}
+
+// ---- HTML: KI-Planung (Bottom-Sheet) ----
+function shKiHTML(){
+  if(!S.shKiOpen) return '';
+  var head='<div style="padding:18px 18px 8px;display:flex;align-items:center;justify-content:space-between">'+
+    '<div style="display:flex;align-items:center;gap:10px"><div style="width:34px;height:34px;border-radius:11px;background:linear-gradient(150deg,#0e6072,#063540);display:flex;align-items:center;justify-content:center">'+shSunIcon(18)+'</div><span style="font-size:17px;font-weight:900;color:#15171B">KI-Schichtplanung</span></div>'+
+    '<button data-shkiclose="1" class="tapc" style="width:34px;height:34px;border-radius:11px;border:none;background:#e1e8ea;display:flex;align-items:center;justify-content:center;cursor:pointer"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#42454b" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>';
+  var body;
+  if(S.shKiPhase==='think'){
+    body='<div style="padding:20px 22px 34px">'+
+      '<div style="display:flex;align-items:center;gap:14px;margin-bottom:20px">'+
+        '<div style="width:40px;height:40px;border-radius:50%;border:3px solid #d6e2e4;border-top-color:#0a4958;animation:spin .8s linear infinite"></div>'+
+        '<div><div style="font-size:15px;font-weight:900;color:#15171B">Plane Schichten …</div><div style="font-size:12px;color:#8a929a;font-weight:600">Analysiere Verfügbarkeiten &amp; Öffnungszeiten</div></div></div>'+
+      '<div style="display:flex;flex-direction:column;gap:10px">'+['Lade Verfügbarkeiten …','Prüfe offene Schichten …','Verteile fair nach Auslastung …','Erstelle Vorschlag …'].map(function(st){
+        return '<div style="display:flex;align-items:center;gap:10px;background:#fff;border-radius:12px;padding:11px 13px;box-shadow:0 6px 18px rgba(4,33,40,.05)"><span style="width:8px;height:8px;border-radius:50%;background:#0a4958;animation:pulseDot 1.2s ease-in-out infinite"></span><span style="font-size:13px;font-weight:700;color:#42454b">'+st+'</span></div>';
+      }).join('')+'</div></div>';
+  } else {
+    var r=S.shKiResult||{proposals:[],leftover:[],summary:''};
+    var props=(r.proposals||[]).map(function(p){
+      return '<div style="background:#fff;border-radius:13px;padding:12px 13px;box-shadow:0 6px 18px rgba(4,33,40,.05);display:flex;align-items:center;gap:11px">'+
+        '<div style="width:34px;height:34px;border-radius:50%;background:#e7f1f3;color:#0a4958;font-weight:900;font-size:12px;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+esc(p.employee.initials||shInitials(p.employee.name))+'</div>'+
+        '<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:800;color:#15171B">'+esc(p.employee.name)+'</div><div style="font-size:11.5px;color:#8a929a;font-weight:600">'+esc(p.shiftStr)+'</div></div>'+
+        '<span style="font-size:10.5px;font-weight:800;color:#176b37;background:#E7F6EC;padding:3px 9px;border-radius:10px">Zuweisen</span></div>';
+    }).join('');
+    var leftover=(r.leftover||[]).length?('<div style="display:flex;gap:9px;align-items:center;background:#FBEFE2;border:1px solid #F3D9C4;border-radius:12px;padding:11px 13px"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#b5631f" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg><span style="font-size:12px;font-weight:700;color:#8a4a14">'+esc('Ohne Besetzung: '+r.leftover.join(' · '))+'</span></div>'):'';
+    body='<div class="scrl" style="flex:1;overflow-y:auto;padding:4px 18px 8px">'+
+      '<div style="background:#fff;border-radius:16px;padding:15px;box-shadow:0 10px 28px rgba(4,33,40,.07);margin-bottom:12px"><div style="font-size:14px;font-weight:900;color:#15171B">Vorschlag bereit</div><div style="font-size:12.5px;color:#42454b;font-weight:600;line-height:1.5;margin-top:5px">'+esc(r.summary||'')+'</div></div>'+
+      '<div style="display:flex;flex-direction:column;gap:9px">'+(props||'<div style="text-align:center;color:#8a929a;font-weight:600;font-size:13px;padding:14px 0">Keine offenen Schichten in dieser Woche.</div>')+leftover+'</div></div>'+
+      '<div style="padding:12px 18px 18px;display:flex;gap:10px;border-top:1px solid #e1e8ea">'+
+        '<button data-shkiclose="1" class="tapc" style="flex:1;border:1.5px solid #d6dee0;border-radius:13px;background:#fff;color:#42454b;font-weight:800;font-size:14px;padding:13px;cursor:pointer">Verwerfen</button>'+
+        '<button data-shkiapply="1" class="tapc"'+(S.shKiBusy?' disabled':'')+' style="flex:1.4;border:none;border-radius:13px;background:#0a4958;color:#fff;font-weight:800;font-size:14px;padding:13px;cursor:pointer">'+(S.shKiBusy?'Übernimmt …':'Plan übernehmen')+'</button></div>';
+  }
+  return '<div style="position:fixed;inset:0;z-index:76;background:rgba(4,28,34,.55);display:flex;align-items:flex-end;justify-content:center">'+
+    '<div style="width:100%;max-width:520px;background:#eef2f3;border-radius:24px 24px 0 0;max-height:88%;display:flex;flex-direction:column;animation:popIn .3s ease both">'+head+body+'</div></div>';
+}
+
+// ---- HTML: Schicht-Editor (Bottom-Sheet) ----
+function shEditorHTML(){
+  if(!S.shEdOpen) return '';
+  var dayChips=shWeekDates().map(function(dt){ var a=dt===S.shEdDate, dj=shParse(dt);
+    return '<button data-shedday="'+dt+'" style="flex:0 0 auto;min-width:42px;padding:9px 0;border:1.5px solid '+(a?'#0a4958':'#d6dee0')+';border-radius:10px;background:'+(a?'#0a4958':'#fff')+';color:'+(a?'#fff':'#42454b')+';font-weight:800;font-size:12.5px;cursor:pointer">'+SH_DOW[dj.getDay()]+' '+shPad(dj.getDate())+'.</button>';
+  }).join('');
+  var roleChips=Object.keys(SH_ROLES).map(function(k){ var a=S.shEdRole===k;
+    return '<button data-shedrole="'+k+'" style="flex:1;padding:9px 0;border:1.5px solid '+(a?'#0a4958':'#d6dee0')+';border-radius:10px;background:'+(a?'#0a4958':'#fff')+';color:'+(a?'#fff':'#42454b')+';font-weight:800;font-size:12px;cursor:pointer">'+SH_ROLES[k].label+'</button>';
+  }).join('');
+  var whoDefs=[{id:'',name:'Offen'}];
+  if(S.employees && S.employees.length){ S.employees.forEach(function(e){ whoDefs.push({id:String(e.id),name:e.name}); }); }
+  else { var me=shMe(); if(me.employeeId) whoDefs.push({id:String(me.employeeId),name:me.name}); }
+  var whoChips=whoDefs.map(function(w){ var a=String(S.shEdWho||'')===String(w.id);
+    return '<button data-shedwho="'+esc(String(w.id))+'" style="padding:9px 13px;border:1.5px solid '+(a?'#0a4958':'#d6dee0')+';border-radius:10px;background:'+(a?'#0a4958':'#fff')+';color:'+(a?'#fff':'#42454b')+';font-weight:800;font-size:12.5px;cursor:pointer">'+esc(w.name)+'</button>';
+  }).join('');
+  var apps='';
+  if((S.shEdApplicants||[]).length){
+    apps='<label style="font-size:11px;font-weight:800;color:#8a929a;text-transform:uppercase;letter-spacing:.4px;display:block;margin:18px 0 8px">Bewerbungen</label>'+
+      '<div style="display:flex;flex-direction:column;gap:8px">'+S.shEdApplicants.map(function(a){
+        return '<div style="background:#fff;border-radius:12px;padding:10px 12px;box-shadow:0 6px 18px rgba(4,33,40,.05);display:flex;align-items:center;gap:10px"><div style="width:32px;height:32px;border-radius:50%;background:#e7f1f3;color:#0a4958;font-weight:900;font-size:11px;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+esc(a.initials||shInitials(a.name))+'</div><span style="flex:1;font-size:13.5px;font-weight:800;color:#15171B">'+esc(a.name)+'</span><button data-shedapp="'+esc(String(a.id))+'" class="tapc" style="border:none;border-radius:9px;background:#0a4958;color:#fff;font-weight:800;font-size:12px;padding:8px 12px;cursor:pointer">Zuweisen</button></div>';
+      }).join('')+'</div>';
+  }
+  return '<div style="position:fixed;inset:0;z-index:77;background:rgba(4,28,34,.55);display:flex;align-items:flex-end;justify-content:center">'+
+    '<div style="width:100%;max-width:520px;background:#eef2f3;border-radius:24px 24px 0 0;max-height:90%;display:flex;flex-direction:column;animation:popIn .3s ease both">'+
+      '<div style="padding:18px 18px 6px;display:flex;align-items:center;justify-content:space-between">'+
+        '<span style="font-size:17px;font-weight:900;color:#15171B">'+(S.shEdId?'Schicht bearbeiten':'Neue Schicht')+'</span>'+
+        '<button data-shedclose="1" class="tapc" style="width:34px;height:34px;border-radius:11px;border:none;background:#e1e8ea;display:flex;align-items:center;justify-content:center;cursor:pointer"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#42454b" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>'+
+      '<div class="scrl" style="flex:1;overflow-y:auto;padding:6px 18px 8px">'+
+        '<label style="font-size:11px;font-weight:800;color:#8a929a;text-transform:uppercase;letter-spacing:.4px;display:block;margin:6px 0 8px">Tag</label>'+
+        '<div class="hsnap" style="display:flex;gap:6px;overflow-x:auto;padding-bottom:2px">'+dayChips+'</div>'+
+        '<div style="display:flex;gap:10px;margin-top:16px">'+
+          '<div style="flex:1"><label style="font-size:11px;font-weight:800;color:#8a929a;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:6px">Von</label><input id="shedstart" value="'+esc(S.shEdStart)+'" placeholder="06:00" style="width:100%;padding:12px;border:1.5px solid #d6dee0;border-radius:11px;font-size:15px;outline:none;background:#fff"></div>'+
+          '<div style="flex:1"><label style="font-size:11px;font-weight:800;color:#8a929a;text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:6px">Bis</label><input id="shedend" value="'+esc(S.shEdEnd)+'" placeholder="14:00" style="width:100%;padding:12px;border:1.5px solid #d6dee0;border-radius:11px;font-size:15px;outline:none;background:#fff"></div></div>'+
+        '<label style="font-size:11px;font-weight:800;color:#8a929a;text-transform:uppercase;letter-spacing:.4px;display:block;margin:16px 0 8px">Rolle</label>'+
+        '<div style="display:flex;gap:6px">'+roleChips+'</div>'+
+        '<label style="font-size:11px;font-weight:800;color:#8a929a;text-transform:uppercase;letter-spacing:.4px;display:block;margin:16px 0 8px">Zuweisung</label>'+
+        '<div style="display:flex;flex-wrap:wrap;gap:6px">'+whoChips+'</div>'+
+        apps+'</div>'+
+      '<div style="padding:12px 18px 18px;display:flex;gap:10px;border-top:1px solid #e1e8ea">'+
+        (S.shEdId?('<button data-sheddel="1" class="tapc"'+(S.shEdBusy?' disabled':'')+' style="border:1.5px solid #e3b8b1;border-radius:13px;background:#fff;color:#b5402f;font-weight:800;font-size:14px;padding:13px 16px;cursor:pointer">Löschen</button>'):'')+
+        '<button data-shedsave="1" class="tapc"'+(S.shEdBusy?' disabled':'')+' style="flex:1;border:none;border-radius:13px;background:#0a4958;color:#fff;font-weight:800;font-size:14px;padding:13px;cursor:pointer">'+(S.shEdBusy?'Speichert …':'Speichern')+'</button></div></div></div>';
+}
+
+// ---- Screen: zentrierte Phone-Spalte (max. 520px) + Overlays ----
+function schichtNode(){
+  var node=el('<div class="scrl" style="flex:1;min-height:0;overflow-y:auto;padding:20px 16px 44px"></div>');
+  if(!S.shWeek) S.shWeek=shMonday(shToday());
+  var content;
+  if(S.shLoading && !S.shData) content='<div style="padding:60px;text-align:center"><span class="spin"></span></div>';
+  else if(S.shTab==='offen') content=shOffenTabHTML();
+  else if(S.shTab==='tausch') content=shTauschTabHTML();
+  else if(S.shTab==='zeiten') content=shZeitenTabHTML();
+  else content=shPlanTabHTML();
+  node.innerHTML='<div style="max-width:520px;margin:0 auto">'+shHeaderHTML()+content+'</div>'+shKiHTML()+shEditorHTML()+shChatHTML();
+  setTimeout(function(){ wireSchicht(node); },0);
+  return node;
+}
+function wireSchicht(node){
+  node.querySelectorAll('[data-shtab]').forEach(function(b){ b.onclick=function(){ shSetTab(b.getAttribute('data-shtab')); }; });
+  var pv=node.querySelector('[data-shprev]'); if(pv) pv.onclick=function(){ shShiftWeek(-7); };
+  var nx=node.querySelector('[data-shnext]'); if(nx) nx.onclick=function(){ shShiftWeek(7); };
+  node.querySelectorAll('[data-shview]').forEach(function(b){ b.onclick=function(){ S.shView=b.getAttribute('data-shview'); render(); }; });
+  node.querySelectorAll('[data-shday]').forEach(function(b){ b.onclick=function(){ S.shDay=b.getAttribute('data-shday'); S.shView='tag'; render(); }; });
+  var nw=node.querySelector('[data-shnew]'); if(nw) nw.onclick=function(){ shOpenEditor(null,S.shDay); };
+  node.querySelectorAll('[data-shclaim]').forEach(function(b){ b.onclick=function(){ shClaim(b.getAttribute('data-shclaim')); }; });
+  node.querySelectorAll('[data-shedit]').forEach(function(b){ b.onclick=function(){ shEditById(b.getAttribute('data-shedit')); }; });
+  node.querySelectorAll('[data-shboard]').forEach(function(b){ b.onclick=function(){ shBoardToggle(b.getAttribute('data-shboard'),true); }; });
+  node.querySelectorAll('[data-shunboard]').forEach(function(b){ b.onclick=function(){ shBoardToggle(b.getAttribute('data-shunboard'),false); }; });
+  node.querySelectorAll('[data-shmsg]').forEach(function(b){ b.onclick=function(){ shMsgById(b.getAttribute('data-shmsg')); }; });
+  var ki=node.querySelector('[data-shki]'); if(ki) ki.onclick=shRunKi;
+  node.querySelectorAll('[data-shkiclose]').forEach(function(b){ b.onclick=shCloseKi; });
+  var ka=node.querySelector('[data-shkiapply]'); if(ka) ka.onclick=shAcceptKi;
+  node.querySelectorAll('[data-shswacc]').forEach(function(b){ b.onclick=function(){ shSwapAct(b.getAttribute('data-shswacc'),'accept'); }; });
+  node.querySelectorAll('[data-shswdec]').forEach(function(b){ b.onclick=function(){ shSwapAct(b.getAttribute('data-shswdec'),'decline'); }; });
+  node.querySelectorAll('[data-shswwd]').forEach(function(b){ b.onclick=function(){ shSwapAct(b.getAttribute('data-shswwd'),'withdraw'); }; });
+  node.querySelectorAll('[data-shswreq]').forEach(function(b){ b.onclick=function(){ shSwapRequest(b.getAttribute('data-shswreq')); }; });
+  node.querySelectorAll('[data-shtc]').forEach(function(b){ b.onclick=function(){ shOpenChat({id:b.getAttribute('data-shtc'),name:b.getAttribute('data-shtcname'),initials:b.getAttribute('data-shtcini')},''); }; });
+  node.querySelectorAll('[data-shavemp]').forEach(function(b){ b.onclick=function(){ S.shAvailFor=b.getAttribute('data-shavemp'); S.shAvailSaved=false; loadShAvail(S.shAvailFor); }; });
+  node.querySelectorAll('[data-shav]').forEach(function(b){ b.onclick=function(){ var p=b.getAttribute('data-shav').split(':'); shAvailPick(p[0],p[1]); }; });
+  var sv=node.querySelector('[data-shavsave]'); if(sv) sv.onclick=shSaveAvail;
+  // Editor
+  var ec=node.querySelector('[data-shedclose]'); if(ec) ec.onclick=shCloseEditor;
+  node.querySelectorAll('[data-shedday]').forEach(function(b){ b.onclick=function(){ S.shEdDate=b.getAttribute('data-shedday'); render(); }; });
+  node.querySelectorAll('[data-shedrole]').forEach(function(b){ b.onclick=function(){ S.shEdRole=b.getAttribute('data-shedrole'); render(); }; });
+  node.querySelectorAll('[data-shedwho]').forEach(function(b){ b.onclick=function(){ S.shEdWho=b.getAttribute('data-shedwho'); render(); }; });
+  node.querySelectorAll('[data-shedapp]').forEach(function(b){ b.onclick=function(){ S.shEdWho=b.getAttribute('data-shedapp'); shSaveShift(); }; });
+  var es=node.querySelector('#shedstart'); if(es) es.oninput=function(){ S.shEdStart=es.value; };
+  var ee=node.querySelector('#shedend'); if(ee) ee.oninput=function(){ S.shEdEnd=ee.value; };
+  var esv=node.querySelector('[data-shedsave]'); if(esv) esv.onclick=shSaveShift;
+  var edl=node.querySelector('[data-sheddel]'); if(edl) edl.onclick=shDeleteShift;
+  // Chat-Panel
+  var cb=node.querySelector('[data-shtcback]'); if(cb) cb.onclick=shCloseChat;
+  var ci=node.querySelector('#shtcinput');
+  if(ci){
+    ci.oninput=function(){ S.shChatInput=ci.value; var sb=node.querySelector('[data-shtcsend]'); if(sb) sb.style.background=(ci.value||'').trim()?'#0a4958':'#9fb4b9'; };
+    ci.onkeydown=function(e){ if(e.key==='Enter') shSendChat(); };
+  }
+  var cs=node.querySelector('[data-shtcsend]'); if(cs) cs.onclick=function(){ shSendChat(); };
+  node.querySelectorAll('[data-shtcq]').forEach(function(b){ b.onclick=function(){ shSendChat(b.getAttribute('data-shtcq')); }; });
+  if(S.shChatOpen){ var cm=node.querySelector('#shtcmsgs'); if(cm) cm.scrollTop=cm.scrollHeight; }
+}
+
 // ---- Direktnachricht an ein Mitglied (Compose-Dialog aus dem Profil) ----
 function openDirectMsg(id,name){
   S.dmMemberId=String(id); S.dmMemberName=name||''; S.dmTitle=''; S.dmBody='';
@@ -2260,8 +2898,8 @@ function placeholderNode(title){
 // ---------- main render ----------
 function render(){
   if(!S.token){ renderLogin(); return; }
-  var titles={dash:'Übersicht',inbox:'Posteingang',members:'Mitglieder',appts:'Termine',help:'Hilfe-Artikel',stats:'Statistiken',msg:'Nachrichten',leads:'Leads',todo:'Aufgaben'};
-  var subs={dash:'Dein Studio auf einen Blick',inbox:'Alle Vorgänge & Anfragen',members:'Mitgliederverwaltung',appts:'Anfragen & Buchungen',help:'Wissensdatenbank verwalten',stats:'Auswertungen & Trends',msg:'Rundnachricht & Direktnachricht',leads:'Interessenten-Pipeline',todo:'Interne Aufgaben fürs Team'};
+  var titles={dash:'Übersicht',inbox:'Posteingang',members:'Mitglieder',appts:'Termine',help:'Hilfe-Artikel',stats:'Statistiken',msg:'Nachrichten',leads:'Leads',todo:'Aufgaben',schicht:'Schichtplan'};
+  var subs={dash:'Dein Studio auf einen Blick',inbox:'Alle Vorgänge & Anfragen',members:'Mitgliederverwaltung',appts:'Anfragen & Buchungen',help:'Wissensdatenbank verwalten',stats:'Auswertungen & Trends',msg:'Rundnachricht & Direktnachricht',leads:'Interessenten-Pipeline',todo:'Interne Aufgaben fürs Team',schicht:'Dienstplan, Tausch & Verfügbarkeiten'};
   var content;
   if(S.screen==='inbox') content=inboxNode();
   else if(S.screen==='dash') content=dashNode();
@@ -2272,6 +2910,7 @@ function render(){
   else if(S.screen==='msg') content=msgNode();
   else if(S.screen==='leads') content=leadsNode();
   else if(S.screen==='todo') content=todoNode();
+  else if(S.screen==='schicht') content=schichtNode();
   else content=placeholderNode(titles[S.screen]||'');
   renderShell(content, titles[S.screen]||'', subs[S.screen]||'');
 }
@@ -2285,6 +2924,7 @@ function goScreen(k){
   if(k==='msg'){ S.bcResult=null; }
   if(k==='leads'){ if(!S.leadsLoaded){ loadLeads(); return; } }
   if(k==='todo'){ if(!S.todosLoaded){ loadTodos(); return; } }
+  if(k==='schicht'){ if(!S.shLoaded){ loadShifts(); return; } }
   render();
 }
 
