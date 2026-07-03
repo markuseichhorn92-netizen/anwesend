@@ -99,6 +99,7 @@ var S={ token:null, screen:'inbox', convs:[], counts:{}, selKey:null, sel:null,
         stats:null, statsLoading:false,
         employees:null, employeesLoaded:false,
         editMember:false, edStreet:'', edHouse:'', edZip:'', edCity:'', editBusy:false, editMsg:'',
+        aiBusy:false, aiUnavailable:false,
         churn:null };
 var root=document.getElementById('root');
 var stickBottom=true;   // Chat klebt am unteren Rand, solange der Nutzer nicht hochscrollt
@@ -648,7 +649,7 @@ function inboxNode(){
         '<textarea id="draft" rows="1" placeholder="Antwort an '+esc((sel.member.name||'').split(" ")[0]||'das Mitglied')+' schreiben …" style="flex:1;border:none;resize:none;font-size:14px;background:transparent;line-height:1.5;padding:8px 0;max-height:140px;min-height:24px;outline:none">'+esc(S.draft)+'</textarea>'+
         '<button id="send" '+(S.busy?'disabled':'')+' style="display:inline-flex;align-items:center;justify-content:center;width:46px;height:46px;border:none;border-radius:50%;background:'+(draftOk?TEAL:'#9fb4b8')+';color:#fff;flex-shrink:0;cursor:pointer">'+(S.busy?'…':IC.send)+'</button></div>'+
       '<div style="display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap">'+
-        '<button data-aidraft="1" style="display:inline-flex;align-items:center;gap:6px;border:1.5px solid #F1DFC2;background:#FBF4E9;color:#b5631f;border-radius:100px;padding:7px 13px;font-size:12.5px;font-weight:800;cursor:pointer"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#E08C53" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.6L18.5 9l-4.6 1.9L12 15.5l-1.9-4.6L5.5 9l4.6-1.4L12 3z"/></svg>KI-Entwurf</button>'+
+        (S.aiUnavailable?'':'<button data-aidraft="1" '+(S.aiBusy?'disabled':'')+' style="display:inline-flex;align-items:center;gap:6px;border:1.5px solid #F1DFC2;background:#FBF4E9;color:#b5631f;border-radius:100px;padding:7px 13px;font-size:12.5px;font-weight:800;cursor:pointer;opacity:'+(S.aiBusy?'.65':'1')+'"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#E08C53" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.6L18.5 9l-4.6 1.9L12 15.5l-1.9-4.6L5.5 9l4.6-1.4L12 3z"/></svg>'+(S.aiBusy?'FINN denkt …':'KI-Antwort vorschlagen')+'</button>')+
         '<button data-quick="1" style="display:inline-flex;align-items:center;gap:6px;border:1.5px solid '+(S.quickOpen?TEAL:'#d6dee0')+';background:'+(S.quickOpen?'#f1f6f7':'#fff')+';color:'+(S.quickOpen?TEAL:'#42454b')+';border-radius:100px;padding:7px 13px;font-size:12.5px;font-weight:800;cursor:pointer"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg>Textbausteine</button>'+
       '</div>'+
       (S.quickOpen?'<div style="display:flex;flex-direction:column;gap:6px;margin-top:9px">'+TEMPLATES.map(function(tp,i){ return '<button data-tpl="'+i+'" style="text-align:left;border:1px solid #e4eaeb;background:#fff;border-radius:12px;padding:9px 12px;font-size:12.5px;color:#42454b;font-weight:600;cursor:pointer;line-height:1.45">'+esc(tp)+'</button>'; }).join('')+'</div>':'')+
@@ -732,7 +733,7 @@ function wireInbox(node){
     dr.onkeydown=function(e){ if(e.key==='Enter'&&(e.metaKey||e.ctrlKey)){ e.preventDefault(); sendReply(); } }; }
   var sd=node.querySelector('#send'); if(sd) sd.onclick=sendReply;
   node.querySelectorAll('[data-ch]').forEach(function(b){ b.onclick=function(){ S.replyChannel=b.getAttribute('data-ch'); render(); }; });
-  var aid=node.querySelector('[data-aidraft]'); if(aid) aid.onclick=function(){ if(S.sel){ S.draft=aiDraftFor(S.sel); S.quickOpen=false; render(); var d=root.querySelector('#draft'); if(d){ d.focus(); d.setSelectionRange(d.value.length,d.value.length); } } };
+  var aid=node.querySelector('[data-aidraft]'); if(aid) aid.onclick=suggestReply;
   var qk=node.querySelector('[data-quick]'); if(qk) qk.onclick=function(){ S.quickOpen=!S.quickOpen; render(); };
   node.querySelectorAll('[data-tpl]').forEach(function(b){ b.onclick=function(){ var i=+b.getAttribute('data-tpl'); var tp=TEMPLATES[i]||''; S.draft=(S.draft&&S.draft.trim())?(S.draft.replace(/\s+$/,'')+'\n\n'+tp):tp; S.quickOpen=false; render(); var d=root.querySelector('#draft'); if(d){ d.focus(); d.setSelectionRange(d.value.length,d.value.length); } }; });
   var nt=node.querySelector('#note'); if(nt) nt.oninput=function(){ S.note=nt.value; };
@@ -754,6 +755,27 @@ function wireInbox(node){
   }
 }
 function sendReply(){ var v=(S.draft||'').trim(); if(v && !S.busy){ stickBottom=true; act('reply',{text:v, channel:S.replyChannel}); } }
+
+// KI-Antwortentwurf holen und ins Antwortfeld (#draft) setzen – gesendet wird nichts automatisch.
+async function suggestReply(){
+  if(!S.sel || S.aiBusy) return;
+  var memberId=S.sel.memberId, id=S.sel.id;
+  S.aiBusy=true; render();
+  var r;
+  try{ r=await tapi('/api/team/suggest-reply',{method:'POST',body:{memberId:memberId, id:id}}); }
+  catch(e){ r={ok:false}; }
+  S.aiBusy=false;
+  if(r && r.ok && r.draft){
+    // nur einfügen, wenn noch derselbe Vorgang offen ist
+    if(S.sel && S.sel.memberId===memberId && String(S.sel.id)===String(id)){ S.draft=r.draft; S.quickOpen=false; }
+  } else if(r && r.error==='no_ai'){
+    S.aiUnavailable=true;
+  } else {
+    alert((r&&r.message)||'KI-Entwurf konnte nicht erstellt werden.');
+  }
+  render();
+  var d=root.querySelector('#draft'); if(d && r && r.ok){ d.focus(); d.setSelectionRange(d.value.length,d.value.length); }
+}
 
 // ---------- render: dashboard ----------
 function activityHTML(){
