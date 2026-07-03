@@ -117,7 +117,9 @@ var S={ token:null, screen:'inbox', convs:[], counts:{}, selKey:null, sel:null,
         // Leads: Interessenten-Pipeline
         leads:[], leadsLoaded:false, leadsLoading:false, leadFilter:'all', leadBusy:'',
         // Termine: Studio-weite Wochenübersicht (best effort, blendet sich bei available:false aus)
-        studioAppts:null, studioApptsLoaded:false, studioApptsAvailable:false };
+        studioAppts:null, studioApptsLoaded:false, studioApptsAvailable:false,
+        // Dokumente: im Mitgliedsprofil (Scope CUSTOMER_DOCUMENT_READ/WRITE, blendet sich bei available:false aus)
+        profileDocs:null, profileDocsLoading:false, profileDocsAvailable:false, docUploadBusy:false, docUploadMsg:'' };
 var root=document.getElementById('root');
 var stickBottom=true;   // Chat klebt am unteren Rand, solange der Nutzer nicht hochscrollt
 var lastThreadScroll=0; // letzte Scroll-Position (über Voll-Renders hinweg erhalten)
@@ -330,10 +332,11 @@ function onMemberSearch(v){
 async function openProfile(id){
   S.editMember=false; S.editMsg=''; S.editBusy=false;
   S.profileTags=[]; S.tagAddOpen=false; S.tagInput=''; S.tagBusy=false;
+  S.profileDocs=null; S.profileDocsAvailable=false; S.profileDocsLoading=false; S.docUploadBusy=false; S.docUploadMsg='';
   S.profileLoading=true; S.profile=null; render();
   try{ var r=await tapi('/api/team/members?id='+encodeURIComponent(id)); if(r.ok) S.profile=r.profile; }
   catch(e){} S.profileLoading=false; render();
-  if(S.profile) loadProfileTags(id);
+  if(S.profile){ loadProfileTags(id); loadProfileDocs(id); }
 }
 // ---------- Mitglieder-Tags ----------
 // Tags des offenen Profils laden (GET ?memberId). Ohne Store -> leere Liste, kein Fehler.
@@ -438,6 +441,88 @@ function filteredMembers(){
   return list;
 }
 function backToMembers(){ S.profile=null; render(); }
+
+// ---------- Mitglieder-Dokumente (Scope CUSTOMER_DOCUMENT_READ/WRITE) ----------
+// Dokumente des offenen Profils laden (GET ?memberId). Ohne Scope -> available:false,
+// die Karte blendet sich aus. Nie werfen.
+async function loadProfileDocs(id){
+  S.profileDocsLoading=true; render();
+  try{
+    var r=await tapi('/api/team/documents?memberId='+encodeURIComponent(id));
+    if(r&&r.ok&&r.available){ S.profileDocsAvailable=true; S.profileDocs=r.items||[]; }
+    else { S.profileDocsAvailable=false; S.profileDocs=null; }
+  }catch(e){ S.profileDocsAvailable=false; S.profileDocs=null; }
+  S.profileDocsLoading=false; render();
+}
+// Datum (yyyy-mm-dd) hübsch (dd.mm.yyyy). Leer/ungültig -> ''.
+function docDate(s){ if(!s) return ''; var d=new Date(String(s).slice(0,10)+'T00:00:00Z'); if(isNaN(d)) return String(s); var p=function(n){ return (n<10?'0':'')+n; }; return p(d.getUTCDate())+'.'+p(d.getUTCMonth()+1)+'.'+d.getUTCFullYear(); }
+// Dokument herunterladen: GET liefert Rohbytes (Blob) ODER {ok:true,url} ODER 404.
+async function downloadDoc(memberId, docId, name){
+  try{
+    var opts={ headers:{} }; if(S.token) opts.headers['Authorization']='Bearer '+S.token;
+    var r=await fetch('/api/team/documents?memberId='+encodeURIComponent(memberId)+'&docId='+encodeURIComponent(docId)+'&name='+encodeURIComponent(name||'dokument'), opts);
+    if(r.status===401){ logout(); return; }
+    var ctype=String(r.headers.get('content-type')||'');
+    if(/json/i.test(ctype)){
+      var j=null; try{ j=await r.json(); }catch(e){}
+      if(j&&j.ok&&j.url){ window.open(j.url,'_blank','noopener'); return; }
+      alert((j&&j.message)||'Dokument nicht verfügbar.'); return;
+    }
+    if(!r.ok){ alert('Dokument nicht verfügbar.'); return; }
+    var blob=await r.blob();
+    var u=URL.createObjectURL(blob);
+    var a=document.createElement('a'); a.href=u; a.download=name||'dokument'; document.body.appendChild(a); a.click();
+    setTimeout(function(){ document.body.removeChild(a); URL.revokeObjectURL(u); }, 1500);
+  }catch(e){ alert('Download fehlgeschlagen.'); }
+}
+// Datei (aus <input type=file>) als base64 hochladen -> POST. Größencheck clientseitig (~8 MB).
+function uploadDocFile(memberId, file){
+  if(!file) return;
+  if(file.size>8*1024*1024){ S.docUploadMsg='Datei zu groß (max. 8 MB).'; render(); return; }
+  S.docUploadBusy=true; S.docUploadMsg=''; render();
+  var reader=new FileReader();
+  reader.onload=async function(){
+    var res=String(reader.result||''); var bi=res.indexOf('base64,'); var b64=bi>=0?res.slice(bi+7):res;
+    var r=null;
+    try{ r=await tapi('/api/team/documents',{method:'POST',body:{ memberId:memberId, name:file.name, contentType:file.type||'application/octet-stream', base64:b64 }}); }catch(e){}
+    S.docUploadBusy=false;
+    if(r&&r.ok){ S.docUploadMsg=''; loadProfileDocs(memberId); }
+    else { S.docUploadMsg=(r&&r.message)||'Der Upload hat nicht geklappt.'; render(); }
+  };
+  reader.onerror=function(){ S.docUploadBusy=false; S.docUploadMsg='Datei konnte nicht gelesen werden.'; render(); };
+  reader.readAsDataURL(file);
+}
+// Dokumente-Karte im Profil. Bei available:false -> '' (Karte ausgeblendet).
+function docsCard(p){
+  if(!S.profileDocsAvailable && !S.profileDocsLoading) return '';
+  var body;
+  if(S.profileDocsLoading && S.profileDocs==null){
+    body='<div style="padding:8px 0;text-align:center"><span class="spin" style="width:18px;height:18px;border-width:2px"></span></div>';
+  } else {
+    var docs=S.profileDocs||[];
+    var rows=docs.length
+      ? docs.map(function(d){
+          var meta=[docDate(d.date), d.sizeKb?(d.sizeKb+' KB'):''].filter(Boolean).join(' · ');
+          return '<div style="display:flex;align-items:center;gap:11px;padding:10px 0;border-top:1px solid #f0f3f4">'+
+            '<span style="width:34px;height:34px;border-radius:10px;background:#e7f1f3;color:#0a4958;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg></span>'+
+            '<div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:700;color:#15171B;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(d.name)+'</div>'+(meta?'<div style="font-size:11.5px;color:#8a929a;font-weight:600">'+esc(meta)+'</div>':'')+'</div>'+
+            '<button data-docdl="'+esc(String(d.id))+'" data-docname="'+esc(d.name)+'" style="border:1.5px solid #d6dee0;border-radius:9px;background:#fff;color:#0a4958;font-size:12px;font-weight:800;padding:6px 12px;cursor:pointer;flex-shrink:0">Ansehen</button>'+
+          '</div>';
+        }).join('')
+      : '<div style="font-size:12.5px;color:#a9b1b6;font-weight:600;padding:4px 0">Keine Dokumente hinterlegt.</div>';
+    var msg=S.docUploadMsg?'<div style="font-size:12px;font-weight:700;color:#b53a2c;margin-top:10px">'+esc(S.docUploadMsg)+'</div>':'';
+    var upload='<div style="margin-top:12px;padding-top:12px;border-top:1px solid #f0f3f4">'+
+      '<label style="display:inline-flex;align-items:center;gap:7px;border:1.5px dashed #c2ccce;border-radius:10px;background:#fff;color:#0a4958;font-weight:800;font-size:12.5px;padding:9px 14px;cursor:'+(S.docUploadBusy?'default':'pointer')+'">'+
+        (S.docUploadBusy?'<span class="spin" style="width:14px;height:14px;border-width:2px"></span>Lädt hoch …':'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#0a4958" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v13"/><path d="M7 8l5-5 5 5"/><path d="M5 21h14"/></svg>Dokument hochladen')+
+        '<input type="file" id="docupload" '+(S.docUploadBusy?'disabled':'')+' style="display:none">'+
+      '</label>'+
+      '<div style="font-size:11px;color:#a9b1b6;font-weight:600;margin-top:7px">Max. 8 MB. Wird in Magicline beim Mitglied hinterlegt.</div>'+
+      msg+
+    '</div>';
+    body=rows+upload;
+  }
+  return '<div style="background:#fff;border-radius:18px;box-shadow:0 12px 32px rgba(4,33,40,.08);padding:20px 22px"><div style="font-size:15px;font-weight:900;margin-bottom:6px">Dokumente</div>'+body+'</div>';
+}
 
 // ---------- Dubletten-Prüfung ----------
 async function loadDuplicates(){
@@ -1332,6 +1417,7 @@ function membersNode(){
         benefitsCard(p.benefits)+
         zusatzinfoCard(p.additionalInfo)+
         profileCard('Termine', apptRows)+
+        docsCard(p)+
       '</div>'+
       '<div style="margin-top:18px;background:#fff;border-radius:20px;box-shadow:0 14px 38px rgba(4,33,40,.09);padding:20px 24px"><div style="font-size:15px;font-weight:900;letter-spacing:-.2px;margin-bottom:4px;color:#15171B">Vorgangs-Historie</div>'+histRows+'</div>'+
       // DSGVO-Zone: bewusst dezent, ganz unten – Anonymisieren ist unwiderruflich.
@@ -1353,6 +1439,9 @@ function membersNode(){
       var ti=wrap.querySelector('#taginput'); if(ti){ ti.oninput=function(){ S.tagInput=ti.value; }; ti.onkeydown=function(e){ if(e.key==='Enter'){ e.preventDefault(); addProfileTag(p.id, ti.value); } }; }
       wrap.querySelectorAll('[data-apptcancel]').forEach(function(b){ b.onclick=function(){ apptCancel(p, b.getAttribute('data-apptcancel')); }; });
       var aa=wrap.querySelector('[data-apptadd]'); if(aa) aa.onclick=function(){ apptBookFor(p); };
+      // Dokumente: Ansehen (Download) + Upload (Datei -> base64 -> POST).
+      wrap.querySelectorAll('[data-docdl]').forEach(function(b){ b.onclick=function(){ downloadDoc(p.id, b.getAttribute('data-docdl'), b.getAttribute('data-docname')); }; });
+      var du=wrap.querySelector('#docupload'); if(du) du.onchange=function(){ if(du.files&&du.files[0]) uploadDocFile(p.id, du.files[0]); };
       wireDm(wrap);
     },0);
     return wrap;
