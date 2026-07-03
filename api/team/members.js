@@ -152,7 +152,7 @@ async function profile(id) {
     const r = await M.ml('GET', '/appointments/booking?customerId=' + encodeURIComponent(id));
     const list = Array.isArray(r.json) ? r.json : [];
     appointments = list.filter((a) => !isCancelledAppt(a))
-      .map((a) => ({ title: a.title || a.name || 'Termin', start: a.startDateTime || null, end: a.endDateTime || null }))
+      .map((a) => ({ bookingId: a.bookingId != null ? a.bookingId : (a.id != null ? a.id : (a.appointmentId != null ? a.appointmentId : null)), title: a.title || a.name || 'Termin', start: a.startDateTime || null, end: a.endDateTime || null }))
       .filter((a) => a.start).sort((x, y) => new Date(x.start) - new Date(y.start));
   } catch (e) {}
   let history = [];

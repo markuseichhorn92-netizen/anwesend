@@ -106,7 +106,9 @@ var S={ token:null, screen:'inbox', convs:[], counts:{}, selKey:null, sel:null,
         // Nachrichten: Direktnachricht (Compose-Dialog)
         dmOpen:false, dmMemberId:null, dmMemberName:'', dmTitle:'', dmBody:'', dmPush:true, dmEmail:false, dmBusy:false, dmResult:null,
         // Leads: Interessenten-Pipeline
-        leads:[], leadsLoaded:false, leadsLoading:false, leadFilter:'all', leadBusy:'' };
+        leads:[], leadsLoaded:false, leadsLoading:false, leadFilter:'all', leadBusy:'',
+        // Termine: Studio-weite Wochenübersicht (best effort, blendet sich bei available:false aus)
+        studioAppts:null, studioApptsLoaded:false, studioApptsAvailable:false };
 var root=document.getElementById('root');
 var stickBottom=true;   // Chat klebt am unteren Rand, solange der Nutzer nicht hochscrollt
 var lastThreadScroll=0; // letzte Scroll-Position (über Voll-Renders hinweg erhalten)
@@ -396,6 +398,48 @@ async function apptDecline(m, id, first){
   await actOn(m, id, 'reply', { text:'Hallo '+(first||'')+', leider können wir den gewünschten Termin nicht anbieten'+(rsn.trim()?': '+rsn.trim():'.')+' Melde dich gern für einen Alternativtermin – wir finden gemeinsam etwas Passendes.' });
   await actOn(m, id, 'close');
   await loadInbox(); render();
+}
+
+// Termin eines Mitglieds absagen (Magicline-Storno über /api/team/appointments) und
+// danach das Profil neu laden.
+async function apptCancel(p, bookingId){
+  if(!p || bookingId==null || bookingId==='') return;
+  if(!window.confirm('Diesen Termin wirklich absagen?')) return;
+  try{
+    var r=await tapi('/api/team/appointments',{method:'POST',body:{action:'cancel',bookingId:bookingId}});
+    if(r&&r.ok){ openProfile(p.id); }
+    else { alert((r&&r.message)||'Absage fehlgeschlagen.'); }
+  }catch(e){ alert('Verbindung fehlgeschlagen.'); }
+}
+// Termin für ein Mitglied eintragen (best effort). Klappt die Open-API-Buchung nicht,
+// übernimmt der Server den Wunsch als Vorgang + Studio-Benachrichtigung (via:'fallback').
+async function apptBookFor(p){
+  if(!p) return;
+  var title=window.prompt('Terminart / Titel (z. B. „Beratungstermin", „Probetraining"):','');
+  if(title==null || !title.trim()) return;
+  var when=window.prompt('Wunschtermin (z. B. „Sa, 12.07. um 11:00 Uhr"):','');
+  if(when==null) return;
+  try{
+    var r=await tapi('/api/team/appointments',{method:'POST',body:{action:'book',memberId:p.id,title:title.trim(),start:when.trim()}});
+    if(r&&r.ok){
+      alert(r.via==='fallback'
+        ? 'Terminwunsch ans Studio übergeben – er liegt im Postfach des Mitglieds und wird manuell im Magicline-Kalender eingetragen.'
+        : (r.message||'Termin eingetragen.'));
+      openProfile(p.id);
+    } else { alert((r&&r.message)||'Konnte nicht eingetragen werden.'); }
+  }catch(e){ alert('Verbindung fehlgeschlagen.'); }
+}
+// Studio-weite Wochenübersicht laden (best effort). Ist der Abruf nicht verfügbar
+// (available:false), bleibt S.studioApptsAvailable false und die Karte erscheint gar nicht.
+async function loadStudioAppts(){
+  if(S.studioApptsLoaded) return; S.studioApptsLoaded=true;
+  try{
+    var now=new Date(); var from=new Date(now.getFullYear(),now.getMonth(),now.getDate(),0,0,0);
+    var to=new Date(from.getTime()+7*86400000);
+    var r=await tapi('/api/team/appointments?from='+encodeURIComponent(from.toISOString())+'&to='+encodeURIComponent(to.toISOString()));
+    if(r&&r.ok&&r.available){ S.studioApptsAvailable=true; S.studioAppts=r.appointments||[]; }
+  }catch(e){}
+  if(S.studioApptsAvailable && S.screen==='appts') render();
 }
 
 // ---------- render: login ----------
@@ -1044,8 +1088,9 @@ function membersNode(){
     var statusLabel = ct.active===false ? (ct.reversed?'Widerrufen':'Ehemalig') : 'Aktiv';
     var statusCol = ct.active===false ? '#b53a2c':'#1d7a3e', statusBg = ct.active===false ? '#fbeae7':'#e7f6ec';
     var apptRows = (p.appointments&&p.appointments.length)
-      ? p.appointments.map(function(a){ return '<div style="display:flex;align-items:center;gap:11px;padding:10px 0;border-top:1px solid #f0f3f4"><span style="width:9px;height:9px;border-radius:50%;background:linear-gradient(150deg,#0e6072,#063540);flex-shrink:0"></span><span style="flex:1;font-size:13.5px;font-weight:700;color:#15171B">'+esc(a.title)+'</span><span style="font-size:12.5px;color:#8a929a;font-weight:600">'+esc(fmtDT(a.start))+'</span></div>'; }).join('')
+      ? p.appointments.map(function(a){ return '<div style="display:flex;align-items:center;gap:11px;padding:10px 0;border-top:1px solid #f0f3f4"><span style="width:9px;height:9px;border-radius:50%;background:linear-gradient(150deg,#0e6072,#063540);flex-shrink:0"></span><span style="flex:1;font-size:13.5px;font-weight:700;color:#15171B">'+esc(a.title)+'</span><span style="font-size:12.5px;color:#8a929a;font-weight:600">'+esc(fmtDT(a.start))+'</span>'+((a.bookingId!=null&&a.bookingId!=='')?'<button data-apptcancel="'+esc(a.bookingId)+'" style="border:1.5px solid #e3b8b1;border-radius:9px;background:#fff;color:#b5402f;font-size:11.5px;font-weight:800;padding:5px 10px;cursor:pointer;flex-shrink:0">Absagen</button>':'')+'</div>'; }).join('')
       : '<div style="font-size:12.5px;color:#a9b1b6;font-weight:600;padding:4px 0">Keine gebuchten Termine.</div>';
+    apptRows += '<div style="margin-top:10px;padding-top:10px;border-top:1px solid #f0f3f4"><button data-apptadd="1" style="display:inline-flex;align-items:center;gap:7px;border:1.5px solid #d6dee0;border-radius:10px;background:#fff;color:#0a4958;font-weight:800;font-size:12.5px;padding:8px 13px;cursor:pointer">+ Termin eintragen</button></div>';
     var histRows = (p.history&&p.history.length)
       ? p.history.map(function(h){ var t=tm(h.type),st=sm(h.teamStatus); return '<div class="lrow" data-hist="'+esc(h.key)+'" style="display:flex;align-items:center;gap:12px;padding:12px 0;border-top:1px solid #f0f3f4;cursor:pointer"><div style="width:36px;height:36px;border-radius:11px;background:'+t.b+';color:'+t.c+';display:flex;align-items:center;justify-content:center;flex-shrink:0;font-weight:900;font-size:11px">'+esc(t.l.slice(0,2))+'</div><div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:800;color:#15171B">'+esc(t.l)+'</div><div style="font-size:12px;color:#8a929a;font-weight:600">'+esc(h.ref)+' · '+esc(rel(h.updatedAt))+'</div></div><span style="font-size:11px;font-weight:800;color:'+st.c+';background:'+st.b+';border-radius:20px;padding:4px 11px">'+st.l+'</span></div>'; }).join('')
       : '<div style="font-size:12.5px;color:#a9b1b6;font-weight:600;padding:4px 0">Keine Vorgänge.</div>';
@@ -1079,6 +1124,8 @@ function membersNode(){
       var es=wrap.querySelector('[data-edsave]'); if(es) es.onclick=function(){ saveMember(p.id); };
       var anb=wrap.querySelector('[data-anon]'); if(anb) anb.onclick=function(){ anonymiseMember(p); };
       var ms=wrap.querySelector('[data-msgsend]'); if(ms) ms.onclick=function(){ openDirectMsg(p.id, p.name); };
+      wrap.querySelectorAll('[data-apptcancel]').forEach(function(b){ b.onclick=function(){ apptCancel(p, b.getAttribute('data-apptcancel')); }; });
+      var aa=wrap.querySelector('[data-apptadd]'); if(aa) aa.onclick=function(){ apptBookFor(p); };
       wireDm(wrap);
     },0);
     return wrap;
@@ -1106,10 +1153,20 @@ function membersNode(){
 
 // ---------- render: appointments (Termine) ----------
 function apptsNode(){
+  loadStudioAppts();   // Studio-weite Wochenübersicht best effort nachladen (einmalig)
   var appts=S.convs.filter(function(c){ return c.type==='termin'||c.type==='probetraining'||c.type==='probe'; });
   var open=appts.filter(function(c){ return c.teamStatus!=='abgeschlossen'; });
   var done=appts.filter(function(c){ return c.teamStatus==='abgeschlossen'; });
   var node=el('<div class="scrl" style="flex:1;min-height:0;overflow-y:auto;padding:24px 28px 40px"></div>');
+  // Studio-weite Terminübersicht – nur wenn die Open API sie hergibt (available:true).
+  var studioCard=(S.studioApptsAvailable && S.studioAppts)
+    ? '<div style="background:#fff;border-radius:18px;box-shadow:0 10px 28px rgba(4,33,40,.07);padding:18px 20px;margin-bottom:18px">'+
+        '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px"><span style="width:9px;height:9px;border-radius:50%;background:'+TEAL+'"></span><div style="font-size:15px;font-weight:900;letter-spacing:-.3px;color:#15171B">Termine diese Woche</div><span style="font-size:12px;font-weight:800;color:#2f7d8c;background:#e7f1f3;border-radius:100px;padding:3px 11px">'+S.studioAppts.length+'</span></div>'+
+        (S.studioAppts.length
+          ? S.studioAppts.slice(0,40).map(function(a){ return '<div style="display:flex;align-items:center;gap:11px;padding:9px 0;border-top:1px solid #f0f3f4"><span style="flex:1;font-size:13.5px;font-weight:700;color:#15171B">'+esc(a.title)+'</span><span style="font-size:12.5px;color:#8a929a;font-weight:600">'+esc(fmtDT(a.start))+'</span></div>'; }).join('')
+          : '<div style="font-size:12.5px;color:#a9b1b6;font-weight:600;padding:4px 0">Diese Woche keine Termine.</div>')+
+      '</div>'
+    : '';
   function card(c){
     var first=(c.member.name||'').split(' ')[0]||'';
     return '<div style="background:#fff;border-radius:18px;box-shadow:0 10px 28px rgba(4,33,40,.07);padding:16px 18px">'+
@@ -1125,6 +1182,7 @@ function apptsNode(){
       '</div>';
   }
   node.innerHTML='<div style="max-width:1000px">'+
+    studioCard+
     '<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px"><span style="width:9px;height:9px;border-radius:50%;background:'+ORANGE+'"></span><div style="font-size:16px;font-weight:900;letter-spacing:-.4px;color:#15171B">Offene Terminanfragen</div><span style="font-size:12px;font-weight:800;color:#b5631f;background:#fbefe2;border-radius:100px;padding:3px 11px">'+open.length+'</span></div>'+
     (open.length?'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px">'+open.map(card).join('')+'</div>'
       :'<div style="background:#fff;border-radius:16px;box-shadow:0 10px 28px rgba(4,33,40,.07);padding:28px;text-align:center;color:#8a929a;font-size:13.5px;font-weight:600">Keine offenen Anfragen 🎉</div>')+
