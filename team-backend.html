@@ -86,6 +86,9 @@
 <script>
 'use strict';
 var TEAL='#0a4958', ORANGE='#E08C53';
+// Fallback-Vorschläge für Mitglieder-Tags (Server liefert die maßgebliche Liste via
+// GET /api/team/tags?memberId=… -> presets). Wird von S.tagPresets überschrieben.
+var TAG_PRESETS=['VIP','Stammkunde','Beschwerde','Risiko','Beobachten','Interessent'];
 var S={ token:null, screen:'inbox', convs:[], counts:{}, selKey:null, sel:null,
         filter:'open', search:'', loading:false, err:'', draft:'', note:'', replyChannel:'email',
         mobileThread:false, panelOpen:false, busy:false, quickOpen:false,
@@ -94,6 +97,9 @@ var S={ token:null, screen:'inbox', convs:[], counts:{}, selKey:null, sel:null,
         manageOpen:false, snipEdit:null, snipNew:'',
         members:[], membersLoaded:false, membersLoading:false,
         memberSearch:'', memberResults:null, memberSearching:false,
+        // Mitglieder-Tags: Profil-Editor + Listen-Filter (additiv, bricht nichts)
+        profileTags:[], tagAddOpen:false, tagInput:'', tagBusy:false, tagPresets:null,
+        tagFilter:null, tagFilterIds:null, tagFilterLoading:false, memberTags:{},
         reassignOpen:false, reassignSearch:'', reassignResults:null, reassignSearching:false, reassignBusy:false,
         profile:null, profileLoading:false, dupLoading:false, dupData:null,
         convProfile:null, convProfileLoading:false, util:null,
@@ -323,9 +329,113 @@ function onMemberSearch(v){
 }
 async function openProfile(id){
   S.editMember=false; S.editMsg=''; S.editBusy=false;
+  S.profileTags=[]; S.tagAddOpen=false; S.tagInput=''; S.tagBusy=false;
   S.profileLoading=true; S.profile=null; render();
   try{ var r=await tapi('/api/team/members?id='+encodeURIComponent(id)); if(r.ok) S.profile=r.profile; }
   catch(e){} S.profileLoading=false; render();
+  if(S.profile) loadProfileTags(id);
+}
+// ---------- Mitglieder-Tags ----------
+// Tags des offenen Profils laden (GET ?memberId). Ohne Store -> leere Liste, kein Fehler.
+async function loadProfileTags(id){
+  try{
+    var r=await tapi('/api/team/tags?memberId='+encodeURIComponent(id));
+    if(r&&r.ok){ S.profileTags=r.tags||[]; if(Array.isArray(r.presets)) S.tagPresets=r.presets; S.memberTags[String(id)]=(r.tags||[]).slice(); }
+  }catch(e){}
+  render();
+}
+// Tags setzen (ersetzt); Antwort enthält die gespeicherte Liste. Aktualisiert auch den Listen-Cache.
+async function saveProfileTags(id, tags){
+  S.tagBusy=true; render();
+  var r=null;
+  try{ r=await tapi('/api/team/tags',{method:'POST',body:{memberId:id, tags:tags}}); }catch(e){}
+  if(r&&r.ok&&Array.isArray(r.tags)){ S.profileTags=r.tags; S.memberTags[String(id)]=r.tags.slice(); }
+  S.tagBusy=false; render();
+}
+function addProfileTag(id, tag){
+  var t=(tag||'').trim(); if(!t) return;
+  var cur=(S.profileTags||[]).slice();
+  if(cur.some(function(x){ return x.toLowerCase()===t.toLowerCase(); })){ S.tagInput=''; S.tagAddOpen=false; render(); return; }
+  cur.push(t); S.tagInput=''; S.tagAddOpen=false;
+  saveProfileTags(id, cur);
+}
+function removeProfileTag(id, tag){
+  var cur=(S.profileTags||[]).filter(function(x){ return x!==tag; });
+  saveProfileTags(id, cur);
+}
+// Ein kleines Tag-Chip (Listen/Profil). removable -> mit ×-Button (nur im Profil).
+function tagChipHTML(tag, removable){
+  return '<span style="display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:800;color:#0a4958;background:#e7f1f3;border:1px solid #d4e4e7;border-radius:20px;padding:4px 10px;line-height:1.2">'+
+    esc(tag)+
+    (removable?'<button data-tagdel="'+esc(tag)+'" title="Entfernen" style="border:none;background:none;color:#5c8b93;font-weight:900;font-size:14px;line-height:1;padding:0;margin:0 -2px 0 0;cursor:pointer">×</button>':'')+
+  '</span>';
+}
+// Tag-Chips einer Listenzeile aus dem Cache (falls geladen), sonst leer.
+function memberTagsMini(memberId){
+  var mt=S.memberTags[String(memberId)]||[];
+  if(!mt.length) return '';
+  return '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:5px">'+mt.map(function(t){ return tagChipHTML(t,false); }).join('')+'</div>';
+}
+// Tag-Zeile im Profil: vorhandene Tags (mit Entfernen) + „+ Tag" (Presets + Freitext).
+function tagsRowHTML(){
+  var tags=S.profileTags||[];
+  var chips = tags.length
+    ? tags.map(function(t){ return tagChipHTML(t, true); }).join('')
+    : '<span style="font-size:12.5px;color:#a9b1b6;font-weight:600">Noch keine Tags vergeben.</span>';
+  var addBtn = '<button data-tagadd="1" style="display:inline-flex;align-items:center;gap:4px;border:1.5px dashed #c2ccce;border-radius:20px;background:#fff;color:#0a4958;font-weight:800;font-size:11.5px;padding:4px 11px;cursor:pointer">+ Tag</button>';
+  var editor='';
+  if(S.tagAddOpen){
+    var pres=(S.tagPresets||TAG_PRESETS);
+    var have={}; tags.forEach(function(t){ have[t.toLowerCase()]=1; });
+    var presetBtns=pres.filter(function(t){ return !have[String(t).toLowerCase()]; }).map(function(t){
+      return '<button data-tagpreset="'+esc(t)+'" style="border:1px solid #d4e4e7;border-radius:20px;background:#f4f8f9;color:#0a4958;font-weight:800;font-size:11.5px;padding:4px 10px;cursor:pointer">+ '+esc(t)+'</button>';
+    }).join('');
+    editor='<div style="margin-top:11px;padding-top:11px;border-top:1px solid #eef2f3">'+
+      (presetBtns?'<div style="display:flex;flex-wrap:wrap;gap:7px;margin-bottom:9px">'+presetBtns+'</div>':'')+
+      '<div style="display:flex;gap:8px">'+
+        '<input id="taginput" value="'+esc(S.tagInput||'')+'" maxlength="32" placeholder="Eigener Tag …" style="flex:1;padding:8px 11px;border:1.5px solid #dce3e4;border-radius:10px;font-size:13px;background:#fbfcfc;outline:none">'+
+        '<button data-tagfreeadd="1"'+(S.tagBusy?' disabled':'')+' style="border:none;border-radius:10px;background:#0a4958;color:#fff;font-weight:800;font-size:12.5px;padding:8px 14px;cursor:pointer">Hinzufügen</button>'+
+      '</div></div>';
+  }
+  return '<div style="margin-top:18px;background:#fff;border-radius:18px;box-shadow:0 12px 32px rgba(4,33,40,.08);padding:18px 22px">'+
+    '<div style="font-size:15px;font-weight:900;margin-bottom:11px">Tags</div>'+
+    '<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">'+chips+addBtn+'</div>'+
+    editor+
+  '</div>';
+}
+// Filter-Leiste über der Mitgliederliste: Preset-Chips schränken die Liste per Tag ein.
+function tagFilterBarHTML(){
+  var pres=(S.tagPresets||TAG_PRESETS);
+  var active=S.tagFilter;
+  var chips=pres.map(function(t){
+    var on=(active===t);
+    return '<button data-tagfilter="'+esc(t)+'" style="border:1.5px solid '+(on?'#0a4958':'#d4e4e7')+';border-radius:20px;background:'+(on?'#0a4958':'#fff')+';color:'+(on?'#fff':'#0a4958')+';font-weight:800;font-size:12px;padding:6px 13px;cursor:pointer">'+esc(t)+'</button>';
+  }).join('');
+  var clear=active?'<button data-tagclear="1" style="border:none;background:none;color:#8a929a;font-weight:800;font-size:12px;padding:6px;cursor:pointer;text-decoration:underline">zurücksetzen</button>':'';
+  return '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:14px">'+
+    '<span style="font-size:11.5px;font-weight:800;color:#8a929a;margin-right:2px">Nach Tag filtern:</span>'+chips+clear+'</div>';
+}
+// Filter umschalten: lädt die memberIds zum Tag (GET ?tag) und schränkt die Liste ein.
+async function toggleTagFilter(tag){
+  if(S.tagFilter===tag){ S.tagFilter=null; S.tagFilterIds=null; render(); return; }
+  S.tagFilter=tag; S.tagFilterIds=null; S.tagFilterLoading=true; render();
+  try{
+    var r=await tapi('/api/team/tags?tag='+encodeURIComponent(tag));
+    if(r&&r.ok){ var set={}; (r.memberIds||[]).forEach(function(id){ set[String(id)]=1; S.memberTags[String(id)]=mergeTag(S.memberTags[String(id)], tag); }); S.tagFilterIds=set; }
+    else { S.tagFilterIds={}; }
+  }catch(e){ S.tagFilterIds={}; }
+  S.tagFilterLoading=false; render();
+}
+function mergeTag(arr, tag){
+  arr=(arr||[]).slice();
+  if(!arr.some(function(x){ return x.toLowerCase()===String(tag).toLowerCase(); })) arr.push(tag);
+  return arr;
+}
+// Verzeichnis-Liste ggf. auf den aktiven Tag-Filter einschränken.
+function filteredMembers(){
+  var list=S.members||[];
+  if(S.tagFilter && S.tagFilterIds){ var set=S.tagFilterIds; list=list.filter(function(m){ return set[String(m.memberId)]; }); }
+  return list;
 }
 function backToMembers(){ S.profile=null; render(); }
 
@@ -1081,16 +1191,22 @@ function memberRowsHTML(){
     return '<div style="padding:10px 18px 4px;font-size:11.5px;font-weight:700;color:#8a929a">'+S.memberResults.length+' Treffer in Magicline</div>'+S.memberResults.map(function(m){
       return '<div class="lrow" data-prof="'+esc(m.id)+'" style="display:flex;align-items:center;gap:12px;padding:13px 22px;border-top:1px solid #f4f6f7;cursor:pointer">'+
         '<div style="width:38px;height:38px;border-radius:50%;background:#dfe9eb;color:#0a4958;font-weight:800;font-size:12px;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+esc(m.initials||'·')+'</div>'+
-        '<div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(m.name)+'</div><div style="font-size:12px;color:#8a929a;font-weight:600">'+esc(m.nr||'—')+(m.email?' · '+esc(m.email):'')+'</div></div>'+
+        '<div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(m.name)+'</div><div style="font-size:12px;color:#8a929a;font-weight:600">'+esc(m.nr||'—')+(m.email?' · '+esc(m.email):'')+'</div>'+memberTagsMini(m.id)+'</div>'+
         '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#c9d3d5" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg></div>';
     }).join('');
   }
   if(S.membersLoading && !S.members.length) return '<div style="padding:34px;text-align:center"><span class="spin"></span></div>';
+  if(S.tagFilter && S.tagFilterLoading) return '<div style="padding:34px;text-align:center"><span class="spin"></span></div>';
   if(!S.members.length) return '<div style="padding:34px 22px;text-align:center;color:#8a929a;font-size:13.5px;font-weight:600">Noch keine Mitglieder mit Vorgängen.<br>Nutze die Suche, um jemanden in Magicline zu finden.</div>';
-  return '<div style="padding:10px 18px 4px;font-size:11.5px;font-weight:700;color:#8a929a">'+S.members.length+' Mitglieder mit Vorgängen</div>'+S.members.map(function(m){
+  var list=filteredMembers();
+  var head=S.tagFilter
+    ? '<div style="padding:10px 18px 4px;font-size:11.5px;font-weight:700;color:#8a929a">'+list.length+' Mitglied(er) mit Tag „'+esc(S.tagFilter)+'"</div>'
+    : '<div style="padding:10px 18px 4px;font-size:11.5px;font-weight:700;color:#8a929a">'+list.length+' Mitglieder mit Vorgängen</div>';
+  if(S.tagFilter && !list.length) return head+'<div style="padding:26px 22px;text-align:center;color:#8a929a;font-size:13px;font-weight:600">Kein geladenes Mitglied mit diesem Tag.<br>Der Filter greift auf Mitglieder mit Vorgängen.</div>';
+  return head+list.map(function(m){
     return '<div class="lrow" data-prof="'+esc(m.memberId)+'" style="display:flex;align-items:center;gap:12px;padding:13px 22px;border-top:1px solid #f4f6f7;cursor:pointer">'+
       '<div style="width:40px;height:40px;border-radius:50%;background:#dfe9eb;color:#0a4958;font-weight:800;font-size:13px;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+esc(m.initials||'·')+'</div>'+
-      '<div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(m.name)+'</div><div style="font-size:12px;color:#8a929a;font-weight:600">'+esc(m.nr||'—')+' · '+esc(rel(m.lastActivity))+'</div></div>'+
+      '<div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(m.name)+'</div><div style="font-size:12px;color:#8a929a;font-weight:600">'+esc(m.nr||'—')+' · '+esc(rel(m.lastActivity))+'</div>'+memberTagsMini(m.memberId)+'</div>'+
       (m.openCount?'<span style="width:21px;height:21px;border-radius:50%;background:'+ORANGE+';color:#fff;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+m.openCount+'</span>':'')+
       '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#c9d3d5" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg></div>';
   }).join('');
@@ -1207,6 +1323,7 @@ function membersNode(){
       '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px">'+
         '<button data-msgsend="1" style="display:inline-flex;align-items:center;gap:8px;border:none;border-radius:12px;background:'+TEAL+';color:#fff;font-size:13.5px;font-weight:800;padding:11px 16px;cursor:pointer">'+IC.send+'Nachricht senden</button>'+
       '</div>'+
+      tagsRowHTML()+
       '<div class="prof-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:18px;align-items:start">'+
         stammdatenCard(p)+
         profileCard('Vertrag', pRow('Tarif',ct.rateName)+pRow('Vertragsbeginn',ct.startDate)+pRow('Status',ct.active===false?'beendet':'aktiv')+pRow('Vertragsende',ct.endDate||(ct.cancelled?ct.cancellationDate:'läuft'))+pRow('Nächstmögl. Kündigung',ct.nextCancellationDate))+
@@ -1228,6 +1345,12 @@ function membersNode(){
       var es=wrap.querySelector('[data-edsave]'); if(es) es.onclick=function(){ saveMember(p.id); };
       var anb=wrap.querySelector('[data-anon]'); if(anb) anb.onclick=function(){ anonymiseMember(p); };
       var ms=wrap.querySelector('[data-msgsend]'); if(ms) ms.onclick=function(){ openDirectMsg(p.id, p.name); };
+      // Tags: aufklappen, Preset/Freitext hinzufügen, per Chip entfernen.
+      var ta=wrap.querySelector('[data-tagadd]'); if(ta) ta.onclick=function(){ S.tagAddOpen=!S.tagAddOpen; S.tagInput=''; render(); };
+      wrap.querySelectorAll('[data-tagdel]').forEach(function(b){ b.onclick=function(){ removeProfileTag(p.id, b.getAttribute('data-tagdel')); }; });
+      wrap.querySelectorAll('[data-tagpreset]').forEach(function(b){ b.onclick=function(){ addProfileTag(p.id, b.getAttribute('data-tagpreset')); }; });
+      var tfa=wrap.querySelector('[data-tagfreeadd]'); if(tfa) tfa.onclick=function(){ var i=wrap.querySelector('#taginput'); addProfileTag(p.id, i?i.value:''); };
+      var ti=wrap.querySelector('#taginput'); if(ti){ ti.oninput=function(){ S.tagInput=ti.value; }; ti.onkeydown=function(e){ if(e.key==='Enter'){ e.preventDefault(); addProfileTag(p.id, ti.value); } }; }
       wrap.querySelectorAll('[data-apptcancel]').forEach(function(b){ b.onclick=function(){ apptCancel(p, b.getAttribute('data-apptcancel')); }; });
       var aa=wrap.querySelector('[data-apptadd]'); if(aa) aa.onclick=function(){ apptBookFor(p); };
       wireDm(wrap);
@@ -1246,10 +1369,13 @@ function membersNode(){
       '</button>'+
       '<div id="dupbox">'+dupPanelHTML()+'</div>'+
     '</div>'+
+    tagFilterBarHTML()+
     '<div style="background:#fff;border-radius:18px;box-shadow:0 12px 32px rgba(4,33,40,.08);overflow:hidden"><div id="memberrows">'+memberRowsHTML()+'</div></div></div>';
   setTimeout(function(){
     var s=node.querySelector('#msearch'); if(s) s.oninput=function(){ onMemberSearch(s.value); };
     var dc=node.querySelector('[data-dupcheck]'); if(dc) dc.onclick=loadDuplicates;
+    node.querySelectorAll('[data-tagfilter]').forEach(function(b){ b.onclick=function(){ toggleTagFilter(b.getAttribute('data-tagfilter')); }; });
+    var tcl=node.querySelector('[data-tagclear]'); if(tcl) tcl.onclick=function(){ S.tagFilter=null; S.tagFilterIds=null; render(); };
     updateMemberRows();
   },0);
   return node;
