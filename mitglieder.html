@@ -297,7 +297,7 @@
 
   // ---- state ----
   var TOKEN = localStorage.getItem('fi_member_token') || sessionStorage.getItem('fi_member_token') || null;
-  var DATA = { profile:null, contract:null, checkins:null, appts:null, plan:null, planAgg:null, planAggTom:null, inbox:null, prefs:null, membershipActive:true, bookable:null, slots:null, account:null, blog:null, typical:null, hours:null, insta:null, live:null, pauseInfo:null, cancelReasons:null };
+  var DATA = { profile:null, contract:null, checkins:null, appts:null, plan:null, planAgg:null, planAggTom:null, inbox:null, prefs:null, membershipActive:true, bookable:null, slots:null, account:null, blog:null, typical:null, hours:null, insta:null, live:null, pauseInfo:null, cancelReasons:null, documents:null };
   // Erlaubte Screens für ehemalige Mitglieder (alles andere wird gesperrt)
   var FORMER_OK = ['home','checkins','help','postfach','settings','profil'];
   function isFormer(){ return DATA.membershipActive===false; }
@@ -308,6 +308,7 @@
     pauseStep:0, pauseReason:'', pauseReasonText:'', pauseFrom:'', pausePhoto:'', pausePhotoName:'', pauseDone:false,
     pauseReasonId:'', pauseTerm:1, pauseDoneVia:'', pauseDoneMsg:'',
     ccBusy:false, ccMsg:'',
+    docUpBusy:false, docMsg:'', docErr:false, docDlId:'',
     checkinBusy:false, checkinOk:false, checkinMsg:'', checkedInAt:null, ciBusy:false, ciPopup:null, ciName:'', ciDur:'', atStudio:false, ciDistance:null, wifiBusy:false, wifiMsg:'',
     apptTab:'book', bookType:'', bookTypeTitle:'', bookDay:'', bookSlot:null, bookDone:false, bookErr:'', apptMsg:'', fallbackBook:false,
     helpSel:null, helpCat:'all', helpQ:'', helpShowAll:false,
@@ -343,6 +344,23 @@
       img.onerror=function(){ S.pausePhoto=src; S.pausePhotoName=f.name||'attest'; render(); };
       img.src=src;
     };
+    rd.readAsDataURL(f);
+  };
+  // Dokument-Upload: Datei -> base64 -> POST /api/member/documents. Größenlimit 8 MB.
+  window.__docUpload=function(input){
+    var f=input&&input.files&&input.files[0]; try{ if(input) input.value=''; }catch(e){}
+    if(!f) return;
+    if(f.size>8*1024*1024){ S.docUpBusy=false; S.docErr=true; S.docMsg='Datei zu groß (max. 8 MB).'; render(); return; }
+    S.docUpBusy=true; S.docMsg=''; S.docErr=false; render();
+    var rd=new FileReader();
+    rd.onload=function(e){
+      var res=String((e.target&&e.target.result)||''); var ix=res.indexOf('base64,'); var b64=ix>=0?res.slice(ix+7):res;
+      if(!b64){ S.docUpBusy=false; S.docErr=true; S.docMsg='Datei konnte nicht gelesen werden.'; render(); return; }
+      api('/api/member/documents',{method:'POST',body:JSON.stringify({name:(f.name||'Dokument'),contentType:(f.type||'application/octet-stream'),base64:b64})})
+        .then(function(d){ S.docUpBusy=false; S.docErr=!(d&&d.ok); S.docMsg=(d&&d.message)||((d&&d.ok)?'Dokument hochgeladen. Danke!':'Upload fehlgeschlagen.'); if(d&&d.ok){ DATA.documents=null; loadDocuments(); } render(); })
+        .catch(function(){ S.docUpBusy=false; S.docErr=true; S.docMsg='Upload fehlgeschlagen. Bitte später erneut.'; render(); });
+    };
+    rd.onerror=function(){ S.docUpBusy=false; S.docErr=true; S.docMsg='Datei konnte nicht gelesen werden.'; render(); };
     rd.readAsDataURL(f);
   };
   function isoToday(){ var d=new Date(); var p=function(n){return(n<10?'0':'')+n;}; return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate()); }
@@ -427,7 +445,7 @@
     S.screen=s;
     if(s==='help'){ S.helpSel=null; S.helpCat='all'; S.helpQ=''; S.helpShowAll=false; S.aiPhase='idle'; S.aiQuery=''; S.aiAsked=''; S.aiAnswer=''; S.aiFeedback=null; S.ctOpen=false; S.ctSent=false; S.ctMsg=''; S.ctErr=''; S.artFb=null; }
     if(s==='postfach'){ S.pfSel=null; S.pfThread=false; S.pfErr=''; S.pfDraft=''; loadInbox(); }
-    if(s==='contract'){ S.cancelStep=0; S.pauseStep=0; S.pauseDone=false; S.offerDone=''; }
+    if(s==='contract'){ S.cancelStep=0; S.pauseStep=0; S.pauseDone=false; S.offerDone=''; S.docMsg=''; S.docErr=false; loadDocuments(); }
     if((s==='checkins'||s==='fort')&&!DATA.checkins) loadCheckins();
     if(s==='blog'){ S.blogSel=null; S.blogPost=null; loadBlog(); }
     if(s==='insta'){ S.instaSel=null; loadInsta(); maybeRefreshInsta(); }
@@ -464,6 +482,13 @@
   function loadPauseInfo(){ if(DATA.pauseInfo||pauseInfoBusy) return; pauseInfoBusy=true;
     api('/api/member/pause-info').then(function(d){ pauseInfoBusy=false; DATA.pauseInfo=(d&&d.ok)?d:{ok:true,available:false}; render(); })
       .catch(function(){ pauseInfoBusy=false; DATA.pauseInfo={ok:true,available:false}; render(); }); }
+  // Dokumente (Magicline, Scope CUSTOMER_DOCUMENT_READ) einmal je Sitzung laden.
+  // 403/nicht verfügbar -> {available:false}; die UI blendet die Karte dann still
+  // aus und der bestehende contract-copy-Weg bleibt als Fallback erhalten.
+  var docsBusy=false;
+  function loadDocuments(){ if(docsBusy) return; if(DATA.documents&&typeof DATA.documents==='object') return; docsBusy=true;
+    api('/api/member/documents').then(function(d){ docsBusy=false; DATA.documents=(d&&d.ok&&d.available)?{available:true,items:(d.items||[])}:{available:false}; render(); })
+      .catch(function(){ docsBusy=false; DATA.documents={available:false}; render(); }); }
   // ===== Standort-Ankunft (Vordergrund): erkennt, ob das Mitglied im Studio ist =====
   var STUDIO_LAT=49.7242701, STUDIO_LNG=6.6303178, GEO_RADIUS=160; // Meter (Auf Hirtenberg 8, 54296 Trier)
   function geoDist(la1,lo1,la2,lo2){ var R=6371000,rad=Math.PI/180; var dLa=(la2-la1)*rad,dLo=(lo2-lo1)*rad; var a=Math.sin(dLa/2)*Math.sin(dLa/2)+Math.cos(la1*rad)*Math.cos(la2*rad)*Math.sin(dLo/2)*Math.sin(dLo/2); return 2*R*Math.atan2(Math.sqrt(a),Math.sqrt(1-a)); }
@@ -1127,7 +1152,7 @@
     if(S.cancelStep>0) return head+funnel();
     // overview
     if(!c){
-      return head+'<div class="card" style="padding:30px 22px;text-align:center"><div style="width:60px;height:60px;border-radius:18px;background:var(--err-bg);display:flex;align-items:center;justify-content:center;margin:0 auto 16px">'+svg(IC.warn,{c:'var(--err-fg)',w:2,s:28})+'</div><div style="font-size:19px;font-weight:900;letter-spacing:-.3px">Vertragsdaten nicht verfügbar</div><div style="font-size:14px;color:var(--text-muted);margin-top:7px;line-height:1.55">Wir konnten keinen laufenden Vertrag automatisch zuordnen. Du kannst trotzdem pausieren oder kündigen – wir melden uns.</div>'+pauseBtn(20)+'<button class="btnDanger" data-act="startCancel" style="margin-top:12px">Mitgliedschaft kündigen</button><div style="font-size:12px;color:var(--text-soft);margin-top:14px">Oder ruf uns an: <b style="color:'+TEAL+'">0651 308524</b></div></div>'+(S.cancelDone?okBox('Deine Kündigung wurde eingereicht. Du erhältst eine Bestätigung per E-Mail.'):'')+(S.pauseDone?okBox('Deine Pause-Anfrage ist eingegangen.'):'');
+      return head+'<div class="card" style="padding:30px 22px;text-align:center"><div style="width:60px;height:60px;border-radius:18px;background:var(--err-bg);display:flex;align-items:center;justify-content:center;margin:0 auto 16px">'+svg(IC.warn,{c:'var(--err-fg)',w:2,s:28})+'</div><div style="font-size:19px;font-weight:900;letter-spacing:-.3px">Vertragsdaten nicht verfügbar</div><div style="font-size:14px;color:var(--text-muted);margin-top:7px;line-height:1.55">Wir konnten keinen laufenden Vertrag automatisch zuordnen. Du kannst trotzdem pausieren oder kündigen – wir melden uns.</div>'+pauseBtn(20)+'<button class="btnDanger" data-act="startCancel" style="margin-top:12px">Mitgliedschaft kündigen</button><div style="font-size:12px;color:var(--text-soft);margin-top:14px">Oder ruf uns an: <b style="color:'+TEAL+'">0651 308524</b></div></div>'+(S.cancelDone?okBox('Deine Kündigung wurde eingereicht. Du erhältst eine Bestätigung per E-Mail.'):'')+(S.pauseDone?okBox('Deine Pause-Anfrage ist eingegangen.'):'')+docsCard();
     }
     var cancelled=!!c.cancelled;
     var msgs=(S.cancelDone?okBox('Deine Kündigung wurde verbindlich eingereicht. Du erhältst eine Bestätigung per E-Mail.'):'')+(S.withdrawDone?okBox(S.withdrawMsg||'Schön, dass du bleibst! Deine Kündigung ist zurückgezogen – deine Mitgliedschaft läuft ganz normal weiter.'):'')+(S.withdrawErr?noteBox(S.withdrawErr):'')+(S.revokeDone?okBox('Dein Widerruf ist eingegangen. Wir wickeln deinen Vertrag rück und bestätigen das per E-Mail.'):'');
@@ -1154,7 +1179,39 @@
     var actions = cancelled ? '' : (pauseBtn(0)+'<button class="btnDanger" data-act="startCancel">Mitgliedschaft kündigen</button>');
     var actionCard='<div class="card" style="padding:18px;margin-top:14px;display:flex;flex-direction:column;gap:10px">'+copyBtn+actions+'</div>';
     var dialog = S.withdrawConfirm ? withdrawDialog() : (S.revokeConfirm ? revokeDialog() : '');
-    return head+msgs+wd+box+actionCard+dialog;
+    return head+msgs+wd+box+actionCard+docsCard()+dialog;
+  }
+  // "Meine Dokumente"-Karte. Zeigt die in Magicline hinterlegten Dokumente (Vertrag,
+  // Bescheinigungen) + Upload. Bei available:false (403/nicht verfügbar) oder solange
+  // noch nicht geladen wird NICHTS gerendert – die Karte blendet sich still aus und
+  // der bestehende contract-copy-Weg bleibt als Fallback bestehen.
+  function docsCard(){
+    var d=DATA.documents;
+    if(!d||d.available!==true) return '';
+    var items=d.items||[];
+    var list = items.length
+      ? items.map(function(it){
+          var dt=it.date?deDateFull(it.date):'';
+          var meta=[dt,(it.sizeKb?(it.sizeKb+' KB'):'')].filter(Boolean).join(' · ');
+          var loading=(String(S.docDlId)===String(it.id));
+          return '<div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--surface-2)">'
+            +'<div style="width:38px;height:38px;border-radius:11px;background:var(--surface-2);display:flex;align-items:center;justify-content:center;flex-shrink:0">'+svg(IC.doc,{c:TEAL,w:1.9,s:18})+'</div>'
+            +'<div style="flex:1;min-width:0"><div style="font-size:14.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(it.name)+'</div>'+(meta?'<div style="font-size:12px;color:var(--text-soft);margin-top:2px">'+esc(meta)+'</div>':'')+'</div>'
+            +'<button data-act="docDownload" data-arg="'+esc(String(it.id))+'"'+(loading?' disabled':'')+' aria-label="Herunterladen" style="flex-shrink:0;width:40px;height:40px;border-radius:11px;border:none;background:var(--surface-2);color:'+TEAL+';display:flex;align-items:center;justify-content:center;cursor:pointer">'+(loading?'<span style="font-size:13px;font-weight:800;color:'+TEAL+'">…</span>':svg('<path d="M12 3v12M7 11l5 5 5-5M5 21h14"></path>',{c:TEAL,w:2,s:18}))+'</button>'
+            +'</div>';
+        }).join('')
+      : '<div style="font-size:13.5px;color:var(--text-muted);padding:6px 0 2px;line-height:1.5">Für dich sind aktuell keine Dokumente hinterlegt.</div>';
+    var msg=S.docMsg?'<div style="font-size:13px;font-weight:700;text-align:center;margin-top:12px;color:'+(S.docErr?'var(--err-fg)':'var(--teal-ink)')+'">'+esc(S.docMsg)+'</div>':'';
+    var up='<label style="display:flex;align-items:center;justify-content:center;gap:9px;margin-top:14px;padding:14px;border:1.5px dashed #c2d3d6;border-radius:13px;background:var(--surface-2);color:'+TEAL+';font-weight:800;font-size:14.5px;cursor:pointer">'
+      +svg('<path d="M12 3v12M7 8l5-5 5 5M5 21h14"></path>',{c:TEAL,w:2,s:18})
+      +'<span>'+(S.docUpBusy?'Wird hochgeladen …':'Dokument hochladen')+'</span>'
+      +'<input type="file" accept="application/pdf,image/*"'+(S.docUpBusy?' disabled':'')+' onchange="window.__docUpload(this)" style="display:none"></label>';
+    return '<div class="card" style="padding:20px;margin-top:14px">'
+      +'<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px"><div style="width:34px;height:34px;border-radius:10px;background:var(--surface-2);display:flex;align-items:center;justify-content:center;flex-shrink:0">'+svg(IC.doc,{c:TEAL,w:1.9,s:18})+'</div><div style="font-size:17px;font-weight:900;letter-spacing:-.3px">Meine Dokumente</div></div>'
+      +'<div style="font-size:13px;color:var(--text-muted);line-height:1.5;margin-bottom:8px">Deine hinterlegten Dokumente – z. B. Vertrag oder Bescheinigungen. Du kannst auch selbst ein Dokument hochladen.</div>'
+      +'<div>'+list+'</div>'
+      +up+msg
+      +'</div>';
   }
   function okBox(t){ return '<div class="ok" style="margin-bottom:14px">'+svg(IC.check,{c:'var(--ok-fg)',w:2.1,s:18})+'<span>'+esc(t)+'</span></div>'; }
   function noteBox(t){ return '<div style="display:flex;align-items:center;gap:9px;background:var(--err-bg);border-radius:14px;padding:12px 14px;margin-bottom:14px">'+svg('<circle cx="12" cy="12" r="9"></circle><path d="M12 8v4M12 16h.01"></path>',{c:'var(--err-fg)',w:2,s:18})+'<span style="font-size:13px;color:var(--err-fg);font-weight:700">'+esc(t)+'</span></div>'; }
@@ -2578,6 +2635,31 @@
     // contract
     contractCopy:function(){ if(S.ccBusy) return; setQuiet({ccBusy:true,ccMsg:''});
       api('/api/member/contract-copy',{method:'POST',body:JSON.stringify({})}).then(function(d){ setS({ccBusy:false,ccMsg:d.message||(d.ok?'Gesendet.':'Versand fehlgeschlagen.')}); }).catch(function(){ setS({ccBusy:false,ccMsg:'Versand fehlgeschlagen.'}); }); },
+    // Dokument herunterladen: eigener fetch (Bearer-Header) statt api(), da die
+    // Antwort Rohbytes (Blob) ODER JSON {url} sein kann. JSON+url -> Link öffnen;
+    // Bytes -> Blob-Download; sonst Fehlermeldung. Bricht nie die App.
+    docDownload:function(a){
+      if(!a||S.docDlId) return;
+      var it=null, d=DATA.documents; if(d&&d.items){ for(var i=0;i<d.items.length;i++){ if(String(d.items[i].id)===String(a)){ it=d.items[i]; break; } } }
+      var nm=(it&&it.name)||'dokument';
+      setQuiet({docDlId:String(a),docMsg:'',docErr:false});
+      fetch('/api/member/documents?docId='+encodeURIComponent(a)+'&name='+encodeURIComponent(nm),{headers:headers(),cache:'no-store'})
+        .then(function(r){
+          if(r.status===401){ logout(); throw new Error('unauthorized'); }
+          var ct=(r.headers.get('content-type')||'');
+          if(/json/i.test(ct)){
+            return r.json().then(function(j){
+              if(j&&j.ok&&j.url){ try{ window.open(j.url,'_blank'); }catch(e){ try{ location.href=j.url; }catch(e2){} } setQuiet({docDlId:''}); }
+              else setS({docDlId:'',docErr:true,docMsg:(j&&j.message)||'Dokument konnte nicht geöffnet werden.'});
+            });
+          }
+          return r.blob().then(function(b){
+            try{ var u=URL.createObjectURL(b); var el=document.createElement('a'); el.href=u; el.download=nm; document.body.appendChild(el); el.click(); document.body.removeChild(el); setTimeout(function(){ try{ URL.revokeObjectURL(u); }catch(e){} },4000); setQuiet({docDlId:''}); }
+            catch(e){ setS({docDlId:'',docErr:true,docMsg:'Download nicht möglich.'}); }
+          });
+        })
+        .catch(function(){ setS({docDlId:'',docErr:true,docMsg:'Download nicht möglich.'}); });
+    },
     startCancel:function(){ loadCancelReasons(); setS({cancelStep:1,cancelReason:'',cancelReasonId:'',cancelDone:false,offerDone:'',pauseStep:0,pauseDone:false}); },
     pickReason:function(a){ setS({cancelReason:a}); },
     cancelNext:function(){ if(S.cancelStep<5) setS({cancelStep:S.cancelStep+1}); },
