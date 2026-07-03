@@ -297,7 +297,7 @@
 
   // ---- state ----
   var TOKEN = localStorage.getItem('fi_member_token') || sessionStorage.getItem('fi_member_token') || null;
-  var DATA = { profile:null, contract:null, checkins:null, appts:null, plan:null, planAgg:null, planAggTom:null, inbox:null, prefs:null, membershipActive:true, bookable:null, slots:null, account:null, blog:null, typical:null, hours:null, insta:null, live:null, pauseInfo:null, cancelReasons:null, documents:null };
+  var DATA = { profile:null, contract:null, checkins:null, appts:null, plan:null, planAgg:null, planAggTom:null, inbox:null, prefs:null, membershipActive:true, bookable:null, slots:null, account:null, blog:null, typical:null, hours:null, insta:null, live:null, pauseInfo:null, cancelReasons:null, documents:null, modules:null };
   // Erlaubte Screens für ehemalige Mitglieder (alles andere wird gesperrt)
   var FORMER_OK = ['home','checkins','help','postfach','settings','profil'];
   function isFormer(){ return DATA.membershipActive===false; }
@@ -309,6 +309,7 @@
     pauseReasonId:'', pauseTerm:1, pauseDoneVia:'', pauseDoneMsg:'',
     ccBusy:false, ccMsg:'',
     docUpBusy:false, docMsg:'', docErr:false, docDlId:'',
+    modMsg:'', modErr:false, modBusyId:'',
     checkinBusy:false, checkinOk:false, checkinMsg:'', checkedInAt:null, ciBusy:false, ciPopup:null, ciName:'', ciDur:'', atStudio:false, ciDistance:null, wifiBusy:false, wifiMsg:'',
     apptTab:'book', bookType:'', bookTypeTitle:'', bookDay:'', bookSlot:null, bookDone:false, bookErr:'', apptMsg:'', fallbackBook:false,
     helpSel:null, helpCat:'all', helpQ:'', helpShowAll:false,
@@ -445,7 +446,7 @@
     S.screen=s;
     if(s==='help'){ S.helpSel=null; S.helpCat='all'; S.helpQ=''; S.helpShowAll=false; S.aiPhase='idle'; S.aiQuery=''; S.aiAsked=''; S.aiAnswer=''; S.aiFeedback=null; S.ctOpen=false; S.ctSent=false; S.ctMsg=''; S.ctErr=''; S.artFb=null; }
     if(s==='postfach'){ S.pfSel=null; S.pfThread=false; S.pfErr=''; S.pfDraft=''; loadInbox(); }
-    if(s==='contract'){ S.cancelStep=0; S.pauseStep=0; S.pauseDone=false; S.offerDone=''; S.docMsg=''; S.docErr=false; loadDocuments(); }
+    if(s==='contract'){ S.cancelStep=0; S.pauseStep=0; S.pauseDone=false; S.offerDone=''; S.docMsg=''; S.docErr=false; S.modMsg=''; S.modErr=false; S.modBusyId=''; loadDocuments(); loadModules(); }
     if((s==='checkins'||s==='fort')&&!DATA.checkins) loadCheckins();
     if(s==='blog'){ S.blogSel=null; S.blogPost=null; loadBlog(); }
     if(s==='insta'){ S.instaSel=null; loadInsta(); maybeRefreshInsta(); }
@@ -489,6 +490,26 @@
   function loadDocuments(){ if(docsBusy) return; if(DATA.documents&&typeof DATA.documents==='object') return; docsBusy=true;
     api('/api/member/documents').then(function(d){ docsBusy=false; DATA.documents=(d&&d.ok&&d.available)?{available:true,items:(d.items||[])}:{available:false}; render(); })
       .catch(function(){ docsBusy=false; DATA.documents={available:false}; render(); }); }
+  // Zusatzmodule (Magicline Membership-Self-Service) einmal je Sitzung laden. 403/
+  // nicht verfügbar -> {available:false}; die UI blendet die Karte dann still aus und
+  // der bestehende Kontakt-/Beratungsweg bleibt als Fallback erhalten.
+  var modulesBusy=false;
+  function loadModules(){ if(modulesBusy) return; if(DATA.modules&&typeof DATA.modules==='object') return; modulesBusy=true;
+    api('/api/member/modules').then(function(d){ modulesBusy=false; DATA.modules=(d&&d.ok&&d.available)?{available:true,booked:(d.booked||[]),bookable:(d.bookable||[])}:{available:false}; render(); })
+      .catch(function(){ modulesBusy=false; DATA.modules={available:false}; render(); }); }
+  // Zusatzmodul buchen/kündigen: postet an /api/member/modules und lädt die Liste
+  // neu. Der Modulname wird aus DATA.modules nachgeschlagen (data-arg trägt nur die id).
+  function modAct(action,id){
+    if(!id||S.modBusyId) return;
+    var d=DATA.modules||{}; var pool=(action==='cancel')?(d.booked||[]):(d.bookable||[]);
+    var name=''; for(var i=0;i<pool.length;i++){ if(String(pool[i].id)===String(id)){ name=pool[i].name||''; break; } }
+    setQuiet({modBusyId:String(id),modMsg:'',modErr:false});
+    api('/api/member/modules',{method:'POST',body:JSON.stringify({action:action,moduleId:id,moduleName:name})})
+      .then(function(r){ var ok=!!(r&&r.ok);
+        setQuiet({modBusyId:'',modMsg:(r&&r.message)||(ok?'Erledigt.':'Das hat leider nicht geklappt.'),modErr:!ok});
+        if(ok){ DATA.modules=null; loadModules(); } })
+      .catch(function(){ setQuiet({modBusyId:'',modMsg:'Verbindung gerade nicht möglich. Bitte später erneut.',modErr:true}); });
+  }
   // ===== Standort-Ankunft (Vordergrund): erkennt, ob das Mitglied im Studio ist =====
   var STUDIO_LAT=49.7242701, STUDIO_LNG=6.6303178, GEO_RADIUS=160; // Meter (Auf Hirtenberg 8, 54296 Trier)
   function geoDist(la1,lo1,la2,lo2){ var R=6371000,rad=Math.PI/180; var dLa=(la2-la1)*rad,dLo=(lo2-lo1)*rad; var a=Math.sin(dLa/2)*Math.sin(dLa/2)+Math.cos(la1*rad)*Math.cos(la2*rad)*Math.sin(dLo/2)*Math.sin(dLo/2); return 2*R*Math.atan2(Math.sqrt(a),Math.sqrt(1-a)); }
@@ -1152,7 +1173,7 @@
     if(S.cancelStep>0) return head+funnel();
     // overview
     if(!c){
-      return head+'<div class="card" style="padding:30px 22px;text-align:center"><div style="width:60px;height:60px;border-radius:18px;background:var(--err-bg);display:flex;align-items:center;justify-content:center;margin:0 auto 16px">'+svg(IC.warn,{c:'var(--err-fg)',w:2,s:28})+'</div><div style="font-size:19px;font-weight:900;letter-spacing:-.3px">Vertragsdaten nicht verfügbar</div><div style="font-size:14px;color:var(--text-muted);margin-top:7px;line-height:1.55">Wir konnten keinen laufenden Vertrag automatisch zuordnen. Du kannst trotzdem pausieren oder kündigen – wir melden uns.</div>'+pauseBtn(20)+'<button class="btnDanger" data-act="startCancel" style="margin-top:12px">Mitgliedschaft kündigen</button><div style="font-size:12px;color:var(--text-soft);margin-top:14px">Oder ruf uns an: <b style="color:'+TEAL+'">0651 308524</b></div></div>'+(S.cancelDone?okBox('Deine Kündigung wurde eingereicht. Du erhältst eine Bestätigung per E-Mail.'):'')+(S.pauseDone?okBox('Deine Pause-Anfrage ist eingegangen.'):'')+docsCard();
+      return head+'<div class="card" style="padding:30px 22px;text-align:center"><div style="width:60px;height:60px;border-radius:18px;background:var(--err-bg);display:flex;align-items:center;justify-content:center;margin:0 auto 16px">'+svg(IC.warn,{c:'var(--err-fg)',w:2,s:28})+'</div><div style="font-size:19px;font-weight:900;letter-spacing:-.3px">Vertragsdaten nicht verfügbar</div><div style="font-size:14px;color:var(--text-muted);margin-top:7px;line-height:1.55">Wir konnten keinen laufenden Vertrag automatisch zuordnen. Du kannst trotzdem pausieren oder kündigen – wir melden uns.</div>'+pauseBtn(20)+'<button class="btnDanger" data-act="startCancel" style="margin-top:12px">Mitgliedschaft kündigen</button><div style="font-size:12px;color:var(--text-soft);margin-top:14px">Oder ruf uns an: <b style="color:'+TEAL+'">0651 308524</b></div></div>'+(S.cancelDone?okBox('Deine Kündigung wurde eingereicht. Du erhältst eine Bestätigung per E-Mail.'):'')+(S.pauseDone?okBox('Deine Pause-Anfrage ist eingegangen.'):'')+modulesCard()+docsCard();
     }
     var cancelled=!!c.cancelled;
     var msgs=(S.cancelDone?okBox('Deine Kündigung wurde verbindlich eingereicht. Du erhältst eine Bestätigung per E-Mail.'):'')+(S.withdrawDone?okBox(S.withdrawMsg||'Schön, dass du bleibst! Deine Kündigung ist zurückgezogen – deine Mitgliedschaft läuft ganz normal weiter.'):'')+(S.withdrawErr?noteBox(S.withdrawErr):'')+(S.revokeDone?okBox('Dein Widerruf ist eingegangen. Wir wickeln deinen Vertrag rück und bestätigen das per E-Mail.'):'');
@@ -1179,7 +1200,7 @@
     var actions = cancelled ? '' : (pauseBtn(0)+'<button class="btnDanger" data-act="startCancel">Mitgliedschaft kündigen</button>');
     var actionCard='<div class="card" style="padding:18px;margin-top:14px;display:flex;flex-direction:column;gap:10px">'+copyBtn+actions+'</div>';
     var dialog = S.withdrawConfirm ? withdrawDialog() : (S.revokeConfirm ? revokeDialog() : '');
-    return head+msgs+wd+box+actionCard+docsCard()+dialog;
+    return head+msgs+wd+box+actionCard+modulesCard()+docsCard()+dialog;
   }
   // "Meine Dokumente"-Karte. Zeigt die in Magicline hinterlegten Dokumente (Vertrag,
   // Bescheinigungen) + Upload. Bei available:false (403/nicht verfügbar) oder solange
@@ -1211,6 +1232,37 @@
       +'<div style="font-size:13px;color:var(--text-muted);line-height:1.5;margin-bottom:8px">Deine hinterlegten Dokumente – z. B. Vertrag oder Bescheinigungen. Du kannst auch selbst ein Dokument hochladen.</div>'
       +'<div>'+list+'</div>'
       +up+msg
+      +'</div>';
+  }
+  // „Zusatzmodule"-Karte: buchbare + gebuchte Zusatzleistungen der Mitgliedschaft.
+  // Lädt per /api/member/modules. Bei available:false (403/nicht verfügbar) ODER
+  // wenn es nichts anzuzeigen gibt, blendet sich die Karte still aus – der Wunsch-
+  // /Kontaktweg bleibt bestehen. Buchen/Kündigen postet an /api/member/modules und
+  // lädt die Liste neu; alle dynamischen Strings via esc().
+  function modulesCard(){
+    var d=DATA.modules;
+    if(!d||d.available!==true) return '';
+    var booked=d.booked||[], bookable=d.bookable||[];
+    if(!booked.length&&!bookable.length) return '';   // nichts anzubieten -> still ausblenden (kein leeres Gerüst)
+    function modRow(m,isBooked){
+      var busy=(String(S.modBusyId)===String(m.id));
+      var meta=[m.price,(isBooked?m.billingText:m.description)].filter(Boolean).join(' · ');
+      var btn=isBooked
+        ? '<button data-act="modCancel" data-arg="'+esc(String(m.id))+'"'+(busy?' disabled':'')+' style="flex-shrink:0;padding:9px 14px;border-radius:11px;border:1.5px solid #e3b8b1;background:var(--surface);color:var(--err-fg);font-weight:700;font-size:13.5px;cursor:pointer">'+(busy?'…':'Kündigen')+'</button>'
+        : '<button data-act="modBook" data-arg="'+esc(String(m.id))+'"'+(busy?' disabled':'')+' style="flex-shrink:0;padding:9px 14px;border-radius:11px;border:none;background:'+TEALBG+';color:#fff;font-weight:800;font-size:13.5px;cursor:pointer">'+(busy?'…':'Hinzubuchen')+'</button>';
+      return '<div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--surface-2)">'
+        +'<div style="flex:1;min-width:0"><div style="font-size:14.5px;font-weight:700">'+esc(m.name)+'</div>'+(meta?'<div style="font-size:12px;color:var(--text-soft);margin-top:2px;line-height:1.4">'+esc(meta)+'</div>':'')+'</div>'
+        +btn+'</div>';
+    }
+    var sections='';
+    if(booked.length) sections+='<div style="font-size:12px;font-weight:700;color:var(--text-soft);text-transform:uppercase;letter-spacing:.5px;margin:8px 2px 2px">Gebuchte Module</div>'+booked.map(function(m){return modRow(m,true);}).join('');
+    if(bookable.length) sections+='<div style="font-size:12px;font-weight:700;color:var(--text-soft);text-transform:uppercase;letter-spacing:.5px;margin:'+(booked.length?'14px':'8px')+' 2px 2px">Buchbare Module</div>'+bookable.map(function(m){return modRow(m,false);}).join('');
+    var msg=S.modMsg?'<div style="font-size:13px;font-weight:700;text-align:center;margin-top:12px;color:'+(S.modErr?'var(--err-fg)':'var(--teal-ink)')+'">'+esc(S.modMsg)+'</div>':'';
+    var grid='<rect x="3" y="3" width="7" height="7" rx="1.5"></rect><rect x="14" y="3" width="7" height="7" rx="1.5"></rect><rect x="3" y="14" width="7" height="7" rx="1.5"></rect><rect x="14" y="14" width="7" height="7" rx="1.5"></rect>';
+    return '<div class="card" style="padding:20px;margin-top:14px">'
+      +'<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px"><div style="width:34px;height:34px;border-radius:10px;background:var(--surface-2);display:flex;align-items:center;justify-content:center;flex-shrink:0">'+svg(grid,{c:TEAL,w:1.9,s:18})+'</div><div style="font-size:17px;font-weight:900;letter-spacing:-.3px">Zusatzmodule</div></div>'
+      +'<div style="font-size:13px;color:var(--text-muted);line-height:1.5;margin-bottom:8px">Zusätzliche Leistungen zu deiner Mitgliedschaft – jederzeit hinzubuchen oder kündigen.</div>'
+      +'<div>'+sections+'</div>'+msg
       +'</div>';
   }
   function okBox(t){ return '<div class="ok" style="margin-bottom:14px">'+svg(IC.check,{c:'var(--ok-fg)',w:2.1,s:18})+'<span>'+esc(t)+'</span></div>'; }
@@ -2505,6 +2557,8 @@
     },
     planEdit:function(){ setQuiet({planEdit:true}); },
     planEditCancel:function(){ setQuiet({planEdit:false}); },
+    modBook:function(a){ modAct('book',a); },
+    modCancel:function(a){ modAct('cancel',a); },
     // Login per Face ID / Fingerabdruck (nur in der eigenen App): holt die sicher
     // im Gerät hinterlegte Sitzung nach erfolgreicher Biometrie-Prüfung.
     faceLogin:function(){
