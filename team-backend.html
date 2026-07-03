@@ -100,7 +100,11 @@ var S={ token:null, screen:'inbox', convs:[], counts:{}, selKey:null, sel:null,
         employees:null, employeesLoaded:false,
         editMember:false, edStreet:'', edHouse:'', edZip:'', edCity:'', editBusy:false, editMsg:'',
         aiBusy:false, aiUnavailable:false,
-        churn:null, dues:null };
+        churn:null, dues:null,
+        // Nachrichten: Rundnachricht (Broadcast)
+        bcSegment:'app', bcCount:null, bcCountLoading:false, bcTitle:'', bcBody:'', bcPush:true, bcEmail:false, bcBusy:false, bcResult:null,
+        // Nachrichten: Direktnachricht (Compose-Dialog)
+        dmOpen:false, dmMemberId:null, dmMemberName:'', dmTitle:'', dmBody:'', dmPush:true, dmEmail:false, dmBusy:false, dmResult:null };
 var root=document.getElementById('root');
 var stickBottom=true;   // Chat klebt am unteren Rand, solange der Nutzer nicht hochscrollt
 var lastThreadScroll=0; // letzte Scroll-Position (über Voll-Renders hinweg erhalten)
@@ -427,6 +431,7 @@ var IC={
   appts:'<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="3"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>',
   help:'<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>',
   stats:'<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 15l3.5-4 3 3L21 7"/></svg>',
+  msg:'<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l18-5v12L3 14z"/><path d="M11.5 16.5a3 3 0 0 1-5.6-1.5"/></svg>',
   logout:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>',
   back:'<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#0a4958" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>',
   send:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4z"/></svg>',
@@ -457,6 +462,7 @@ function renderShell(content, title, sub){
       navItem('appts','Termine',IC.appts, apptOpen||'')+
       navItem('help','Hilfe-Artikel',IC.help)+
       navItem('stats','Statistiken',IC.stats)+
+      navItem('msg','Nachrichten',IC.msg)+
     '</nav>'+
     '<div style="border-top:1px solid rgba(255,255,255,.10);margin-top:10px;padding-top:10px">'+
       '<button class="navbtn" data-toapp="1" style="display:flex;align-items:center;gap:13px;padding:11px 13px;border:none;border-radius:11px;font-weight:600;font-size:13.5px;background:transparent;color:#9fc3ca;width:100%;text-align:left;margin-bottom:3px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg><span>Zur Mitglieder-App</span></button>'+
@@ -494,7 +500,7 @@ function renderShell(content, title, sub){
     {k:'dash',l:'Übersicht',ic:IC.dash,on:sc==='dash'},
     {k:'inbox',l:'Posteingang',ic:IC.inbox,on:(sc==='inbox'||sc==='thread'),badge:open},
     {k:'members',l:'Mitglieder',ic:IC.members,on:(sc==='members'||sc==='profile')},
-    {k:'__more',l:'Mehr',ic:IC.dots,on:(['appts','help','stats'].indexOf(sc)>=0)}
+    {k:'__more',l:'Mehr',ic:IC.dots,on:(['appts','help','stats','msg'].indexOf(sc)>=0)}
   ];
   var bnav=el('<nav class="bottomnav" style="align-items:stretch;padding:5px 4px calc(5px + env(safe-area-inset-bottom,0px))"></nav>');
   bnav.innerHTML=bnDefs.map(function(it){ var c=it.on?'#0a4958':'#9aa6aa';
@@ -511,7 +517,7 @@ function renderShell(content, title, sub){
   side.querySelector('[data-logout]').onclick=logout;
   var toApp=side.querySelector('[data-toapp]'); if(toApp) toApp.onclick=function(){ location.assign('/mitglieder'); };
   var bg=head.querySelector('[data-burger]'); if(bg) bg.onclick=function(){ S.navOpen=true; render(); };
-  head.querySelector('[data-refresh]').onclick=function(){ if(S.screen==='members') loadMembers(); else if(S.screen==='inbox'||S.screen==='appts') loadInbox(); else if(S.screen==='help') loadArticles(); else if(S.screen==='stats') loadStats(); else render(); };
+  head.querySelector('[data-refresh]').onclick=function(){ if(S.screen==='members') loadMembers(); else if(S.screen==='inbox'||S.screen==='appts') loadInbox(); else if(S.screen==='help') loadArticles(); else if(S.screen==='stats') loadStats(); else if(S.screen==='msg') loadBroadcastCount(); else render(); };
   var bell=head.querySelector('[data-bell]'); if(bell) bell.onclick=function(){ goScreen('inbox'); };
 }
 
@@ -1045,6 +1051,9 @@ function membersNode(){
         '<div style="width:62px;height:62px;border-radius:50%;background:#fff;color:#0a4958;font-weight:900;font-size:21px;display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 6px 18px rgba(4,33,40,.22)">'+esc(p.initials)+'</div>'+
         '<div style="flex:1;min-width:0"><div style="display:flex;align-items:center;gap:11px;flex-wrap:wrap"><div style="font-size:22px;font-weight:900;letter-spacing:-.6px;color:#fff">'+esc(p.name)+'</div><span style="font-size:11.5px;font-weight:800;color:'+statusCol+';background:'+statusBg+';border-radius:20px;padding:4px 12px">'+statusLabel+'</span></div>'+
           '<div style="font-size:13px;color:#aed0d6;font-weight:600;margin-top:4px">'+esc(p.nr||'—')+(ct.rateName?' · '+esc(ct.rateName):'')+(ct.startDate?' · seit '+esc(ct.startDate):'')+'</div></div></div>'+
+      '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px">'+
+        '<button data-msgsend="1" style="display:inline-flex;align-items:center;gap:8px;border:none;border-radius:12px;background:'+TEAL+';color:#fff;font-size:13.5px;font-weight:800;padding:11px 16px;cursor:pointer">'+IC.send+'Nachricht senden</button>'+
+      '</div>'+
       '<div class="prof-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:18px;align-items:start">'+
         stammdatenCard(p)+
         profileCard('Vertrag', pRow('Tarif',ct.rateName)+pRow('Vertragsbeginn',ct.startDate)+pRow('Status',ct.active===false?'beendet':'aktiv')+pRow('Vertragsende',ct.endDate||(ct.cancelled?ct.cancellationDate:'läuft'))+pRow('Nächstmögl. Kündigung',ct.nextCancellationDate))+
@@ -1057,7 +1066,7 @@ function membersNode(){
       '<div style="margin-top:18px;background:#fff;border-radius:20px;box-shadow:0 14px 38px rgba(4,33,40,.09);padding:20px 24px"><div style="font-size:15px;font-weight:900;letter-spacing:-.2px;margin-bottom:4px;color:#15171B">Vorgangs-Historie</div>'+histRows+'</div>'+
       // DSGVO-Zone: bewusst dezent, ganz unten – Anonymisieren ist unwiderruflich.
       '<div style="margin-top:20px;display:flex;justify-content:flex-end;padding:0 2px"><button data-anon="1" style="display:inline-flex;align-items:center;gap:7px;border:1.5px solid #e3b8b1;background:#fff;color:#b5402f;border-radius:11px;font-size:12.5px;font-weight:800;padding:9px 14px;cursor:pointer"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#b5402f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>DSGVO: Mitglied anonymisieren</button></div>'+
-    '</div>';
+    '</div>'+dmModalHTML();
     setTimeout(function(){
       var b=wrap.querySelector('[data-back]'); if(b) b.onclick=backToMembers;
       wrap.querySelectorAll('[data-hist]').forEach(function(x){ x.onclick=function(){ S.screen='inbox'; openConv(x.getAttribute('data-hist')); }; });
@@ -1065,6 +1074,8 @@ function membersNode(){
       var ec=wrap.querySelector('[data-edcancel]'); if(ec) ec.onclick=function(){ S.editMember=false; S.editMsg=''; render(); };
       var es=wrap.querySelector('[data-edsave]'); if(es) es.onclick=function(){ saveMember(p.id); };
       var anb=wrap.querySelector('[data-anon]'); if(anb) anb.onclick=function(){ anonymiseMember(p); };
+      var ms=wrap.querySelector('[data-msgsend]'); if(ms) ms.onclick=function(){ openDirectMsg(p.id, p.name); };
+      wireDm(wrap);
     },0);
     return wrap;
   }
@@ -1121,6 +1132,151 @@ function apptsNode(){
     node.querySelectorAll('[data-open]').forEach(function(b){ b.onclick=function(){ S.screen='inbox'; openConv(b.getAttribute('data-open')); }; });
   },0);
   return node;
+}
+
+// ---------- Nachrichten: Rundnachricht (Broadcast) + Direktnachricht ----------
+var BCSEG=[
+  {k:'app',l:'App-Nutzer',d:'Alle mit App & Push-Freigabe'},
+  {k:'inactive',l:'Inaktive',d:'Aktiver Vertrag, ≥ 14 Tage nicht da'},
+  {k:'risk',l:'Risiko',d:'Erhöhtes Kündigungsrisiko'},
+  {k:'former',l:'Ehemalige',d:'Vertrag beendet oder gekündigt'}
+];
+function updateBroadcastCount(){
+  var c=document.getElementById('bccount'); if(!c) return;
+  c.innerHTML = S.bcCountLoading
+    ? '<span class="spin" style="width:15px;height:15px;border-width:2px"></span><span style="color:#8a929a;font-weight:700;font-size:13px">Empfänger werden ermittelt …</span>'
+    : (S.bcCount==null
+        ? '<span style="color:#8a929a;font-weight:700;font-size:13px">Empfängerzahl nicht verfügbar.</span>'
+        : '<span style="font-size:22px;font-weight:900;color:#0a4958">'+esc(String(S.bcCount))+'</span><span style="color:#6b7780;font-weight:700;font-size:13px">Empfänger'+(S.bcCount>=500?' (max. 500)':'')+'</span>');
+}
+async function loadBroadcastCount(){
+  var seg=S.bcSegment;
+  S.bcCountLoading=true; S.bcCount=null; updateBroadcastCount();
+  try{ var r=await tapi('/api/team/broadcast?segment='+encodeURIComponent(seg)); if(S.bcSegment===seg){ S.bcCount=(r&&r.ok)?r.count:null; } }
+  catch(e){ if(S.bcSegment===seg) S.bcCount=null; }
+  if(S.bcSegment===seg){ S.bcCountLoading=false; updateBroadcastCount(); }
+}
+function setBcSegment(k){ if(S.bcSegment===k) return; S.bcSegment=k; S.bcResult=null; render(); loadBroadcastCount(); }
+async function doSendBroadcast(){
+  if(S.bcBusy) return;
+  var title=(S.bcTitle||'').trim(), body=(S.bcBody||'').trim();
+  if(!title||!body){ alert('Bitte Titel und Text ausfüllen.'); return; }
+  if(!S.bcPush && !S.bcEmail){ alert('Bitte mindestens einen Kanal (Push oder E-Mail) wählen.'); return; }
+  var seg=(BCSEG.find(function(s){ return s.k===S.bcSegment; })||{}).l||S.bcSegment;
+  var n=(S.bcCount!=null)?S.bcCount:'?';
+  if(!window.confirm('Rundnachricht an Segment „'+seg+'“ ('+n+' Empfänger) senden?')) return;
+  S.bcBusy=true; S.bcResult=null; render();
+  try{
+    var r=await tapi('/api/team/broadcast',{method:'POST',body:{segment:S.bcSegment,title:title,body:body,channels:{push:!!S.bcPush,email:!!S.bcEmail}}});
+    S.bcBusy=false;
+    if(r && r.ok){ S.bcResult=r; S.bcTitle=''; S.bcBody=''; }
+    else { alert((r&&r.message)||'Rundnachricht konnte nicht gesendet werden.'); }
+  }catch(e){ S.bcBusy=false; alert('Verbindung fehlgeschlagen.'); }
+  render();
+}
+function msgNode(){
+  var node=el('<div class="scrl" style="flex:1;min-height:0;overflow-y:auto;padding:24px 28px 44px"></div>');
+  var segChips=BCSEG.map(function(s){ var a=S.bcSegment===s.k;
+    return '<button data-bcseg="'+esc(s.k)+'" style="text-align:left;border:1.5px solid '+(a?TEAL:'#dce3e4')+';background:'+(a?'#e7f1f3':'#fff')+';border-radius:14px;padding:13px 15px;cursor:pointer;min-width:0">'+
+      '<div style="font-size:14px;font-weight:800;color:'+(a?TEAL:'#15171B')+'">'+esc(s.l)+'</div>'+
+      '<div style="font-size:11.5px;color:#8a929a;font-weight:600;margin-top:3px;line-height:1.4">'+esc(s.d)+'</div></button>';
+  }).join('');
+  var res=S.bcResult;
+  var resultPanel=res
+    ? '<div style="margin-top:16px;background:#e7f6ec;border-radius:14px;padding:16px 18px">'+
+        '<div style="font-size:14px;font-weight:900;color:#1d7a3e">Rundnachricht gesendet</div>'+
+        '<div style="font-size:13px;color:#2a3338;font-weight:600;margin-top:5px;line-height:1.6">An '+esc(String(res.recipients))+' Empfänger · '+esc(String(res.pushSent))+' Push · '+esc(String(res.mailSent))+' E-Mail'+(res.capped?' · auf 500 begrenzt':'')+'</div></div>'
+    : '';
+  node.innerHTML='<div style="max-width:760px">'+
+    '<div style="background:#fff;border-radius:20px;box-shadow:0 12px 32px rgba(4,33,40,.08);padding:22px 24px">'+
+      '<div style="font-size:16px;font-weight:900;letter-spacing:-.3px;margin-bottom:3px">Rundnachricht</div>'+
+      '<div style="font-size:12.5px;color:#8a929a;font-weight:600;margin-bottom:16px;line-height:1.5">Sende eine Push-/E-Mail-Nachricht an ein Segment. Erreichbar sind uns bekannte Mitglieder: App-Nutzer mit Push und Mitglieder mit Vorgängen.</div>'+
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">'+segChips+'</div>'+
+      '<div id="bccount" style="display:flex;align-items:center;gap:8px;margin-top:14px;min-height:26px"></div>'+
+      '<div style="height:1px;background:#eef2f3;margin:16px 0"></div>'+
+      '<label style="display:block;font-size:12px;font-weight:800;color:#8a929a;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">Titel</label>'+
+      '<input id="bctitle" value="'+esc(S.bcTitle)+'" maxlength="120" placeholder="z. B. Neue Kurse ab Montag" style="width:100%;padding:12px 14px;border:1.5px solid #dce3e4;border-radius:12px;font-size:14.5px;background:#fbfcfc;margin-bottom:14px">'+
+      '<label style="display:block;font-size:12px;font-weight:800;color:#8a929a;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">Nachricht</label>'+
+      '<textarea id="bcbody" rows="5" maxlength="2000" placeholder="Deine Nachricht an die Mitglieder …" style="width:100%;padding:12px 14px;border:1.5px solid #dce3e4;border-radius:12px;font-size:14.5px;background:#fbfcfc;resize:vertical;line-height:1.5">'+esc(S.bcBody)+'</textarea>'+
+      '<div style="display:flex;gap:18px;margin-top:14px;flex-wrap:wrap">'+
+        '<label style="display:flex;align-items:center;gap:8px;font-size:14px;font-weight:700;cursor:pointer"><input type="checkbox" id="bcpush"'+(S.bcPush?' checked':'')+' style="width:18px;height:18px;accent-color:#0a4958">Push-Nachricht</label>'+
+        '<label style="display:flex;align-items:center;gap:8px;font-size:14px;font-weight:700;cursor:pointer"><input type="checkbox" id="bcemail"'+(S.bcEmail?' checked':'')+' style="width:18px;height:18px;accent-color:#0a4958">E-Mail</label>'+
+      '</div>'+
+      '<button data-bcsend="1"'+(S.bcBusy?' disabled':'')+' style="margin-top:18px;width:100%;padding:14px;border:none;border-radius:13px;background:'+TEAL+';color:#fff;font-size:15px;font-weight:800;cursor:pointer">'+(S.bcBusy?'Wird gesendet …':'Rundnachricht senden')+'</button>'+
+      resultPanel+
+    '</div>'+
+    '<div style="font-size:11.5px;color:#a9b1b6;font-weight:600;line-height:1.6;margin-top:14px;padding:0 4px">Push nur an Mitglieder mit App + Einwilligung. E-Mail nur an Mitglieder mit hinterlegter Adresse. Ohne vollständiges Verzeichnis (Scope MEMBER_LIST_READ) erreichen wir nur uns bekannte Mitglieder; die Sende-Menge ist auf 500 Empfänger begrenzt.</div>'+
+  '</div>';
+  setTimeout(function(){
+    node.querySelectorAll('[data-bcseg]').forEach(function(b){ b.onclick=function(){ setBcSegment(b.getAttribute('data-bcseg')); }; });
+    var t=node.querySelector('#bctitle'); if(t) t.oninput=function(){ S.bcTitle=t.value; };
+    var bd=node.querySelector('#bcbody'); if(bd) bd.oninput=function(){ S.bcBody=bd.value; };
+    var cp=node.querySelector('#bcpush'); if(cp) cp.onchange=function(){ S.bcPush=cp.checked; };
+    var ce=node.querySelector('#bcemail'); if(ce) ce.onchange=function(){ S.bcEmail=ce.checked; };
+    var sb=node.querySelector('[data-bcsend]'); if(sb) sb.onclick=doSendBroadcast;
+    updateBroadcastCount();
+    if(S.bcCount==null && !S.bcCountLoading) loadBroadcastCount();
+  },0);
+  return node;
+}
+
+// ---- Direktnachricht an ein Mitglied (Compose-Dialog aus dem Profil) ----
+function openDirectMsg(id,name){
+  S.dmMemberId=String(id); S.dmMemberName=name||''; S.dmTitle=''; S.dmBody='';
+  S.dmPush=true; S.dmEmail=false; S.dmBusy=false; S.dmResult=null; S.dmOpen=true;
+  render(); setTimeout(function(){ var t=document.getElementById('dmbody'); if(t) t.focus(); },30);
+}
+function closeDirectMsg(){ if(S.dmBusy) return; S.dmOpen=false; S.dmResult=null; render(); }
+async function doSendDirect(){
+  if(S.dmBusy||!S.dmMemberId) return;
+  var title=(S.dmTitle||'').trim(), body=(S.dmBody||'').trim();
+  if(!body){ alert('Bitte eine Nachricht eingeben.'); return; }
+  S.dmBusy=true; render();
+  try{
+    var r=await tapi('/api/team/message',{method:'POST',body:{memberId:S.dmMemberId,title:title,body:body,channels:{push:!!S.dmPush,email:!!S.dmEmail}}});
+    S.dmBusy=false;
+    if(r && r.ok){ S.dmResult=r; }
+    else { alert((r&&r.message)||'Nachricht konnte nicht zugestellt werden.'); }
+  }catch(e){ S.dmBusy=false; alert('Verbindung fehlgeschlagen.'); }
+  render();
+}
+function dmModalHTML(){
+  if(!S.dmOpen) return '';
+  var viaLabel={inbox:'Postfach',push:'Push',email:'E-Mail'};
+  var result=S.dmResult
+    ? '<div style="margin-top:14px;background:#e7f6ec;border-radius:12px;padding:13px 15px;font-size:13px;font-weight:700;color:#1d7a3e;line-height:1.5">Nachricht gesendet'+((S.dmResult.via&&S.dmResult.via.length)?' – zugestellt über '+S.dmResult.via.map(function(v){ return viaLabel[v]||v; }).join(', ')+'.':'. Sie erscheint im Postfach des Mitglieds.')+'</div>'
+    : '';
+  return '<div data-dmoverlay="1" style="position:fixed;inset:0;background:rgba(0,18,22,.5);z-index:70;display:flex;align-items:center;justify-content:center;padding:20px">'+
+    '<div data-dmcard="1" style="width:100%;max-width:460px;background:#fff;border-radius:20px;box-shadow:0 30px 70px rgba(0,0,0,.3);padding:22px 24px;max-height:90vh;overflow-y:auto">'+
+      '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:14px">'+
+        '<div style="min-width:0"><div style="font-size:16px;font-weight:900;letter-spacing:-.3px">Nachricht senden</div>'+
+          '<div style="font-size:12.5px;color:#8a929a;font-weight:600;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">an '+esc(S.dmMemberName||'Mitglied')+'</div></div>'+
+        '<button data-dmx="1" style="border:none;background:#f1f5f6;border-radius:9px;width:32px;height:32px;font-size:18px;line-height:1;color:#6b7780;cursor:pointer;flex-shrink:0">×</button></div>'+
+      '<input id="dmtitle" value="'+esc(S.dmTitle)+'" maxlength="160" placeholder="Betreff (optional)" style="width:100%;padding:11px 13px;border:1.5px solid #dce3e4;border-radius:11px;font-size:14px;background:#fbfcfc;margin-bottom:10px">'+
+      '<textarea id="dmbody" rows="4" maxlength="4000" placeholder="Deine Nachricht …" style="width:100%;padding:11px 13px;border:1.5px solid #dce3e4;border-radius:11px;font-size:14px;background:#fbfcfc;resize:vertical;line-height:1.5">'+esc(S.dmBody)+'</textarea>'+
+      '<div style="display:flex;gap:16px;margin-top:12px;flex-wrap:wrap">'+
+        '<label style="display:flex;align-items:center;gap:7px;font-size:13.5px;font-weight:700;cursor:pointer"><input type="checkbox" id="dmpush"'+(S.dmPush?' checked':'')+' style="width:17px;height:17px;accent-color:#0a4958">Push</label>'+
+        '<label style="display:flex;align-items:center;gap:7px;font-size:13.5px;font-weight:700;cursor:pointer"><input type="checkbox" id="dmemail"'+(S.dmEmail?' checked':'')+' style="width:17px;height:17px;accent-color:#0a4958">E-Mail</label>'+
+      '</div>'+
+      '<div style="font-size:11px;color:#a9b1b6;font-weight:600;margin-top:8px;line-height:1.5">Die Nachricht landet immer im Postfach. Push nur mit App + Einwilligung, E-Mail nur mit hinterlegter Adresse.</div>'+
+      result+
+      '<div style="display:flex;gap:9px;margin-top:16px">'+
+        '<button data-dmcancel="1" style="flex:1;border:1.5px solid #d6dee0;border-radius:11px;background:#fff;color:#42454b;font-weight:800;font-size:13.5px;padding:11px;cursor:pointer">'+(S.dmResult?'Schließen':'Abbrechen')+'</button>'+
+        '<button data-dmsend="1"'+(S.dmBusy?' disabled':'')+' style="flex:1;border:none;border-radius:11px;background:'+TEAL+';color:#fff;font-weight:800;font-size:13.5px;padding:11px;cursor:pointer">'+(S.dmBusy?'Sendet …':'Senden')+'</button>'+
+      '</div>'+
+    '</div></div>';
+}
+function wireDm(scope){
+  if(!S.dmOpen) return;
+  var ov=scope.querySelector('[data-dmoverlay]'); if(ov) ov.onclick=closeDirectMsg;
+  var card=scope.querySelector('[data-dmcard]'); if(card) card.onclick=function(e){ e.stopPropagation(); };
+  var x=scope.querySelector('[data-dmx]'); if(x) x.onclick=closeDirectMsg;
+  var cc=scope.querySelector('[data-dmcancel]'); if(cc) cc.onclick=closeDirectMsg;
+  var tt=scope.querySelector('#dmtitle'); if(tt) tt.oninput=function(){ S.dmTitle=tt.value; };
+  var bd=scope.querySelector('#dmbody'); if(bd) bd.oninput=function(){ S.dmBody=bd.value; };
+  var cp=scope.querySelector('#dmpush'); if(cp) cp.onchange=function(){ S.dmPush=cp.checked; };
+  var ce=scope.querySelector('#dmemail'); if(ce) ce.onchange=function(){ S.dmEmail=ce.checked; };
+  var sd=scope.querySelector('[data-dmsend]'); if(sd) sd.onclick=doSendDirect;
 }
 
 // ---------- Hilfe-Artikel ----------
@@ -1265,8 +1421,8 @@ function placeholderNode(title){
 // ---------- main render ----------
 function render(){
   if(!S.token){ renderLogin(); return; }
-  var titles={dash:'Übersicht',inbox:'Posteingang',members:'Mitglieder',appts:'Termine',help:'Hilfe-Artikel',stats:'Statistiken'};
-  var subs={dash:'Dein Studio auf einen Blick',inbox:'Alle Vorgänge & Anfragen',members:'Mitgliederverwaltung',appts:'Anfragen & Buchungen',help:'Wissensdatenbank verwalten',stats:'Auswertungen & Trends'};
+  var titles={dash:'Übersicht',inbox:'Posteingang',members:'Mitglieder',appts:'Termine',help:'Hilfe-Artikel',stats:'Statistiken',msg:'Nachrichten'};
+  var subs={dash:'Dein Studio auf einen Blick',inbox:'Alle Vorgänge & Anfragen',members:'Mitgliederverwaltung',appts:'Anfragen & Buchungen',help:'Wissensdatenbank verwalten',stats:'Auswertungen & Trends',msg:'Rundnachricht & Direktnachricht'};
   var content;
   if(S.screen==='inbox') content=inboxNode();
   else if(S.screen==='dash') content=dashNode();
@@ -1274,6 +1430,7 @@ function render(){
   else if(S.screen==='appts') content=apptsNode();
   else if(S.screen==='help') content=helpNode();
   else if(S.screen==='stats') content=statsNode();
+  else if(S.screen==='msg') content=msgNode();
   else content=placeholderNode(titles[S.screen]||'');
   renderShell(content, titles[S.screen]||'', subs[S.screen]||'');
 }
@@ -1284,6 +1441,7 @@ function goScreen(k){
   if(k==='appts' && !S.convs.length && !S.loading){ loadInbox(); return; }
   if(k==='help'){ S.helpView='list'; S.editor=null; if(!S.articlesLoaded){ loadArticles(); return; } }
   if(k==='stats'){ loadUtil(); loadStats(); return; }
+  if(k==='msg'){ S.bcResult=null; }
   render();
 }
 
