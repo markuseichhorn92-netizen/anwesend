@@ -119,7 +119,9 @@ var S={ token:null, screen:'inbox', convs:[], counts:{}, selKey:null, sel:null,
         // Termine: Studio-weite Wochenübersicht (best effort, blendet sich bei available:false aus)
         studioAppts:null, studioApptsLoaded:false, studioApptsAvailable:false,
         // Dokumente: im Mitgliedsprofil (Scope CUSTOMER_DOCUMENT_READ/WRITE, blendet sich bei available:false aus)
-        profileDocs:null, profileDocsLoading:false, profileDocsAvailable:false, docUploadBusy:false, docUploadMsg:'' };
+        profileDocs:null, profileDocsLoading:false, profileDocsAvailable:false, docUploadBusy:false, docUploadMsg:'',
+        // Zugangsmedium: im Mitgliedsprofil (Scope CUSTOMER_ACCESS_MEDIUM_WRITE, blendet sich bei available:false aus)
+        accessMedia:null, accessMediaLoading:false, accessMediaAvailable:false, accessMediumBusy:'' };
 var root=document.getElementById('root');
 var stickBottom=true;   // Chat klebt am unteren Rand, solange der Nutzer nicht hochscrollt
 var lastThreadScroll=0; // letzte Scroll-Position (über Voll-Renders hinweg erhalten)
@@ -333,10 +335,11 @@ async function openProfile(id){
   S.editMember=false; S.editMsg=''; S.editBusy=false;
   S.profileTags=[]; S.tagAddOpen=false; S.tagInput=''; S.tagBusy=false;
   S.profileDocs=null; S.profileDocsAvailable=false; S.profileDocsLoading=false; S.docUploadBusy=false; S.docUploadMsg='';
+  S.accessMedia=null; S.accessMediaAvailable=false; S.accessMediaLoading=false; S.accessMediumBusy='';
   S.profileLoading=true; S.profile=null; render();
   try{ var r=await tapi('/api/team/members?id='+encodeURIComponent(id)); if(r.ok) S.profile=r.profile; }
   catch(e){} S.profileLoading=false; render();
-  if(S.profile){ loadProfileTags(id); loadProfileDocs(id); }
+  if(S.profile){ loadProfileTags(id); loadProfileDocs(id); loadAccessMedia(id); }
 }
 // ---------- Mitglieder-Tags ----------
 // Tags des offenen Profils laden (GET ?memberId). Ohne Store -> leere Liste, kein Fehler.
@@ -522,6 +525,73 @@ function docsCard(p){
     body=rows+upload;
   }
   return '<div style="background:#fff;border-radius:18px;box-shadow:0 12px 32px rgba(4,33,40,.08);padding:20px 22px"><div style="font-size:15px;font-weight:900;margin-bottom:6px">Dokumente</div>'+body+'</div>';
+}
+
+// ---------- Zugangsmedium (Scope CUSTOMER_ACCESS_MEDIUM_WRITE) ----------
+// Zugangsmedien des offenen Profils laden (GET ?memberId). Ohne Scope/Endpunkt ->
+// available:false, die Karte blendet sich aus. Nie werfen.
+async function loadAccessMedia(id){
+  S.accessMediaLoading=true; render();
+  try{
+    var r=await tapi('/api/team/access-medium?memberId='+encodeURIComponent(id));
+    if(r&&r.ok&&r.available){ S.accessMediaAvailable=true; S.accessMedia=r.items||[]; }
+    else { S.accessMediaAvailable=false; S.accessMedia=null; }
+  }catch(e){ S.accessMediaAvailable=false; S.accessMedia=null; }
+  S.accessMediaLoading=false; render();
+}
+// Aktion sperren/entsperren/ausgeben. write-first serverseitig; via:'fallback'
+// bedeutet, der Wunsch ging (statt direkt) ans Studio – kurze Rückmeldung + neu laden.
+async function accessMediumAction(memberId, action, medium){
+  if(S.accessMediumBusy) return;
+  var b={ memberId:memberId, action:action };
+  if(action==='block'||action==='unblock'){ if(!medium) return; b.mediumId=medium.id; if(medium.label) b.label=medium.label; }
+  if(action==='issue'){
+    var num=window.prompt('Nummer des neuen Zugangsmediums (optional – leer lassen, wenn das Studio sie vergibt):','');
+    if(num===null) return;                 // abgebrochen
+    num=(num||'').trim(); if(num) b.number=num;
+  }
+  S.accessMediumBusy = (action==='issue') ? 'issue' : String(medium.id); render();
+  var r=null;
+  try{ r=await tapi('/api/team/access-medium',{method:'POST',body:b}); }catch(e){}
+  S.accessMediumBusy='';
+  if(r&&r.ok){
+    if(r.via==='fallback'&&r.message) alert(r.message);   // Wunsch ans Studio übergeben
+    loadAccessMedia(memberId);
+  } else { alert((r&&r.message)||'Aktion nicht möglich.'); render(); }
+}
+// Zugangsmedium-Karte im Profil. Bei available:false -> '' (Karte ausgeblendet).
+function accessMediumCard(p){
+  if(!S.accessMediaAvailable && !S.accessMediaLoading) return '';
+  var body;
+  if(S.accessMediaLoading && S.accessMedia==null){
+    body='<div style="padding:8px 0;text-align:center"><span class="spin" style="width:18px;height:18px;border-width:2px"></span></div>';
+  } else {
+    var media=S.accessMedia||[];
+    var rows=media.length
+      ? media.map(function(x){
+          var blocked=(String(x.status)==='gesperrt');
+          var bc=blocked?'#b53a2c':'#1d7a3e', bb=blocked?'#fbeae7':'#e7f6ec', bl=blocked?'Gesperrt':'Aktiv';
+          var busy=(S.accessMediumBusy===String(x.id));
+          var act=blocked?'unblock':'block', actLabel=blocked?'Entsperren':'Sperren';
+          var typeLine=x.type?('<div style="font-size:11.5px;color:#8a929a;font-weight:600">'+esc(x.type)+'</div>'):'';
+          return '<div style="display:flex;align-items:center;gap:11px;padding:10px 0;border-top:1px solid #f0f3f4">'+
+            '<span style="width:34px;height:34px;border-radius:10px;background:#e7f1f3;color:#0a4958;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20"/></svg></span>'+
+            '<div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:700;color:#15171B;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(x.label)+'</div>'+typeLine+'</div>'+
+            '<span style="font-size:11px;font-weight:800;color:'+bc+';background:'+bb+';border-radius:20px;padding:4px 11px;flex-shrink:0">'+bl+'</span>'+
+            '<button data-amaction="'+esc(act)+'" data-amid="'+esc(String(x.id))+'"'+(busy?' disabled':'')+' style="border:1.5px solid '+(blocked?'#bcd7c4':'#e3b8b1')+';border-radius:9px;background:#fff;color:'+(blocked?'#1d7a3e':'#b5402f')+';font-size:12px;font-weight:800;padding:6px 12px;cursor:pointer;flex-shrink:0">'+(busy?'…':actLabel)+'</button>'+
+          '</div>';
+        }).join('')
+      : '<div style="font-size:12.5px;color:#a9b1b6;font-weight:600;padding:4px 0">Kein Zugangsmedium hinterlegt.</div>';
+    var issueBusy=(S.accessMediumBusy==='issue');
+    var issue='<div style="margin-top:12px;padding-top:12px;border-top:1px solid #f0f3f4">'+
+      '<button data-amissue="1"'+(issueBusy?' disabled':'')+' style="display:inline-flex;align-items:center;gap:7px;border:1.5px dashed #c2ccce;border-radius:10px;background:#fff;color:#0a4958;font-weight:800;font-size:12.5px;padding:9px 14px;cursor:'+(issueBusy?'default':'pointer')+'">'+
+        (issueBusy?'<span class="spin" style="width:14px;height:14px;border-width:2px"></span>Wird ausgegeben …':'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#0a4958" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>Neues Medium ausgeben')+
+      '</button>'+
+      '<div style="font-size:11px;color:#a9b1b6;font-weight:600;margin-top:7px">Chip / Karte / Band sperren, entsperren oder neu zuweisen.</div>'+
+    '</div>';
+    body=rows+issue;
+  }
+  return '<div style="background:#fff;border-radius:18px;box-shadow:0 12px 32px rgba(4,33,40,.08);padding:20px 22px"><div style="font-size:15px;font-weight:900;margin-bottom:6px">Zugangsmedium</div>'+body+'</div>';
 }
 
 // ---------- Dubletten-Prüfung ----------
@@ -1447,6 +1517,7 @@ function membersNode(){
         koerpermasseCard(p.measurements)+
         profileCard('Termine', apptRows)+
         docsCard(p)+
+        accessMediumCard(p)+
       '</div>'+
       '<div style="margin-top:18px;background:#fff;border-radius:20px;box-shadow:0 14px 38px rgba(4,33,40,.09);padding:20px 24px"><div style="font-size:15px;font-weight:900;letter-spacing:-.2px;margin-bottom:4px;color:#15171B">Vorgangs-Historie</div>'+histRows+'</div>'+
       // DSGVO-Zone: bewusst dezent, ganz unten – Anonymisieren ist unwiderruflich.
@@ -1471,6 +1542,9 @@ function membersNode(){
       // Dokumente: Ansehen (Download) + Upload (Datei -> base64 -> POST).
       wrap.querySelectorAll('[data-docdl]').forEach(function(b){ b.onclick=function(){ downloadDoc(p.id, b.getAttribute('data-docdl'), b.getAttribute('data-docname')); }; });
       var du=wrap.querySelector('#docupload'); if(du) du.onchange=function(){ if(du.files&&du.files[0]) uploadDocFile(p.id, du.files[0]); };
+      // Zugangsmedium: Sperren/Entsperren je Medium + „Neues Medium ausgeben".
+      wrap.querySelectorAll('[data-amaction]').forEach(function(b){ b.onclick=function(){ var id=b.getAttribute('data-amid'); var med=null; (S.accessMedia||[]).forEach(function(x){ if(String(x.id)===String(id)) med=x; }); accessMediumAction(p.id, b.getAttribute('data-amaction'), med); }; });
+      var ami=wrap.querySelector('[data-amissue]'); if(ami) ami.onclick=function(){ accessMediumAction(p.id, 'issue', null); };
       wireDm(wrap);
     },0);
     return wrap;
