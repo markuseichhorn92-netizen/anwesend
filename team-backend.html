@@ -100,7 +100,7 @@ var S={ token:null, screen:'inbox', convs:[], counts:{}, selKey:null, sel:null,
         employees:null, employeesLoaded:false,
         editMember:false, edStreet:'', edHouse:'', edZip:'', edCity:'', editBusy:false, editMsg:'',
         aiBusy:false, aiUnavailable:false,
-        churn:null };
+        churn:null, dues:null };
 var root=document.getElementById('root');
 var stickBottom=true;   // Chat klebt am unteren Rand, solange der Nutzer nicht hochscrollt
 var lastThreadScroll=0; // letzte Scroll-Position (über Voll-Renders hinweg erhalten)
@@ -834,6 +834,32 @@ function churnCardHTML(){
     }).join('')+
     '</div></div>';
 }
+// Offene Beiträge / Mahn-Liste. Wird KOMPLETT ausgeblendet, wenn kein Mitglied
+// mit offenem Betrag / in Mahnung / Inkasso vorliegt (leer/Fehler) – kein leeres Gerüst.
+function duesCardHTML(){
+  var list=(S.dues||[]).filter(function(m){ return m && (m.inDebtCollection || (m.dunningLevel||0)>0 || (m.openCount||0)>0 || (m.openTotal||0)>0); });
+  if(!list.length) return '';
+  return '<div style="margin-top:18px;background:#fff;border-radius:20px;box-shadow:0 12px 32px rgba(4,33,40,.09);padding:18px 18px 8px">'+
+    '<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">'+
+      '<div style="width:32px;height:32px;border-radius:10px;background:#fbf0e3;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#b5631f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1v22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></div>'+
+      '<div style="min-width:0"><div style="font-size:14px;font-weight:900;color:#15171B;letter-spacing:-.2px">Offene Beiträge</div>'+
+      '<div style="font-size:11.5px;color:#8a929a;font-weight:600">'+list.length+' mit Rückstand · gezielt nachfassen</div></div>'+
+    '</div>'+
+    '<div style="display:flex;flex-direction:column">'+
+    list.map(function(m){
+      var badge,bc,bb;
+      if(m.inDebtCollection){ badge='Inkasso'; bc='#b53a2c'; bb='#fbeae7'; }
+      else if((m.dunningLevel||0)>0){ badge='Mahnstufe '+m.dunningLevel; bc='#b5631f'; bb='#fbefe2'; }
+      else { badge='offen'; bc='#b5631f'; bb='#fbefe2'; }
+      var sub=money(m.openTotal,m.currency)+(m.openCount?(' · '+esc(String(m.openCount))+' Posten'):'');
+      return '<div class="lrow" data-duesprof="'+esc(m.id)+'" style="display:flex;align-items:center;gap:11px;padding:11px 4px;border-top:1px solid #f0f3f4;cursor:pointer">'+
+        '<div style="width:36px;height:36px;border-radius:50%;background:#dfe9eb;color:#0a4958;font-weight:800;font-size:12px;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+esc(m.initials||'·')+'</div>'+
+        '<div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:800;color:#15171B;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(m.name)+(m.nr?' · '+esc(m.nr):'')+'</div>'+
+          '<div style="font-size:12px;color:#8a929a;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+sub+'</div></div>'+
+        '<span style="font-size:12.5px;font-weight:900;color:'+bc+';background:'+bb+';padding:4px 10px;border-radius:11px;flex-shrink:0">'+esc(badge)+'</span></div>';
+    }).join('')+
+    '</div></div>';
+}
 function dashNode(){
   var open=S.counts.open||0, neu=S.counts.neu||0;
   var attn=S.convs.filter(function(c){ return c.teamStatus!=='abgeschlossen'; })
@@ -870,7 +896,7 @@ function dashNode(){
         '</div>'+
       '</div>'+
       // rechts: Live-Auslastung + Risiko-Mitglieder (Churn-Radar)
-      '<div style="margin-top:24px">'+auslastungCardHTML()+churnCardHTML()+'</div>'+
+      '<div style="margin-top:24px">'+auslastungCardHTML()+churnCardHTML()+duesCardHTML()+'</div>'+
     '</div>'+
     // unten volle Breite: Letzte Aktivität
     '<div style="font-size:14px;font-weight:900;color:#15171B;letter-spacing:-.2px;margin:24px 2px 12px">Letzte Aktivität</div>'+
@@ -882,6 +908,7 @@ function dashNode(){
     var gi=wrap.querySelector('[data-goinbox]'); if(gi) gi.onclick=function(){ S.screen='inbox'; render(); };
     wrap.querySelectorAll('[data-gokpi]').forEach(function(b){ b.onclick=function(){ S.filter=b.getAttribute('data-gokpi')||'open'; S.screen='inbox'; render(); }; });
     wrap.querySelectorAll('[data-churnprof]').forEach(function(b){ b.onclick=function(){ var id=b.getAttribute('data-churnprof'); if(id){ S.screen='members'; openProfile(id); } }; });
+    wrap.querySelectorAll('[data-duesprof]').forEach(function(b){ b.onclick=function(){ var id=b.getAttribute('data-duesprof'); if(id){ S.screen='members'; openProfile(id); } }; });
   },0);
   return wrap;
 }
@@ -1109,6 +1136,8 @@ async function loadStats(){ S.statsLoading=true; render(); try{ var r=await tapi
 async function loadUtil(){ try{ var r=await fetch('/api/auslastung').then(function(x){return x.json();}); if(r && (r.count!=null||r.percent!=null)){ S.util=r; render(); } }catch(e){} }
 // Churn-Radar: Risiko-Mitglieder (degradiert still – Karte bleibt bei Fehler/leer aus).
 async function loadChurn(){ try{ var r=await tapi('/api/team/churn'); if(r && r.ok){ S.churn=r.members||[]; render(); } }catch(e){} }
+// Offene Beiträge / Mahn-Liste (degradiert still – Karte bleibt bei Fehler/leer aus).
+async function loadDues(){ try{ var r=await tapi('/api/team/dues'); if(r && r.ok){ S.dues=r.members||[]; render(); } }catch(e){} }
 
 function helpNew(){ S.editor={id:null,title:'',cat:'mitglied',body:'',status:'entwurf',views:0,helpfulYes:0,helpfulNo:0}; S.helpView='edit'; render(); }
 function helpEdit(id){ var a=null; for(var i=0;i<S.articles.length;i++) if(S.articles[i].id===id) a=S.articles[i]; if(a){ S.editor=Object.assign({},a); S.helpView='edit'; render(); } }
@@ -1250,7 +1279,7 @@ function render(){
 }
 function goScreen(k){
   S.screen=k; S.navOpen=false;
-  if(k==='dash'){ loadUtil(); loadChurn(); if(!S.convs.length && !S.loading) loadInbox(); }
+  if(k==='dash'){ loadUtil(); loadChurn(); loadDues(); if(!S.convs.length && !S.loading) loadInbox(); }
   if(k==='members'){ S.profile=null; if(!S.membersLoaded){ loadMembers(); return; } }
   if(k==='appts' && !S.convs.length && !S.loading){ loadInbox(); return; }
   if(k==='help'){ S.helpView='list'; S.editor=null; if(!S.articlesLoaded){ loadArticles(); return; } }
