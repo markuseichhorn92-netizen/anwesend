@@ -1331,6 +1331,34 @@ function zusatzinfoCard(z){
   if(!z || !z.available || !(z.fields&&z.fields.length)) return '';
   return profileCard('Zusatzinfos', z.fields.map(function(f){ return pRow(f.name,f.value); }).join(''));
 }
+// Körpermaße/Fortschritt-Karte (Scope CUSTOMER_MEASUREMENT_READ). Fehlt der Scope
+// oder gibt es keine Messungen -> measurements.available!==true bzw. leer -> Karte ausblenden.
+function measDateFmt(s){
+  if(!s) return '';
+  var d=new Date(s); if(isNaN(d.getTime())) return esc(String(s).slice(0,10));
+  var p=function(n){return (n<10?'0':'')+n;};
+  return p(d.getDate())+'.'+p(d.getMonth()+1)+'.'+d.getFullYear();
+}
+function measValRow(v){
+  var unit=v.unit?(' '+esc(v.unit)):'';
+  return '<div style="display:flex;justify-content:space-between;gap:16px;padding:9px 0;border-bottom:1px solid #f0f3f4"><span style="font-size:13.5px;color:#6b7780;font-weight:600">'+esc(v.label)+'</span><span style="font-size:13.5px;font-weight:700;text-align:right">'+esc(v.value)+unit+'</span></div>';
+}
+function koerpermasseCard(m){
+  if(!m || m.available!==true || !(m.items&&m.items.length)) return '';
+  var latest=m.items[0];
+  var head='<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px"><span style="font-size:15px;font-weight:900">Körpermaße / Fortschritt</span>'+(latest.date?'<span style="font-size:11.5px;font-weight:800;color:#0a4958;background:#e7f1f3;border-radius:20px;padding:4px 11px;flex-shrink:0">'+esc(measDateFmt(latest.date))+'</span>':'')+'</div>';
+  var body=(latest.values||[]).map(measValRow).join('');
+  var older=m.items.slice(1);
+  var more='';
+  if(older.length){
+    more='<details style="margin-top:10px"><summary style="cursor:pointer;font-size:12.5px;font-weight:800;color:#0a4958;padding:6px 0">Frühere Messungen ('+older.length+')</summary>'+
+      older.map(function(e){
+        return '<div style="margin-top:8px;padding-top:8px;border-top:1px solid #eef1f2"><div style="font-size:12px;font-weight:800;color:#8a929a;margin-bottom:2px">'+esc(measDateFmt(e.date)||'—')+'</div>'+(e.values||[]).map(measValRow).join('')+'</div>';
+      }).join('')+
+    '</details>';
+  }
+  return '<div style="background:#fff;border-radius:18px;box-shadow:0 12px 32px rgba(4,33,40,.08);padding:20px 22px">'+head+body+more+'</div>';
+}
 // Stammdaten-Karte mit Bearbeiten (Adresse via Magicline schreibbar).
 function stammdatenCard(p){
   if(S.editMember){
@@ -1416,6 +1444,7 @@ function membersNode(){
         zahlstatusCard(p.account)+
         benefitsCard(p.benefits)+
         zusatzinfoCard(p.additionalInfo)+
+        koerpermasseCard(p.measurements)+
         profileCard('Termine', apptRows)+
         docsCard(p)+
       '</div>'+

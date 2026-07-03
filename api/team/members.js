@@ -113,6 +113,101 @@ async function additionalInfoOf(m) {
   } catch (e) { return { available: false }; }
 }
 
+// ── Körpermaße / Fortschritt (Scope CUSTOMER_MEASUREMENT_READ) ──
+// ANNAHME: Magicline liefert die erfassten Messwerte unter
+// GET /customers/{id}/measurements. Endpunkt UND Feldstruktur sind nicht sicher
+// dokumentiert, daher robust normalisieren: verschiedene Container- (Array/result/
+// measurements/items/content) und Datums-/Werte-Schreibweisen werden abgedeckt.
+// 403/404/Fehler/leere/unbekannte Form -> { available:false } -> UI blendet die Karte aus.
+const MEAS_MAX = 8;
+
+// Anzeigename + Einheit für gängige Messwert-Typen (Fallback: niceKey + keine Einheit).
+const MEAS_META = {
+  WEIGHT: { label: 'Gewicht', unit: 'kg' }, BODY_WEIGHT: { label: 'Gewicht', unit: 'kg' },
+  BODY_FAT: { label: 'Körperfett', unit: '%' }, BODYFAT: { label: 'Körperfett', unit: '%' },
+  BODY_FAT_PERCENTAGE: { label: 'Körperfett', unit: '%' }, FAT: { label: 'Körperfett', unit: '%' },
+  MUSCLE: { label: 'Muskelmasse', unit: 'kg' }, MUSCLE_MASS: { label: 'Muskelmasse', unit: 'kg' },
+  BMI: { label: 'BMI', unit: '' }, HEIGHT: { label: 'Größe', unit: 'cm' },
+  BODY_WATER: { label: 'Wasser', unit: '%' }, WATER: { label: 'Wasser', unit: '%' },
+  WAIST: { label: 'Taille', unit: 'cm' }, HIP: { label: 'Hüfte', unit: 'cm' },
+  CHEST: { label: 'Brust', unit: 'cm' }, ARM: { label: 'Arm', unit: 'cm' },
+  BICEPS: { label: 'Bizeps', unit: 'cm' }, THIGH: { label: 'Oberschenkel', unit: 'cm' },
+  CALF: { label: 'Wade', unit: 'cm' }, NECK: { label: 'Nacken', unit: 'cm' },
+  RESTING_HEART_RATE: { label: 'Ruhepuls', unit: 'bpm' },
+};
+
+// Datumsfeld einer Messung robust bestimmen (diverse Schreibweisen, sonst ISO-artiges Feld).
+function measDate(o) {
+  const keys = ['measurementDateTime', 'measurementDate', 'recordedDateTime', 'recordedDate', 'recordedAt', 'dateTime', 'date', 'createdDateTime', 'createdDate', 'created', 'timestamp'];
+  for (const k of keys) { if (o[k]) return String(o[k]); }
+  for (const k of Object.keys(o)) { const v = o[k]; if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v)) return v; }
+  return null;
+}
+
+// Einen Wert-Eintrag ({type/name/label, value, unit}) auf { label, value, unit } normalisieren.
+function measValue(v) {
+  if (v == null || typeof v !== 'object') return null;
+  const rawKey = v.type || v.key || v.measurementType || v.code || v.name || v.label || '';
+  const meta = MEAS_META[String(rawKey).toUpperCase().replace(/[\s-]+/g, '_')] || null;
+  const label = v.label || v.name || (meta && meta.label) || niceKey(rawKey);
+  let value = v.value != null ? v.value : (v.amount != null ? v.amount : (v.measurementValue != null ? v.measurementValue : null));
+  if (value == null || value === '' || !label) return null;
+  if (typeof value === 'number') value = Math.round(value * 100) / 100;
+  const unit = v.unit || v.unitOfMeasure || v.uom || (meta && meta.unit) || '';
+  return { label: String(label), value: String(value), unit: String(unit || '') };
+}
+
+// Fällt eine Messung „flach" aus (Werte als Felder statt Werte-Array), Skalarfelder ernten.
+function measValuesFromFlat(o) {
+  const skip = /(^id$|customer|member|date|time|created|updated|studio|note|comment|source|deleted|^_|type$|unit)/i;
+  const out = [];
+  for (const k of Object.keys(o)) {
+    if (skip.test(k)) continue;
+    const val = o[k];
+    if (val == null || val === '') continue;
+    if (typeof val === 'number' || (typeof val === 'string' && /^-?\d+([.,]\d+)?$/.test(val.trim()))) {
+      const mv = measValue({ type: k, value: val });
+      if (mv) out.push(mv);
+    } else if (val && typeof val === 'object' && !Array.isArray(val) && (val.value != null || val.amount != null)) {
+      const mv = measValue(Object.assign({ type: k }, val));
+      if (mv) out.push(mv);
+    }
+  }
+  return out;
+}
+
+async function measurementsOf(id) {
+  try {
+    const r = await M.ml('GET', '/customers/' + encodeURIComponent(id) + '/measurements');
+    if (!r || r.status !== 200 || !r.json) return { available: false };
+    const j = r.json;
+    const list = Array.isArray(j) ? j
+      : (Array.isArray(j.result) ? j.result
+      : (Array.isArray(j.measurements) ? j.measurements
+      : (Array.isArray(j.items) ? j.items
+      : (Array.isArray(j.content) ? j.content : null))));
+    if (!Array.isArray(list)) return { available: false };
+    const items = list.map((row) => {
+      if (!row || typeof row !== 'object') return null;
+      const arr = Array.isArray(row.values) ? row.values
+        : (Array.isArray(row.measurements) ? row.measurements
+        : (Array.isArray(row.items) ? row.items
+        : (Array.isArray(row.entries) ? row.entries
+        : (Array.isArray(row.results) ? row.results : null))));
+      const values = arr ? arr.map(measValue).filter(Boolean) : measValuesFromFlat(row);
+      if (!values.length) return null;
+      return { date: measDate(row), values };
+    }).filter(Boolean);
+    if (!items.length) return { available: false };
+    items.sort((a, b) => {
+      const da = a.date ? new Date(a.date).getTime() : 0;
+      const db = b.date ? new Date(b.date).getTime() : 0;
+      return (Number.isFinite(db) ? db : 0) - (Number.isFinite(da) ? da : 0);   // neueste zuerst
+    });
+    return { available: true, items: items.slice(0, MEAS_MAX) };
+  } catch (e) { return { available: false }; }
+}
+
 // Verzeichnis aus den Vorgängen (Mitglieder, mit denen wir Kontakt hatten).
 async function directory() {
   const all = await Inbox.listAll({ limit: 400 });
@@ -172,6 +267,9 @@ async function profile(id) {
   try { benefits = await customerBenefits(id); } catch (e) {}
   let additionalInfo = { available: false };
   try { additionalInfo = await additionalInfoOf(m); } catch (e) {}
+  // Körpermaße/Fortschritt (CUSTOMER_MEASUREMENT_READ) – degradiert zu available:false.
+  let measurements = { available: false };
+  try { measurements = await measurementsOf(id); } catch (e) {}
   const name = ((p.firstName || '') + ' ' + (p.lastName || '')).trim();
   const addr = [((p.street || '') + (p.houseNumber ? (' ' + p.houseNumber) : '')).trim(), ((p.zipCode || '') + ' ' + (p.city || '')).trim()].filter((s) => s).join(', ');
   return {
@@ -180,7 +278,7 @@ async function profile(id) {
     birthday: p.dateOfBirth || null, address: addr || null, ibanMasked: p.ibanMasked || null,
     street: p.street || '', houseNumber: p.houseNumber || '', zipCode: p.zipCode || '', city: p.city || '',
     contract: contract, appointments: appointments, history: history, account: account,
-    benefits: benefits, additionalInfo: additionalInfo,
+    benefits: benefits, additionalInfo: additionalInfo, measurements: measurements,
   };
 }
 
