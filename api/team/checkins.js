@@ -3,11 +3,11 @@
 /**
  * GET /api/team/checkins?id=<memberId>   (Team-Session erforderlich)
  * Vollständiger Check-in-Verlauf eines Mitglieds für das Team-Backend
- * (Ansicht + Grundlage der Anwesenheitsbestätigung). Nutzt den bereits
- * vorhandenen, 403-sicheren Server-Helfer M.recentCheckins (paginiert,
- * neueste zuerst). Fehlt der Scope (CHECKIN_READ), kommt eine leere Liste
- * zurück – die Karte zeigt dann einfach „0 Besuche". Wirft nie.
- *   -> { ok:true, checkins:[{ in, out, studio }] }
+ * (Ansicht + Grundlage der Anwesenheitsbestätigung). Nutzt M.checkinHistory,
+ * das die VOLLE Historie holt: Magicline liefert ohne Datumsangabe nur einen
+ * Monat, daher läuft der Helfer in <=365-Tage-Fenstern rückwärts. Fehlt der
+ * Scope (CHECKIN_READ), kommt eine leere Liste – die Karte zeigt „0 Besuche".
+ * Wirft nie.  ->  { ok:true, checkins:[{ in, out, studio }] }
  */
 
 const TA = require('../../lib/teamAuth');
@@ -24,8 +24,8 @@ module.exports = async function handler(req, res) {
   if (!id) { res.statusCode = 400; return res.end(JSON.stringify({ ok: false, error: 'missing_id' })); }
 
   try {
-    // Bis 200 Seiten à 50 (= 10.000 Check-ins), reicht für jeden Zeitraum. Sortiert neueste-zuerst.
-    const checkins = await M.recentCheckins(id, { pages: 200 });
+    // Volle Historie: läuft in <=365-Tage-Fenstern rückwärts. Sortiert neueste-zuerst.
+    const checkins = await M.checkinHistory(id, {});
     res.statusCode = 200;
     return res.end(JSON.stringify({ ok: true, checkins: checkins }));
   } catch (e) {
