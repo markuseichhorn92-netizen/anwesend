@@ -2665,7 +2665,7 @@
         if(!tok){ setS({busy:false}); return; }   // abgebrochen -> normaler Login bleibt
         TOKEN=tok;
         try{ localStorage.setItem('fi_member_token',TOKEN); localStorage.setItem('fi_remember','1'); }catch(e){}
-        return loadMe().then(function(){ loadAppts(); loadPlan(); loadPlanAgg(); loadInbox(); loadPrefs(); if(DATA.checkins===null) loadCheckins(); S.busy=false; nav('home'); });
+        return loadMe().then(function(){ loadAppts(); loadPlan(); loadPlanAgg(); loadInbox(); loadPrefs(); if(DATA.checkins===null) loadCheckins(); S.busy=false; nav('home'); if(NFC){ NFC=null; nfcArrive(); } });
       }).catch(function(){
         TOKEN=null; try{ localStorage.removeItem('fi_member_token'); sessionStorage.removeItem('fi_member_token'); }catch(e){}
         if(window.FitInnNative && FitInnNative.onLogout) FitInnNative.onLogout();
@@ -3006,17 +3006,35 @@
   });
 
   // ---- boot ----
-  function cleanMlt(){ try{ var u=new URL(window.location.href); var ch=false; ['mlt','go'].forEach(function(k){ if(u.searchParams.has(k)){ u.searchParams.delete(k); ch=true; } }); if(ch) window.history.replaceState({}, document.title, u.pathname+u.search+u.hash); }catch(e){} }
+  function cleanMlt(){ try{ var u=new URL(window.location.href); var ch=false; ['mlt','go','nfc'].forEach(function(k){ if(u.searchParams.has(k)){ u.searchParams.delete(k); ch=true; } }); if(ch) window.history.replaceState({}, document.title, u.pathname+u.search+u.hash); }catch(e){} }
   function magicGo(){ var g=null; try{ g=new URL(window.location.href).searchParams.get('go'); }catch(e){} return (g&&TITLES[g])?g:'home'; }
   function bootMagic(tok){
     S.screen='login'; render();
     var go=magicGo();
     fetch('/api/member/login-magic',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:tok,remember:true})})
       .then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j};});})
-      .then(function(x){ cleanMlt(); if(x.ok&&x.j.token){ TOKEN=x.j.token; localStorage.setItem('fi_member_token',TOKEN); localStorage.setItem('fi_remember','1'); return loadMe().then(function(){ loadAppts(); loadPlan(); loadPlanAgg(); loadInbox(); loadPrefs(); if(DATA.checkins===null) loadCheckins(); nav(go); }); } setS({loginErr:(x.j&&x.j.message)||'Der Anmelde-Link ist ungültig oder abgelaufen.'}); })
+      .then(function(x){ cleanMlt(); if(x.ok&&x.j.token){ TOKEN=x.j.token; localStorage.setItem('fi_member_token',TOKEN); localStorage.setItem('fi_remember','1'); return loadMe().then(function(){ loadAppts(); loadPlan(); loadPlanAgg(); loadInbox(); loadPrefs(); if(DATA.checkins===null) loadCheckins(); nav(go); if(NFC){ NFC=null; nfcArrive(); } }); } setS({loginErr:(x.j&&x.j.message)||'Der Anmelde-Link ist ungültig oder abgelaufen.'}); })
       .catch(function(){ cleanMlt(); setS({loginErr:'Der Anmelde-Link konnte nicht geprüft werden. Bitte melde dich erneut an.'}); });
   }
   var MLT=null; try{ MLT=new URL(window.location.href).searchParams.get('mlt'); }catch(e){}
+  // NFC-Tap am Studio-Terminal: der Sticker enthält .../mitglieder?nfc=1. Nach der
+  // Anmeldung wird direkt eingecheckt (Face-ID-Gate greift wie beim manuellen
+  // Check-in). Kein Standort-Check. Wiederholtes Auslösen ist per 8s-Sperre entkoppelt.
+  var NFC=null; try{ NFC=new URL(window.location.href).searchParams.get('nfc'); }catch(e){}
+  var __nfcAt=0;
+  function nfcArrive(){
+    var now=Date.now(); if(now-__nfcAt<8000) return; __nfcAt=now;
+    try{ cleanMlt(); }catch(e){}                 // ?nfc aus der URL entfernen (kein Re-Trigger)
+    try{ nav('checkin'); }catch(e){}
+    if(S.checkedInAt) return;                     // schon eingecheckt -> nur Ansicht
+    setTimeout(function(){ try{ if(ACT&&ACT.doCheckin) ACT.doCheckin(); }catch(e){} }, 80);
+  }
+  // App läuft schon und der Tag wird erneut angetippt (URL wird nativ aktualisiert):
+  document.addEventListener('visibilitychange', function(){
+    if(document.visibilityState!=='visible' || !TOKEN || S.screen==='login') return;
+    var n=null; try{ n=new URL(window.location.href).searchParams.get('nfc'); }catch(e){}
+    if(n) nfcArrive();
+  });
   // Face-ID-Sperre: in der eigenen App mit eingerichtetem Face ID NICHT automatisch
   // über den gespeicherten Token einloggen, sondern erst per Biometrie entsperren.
   var inApp=!!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
@@ -3024,7 +3042,7 @@
   ciLoad();
   if(MLT){ bootMagic(MLT); }
   else if(bioGate){ S.screen='login'; render(); }
-  else if(TOKEN){ loadMe().then(function(){ loadAppts(); loadPlan(); loadPlanAgg(); loadInbox(); loadPrefs(); if(DATA.checkins===null) loadCheckins(); render(); checkArrival(); }).catch(function(){ logout(); }); }
+  else if(TOKEN){ loadMe().then(function(){ loadAppts(); loadPlan(); loadPlanAgg(); loadInbox(); loadPrefs(); if(DATA.checkins===null) loadCheckins(); render(); checkArrival(); if(NFC){ NFC=null; nfcArrive(); } }).catch(function(){ logout(); }); }
   else render();
 
   // Sobald die native Brücke bereit ist: Face ID anbieten (App öffnen -> Face ID -> drin).
