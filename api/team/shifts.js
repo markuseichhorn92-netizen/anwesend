@@ -139,6 +139,31 @@ module.exports = async function handler(req, res) {
     return done();
   }
 
+  // Woche aus den Magicline-Öffnungszeiten füllen (nur LEERE Tage – nie doppelt).
+  if (action === 'fillFromHours') {
+    let oh = null;
+    try {
+      const r = await M.ml('GET', '/studios/information');
+      if (r && r.status >= 200 && r.status < 300 && r.json) oh = r.json.openingHours || r.json.publicOpeningHours || null;
+    } catch (e) {}
+    if (!Array.isArray(oh) || !oh.length) return fail('Öffnungszeiten sind gerade nicht abrufbar (Berechtigung STUDIO_READ nötig).');
+    const dates = SH.weekDates(SH.mondayOf(week));
+    let filled = {};
+    try { const dw = await SH.listWeek(dates); dw.forEach((d) => { filled[d.date] = d.shifts.length; }); } catch (e) {}
+    const specs = SH.shiftSpecsFromHours(dates, oh, { split: body.split, blockHours: body.blockHours });
+    let created = 0, skippedDays = 0;
+    const seenDays = {};
+    for (let i = 0; i < specs.length; i++) {
+      const sp = specs[i];
+      if (filled[sp.date]) { if (!seenDays[sp.date]) { seenDays[sp.date] = 1; skippedDays++; } continue; }
+      try { const sh = await SH.createShift(sp); if (sh) created++; } catch (e) {}
+    }
+    const note = created
+      ? (created + ' Schichten aus den Öffnungszeiten angelegt' + (skippedDays ? (' (' + skippedDays + ' Tage mit bestehenden Schichten übersprungen)') : '') + '. Jetzt Mitarbeiter zuweisen.')
+      : (skippedDays ? 'Alle geöffneten Tage haben bereits Schichten – nichts hinzugefügt.' : 'Für diese Woche keine Öffnungszeiten gefunden.');
+    return done({ created: created, filledFromHours: true, message: note });
+  }
+
   if (action === 'plan') {
     const r = await SH.planWeek(SH.weekDates(SH.mondayOf(week)));
     res.statusCode = 200;

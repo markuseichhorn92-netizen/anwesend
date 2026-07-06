@@ -80,7 +80,49 @@ async function cancelBooking(bookingId) {
   } catch (e) { return { ok: false, status: 0 }; }
 }
 
-// Best-effort echte Open-API-Buchung – nur wenn eine buchbare Slot-ID (+ Start/Ende)
+// Buchbare Terminarten des Studios (BOOKABLE_APPOINTMENTS_READ). 403/Fehler -> available:false.
+async function loadBookable() {
+  try {
+    const r = await M.ml('GET', '/appointments/bookable?sliceSize=100');
+    if (!(r.status >= 200 && r.status < 300)) return { available: false, types: [] };
+    const arr = (r.json && Array.isArray(r.json.result)) ? r.json.result : (Array.isArray(r.json) ? r.json : []);
+    const types = arr.map((a) => ({ id: a.id, title: a.title || 'Termin', duration: a.duration || null, category: a.category || '' })).filter((t) => t.id != null);
+    return { available: true, types: types };
+  } catch (e) { return { available: false, types: [] }; }
+}
+
+const SLOT_WINDOW = 6;   // max. daysAhead laut API
+function ymd(d) { const p = (n) => (n < 10 ? '0' : '') + n; return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()); }
+
+// Freie Slots einer Terminart für ein bestimmtes Mitglied (echte Verfügbarkeit).
+// Mehrere 6-Tage-Fenster zusammengeführt; Vergangenes raus, nach Startzeit sortiert.
+async function loadMemberSlots(bookableId, memberId, days) {
+  days = days || 21; if (!(days > 0)) days = 21; if (days > 42) days = 42;
+  const starts = []; const today = new Date();
+  for (let off = 0; off < days; off += SLOT_WINDOW) { const d = new Date(today.getTime()); d.setDate(d.getDate() + off); starts.push(ymd(d)); }
+  const cid = memberId != null ? ('&customerId=' + encodeURIComponent(memberId)) : '';
+  const base = '/appointments/bookable/' + encodeURIComponent(bookableId) + '/slots';
+  try {
+    const results = await Promise.all(starts.map((sd) =>
+      M.ml('GET', base + '?daysAhead=' + SLOT_WINDOW + '&slotWindowStartDate=' + sd + cid)
+        .then((r) => Array.isArray(r.json) ? r.json : []).catch(() => [])));
+    const seen = {}, out = [], now = Date.now();
+    results.forEach((arr) => arr.forEach((s) => {
+      if (!s || !s.startDateTime || seen[s.startDateTime]) return;
+      const t = Date.parse(s.startDateTime); if (!isNaN(t) && t <= now) return;
+      seen[s.startDateTime] = 1;
+      const ins = Array.isArray(s.instructors) ? s.instructors : [];
+      const first = ins[0] || null;
+      out.push({ start: s.startDateTime, end: s.endDateTime || null,
+        instructorIds: ins.map((i) => i.id).filter((x) => x != null),
+        instructor: first ? (first.publicName || ((first.firstName || '') + ' ' + (first.lastName || '')).trim()) : '' });
+    }));
+    out.sort((a, b) => a.start < b.start ? -1 : (a.start > b.start ? 1 : 0));
+    return out;
+  } catch (e) { return []; }
+}
+
+// Echte Open-API-Buchung – nur wenn eine buchbare Terminart-ID (+ Start/Ende)
 // vorliegt (Muster aus api/member/appointment-book.js). Sonst gar nicht versucht.
 async function attemptOpenApiBook(body) {
   const bid = body.bookableAppointmentId;
@@ -94,9 +136,14 @@ async function attemptOpenApiBook(body) {
     startDateTime: String(start),
     endDateTime: String(end),
   };
+  if (Array.isArray(body.instructorIds) && body.instructorIds.length) {
+    const ids = body.instructorIds.map(Number).filter((n) => !isNaN(n));
+    if (ids.length) payload.instructorIds = ids;
+  }
   try {
     const r = await M.ml('POST', '/appointments/booking/book', payload);
-    return { attempted: true, ok: r.status >= 200 && r.status < 300, status: r.status };
+    const ok = r.status >= 200 && r.status < 300;
+    return { attempted: true, ok: ok, status: r.status, bookingStatus: (r.json && r.json.bookingStatus) || null };
   } catch (e) { return { attempted: true, ok: false, status: 0 }; }
 }
 
@@ -139,6 +186,19 @@ module.exports = async function handler(req, res) {
     const memberId = url.searchParams.get('memberId');
     const from = url.searchParams.get('from');
     const to = url.searchParams.get('to');
+    // Buchbare Terminarten (für den echten Buchungs-Ablauf im Profil).
+    if (url.searchParams.get('bookable')) {
+      const b = await loadBookable();
+      res.statusCode = 200; return res.end(JSON.stringify({ ok: true, available: b.available, types: b.types }));
+    }
+    // Freie Slots einer Terminart für ein Mitglied.
+    const slotsFor = url.searchParams.get('slotsFor');
+    if (slotsFor) {
+      if (!/^\d+$/.test(String(slotsFor))) { res.statusCode = 400; return res.end(JSON.stringify({ ok: false, error: 'bad_id' })); }
+      const days = parseInt(url.searchParams.get('days') || '21', 10);
+      const slots = await loadMemberSlots(slotsFor, memberId, days);
+      res.statusCode = 200; return res.end(JSON.stringify({ ok: true, slots: slots }));
+    }
     if (memberId) {
       const appointments = await memberAppointments(memberId);
       res.statusCode = 200; return res.end(JSON.stringify({ ok: true, appointments }));
@@ -169,7 +229,10 @@ module.exports = async function handler(req, res) {
       const start = body.start != null ? String(body.start).trim() : '';
       const tried = await attemptOpenApiBook(body);
       if (tried.attempted && tried.ok) {
-        res.statusCode = 200; return res.end(JSON.stringify({ ok: true, via: 'openapi', message: 'Termin in Magicline eingetragen.' }));
+        const msg = tried.bookingStatus === 'BOOKED_WITH_CONFIRMATION_REQUIRED'
+          ? 'Termin eingetragen – das Studio bestätigt ihn noch.'
+          : 'Termin verbindlich in Magicline gebucht. ✓';
+        res.statusCode = 200; return res.end(JSON.stringify({ ok: true, via: 'openapi', bookingStatus: tried.bookingStatus || null, message: msg }));
       }
       const fb = await bookFallback(memberId, title, start);
       res.statusCode = 200; return res.end(JSON.stringify(fb));
