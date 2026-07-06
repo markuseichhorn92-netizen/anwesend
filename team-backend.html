@@ -8,6 +8,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<!-- jsPDF: Anwesenheitsbestätigung (Check-ins) im Client erzeugen -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" defer></script>
 <style>
   *{box-sizing:border-box}
   html,body{margin:0;padding:0}
@@ -133,6 +135,8 @@ var S={ token:null, screen:'inbox', convs:[], counts:{}, selKey:null, sel:null,
         profileDocs:null, profileDocsLoading:false, profileDocsAvailable:false, docUploadBusy:false, docUploadMsg:'',
         // Zugangsmedium: im Mitgliedsprofil (Scope CUSTOMER_ACCESS_MEDIUM_WRITE, blendet sich bei available:false aus)
         accessMedia:null, accessMediaLoading:false, accessMediaAvailable:false, accessMediumBusy:'',
+        // Check-ins / Anwesenheitsbestätigung im Mitgliedsprofil (Basis: Magicline-Check-ins)
+        memberCheckins:null, memberCheckinsLoading:false, ciFrom:'', ciTo:'', ciMailBusy:false, ciMsg:'',
         // Schichtplan: Dienstplan, Tausch (Schwarzes Brett), Verfügbarkeiten, Team-Chat
         shWeek:null, shTab:'plan', shView:'tag', shDay:'', shData:null, shLoaded:false, shLoading:false, shBusy:'',
         shSwap:null, shSwapLoading:false, shThreads:[], shChatMe:null,
@@ -376,10 +380,11 @@ async function openProfile(id){
   S.profileTags=[]; S.tagAddOpen=false; S.tagInput=''; S.tagBusy=false;
   S.profileDocs=null; S.profileDocsAvailable=false; S.profileDocsLoading=false; S.docUploadBusy=false; S.docUploadMsg='';
   S.accessMedia=null; S.accessMediaAvailable=false; S.accessMediaLoading=false; S.accessMediumBusy='';
+  S.memberCheckins=null; S.memberCheckinsLoading=false; S.ciMsg=''; S.ciMailBusy=false; ciPresetSilent('year');
   S.profileLoading=true; S.profile=null; render();
   try{ var r=await tapi('/api/team/members?id='+encodeURIComponent(id)); if(r.ok) S.profile=r.profile; }
   catch(e){} S.profileLoading=false; render();
-  if(S.profile){ loadProfileTags(id); loadProfileDocs(id); loadAccessMedia(id); }
+  if(S.profile){ loadProfileTags(id); loadProfileDocs(id); loadAccessMedia(id); loadMemberCheckins(id); }
 }
 // ---------- Mitglieder-Tags ----------
 // Tags des offenen Profils laden (GET ?memberId). Ohne Store -> leere Liste, kein Fehler.
@@ -632,6 +637,115 @@ function accessMediumCard(p){
     body=rows+issue;
   }
   return '<div style="background:#fff;border-radius:18px;box-shadow:0 12px 32px rgba(4,33,40,.08);padding:20px 22px"><div style="font-size:15px;font-weight:900;margin-bottom:6px">Zugangsmedium</div>'+body+'</div>';
+}
+
+// ---------- Check-ins / Anwesenheitsbestätigung ----------
+// Vollständigen Check-in-Verlauf des offenen Profils laden. Ohne Scope -> [] (Karte zeigt 0). Nie werfen.
+async function loadMemberCheckins(id){
+  S.memberCheckinsLoading=true; render();
+  try{
+    var r=await tapi('/api/team/checkins?id='+encodeURIComponent(id));
+    S.memberCheckins=(r&&r.ok&&Array.isArray(r.checkins))?r.checkins:[];
+  }catch(e){ S.memberCheckins=[]; }
+  S.memberCheckinsLoading=false; render();
+}
+// yyyy-mm-dd-Presets für den Zeitraum. ...Silent: nur State setzen (kein render), fürs Öffnen.
+function ci2(n){ return (n<10?'0':'')+n; }
+function ciYmd(d){ return d.getFullYear()+'-'+ci2(d.getMonth()+1)+'-'+ci2(d.getDate()); }
+function ciPresetSilent(which){
+  var now=new Date();
+  if(which==='year'){ S.ciFrom=now.getFullYear()+'-01-01'; S.ciTo=ciYmd(now); }
+  else if(which==='12m'){ var a=new Date(now); a.setFullYear(a.getFullYear()-1); S.ciFrom=ciYmd(a); S.ciTo=ciYmd(now); }
+  else { S.ciFrom=''; S.ciTo=''; }   // gesamt
+}
+function ciPreset(which){ S.ciMsg=''; ciPresetSilent(which); render(); }
+// Datum/Uhrzeit/Dauer aus einem Check-in-Zeitstempel (deutsches Format).
+function ciDate(iso){ if(!iso) return ''; var d=new Date(iso); if(isNaN(d)) return String(iso).slice(0,10); return ci2(d.getDate())+'.'+ci2(d.getMonth()+1)+'.'+d.getFullYear(); }
+function ciTime(iso){ if(!iso) return ''; var d=new Date(iso); if(isNaN(d)) return ''; return ci2(d.getHours())+':'+ci2(d.getMinutes()); }
+function ciDur(a,b){ if(!a||!b) return ''; var ms=new Date(b)-new Date(a); if(!isFinite(ms)||ms<=0) return ''; var min=Math.round(ms/60000); var h=Math.floor(min/60), m=min%60; return h?(h+'h '+ci2(m)+'m'):(m+' min'); }
+function ciToday(){ var d=new Date(); return ci2(d.getDate())+'.'+ci2(d.getMonth()+1)+'.'+d.getFullYear(); }
+// Check-in im gewählten Zeitraum? (leere Grenze = offen)
+function ciInRange(c){
+  var t=c&&c.in?new Date(c.in).getTime():NaN; if(!isFinite(t)) return false;
+  if(S.ciFrom){ var f=new Date(S.ciFrom+'T00:00:00').getTime(); if(isFinite(f)&&t<f) return false; }
+  if(S.ciTo){ var e=new Date(S.ciTo+'T23:59:59').getTime(); if(isFinite(e)&&t>e) return false; }
+  return true;
+}
+function ciFiltered(){ return (S.memberCheckins||[]).filter(ciInRange).sort(function(a,b){ return new Date(b.in)-new Date(a.in); }); }
+function ciRangeLabel(){
+  var f=S.ciFrom?ciDate(S.ciFrom+'T00:00:00'):'', t=S.ciTo?ciDate(S.ciTo+'T00:00:00'):'';
+  if(f&&t) return f+' – '+t; if(f) return 'ab '+f; if(t) return 'bis '+t; return 'gesamter Zeitraum';
+}
+// Anwesenheits-Karte (voll­breit, unter dem Karten-Raster).
+function checkinsBlock(p){
+  var loading=S.memberCheckinsLoading && S.memberCheckins==null;
+  var all=S.memberCheckins||[], list=ciFiltered();
+  var body;
+  if(loading){
+    body='<div style="padding:24px 0;text-align:center"><span class="spin"></span></div>';
+  } else {
+    var presets='<div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:12px">'+
+      [['year','Dieses Jahr'],['12m','12 Monate'],['all','Gesamt']].map(function(x){
+        return '<button data-cipreset="'+x[0]+'" style="border:1.5px solid #d6dee0;border-radius:9px;background:#fff;color:#0a4958;font-size:12px;font-weight:800;padding:6px 12px;cursor:pointer">'+x[1]+'</button>'; }).join('')+'</div>';
+    var inputs='<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;margin-bottom:14px">'+
+      '<label style="display:flex;flex-direction:column;gap:5px;font-size:12px;font-weight:700;color:#6b7780">Von<input type="date" id="cifrom" value="'+esc(S.ciFrom)+'" style="border:1.5px solid #d6dee0;border-radius:10px;padding:9px 11px;font-size:13.5px;font-weight:700;color:#15171B;background:#fff"></label>'+
+      '<label style="display:flex;flex-direction:column;gap:5px;font-size:12px;font-weight:700;color:#6b7780">Bis<input type="date" id="cito" value="'+esc(S.ciTo)+'" style="border:1.5px solid #d6dee0;border-radius:10px;padding:9px 11px;font-size:13.5px;font-weight:700;color:#15171B;background:#fff"></label>'+
+      '</div>';
+    var summary='<div style="display:flex;align-items:baseline;gap:10px;margin-bottom:14px;padding:14px 16px;background:linear-gradient(165deg,#e7f1f3,#f2f8f9);border-radius:14px">'+
+      '<span style="font-size:30px;font-weight:900;color:#0a4958;letter-spacing:-1px">'+list.length+'</span>'+
+      '<span style="font-size:13.5px;font-weight:700;color:#4a565c">'+(list.length===1?'Besuch':'Besuche')+' im Zeitraum<span style="color:#8a929a;font-weight:600"> · '+all.length+' insgesamt erfasst</span></span></div>';
+    var rows= list.length
+      ? '<div class="scrl" style="max-height:280px;overflow-y:auto">'+list.map(function(c){
+          var du=ciDur(c.in,c.out);
+          return '<div style="display:flex;align-items:center;gap:12px;padding:9px 0;border-top:1px solid #f0f3f4">'+
+            '<span style="width:9px;height:9px;border-radius:50%;background:linear-gradient(150deg,#0e6072,#063540);flex-shrink:0"></span>'+
+            '<span style="flex:1;font-size:13.5px;font-weight:700;color:#15171B">'+esc(ciDate(c.in))+'</span>'+
+            '<span style="font-size:12.5px;color:#6b7780;font-weight:600">'+esc(ciTime(c.in))+' Uhr</span>'+
+            '<span style="font-size:12px;color:#8a929a;font-weight:600;min-width:56px;text-align:right">'+esc(du||'—')+'</span>'+
+            (c.studio?'<span style="font-size:12px;color:#8a929a;font-weight:600;max-width:130px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(c.studio)+'</span>':'')+
+          '</div>';
+        }).join('')+'</div>'
+      : '<div style="font-size:12.5px;color:#a9b1b6;font-weight:600;padding:8px 0">Keine Check-ins im gewählten Zeitraum.</div>';
+    var msg=S.ciMsg?'<div style="font-size:12.5px;font-weight:700;color:#0a4958;margin-top:10px">'+esc(S.ciMsg)+'</div>':'';
+    var actions='<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px;padding-top:14px;border-top:1px solid #f0f3f4">'+
+      '<button data-cidownload="1" style="display:inline-flex;align-items:center;gap:8px;border:none;border-radius:12px;background:'+TEAL+';color:#fff;font-size:13.5px;font-weight:800;padding:11px 16px;cursor:pointer"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v13"/><path d="M7 11l5 5 5-5"/><path d="M5 21h14"/></svg>Bestätigung herunterladen</button>'+
+      '<button data-cimail="1"'+(S.ciMailBusy?' disabled':'')+' style="display:inline-flex;align-items:center;gap:8px;border:1.5px solid #d6dee0;border-radius:12px;background:#fff;color:#0a4958;font-size:13.5px;font-weight:800;padding:11px 16px;cursor:pointer">'+(S.ciMailBusy?'<span class="spin" style="width:14px;height:14px;border-width:2px"></span>Wird gesendet …':'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0a4958" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg>Per E-Mail an Mitglied')+'</button>'+
+      '</div>'+msg;
+    body=presets+inputs+summary+rows+actions;
+  }
+  return '<div style="margin-top:18px;background:#fff;border-radius:20px;box-shadow:0 14px 38px rgba(4,33,40,.09);padding:20px 24px"><div style="font-size:15px;font-weight:900;letter-spacing:-.2px;margin-bottom:4px;color:#15171B">Anwesenheit &amp; Check-ins</div><div style="font-size:12.5px;color:#8a929a;font-weight:600;margin-bottom:16px">Besuche auf Basis der Magicline-Check-ins · Bestätigung als PDF erstellen</div>'+body+'</div>';
+}
+// PDF-Bestätigung im Client bauen (jsPDF), spiegelt das Member-Layout.
+function ciLogoTxt(doc,MG){ doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(16); doc.text('FIT-INN TRIER',MG,17); }
+function buildCheckinPdf(p){
+  var ns=window.jspdf; if(!ns||!ns.jsPDF) return null;
+  var list=ciFiltered();
+  var doc=new ns.jsPDF({unit:'mm',format:'a4'}); var W=210, MG=14;
+  doc.setFillColor(10,73,88); doc.rect(0,0,W,26,'F'); ciLogoTxt(doc,MG);
+  doc.setTextColor(21,23,27); doc.setFont('helvetica','bold'); doc.setFontSize(18); doc.text('Anwesenheitsbestätigung',MG,40);
+  var y=50; doc.setFontSize(11);
+  [['Name',p.name],['Mitgliedsnummer',p.nr],['Geburtsdatum',p.birthday?ciDate(p.birthday):''],['Zeitraum',ciRangeLabel()],['Besuche',String(list.length)]].forEach(function(r){ doc.setFont('helvetica','bold'); doc.setTextColor(60,66,72); doc.text(r[0]+':',MG,y); doc.setFont('helvetica','normal'); doc.setTextColor(21,23,27); doc.text(String(r[1]||'—'),62,y); y+=7; });
+  y+=3; doc.setFont('helvetica','normal'); doc.setTextColor(60,66,72); doc.setFontSize(10.5);
+  var intro='Hiermit bestätigt das Fit-Inn Trier, dass das oben genannte Mitglied im angegebenen Zeitraum an den folgenden Terminen im Studio anwesend war:';
+  var lines=doc.splitTextToSize(intro,W-2*MG); doc.text(lines,MG,y); y+=lines.length*5.5+6;
+  doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.setTextColor(21,23,27);
+  doc.text('Datum',MG,y); doc.text('Uhrzeit',74,y); doc.text('Dauer',104,y); doc.text('Studio',132,y);
+  y+=2; doc.setDrawColor(210); doc.line(MG,y,W-MG,y); y+=5;
+  doc.setFont('helvetica','normal'); doc.setTextColor(60,66,72);
+  if(!list.length){ doc.text('Keine Besuche im gewählten Zeitraum.',MG,y); y+=6; }
+  list.forEach(function(c){ if(y>284){ doc.addPage(); y=20; } doc.text(ciDate(c.in),MG,y); doc.text(ciTime(c.in)+' Uhr',74,y); doc.text(ciDur(c.in,c.out)||'-',104,y); doc.text(String(c.studio||'').slice(0,28),132,y); y+=6; });
+  y+=8; if(y>290){ doc.addPage(); y=20; } doc.setFontSize(8.5); doc.setTextColor(150); doc.text('Ausgestellt am '+ciToday()+'  ·  Fit-Inn Trier  ·  Auf Hirtenberg 8  ·  54296 Trier  ·  '+list.length+' Besuche',MG,Math.min(y,293));
+  return doc;
+}
+function downloadCheckinPdf(p){ var d=buildCheckinPdf(p); if(!d){ S.ciMsg='PDF-Bibliothek lädt noch – bitte kurz erneut.'; render(); return; } d.save('anwesenheitsbestaetigung.pdf'); S.ciMsg='Bestätigung heruntergeladen.'; render(); }
+function emailCheckinPdf(p){
+  var d=buildCheckinPdf(p); if(!d){ S.ciMsg='PDF-Bibliothek lädt noch – bitte kurz erneut.'; render(); return; }
+  var b64=d.output('datauristring'); var ix=b64.indexOf('base64,'); if(ix>=0) b64=b64.slice(ix+7);
+  if(b64.length>6000000){ S.ciMsg='Das PDF ist für den Versand zu groß – bitte einen kürzeren Zeitraum wählen.'; render(); return; }
+  S.ciMailBusy=true; S.ciMsg=''; render();
+  tapi('/api/team/checkin-pdf',{method:'POST',body:{ id:p.id, pdf:b64 }})
+    .then(function(r){ S.ciMailBusy=false; S.ciMsg=(r&&r.message)||(r&&r.ok?'Gesendet.':'Versand fehlgeschlagen.'); render(); })
+    .catch(function(){ S.ciMailBusy=false; S.ciMsg='Versand fehlgeschlagen.'; render(); });
 }
 
 // ---------- Dubletten-Prüfung ----------
@@ -1620,6 +1734,7 @@ function membersNode(){
         docsCard(p)+
         accessMediumCard(p)+
       '</div>'+
+      checkinsBlock(p)+
       '<div style="margin-top:18px;background:#fff;border-radius:20px;box-shadow:0 14px 38px rgba(4,33,40,.09);padding:20px 24px"><div style="font-size:15px;font-weight:900;letter-spacing:-.2px;margin-bottom:4px;color:#15171B">Vorgangs-Historie</div>'+histRows+'</div>'+
       // DSGVO-Zone: bewusst dezent, ganz unten – Anonymisieren ist unwiderruflich.
       '<div style="margin-top:20px;display:flex;justify-content:flex-end;padding:0 2px"><button data-anon="1" style="display:inline-flex;align-items:center;gap:7px;border:1.5px solid #e3b8b1;background:#fff;color:#b5402f;border-radius:11px;font-size:12.5px;font-weight:800;padding:9px 14px;cursor:pointer"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#b5402f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>DSGVO: Mitglied anonymisieren</button></div>'+
@@ -1646,6 +1761,12 @@ function membersNode(){
       // Zugangsmedium: Sperren/Entsperren je Medium + „Neues Medium ausgeben".
       wrap.querySelectorAll('[data-amaction]').forEach(function(b){ b.onclick=function(){ var id=b.getAttribute('data-amid'); var med=null; (S.accessMedia||[]).forEach(function(x){ if(String(x.id)===String(id)) med=x; }); accessMediumAction(p.id, b.getAttribute('data-amaction'), med); }; });
       var ami=wrap.querySelector('[data-amissue]'); if(ami) ami.onclick=function(){ accessMediumAction(p.id, 'issue', null); };
+      // Check-ins / Anwesenheitsbestätigung: Zeitraum wählen, PDF herunterladen oder mailen.
+      var cf=wrap.querySelector('#cifrom'); if(cf) cf.onchange=function(){ S.ciFrom=cf.value; S.ciMsg=''; render(); };
+      var cto=wrap.querySelector('#cito'); if(cto) cto.onchange=function(){ S.ciTo=cto.value; S.ciMsg=''; render(); };
+      wrap.querySelectorAll('[data-cipreset]').forEach(function(b){ b.onclick=function(){ ciPreset(b.getAttribute('data-cipreset')); }; });
+      var cdl=wrap.querySelector('[data-cidownload]'); if(cdl) cdl.onclick=function(){ downloadCheckinPdf(p); };
+      var cml=wrap.querySelector('[data-cimail]'); if(cml) cml.onclick=function(){ emailCheckinPdf(p); };
       wireDm(wrap);
     },0);
     return wrap;
