@@ -137,6 +137,8 @@ var S={ token:null, screen:'inbox', convs:[], counts:{}, selKey:null, sel:null,
         accessMedia:null, accessMediaLoading:false, accessMediaAvailable:false, accessMediumBusy:'',
         // Check-ins / Anwesenheitsbestätigung im Mitgliedsprofil (Basis: Magicline-Check-ins)
         memberCheckins:null, memberCheckinsLoading:false, ciFrom:'', ciTo:'', ciMailBusy:false, ciMsg:'',
+        // Nachrichtenverlauf mit dem Mitglied (alle Vorgänge zusammengeführt)
+        memberMsgs:null, memberMsgsLoading:false, memberMsgsTotal:0,
         // Schichtplan: Dienstplan, Tausch (Schwarzes Brett), Verfügbarkeiten, Team-Chat
         shWeek:null, shTab:'plan', shView:'tag', shDay:'', shData:null, shLoaded:false, shLoading:false, shBusy:'',
         shSwap:null, shSwapLoading:false, shThreads:[], shChatMe:null,
@@ -381,10 +383,11 @@ async function openProfile(id){
   S.profileDocs=null; S.profileDocsAvailable=false; S.profileDocsLoading=false; S.docUploadBusy=false; S.docUploadMsg='';
   S.accessMedia=null; S.accessMediaAvailable=false; S.accessMediaLoading=false; S.accessMediumBusy='';
   S.memberCheckins=null; S.memberCheckinsLoading=false; S.ciMsg=''; S.ciMailBusy=false; ciPresetSilent('all');
+  S.memberMsgs=null; S.memberMsgsLoading=false; S.memberMsgsTotal=0;
   S.profileLoading=true; S.profile=null; render();
   try{ var r=await tapi('/api/team/members?id='+encodeURIComponent(id)); if(r.ok) S.profile=r.profile; }
   catch(e){} S.profileLoading=false; render();
-  if(S.profile){ loadProfileTags(id); loadProfileDocs(id); loadAccessMedia(id); loadMemberCheckins(id); }
+  if(S.profile){ loadProfileTags(id); loadProfileDocs(id); loadAccessMedia(id); loadMemberCheckins(id); loadMemberMessages(id); }
 }
 // ---------- Mitglieder-Tags ----------
 // Tags des offenen Profils laden (GET ?memberId). Ohne Store -> leere Liste, kein Fehler.
@@ -746,6 +749,54 @@ function emailCheckinPdf(p){
   tapi('/api/team/checkin-pdf',{method:'POST',body:{ id:p.id, pdf:b64 }})
     .then(function(r){ S.ciMailBusy=false; S.ciMsg=(r&&r.message)||(r&&r.ok?'Gesendet.':'Versand fehlgeschlagen.'); render(); })
     .catch(function(){ S.ciMailBusy=false; S.ciMsg='Versand fehlgeschlagen.'; render(); });
+}
+
+// ---------- Nachrichtenverlauf mit dem Mitglied ----------
+// Alle Nachrichten über alle Vorgänge des Mitglieds, chronologisch. Nie werfen.
+async function loadMemberMessages(id){
+  S.memberMsgsLoading=true; render();
+  try{
+    var r=await tapi('/api/team/messages?id='+encodeURIComponent(id));
+    S.memberMsgs=(r&&r.ok&&Array.isArray(r.messages))?r.messages:[];
+    S.memberMsgsTotal=(r&&r.total)||S.memberMsgs.length;
+  }catch(e){ S.memberMsgs=[]; S.memberMsgsTotal=0; }
+  S.memberMsgsLoading=false; render();
+}
+function msgTime(ts){ if(!ts) return ''; var d=new Date(Number(ts)); if(isNaN(d)) return '';
+  return d.toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'2-digit'})+' · '+d.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'})+' Uhr'; }
+// Chat-Verlauf (Team rechts/teal, Mitglied links/grau, System zentriert). Voll­breit.
+function messagesBlock(p){
+  var loading=S.memberMsgsLoading && S.memberMsgs==null;
+  var msgs=S.memberMsgs||[];
+  var body;
+  if(loading){
+    body='<div style="padding:24px 0;text-align:center"><span class="spin"></span></div>';
+  } else if(!msgs.length){
+    body='<div style="font-size:12.5px;color:#a9b1b6;font-weight:600;padding:6px 0">Noch keine Nachrichten mit diesem Mitglied.</div>';
+  } else {
+    var rows=msgs.map(function(m){
+      var meta=esc(msgTime(m.at))+(m.ref?(' · '+esc(m.ref)):'');
+      if(m.from==='system'){
+        return '<div style="text-align:center;margin:12px 0"><span style="display:inline-block;font-size:11.5px;color:#8a929a;font-weight:600;background:#f2f5f6;border-radius:20px;padding:6px 13px;max-width:88%">'+esc(m.text)+'</span></div>';
+      }
+      var mine=(m.from==='team');
+      var who=mine?(m.author?esc(m.author):'Team'):esc(p.name||'Mitglied');
+      var align=mine?'flex-end':'flex-start';
+      var bg=mine?'linear-gradient(150deg,#0e6072,#0a4958)':'#f1f4f5';
+      var col=mine?'#fff':'#15171B';
+      var metaCol=mine?'rgba(255,255,255,.72)':'#8a929a';
+      return '<div style="display:flex;justify-content:'+align+';margin:8px 0"><div data-msgkey="'+esc(m.key||'')+'" title="Im Vorgang öffnen / antworten" style="max-width:78%;background:'+bg+';color:'+col+';border-radius:16px;padding:10px 13px;cursor:pointer;box-shadow:0 4px 14px rgba(4,33,40,.08)">'+
+        '<div style="font-size:11px;font-weight:800;opacity:.85;margin-bottom:3px">'+who+'</div>'+
+        '<div style="font-size:13.5px;font-weight:600;line-height:1.45;white-space:pre-wrap;word-break:break-word">'+esc(m.text)+'</div>'+
+        '<div style="font-size:10.5px;color:'+metaCol+';font-weight:600;margin-top:5px;text-align:right">'+meta+'</div>'+
+      '</div></div>';
+    }).join('');
+    var more=(S.memberMsgsTotal>msgs.length)?'<div style="text-align:center;font-size:11.5px;color:#a9b1b6;font-weight:600;margin-bottom:8px">Ältere Nachrichten ausgeblendet ('+(S.memberMsgsTotal-msgs.length)+')</div>':'';
+    body='<div id="msgscroll" class="scrl" style="max-height:440px;overflow-y:auto;padding-right:4px">'+more+rows+'</div>';
+  }
+  return '<div style="margin-top:18px;background:#fff;border-radius:20px;box-shadow:0 14px 38px rgba(4,33,40,.09);padding:20px 24px"><div style="font-size:15px;font-weight:900;letter-spacing:-.2px;margin-bottom:4px;color:#15171B">Nachrichtenverlauf</div><div style="font-size:12.5px;color:#8a929a;font-weight:600;margin-bottom:14px">Alles, was ihr euch geschrieben habt · tippe eine Nachricht an, um im Vorgang zu antworten</div>'+body+
+    '<div style="margin-top:14px;padding-top:14px;border-top:1px solid #f0f3f4"><button data-msgsend2="1" style="display:inline-flex;align-items:center;gap:8px;border:none;border-radius:12px;background:'+TEAL+';color:#fff;font-size:13.5px;font-weight:800;padding:11px 16px;cursor:pointer">'+IC.send+'Neue Nachricht senden</button></div>'+
+  '</div>';
 }
 
 // ---------- Dubletten-Prüfung ----------
@@ -1735,6 +1786,7 @@ function membersNode(){
         accessMediumCard(p)+
       '</div>'+
       checkinsBlock(p)+
+      messagesBlock(p)+
       '<div style="margin-top:18px;background:#fff;border-radius:20px;box-shadow:0 14px 38px rgba(4,33,40,.09);padding:20px 24px"><div style="font-size:15px;font-weight:900;letter-spacing:-.2px;margin-bottom:4px;color:#15171B">Vorgangs-Historie</div>'+histRows+'</div>'+
       // DSGVO-Zone: bewusst dezent, ganz unten – Anonymisieren ist unwiderruflich.
       '<div style="margin-top:20px;display:flex;justify-content:flex-end;padding:0 2px"><button data-anon="1" style="display:inline-flex;align-items:center;gap:7px;border:1.5px solid #e3b8b1;background:#fff;color:#b5402f;border-radius:11px;font-size:12.5px;font-weight:800;padding:9px 14px;cursor:pointer"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#b5402f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>DSGVO: Mitglied anonymisieren</button></div>'+
@@ -1767,6 +1819,10 @@ function membersNode(){
       wrap.querySelectorAll('[data-cipreset]').forEach(function(b){ b.onclick=function(){ ciPreset(b.getAttribute('data-cipreset')); }; });
       var cdl=wrap.querySelector('[data-cidownload]'); if(cdl) cdl.onclick=function(){ downloadCheckinPdf(p); };
       var cml=wrap.querySelector('[data-cimail]'); if(cml) cml.onclick=function(){ emailCheckinPdf(p); };
+      // Nachrichtenverlauf: Bubble antippen -> Vorgang öffnen (antworten); Button -> neue Direktnachricht.
+      wrap.querySelectorAll('[data-msgkey]').forEach(function(b){ var k=b.getAttribute('data-msgkey'); if(k) b.onclick=function(){ S.screen='inbox'; openConv(k); }; });
+      var ms2=wrap.querySelector('[data-msgsend2]'); if(ms2) ms2.onclick=function(){ openDirectMsg(p.id, p.name); };
+      var msc=wrap.querySelector('#msgscroll'); if(msc) msc.scrollTop=msc.scrollHeight;   // ans Ende (neueste)
       wireDm(wrap);
     },0);
     return wrap;
