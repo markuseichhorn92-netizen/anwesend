@@ -72,21 +72,24 @@ module.exports = async function handler(req, res) {
   let handled = 0, leads = 0;
   for (const msg of msgs) {
     try {
-      const member = await M.findByPhone(msg.from);
       let memberId, snapshot, isLead = false;
-      if (member && member.id != null) {
-        memberId = String(member.id);
-        const nm = ((member.firstName || '') + ' ' + (member.lastName || '')).trim();
-        snapshot = { name: nm || ('+' + msg.from), nr: member.customerNumber || null,
-          initials: initialsOf(nm) || initialsOf(msg.name) || 'WA', email: member.email || null, phone: msg.from };
+      // 1) Manuell/automatisch gemerkte Zuordnung (Nummer -> Kunde) hat VORRANG.
+      //    So öffnet eine bekannte Nummer kein neues Ticket mehr und landet beim
+      //    richtigen Kunden – auch wenn die Magicline-Telefonsuche sie nicht findet.
+      const linked = await LF.resolveKnownLead(msg.from);
+      if (linked && linked.id) {
+        memberId = String(linked.id);
+        snapshot = { name: linked.name || ('+' + msg.from), nr: linked.nr || null, initials: initialsOf(linked.name) || 'WA', phone: msg.from };
       } else {
-        // Schon einmal angelegter Lead? -> bestehendem Kunden zuordnen (keine Dublette).
-        const linked = await LF.resolveKnownLead(msg.from);
-        if (linked && linked.id) {
-          memberId = String(linked.id);
-          snapshot = { name: linked.name || ('+' + msg.from), nr: linked.nr || null, initials: initialsOf(linked.name) || 'WA', phone: msg.from };
+        // 2) Magicline-Telefonsuche.
+        const member = await M.findByPhone(msg.from);
+        if (member && member.id != null) {
+          memberId = String(member.id);
+          const nm = ((member.firstName || '') + ' ' + (member.lastName || '')).trim();
+          snapshot = { name: nm || ('+' + msg.from), nr: member.customerNumber || null,
+            initials: initialsOf(nm) || initialsOf(msg.name) || 'WA', email: member.email || null, phone: msg.from };
         } else {
-          // Neuer Interessent (Probetraining usw.): Pseudo-ID -> landet im Posteingang.
+          // 3) Neuer Interessent: Pseudo-ID -> landet im Posteingang.
           isLead = true; memberId = 'wa' + msg.from;
           snapshot = { name: msg.name || ('+' + msg.from), nr: null, initials: initialsOf(msg.name) || 'WA', phone: msg.from, lead: true };
           leads++;
