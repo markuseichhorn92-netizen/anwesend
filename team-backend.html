@@ -141,6 +141,12 @@ var S={ token:null, screen:'inbox', convs:[], counts:{}, selKey:null, sel:null,
         memberMsgs:null, memberMsgsLoading:false, memberMsgsTotal:0,
         // Vertragskündigung aus dem Team-Bereich (Modal: kündigen / zurücknehmen / Widerruf)
         cxOpen:false, cxDate:'', cxReason:'', cxReasons:null, cxReasonsLoading:false, cxBusy:false, cxResult:null,
+        // Terminbuchung für ein Mitglied (Modal: Art -> freier Slot -> buchen)
+        apOpen:false, apMemberId:null, apMemberName:'', apTypes:null, apTypesLoading:false, apUnavail:false,
+        apTypeId:'', apTypeTitle:'', apSlots:null, apSlotsLoading:false, apSlotSel:null, apBusy:false, apResult:null,
+        // Probetraining buchen (eigener Screen)
+        trOffers:null, trOffersLoading:false, trUnavail:false, trConfigId:'', trBookableId:'', trTitle:'',
+        trFirst:'', trLast:'', trEmail:'', trSlots:null, trSlotsLoading:false, trSlotSel:null, trBusy:false, trResult:'', trDone:'',
         // Schichtplan: Dienstplan, Tausch (Schwarzes Brett), Verfügbarkeiten, Team-Chat
         shWeek:null, shTab:'plan', shView:'tag', shDay:'', shData:null, shLoaded:false, shLoading:false, shBusy:'',
         shSwap:null, shSwapLoading:false, shThreads:[], shChatMe:null,
@@ -892,21 +898,109 @@ async function apptCancel(p, bookingId){
 }
 // Termin für ein Mitglied eintragen (best effort). Klappt die Open-API-Buchung nicht,
 // übernimmt der Server den Wunsch als Vorgang + Studio-Benachrichtigung (via:'fallback').
-async function apptBookFor(p){
+// Echter Buchungs-Ablauf für ein Mitglied: Terminart -> freier Slot -> buchen.
+function apptBookFor(p){
   if(!p) return;
-  var title=window.prompt('Terminart / Titel (z. B. „Beratungstermin", „Probetraining"):','');
-  if(title==null || !title.trim()) return;
-  var when=window.prompt('Wunschtermin (z. B. „Sa, 12.07. um 11:00 Uhr"):','');
-  if(when==null) return;
+  S.apOpen=true; S.apMemberId=p.id; S.apMemberName=p.name||'';
+  S.apTypeId=''; S.apTypeTitle=''; S.apSlots=null; S.apSlotSel=null; S.apBusy=false; S.apResult=null;
+  S.apTypes=null; S.apUnavail=false; S.apTypesLoading=true; render();
+  tapi('/api/team/appointments?bookable=1').then(function(r){
+    S.apTypesLoading=false;
+    if(r&&r.ok&&r.available&&Array.isArray(r.types)&&r.types.length){ S.apTypes=r.types; }
+    else { S.apTypes=[]; S.apUnavail=!(r&&r.available); }
+    render();
+  }).catch(function(){ S.apTypesLoading=false; S.apTypes=[]; S.apUnavail=true; render(); });
+}
+function closeApptBook(){ if(S.apBusy) return; var had=!!S.apResult; var pid=S.apMemberId; S.apOpen=false; S.apResult=null; if(had&&pid) openProfile(pid); else render(); }
+function apChooseType(id, title){
+  S.apTypeId=String(id); S.apTypeTitle=title||''; S.apSlots=null; S.apSlotSel=null; S.apSlotsLoading=true; render();
+  tapi('/api/team/appointments?slotsFor='+encodeURIComponent(id)+'&memberId='+encodeURIComponent(S.apMemberId)+'&days=28').then(function(r){
+    S.apSlotsLoading=false; S.apSlots=(r&&r.ok&&Array.isArray(r.slots))?r.slots:[]; render();
+  }).catch(function(){ S.apSlotsLoading=false; S.apSlots=[]; render(); });
+}
+function apPickSlot(i){ var s=(S.apSlots||[])[i]; if(s){ S.apSlotSel=s; render(); } }
+async function apDoBook(){
+  if(S.apBusy||!S.apSlotSel||!S.apTypeId) return;
+  S.apBusy=true; render();
+  var s=S.apSlotSel;
   try{
-    var r=await tapi('/api/team/appointments',{method:'POST',body:{action:'book',memberId:p.id,title:title.trim(),start:when.trim()}});
-    if(r&&r.ok){
-      alert(r.via==='fallback'
-        ? 'Terminwunsch ans Studio übergeben – er liegt im Postfach des Mitglieds und wird manuell im Magicline-Kalender eingetragen.'
-        : (r.message||'Termin eingetragen.'));
-      openProfile(p.id);
-    } else { alert((r&&r.message)||'Konnte nicht eingetragen werden.'); }
-  }catch(e){ alert('Verbindung fehlgeschlagen.'); }
+    var r=await tapi('/api/team/appointments',{method:'POST',body:{ action:'book', memberId:S.apMemberId, bookableAppointmentId:S.apTypeId, start:s.start, end:s.end, instructorIds:(s.instructorIds||[]), title:S.apTypeTitle }});
+    S.apBusy=false;
+    if(r&&r.ok){ S.apResult=r; }
+    else { alert((r&&r.message)||'Buchung fehlgeschlagen.'); }
+  }catch(e){ S.apBusy=false; alert('Verbindung fehlgeschlagen.'); }
+  render();
+}
+// Slot-Zeit-Helfer (deutsches Format).
+function slDay(iso){ var d=new Date(iso); if(isNaN(d)) return String(iso).slice(0,10); return d.toLocaleDateString('de-DE',{weekday:'short',day:'2-digit',month:'2-digit'}); }
+function slTime(iso){ var d=new Date(iso); if(isNaN(d)) return ''; return d.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'}); }
+// Slots nach Tag gruppieren (Reihenfolge erhalten). -> [{day, items:[{i, slot}]}]
+function slGroup(slots){
+  var groups=[], byDay={};
+  (slots||[]).forEach(function(s,i){ var k=String(s.start).slice(0,10); if(!byDay[k]){ byDay[k]={day:k,label:slDay(s.start),items:[]}; groups.push(byDay[k]); } byDay[k].items.push({i:i, slot:s}); });
+  return groups;
+}
+function apModalHTML(){
+  if(!S.apOpen) return '';
+  var success=S.apResult
+    ? '<div style="margin-top:14px;background:#e7f6ec;border-radius:12px;padding:13px 15px;font-size:13px;font-weight:700;color:#1d7a3e;line-height:1.5">✓ '+esc(S.apResult.message||'Termin gebucht.')+(S.apResult.via==='fallback'?' (Wunsch ans Studio übergeben.)':'')+'</div>'
+    : '';
+  var body='';
+  if(!S.apResult){
+    // Terminart
+    if(S.apTypesLoading && S.apTypes==null){ body+='<div style="padding:16px 0;text-align:center"><span class="spin"></span></div>'; }
+    else if(S.apUnavail){ body+='<div style="font-size:12.5px;font-weight:700;color:#b5402f;background:#fbeae7;border-radius:12px;padding:12px 14px;line-height:1.5">Terminbuchung ist nicht verfügbar (Magicline-Berechtigung BOOKABLE_APPOINTMENTS_READ / APPOINTMENTS_WRITE nötig).</div>'; }
+    else {
+      var types=S.apTypes||[];
+      body+='<div style="font-size:12.5px;font-weight:700;color:#6b7780;margin-bottom:6px">Terminart</div>';
+      if(!types.length){ body+='<div style="font-size:12.5px;color:#a9b1b6;font-weight:600;padding:4px 0">Keine buchbaren Terminarten hinterlegt.</div>'; }
+      else {
+        body+='<select id="aptype" style="width:100%;padding:11px 13px;border:1.5px solid #dce3e4;border-radius:11px;font-size:14px;background:#fbfcfc">'+
+          '<option value="">– Terminart wählen –</option>'+
+          types.map(function(t){ return '<option value="'+esc(String(t.id))+'"'+(String(S.apTypeId)===String(t.id)?' selected':'')+'>'+esc(t.title)+(t.duration?(' ('+t.duration+' Min.)'):'')+'</option>'; }).join('')+
+          '</select>';
+      }
+      // Slots
+      if(S.apTypeId){
+        body+='<div style="font-size:12.5px;font-weight:700;color:#6b7780;margin:14px 0 6px">Freier Termin</div>';
+        if(S.apSlotsLoading && S.apSlots==null){ body+='<div style="padding:14px 0;text-align:center"><span class="spin" style="width:18px;height:18px;border-width:2px"></span></div>'; }
+        else {
+          var slots=S.apSlots||[];
+          if(!slots.length){ body+='<div style="font-size:12.5px;color:#a9b1b6;font-weight:600;padding:4px 0">Keine freien Termine in den nächsten 4 Wochen.</div>'; }
+          else {
+            body+='<div class="scrl" style="max-height:260px;overflow-y:auto;padding-right:4px">'+slGroup(slots).map(function(g){
+              return '<div style="margin-bottom:10px"><div style="font-size:12px;font-weight:800;color:#8a929a;margin-bottom:6px">'+esc(g.label)+'</div><div style="display:flex;flex-wrap:wrap;gap:7px">'+
+                g.items.map(function(it){ var sel=(S.apSlotSel&&S.apSlotSel.start===it.slot.start); return '<button data-apslot="'+it.i+'" style="border:1.5px solid '+(sel?TEAL:'#d6dee0')+';background:'+(sel?TEAL:'#fff')+';color:'+(sel?'#fff':'#0a4958')+';border-radius:10px;font-size:12.5px;font-weight:800;padding:7px 11px;cursor:pointer">'+esc(slTime(it.slot.start))+(it.slot.instructor?('<span style="font-weight:600;opacity:.8"> · '+esc(it.slot.instructor)+'</span>'):'')+'</button>'; }).join('')+
+              '</div></div>';
+            }).join('')+'</div>';
+          }
+        }
+      }
+    }
+  }
+  var canBook=!!(S.apSlotSel&&S.apTypeId&&!S.apResult);
+  return '<div data-apoverlay="1" style="position:fixed;inset:0;background:rgba(0,18,22,.5);z-index:70;display:flex;align-items:center;justify-content:center;padding:20px">'+
+    '<div data-apcard="1" style="width:100%;max-width:480px;background:#fff;border-radius:20px;box-shadow:0 30px 70px rgba(0,0,0,.3);padding:22px 24px;max-height:90vh;overflow-y:auto">'+
+      '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:16px">'+
+        '<div style="min-width:0"><div style="font-size:16px;font-weight:900;letter-spacing:-.3px">Termin buchen</div>'+
+          '<div style="font-size:12.5px;color:#8a929a;font-weight:600;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">für '+esc(S.apMemberName||'Mitglied')+'</div></div>'+
+        '<button data-apx="1" style="border:none;background:#f1f5f6;border-radius:9px;width:32px;height:32px;font-size:18px;line-height:1;color:#6b7780;cursor:pointer;flex-shrink:0">×</button></div>'+
+      body+success+
+      '<div style="display:flex;gap:9px;margin-top:16px">'+
+        '<button data-apcancel="1" style="flex:1;border:1.5px solid #d6dee0;border-radius:11px;background:#fff;color:#42454b;font-weight:800;font-size:13.5px;padding:11px;cursor:pointer">'+(S.apResult?'Schließen':'Abbrechen')+'</button>'+
+        (S.apResult?'':'<button data-apbook="1"'+(canBook&&!S.apBusy?'':' disabled')+' style="flex:1;border:none;border-radius:11px;background:'+(canBook?TEAL:'#b7c2c5')+';color:#fff;font-weight:800;font-size:13.5px;padding:11px;cursor:'+(canBook?'pointer':'default')+'">'+(S.apBusy?'Bucht …':'Termin buchen')+'</button>')+
+      '</div>'+
+    '</div></div>';
+}
+function wireAp(scope){
+  if(!S.apOpen) return;
+  var ov=scope.querySelector('[data-apoverlay]'); if(ov) ov.onclick=closeApptBook;
+  var card=scope.querySelector('[data-apcard]'); if(card) card.onclick=function(e){ e.stopPropagation(); };
+  var x=scope.querySelector('[data-apx]'); if(x) x.onclick=closeApptBook;
+  var cc=scope.querySelector('[data-apcancel]'); if(cc) cc.onclick=closeApptBook;
+  var ty=scope.querySelector('#aptype'); if(ty) ty.onchange=function(){ var o=ty.options[ty.selectedIndex]; if(ty.value) apChooseType(ty.value, o?o.textContent:''); else { S.apTypeId=''; S.apSlots=null; S.apSlotSel=null; render(); } };
+  scope.querySelectorAll('[data-apslot]').forEach(function(b){ b.onclick=function(){ apPickSlot(parseInt(b.getAttribute('data-apslot'),10)); }; });
+  var bk=scope.querySelector('[data-apbook]'); if(bk) bk.onclick=apDoBook;
 }
 // Studio-weite Wochenübersicht laden (best effort). Ist der Abruf nicht verfügbar
 // (available:false), bleibt S.studioApptsAvailable false und die Karte erscheint gar nicht.
@@ -1034,6 +1128,7 @@ function renderShell(content, title, sub){
       navItem('inbox','Posteingang',IC.inbox, open||'')+
       navItem('members','Mitglieder',IC.members)+
       navItem('appts','Termine',IC.appts, apptOpen||'')+
+      navItem('trial','Probetraining',IC.appts)+
       navItem('help','Hilfe-Artikel',IC.help)+
       navItem('stats','Statistiken',IC.stats)+
       navItem('msg','Nachrichten',IC.msg)+
@@ -1077,7 +1172,7 @@ function renderShell(content, title, sub){
     {k:'dash',l:'Übersicht',ic:IC.dash,on:sc==='dash'},
     {k:'inbox',l:'Posteingang',ic:IC.inbox,on:(sc==='inbox'||sc==='thread'),badge:open},
     {k:'members',l:'Mitglieder',ic:IC.members,on:(sc==='members'||sc==='profile')},
-    {k:'__more',l:'Mehr',ic:IC.dots,on:(['appts','help','stats','msg','leads','todo','schicht'].indexOf(sc)>=0)}
+    {k:'__more',l:'Mehr',ic:IC.dots,on:(['appts','trial','help','stats','msg','leads','todo','schicht'].indexOf(sc)>=0)}
   ];
   var bnav=el('<nav class="bottomnav" style="align-items:stretch;padding:5px 4px calc(5px + env(safe-area-inset-bottom,0px))"></nav>');
   bnav.innerHTML=bnDefs.map(function(it){ var c=it.on?'#0a4958':'#9aa6aa';
@@ -1792,7 +1887,7 @@ function membersNode(){
       '<div style="margin-top:18px;background:#fff;border-radius:20px;box-shadow:0 14px 38px rgba(4,33,40,.09);padding:20px 24px"><div style="font-size:15px;font-weight:900;letter-spacing:-.2px;margin-bottom:4px;color:#15171B">Vorgangs-Historie</div>'+histRows+'</div>'+
       // DSGVO-Zone: bewusst dezent, ganz unten – Anonymisieren ist unwiderruflich.
       '<div style="margin-top:20px;display:flex;justify-content:flex-end;padding:0 2px"><button data-anon="1" style="display:inline-flex;align-items:center;gap:7px;border:1.5px solid #e3b8b1;background:#fff;color:#b5402f;border-radius:11px;font-size:12.5px;font-weight:800;padding:9px 14px;cursor:pointer"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#b5402f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>DSGVO: Mitglied anonymisieren</button></div>'+
-    '</div>'+dmModalHTML()+cxModalHTML();
+    '</div>'+dmModalHTML()+cxModalHTML()+apModalHTML();
     setTimeout(function(){
       var b=wrap.querySelector('[data-back]'); if(b) b.onclick=backToMembers;
       wrap.querySelectorAll('[data-hist]').forEach(function(x){ x.onclick=function(){ S.screen='inbox'; openConv(x.getAttribute('data-hist')); }; });
@@ -1831,6 +1926,7 @@ function membersNode(){
       var cxr=wrap.querySelector('[data-cxrevoke]'); if(cxr) cxr.onclick=function(){ doRevoke(p); };
       wireDm(wrap);
       wireCx(wrap, p);
+      wireAp(wrap);
     },0);
     return wrap;
   }
@@ -2309,6 +2405,15 @@ async function shPost(body){
     return r;
   }catch(e){ alert('Verbindung fehlgeschlagen.'); return null; }
 }
+// Schichten aus den Magicline-Öffnungszeiten anlegen (nur leere Tage; Früh/Spät-Split).
+async function shFillFromHours(){
+  if(S.shBusy) return;
+  if(!confirm('Für diese Woche Schichten aus euren Magicline-Öffnungszeiten anlegen? Es werden nur leere Tage gefüllt – bestehende Schichten bleiben unangetastet.')) return;
+  S.shBusy='fill'; render();
+  var r=await shPost({action:'fillFromHours',split:'early_late'});
+  S.shBusy=''; render();
+  if(r && r.ok!==false && r.message) alert(r.message);
+}
 function shSetTab(t){
   if(S.shTab!==t){
     S.shTab=t;
@@ -2573,10 +2678,11 @@ function shPlanTabHTML(){
     '<div style="width:40px;height:40px;border-radius:12px;background:rgba(246,169,100,.22);display:flex;align-items:center;justify-content:center;flex-shrink:0">'+shSunIcon(21)+'</div>'+
     '<div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:900">KI-Schichtplanung</div><div style="font-size:11.5px;color:#aed0d6;font-weight:600">'+esc(String(open))+' offene Schichten · nutzt Verfügbarkeiten</div></div>'+
     '<button data-shki="1" class="tapc" style="border:none;border-radius:11px;background:#F6A964;color:#0a4958;font-weight:900;font-size:12.5px;padding:9px 14px;cursor:pointer;flex-shrink:0">Planen</button></div>';
+  var fillBtn='<button data-shfill="1" class="tapc" style="width:100%;margin-top:10px;display:flex;align-items:center;justify-content:center;gap:8px;border:1.5px solid #cfe0e3;border-radius:13px;background:#fff;color:#0a4958;font-weight:800;font-size:12.5px;padding:11px;cursor:pointer">'+(S.shBusy==='fill'?'<span class="spin" style="width:14px;height:14px;border-width:2px"></span>Legt Schichten an …':'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#0a4958" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Schichten aus Öffnungszeiten anlegen')+'</button>';
   var toggle='<div style="display:flex;gap:6px;background:#e4ebec;border-radius:12px;padding:4px;margin:16px 0 2px">'+[['tag','Tagesansicht'],['woche','Wochenansicht']].map(function(v){ var a=S.shView===v[0];
     return '<button data-shview="'+v[0]+'" style="flex:1;padding:8px 0;border:none;border-radius:9px;background:'+(a?'#fff':'transparent')+';color:'+(a?'#0a4958':'#6b7780')+';font-weight:800;font-size:12.5px;cursor:pointer">'+v[1]+'</button>';
   }).join('')+'</div>';
-  return '<div style="padding:16px 18px 24px">'+kiCard+toggle+(S.shView==='woche'?shWeekViewHTML():shDayViewHTML())+'</div>';
+  return '<div style="padding:16px 18px 24px">'+kiCard+fillBtn+toggle+(S.shView==='woche'?shWeekViewHTML():shDayViewHTML())+'</div>';
 }
 
 // ---- HTML: Offen-Tab ----
@@ -2828,6 +2934,7 @@ function wireSchicht(node){
   node.querySelectorAll('[data-shunboard]').forEach(function(b){ b.onclick=function(){ shBoardToggle(b.getAttribute('data-shunboard'),false); }; });
   node.querySelectorAll('[data-shmsg]').forEach(function(b){ b.onclick=function(){ shMsgById(b.getAttribute('data-shmsg')); }; });
   var ki=node.querySelector('[data-shki]'); if(ki) ki.onclick=shRunKi;
+  var fl=node.querySelector('[data-shfill]'); if(fl) fl.onclick=shFillFromHours;
   node.querySelectorAll('[data-shkiclose]').forEach(function(b){ b.onclick=shCloseKi; });
   var ka=node.querySelector('[data-shkiapply]'); if(ka) ka.onclick=shAcceptKi;
   node.querySelectorAll('[data-shswacc]').forEach(function(b){ b.onclick=function(){ shSwapAct(b.getAttribute('data-shswacc'),'accept'); }; });
@@ -3185,6 +3292,115 @@ function statsNode(){
   return node;
 }
 
+// ---------- Probetraining ----------
+function loadTrialOffers(){
+  if(S.trOffersLoading) return;
+  S.trOffers=null; S.trOffersLoading=true; S.trUnavail=false; S.trDone=''; S.trResult='';
+  S.trConfigId=''; S.trBookableId=''; S.trSlots=null; S.trSlotSel=null; render();
+  tapi('/api/team/trial?action=offers').then(function(r){
+    S.trOffersLoading=false;
+    if(r&&r.ok&&r.available&&Array.isArray(r.offers)&&r.offers.length){
+      S.trOffers=r.offers;
+      if(r.offers.length===1){ trChooseOffer(r.offers[0].configId, r.offers[0].bookableId, r.offers[0].title); return; }
+    } else { S.trOffers=[]; S.trUnavail=!(r&&r.available); }
+    render();
+  }).catch(function(){ S.trOffersLoading=false; S.trOffers=[]; S.trUnavail=true; render(); });
+}
+function trChooseOffer(configId, bookableId, title){
+  S.trConfigId=String(configId); S.trBookableId=String(bookableId); S.trTitle=title||'';
+  S.trSlots=null; S.trSlotSel=null; S.trSlotsLoading=true; render();
+  tapi('/api/team/trial?action=slots&bookableId='+encodeURIComponent(bookableId)+'&days=28').then(function(r){
+    S.trSlotsLoading=false; S.trSlots=(r&&r.ok&&Array.isArray(r.slots))?r.slots:[]; render();
+  }).catch(function(){ S.trSlotsLoading=false; S.trSlots=[]; render(); });
+}
+function trPickSlot(i){ var s=(S.trSlots||[])[i]; if(s){ S.trSlotSel=s; render(); } }
+async function trBook(){
+  if(S.trBusy) return;
+  var first=(S.trFirst||'').trim(), last=(S.trLast||'').trim(), email=(S.trEmail||'').trim();
+  if(!first||!last||!email){ S.trResult='Bitte Vorname, Nachname und E-Mail angeben.'; render(); return; }
+  if(!S.trSlotSel||!S.trBookableId||!S.trConfigId){ S.trResult='Bitte einen freien Termin wählen.'; render(); return; }
+  S.trBusy=true; S.trResult=''; render();
+  var s=S.trSlotSel;
+  try{
+    var r=await tapi('/api/team/trial',{method:'POST',body:{ action:'book', firstName:first, lastName:last, email:email, configId:S.trConfigId, bookableId:S.trBookableId, start:s.start, end:s.end, instructorIds:(s.instructorIds||[]), whenText:slDay(s.start)+' '+slTime(s.start)+' Uhr' }});
+    S.trBusy=false;
+    if(r&&r.ok){ S.trDone=r.message||'Probetraining gebucht.'; S.trResult=''; S.trFirst=''; S.trLast=''; S.trEmail=''; S.trSlotSel=null; }
+    else { S.trResult=(r&&r.message)||'Buchung fehlgeschlagen.'; }
+  }catch(e){ S.trBusy=false; S.trResult='Verbindung fehlgeschlagen.'; }
+  render();
+}
+function trialNode(){
+  var node=el('<div class="scrl" style="flex:1;min-height:0;overflow-y:auto;padding:22px 28px 44px"></div>');
+  if(S.trDone){
+    node.innerHTML='<div style="max-width:560px"><div style="background:#fff;border-radius:20px;box-shadow:0 14px 38px rgba(4,33,40,.09);padding:26px 26px"><div style="width:52px;height:52px;border-radius:50%;background:#e7f6ec;display:flex;align-items:center;justify-content:center;margin-bottom:14px"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#1d7a3e" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></div>'+
+      '<div style="font-size:19px;font-weight:900;letter-spacing:-.4px;margin-bottom:6px">'+esc(S.trDone)+'</div>'+
+      '<div style="font-size:13.5px;color:#6b7780;font-weight:600;line-height:1.55">Das Probetraining ist im Magicline-Kalender eingetragen. Der Interessent erhält von Magicline die übliche Bestätigung.</div>'+
+      '<button data-trnew="1" style="margin-top:18px;display:inline-flex;align-items:center;gap:8px;border:none;border-radius:12px;background:'+TEAL+';color:#fff;font-weight:800;font-size:13.5px;padding:12px 18px;cursor:pointer">+ Weiteres Probetraining buchen</button></div></div>';
+    setTimeout(function(){ var b=node.querySelector('[data-trnew]'); if(b) b.onclick=function(){ S.trDone=''; S.trSlotSel=null; render(); }; },0);
+    return node;
+  }
+  var inner='<div style="max-width:600px">';
+  // Kontaktdaten
+  inner+='<div style="background:#fff;border-radius:20px;box-shadow:0 14px 38px rgba(4,33,40,.09);padding:22px 24px;margin-bottom:16px">'+
+    '<div style="font-size:15px;font-weight:900;letter-spacing:-.2px;margin-bottom:14px;color:#15171B">Kontaktdaten</div>'+
+    '<div style="display:flex;gap:12px;flex-wrap:wrap">'+
+      '<label style="flex:1;min-width:180px;display:flex;flex-direction:column;gap:5px;font-size:12px;font-weight:700;color:#6b7780">Vorname<input id="trfirst" value="'+esc(S.trFirst)+'" style="padding:11px 13px;border:1.5px solid #dce3e4;border-radius:11px;font-size:14px;background:#fbfcfc"></label>'+
+      '<label style="flex:1;min-width:180px;display:flex;flex-direction:column;gap:5px;font-size:12px;font-weight:700;color:#6b7780">Nachname<input id="trlast" value="'+esc(S.trLast)+'" style="padding:11px 13px;border:1.5px solid #dce3e4;border-radius:11px;font-size:14px;background:#fbfcfc"></label>'+
+    '</div>'+
+    '<label style="display:flex;flex-direction:column;gap:5px;font-size:12px;font-weight:700;color:#6b7780;margin-top:12px">E-Mail<input id="trmail" type="email" value="'+esc(S.trEmail)+'" style="padding:11px 13px;border:1.5px solid #dce3e4;border-radius:11px;font-size:14px;background:#fbfcfc"></label>'+
+  '</div>';
+  // Angebot + Slots
+  inner+='<div style="background:#fff;border-radius:20px;box-shadow:0 14px 38px rgba(4,33,40,.09);padding:22px 24px">';
+  inner+='<div style="font-size:15px;font-weight:900;letter-spacing:-.2px;margin-bottom:14px;color:#15171B">Termin</div>';
+  if(S.trOffersLoading && S.trOffers==null){ inner+='<div style="padding:16px 0;text-align:center"><span class="spin"></span></div>'; }
+  else if(S.trUnavail){ inner+='<div style="font-size:12.5px;font-weight:700;color:#b5402f;background:#fbeae7;border-radius:12px;padding:12px 14px;line-height:1.5">Probetraining-Buchung ist nicht verfügbar (Magicline-Berechtigung TRIAL_OFFER_READ / TRIAL_OFFER_WRITE nötig). Anfragen werden ersatzweise per E-Mail ans Studio übergeben.</div>'; }
+  else {
+    var offers=S.trOffers||[];
+    if(offers.length>1){
+      inner+='<div style="font-size:12.5px;font-weight:700;color:#6b7780;margin-bottom:6px">Probetraining-Art</div>'+
+        '<select id="troffer" style="width:100%;padding:11px 13px;border:1.5px solid #dce3e4;border-radius:11px;font-size:14px;background:#fbfcfc;margin-bottom:14px">'+
+        '<option value="">– wählen –</option>'+
+        offers.map(function(o,i){ return '<option value="'+i+'"'+(String(S.trBookableId)===String(o.bookableId)?' selected':'')+'>'+esc(o.title)+(o.duration?(' ('+o.duration+' Min.)'):'')+'</option>'; }).join('')+
+        '</select>';
+    } else if(offers.length===1){
+      inner+='<div style="font-size:12.5px;color:#8a929a;font-weight:700;margin-bottom:12px">'+esc(offers[0].title)+(offers[0].duration?(' · '+offers[0].duration+' Min.'):'')+'</div>';
+    } else {
+      inner+='<div style="font-size:12.5px;color:#a9b1b6;font-weight:600;padding:4px 0">Keine buchbaren Probetrainings hinterlegt.</div>';
+    }
+    if(S.trBookableId){
+      inner+='<div style="font-size:12.5px;font-weight:700;color:#6b7780;margin-bottom:6px">Freier Termin</div>';
+      if(S.trSlotsLoading && S.trSlots==null){ inner+='<div style="padding:14px 0;text-align:center"><span class="spin" style="width:18px;height:18px;border-width:2px"></span></div>'; }
+      else {
+        var slots=S.trSlots||[];
+        if(!slots.length){ inner+='<div style="font-size:12.5px;color:#a9b1b6;font-weight:600;padding:4px 0">Keine freien Termine in den nächsten 4 Wochen.</div>'; }
+        else {
+          inner+='<div class="scrl" style="max-height:280px;overflow-y:auto;padding-right:4px">'+slGroup(slots).map(function(g){
+            return '<div style="margin-bottom:10px"><div style="font-size:12px;font-weight:800;color:#8a929a;margin-bottom:6px">'+esc(g.label)+'</div><div style="display:flex;flex-wrap:wrap;gap:7px">'+
+              g.items.map(function(it){ var sel=(S.trSlotSel&&S.trSlotSel.start===it.slot.start); return '<button data-trslot="'+it.i+'" style="border:1.5px solid '+(sel?TEAL:'#d6dee0')+';background:'+(sel?TEAL:'#fff')+';color:'+(sel?'#fff':'#0a4958')+';border-radius:10px;font-size:12.5px;font-weight:800;padding:7px 11px;cursor:pointer">'+esc(slTime(it.slot.start))+(it.slot.instructor?('<span style="font-weight:600;opacity:.8"> · '+esc(it.slot.instructor)+'</span>'):'')+'</button>'; }).join('')+
+            '</div></div>';
+          }).join('')+'</div>';
+        }
+      }
+    }
+  }
+  var msg=S.trResult?'<div style="font-size:12.5px;font-weight:700;color:#b5402f;margin-top:12px">'+esc(S.trResult)+'</div>':'';
+  var canBook=!S.trBusy;
+  inner+='<div style="margin-top:16px;padding-top:16px;border-top:1px solid #f0f3f4">'+
+    '<button data-trbook="1"'+(canBook?'':' disabled')+' style="display:inline-flex;align-items:center;gap:8px;border:none;border-radius:12px;background:'+TEAL+';color:#fff;font-weight:800;font-size:14px;padding:12px 20px;cursor:pointer">'+(S.trBusy?'<span class="spin" style="width:15px;height:15px;border-width:2px;border-top-color:#fff"></span>Bucht …':'Probetraining buchen')+'</button>'+msg+
+  '</div>';
+  inner+='</div></div>';
+  node.innerHTML=inner;
+  setTimeout(function(){
+    var f=node.querySelector('#trfirst'); if(f) f.oninput=function(){ S.trFirst=f.value; };
+    var l=node.querySelector('#trlast'); if(l) l.oninput=function(){ S.trLast=l.value; };
+    var e=node.querySelector('#trmail'); if(e) e.oninput=function(){ S.trEmail=e.value; };
+    var o=node.querySelector('#troffer'); if(o) o.onchange=function(){ var off=(S.trOffers||[])[parseInt(o.value,10)]; if(off) trChooseOffer(off.configId, off.bookableId, off.title); else { S.trBookableId=''; S.trConfigId=''; S.trSlots=null; S.trSlotSel=null; render(); } };
+    node.querySelectorAll('[data-trslot]').forEach(function(b){ b.onclick=function(){ trPickSlot(parseInt(b.getAttribute('data-trslot'),10)); }; });
+    var bk=node.querySelector('[data-trbook]'); if(bk) bk.onclick=trBook;
+  },0);
+  return node;
+}
+
 function placeholderNode(title){
   var w=el('<div style="flex:1;display:flex;align-items:center;justify-content:center;padding:40px"></div>');
   w.innerHTML='<div style="text-align:center;max-width:380px"><div style="font-size:18px;font-weight:900">'+esc(title)+'</div><div style="font-size:14px;color:#6b7780;font-weight:500;margin-top:8px;line-height:1.6">Dieser Bereich folgt als Nächstes. Der Posteingang (Empfang & Antworten) ist bereits voll funktionsfähig.</div></div>';
@@ -3194,13 +3410,14 @@ function placeholderNode(title){
 // ---------- main render ----------
 function render(){
   if(!S.token){ renderLogin(); return; }
-  var titles={dash:'Übersicht',inbox:'Posteingang',members:'Mitglieder',appts:'Termine',help:'Hilfe-Artikel',stats:'Statistiken',msg:'Nachrichten',leads:'Leads',todo:'Aufgaben',schicht:'Schichtplan'};
-  var subs={dash:'Dein Studio auf einen Blick',inbox:'Alle Vorgänge & Anfragen',members:'Mitgliederverwaltung',appts:'Anfragen & Buchungen',help:'Wissensdatenbank verwalten',stats:'Auswertungen & Trends',msg:'Rundnachricht & Direktnachricht',leads:'Interessenten-Pipeline',todo:'Interne Aufgaben fürs Team',schicht:'Dienstplan, Tausch & Verfügbarkeiten'};
+  var titles={dash:'Übersicht',inbox:'Posteingang',members:'Mitglieder',appts:'Termine',trial:'Probetraining',help:'Hilfe-Artikel',stats:'Statistiken',msg:'Nachrichten',leads:'Leads',todo:'Aufgaben',schicht:'Schichtplan'};
+  var subs={dash:'Dein Studio auf einen Blick',inbox:'Alle Vorgänge & Anfragen',members:'Mitgliederverwaltung',appts:'Anfragen & Buchungen',trial:'Schnell ein Probetraining buchen',help:'Wissensdatenbank verwalten',stats:'Auswertungen & Trends',msg:'Rundnachricht & Direktnachricht',leads:'Interessenten-Pipeline',todo:'Interne Aufgaben fürs Team',schicht:'Dienstplan, Tausch & Verfügbarkeiten'};
   var content;
   if(S.screen==='inbox') content=inboxNode();
   else if(S.screen==='dash') content=dashNode();
   else if(S.screen==='members') content=membersNode();
   else if(S.screen==='appts') content=apptsNode();
+  else if(S.screen==='trial') content=trialNode();
   else if(S.screen==='help') content=helpNode();
   else if(S.screen==='stats') content=statsNode();
   else if(S.screen==='msg') content=msgNode();
@@ -3215,6 +3432,7 @@ function goScreen(k){
   if(k==='dash'){ loadUtil(); loadChurn(); loadDues(); if(!S.convs.length && !S.loading) loadInbox(); }
   if(k==='members'){ S.profile=null; if(!S.membersLoaded){ loadMembers(); return; } }
   if(k==='appts' && !S.convs.length && !S.loading){ loadInbox(); return; }
+  if(k==='trial'){ if(S.trOffers==null){ loadTrialOffers(); return; } }
   if(k==='help'){ S.helpView='list'; S.editor=null; if(!S.articlesLoaded){ loadArticles(); return; } }
   if(k==='stats'){ loadUtil(); loadStats(); return; }
   if(k==='msg'){ S.bcResult=null; }
