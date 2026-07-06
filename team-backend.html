@@ -139,6 +139,8 @@ var S={ token:null, screen:'inbox', convs:[], counts:{}, selKey:null, sel:null,
         memberCheckins:null, memberCheckinsLoading:false, ciFrom:'', ciTo:'', ciMailBusy:false, ciMsg:'',
         // Nachrichtenverlauf mit dem Mitglied (alle Vorgänge zusammengeführt)
         memberMsgs:null, memberMsgsLoading:false, memberMsgsTotal:0,
+        // Vertragskündigung aus dem Team-Bereich (Modal: kündigen / zurücknehmen / Widerruf)
+        cxOpen:false, cxDate:'', cxReason:'', cxReasons:null, cxReasonsLoading:false, cxBusy:false, cxResult:null,
         // Schichtplan: Dienstplan, Tausch (Schwarzes Brett), Verfügbarkeiten, Team-Chat
         shWeek:null, shTab:'plan', shView:'tag', shDay:'', shData:null, shLoaded:false, shLoading:false, shBusy:'',
         shSwap:null, shSwapLoading:false, shThreads:[], shChatMe:null,
@@ -1775,7 +1777,7 @@ function membersNode(){
       handledLineHTML(p)+
       '<div class="prof-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:18px;align-items:start">'+
         stammdatenCard(p)+
-        profileCard('Vertrag', pRow('Tarif',ct.rateName)+pRow('Vertragsbeginn',ct.startDate)+pRow('Status',ct.active===false?'beendet':'aktiv')+pRow('Vertragsende',ct.endDate||(ct.cancelled?ct.cancellationDate:'läuft'))+pRow('Nächstmögl. Kündigung',ct.nextCancellationDate))+
+        vertragCard(p)+
         profileCard('Bankverbindung', pRow('IBAN',p.ibanMasked))+
         zahlstatusCard(p.account)+
         benefitsCard(p.benefits)+
@@ -1790,7 +1792,7 @@ function membersNode(){
       '<div style="margin-top:18px;background:#fff;border-radius:20px;box-shadow:0 14px 38px rgba(4,33,40,.09);padding:20px 24px"><div style="font-size:15px;font-weight:900;letter-spacing:-.2px;margin-bottom:4px;color:#15171B">Vorgangs-Historie</div>'+histRows+'</div>'+
       // DSGVO-Zone: bewusst dezent, ganz unten – Anonymisieren ist unwiderruflich.
       '<div style="margin-top:20px;display:flex;justify-content:flex-end;padding:0 2px"><button data-anon="1" style="display:inline-flex;align-items:center;gap:7px;border:1.5px solid #e3b8b1;background:#fff;color:#b5402f;border-radius:11px;font-size:12.5px;font-weight:800;padding:9px 14px;cursor:pointer"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#b5402f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>DSGVO: Mitglied anonymisieren</button></div>'+
-    '</div>'+dmModalHTML();
+    '</div>'+dmModalHTML()+cxModalHTML();
     setTimeout(function(){
       var b=wrap.querySelector('[data-back]'); if(b) b.onclick=backToMembers;
       wrap.querySelectorAll('[data-hist]').forEach(function(x){ x.onclick=function(){ S.screen='inbox'; openConv(x.getAttribute('data-hist')); }; });
@@ -1823,7 +1825,12 @@ function membersNode(){
       wrap.querySelectorAll('[data-msgkey]').forEach(function(b){ var k=b.getAttribute('data-msgkey'); if(k) b.onclick=function(){ S.screen='inbox'; openConv(k); }; });
       var ms2=wrap.querySelector('[data-msgsend2]'); if(ms2) ms2.onclick=function(){ openDirectMsg(p.id, p.name); };
       var msc=wrap.querySelector('#msgscroll'); if(msc) msc.scrollTop=msc.scrollHeight;   // ans Ende (neueste)
+      // Vertrag: Kündigen / Rücknahme / Widerruf
+      var cxo=wrap.querySelector('[data-cxopen]'); if(cxo) cxo.onclick=function(){ openCancel(p); };
+      var cxw=wrap.querySelector('[data-cxwithdraw]'); if(cxw) cxw.onclick=function(){ doWithdrawCancel(p); };
+      var cxr=wrap.querySelector('[data-cxrevoke]'); if(cxr) cxr.onclick=function(){ doRevoke(p); };
       wireDm(wrap);
+      wireCx(wrap, p);
     },0);
     return wrap;
   }
@@ -2912,6 +2919,118 @@ function wireDm(scope){
   var ce=scope.querySelector('#dmemail'); if(ce) ce.onchange=function(){ S.dmEmail=ce.checked; };
   var cw=scope.querySelector('#dmwa'); if(cw) cw.onchange=function(){ S.dmWa=cw.checked; };
   var sd=scope.querySelector('[data-dmsend]'); if(sd) sd.onclick=doSendDirect;
+}
+
+// ---------- Vertragskündigung (Team) ----------
+// Vertragskarte inkl. Aktionen (kündigen / zurücknehmen / 14-Tage-Widerruf).
+function vertragCard(p){
+  var ct=p.contract||{};
+  var statusTxt = ct.active===false ? (ct.reversed?'widerrufen':'beendet') : (ct.cancelled?'gekündigt':'aktiv');
+  var rows=pRow('Tarif',ct.rateName)+pRow('Vertragsbeginn',ct.startDate)+pRow('Status',statusTxt)+pRow('Vertragsende',ct.endDate||(ct.cancelled?ct.cancellationDate:'läuft'))+pRow('Nächstmögl. Kündigung',ct.nextCancellationDate);
+  var actions='';
+  if(ct.contractId){
+    var btns=[];
+    if(ct.active===false){
+      // beendet/widerrufen -> keine Aktion
+    } else if(ct.cancelled){
+      btns.push('<button data-cxwithdraw="1" style="display:inline-flex;align-items:center;gap:7px;border:1.5px solid #bcd7c4;border-radius:10px;background:#fff;color:#1d7a3e;font-weight:800;font-size:12.5px;padding:9px 13px;cursor:pointer">↩ Kündigung zurücknehmen</button>');
+    } else {
+      btns.push('<button data-cxopen="1" style="display:inline-flex;align-items:center;gap:7px;border:1.5px solid #e3b8b1;border-radius:10px;background:#fff;color:#b5402f;font-weight:800;font-size:12.5px;padding:9px 13px;cursor:pointer">Vertrag kündigen</button>');
+      if(ct.withdrawalEligible) btns.push('<button data-cxrevoke="1" style="display:inline-flex;align-items:center;gap:7px;border:1.5px solid #d8c19a;border-radius:10px;background:#fff;color:#a5701f;font-weight:800;font-size:12.5px;padding:9px 13px;cursor:pointer">14-Tage-Widerruf'+(ct.withdrawalDaysLeft!=null?(' ('+ct.withdrawalDaysLeft+' T.)'):'')+'</button>');
+    }
+    if(btns.length) actions='<div style="margin-top:12px;padding-top:12px;border-top:1px solid #f0f3f4;display:flex;gap:9px;flex-wrap:wrap">'+btns.join('')+'</div>';
+  }
+  return profileCard('Vertrag', rows+actions);
+}
+function openCancel(p){
+  var ct=p.contract||{};
+  S.cxOpen=true; S.cxBusy=false; S.cxResult=null;
+  S.cxDate=ct.nextCancellationDateISO||''; S.cxReason='';
+  render();
+  if(S.cxReasons==null) loadCancelReasons(p.id);
+}
+function closeCancel(p){ if(S.cxBusy) return; var had=!!S.cxResult; S.cxOpen=false; S.cxResult=null; if(had&&p&&p.id) openProfile(p.id); else render(); }
+async function loadCancelReasons(id){
+  S.cxReasonsLoading=true; render();
+  try{ var r=await tapi('/api/team/cancel?id='+encodeURIComponent(id)); S.cxReasons=(r&&r.ok&&Array.isArray(r.reasons))?r.reasons:[]; }
+  catch(e){ S.cxReasons=[]; }
+  S.cxReasonsLoading=false; render();
+}
+async function doCancelSubmit(p){
+  if(S.cxBusy) return;
+  if(!S.cxReason){ alert('Bitte einen Kündigungsgrund wählen.'); return; }
+  if(!S.cxDate){ alert('Bitte ein Kündigungsdatum wählen.'); return; }
+  S.cxBusy=true; render();
+  try{
+    var r=await tapi('/api/team/cancel',{method:'POST',body:{ id:p.id, action:'cancel', date:S.cxDate, reasonId:S.cxReason }});
+    S.cxBusy=false;
+    if(r&&r.ok){ S.cxResult=r; }
+    else { alert((r&&r.message)||'Kündigung fehlgeschlagen.'); }
+  }catch(e){ S.cxBusy=false; alert('Verbindung fehlgeschlagen.'); }
+  render();
+}
+async function doWithdrawCancel(p){
+  if(!confirm('Kündigung von '+(p.name||'diesem Mitglied')+' wirklich zurücknehmen? Die Mitgliedschaft läuft dann normal weiter.')) return;
+  try{
+    var r=await tapi('/api/team/cancel',{method:'POST',body:{ id:p.id, action:'withdraw' }});
+    if(r&&r.ok){ alert(r.message||'Kündigung zurückgenommen.'); openProfile(p.id); }
+    else alert((r&&r.message)||'Rücknahme fehlgeschlagen.');
+  }catch(e){ alert('Verbindung fehlgeschlagen.'); }
+}
+async function doRevoke(p){
+  if(!confirm('14-Tage-Widerruf für '+(p.name||'dieses Mitglied')+' eintragen? Der Vertrag wird vollständig rückabgewickelt (bereits gezahlte Beiträge werden erstattet). Das ist verbindlich.')) return;
+  try{
+    var r=await tapi('/api/team/cancel',{method:'POST',body:{ id:p.id, action:'revoke' }});
+    if(r&&r.ok){ alert(r.message||'Widerruf eingetragen.'); openProfile(p.id); }
+    else alert((r&&r.message)||'Widerruf fehlgeschlagen.');
+  }catch(e){ alert('Verbindung fehlgeschlagen.'); }
+}
+function cxModalHTML(p){
+  if(!S.cxOpen) return '';
+  var ct=(p&&p.contract)||{};
+  var success=S.cxResult
+    ? '<div style="margin-top:14px;background:#e7f6ec;border-radius:12px;padding:13px 15px;font-size:13px;font-weight:700;color:#1d7a3e;line-height:1.5">✓ '+esc(S.cxResult.message||'Kündigung eingetragen.')+' Das Mitglied wurde per E-Mail informiert.</div>'
+    : '';
+  var reasonBox;
+  if(S.cxReasonsLoading && S.cxReasons==null){ reasonBox='<div style="padding:8px 0"><span class="spin" style="width:16px;height:16px;border-width:2px"></span></div>'; }
+  else {
+    var rs=S.cxReasons||[];
+    reasonBox='<select id="cxreason" style="width:100%;padding:11px 13px;border:1.5px solid #dce3e4;border-radius:11px;font-size:14px;background:#fbfcfc">'+
+      '<option value="">– Kündigungsgrund wählen –</option>'+
+      rs.map(function(x){ return '<option value="'+esc(String(x.id))+'"'+(String(S.cxReason)===String(x.id)?' selected':'')+'>'+esc(x.name)+'</option>'; }).join('')+
+      '</select>'+
+      (rs.length?'':'<div style="font-size:11.5px;color:#b5402f;font-weight:700;margin-top:6px">Keine Kündigungsgründe abrufbar (Scope evtl. nicht aktiv).</div>');
+  }
+  var form = S.cxResult ? '' : (
+    '<div style="font-size:12.5px;font-weight:700;color:#6b7780;margin-bottom:6px">Kündigung zum</div>'+
+    '<input type="date" id="cxdate" value="'+esc(S.cxDate)+'" style="width:100%;padding:11px 13px;border:1.5px solid #dce3e4;border-radius:11px;font-size:14px;background:#fbfcfc;margin-bottom:'+(ct.nextCancellationDate?'4px':'12px')+'">'+
+    (ct.nextCancellationDate?'<div style="font-size:11.5px;color:#8a929a;font-weight:600;margin-bottom:12px">Nächstmöglicher Termin: '+esc(ct.nextCancellationDate)+'</div>':'')+
+    '<div style="font-size:12.5px;font-weight:700;color:#6b7780;margin-bottom:6px">Grund</div>'+
+    reasonBox+
+    '<div style="margin-top:14px;background:#fbeae7;border-radius:12px;padding:12px 14px;font-size:12.5px;font-weight:600;color:#8a3a2c;line-height:1.5">Die Kündigung wird <b>verbindlich</b> in Magicline eingetragen. Bis zum Vertragsende bleibt der Zugang aktiv. Das Mitglied erhält eine Bestätigungs-E-Mail.</div>'
+  );
+  return '<div data-cxoverlay="1" style="position:fixed;inset:0;background:rgba(0,18,22,.5);z-index:70;display:flex;align-items:center;justify-content:center;padding:20px">'+
+    '<div data-cxcard="1" style="width:100%;max-width:460px;background:#fff;border-radius:20px;box-shadow:0 30px 70px rgba(0,0,0,.3);padding:22px 24px;max-height:90vh;overflow-y:auto">'+
+      '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:16px">'+
+        '<div style="min-width:0"><div style="font-size:16px;font-weight:900;letter-spacing:-.3px">Vertrag kündigen</div>'+
+          '<div style="font-size:12.5px;color:#8a929a;font-weight:600;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc((p&&p.name)||'Mitglied')+(ct.rateName?(' · '+esc(ct.rateName)):'')+'</div></div>'+
+        '<button data-cxx="1" style="border:none;background:#f1f5f6;border-radius:9px;width:32px;height:32px;font-size:18px;line-height:1;color:#6b7780;cursor:pointer;flex-shrink:0">×</button></div>'+
+      form+success+
+      '<div style="display:flex;gap:9px;margin-top:16px">'+
+        '<button data-cxcancel="1" style="flex:1;border:1.5px solid #d6dee0;border-radius:11px;background:#fff;color:#42454b;font-weight:800;font-size:13.5px;padding:11px;cursor:pointer">'+(S.cxResult?'Schließen':'Abbrechen')+'</button>'+
+        (S.cxResult?'':'<button data-cxsubmit="1"'+(S.cxBusy?' disabled':'')+' style="flex:1;border:none;border-radius:11px;background:#b5402f;color:#fff;font-weight:800;font-size:13.5px;padding:11px;cursor:pointer">'+(S.cxBusy?'Kündigt …':'Verbindlich kündigen')+'</button>')+
+      '</div>'+
+    '</div></div>';
+}
+function wireCx(scope, p){
+  if(!S.cxOpen) return;
+  var ov=scope.querySelector('[data-cxoverlay]'); if(ov) ov.onclick=function(){ closeCancel(p); };
+  var card=scope.querySelector('[data-cxcard]'); if(card) card.onclick=function(e){ e.stopPropagation(); };
+  var x=scope.querySelector('[data-cxx]'); if(x) x.onclick=function(){ closeCancel(p); };
+  var cc=scope.querySelector('[data-cxcancel]'); if(cc) cc.onclick=function(){ closeCancel(p); };
+  var dt=scope.querySelector('#cxdate'); if(dt) dt.onchange=function(){ S.cxDate=dt.value; };
+  var rsel=scope.querySelector('#cxreason'); if(rsel) rsel.onchange=function(){ S.cxReason=rsel.value; };
+  var sb=scope.querySelector('[data-cxsubmit]'); if(sb) sb.onclick=function(){ doCancelSubmit(p); };
 }
 
 // ---------- Hilfe-Artikel ----------
