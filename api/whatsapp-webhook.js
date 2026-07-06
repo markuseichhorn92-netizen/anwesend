@@ -106,5 +106,14 @@ module.exports = async function handler(req, res) {
       }
     } catch (e) { /* einzelne Nachricht darf den Lauf nicht abbrechen */ }
   }
+
+  // Zustell-/Lesestatus (gesendet/zugestellt/gelesen/fehlgeschlagen) auf die passende
+  // Team-Nachricht anwenden. Best effort, blockiert die Antwort nicht.
+  try {
+    const Receipts = require('../lib/receipts');
+    const sts = WA.parseStatuses(body);
+    for (const s of sts) { try { await Receipts.applyStatus(s.id, s.status); } catch (e) {} }
+  } catch (e) {}
+
   res.statusCode = 200; return res.end(JSON.stringify({ ok: true, handled: handled, leads: leads }));
 };

@@ -88,6 +88,14 @@ module.exports = async function handler(req, res) {
   const body = parseBody(raw, req.headers['content-type']);
   const d = body.data || body;     // Resend nestet unter data; Cloudflare flach
 
+  // Ausgehende Mails: Zustell-/Öffnungs-Status (Resend-Events) auf die Team-Nachricht anwenden.
+  const evType = String(body.type || d.type || '').toLowerCase();
+  if (evType === 'email.delivered' || evType === 'email.opened' || evType === 'email.bounced' || evType === 'email.delivery_delayed') {
+    const emailId = (d && (d.email_id || d.id)) || body.email_id || null;
+    if (emailId) { try { const Receipts = require('../lib/receipts'); await Receipts.applyStatus(emailId, evType); } catch (e) {} }
+    res.statusCode = 200; return res.end(JSON.stringify({ ok: true, event: evType }));
+  }
+
   // Empfänger (= unsere getokte Adresse) aus to/received_for/cc zusammensuchen.
   const to = [firstStr(d.to, d.recipient, d.To, (body.envelope && body.envelope.to), d['to-address'], (d.headers && d.headers.to)),
     firstStr(d.received_for), firstStr(d.cc)].filter(Boolean).join(', ');

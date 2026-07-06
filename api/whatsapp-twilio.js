@@ -67,23 +67,31 @@ module.exports = async function handler(req, res) {
     res.statusCode = 403; res.setHeader('Content-Type', 'text/plain'); return res.end('bad_signature');
   }
 
+  // Status-Callback (kein Body, aber MessageStatus/SmsStatus) -> Zustell-/Lesestatus setzen.
+  const twStatus = params.MessageStatus || params.SmsStatus;
+  if (twStatus && !params.Body) {
+    try { const Receipts = require('../lib/receipts'); await Receipts.applyStatus(params.MessageSid || params.SmsSid, twStatus); } catch (e) {}
+    res.statusCode = 200; res.setHeader('Content-Type', 'text/xml');
+    return res.end('<?xml version="1.0" encoding="UTF-8"?><Response></Response>');
+  }
+
   const msgs = WA.parseTwilioInbound(params);
   let handled = 0, leads = 0;
   for (const msg of msgs) {
     try {
-      const member = await M.findByPhone(msg.from);
       let memberId, snapshot, isLead = false;
-      if (member && member.id != null) {
-        memberId = String(member.id);
-        const nm = ((member.firstName || '') + ' ' + (member.lastName || '')).trim();
-        snapshot = { name: nm || ('+' + msg.from), nr: member.customerNumber || null,
-          initials: initialsOf(nm) || initialsOf(msg.name) || 'WA', email: member.email || null, phone: msg.from };
+      // 1) Gemerkte Zuordnung (Nummer -> Kunde) hat Vorrang -> kein neues Ticket bei bekannter Nummer.
+      const linked = await LF.resolveKnownLead(msg.from);
+      if (linked && linked.id) {
+        memberId = String(linked.id);
+        snapshot = { name: linked.name || ('+' + msg.from), nr: linked.nr || null, initials: initialsOf(linked.name) || 'WA', phone: msg.from };
       } else {
-        // Schon einmal angelegter Lead? -> bestehendem Kunden zuordnen (keine Dublette).
-        const linked = await LF.resolveKnownLead(msg.from);
-        if (linked && linked.id) {
-          memberId = String(linked.id);
-          snapshot = { name: linked.name || ('+' + msg.from), nr: linked.nr || null, initials: initialsOf(linked.name) || 'WA', phone: msg.from };
+        const member = await M.findByPhone(msg.from);
+        if (member && member.id != null) {
+          memberId = String(member.id);
+          const nm = ((member.firstName || '') + ' ' + (member.lastName || '')).trim();
+          snapshot = { name: nm || ('+' + msg.from), nr: member.customerNumber || null,
+            initials: initialsOf(nm) || initialsOf(msg.name) || 'WA', email: member.email || null, phone: msg.from };
         } else {
           // Neuer Interessent (Probetraining usw.): Pseudo-ID -> landet im Posteingang.
           isLead = true; memberId = 'wa' + msg.from;
