@@ -97,7 +97,7 @@ var TEAL='#0a4958', ORANGE='#E08C53';
 // Fallback-Vorschläge für Mitglieder-Tags (Server liefert die maßgebliche Liste via
 // GET /api/team/tags?memberId=… -> presets). Wird von S.tagPresets überschrieben.
 var TAG_PRESETS=['VIP','Stammkunde','Beschwerde','Risiko','Beobachten','Interessent'];
-var S={ token:null, screen:'inbox', convs:[], counts:{}, selKey:null, sel:null,
+var S={ token:null, role:null, meName:null, screen:'inbox', convs:[], counts:{}, selKey:null, sel:null,
         filter:'open', search:'', loading:false, err:'', draft:'', note:'', replyChannel:'email',
         // Login: Admin (Passwort) <-> Trainer (E-Mail-Code). Additiv, bricht den Passwort-Login nicht.
         loginMode:'admin', liEmail:'', liChallenge:'', liCode:'', liErr:'', liBusy:false, liChannelUsed:'email',
@@ -235,15 +235,31 @@ function aiDraftFor(sel){
 }
 
 // ---------- auth ----------
-function loadToken(){ try{ S.token=localStorage.getItem('fi_team_token')||null; }catch(e){} }
+function loadToken(){ try{ S.token=localStorage.getItem('fi_team_token')||null; S.role=localStorage.getItem('fi_team_role')||null; S.meName=localStorage.getItem('fi_team_name')||null; }catch(e){} }
 function saveToken(t){ S.token=t; try{ t?localStorage.setItem('fi_team_token',t):localStorage.removeItem('fi_team_token'); }catch(e){} }
-function logout(){ saveToken(null); S.convs=[]; S.sel=null; S.selKey=null; render(); }
+function saveRole(r,name){ S.role=r||null; if(name!=null) S.meName=name; try{ r?localStorage.setItem('fi_team_role',r):localStorage.removeItem('fi_team_role'); (name!=null&&name)?localStorage.setItem('fi_team_name',name):(name===''?localStorage.removeItem('fi_team_name'):0); }catch(e){} }
+function logout(){ saveToken(null); saveRole(null,''); S.convs=[]; S.sel=null; S.selKey=null; render(); }
+
+// ── Rollen-Sichtbarkeit ──────────────────────────────────────────────
+// Angestellte (Trainer-Login) sehen nur das Tagesgeschäft. Diese Bereiche
+// bleiben dem Admin (Passwort-Login) vorbehalten. Die eigentliche Sperre
+// sitzt serverseitig – das hier steuert nur, was in der Oberfläche erscheint.
+var ADMIN_ONLY_SCREENS={ stats:1, msg:1, leads:1 };
+function isAdmin(){ return S.role==='admin'; }
+function canSee(k){ return !ADMIN_ONLY_SCREENS[k] || isAdmin(); }
+function meInitials(){ var n=String(S.meName||'').trim(); if(!n) return 'FI'; var p=n.split(/\s+/).filter(Boolean); var i=((p[0]&&p[0][0])||'')+((p[1]&&p[1][0])||''); return (i||n.slice(0,2)||'FI').toUpperCase(); }
+function meDisplayName(){ return String(S.meName||'').trim() || (isAdmin()?'Admin':'Studio-Team'); }
+function roleLabel(){ return isAdmin()?'Admin':'Angestellte(r)'; }
+// Identität der aktuellen Sitzung nach Reload holen (Rolle sicher bestimmen).
+async function loadMe(){
+  try{ var r=await tapi('/api/team/me'); if(r&&r.ok){ saveRole(r.role||'admin', r.name||''); if(!canSee(S.screen)) S.screen='dash'; render(); } }catch(e){}
+}
 
 async function doLogin(pw){
   S.err=''; S.busy=true; render();
   try{
     var r=await tapi('/api/team/login',{method:'POST',body:{password:pw}});
-    if(r.ok && r.token){ saveToken(r.token); S.busy=false; loadEmployees(); await loadInbox(); return; }
+    if(r.ok && r.token){ saveToken(r.token); saveRole(r.role||'admin','Admin'); S.busy=false; loadEmployees(); await loadInbox(); return; }
     S.err=r.message||'Login fehlgeschlagen.'; S.busy=false; render();
   }catch(e){ S.err='Verbindungsfehler.'; S.busy=false; render(); }
 }
@@ -265,7 +281,7 @@ async function doStaffVerify(){
   S.liErr=''; S.liBusy=true; render();
   try{
     var r=await tapi('/api/team/login',{method:'POST',body:{action:'verifyCode',challenge:S.liChallenge,code:code}});
-    if(r && r.ok && r.token){ saveToken(r.token); S.liBusy=false; S.liChallenge=''; S.liCode=''; S.liEmail=''; loadEmployees(); await loadInbox(); return; }
+    if(r && r.ok && r.token){ saveToken(r.token); saveRole(r.role||'trainer', r.name||''); S.liBusy=false; S.liChallenge=''; S.liCode=''; S.liEmail=''; if(!canSee(S.screen)) S.screen='dash'; loadEmployees(); await loadInbox(); return; }
     S.liBusy=false; S.liErr=(r&&r.message)||'Code falsch oder abgelaufen.'; render();
   }catch(e){ S.liBusy=false; S.liErr='Verbindungsfehler.'; render(); }
 }
@@ -1180,9 +1196,9 @@ function renderShell(content, title, sub){
       '<span style="font-size:16px;font-weight:900;color:#fff;letter-spacing:-.3px">Fit-Inn</span>'+
       '<span style="font-size:9.5px;font-weight:800;letter-spacing:1.4px;text-transform:uppercase;color:#0e6072;background:#F6A964;border-radius:6px;padding:3px 6px">Team</span></div>'+
     '<div style="display:flex;align-items:center;gap:11px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.10);border-radius:14px;padding:11px 12px;margin:0 2px 16px">'+
-      '<div style="width:38px;height:38px;border-radius:11px;background:#fff;color:#0a4958;font-weight:900;font-size:14px;display:flex;align-items:center;justify-content:center;flex-shrink:0">FI</div>'+
-      '<div style="min-width:0"><div style="font-size:13.5px;font-weight:800;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Studio-Team</div>'+
-      '<div style="font-size:11.5px;color:#9fc3ca;font-weight:600">Fit-Inn Trier</div></div></div>'+
+      '<div style="width:38px;height:38px;border-radius:11px;background:#fff;color:#0a4958;font-weight:900;font-size:14px;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+esc(meInitials())+'</div>'+
+      '<div style="min-width:0"><div style="font-size:13.5px;font-weight:800;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(meDisplayName())+'</div>'+
+      '<div style="font-size:11px;color:#9fc3ca;font-weight:700;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><span style="font-size:9px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:'+(isAdmin()?'#0e6072':'#0a4958')+';background:'+(isAdmin()?'#F6A964':'#bfe0e6')+';border-radius:5px;padding:2px 6px;margin-right:6px">'+esc(roleLabel())+'</span>Fit-Inn Trier</div></div></div>'+
     '<nav style="display:flex;flex-direction:column;gap:3px;flex:1">'+
       navItem('dash','Übersicht',IC.dash)+
       navItem('inbox','Posteingang',IC.inbox, open||'')+
@@ -1190,9 +1206,9 @@ function renderShell(content, title, sub){
       navItem('appts','Termine',IC.appts, apptOpen||'')+
       navItem('trial','Probetraining',IC.appts)+
       navItem('help','Hilfe-Artikel',IC.help)+
-      navItem('stats','Statistiken',IC.stats)+
-      navItem('msg','Nachrichten',IC.msg)+
-      navItem('leads','Leads',IC.leads)+
+      (canSee('stats')?navItem('stats','Statistiken',IC.stats):'')+
+      (canSee('msg')?navItem('msg','Nachrichten',IC.msg):'')+
+      (canSee('leads')?navItem('leads','Leads',IC.leads):'')+
       navItem('todo','Aufgaben',IC.todo)+
       navItem('schicht','Schichtplan',IC.shift)+
     '</nav>'+
@@ -1692,6 +1708,7 @@ function churnCardHTML(){
 // Offene Beiträge / Mahn-Liste. Wird KOMPLETT ausgeblendet, wenn kein Mitglied
 // mit offenem Betrag / in Mahnung / Inkasso vorliegt (leer/Fehler) – kein leeres Gerüst.
 function duesCardHTML(){
+  if(!isAdmin()) return '';   // Finanz-/Beitragsdaten nur für Admin
   var list=(S.dues||[]).filter(function(m){ return m && (m.inDebtCollection || (m.dunningLevel||0)>0 || (m.openCount||0)>0 || (m.openTotal||0)>0); });
   if(!list.length) return '';
   return '<div style="margin-top:18px;background:#fff;border-radius:20px;box-shadow:0 12px 32px rgba(4,33,40,.09);padding:18px 18px 8px">'+
@@ -1953,8 +1970,8 @@ function membersNode(){
       '<div class="prof-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:18px;align-items:start">'+
         stammdatenCard(p)+
         vertragCard(p)+
-        profileCard('Bankverbindung', pRow('IBAN',p.ibanMasked))+
-        zahlstatusCard(p.account)+
+        (isAdmin()?profileCard('Bankverbindung', pRow('IBAN',p.ibanMasked)):'')+
+        (isAdmin()?zahlstatusCard(p.account):'')+
         benefitsCard(p.benefits)+
         zusatzinfoCard(p.additionalInfo)+
         koerpermasseCard(p.measurements)+
@@ -1965,8 +1982,8 @@ function membersNode(){
       checkinsBlock(p)+
       messagesBlock(p)+
       '<div style="margin-top:18px;background:#fff;border-radius:20px;box-shadow:0 14px 38px rgba(4,33,40,.09);padding:20px 24px"><div style="font-size:15px;font-weight:900;letter-spacing:-.2px;margin-bottom:4px;color:#15171B">Vorgangs-Historie</div>'+histRows+'</div>'+
-      // DSGVO-Zone: bewusst dezent, ganz unten – Anonymisieren ist unwiderruflich.
-      '<div style="margin-top:20px;display:flex;justify-content:flex-end;padding:0 2px"><button data-anon="1" style="display:inline-flex;align-items:center;gap:7px;border:1.5px solid #e3b8b1;background:#fff;color:#b5402f;border-radius:11px;font-size:12.5px;font-weight:800;padding:9px 14px;cursor:pointer"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#b5402f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>DSGVO: Mitglied anonymisieren</button></div>'+
+      // DSGVO-Zone: bewusst dezent, ganz unten – Anonymisieren ist unwiderruflich (nur Admin).
+      (isAdmin()?'<div style="margin-top:20px;display:flex;justify-content:flex-end;padding:0 2px"><button data-anon="1" style="display:inline-flex;align-items:center;gap:7px;border:1.5px solid #e3b8b1;background:#fff;color:#b5402f;border-radius:11px;font-size:12.5px;font-weight:800;padding:9px 14px;cursor:pointer"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#b5402f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>DSGVO: Mitglied anonymisieren</button></div>':'')+
     '</div>'+dmModalHTML()+cxModalHTML()+apModalHTML();
     setTimeout(function(){
       var b=wrap.querySelector('[data-back]'); if(b) b.onclick=backToMembers;
@@ -3115,7 +3132,7 @@ function vertragCard(p){
   var statusTxt = ct.active===false ? (ct.reversed?'widerrufen':'beendet') : (ct.cancelled?'gekündigt':'aktiv');
   var rows=pRow('Tarif',ct.rateName)+pRow('Vertragsbeginn',ct.startDate)+pRow('Status',statusTxt)+pRow('Vertragsende',ct.endDate||(ct.cancelled?ct.cancellationDate:'läuft'))+pRow('Nächstmögl. Kündigung',ct.nextCancellationDate);
   var actions='';
-  if(ct.contractId){
+  if(ct.contractId && isAdmin()){   // Kündigung/Widerruf nur für Admin
     var btns=[];
     if(ct.active===false){
       // beendet/widerrufen -> keine Aktion
@@ -3481,6 +3498,7 @@ function placeholderNode(title){
 // ---------- main render ----------
 function render(){
   if(!S.token){ renderLogin(); return; }
+  if(!canSee(S.screen)) S.screen='dash';   // kein Admin-Bereich für Angestellte (Sicherheitsnetz)
   var titles={dash:'Übersicht',inbox:'Posteingang',members:'Mitglieder',appts:'Termine',trial:'Probetraining',help:'Hilfe-Artikel',stats:'Statistiken',msg:'Nachrichten',leads:'Leads',todo:'Aufgaben',schicht:'Schichtplan'};
   var subs={dash:'Dein Studio auf einen Blick',inbox:'Alle Vorgänge & Anfragen',members:'Mitgliederverwaltung',appts:'Anfragen & Buchungen',trial:'Schnell ein Probetraining buchen',help:'Wissensdatenbank verwalten',stats:'Auswertungen & Trends',msg:'Rundnachricht & Direktnachricht',leads:'Interessenten-Pipeline',todo:'Interne Aufgaben fürs Team',schicht:'Dienstplan, Tausch & Verfügbarkeiten'};
   var content;
@@ -3499,8 +3517,9 @@ function render(){
   renderShell(content, titles[S.screen]||'', subs[S.screen]||'');
 }
 function goScreen(k){
+  if(!canSee(k)) k='dash';   // Angestellte werden aus Admin-Bereichen sanft umgeleitet
   S.screen=k; S.navOpen=false;
-  if(k==='dash'){ loadUtil(); loadChurn(); loadDues(); if(!S.convs.length && !S.loading) loadInbox(); }
+  if(k==='dash'){ loadUtil(); loadChurn(); if(isAdmin()) loadDues(); if(!S.convs.length && !S.loading) loadInbox(); }
   if(k==='members'){ S.profile=null; if(!S.membersLoaded){ loadMembers(); return; } }
   if(k==='appts' && !S.convs.length && !S.loading){ loadInbox(); return; }
   if(k==='trial'){ if(S.trSlots==null){ loadTrialSlots(); return; } }
@@ -3515,7 +3534,7 @@ function goScreen(k){
 
 // ---------- boot ----------
 loadToken();
-if(S.token){ render(); loadEmployees(); loadInbox(); } else { render(); }
+if(S.token){ render(); loadMe(); loadEmployees(); loadInbox(); } else { render(); }
 // Offenen Chat live nachladen (neue Nachrichten erscheinen automatisch).
 setInterval(pollThread, 6000);
 // Liste/Badges seltener aktualisieren (kein Voll-Render, wenn gerade getippt wird).

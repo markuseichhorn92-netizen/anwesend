@@ -300,6 +300,12 @@ module.exports = async function handler(req, res) {
   if (id) {
     const p = await profile(id);
     if (!p) { res.statusCode = 404; return res.end(JSON.stringify({ ok: false, error: 'not_found' })); }
+    // Angestellte (Trainer) sehen keine Finanz-/Bankdaten: IBAN und Zahlstatus
+    // werden serverseitig entfernt – nicht nur in der UI ausgeblendet.
+    if (!TA.isAdmin(sess)) {
+      p.ibanMasked = null;
+      p.account = { available: false, restricted: true };
+    }
     res.statusCode = 200; return res.end(JSON.stringify({ ok: true, profile: p }));
   }
   if (q != null && q.trim()) {

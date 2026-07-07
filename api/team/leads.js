@@ -34,6 +34,7 @@ module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json');
   const sess = await TA.requireTeam(req);
   if (!sess) { res.statusCode = 401; return res.end(JSON.stringify({ ok: false, error: 'unauthorized' })); }
+  if (!TA.isAdmin(sess)) { res.statusCode = 403; return res.end(JSON.stringify({ ok: false, error: 'forbidden' })); }
 
   // ── GET: Liste der Interessenten (neueste zuerst) ──
   if (req.method === 'GET') {

@@ -28,8 +28,9 @@ module.exports = async function handler(req, res) {
   const id = body.id;
   if (!id) { res.statusCode = 400; return res.end(JSON.stringify({ ok: false, error: 'missing_id' })); }
 
-  // ── DSGVO: Kunde anonymisieren ──
+  // ── DSGVO: Kunde anonymisieren (unwiderruflich → nur Admin) ──
   if (body.action === 'anonymise') {
+    if (!TA.isAdmin(sess)) { res.statusCode = 403; return res.end(JSON.stringify({ ok: false, error: 'forbidden' })); }
     let r; try { r = await M.ml('PUT', '/customers/' + encodeURIComponent(id) + '/anonymise'); } catch (e) { r = { status: 0 }; }
     res.statusCode = 200;
     if (r.status >= 200 && r.status < 300) {

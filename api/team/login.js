@@ -67,7 +67,7 @@ module.exports = async function handler(req, res) {
     const token = await TA.createSession({ user: v.name, employeeId: v.employeeId, email: v.email, role: 'trainer' });
     if (!token) { res.statusCode = 500; return res.end(JSON.stringify({ ok: false, error: 'no_session' })); }
     res.statusCode = 200;
-    return res.end(JSON.stringify({ ok: true, token, ttl: TA.TTL, name: v.name }));
+    return res.end(JSON.stringify({ ok: true, token, ttl: TA.TTL, name: v.name, role: 'trainer' }));
   }
 
   // ── Weg 1: Admin – gemeinsames Team-Passwort (Standard) ──
@@ -87,5 +87,5 @@ module.exports = async function handler(req, res) {
   const token = await TA.createSession({ user: 'Admin', role: 'admin' });
   if (!token) { res.statusCode = 500; return res.end(JSON.stringify({ ok: false, error: 'no_session' })); }
   res.statusCode = 200;
-  return res.end(JSON.stringify({ ok: true, token, ttl: TA.TTL }));
+  return res.end(JSON.stringify({ ok: true, token, ttl: TA.TTL, role: 'admin' }));
 };
