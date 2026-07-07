@@ -45,15 +45,18 @@ function eventsFrom(body) {
 function typeOf(e) {
   return String((e && (e.type || e.eventType || e.event || e.notificationType || e.name)) || '').toUpperCase();
 }
-// Kunden-ID an mehreren plausiblen Stellen suchen (Payload-Form ist zu bestätigen).
+// Kunden-ID bestimmen. Laut offizieller Magicline-Doku ist bei Kunden-/Vertrags-
+// Events die customerId gleich `entityId` (Zusatzdaten stehen unter `content`,
+// z. B. content.contractId). Ältere/abweichende Formen als Fallback abgedeckt.
 function customerIdOf(e) {
   if (!e) return null;
-  const p = e.payload || e.data || {};
-  const cand = e.customerId || e.customerID
+  const p = e.content || e.payload || e.data || {};
+  const cand = e.entityId
+    || e.customerId || e.customerID
     || p.customerId || p.customerID
     || (p.customer && p.customer.id)
     || (e.customer && e.customer.id)
-    || e.entityId || e.objectId || e.referenceId;
+    || e.objectId || e.referenceId;
   return cand != null ? String(cand) : null;
 }
 
