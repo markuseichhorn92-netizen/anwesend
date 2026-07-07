@@ -33,6 +33,22 @@ module.exports = async function handler(req, res) {
     try { out.sendFreeText = await WA.sendFreeText(phone, 'Fit-Inn Status-Test (genehmigte Vorlage).'); } catch (e) { out.sendFreeText = { error: String(e && e.message) }; }
   }
 
+  // ── Echten Antwort-Pfad testen: applyOwnerReply auf den jüngsten WhatsApp-Vorgang ──
+  if (u.searchParams.get('reply') === '1') {
+    const SR = require('../lib/studioReply');
+    try {
+      const all = await Inbox.listAll({ limit: 30 });
+      const wv = (all || []).find((v) => v.channel === 'whatsapp' && v.phone);
+      if (!wv) { out.replyTest = { error: 'no_whatsapp_vorgang' }; }
+      else {
+        const r = await SR.applyOwnerReply(wv._memberId, wv.id, 'Status-Test-Antwort ' + Date.now(), { author: 'Debug' });
+        const fresh = await Inbox.get(wv._memberId, wv.id);
+        const tm = (fresh && (fresh.messages || []).slice().reverse().find((m) => m && m.from === 'team')) || {};
+        out.replyTest = { applyOk: !!(r && r.ok), channelUsed: (r && r.channel) || null, msgSt: tm.st || null, msgCh: tm.ch || null };
+      }
+    } catch (e) { out.replyTest = { error: String(e && e.message) }; }
+  }
+
   // ── E-Mail: Adresse aus ?email= ──
   const email = u.searchParams.get('email');
   if (email) {
