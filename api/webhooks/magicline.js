@@ -60,13 +60,16 @@ function customerIdOf(e) {
   return cand != null ? String(cand) : null;
 }
 
-module.exports = async function handler(req, res) {
+// Kernlogik. opts.key erlaubt es, den Schlüssel aus dem Pfad zu übergeben
+// (für Webhook-Systeme, die keine ?key=-Query erlauben – z. B. Magicline).
+async function handleWebhook(req, res, opts) {
+  opts = opts || {};
   res.setHeader('Content-Type', 'application/json');
   res.setHeader('Cache-Control', 'no-store');
 
-  // ── Auth ── Magicline sendet den Schlüssel als Header x-api-key.
+  // ── Auth ── Schlüssel aus (Reihenfolge): Pfad -> Header x-api-key -> Query ?key=.
   if (!SECRET) { res.statusCode = 503; return res.end(JSON.stringify({ ok: false, error: 'not_configured' })); }
-  let key = req.headers['x-api-key'] || req.headers['x-webhook-secret'] || req.headers['x-magicline-secret'] || '';
+  let key = opts.key || req.headers['x-api-key'] || req.headers['x-webhook-secret'] || req.headers['x-magicline-secret'] || '';
   if (!key) { try { key = new URL(req.url, 'http://x').searchParams.get('key') || ''; } catch (e) {} }
   if (key !== SECRET) { res.statusCode = 401; return res.end(JSON.stringify({ ok: false, error: 'unauthorized' })); }
   if (req.method !== 'POST') { res.statusCode = 405; return res.end(JSON.stringify({ ok: false, error: 'method_not_allowed' })); }
@@ -92,4 +95,7 @@ module.exports = async function handler(req, res) {
 
   res.statusCode = 200;
   return res.end(JSON.stringify({ ok: true, handled: summary.length, summary: summary }));
-};
+}
+
+module.exports = function handler(req, res) { return handleWebhook(req, res); };
+module.exports.handleWebhook = handleWebhook;
