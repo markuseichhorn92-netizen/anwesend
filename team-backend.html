@@ -1984,7 +1984,7 @@ function membersNode(){
       '<div style="margin-top:18px;background:#fff;border-radius:20px;box-shadow:0 14px 38px rgba(4,33,40,.09);padding:20px 24px"><div style="font-size:15px;font-weight:900;letter-spacing:-.2px;margin-bottom:4px;color:#15171B">Vorgangs-Historie</div>'+histRows+'</div>'+
       // DSGVO-Zone: bewusst dezent, ganz unten – Anonymisieren ist unwiderruflich (nur Admin).
       (isAdmin()?'<div style="margin-top:20px;display:flex;justify-content:flex-end;padding:0 2px"><button data-anon="1" style="display:inline-flex;align-items:center;gap:7px;border:1.5px solid #e3b8b1;background:#fff;color:#b5402f;border-radius:11px;font-size:12.5px;font-weight:800;padding:9px 14px;cursor:pointer"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#b5402f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>DSGVO: Mitglied anonymisieren</button></div>':'')+
-    '</div>'+dmModalHTML()+cxModalHTML()+apModalHTML();
+    '</div>'+dmModalHTML()+cxModalHTML()+apModalHTML()+wbModalHTML();
     setTimeout(function(){
       var b=wrap.querySelector('[data-back]'); if(b) b.onclick=backToMembers;
       wrap.querySelectorAll('[data-hist]').forEach(function(x){ x.onclick=function(){ S.screen='inbox'; openConv(x.getAttribute('data-hist')); }; });
@@ -2021,9 +2021,11 @@ function membersNode(){
       var cxo=wrap.querySelector('[data-cxopen]'); if(cxo) cxo.onclick=function(){ openCancel(p); };
       var cxw=wrap.querySelector('[data-cxwithdraw]'); if(cxw) cxw.onclick=function(){ doWithdrawCancel(p); };
       var cxr=wrap.querySelector('[data-cxrevoke]'); if(cxr) cxr.onclick=function(){ doRevoke(p); };
+      var wbo=wrap.querySelector('[data-wbopen]'); if(wbo) wbo.onclick=function(){ openWinback(p); };
       wireDm(wrap);
       wireCx(wrap, p);
       wireAp(wrap);
+      wireWb(wrap);
     },0);
     return wrap;
   }
@@ -3125,6 +3127,64 @@ function wireDm(scope){
   var sd=scope.querySelector('[data-dmsend]'); if(sd) sd.onclick=doSendDirect;
 }
 
+// ---------- Rückholaktion vermerken (Team) ----------
+// Hält fest, dass dem Mitglied ein Rückhol-Angebot gemacht wurde: Eintrag in die
+// Magicline-Kundenhistorie (falls Scope aktiv) + interne Notiz. Keine Vertragsänderung.
+var WB_PRESETS=['Persönliches Gespräch','1 Monat gratis','Beitragspause angeboten','Rabatt angeboten','Gutschein','Vertragsverlängerung'];
+function openWinback(p){
+  S.wbMemberId=p.id; S.wbMemberName=p.name; S.wbOffer=''; S.wbNote=''; S.wbBusy=false; S.wbResult=null; S.wbOpen=true;
+  render(); setTimeout(function(){ var t=document.getElementById('wbnote'); if(t) t.focus(); },30);
+}
+function closeWinback(){ if(S.wbBusy) return; S.wbOpen=false; S.wbResult=null; render(); }
+async function doWinback(){
+  if(S.wbBusy||!S.wbMemberId) return;
+  var offer=(S.wbOffer||'').trim(), note=(S.wbNote||'').trim();
+  if(!offer && !note){ alert('Bitte kurz beschreiben, was angeboten wurde.'); return; }
+  S.wbBusy=true; render();
+  try{
+    var r=await tapi('/api/team/winback',{method:'POST',body:{id:S.wbMemberId,offer:offer,note:note}});
+    S.wbBusy=false;
+    if(r && r.ok){ S.wbResult=r; }
+    else { alert((r&&r.message)||'Konnte nicht vermerkt werden.'); }
+  }catch(e){ S.wbBusy=false; alert('Verbindung fehlgeschlagen.'); }
+  render();
+}
+function wbModalHTML(){
+  if(!S.wbOpen) return '';
+  var chips=WB_PRESETS.map(function(x){ var on=S.wbOffer===x;
+    return '<button data-wboffer="'+esc(x)+'" style="border:1.5px solid '+(on?TEAL:'#d6dee0')+';background:'+(on?TEAL:'#fff')+';color:'+(on?'#fff':'#0a4958')+';border-radius:20px;font-size:12.5px;font-weight:800;padding:7px 13px;cursor:pointer">'+esc(x)+'</button>';
+  }).join('');
+  var result=S.wbResult
+    ? '<div style="margin-top:14px;background:#e7f6ec;border-radius:12px;padding:13px 15px;font-size:13px;font-weight:700;color:#1d7a3e;line-height:1.5">Vermerkt.'+(S.wbResult.magiclineLogged?' In der Magicline-Kundenhistorie eingetragen ✓':' <span style="color:#8a6d1f">Hinweis: In Magicline konnte es nicht protokolliert werden (Scope fehlt) – lokal ist es festgehalten.</span>')+'</div>'
+    : '';
+  return '<div data-wboverlay="1" style="position:fixed;inset:0;background:rgba(0,18,22,.5);z-index:70;display:flex;align-items:center;justify-content:center;padding:20px">'+
+    '<div data-wbcard="1" style="width:100%;max-width:460px;background:#fff;border-radius:20px;box-shadow:0 30px 70px rgba(0,0,0,.3);padding:22px 24px;max-height:90vh;overflow-y:auto">'+
+      '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:14px">'+
+        '<div style="min-width:0"><div style="font-size:16px;font-weight:900;letter-spacing:-.3px">Rückholaktion vermerken</div>'+
+          '<div style="font-size:12.5px;color:#8a929a;font-weight:600;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">für '+esc(S.wbMemberName||'Mitglied')+'</div></div>'+
+        '<button data-wbx="1" style="border:none;background:#f1f5f6;border-radius:9px;width:32px;height:32px;font-size:18px;line-height:1;color:#6b7780;cursor:pointer;flex-shrink:0">×</button></div>'+
+      '<div style="font-size:12px;font-weight:800;color:#8a929a;margin-bottom:8px">Was wurde angeboten?</div>'+
+      '<div style="display:flex;flex-wrap:wrap;gap:7px;margin-bottom:12px">'+chips+'</div>'+
+      '<textarea id="wbnote" rows="3" maxlength="1000" placeholder="Details (optional) – z. B. „2 Monate 50 %, Rückmeldung bis Freitag"" style="width:100%;padding:11px 13px;border:1.5px solid #dce3e4;border-radius:11px;font-size:14px;background:#fbfcfc;resize:vertical;line-height:1.5">'+esc(S.wbNote||'')+'</textarea>'+
+      '<div style="font-size:11px;color:#a9b1b6;font-weight:600;margin-top:8px;line-height:1.5">Das hält nur fest, dass ein Angebot gemacht wurde (Magicline-Kundenhistorie + interne Notiz). Ein Rabatt/Tarif wird dadurch nicht automatisch gebucht.</div>'+
+      result+
+      '<div style="display:flex;gap:9px;margin-top:16px">'+
+        '<button data-wbcancel="1" style="flex:1;border:1.5px solid #d6dee0;border-radius:11px;background:#fff;color:#42454b;font-weight:800;font-size:13.5px;padding:11px;cursor:pointer">'+(S.wbResult?'Schließen':'Abbrechen')+'</button>'+
+        (S.wbResult?'':'<button data-wbsave="1"'+(S.wbBusy?' disabled':'')+' style="flex:1;border:none;border-radius:11px;background:'+TEAL+';color:#fff;font-weight:800;font-size:13.5px;padding:11px;cursor:pointer">'+(S.wbBusy?'Speichert …':'Vermerken')+'</button>')+
+      '</div>'+
+    '</div></div>';
+}
+function wireWb(scope){
+  if(!S.wbOpen) return;
+  var ov=scope.querySelector('[data-wboverlay]'); if(ov) ov.onclick=closeWinback;
+  var card=scope.querySelector('[data-wbcard]'); if(card) card.onclick=function(e){ e.stopPropagation(); };
+  var x=scope.querySelector('[data-wbx]'); if(x) x.onclick=closeWinback;
+  var cc=scope.querySelector('[data-wbcancel]'); if(cc) cc.onclick=closeWinback;
+  scope.querySelectorAll('[data-wboffer]').forEach(function(b){ b.onclick=function(){ var v=b.getAttribute('data-wboffer'); S.wbOffer=(S.wbOffer===v?'':v); render(); }; });
+  var nt=scope.querySelector('#wbnote'); if(nt) nt.oninput=function(){ S.wbNote=nt.value; };
+  var sv=scope.querySelector('[data-wbsave]'); if(sv) sv.onclick=doWinback;
+}
+
 // ---------- Vertragskündigung (Team) ----------
 // Vertragskarte inkl. Aktionen (kündigen / zurücknehmen / 14-Tage-Widerruf).
 function vertragCard(p){
@@ -3144,7 +3204,11 @@ function vertragCard(p){
     }
     if(btns.length) actions='<div style="margin-top:12px;padding-top:12px;border-top:1px solid #f0f3f4;display:flex;gap:9px;flex-wrap:wrap">'+btns.join('')+'</div>';
   }
-  return profileCard('Vertrag', rows+actions);
+  // Rückholaktion vermerken – für alle Team-Rollen (reines Festhalten, keine Vertragsänderung).
+  var retention = ct.contractId
+    ? '<div style="'+(actions?'margin-top:9px':'margin-top:12px;padding-top:12px;border-top:1px solid #f0f3f4')+'"><button data-wbopen="1" style="display:inline-flex;align-items:center;gap:7px;border:1.5px solid #cfe0e4;border-radius:10px;background:#f2f8f9;color:#0a4958;font-weight:800;font-size:12.5px;padding:9px 13px;cursor:pointer">↩ Rückholaktion vermerken</button></div>'
+    : '';
+  return profileCard('Vertrag', rows+actions+retention);
 }
 function openCancel(p){
   var ct=p.contract||{};
