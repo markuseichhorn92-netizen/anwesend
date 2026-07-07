@@ -52,6 +52,21 @@ module.exports = async function handler(req, res) {
     } catch (e) { out.replyTest = { error: String(e && e.message) }; }
   }
 
+  // ── Roundtrip-Test: st direkt setzen -> save -> reload -> lesen ──
+  if (u.searchParams.get('rt') === '1') {
+    try {
+      const all = await Inbox.listAll({ limit: 30 });
+      const wv = (all || []).find((v) => v.channel === 'whatsapp' && v.phone);
+      const v = await Inbox.get(wv._memberId, wv.id);
+      const mm = (v.messages || []).slice().reverse().find((m) => m && m.from === 'team');
+      mm.st = 'delivered'; mm.ch = 'whatsapp'; mm.__rt = 'zz';
+      await Inbox.save(wv._memberId, v);
+      const v2 = await Inbox.get(wv._memberId, wv.id);
+      const mm2 = (v2.messages || []).slice().reverse().find((m) => m && m.from === 'team') || {};
+      out.rt = { memberId: String(wv._memberId), vid: String(wv.id), wrote: 'delivered', gotSt: mm2.st || null, gotRt: mm2.__rt || null, msgCount: (v2.messages || []).length };
+    } catch (e) { out.rt = { error: String(e && e.message) }; }
+  }
+
   // ── E-Mail: Adresse aus ?email= ──
   const email = u.searchParams.get('email');
   if (email) {
