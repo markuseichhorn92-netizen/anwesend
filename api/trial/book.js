@@ -8,10 +8,27 @@
  * Bei vorhandenem referralCode wird der Lead dem werbenden Mitglied zugeordnet.
  */
 
+const crypto = require('node:crypto');
 const C = require('../../lib/connect');
 const M = require('../../lib/members');   // rateLimit (Missbrauchsschutz)
+const { redisPipeline, hasStore } = require('../../lib/store');
 const { sendMailRaw, hasMail } = require('../../lib/mail');
 const { renderEmail, BASE } = require('../../lib/emailTemplate');
+
+const TRIAL_TTL = 45 * 86400;   // Info-Seite 45 Tage abrufbar
+
+// Buchung unter einem zufälligen Token ablegen -> Interessent kann seine
+// Probetraining-Infos später über /probetraining-info?t=… wieder aufrufen.
+// Best effort: ohne Store einfach kein Token (Mail/Bestätigung laufen weiter).
+async function storeTrial(b) {
+  if (!hasStore) return null;
+  try {
+    const token = crypto.randomBytes(16).toString('hex');
+    const rec = { firstname: String(b.firstname || '').slice(0, 80), startDateTime: b.startDateTime || null, at: Date.now() };
+    await redisPipeline([['SET', 'trial:' + token, JSON.stringify(rec), 'EX', String(TRIAL_TTL)]]);
+    return token;
+  } catch (e) { return null; }
+}
 
 function readBody(req) {
   return new Promise((resolve) => {
@@ -33,7 +50,9 @@ function fmtBerlin(iso) {
 }
 
 // Eigene, gebrandete Probetraining-Bestätigung ans Interessenten-Postfach (best effort).
-async function sendTrialMail(b) {
+// infoUrl (optional): Link zur Info-Seite, auf der der Interessent seine Termindaten
+// später wieder aufrufen kann.
+async function sendTrialMail(b, infoUrl) {
   if (!hasMail || !b.email) return;
   try {
     const f = fmtBerlin(b.startDateTime);
@@ -51,7 +70,7 @@ async function sendTrialMail(b) {
         'Bring einfach bequeme Sportkleidung und saubere Hallenschuhe mit. Solltest du den Termin doch nicht wahrnehmen können, gib uns kurz Bescheid.',
       ],
       panel: panel,
-      button: { label: 'Mehr über uns', href: BASE },
+      button: infoUrl ? { label: 'Dein Probetraining ansehen', href: infoUrl } : { label: 'Mehr über uns', href: BASE },
       promo: true,
       footer: 'member',
     });
@@ -88,9 +107,11 @@ module.exports = async function handler(req, res) {
   try {
     const r = await C.bookTrial(b);
     if (r.ok) {
-      await sendTrialMail(b);
+      const token = await storeTrial(b);
+      const infoUrl = token ? (BASE + '/probetraining-info?t=' + token) : null;
+      await sendTrialMail(b, infoUrl);
       res.statusCode = 200;
-      return res.end(JSON.stringify({ ok: true, message: 'Dein Probetraining ist gebucht! Du bekommst eine Bestätigung per E-Mail.' }));
+      return res.end(JSON.stringify({ ok: true, token: token, infoUrl: infoUrl, message: 'Dein Probetraining ist gebucht! Du bekommst eine Bestätigung per E-Mail.' }));
     }
     // Häufigster Fall: Slot zwischenzeitlich vergeben / ungültig
     res.statusCode = 200;

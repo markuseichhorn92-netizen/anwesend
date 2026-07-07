@@ -1964,6 +1964,7 @@ function membersNode(){
           '<div style="font-size:13px;color:#aed0d6;font-weight:600;margin-top:4px">'+esc(p.nr||'—')+(ct.rateName?' · '+esc(ct.rateName):'')+(ct.startDate?' · seit '+esc(ct.startDate):'')+'</div></div></div>'+
       '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px">'+
         '<button data-msgsend="1" style="display:inline-flex;align-items:center;gap:8px;border:none;border-radius:12px;background:'+TEAL+';color:#fff;font-size:13.5px;font-weight:800;padding:11px 16px;cursor:pointer">'+IC.send+'Nachricht senden</button>'+
+        '<button data-accessinfo="1" style="display:inline-flex;align-items:center;gap:8px;border:1.5px solid rgba(255,255,255,.5);border-radius:12px;background:rgba(255,255,255,.12);color:#fff;font-size:13.5px;font-weight:800;padding:11px 16px;cursor:pointer"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg>Zugangs-Info senden</button>'+
       '</div>'+
       tagsRowHTML()+
       handledLineHTML(p)+
@@ -1993,6 +1994,7 @@ function membersNode(){
       var es=wrap.querySelector('[data-edsave]'); if(es) es.onclick=function(){ saveMember(p.id); };
       var anb=wrap.querySelector('[data-anon]'); if(anb) anb.onclick=function(){ anonymiseMember(p); };
       var ms=wrap.querySelector('[data-msgsend]'); if(ms) ms.onclick=function(){ openDirectMsg(p.id, p.name); };
+      var aif=wrap.querySelector('[data-accessinfo]'); if(aif) aif.onclick=function(){ sendAccessInfo(p); };
       // Tags: aufklappen, Preset/Freitext hinzufügen, per Chip entfernen.
       var ta=wrap.querySelector('[data-tagadd]'); if(ta) ta.onclick=function(){ S.tagAddOpen=!S.tagAddOpen; S.tagInput=''; render(); };
       wrap.querySelectorAll('[data-tagdel]').forEach(function(b){ b.onclick=function(){ removeProfileTag(p.id, b.getAttribute('data-tagdel')); }; });
@@ -3067,6 +3069,18 @@ function wireSchicht(node){
 }
 
 // ---- Direktnachricht an ein Mitglied (Compose-Dialog aus dem Profil) ----
+// Zugangs-Info (Willkommen + Anmelde-Hinweis) per E-Mail ans Mitglied schicken –
+// v. a. für frisch (auch in Magicline) abgeschlossene Mitglieder, ein Klick.
+async function sendAccessInfo(p){
+  if(!p||!p.id) return;
+  if(!p.email){ alert('Für dieses Mitglied ist keine E-Mail hinterlegt.'); return; }
+  if(!confirm('Zugangs-Info (Anmeldung zum Mitgliederbereich) an '+p.email+' senden?')) return;
+  try{
+    var r=await tapi('/api/team/access-info',{method:'POST',body:{id:p.id}});
+    if(r && r.ok && r.sent){ alert('Zugangs-Info wurde an '+(r.email||p.email)+' gesendet.'); }
+    else { alert((r&&r.message)||'Konnte nicht gesendet werden.'); }
+  }catch(e){ alert('Verbindung fehlgeschlagen.'); }
+}
 function openDirectMsg(id,name){
   S.dmMemberId=String(id); S.dmMemberName=name||''; S.dmTitle=''; S.dmBody='';
   S.dmPush=true; S.dmEmail=false; S.dmWa=false; S.dmBusy=false; S.dmResult=null; S.dmOpen=true;
