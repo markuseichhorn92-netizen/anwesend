@@ -13,9 +13,10 @@
  * quittiert (Erweiterungspunkt).
  *
  * Sicherheit: Der Endpunkt löst E-Mail-Versand aus und ist öffentlich erreichbar.
- * Deshalb pflicht: ein Shared Secret (Env MAGICLINE_WEBHOOK_SECRET), das als
- * ?key=… ODER im Header (x-webhook-secret) mitkommen muss. Ohne gesetztes Secret
- * ist der Endpunkt AUS (503). Falsches/fehlendes Secret -> 401.
+ * Deshalb pflicht: ein Shared Secret (Env MAGICLINE_WEBHOOK_KEY, alt:
+ * MAGICLINE_WEBHOOK_SECRET). Magicline sendet es als Header `x-api-key`; wir
+ * akzeptieren zusätzlich `x-webhook-secret` sowie `?key=…` (Fallbacks). Ohne
+ * gesetztes Secret ist der Endpunkt AUS (503). Falsches/fehlendes Secret -> 401.
  *
  * Antwortet ansonsten immer 200 (auch bei „ignoriert"/Versandfehler), damit
  * Magicline nicht unnötig retryt. Es wird NIE geworfen.
@@ -23,7 +24,7 @@
 
 const W = require('../../lib/welcome');
 
-const SECRET = process.env.MAGICLINE_WEBHOOK_SECRET || '';
+const SECRET = process.env.MAGICLINE_WEBHOOK_KEY || process.env.MAGICLINE_WEBHOOK_SECRET || '';
 const MAX_EVENTS = 50;   // Sicherheitskappe
 
 function readBody(req) {
@@ -60,11 +61,10 @@ module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json');
   res.setHeader('Cache-Control', 'no-store');
 
-  // ── Auth ──
+  // ── Auth ── Magicline sendet den Schlüssel als Header x-api-key.
   if (!SECRET) { res.statusCode = 503; return res.end(JSON.stringify({ ok: false, error: 'not_configured' })); }
-  let key = '';
-  try { key = new URL(req.url, 'http://x').searchParams.get('key') || ''; } catch (e) {}
-  if (!key) key = req.headers['x-webhook-secret'] || req.headers['x-magicline-secret'] || '';
+  let key = req.headers['x-api-key'] || req.headers['x-webhook-secret'] || req.headers['x-magicline-secret'] || '';
+  if (!key) { try { key = new URL(req.url, 'http://x').searchParams.get('key') || ''; } catch (e) {} }
   if (key !== SECRET) { res.statusCode = 401; return res.end(JSON.stringify({ ok: false, error: 'unauthorized' })); }
   if (req.method !== 'POST') { res.statusCode = 405; return res.end(JSON.stringify({ ok: false, error: 'method_not_allowed' })); }
 
