@@ -69,7 +69,7 @@ async function handleWebhook(req, res, opts) {
 
   // ── Auth ── Schlüssel aus (Reihenfolge): Pfad -> Header x-api-key -> Query ?key=.
   if (!SECRET) { res.statusCode = 503; return res.end(JSON.stringify({ ok: false, error: 'not_configured' })); }
-  let key = opts.key || req.headers['x-api-key'] || req.headers['x-webhook-secret'] || req.headers['x-magicline-secret'] || '';
+  let key = opts.key || req.headers['x-api-key'] || req.headers['x-webhook-secret'] || req.headers['x-magicline-secret'] || (req.query && req.query.key) || '';
   if (!key) { try { key = new URL(req.url, 'http://x').searchParams.get('key') || ''; } catch (e) {} }
   if (key !== SECRET) { res.statusCode = 401; return res.end(JSON.stringify({ ok: false, error: 'unauthorized' })); }
   if (req.method !== 'POST') { res.statusCode = 405; return res.end(JSON.stringify({ ok: false, error: 'method_not_allowed' })); }
