@@ -42,9 +42,12 @@ module.exports = async function handler(req, res) {
       if (!wv) { out.replyTest = { error: 'no_whatsapp_vorgang' }; }
       else {
         const r = await SR.applyOwnerReply(wv._memberId, wv.id, 'Status-Test-Antwort ' + Date.now(), { author: 'Debug' });
+        const inMem = (r && r.vorgang && (r.vorgang.messages || []).slice().reverse().find((m) => m && m.from === 'team')) || {};
         const fresh = await Inbox.get(wv._memberId, wv.id);
         const tm = (fresh && (fresh.messages || []).slice().reverse().find((m) => m && m.from === 'team')) || {};
-        out.replyTest = { applyOk: !!(r && r.ok), channelUsed: (r && r.channel) || null, msgSt: tm.st || null, msgCh: tm.ch || null };
+        out.replyTest = { applyOk: !!(r && r.ok), channelUsed: (r && r.channel) || null,
+          memberId: String(wv._memberId), inMemSt: inMem.st || null, inMemCh: inMem.ch || null,
+          reloadSt: tm.st || null, reloadCh: tm.ch || null };
       }
     } catch (e) { out.replyTest = { error: String(e && e.message) }; }
   }
