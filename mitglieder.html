@@ -33,9 +33,10 @@
   }
   *{box-sizing:border-box}
   html,body{margin:0;padding:0}
-  /* Kein „Gummiband"-Overscroll oben, damit die (weiße) Uhrzeit nie auf Weiß verschwindet.
-     Teal-Hintergrund als zusätzliche Absicherung – die eigentliche Seite bleibt hell über body. */
-  html{background:#0e6072;overscroll-behavior-y:none}
+  /* Overscroll (iOS-Gummiband): Der Bereich hinter der Seite hat IMMER die
+     Seitenfarbe (hell/dunkel je Theme) – so blitzt beim Über-Scrollen oben/unten
+     kein blauer Balken mehr auf. Die Uhrzeit sichert der fixe .sbTop-Streifen. */
+  html{background:var(--bg);overscroll-behavior-y:none}
   body{font-family:'Archivo',system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased;color:var(--text);
     background:var(--bg);min-height:100dvh;overscroll-behavior-y:none}
   ::placeholder{color:var(--placeholder)}
@@ -51,10 +52,12 @@
   /* Streifen hinter der Statusleiste (Uhrzeit/Akku) – gleiches dunkles Teal wie die Hero-Oberkante. */
   .sbTop{display:none}
   @media(max-width:999px){ .app-in .sbTop{display:block;position:fixed;top:0;left:0;right:0;height:env(safe-area-inset-top,0px);background:#0a4958;z-index:60;pointer-events:none} }
-  /* Overscroll-Schutz: teal Fläche, die über den oberen Rand hinausragt – beim Hochziehen (iOS-Gummiband)
-     erscheint dadurch Teal statt Weiß, auch wenn overscroll-behavior nicht greift. */
+  /* Overscroll-Schutz oben: teal Fläche über dem Seitenanfang – NUR auf der
+     Startseite (dort ist der Hero teal, das Gummiband setzt ihn nahtlos fort).
+     Auf allen anderen (hellen) Seiten zeigt das Gummiband die Seitenfarbe
+     (html-Hintergrund) statt eines blauen Balkens. */
   .ovTop{display:none}
-  @media(max-width:999px){ .app-in .ovTop{display:block;position:absolute;top:-1000px;left:0;right:0;height:1000px;background:#0a4958;z-index:-1;pointer-events:none} }
+  @media(max-width:999px){ body.app-in.onHome .ovTop{display:block;position:absolute;top:-1000px;left:0;right:0;height:1000px;background:#0a4958;z-index:-1;pointer-events:none} }
   /* Mobile Bottom-Nav (neuer Look) */
   .btmnav{display:none}
   @media(max-width:999px){
@@ -2630,6 +2633,8 @@
     // WICHTIG: nach renderChrome(), das body.className komplett neu setzt.
     var chatFull=!!S.finnOpen || (S.screen==='postfach' && !!S.pfThread && window.innerWidth<1000);
     document.body.classList.toggle('chatLock', chatFull);
+    // Overscroll-Farbe oben: teal nur auf der Startseite (passend zum Hero).
+    document.body.classList.toggle('onHome', S.screen==='home');
     // Bei offener Tastatur (iOS) den Chat wieder auf den sichtbaren Bereich pinnen –
     // die Neu-Zeichnung hat die Inline-Maße gerade verworfen.
     if(chatFull) syncChatViewport();
