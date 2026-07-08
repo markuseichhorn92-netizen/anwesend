@@ -856,12 +856,28 @@
   }
   function finnScrollBottom(){ setTimeout(function(){ var e=$('finn_scroll'); if(e) e.scrollTop=e.scrollHeight; },30); }
   var FINN_AVA='<div style="width:30px;height:30px;border-radius:50%;overflow:hidden;flex-shrink:0"><img src="/assets/brand/finn-mark.svg" style="width:100%;height:100%;display:block"></div>';
+  // FINN-Text hübsch formatieren: erst escapen (XSS-sicher), dann **fett**,
+  // "– "-Aufzählungen mit hängendem Einzug und Absätze mit Abstand rendern.
+  function finnFmt(t){
+    var e=esc(String(t==null?'':t).trim());
+    e=e.replace(/\*\*([^*\n]{1,80}?)\*\*/g,'<b>$1</b>').replace(/\*\*/g,'');
+    var paras=e.split(/\n{2,}/).map(function(p){
+      var out='', prevBlock=true;
+      p.split('\n').forEach(function(ln){
+        var mm=ln.match(/^\s*[–•-]\s+(.*)$/);
+        if(mm){ out+='<span style="display:block;padding-left:15px;text-indent:-15px;margin:3px 0">–&nbsp;'+mm[1]+'</span>'; prevBlock=true; }
+        else { if(!prevBlock) out+='<br>'; out+=ln; prevBlock=false; }
+      });
+      return out;
+    });
+    return paras.join('<span style="display:block;height:9px"></span>');
+  }
   // Eine Chat-Blase (auch für Teil-Updates ohne Voll-Render genutzt).
   // m.link = { screen, label } -> Button, der den App-Bereich direkt öffnet.
   function finnBubbleHtml(m){
     if(m.role==='assistant'){
       var btn=(m.link&&m.link.screen)?('<div style="margin-top:9px"><button data-act="finnGo" data-arg="'+esc(m.link.screen)+'" style="display:inline-flex;align-items:center;gap:7px;border:none;border-radius:11px;background:'+TEALBG+';color:#fff;font-size:13px;font-weight:800;padding:9px 14px;cursor:pointer;box-shadow:0 4px 12px rgba(10,73,88,.25)">'+esc(m.link.label||'Öffnen')+svg('<path d="M9 18l6-6-6-6"></path>',{c:'#fff',w:2.2,s:14})+'</button></div>'):'';
-      return '<div style="display:flex;gap:9px;align-items:flex-start;max-width:90%">'+FINN_AVA+'<div style="background:var(--surface-2);border-radius:4px 16px 16px 16px;padding:10px 13px;font-size:14px;line-height:1.5;color:var(--text)"><span style="white-space:pre-wrap">'+esc(m.text)+'</span>'+btn+'</div></div>';
+      return '<div style="display:flex;gap:9px;align-items:flex-start;max-width:90%">'+FINN_AVA+'<div style="background:var(--surface-2);border-radius:4px 16px 16px 16px;padding:11px 14px;font-size:14px;line-height:1.55;color:var(--text)">'+finnFmt(m.text)+btn+'</div></div>';
     }
     return '<div style="display:flex;justify-content:flex-end"><div style="background:'+TEALBG+';color:#fff;border-radius:16px 4px 16px 16px;padding:10px 13px;font-size:14px;line-height:1.5;max-width:90%;white-space:pre-wrap">'+esc(m.text)+'</div></div>';
   }
