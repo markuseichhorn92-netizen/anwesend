@@ -3167,15 +3167,23 @@
   // exakt auf den SICHTBAREN Bereich pinnen (Höhe + Versatz live nachführen).
   function syncChatViewport(){
     var vv=window.visualViewport;
-    var els=[];
-    if(S.finnOpen){ var ov=document.querySelector('.ciOverlay[data-act="closeFinn"]'); if(ov) els.push(ov); }
-    if(S.screen==='postfach'&&S.pfThread&&window.innerWidth<1000){ var c=document.querySelector('.pfChatCard'); if(c) els.push(c); }
-    if(!els.length) return;
-    var top=vv?Math.max(0,vv.offsetTop):0;
-    var h=vv?vv.height:window.innerHeight;
-    els.forEach(function(el){ el.style.top=top+'px'; el.style.height=h+'px'; el.style.bottom='auto'; });
+    // Statt den Chat auf vv.height zu VERKLEINERN (bei iOS-Fehlmessung blitzt
+    // darunter die Seite durch): Chat bleibt volle Höhe, bekommt aber unten
+    // Innenabstand in Tastaturhöhe + wird um den iOS-Pan (offsetTop) verschoben.
+    // So ist der Bereich hinter der Tastatur immer vom Chat selbst bedeckt.
+    var kb=vv?Math.max(0, window.innerHeight - vv.height):0;          // Tastaturhöhe
+    var top=vv?Math.max(0,vv.offsetTop):0;                            // iOS-Pan
+    var targets=[];   // [fixiertes Element, Element das das Padding bekommt]
+    if(S.finnOpen){ var ov=document.querySelector('.ciOverlay[data-act="closeFinn"]'); var pn=document.querySelector('.finnPanel'); if(ov&&pn) targets.push([ov,pn]); }
+    if(S.screen==='postfach'&&S.pfThread&&window.innerWidth<1000){ var c=document.querySelector('.pfChatCard'); if(c) targets.push([c,c]); }
+    if(!targets.length) return;
+    targets.forEach(function(pair){
+      pair[0].style.top=''; pair[0].style.height=''; pair[0].style.bottom='';
+      pair[0].style.transform = top ? ('translateY('+top+'px)') : '';
+      pair[1].style.paddingBottom = kb ? (kb+'px') : '';
+    });
     // iOS' automatisches Hochschieben der Seite rückgängig machen.
-    if(vv&&(top>0||h<window.innerHeight)){ try{ window.scrollTo(0,0); }catch(e){} }
+    if(vv&&top>0){ try{ window.scrollTo(0,0); }catch(e){} }
     var sc=$('finn_scroll'); if(sc&&S.finnStick!==false) sc.scrollTop=sc.scrollHeight;
     var sc2=$('pf_scroll'); if(sc2&&S.pfStick!==false) sc2.scrollTop=sc2.scrollHeight;
   }
@@ -3183,22 +3191,30 @@
     window.visualViewport.addEventListener('resize',syncChatViewport);
     window.visualViewport.addEventListener('scroll',syncChatViewport);
   }
-  // Tastatur geht auf -> nach der Einblend-Animation Chat pinnen + letzte Nachricht zeigen.
+  window.addEventListener('resize',syncChatViewport);
+  // Während der Tastatur-Animation kontinuierlich nachführen (iOS meldet die
+  // Maße nicht zuverlässig zu einem festen Zeitpunkt) – kurzer Takt, dann Stopp.
+  var __chatSyncT=null;
+  function chatSyncBurst(ms){
+    var until=Date.now()+(ms||1600);
+    if(__chatSyncT) clearInterval(__chatSyncT);
+    __chatSyncT=setInterval(function(){ syncChatViewport(); if(Date.now()>until){ clearInterval(__chatSyncT); __chatSyncT=null; } },150);
+    syncChatViewport();
+  }
   document.addEventListener('focusin',function(e){
     var t=e.target; if(!t||!t.id) return;
     if(t.id!=='finn_q'&&t.id!=='pf_reply') return;
-    setTimeout(syncChatViewport,80);
-    setTimeout(syncChatViewport,320);
+    chatSyncBurst(1800);
     setTimeout(function(){
       var sc=$(t.id==='finn_q'?'finn_scroll':'pf_scroll');
       var stick=(t.id==='finn_q')?S.finnStick:S.pfStick;
       if(sc&&stick!==false) sc.scrollTop=sc.scrollHeight;
-    },350);
+    },380);
   });
-  // Tastatur zu -> Chat wieder auf volle Höhe.
+  // Tastatur zu -> Padding/Verschiebung wieder zurücknehmen.
   document.addEventListener('focusout',function(e){
     var t=e.target; if(!t||!t.id) return;
-    if(t.id==='finn_q'||t.id==='pf_reply'){ setTimeout(syncChatViewport,120); setTimeout(syncChatViewport,360); }
+    if(t.id==='finn_q'||t.id==='pf_reply') chatSyncBurst(1000);
   });
 
   // ---- boot ----
