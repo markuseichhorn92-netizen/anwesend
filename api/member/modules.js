@@ -111,9 +111,14 @@ module.exports = async function handler(req, res) {
     const isBook = action === 'book';
 
     // ── WRITE-FIRST: echte Buchung/Kündigung über die Open API versuchen ──
+    const freqId = body.paymentFrequencyId != null ? body.paymentFrequencyId : undefined;
     let r;
-    try { r = isBook ? await Mod.bookModule(mid, moduleId) : await Mod.cancelModule(mid, moduleId); }
-    catch (e) { r = { ok: false, forbidden: false }; }
+    try { r = isBook ? await Mod.bookModule(mid, moduleId, freqId) : await Mod.cancelModule(mid, moduleId); }
+    catch (e) { r = { ok: false, forbidden: false, status: 0, error: String((e && e.message) || e).slice(0, 200) }; }
+    // Diagnose in die Vercel-Logs: WARUM lehnt Magicline ab? (ohne Personenbezug)
+    if (!(r && r.ok)) {
+      try { console.log('[modules] ' + action + ' failed', JSON.stringify({ status: (r && r.status) || 0, forbidden: !!(r && r.forbidden), error: (r && r.error) || null, moduleId: String(moduleId), freqId: freqId != null ? String(freqId) : null })); } catch (e) {}
+    }
 
     if (r && r.ok) {
       try { require('../../lib/handled').record('system', sess.id, 'modul'); } catch (e) {}
@@ -172,7 +177,8 @@ module.exports = async function handler(req, res) {
       + 'Kundennr.: ' + (m.customerNumber || '—') + '\n'
       + 'Zusatzmodul: ' + label + '\n'
       + 'Modul-ID: ' + moduleId + '\n'
-      + 'Aktion: ' + (isBook ? 'hinzubuchen' : 'kündigen') + '\n\n'
+      + 'Aktion: ' + (isBook ? 'hinzubuchen' : 'kündigen') + '\n'
+      + 'Automatik: fehlgeschlagen (HTTP ' + ((r && r.status) || 0) + ((r && r.error) ? (' – ' + r.error) : '') + ')\n\n'
       + (isBook
         ? 'Bitte das Zusatzmodul in Magicline hinzubuchen und dem Mitglied bestätigen.'
         : 'Bitte das Zusatzmodul in Magicline kündigen und dem Mitglied bestätigen.');

@@ -535,9 +535,10 @@
   function modAct(action,id){
     if(!id||S.modBusyId) return;
     var d=DATA.modules||{}; var pool=(action==='cancel')?(d.booked||[]):(d.bookable||[]);
-    var name=''; for(var i=0;i<pool.length;i++){ if(String(pool[i].id)===String(id)){ name=pool[i].name||''; break; } }
+    var name='', freqId=null;
+    for(var i=0;i<pool.length;i++){ if(String(pool[i].id)===String(id)){ name=pool[i].name||''; freqId=(pool[i].paymentFrequencyId!=null)?pool[i].paymentFrequencyId:null; break; } }
     setQuiet({modBusyId:String(id),modMsg:'',modErr:false});
-    api('/api/member/modules',{method:'POST',body:JSON.stringify({action:action,moduleId:id,moduleName:name})})
+    api('/api/member/modules',{method:'POST',body:JSON.stringify({action:action,moduleId:id,moduleName:name,paymentFrequencyId:freqId})})
       .then(function(r){ var ok=!!(r&&r.ok);
         setQuiet({modBusyId:'',modMsg:(r&&r.message)||(ok?'Erledigt.':'Das hat leider nicht geklappt.'),modErr:!ok});
         if(ok){ DATA.modules=null; loadModules(); } })
@@ -914,6 +915,44 @@
           '<button id="finn_send" data-act="finnSend" '+(S.finnBusy?'disabled ':'')+'style="width:46px;height:46px;border-radius:50%;border:none;background:'+TEALBG+';color:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0;cursor:pointer;opacity:'+(S.finnBusy?'.55':'1')+'">'+svg('<path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"></path>',{c:'#fff',w:2,s:20})+'</button>'+
         '</div>'+
       '</div>'+
+    '</div>';
+  }
+  // ── App-Download-Banner (nur im Browser, nie in der installierten App) ──
+  // Store-Links kommen aus /api/app-info (Vercel-Env). iOS zeigt das Banner,
+  // sobald APP_STORE_URL_IOS gesetzt ist; Android automatisch, sobald
+  // APP_STORE_URL_ANDROID (Play Store) gesetzt wird. X blendet es für die
+  // laufende Sitzung aus.
+  function isNativeApp(){
+    try{
+      if(window.FitInnNative) return true;
+      if(document.documentElement.classList.contains('is-native-app')) return true;
+      if(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) return true;
+      if(navigator.standalone===true) return true;   // als Web-App auf dem Homescreen
+    }catch(e){}
+    return false;
+  }
+  function loadAppInfo(){
+    if(DATA.appInfo!==undefined) return; DATA.appInfo=null;
+    if(isNativeApp()) return;
+    fetch('/api/app-info',{cache:'force-cache'}).then(function(r){return r.ok?r.json():null;})
+      .then(function(d){ DATA.appInfo=d||null; if(d&&(d.ios||d.android)) render(); }).catch(function(){});
+  }
+  function appAdUrl(){
+    var d=DATA.appInfo; if(!d||isNativeApp()) return null;
+    try{ if(sessionStorage.getItem('fi_appad_hide')==='1') return null; }catch(e){}
+    var ua=navigator.userAgent||'';
+    if(/iPad|iPhone|iPod/.test(ua)) return d.ios||null;
+    if(/Android/i.test(ua)) return d.android||null;
+    return null;
+  }
+  function appAdHtml(){
+    var url=appAdUrl(); if(!url) return '';
+    return '<div style="display:flex;align-items:center;gap:11px;margin:0 0 14px;padding:11px 12px;border-radius:18px;border:1px solid rgba(255,255,255,.65);background:rgba(255,255,255,.62);backdrop-filter:blur(24px) saturate(180%);-webkit-backdrop-filter:blur(24px) saturate(180%);box-shadow:0 10px 30px rgba(4,33,40,.14), inset 0 1px 0 rgba(255,255,255,.6)">'+
+      '<div style="width:42px;height:42px;border-radius:12px;background:linear-gradient(150deg,#0e6072,#063540);display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 4px 12px rgba(4,33,40,.25)"><img src="/assets/brand/finn-mark.svg" alt="" style="width:30px;height:30px"></div>'+
+      '<div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:900;color:var(--text);letter-spacing:-.2px">Fit-Inn Trier App</div>'+
+        '<div style="font-size:12px;color:var(--text-muted);font-weight:600">Schneller, schöner &amp; mit Push – hol dir die App.</div></div>'+
+      '<a href="'+esc(url)+'" target="_blank" rel="noopener" style="flex-shrink:0;background:'+TEALBG+';color:#fff;font-size:13px;font-weight:800;border-radius:20px;padding:9px 16px;text-decoration:none">Laden</a>'+
+      '<button data-act="appAdHide" aria-label="Ausblenden" style="flex-shrink:0;width:30px;height:30px;border:none;border-radius:50%;background:var(--surface-2);color:var(--text-soft);font-size:15px;line-height:1;cursor:pointer">×</button>'+
     '</div>';
   }
   // Auslastung „heute" – typische Tageskurve (öffentlicher /api/typical-Endpunkt).
@@ -2610,6 +2649,7 @@
       case 'postfach': html=scrPostfach(); break;
       default: html=scrHome();
     }
+    if(S.screen!=='login') html=appAdHtml()+html;   // App-Werbung im Browser (nie in der App)
     var narrow = NARROW[S.screen];
     if(narrow) html='<div class="narrow">'+html+'</div>';
     if(S.ciPopup) html+=ciPopupHtml();
@@ -2665,6 +2705,7 @@
     obExp:function(a){ setS({obExp:a}); },
     obNext:function(){ if((S.obStep||0)>=3){ try{ localStorage.setItem('fi_ob_v1',JSON.stringify({goal:S.obGoal,freq:S.obFreq,age:S.obAge,exp:S.obExp})); }catch(e){} S.finnTipLoaded=false; setS({obStep:0}); loadFinnTip(); } else { setS({obStep:(S.obStep||0)+1}); var o=document.querySelector('.obOverlay'); if(o) o.scrollTop=0; } },
     noop:function(){},   // fängt Klicks im Overlay-Inneren ab (Backdrop-Klick schließt)
+    appAdHide:function(){ try{ sessionStorage.setItem('fi_appad_hide','1'); }catch(e){} render(); },
     closeFinn:function(){ setS({finnOpen:false}); },
     finnSuggest:function(a){ var t=$('finn_q'); if(t) t.value=a; ACT.finnSend(); },
     finnSend:function(){ if(S.finnBusy) return; var t=$('finn_q'); var q=t?(t.value||'').trim():''; if(!q) return;
@@ -3261,6 +3302,7 @@
   var inApp=!!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
   var bioGate=false; try{ bioGate = inApp && localStorage.getItem('fi_bio')==='1'; }catch(e){}
   ciLoad();
+  loadAppInfo();   // Store-Links fürs App-Banner (nur im Browser relevant)
   if(MLT){ bootMagic(MLT); }
   else if(bioGate){ S.screen='login'; render(); }
   else if(TOKEN){ loadMe().then(function(){ loadAppts(); loadPlan(); loadPlanAgg(); loadInbox(); loadPrefs(); if(DATA.checkins===null) loadCheckins(); render(); checkArrival(); if(NFC){ NFC=null; nfcArrive(); } }).catch(function(){ logout(); }); }
