@@ -15,6 +15,79 @@
 const M = require('../../lib/members');
 const AI = require('../../lib/ai');
 const HELP = require('../../lib/help');
+const MLAccount = require('../../lib/mlAccount');
+
+// ── Live-Daten fürs Chat-Gespräch (nur die des angemeldeten Mitglieds) ──
+// Vertrag, nächste Termine, Besuche, Beitragskonto – parallel und fehlertolerant
+// geladen. BEWUSST ohne Bank-/Adressdaten. Liefert einen kompakten Textblock.
+function fmtDT(iso) {
+  try {
+    const d = new Date(iso); if (isNaN(d.getTime())) return String(iso || '');
+    const date = new Intl.DateTimeFormat('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'Europe/Berlin' }).format(d);
+    const time = new Intl.DateTimeFormat('de-DE', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Berlin' }).format(d);
+    return date + ', ' + time + ' Uhr';
+  } catch (e) { return String(iso || ''); }
+}
+function euro(n) { return (typeof n === 'number') ? (n.toFixed(2).replace('.', ',') + ' €') : String(n); }
+
+async function contractLine(id) {
+  const ct = await M.getContract(id);
+  if (!ct) return null;
+  const status = ct.active === false ? (ct.reversed ? 'widerrufen' : 'beendet') : (ct.cancelled ? 'gekündigt' : 'aktiv');
+  let s = 'Vertrag: Tarif ' + (ct.rateName || '—') + ', Status ' + status;
+  if (ct.startDate) s += ', Beginn ' + ct.startDate;
+  if (ct.cancelled) s += ', gekündigt zum ' + (ct.cancellationDate || ct.endDate || '—');
+  else if (ct.endDate) s += ', Laufzeit bis ' + ct.endDate;
+  if (ct.cancellationPeriod) s += ', Kündigungsfrist ' + ct.cancellationPeriod;
+  if (!ct.cancelled && ct.nextCancellationDate) s += ', nächstmögliche Kündigung zum ' + ct.nextCancellationDate;
+  if (ct.withdrawalEligible) s += ', 14-Tage-Widerruf noch möglich bis ' + (ct.withdrawalDeadline || '—');
+  return { line: s, rateName: ct.rateName || null };
+}
+async function appointmentsLine(id) {
+  const r = await M.ml('GET', '/appointments/booking?customerId=' + encodeURIComponent(id));
+  const list = Array.isArray(r.json) ? r.json : [];
+  const now = Date.now();
+  const fut = list
+    .filter((a) => a && a.startDateTime && new Date(a.startDateTime).getTime() > now
+      && a.cancelled !== true && !/CANCEL/i.test(String(a.status || a.bookingStatus || '')))
+    .sort((a, b) => new Date(a.startDateTime) - new Date(b.startDateTime))
+    .slice(0, 3)
+    .map((a) => (a.title || a.name || 'Termin') + ' am ' + fmtDT(a.startDateTime));
+  return 'Nächste Termine: ' + (fut.length ? fut.join('; ') : 'keine gebucht');
+}
+async function visitsLine(id) {
+  const list = await M.recentCheckins(id, { windows: 1 });   // letzte ~350 Tage
+  if (!Array.isArray(list) || !list.length) return 'Besuche: noch keine Check-ins im letzten Jahr';
+  const newest = list[0];
+  const last = newest && newest.in ? fmtDT(newest.in) : null;
+  const cutoff = Date.now() - 30 * 86400000;
+  const n30 = list.filter((c) => c && c.in && new Date(c.in).getTime() >= cutoff).length;
+  return 'Besuche: ' + n30 + ' in den letzten 30 Tagen' + (last ? (', letzter Besuch ' + last) : '');
+}
+async function accountLine(id) {
+  const acc = await MLAccount.accountSummary(id);
+  if (!acc || !acc.available) return null;
+  if ((acc.openTotal || 0) > 0.0001) {
+    return 'Beitragskonto: offener Betrag ' + euro(acc.openTotal)
+      + (acc.openCount ? (' (' + acc.openCount + ' Posten)') : '')
+      + (acc.dunningLevel ? (', Mahnstufe ' + acc.dunningLevel) : '')
+      + (acc.inDebtCollection ? ', Vorgang beim Inkasso' : '');
+  }
+  return 'Beitragskonto: ausgeglichen';
+}
+// Alle Quellen parallel; Ausfälle einzelner Quellen werden still übersprungen.
+async function memberDetails(id) {
+  const settle = (p) => p.then((v) => v).catch(() => null);
+  const [ct, ap, vi, ac] = await Promise.all([
+    settle(contractLine(id)), settle(appointmentsLine(id)), settle(visitsLine(id)), settle(accountLine(id)),
+  ]);
+  const lines = [];
+  if (ct && ct.line) lines.push(ct.line);
+  if (ap) lines.push(ap);
+  if (vi) lines.push(vi);
+  if (ac) lines.push(ac);
+  return { text: lines.join('\n'), rateName: (ct && ct.rateName) || null };
+}
 
 const STATIC_TIPS = [
   'Trink vor dem Training ein großes Glas Wasser – das steigert deine Leistung spürbar. 💧',
@@ -56,8 +129,10 @@ module.exports = async function handler(req, res) {
     const question = String(body.question || '').trim();
     if (question.length < 2) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'empty' })); }
     if (!AI.hasAI) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'no_ai', message: 'FINN ist gerade nicht verfügbar. Magst du es direkt unserem Team schreiben?' })); }
-    let ct = null; try { ct = await M.getContract(sess.id); } catch (e) {}
-    const member = { firstName: m.firstName, lastName: m.lastName, customerNumber: m.customerNumber, rateName: ct && ct.rateName };
+    // Live-Daten (Vertrag, Termine, Besuche, Beitragskonto) für konkrete Antworten.
+    let det = { text: '', rateName: null };
+    try { det = await memberDetails(sess.id); } catch (e) {}
+    const member = { firstName: m.firstName, lastName: m.lastName, customerNumber: m.customerNumber, rateName: det.rateName, details: det.text };
     const r = await AI.coachReply(member, Array.isArray(body.history) ? body.history : [], question, HELP);
     res.statusCode = 200;
     if (r.ok) { try { require('../../lib/handled').record('ai', sess.id, 'chat'); } catch (e) {} return res.end(JSON.stringify({ ok: true, answer: r.answer })); }
