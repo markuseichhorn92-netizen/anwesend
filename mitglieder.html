@@ -2,7 +2,7 @@
 <html lang="de">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
 <title>Fit-Inn Trier · Mitgliederbereich</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -193,10 +193,20 @@
   .pfHideMobile{display:none}
   .pfBackBtn{display:flex}
   .pfRow:hover{background:var(--surface-2)}
-  /* Postfach-Thread als echter Chat: feste Höhe, eigener Scroll-Bereich, Composer unten */
-  .pfChatCard{display:flex;flex-direction:column;height:calc(100dvh - 205px);min-height:360px;background:var(--surface);border-radius:18px;box-shadow:0 14px 38px rgba(4,33,40,.10);overflow:hidden}
-  @media(min-width:1000px){ .pfChatCard{height:min(640px,calc(100dvh - 230px))} }
-  #pf_scroll{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;background:var(--bg);padding:14px 14px 10px}
+  /* Postfach-Thread als echter Chat. Mobil: Vollbild (kein „iframe"-Gefühl, kein
+     doppeltes Scrollen). Desktop: Panel in der Zwei-Spalten-Ansicht. */
+  .pfChatCard{display:flex;flex-direction:column;background:var(--surface);overflow:hidden}
+  @media(max-width:999px){ .pfChatCard{position:fixed;inset:0;z-index:76;border-radius:0} }
+  @media(min-width:1000px){ .pfChatCard{height:min(640px,calc(100dvh - 230px));min-height:380px;border-radius:18px;box-shadow:0 14px 38px rgba(4,33,40,.10)} }
+  #pf_scroll{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;background:var(--bg);padding:14px 14px 10px;overscroll-behavior:contain}
+  #finn_scroll{overscroll-behavior:contain}
+  /* FINN-Panel. Mobil: Vollbild -> die Tastatur staucht nur den Verlauf, nichts springt.
+     Desktop: Sheet unten mittig. */
+  .finnPanel{width:100%;background:var(--bg);display:flex;flex-direction:column;overflow:hidden}
+  @media(max-width:999px){ .finnPanel{height:100%;align-self:stretch} }
+  @media(min-width:1000px){ .finnPanel{max-width:480px;margin:0 auto;height:min(720px,88dvh);align-self:flex-end;border-radius:24px 24px 0 0;box-shadow:0 -10px 50px rgba(0,0,0,.4)} }
+  /* Hintergrund-Seite einfrieren, solange ein Vollbild-Chat offen ist (verhindert Springen) */
+  body.chatLock{overflow:hidden}
   #finn_q,#pf_reply{transition:height .12s ease}
   .finnDots{display:inline-block;animation:finnPulse 1.2s ease-in-out infinite}
   @keyframes finnPulse{0%,100%{opacity:.45}50%{opacity:1}}
@@ -860,7 +870,7 @@
     var thinking=S.finnBusy?finnThinkingHtml():'';
     var sugg=['Wie oft sollte ich trainieren?','Wann ist es am leersten?','Wie buche ich einen Termin?'];
     return '<div class="ciOverlay" data-act="closeFinn" style="align-items:stretch;justify-content:center;padding:0">'+
-      '<div data-act="noop" style="width:100%;max-width:480px;margin:0 auto;height:90dvh;align-self:flex-end;background:var(--bg);border-radius:24px 24px 0 0;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 -10px 50px rgba(0,0,0,.4)">'+
+      '<div class="finnPanel" data-act="noop">'+
         '<div style="display:flex;align-items:center;gap:12px;padding:calc(14px + env(safe-area-inset-top,0px)) 18px 14px;background:linear-gradient(160deg,#0e6072,#063540);color:#fff">'+
           '<div style="width:40px;height:40px;border-radius:50%;overflow:hidden;flex-shrink:0;background:#0a3d4a"><img src="/assets/brand/finn-mark.svg" style="width:100%;height:100%;display:block"></div>'+
           '<div style="flex:1;min-width:0"><div style="font-size:16px;font-weight:900">FINN</div><div style="font-size:12px;color:#aed0d6;font-weight:600">KI · erste Anlaufstelle · rund um die Uhr</div></div>'+
@@ -2169,7 +2179,7 @@
     if(!v) return '<div class="pfHideMobile" style="background:var(--surface);border-radius:18px;box-shadow:0 12px 32px rgba(4,33,40,.10);padding:44px 24px;text-align:center"><div style="font-size:15px;font-weight:700;color:var(--text-2)">Wähle einen Vorgang</div><div style="font-size:13px;color:var(--text-soft);margin-top:6px">Rechts erscheint die Unterhaltung mit dem Team.</div></div>';
     var st=pfStatus(v.status), done=(v.status==='abgeschlossen');
     var err=S.pfErr?'<div class="err" style="margin:0 0 10px">'+svg(IC.warn,{c:'var(--err-fg)',w:2,s:16})+'<span>'+esc(S.pfErr)+'</span></div>':'';
-    var head='<div style="display:flex;align-items:center;gap:12px;background:linear-gradient(165deg,#0e6072,#063540);padding:14px 16px;color:#fff;flex-shrink:0">'+
+    var head='<div style="display:flex;align-items:center;gap:12px;background:linear-gradient(165deg,#0e6072,#063540);padding:calc(12px + env(safe-area-inset-top,0px)) 16px 12px;color:#fff;flex-shrink:0">'+
       '<button class="pfBackBtn" data-act="pfBack" aria-label="Zurück" style="width:38px;height:38px;border-radius:12px;background:rgba(255,255,255,.14);border:none;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'+svg('<path d="M15 18l-6-6 6-6"></path>',{c:'#fff',w:2.2,s:19})+'</button>'+
       '<div style="flex:1;min-width:0"><div style="font-size:16px;font-weight:900;letter-spacing:-.3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(v.subject)+'</div>'+
         '<div style="display:flex;align-items:center;gap:7px;margin-top:2px"><span style="width:7px;height:7px;border-radius:50%;background:'+(done?'#37b27a':'#F6A964')+'"></span><span style="font-size:11.5px;color:#aed0d6;font-weight:700">'+esc(st.label)+'</span></div></div>'+
@@ -2592,6 +2602,10 @@
     var sc1=$('pf_scroll'); if(sc1){ sc1.scrollTop=(S.pfStick===false && keepScroll.pf_scroll!=null)?keepScroll.pf_scroll:sc1.scrollHeight; }
     var sc2=$('finn_scroll'); if(sc2){ sc2.scrollTop=(S.finnStick===false && keepScroll.finn_scroll!=null)?keepScroll.finn_scroll:sc2.scrollHeight; }
     renderChrome();
+    // Vollbild-Chat offen? -> Seite dahinter einfrieren (verhindert Springen bei Tastatur).
+    // WICHTIG: nach renderChrome(), das body.className komplett neu setzt.
+    var chatFull=!!S.finnOpen || (S.screen==='postfach' && !!S.pfThread && window.innerWidth<1000);
+    document.body.classList.toggle('chatLock', chatFull);
     // Deep-Link „Zeit vormerken" (aus dem Widget): einmalig zur Reservierung scrollen
     if(S.screen==='home' && location.hash==='#vormerken' && !S._vmScrolled){ S._vmScrolled=true; setTimeout(function(){ var el=document.getElementById('vormerken'); if(el) el.scrollIntoView({behavior:'smooth',block:'center'}); },300); }
   }
@@ -3115,6 +3129,16 @@
     if(t.id==='pf_scroll') S.pfStick=nearBottom;
     if(t.id==='finn_scroll') S.finnStick=nearBottom;
   },true);
+  // Tastatur geht auf -> nach der Einblend-Animation die letzte Nachricht sichtbar halten.
+  document.addEventListener('focusin',function(e){
+    var t=e.target; if(!t||!t.id) return;
+    if(t.id!=='finn_q'&&t.id!=='pf_reply') return;
+    setTimeout(function(){
+      var sc=$(t.id==='finn_q'?'finn_scroll':'pf_scroll');
+      var stick=(t.id==='finn_q')?S.finnStick:S.pfStick;
+      if(sc&&stick!==false) sc.scrollTop=sc.scrollHeight;
+    },300);
+  });
 
   // ---- boot ----
   function cleanMlt(){ try{ var u=new URL(window.location.href); var ch=false; ['mlt','go','nfc'].forEach(function(k){ if(u.searchParams.has(k)){ u.searchParams.delete(k); ch=true; } }); if(ch) window.history.replaceState({}, document.title, u.pathname+u.search+u.hash); }catch(e){} }
