@@ -2606,6 +2606,9 @@
     // WICHTIG: nach renderChrome(), das body.className komplett neu setzt.
     var chatFull=!!S.finnOpen || (S.screen==='postfach' && !!S.pfThread && window.innerWidth<1000);
     document.body.classList.toggle('chatLock', chatFull);
+    // Bei offener Tastatur (iOS) den Chat wieder auf den sichtbaren Bereich pinnen –
+    // die Neu-Zeichnung hat die Inline-Maße gerade verworfen.
+    if(chatFull) syncChatViewport();
     // Deep-Link „Zeit vormerken" (aus dem Widget): einmalig zur Reservierung scrollen
     if(S.screen==='home' && location.hash==='#vormerken' && !S._vmScrolled){ S._vmScrolled=true; setTimeout(function(){ var el=document.getElementById('vormerken'); if(el) el.scrollIntoView({behavior:'smooth',block:'center'}); },300); }
   }
@@ -3129,15 +3132,46 @@
     if(t.id==='pf_scroll') S.pfStick=nearBottom;
     if(t.id==='finn_scroll') S.finnStick=nearBottom;
   },true);
-  // Tastatur geht auf -> nach der Einblend-Animation die letzte Nachricht sichtbar halten.
+  // ── iOS-Tastatur-Fix (VisualViewport) ─────────────────────────────
+  // iOS staucht das Layout NICHT, wenn die Tastatur aufgeht (interactive-widget
+  // gilt nur für Android). Stattdessen überlagert die Tastatur die Seite und iOS
+  // schiebt die fixierte Chat-Fläche nach oben -> Kopf verschwindet, oben klafft
+  // Leere, unten schaut die Seite dahinter durch. Fix: offene Vollbild-Chats
+  // exakt auf den SICHTBAREN Bereich pinnen (Höhe + Versatz live nachführen).
+  function syncChatViewport(){
+    var vv=window.visualViewport;
+    var els=[];
+    if(S.finnOpen){ var ov=document.querySelector('.ciOverlay[data-act="closeFinn"]'); if(ov) els.push(ov); }
+    if(S.screen==='postfach'&&S.pfThread&&window.innerWidth<1000){ var c=document.querySelector('.pfChatCard'); if(c) els.push(c); }
+    if(!els.length) return;
+    var top=vv?Math.max(0,vv.offsetTop):0;
+    var h=vv?vv.height:window.innerHeight;
+    els.forEach(function(el){ el.style.top=top+'px'; el.style.height=h+'px'; el.style.bottom='auto'; });
+    // iOS' automatisches Hochschieben der Seite rückgängig machen.
+    if(vv&&(top>0||h<window.innerHeight)){ try{ window.scrollTo(0,0); }catch(e){} }
+    var sc=$('finn_scroll'); if(sc&&S.finnStick!==false) sc.scrollTop=sc.scrollHeight;
+    var sc2=$('pf_scroll'); if(sc2&&S.pfStick!==false) sc2.scrollTop=sc2.scrollHeight;
+  }
+  if(window.visualViewport){
+    window.visualViewport.addEventListener('resize',syncChatViewport);
+    window.visualViewport.addEventListener('scroll',syncChatViewport);
+  }
+  // Tastatur geht auf -> nach der Einblend-Animation Chat pinnen + letzte Nachricht zeigen.
   document.addEventListener('focusin',function(e){
     var t=e.target; if(!t||!t.id) return;
     if(t.id!=='finn_q'&&t.id!=='pf_reply') return;
+    setTimeout(syncChatViewport,80);
+    setTimeout(syncChatViewport,320);
     setTimeout(function(){
       var sc=$(t.id==='finn_q'?'finn_scroll':'pf_scroll');
       var stick=(t.id==='finn_q')?S.finnStick:S.pfStick;
       if(sc&&stick!==false) sc.scrollTop=sc.scrollHeight;
-    },300);
+    },350);
+  });
+  // Tastatur zu -> Chat wieder auf volle Höhe.
+  document.addEventListener('focusout',function(e){
+    var t=e.target; if(!t||!t.id) return;
+    if(t.id==='finn_q'||t.id==='pf_reply'){ setTimeout(syncChatViewport,120); setTimeout(syncChatViewport,360); }
   });
 
   // ---- boot ----
