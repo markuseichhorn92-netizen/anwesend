@@ -857,8 +857,12 @@
   function finnScrollBottom(){ setTimeout(function(){ var e=$('finn_scroll'); if(e) e.scrollTop=e.scrollHeight; },30); }
   var FINN_AVA='<div style="width:30px;height:30px;border-radius:50%;overflow:hidden;flex-shrink:0"><img src="/assets/brand/finn-mark.svg" style="width:100%;height:100%;display:block"></div>';
   // Eine Chat-Blase (auch für Teil-Updates ohne Voll-Render genutzt).
+  // m.link = { screen, label } -> Button, der den App-Bereich direkt öffnet.
   function finnBubbleHtml(m){
-    if(m.role==='assistant') return '<div style="display:flex;gap:9px;align-items:flex-start;max-width:90%">'+FINN_AVA+'<div style="background:var(--surface-2);border-radius:4px 16px 16px 16px;padding:10px 13px;font-size:14px;line-height:1.5;color:var(--text);white-space:pre-wrap">'+esc(m.text)+'</div></div>';
+    if(m.role==='assistant'){
+      var btn=(m.link&&m.link.screen)?('<div style="margin-top:9px"><button data-act="finnGo" data-arg="'+esc(m.link.screen)+'" style="display:inline-flex;align-items:center;gap:7px;border:none;border-radius:11px;background:'+TEALBG+';color:#fff;font-size:13px;font-weight:800;padding:9px 14px;cursor:pointer;box-shadow:0 4px 12px rgba(10,73,88,.25)">'+esc(m.link.label||'Öffnen')+svg('<path d="M9 18l6-6-6-6"></path>',{c:'#fff',w:2.2,s:14})+'</button></div>'):'';
+      return '<div style="display:flex;gap:9px;align-items:flex-start;max-width:90%">'+FINN_AVA+'<div style="background:var(--surface-2);border-radius:4px 16px 16px 16px;padding:10px 13px;font-size:14px;line-height:1.5;color:var(--text)"><span style="white-space:pre-wrap">'+esc(m.text)+'</span>'+btn+'</div></div>';
+    }
     return '<div style="display:flex;justify-content:flex-end"><div style="background:'+TEALBG+';color:#fff;border-radius:16px 4px 16px 16px;padding:10px 13px;font-size:14px;line-height:1.5;max-width:90%;white-space:pre-wrap">'+esc(m.text)+'</div></div>';
   }
   function finnThinkingHtml(){
@@ -2650,16 +2654,23 @@
         if(sb){ sb.disabled=true; sb.style.opacity='.55'; }
         finnScrollBottom();
       } else { if(t) t.value=''; render(); finnScrollBottom(); }
-      function receive(text){
-        S.finnBusy=false; S.finnMsgs.push({role:'assistant',text:text});
+      function receive(text,link){
+        S.finnBusy=false; var msg={role:'assistant',text:text,link:link||null}; S.finnMsgs.push(msg);
         var th=$('finn_think'), sc2=$('finn_scroll'), sb2=$('finn_send');
-        if(sc2){ if(th) th.remove(); sc2.insertAdjacentHTML('beforeend', finnBubbleHtml({role:'assistant',text:text})); if(sb2){ sb2.disabled=false; sb2.style.opacity='1'; } finnScrollBottom(); }
+        if(sc2){ if(th) th.remove(); sc2.insertAdjacentHTML('beforeend', finnBubbleHtml(msg)); if(sb2){ sb2.disabled=false; sb2.style.opacity='1'; } finnScrollBottom(); }
         else if(S.finnOpen){ render(); finnScrollBottom(); }
       }
       var hist=S.finnMsgs.slice(0,-1).map(function(m){ return {role:m.role,text:m.text}; });
       api('/api/member/coach',{method:'POST',body:JSON.stringify({question:q,history:hist})}).then(function(d){
-        receive((d&&d.ok&&d.answer)?d.answer:((d&&d.message)||'Da komme ich gerade nicht weiter. Magst du es unserem Team schreiben?'));
+        if(d&&d.ok&&d.answer) receive(d.answer, d.link);
+        else receive((d&&d.message)||'Da komme ich gerade nicht weiter. Magst du es unserem Team schreiben?');
       }).catch(function(){ receive('Verbindung gerade nicht möglich. Versuch es gleich nochmal.'); }); },
+    // Button unter einer FINN-Antwort: Chat schließen + Ziel-Seite in der App öffnen.
+    finnGo:function(a){
+      var allowed=['home','data','contract','account','appt','checkins','postfach','help','settings','card','fort','referral'];
+      if(allowed.indexOf(a)<0) return;
+      setS({finnOpen:false}); nav(a);
+    },
     finnToTeam:function(){ var last=''; for(var i=S.finnMsgs.length-1;i>=0;i--){ if(S.finnMsgs[i].role==='user'){ last=S.finnMsgs[i].text; break; } } setS({finnOpen:false}); nav('help'); setTimeout(function(){ setS({ctOpen:true,ctSent:false,ctErr:'',ctMsg:(last?('Meine Frage an FINN: '+last+'\n\n'):'')+'Bitte helft mir persönlich weiter.'}); },150); },
     openBlog:function(a){ closeMenu(); S.blogSel=a; S.blogPost=null; setS({screen:'blog'}); try{ window.scrollTo(0,0); }catch(e){} api('/api/member/blog?id='+encodeURIComponent(a)).then(function(d){ if(d&&d.ok&&d.post){ S.blogPost=d.post; if(S.blogSel===a&&S.screen==='blog') render(); } }).catch(function(){}); },
     openInsta:function(a){ closeMenu(); S.instaSel=a; setS({screen:'insta'}); loadInsta(); },

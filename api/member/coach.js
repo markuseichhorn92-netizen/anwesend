@@ -75,6 +75,28 @@ async function accountLine(id) {
   }
   return 'Beitragskonto: ausgeglichen';
 }
+// ── App-Navigation aus der Antwort ──
+// FINN darf ans Ende seiner Antwort [[screen:ID]] anhängen; wir entfernen den
+// Marker aus dem Text und geben – NUR bei bekannter ID (Whitelist) – ein
+// link-Objekt an die App zurück, die daraus einen Button macht.
+const SCREENS = {
+  contract: 'Vertragsverwaltung', data: 'Meine Daten', account: 'Beitragskonto',
+  appt: 'Termine', checkins: 'Check-in-Verlauf', fort: 'Fortschritt',
+  card: 'Mitgliedskarte', referral: 'Freunde werben', postfach: 'Postfach',
+  help: 'Hilfe & Kontakt', settings: 'Einstellungen', home: 'Übersicht',
+};
+function extractLink(answer) {
+  let link = null;
+  const text = String(answer || '')
+    .replace(/\[\[\s*screen\s*:\s*([a-z]+)\s*\]\]/gi, (mm, id) => {
+      id = String(id).toLowerCase();
+      if (!link && SCREENS[id]) link = { screen: id, label: SCREENS[id] + ' öffnen' };
+      return '';
+    })
+    .replace(/[ \t]+\n/g, '\n').trim();
+  return { text, link };
+}
+
 // Alle Quellen parallel; Ausfälle einzelner Quellen werden still übersprungen.
 async function memberDetails(id) {
   const settle = (p) => p.then((v) => v).catch(() => null);
@@ -135,7 +157,11 @@ module.exports = async function handler(req, res) {
     const member = { firstName: m.firstName, lastName: m.lastName, customerNumber: m.customerNumber, rateName: det.rateName, details: det.text };
     const r = await AI.coachReply(member, Array.isArray(body.history) ? body.history : [], question, HELP);
     res.statusCode = 200;
-    if (r.ok) { try { require('../../lib/handled').record('ai', sess.id, 'chat'); } catch (e) {} return res.end(JSON.stringify({ ok: true, answer: r.answer })); }
+    if (r.ok) {
+      try { require('../../lib/handled').record('ai', sess.id, 'chat'); } catch (e) {}
+      const parsed = extractLink(r.answer);
+      return res.end(JSON.stringify({ ok: true, answer: parsed.text, link: parsed.link }));
+    }
     return res.end(JSON.stringify({ ok: false, error: r.error || 'ai_failed', message: 'Da komme ich gerade nicht weiter. Magst du es unserem Team schreiben?' }));
   }
 
