@@ -1982,6 +1982,7 @@ function membersNode(){
       '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px">'+
         '<button data-msgsend="1" style="display:inline-flex;align-items:center;gap:8px;border:none;border-radius:12px;background:'+TEAL+';color:#fff;font-size:13.5px;font-weight:800;padding:11px 16px;cursor:pointer">'+IC.send+'Nachricht senden</button>'+
         '<button data-accessinfo="1" style="display:inline-flex;align-items:center;gap:8px;border:1.5px solid rgba(255,255,255,.5);border-radius:12px;background:rgba(255,255,255,.12);color:#fff;font-size:13.5px;font-weight:800;padding:11px 16px;cursor:pointer"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg>Zugangs-Info senden</button>'+
+        (isAdmin()?'<button data-rhooffer="1" style="display:inline-flex;align-items:center;gap:8px;border:1.5px solid rgba(255,255,255,.5);border-radius:12px;background:rgba(255,255,255,.12);color:#fff;font-size:13.5px;font-weight:800;padding:11px 16px;cursor:pointer">↩ Rückhol-Angebot</button>':'')+
       '</div>'+
       tagsRowHTML()+
       handledLineHTML(p)+
@@ -2002,7 +2003,7 @@ function membersNode(){
       '<div style="margin-top:18px;background:#fff;border-radius:20px;box-shadow:0 14px 38px rgba(4,33,40,.09);padding:20px 24px"><div style="font-size:15px;font-weight:900;letter-spacing:-.2px;margin-bottom:4px;color:#15171B">Vorgangs-Historie</div>'+histRows+'</div>'+
       // DSGVO-Zone: bewusst dezent, ganz unten – Anonymisieren ist unwiderruflich (nur Admin).
       (isAdmin()?'<div style="margin-top:20px;display:flex;justify-content:flex-end;padding:0 2px"><button data-anon="1" style="display:inline-flex;align-items:center;gap:7px;border:1.5px solid #e3b8b1;background:#fff;color:#b5402f;border-radius:11px;font-size:12.5px;font-weight:800;padding:9px 14px;cursor:pointer"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#b5402f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>DSGVO: Mitglied anonymisieren</button></div>':'')+
-    '</div>'+dmModalHTML()+cxModalHTML()+apModalHTML()+wbModalHTML();
+    '</div>'+dmModalHTML()+cxModalHTML()+apModalHTML()+wbModalHTML()+rhoModalHTML();
     setTimeout(function(){
       var b=wrap.querySelector('[data-back]'); if(b) b.onclick=backToMembers;
       wrap.querySelectorAll('[data-hist]').forEach(function(x){ x.onclick=function(){ S.screen='inbox'; openConv(x.getAttribute('data-hist')); }; });
@@ -2041,10 +2042,12 @@ function membersNode(){
       var cxw=wrap.querySelector('[data-cxwithdraw]'); if(cxw) cxw.onclick=function(){ doWithdrawCancel(p); };
       var cxr=wrap.querySelector('[data-cxrevoke]'); if(cxr) cxr.onclick=function(){ doRevoke(p); };
       var wbo=wrap.querySelector('[data-wbopen]'); if(wbo) wbo.onclick=function(){ openWinback(p); };
+      var rhoo=wrap.querySelector('[data-rhooffer]'); if(rhoo) rhoo.onclick=function(){ openRho(p); };
       wireDm(wrap);
       wireCx(wrap, p);
       wireAp(wrap);
       wireWb(wrap);
+      wireRho(wrap);
     },0);
     return wrap;
   }
@@ -3216,6 +3219,73 @@ function wireWb(scope){
   var sv=scope.querySelector('[data-wbsave]'); if(sv) sv.onclick=doWinback;
 }
 
+// ---------- Rückhol-Angebot senden (Admin) – ECHTES Angebot mit rechtssicherem Annahme-Link ----------
+// Öffnet sich aus dem Mitglieds-Profil. Nur Leistungen im Rahmen; Server prüft nochmals hart.
+function openRho(p){
+  S.rhoMemberId=p.id; S.rhoName=p.name; S.rhoBusy=false; S.rhoResult=null; S.rhoMsg='';
+  S.rhoDisc=0; S.rhoDiscWk=0; S.rhoFree=0; S.rhoWaive=false; S.rhoPause=0;
+  S.rhoFrame=S.wbFrame||null; S.rhoOpen=true; render();
+  if(!S.rhoFrame){ tapi('/api/team/retention').then(function(r){ if(r&&r.ok){ S.wbFrame=r.frame; S.rhoFrame=r.frame; render(); } }).catch(function(){}); }
+}
+function closeRho(){ if(S.rhoBusy) return; S.rhoOpen=false; S.rhoResult=null; render(); }
+function rhoSend(){
+  if(S.rhoBusy||!S.rhoMemberId) return;
+  var details={ discountPct:S.rhoDisc||0, discountWeeks:S.rhoDiscWk||0, freeWeeks:S.rhoFree||0, waiveActivation:!!S.rhoWaive, pauseWeeks:S.rhoPause||0 };
+  if(!details.discountPct && !details.freeWeeks && !details.waiveActivation && !details.pauseWeeks){ alert('Bitte mindestens eine Leistung auswählen.'); return; }
+  S.rhoBusy=true; render();
+  tapi('/api/team/retention',{method:'POST',body:{action:'create-offer',memberId:S.rhoMemberId,memberName:S.rhoName,message:S.rhoMsg||'',details:details}}).then(function(r){
+    S.rhoBusy=false;
+    if(r&&r.ok){ S.rhoResult=r; }
+    else if(r&&r.error==='out_of_frame'){ alert('Über dem Rahmen:\n'+((r.violations||[]).join('\n'))); }
+    else { alert((r&&r.message)||'Angebot konnte nicht erstellt werden.'); }
+    render();
+  }).catch(function(){ S.rhoBusy=false; alert('Verbindung fehlgeschlagen.'); render(); });
+}
+function rhoModalHTML(){
+  if(!S.rhoOpen) return '';
+  var f=S.rhoFrame, inner;
+  if(!f){ inner='<div style="text-align:center;padding:34px"><span class="spin"></span></div>'; }
+  else if(!f.active){ inner='<div style="background:#fff6ec;border-radius:12px;padding:14px 16px;font-size:13.5px;font-weight:700;color:#9a6d1f;line-height:1.55">Die Rückholung ist noch nicht aktiviert. Aktiviere sie zuerst im Bereich „Rückholung" und lege den Rahmen fest.</div>'; }
+  else if(S.rhoResult){ var url=(S.rhoResult.offer&&S.rhoResult.offer.url)||''; inner='<div style="background:#e7f6ec;border-radius:12px;padding:14px 16px;font-size:13.5px;font-weight:700;color:#1d7a3e;line-height:1.55">Angebot verschickt ✓<div style="font-size:12px;color:#3a7d52;font-weight:600;margin-top:7px;word-break:break-all">Annahme-Link: '+esc(url)+'</div><div style="font-size:12px;color:#6b7780;font-weight:600;margin-top:7px">Bei Annahme entsteht automatisch eine Aufgabe „in Magicline umsetzen". Den Verlauf siehst du unter „Rückholung".</div></div>'; }
+  else {
+    var numInp=function(id,val,max){ return '<input type="number" id="'+id+'" min="0"'+(max?(' max="'+max+'"'):'')+' value="'+esc(String(val))+'" style="width:80px;padding:9px 11px;border:1.5px solid #dce3e4;border-radius:10px;font-size:14.5px;font-weight:800;text-align:center;background:#fbfcfc;color:#15171B">'; };
+    var row=function(label,hint,ctrl){ return '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 0;border-top:1px solid #f0f3f3"><div><div style="font-size:12.5px;font-weight:800;color:#15171B">'+label+'</div><div style="font-size:11px;color:#8a929a;font-weight:600">'+hint+'</div></div>'+ctrl+'</div>'; };
+    var fields='';
+    if(f.maxDiscountPct>0){ fields+=row('Rabatt %','max '+f.maxDiscountPct+'%',numInp('rho_disc',S.rhoDisc,f.maxDiscountPct))+row('… für Wochen','max '+f.maxDiscountWeeks,numInp('rho_discwk',S.rhoDiscWk,f.maxDiscountWeeks)); }
+    if(f.maxFreeWeeks>0){ fields+=row('Gratis Wochen','max '+f.maxFreeWeeks,numInp('rho_free',S.rhoFree,f.maxFreeWeeks)); }
+    if(f.maxPauseWeeks>0){ fields+=row('Pause Wochen','max '+f.maxPauseWeeks,numInp('rho_pause',S.rhoPause,f.maxPauseWeeks)); }
+    if(f.waiveActivation){ fields+=row('Aktivierungsgebühr erlassen','39 €','<input type="checkbox" id="rho_waive"'+(S.rhoWaive?' checked':'')+' style="width:22px;height:22px;accent-color:'+TEAL+'">'); }
+    if(!fields) fields='<div style="font-size:12.5px;color:#9a6d1f;font-weight:700;padding:8px 0">Im Rahmen ist aktuell keine Leistung freigegeben. Passe den Rahmen unter „Rückholung" an.</div>';
+    inner='<div style="font-size:12px;font-weight:800;color:#8a929a;margin-bottom:2px">Leistungen (nur im Rahmen)</div>'+fields+
+      '<div style="margin-top:14px"><div style="font-size:12px;font-weight:800;color:#8a929a;margin-bottom:7px">Nachricht ans Mitglied</div>'+
+      '<textarea id="rho_msg" rows="3" placeholder="Persönlicher Text – z. B. „Schade, dass du gehen willst! Wir hätten da ein Angebot für dich …"" style="width:100%;padding:11px 13px;border:1.5px solid #dce3e4;border-radius:11px;font-size:14px;background:#fbfcfc;resize:vertical;line-height:1.5;color:#15171B">'+esc(S.rhoMsg||'')+'</textarea></div>'+
+      '<div style="margin-top:12px;background:#f2f8f9;border-radius:11px;padding:11px 13px;font-size:12px;color:#0a4958;font-weight:700;line-height:1.5">Das Mitglied bekommt eine Nachricht mit persönlichem Annahme-Link – rechtssicher, mit Speicherung von Zeitpunkt + IP bei Annahme.</div>';
+  }
+  var canSend=f&&f.active&&!S.rhoResult;
+  return '<div data-rhooverlay="1" style="position:fixed;inset:0;background:rgba(0,18,22,.5);z-index:70;display:flex;align-items:center;justify-content:center;padding:20px">'+
+    '<div data-rhocard="1" style="width:100%;max-width:470px;background:#fff;border-radius:20px;box-shadow:0 30px 70px rgba(0,0,0,.3);padding:22px 24px;max-height:90vh;overflow-y:auto">'+
+      '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:14px"><div><div style="font-size:16px;font-weight:900;letter-spacing:-.3px">Rückhol-Angebot senden</div><div style="font-size:12.5px;color:#8a929a;font-weight:600;margin-top:2px">an '+esc(S.rhoName||'Mitglied')+'</div></div>'+
+      '<button data-rhox="1" style="border:none;background:#f1f5f6;border-radius:9px;width:32px;height:32px;font-size:18px;line-height:1;color:#6b7780;cursor:pointer;flex-shrink:0">×</button></div>'+
+      inner+
+      '<div style="display:flex;gap:9px;margin-top:16px">'+
+        '<button data-rhocancel="1" style="flex:1;border:1.5px solid #d6dee0;border-radius:11px;background:#fff;color:#42454b;font-weight:800;font-size:13.5px;padding:11px;cursor:pointer">'+(S.rhoResult?'Schließen':'Abbrechen')+'</button>'+
+        (canSend?'<button data-rhosend="1"'+(S.rhoBusy?' disabled':'')+' style="flex:1;border:none;border-radius:11px;background:'+TEAL+';color:#fff;font-weight:800;font-size:13.5px;padding:11px;cursor:pointer">'+(S.rhoBusy?'Sendet …':'Angebot senden')+'</button>':'')+
+      '</div>'+
+    '</div></div>';
+}
+function wireRho(scope){
+  if(!S.rhoOpen) return;
+  var ov=scope.querySelector('[data-rhooverlay]'); if(ov) ov.onclick=closeRho;
+  var card=scope.querySelector('[data-rhocard]'); if(card) card.onclick=function(e){ e.stopPropagation(); };
+  var x=scope.querySelector('[data-rhox]'); if(x) x.onclick=closeRho;
+  var cc=scope.querySelector('[data-rhocancel]'); if(cc) cc.onclick=closeRho;
+  var sd=scope.querySelector('[data-rhosend]'); if(sd) sd.onclick=rhoSend;
+  var bindN=function(id,key){ var e=scope.querySelector('#'+id); if(e) e.oninput=function(){ S[key]=parseInt(e.value,10)||0; }; };
+  bindN('rho_disc','rhoDisc'); bindN('rho_discwk','rhoDiscWk'); bindN('rho_free','rhoFree'); bindN('rho_pause','rhoPause');
+  var w=scope.querySelector('#rho_waive'); if(w) w.onchange=function(){ S.rhoWaive=w.checked; };
+  var mg=scope.querySelector('#rho_msg'); if(mg) mg.oninput=function(){ S.rhoMsg=mg.value; };
+}
+
 // ---------- Vertragskündigung (Team) ----------
 // Vertragskarte inkl. Aktionen (kündigen / zurücknehmen / 14-Tage-Widerruf).
 function vertragCard(p){
@@ -3718,11 +3788,15 @@ function wbNode(){
   var offers=S.wbOffers||[];
   var stColor={sent:'#C77A2E',accepted:'#1d7a3e',declined:'#8a929a',expired:'#8a929a'};
   var stLabel={sent:'Verschickt',accepted:'Angenommen',declined:'Abgelehnt',expired:'Abgelaufen'};
+  var dfmt=function(ts){ if(!ts) return ''; try{ return new Date(ts).toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'2-digit'}); }catch(e){ return ''; } };
   var offHtml=offers.length? offers.map(function(o){
     var c=stColor[o.status]||'#8a929a';
-    return '<div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-top:1px solid #f0f3f3"><div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:800;color:#15171B;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(o.memberName||('Mitglied '+o.memberId))+'</div><div style="font-size:12px;color:#6b7780;font-weight:600;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(o.summary||'')+'</div></div><span style="font-size:11px;font-weight:800;color:'+c+';background:'+c+'18;border-radius:20px;padding:4px 10px;flex-shrink:0">'+(stLabel[o.status]||o.status)+'</span></div>';
-  }).join('') : '<div style="font-size:13px;color:#8a929a;font-weight:600;padding:16px 0">Noch keine Angebote verschickt. Bitte den Assistenten: „Mach Max Müller ein Rückhol-Angebot".</div>';
-  var offersCard='<div style="'+CARD+'"><div style="font-size:13px;font-weight:900;color:#15171B;letter-spacing:-.2px">Angebote</div>'+offHtml+'</div>';
+    var meta='von '+esc(o.createdBy||'—')+(o.createdAt?(' · '+dfmt(o.createdAt)):'');
+    var msg=o.message?'<div style="font-size:12px;color:#4a5560;font-weight:600;margin-top:7px;line-height:1.45;white-space:pre-wrap;background:#f6f8f9;border-radius:9px;padding:9px 11px">„'+esc(o.message)+'"</div>':'';
+    var proof=(o.status==='accepted'&&o.acceptedAt)?'<div style="font-size:11.5px;color:#1d7a3e;font-weight:800;margin-top:7px">✓ Angenommen '+esc(dfmt(o.acceptedAt))+(o.acceptIp?(' · Nachweis-IP '+esc(o.acceptIp)):'')+'</div>':'';
+    return '<div style="padding:13px 0;border-top:1px solid #f0f3f3"><div style="display:flex;align-items:flex-start;gap:12px"><div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:800;color:#15171B">'+esc(o.memberName||('Mitglied '+o.memberId))+'</div><div style="font-size:12.5px;color:#0a4958;font-weight:700;margin-top:2px">'+esc(o.summary||'')+'</div><div style="font-size:11px;color:#9aa6aa;font-weight:600;margin-top:2px">'+meta+'</div></div><span style="font-size:11px;font-weight:800;color:'+c+';background:'+c+'18;border-radius:20px;padding:4px 10px;flex-shrink:0">'+(stLabel[o.status]||o.status)+'</span></div>'+msg+proof+'</div>';
+  }).join('') : '<div style="font-size:13px;color:#8a929a;font-weight:600;padding:16px 0">Noch keine Angebote verschickt. Öffne ein Mitglied und tippe auf „↩ Rückhol-Angebot" – oder bitte den Assistenten: „Mach Max Müller ein Rückhol-Angebot".</div>';
+  var offersCard='<div style="'+CARD+'"><div style="font-size:13px;font-weight:900;color:#15171B;letter-spacing:-.2px;margin-bottom:2px">Angebote &amp; Verlauf</div><div style="font-size:11.5px;color:#8a929a;font-weight:600;margin-bottom:4px">Jedes Angebot: was, von wem, der Text ans Mitglied und – bei Annahme – Zeit + IP als Nachweis. Den kompletten Chatverlauf findest du im Posteingang.</div>'+offHtml+'</div>';
 
   node.innerHTML='<div style="max-width:640px">'+intro+settings+offersCard+'</div>';
   setTimeout(function(){ var b=node.querySelector('[data-wbsave]'); if(b) b.onclick=wbSave; },0);

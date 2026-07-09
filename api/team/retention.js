@@ -31,7 +31,10 @@ function pubOffer(req, o) {
   return {
     id: o.id, memberId: o.memberId, memberName: o.memberName,
     summary: o.summary, details: o.details, status: o.status,
+    message: o.message || '',           // die tatsächlich versandte Nachricht (Nachvollziehbarkeit)
+    createdBy: o.createdBy || '',        // wer/was das Angebot erstellt hat (Name oder „KI")
     createdAt: o.createdAt, acceptedAt: o.acceptedAt || 0,
+    acceptIp: o.acceptIp || '',          // Nachweis bei Annahme
     url: offerUrl(req, o.token),
   };
 }
