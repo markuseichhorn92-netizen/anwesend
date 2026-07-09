@@ -96,6 +96,26 @@ Das erzeugt die Ordner `ios/` und `android/` (lokal, nicht im Git – sie stehen
 npx cap sync
 ```
 
+> **Wichtig – Kamera & Mikrofon:** Capacitor legt `ios/`/`android/` **ohne** die
+> Nutzungs-Beschreibungen für Kamera und Mikrofon an. Fehlen die unter iOS, **stürzt die
+> App hart ab**, sobald sie die Kamera oder das Mikrofon öffnet (Essen-Foto, Attest-Foto,
+> Sprach-Diktat). Deshalb gibt es das kleine Skript **`patch-native.js`**, das die nötigen
+> Schlüssel automatisch nachträgt. Es läuft schon **automatisch** mit bei `npm run sync`,
+> `npm run ios` und `npm run android` – du kannst es aber auch jederzeit einzeln anstoßen:
+>
+> ```bash
+> npm run patch     # trägt Kamera/Mikro/Foto/Sprache-Berechtigungen nach (idempotent)
+> ```
+>
+> Das Skript ergänzt in `ios/App/App/Info.plist` die Schlüssel `NSCameraUsageDescription`,
+> `NSMicrophoneUsageDescription`, `NSSpeechRecognitionUsageDescription`,
+> `NSPhotoLibraryUsageDescription`, `NSPhotoLibraryAddUsageDescription` und in
+> `android/.../AndroidManifest.xml` die Berechtigungen `CAMERA` und `RECORD_AUDIO`.
+> Vorhandene Schlüssel bleiben unangetastet, ein erneuter Lauf schadet nie.
+>
+> Nutze deshalb ab jetzt am besten `npm run sync` statt `npx cap sync` – dann ist der
+> Patch immer dabei.
+
 Öffnen in der jeweiligen IDE:
 
 ```bash

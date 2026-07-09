@@ -1990,7 +1990,13 @@
   }
   // Sprache -> Text (Web Speech API) -> ins Log-Feld -> KI-Schätzung. Nicht überall verfügbar.
   var ernRecog=null;
-  function ernVoiceSupported(){ try{ return !!(window.SpeechRecognition||window.webkitSpeechRecognition); }catch(e){ return false; } }
+  function ernVoiceSupported(){ try{
+    // iOS-WKWebView (eigene App) stellt die Web-Speech-API nicht bereit – dort
+    // führt ein Aufruf im schlimmsten Fall zum harten Absturz. Stattdessen das
+    // Tastatur-Mikrofon (Diktat) nutzen. Android-WebView & Browser: normal.
+    if(window.FitInnNative && FitInnNative.platform==='ios') return false;
+    return !!(window.SpeechRecognition||window.webkitSpeechRecognition);
+  }catch(e){ return false; } }
   function loadNutri(){
     if(DATA.nutri===null) DATA.nutri=false;   // „lädt" anzeigen bis Antwort da ist
     api('/api/member/nutrition').then(function(d){
@@ -3140,6 +3146,7 @@
     ernObNext:function(){ if((S.ernObStep||0)>=4){ ACT.ernSaveProfile(); } else { setS({ernObStep:(S.ernObStep||0)+1}); try{ window.scrollTo(0,0); }catch(e){} } },
     ernObBack:function(){ if((S.ernObStep||0)>0) setS({ernObStep:S.ernObStep-1}); },
     ernVoice:function(){
+      if(!ernVoiceSupported()){ S.ernErr=true; S.ernMsg='Sprache wird auf diesem Gerät nicht direkt unterstützt – tippe die Mahlzeit ein (die Tastatur hat oft ein Mikrofon zum Diktieren).'; render(); return; }
       var SR=window.SpeechRecognition||window.webkitSpeechRecognition;
       if(!SR){ S.ernErr=true; S.ernMsg='Sprache wird auf diesem Gerät nicht unterstützt – tippe die Mahlzeit ein (die Tastatur hat oft ein Mikrofon).'; render(); return; }
       if(S.ernRec){ try{ ernRecog&&ernRecog.stop(); }catch(e){} S.ernRec=false; render(); return; }
