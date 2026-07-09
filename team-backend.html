@@ -443,7 +443,7 @@ async function openProfile(id){
   S.profileLoading=true; S.profile=null; render();
   try{ var r=await tapi('/api/team/members?id='+encodeURIComponent(id)); if(r.ok) S.profile=r.profile; }
   catch(e){} S.profileLoading=false; render();
-  if(S.profile){ loadProfileTags(id); loadProfileDocs(id); loadAccessMedia(id); loadMemberCheckins(id); loadMemberMessages(id); }
+  if(S.profile){ loadProfileTags(id); loadProfileDocs(id); loadAccessMedia(id); loadMemberCheckins(id); loadMemberMessages(id); if(isAdmin()&&!S.rhOffersLoaded) loadRetentionOffers(); }
 }
 // ---------- Mitglieder-Tags ----------
 // Tags des offenen Profils laden (GET ?memberId). Ohne Store -> leere Liste, kein Fehler.
@@ -1772,6 +1772,7 @@ function dashNode(){
         '<div style="width:44px;height:44px;border-radius:50%;background:#fff;color:#0a4958;font-weight:900;font-size:15px;display:flex;align-items:center;justify-content:center;flex-shrink:0">FI</div>'+
       '</div>'+
     '</div>'+
+    dashRetentionCard()+
     '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(148px,1fr));gap:13px;margin-top:4px">'+
     kpis.map(function(k){ return '<div class="qtile" data-gokpi="'+esc(k[3])+'" style="background:#fff;border-radius:18px;box-shadow:0 12px 32px rgba(4,33,40,.09);padding:17px;cursor:pointer"><div style="display:flex;align-items:center;justify-content:space-between"><div style="width:38px;height:38px;border-radius:12px;background:'+k[2]+';display:flex;align-items:center;justify-content:center">'+k[4]+'</div><span style="font-size:28px;font-weight:900;color:#15171B;letter-spacing:-.5px">'+k[1]+'</span></div><div style="font-size:13px;font-weight:700;color:#42454b;margin-top:10px">'+k[0]+'</div></div>'; }).join('')+'</div>'+
     '<div class="prof-grid" style="display:grid;grid-template-columns:1.5fr 1fr;gap:18px;margin-top:6px;align-items:start">'+
@@ -1798,6 +1799,7 @@ function dashNode(){
     wrap.querySelectorAll('[data-gokpi]').forEach(function(b){ b.onclick=function(){ S.filter=b.getAttribute('data-gokpi')||'open'; S.screen='inbox'; render(); }; });
     wrap.querySelectorAll('[data-churnprof]').forEach(function(b){ b.onclick=function(){ var id=b.getAttribute('data-churnprof'); if(id){ S.screen='members'; openProfile(id); } }; });
     wrap.querySelectorAll('[data-duesprof]').forEach(function(b){ b.onclick=function(){ var id=b.getAttribute('data-duesprof'); if(id){ S.screen='members'; openProfile(id); } }; });
+    wrap.querySelectorAll('[data-rhprof]').forEach(function(b){ b.onclick=function(){ var id=b.getAttribute('data-rhprof'); if(id){ S.screen='members'; openProfile(id); } }; });
   },0);
   return wrap;
 }
@@ -1986,6 +1988,7 @@ function membersNode(){
       '</div>'+
       tagsRowHTML()+
       handledLineHTML(p)+
+      memberOffersCard(p)+
       '<div class="prof-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:18px;align-items:start">'+
         stammdatenCard(p)+
         vertragCard(p)+
@@ -3771,7 +3774,41 @@ function assistCancel(id){
 // ---------- Rückholung: Angebots-Rahmen für die KI (nur Admin) ----------
 function loadWb(){
   S.wbLoaded=true;
-  tapi('/api/team/retention').then(function(r){ if(r&&r.ok){ S.wbFrame=r.frame||null; S.wbOffers=r.offers||[]; S.wbStored=(r.stored!==false); } render(); }).catch(function(){ render(); });
+  tapi('/api/team/retention').then(function(r){ if(r&&r.ok){ S.wbFrame=r.frame||null; S.wbOffers=r.offers||[]; S.wbStored=(r.stored!==false); S.rhOffersLoaded=true; } render(); }).catch(function(){ render(); });
+}
+// Angebote leicht nachladen (für Dashboard-Karte & Profil-Nachweis).
+function loadRetentionOffers(){
+  if(!isAdmin()){ S.rhOffersLoaded=true; return; }
+  tapi('/api/team/retention').then(function(r){ if(r&&r.ok){ S.wbFrame=r.frame; S.wbOffers=r.offers||[]; S.wbStored=(r.stored!==false); } S.rhOffersLoaded=true; render(); }).catch(function(){ S.rhOffersLoaded=true; });
+}
+// Prominente Dashboard-Karte: angenommene Rückhol-Angebote.
+function dashRetentionCard(){
+  var accepted=(S.wbOffers||[]).filter(function(o){ return o.status==='accepted'; }).sort(function(a,b){ return (b.acceptedAt||0)-(a.acceptedAt||0); });
+  if(!accepted.length) return '';
+  var dshort=function(ts){ if(!ts) return ''; try{ return new Date(ts).toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'2-digit'}); }catch(e){ return ''; } };
+  var rows=accepted.slice(0,5).map(function(o){
+    return '<div class="lrow" data-rhprof="'+esc(o.memberId)+'" style="display:flex;align-items:center;gap:12px;padding:11px 0;border-top:1px solid rgba(255,255,255,.16);cursor:pointer"><div style="width:34px;height:34px;border-radius:10px;background:rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0">🎉</div><div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:800;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(o.memberName||('Mitglied '+o.memberId))+'</div><div style="font-size:12px;color:#d5f2e2;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(o.summary||'')+(o.acceptedAt?(' · '+dshort(o.acceptedAt)):'')+'</div></div><span style="font-size:17px;color:#fff;opacity:.7;flex-shrink:0">›</span></div>';
+  }).join('');
+  return '<div style="background:linear-gradient(150deg,#1d9a4e,#127a3c);border-radius:20px;box-shadow:0 14px 34px rgba(18,122,60,.3);padding:18px 20px;margin-bottom:16px">'+
+    '<div style="display:flex;align-items:center;gap:12px"><div style="width:42px;height:42px;border-radius:13px;background:rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0">🎉</div><div style="min-width:0"><div style="font-size:16.5px;font-weight:900;color:#fff;letter-spacing:-.3px">'+accepted.length+' Rückhol-Angebot'+(accepted.length===1?'':'e')+' angenommen</div><div style="font-size:12.5px;color:#d5f2e2;font-weight:600;margin-top:1px">Diese Mitglieder bleiben – jetzt in Magicline umsetzen.</div></div></div>'+
+    rows+'</div>';
+}
+// Profil-Karte: Rückhol-Angebote dieses Mitglieds inkl. rechtsverbindlichem Nachweis.
+function memberOffersCard(p){
+  if(!isAdmin()) return '';
+  var offers=(S.wbOffers||[]).filter(function(o){ return String(o.memberId)===String(p.id); }).sort(function(a,b){ return (b.createdAt||0)-(a.createdAt||0); });
+  if(!offers.length) return '';
+  var stColor={sent:'#C77A2E',accepted:'#1d7a3e',declined:'#8a929a',expired:'#8a929a'};
+  var stLabel={sent:'Verschickt',accepted:'Angenommen',declined:'Abgelehnt',expired:'Abgelaufen'};
+  var dfull=function(ts){ if(!ts) return ''; try{ return new Date(ts).toLocaleString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}); }catch(e){ return ''; } };
+  var accepted=offers.filter(function(o){ return o.status==='accepted'; }).length;
+  var rows=offers.map(function(o){ var c=stColor[o.status]||'#8a929a';
+    var proof=(o.status==='accepted'&&o.acceptedAt)?'<div style="margin-top:9px;background:#e7f6ec;border:1px solid #bfe6cd;border-radius:12px;padding:11px 13px"><div style="font-size:12.5px;font-weight:900;color:#1d7a3e">✓ Rechtsverbindlich angenommen</div><div style="font-size:11.5px;color:#3a7d52;font-weight:600;margin-top:3px">am '+esc(dfull(o.acceptedAt))+' Uhr'+(o.acceptIp?('<br>Nachweis-IP: '+esc(o.acceptIp)):'')+'</div></div>':'';
+    var msg=o.message?'<div style="font-size:12px;color:#6b7780;font-weight:600;margin-top:6px;line-height:1.45;white-space:pre-wrap;background:#f6f8f9;border-radius:9px;padding:9px 11px">„'+esc(o.message)+'"</div>':'';
+    return '<div style="padding:13px 0;border-top:1px solid #f0f3f3"><div style="display:flex;align-items:flex-start;gap:10px"><div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:800;color:#0a4958">'+esc(o.summary||'')+'</div><div style="font-size:11px;color:#9aa6aa;font-weight:600;margin-top:2px">von '+esc(o.createdBy||'—')+(o.createdAt?(' · '+dfull(o.createdAt)):'')+'</div></div><span style="font-size:11px;font-weight:800;color:'+c+';background:'+c+'18;border-radius:20px;padding:4px 10px;flex-shrink:0">'+(stLabel[o.status]||o.status)+'</span></div>'+msg+proof+'</div>';
+  }).join('');
+  var head=accepted?'<span style="font-size:11px;font-weight:800;color:#1d7a3e;background:#e7f6ec;border-radius:20px;padding:3px 10px">'+accepted+'× angenommen</span>':'';
+  return '<div style="margin-top:18px;background:#fff;border-radius:20px;box-shadow:0 14px 38px rgba(4,33,40,.09);padding:20px 24px"><div style="display:flex;align-items:center;justify-content:space-between;gap:10px"><div><div style="font-size:15px;font-weight:900;letter-spacing:-.2px;color:#15171B">Rückhol-Angebote</div><div style="font-size:11.5px;color:#8a929a;font-weight:600;margin-top:1px">Verbindliche Annahme mit Zeit + IP als Nachweis.</div></div>'+head+'</div>'+rows+'</div>';
 }
 function wbSave(){
   if(S.wbSaving) return;
@@ -3860,7 +3897,7 @@ function render(){
 function goScreen(k){
   if(!canSee(k)) k='dash';   // Angestellte werden aus Admin-Bereichen sanft umgeleitet
   S.screen=k; S.navOpen=false;
-  if(k==='dash'){ loadUtil(); loadChurn(); if(isAdmin()) loadDues(); if(!S.convs.length && !S.loading) loadInbox(); }
+  if(k==='dash'){ loadUtil(); loadChurn(); if(isAdmin()){ loadDues(); loadRetentionOffers(); } if(!S.convs.length && !S.loading) loadInbox(); }
   if(k==='members'){ S.profile=null; if(!S.membersLoaded){ loadMembers(); return; } }
   if(k==='appts' && !S.convs.length && !S.loading){ loadInbox(); return; }
   if(k==='trial'){ if(S.trSlots==null){ loadTrialSlots(); return; } }
