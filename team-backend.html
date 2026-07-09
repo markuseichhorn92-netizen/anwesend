@@ -3223,7 +3223,7 @@ function wireWb(scope){
 // Öffnet sich aus dem Mitglieds-Profil. Nur Leistungen im Rahmen; Server prüft nochmals hart.
 function openRho(p){
   S.rhoMemberId=p.id; S.rhoName=p.name; S.rhoBusy=false; S.rhoResult=null; S.rhoMsg='';
-  S.rhoDisc=0; S.rhoDiscWk=0; S.rhoFree=0; S.rhoWaive=false; S.rhoPause=0;
+  S.rhoDisc=0; S.rhoDiscWk=0; S.rhoFree=0; S.rhoWaive=false; S.rhoPause=0; S.rhoMsgEdited=false;
   S.rhoFrame=S.wbFrame||null; S.rhoSuggesting=false; S.rhoOpen=true; render();
   var suggest=function(){
     if(!S.rhoFrame||!S.rhoFrame.active) return;   // ohne aktiven Rahmen kein Vorschlag
@@ -3251,6 +3251,21 @@ function rhoSend(){
     render();
   }).catch(function(){ S.rhoBusy=false; alert('Verbindung fehlgeschlagen.'); render(); });
 }
+// Ansprache-Text an die aktuellen Werte anpassen (FINN schreibt neu) – ohne Voll-Render,
+// damit die Zahlen-Eingabe den Fokus behält.
+var rhoTimer=null;
+function rhoDetails(){ return { discountPct:S.rhoDisc||0, discountWeeks:S.rhoDiscWk||0, freeWeeks:S.rhoFree||0, waiveActivation:!!S.rhoWaive, pauseWeeks:S.rhoPause||0 }; }
+function rhoRedraft(){
+  var d=rhoDetails();
+  if(!d.discountPct && !d.freeWeeks && !d.waiveActivation && !d.pauseWeeks) return;
+  var h=document.getElementById('rho_msghint'); if(h){ h.textContent='FINN passt den Text an …'; h.style.color='#8a929a'; }
+  tapi('/api/team/retention',{method:'POST',body:{action:'draft-message',memberId:S.rhoMemberId,memberName:S.rhoName,details:d}}).then(function(r){
+    var hint=document.getElementById('rho_msghint');
+    if(r&&r.ok&&r.message){ S.rhoMsg=r.message; S.rhoMsgEdited=false; var ta=document.getElementById('rho_msg'); if(ta) ta.value=r.message; if(hint){ hint.textContent='✓ Text angepasst'; hint.style.color='#1d7a3e'; setTimeout(function(){ var hh=document.getElementById('rho_msghint'); if(hh&&hh.textContent==='✓ Text angepasst') hh.textContent=''; },1800); } }
+    else if(hint){ hint.textContent=''; }
+  }).catch(function(){ var hint=document.getElementById('rho_msghint'); if(hint) hint.textContent=''; });
+}
+function rhoScheduleRedraft(){ if(rhoTimer) clearTimeout(rhoTimer); rhoTimer=setTimeout(function(){ if(S.rhoOpen && !S.rhoMsgEdited) rhoRedraft(); }, 900); }
 function rhoModalHTML(){
   if(!S.rhoOpen) return '';
   var f=S.rhoFrame, inner;
@@ -3269,7 +3284,8 @@ function rhoModalHTML(){
     if(!fields) fields='<div style="font-size:12.5px;color:#9a6d1f;font-weight:700;padding:8px 0">Im Rahmen ist aktuell keine Leistung freigegeben. Passe den Rahmen unter „Rückholung" an.</div>';
     inner='<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:2px"><div style="font-size:12px;font-weight:800;color:#8a929a">Leistungen (nur im Rahmen)</div><span style="font-size:10.5px;font-weight:800;color:#0a4958;background:#e7f1f3;border-radius:20px;padding:3px 9px">✨ Vorschlag von FINN – anpassbar</span></div>'+fields+
       '<div style="margin-top:14px"><div style="font-size:12px;font-weight:800;color:#8a929a;margin-bottom:7px">Nachricht ans Mitglied</div>'+
-      '<textarea id="rho_msg" rows="3" placeholder="Persönlicher Text – z. B. „Schade, dass du gehen willst! Wir hätten da ein Angebot für dich …"" style="width:100%;padding:11px 13px;border:1.5px solid #dce3e4;border-radius:11px;font-size:14px;background:#fbfcfc;resize:vertical;line-height:1.5;color:#15171B">'+esc(S.rhoMsg||'')+'</textarea></div>'+
+      '<textarea id="rho_msg" rows="3" placeholder="Persönlicher Text – z. B. „Schade, dass du gehen willst! Wir hätten da ein Angebot für dich …"" style="width:100%;padding:11px 13px;border:1.5px solid #dce3e4;border-radius:11px;font-size:14px;background:#fbfcfc;resize:vertical;line-height:1.5;color:#15171B">'+esc(S.rhoMsg||'')+'</textarea>'+
+      '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:8px"><span id="rho_msghint" style="font-size:11.5px;font-weight:700;color:#8a929a">Ändere die Werte – der Text passt sich an.</span><button data-rhoredraft="1" type="button" style="border:1px solid #cfe0e4;background:#f2f8f9;color:#0a4958;border-radius:9px;font-size:11.5px;font-weight:800;padding:7px 11px;cursor:pointer;flex-shrink:0">↻ Text anpassen</button></div></div>'+
       '<div style="margin-top:12px;background:#f2f8f9;border-radius:11px;padding:11px 13px;font-size:12px;color:#0a4958;font-weight:700;line-height:1.5">Das Mitglied bekommt eine Nachricht mit persönlichem Annahme-Link – rechtssicher, mit Speicherung von Zeitpunkt + IP bei Annahme.</div>';
   }
   var canSend=f&&f.active&&!S.rhoResult&&!S.rhoSuggesting;
@@ -3291,10 +3307,11 @@ function wireRho(scope){
   var x=scope.querySelector('[data-rhox]'); if(x) x.onclick=closeRho;
   var cc=scope.querySelector('[data-rhocancel]'); if(cc) cc.onclick=closeRho;
   var sd=scope.querySelector('[data-rhosend]'); if(sd) sd.onclick=rhoSend;
-  var bindN=function(id,key){ var e=scope.querySelector('#'+id); if(e) e.oninput=function(){ S[key]=parseInt(e.value,10)||0; }; };
+  var bindN=function(id,key){ var e=scope.querySelector('#'+id); if(e) e.oninput=function(){ S[key]=parseInt(e.value,10)||0; rhoScheduleRedraft(); }; };
   bindN('rho_disc','rhoDisc'); bindN('rho_discwk','rhoDiscWk'); bindN('rho_free','rhoFree'); bindN('rho_pause','rhoPause');
-  var w=scope.querySelector('#rho_waive'); if(w) w.onchange=function(){ S.rhoWaive=w.checked; };
-  var mg=scope.querySelector('#rho_msg'); if(mg) mg.oninput=function(){ S.rhoMsg=mg.value; };
+  var w=scope.querySelector('#rho_waive'); if(w) w.onchange=function(){ S.rhoWaive=w.checked; rhoScheduleRedraft(); };
+  var mg=scope.querySelector('#rho_msg'); if(mg) mg.oninput=function(){ S.rhoMsg=mg.value; S.rhoMsgEdited=true; };
+  var rb=scope.querySelector('[data-rhoredraft]'); if(rb) rb.onclick=function(){ S.rhoMsgEdited=false; rhoRedraft(); };
 }
 
 // ---------- Vertragskündigung (Team) ----------

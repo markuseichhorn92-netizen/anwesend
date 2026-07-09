@@ -89,6 +89,21 @@ module.exports = async function handler(req, res) {
       return res.end(JSON.stringify({ ok: true, details: clampToFrame(sug.details, frame), message: sug.message }));
     }
 
+    // Nur den Ansprache-Text zu (angepassten) Werten neu schreiben – der Text zieht mit.
+    if (action === 'draft-message') {
+      const memberId = String(body.memberId || '').trim();
+      if (!AI.hasAI) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'no_ai' })); }
+      const frame = await R.getFrame();
+      const details = clampToFrame(body.details || {}, frame);
+      let name = String(body.memberName || ''), status = '';
+      try { const m = await M.getMember(memberId); if (m) { const nm = ((m.firstName || '') + ' ' + (m.lastName || '')).trim(); if (nm) name = nm; } } catch (e) {}
+      try { const ct = await M.getContract(memberId); if (ct) { status = ct.active === false ? 'ehemalig/beendet' : (ct.cancelled ? 'gekündigt' : 'aktiv'); } } catch (e) {}
+      const r = await AI.winbackMessage({ name: name, status: status, details: details });
+      if (!r.ok) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'ai_failed' })); }
+      res.statusCode = 200;
+      return res.end(JSON.stringify({ ok: true, message: r.message }));
+    }
+
     if (action === 'create-offer') {
       const memberId = String(body.memberId || '').trim();
       if (!memberId) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'no_member' })); }
