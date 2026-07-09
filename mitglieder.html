@@ -348,6 +348,7 @@
     ernFormInit:false, ernEdit:false, ernGoal:'abnehmen', ernSex:'w', ernH:170, ernW:70, ernAge:30, ernAct:'moderat', ernDiet:'omnivor',
     ernBusy:false, ernMsg:'', ernErr:false, ernAsk:'', ernAnswer:'', ernAskBusy:false, ernRecipes:null, ernRecipesBusy:false, ernCoachBusy:false, ernCoachSent:false, ernPhotoBusy:false, ernRec:false,
     ernTab:'heute', ernPlanTab:'woche', ernPlanBusy:false, ernFridge:'', ernRecipeSel:null, ernRecipeSaved:false,
+    ernCapture:false, ernCapTab:'cam', ernObStep:0, ernCheckinDismissed:false, ernCapTarget:'',
     ctOpen:false, ctSent:false, ctMsg:'', ctBusy:false, ctErr:'', ctMsgServer:'', artFb:null,
     pfFilter:'all', pfSel:null, pfThread:false, pfDraft:'', pfBusy:false, pfErr:'',
     copied:false, dlMsg:false, dlMsg2:'', emailing:false,
@@ -484,7 +485,7 @@
     if(s==='insta'){ S.instaSel=null; loadInsta(); maybeRefreshInsta(); }
     if(s==='home'){ loadFinnTip(); maybeRefreshInsta(); maybeRefreshLive(); }
     if(s==='account') loadAccount();
-    if(s==='ern'){ S.ernMsg=''; S.ernErr=false; S.ernAsk=''; S.ernAnswer=''; S.ernRecipes=null; S.ernCoachSent=false; S.ernTab='heute'; S.ernRecipeSel=null; loadNutri(); }
+    if(s==='ern'){ S.ernMsg=''; S.ernErr=false; S.ernAsk=''; S.ernAnswer=''; S.ernRecipes=null; S.ernCoachSent=false; S.ernTab='heute'; S.ernRecipeSel=null; S.ernCapture=false; S.ernObStep=0; loadNutri(); }
     if(s==='appt'){ if(!DATA.appts) loadAppts(); if(DATA.bookable===null) loadBookable(); }
     if(s==='home'||s==='checkin') checkArrival();
     setS({}); }
@@ -1976,8 +1977,16 @@
   function ernSendPhoto(b64,mt){
     if(!b64){ S.ernPhotoBusy=false; S.ernErr=true; S.ernMsg='Foto konnte nicht verarbeitet werden.'; render(); return; }
     api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'log-photo',base64:b64,mediaType:mt})})
-    .then(function(d){ S.ernPhotoBusy=false; if(d&&d.ok){ DATA.nutri=d; var added=d.added||[]; if(added.length){ S.ernMsg='Erkannt: '+added.map(function(x){return x.name;}).join(', '); S.ernErr=false; } else { S.ernMsg=d.message||'Auf dem Foto konnte ich nichts erkennen.'; S.ernErr=true; } } else { S.ernErr=true; S.ernMsg=(d&&d.message)||'Foto-Analyse fehlgeschlagen.'; } render(); })
+    .then(function(d){ S.ernPhotoBusy=false; if(d&&d.ok){ DATA.nutri=d; var added=d.added||[]; if(added.length){ S.ernMsg='Erkannt: '+added.map(function(x){return x.name;}).join(', '); S.ernErr=false; if(S.ernCapture){ S.ernCapture=false; S.ernTab='heute'; } } else { S.ernMsg=d.message||'Auf dem Foto konnte ich nichts erkennen.'; S.ernErr=true; } } else { S.ernErr=true; S.ernMsg=(d&&d.message)||'Foto-Analyse fehlgeschlagen.'; } render(); try{ window.scrollTo(0,0); }catch(e){} })
     .catch(function(){ S.ernPhotoBusy=false; S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); });
+  }
+  // Freitext -> KI-Schätzung (geteilt von Log-Feld, Sprache und Erfassen-Suche)
+  function ernLogText(text){
+    var q=String(text||'').trim(); if(q.length<2){ render(); return; }
+    S.ernBusy=true; S.ernMsg=''; S.ernErr=false; render();
+    api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'log',text:q})})
+    .then(function(d){ S.ernBusy=false; if(d&&d.ok){ DATA.nutri=d; var added=d.added||[]; if(added.length){ S.ernMsg='Protokolliert: '+added.map(function(x){return x.name;}).join(', '); S.ernErr=false; if(S.ernCapture){ S.ernCapture=false; S.ernTab='heute'; } } else { S.ernMsg=d.message||'Nichts erkannt – beschreib es genauer.'; S.ernErr=true; } } else { S.ernErr=true; S.ernMsg=(d&&d.message)||'Konnte nicht schätzen.'; } render(); try{ window.scrollTo(0,0); }catch(e){} })
+    .catch(function(){ S.ernBusy=false; S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); });
   }
   // Sprache -> Text (Web Speech API) -> ins Log-Feld -> KI-Schätzung. Nicht überall verfügbar.
   var ernRecog=null;
@@ -2023,38 +2032,53 @@
       '<button data-act="ernStep" data-arg="'+f+':1" style="width:32px;height:32px;border-radius:9px;border:none;background:var(--surface);color:'+ERN_G+';font-size:19px;font-weight:800;cursor:pointer;box-shadow:0 2px 6px rgba(4,33,40,.08)">+</button>'+
     '</div></div>'; }
   function ernMacroPill(v,label,color){ return '<div style="flex:1;background:var(--surface-2);border-radius:13px;padding:11px 8px;text-align:center"><div style="font-size:18px;font-weight:900;color:'+color+'">'+v+'g</div><div style="font-size:10.5px;font-weight:800;color:var(--text-soft)">'+label+'</div></div>'; }
+  // Vollbild-Erfassen (Kamera/Sprache/Suche/Barcode) – dunkler Screen wie im Mockup
+  function ernErfassen(){
+    var tab=S.ernCapTab||'cam';
+    var tabBtn=function(k,icon,label){ var sel=tab===k; return '<button data-act="ernCapTab" data-arg="'+k+'" style="flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;padding:12px 4px;border:none;border-radius:15px;background:'+(sel?'#fff':'rgba(255,255,255,.1)')+';cursor:pointer">'+svg(icon,{c:sel?ERN_G:'#cfe0e4',w:1.9,s:22})+'<span style="font-size:12px;font-weight:800;color:'+(sel?ERN_G:'#cfe0e4')+'">'+label+'</span></button>'; };
+    var inner='';
+    if(tab==='cam'){
+      var corners=['top:0;left:0;border-top:3px solid #7fe3a8;border-left:3px solid #7fe3a8;border-radius:12px 0 0 0','top:0;right:0;border-top:3px solid #7fe3a8;border-right:3px solid #7fe3a8;border-radius:0 12px 0 0','bottom:0;left:0;border-bottom:3px solid #7fe3a8;border-left:3px solid #7fe3a8;border-radius:0 0 0 12px','bottom:0;right:0;border-bottom:3px solid #7fe3a8;border-right:3px solid #7fe3a8;border-radius:0 0 12px 0'].map(function(s){ return '<div style="position:absolute;'+s+';width:34px;height:34px"></div>'; }).join('');
+      inner='<div><div style="position:relative;border-radius:22px;overflow:hidden;height:260px;background:linear-gradient(135deg,#243b40,#0e2529)"><div style="position:absolute;inset:0;background:repeating-linear-gradient(45deg,rgba(255,255,255,.03) 0 12px,transparent 12px 24px)"></div><div style="position:absolute;inset:34px;border-radius:16px;pointer-events:none">'+corners+'</div>'+(S.ernPhotoBusy?'<div style="position:absolute;left:34px;right:34px;height:3px;background:linear-gradient(90deg,transparent,#7fe3a8,transparent);animation:scanLine 1.1s ease-in-out infinite alternate;box-shadow:0 0 12px #7fe3a8"></div>':'')+'<div style="position:absolute;bottom:16px;left:0;right:0;text-align:center;color:#cfeadd;font-size:12.5px;font-weight:700">Teller mittig im Rahmen platzieren</div></div>'+
+        '<label style="width:100%;margin-top:16px;padding:16px;border-radius:16px;background:#0f7a4a;color:#fff;font-weight:900;font-size:15.5px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:9px">'+(S.ernPhotoBusy?'<span style="width:18px;height:18px;border:2.5px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;display:inline-block;animation:ernspin .7s linear infinite"></span>Analysiere …':(svg('<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle>',{c:'#fff',w:2,s:20})+'Teller scannen'))+'<input type="file" accept="image/*" capture="environment" onchange="window.__ernPhoto(this)" '+(S.ernPhotoBusy?'disabled ':'')+'style="display:none"></label>'+
+        '<div style="text-align:center;font-size:12px;font-weight:600;color:#8fb2b8;margin-top:12px">Foto vom Teller — FINN erkennt Zutaten &amp; Portion automatisch</div></div>';
+    } else if(tab==='voice'){
+      inner='<div style="display:flex;flex-direction:column;align-items:center;padding:14px 0 0"><div style="font-size:15px;font-weight:800;color:#15171B;text-align:center;max-width:250px;line-height:1.4">'+(S.ernRec?'Ich höre zu …':'Sag, was du gegessen hast')+'</div><div style="position:relative;width:150px;height:150px;margin:28px 0;display:flex;align-items:center;justify-content:center">'+(S.ernRec?'<div style="position:absolute;width:110px;height:110px;border-radius:50%;background:#22a866;animation:micRing 1.4s ease-out infinite"></div>':'')+'<button data-act="ernVoice" style="position:relative;width:110px;height:110px;border-radius:50%;border:none;background:'+(S.ernRec?'#22a866':'#0f7a4a')+';cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 16px 34px rgba(15,122,74,.3)">'+svg('<rect x="9" y="2" width="6" height="12" rx="3"></rect><path d="M5 10a7 7 0 0 0 14 0M12 17v4"></path>',{c:'#fff',w:2,s:42})+'</button></div><div style="font-size:13px;font-weight:700;color:#8a929a">'+(S.ernRec?'Tippen zum Stoppen':(S.ernBusy?'Wird verarbeitet …':'Tippen und sprechen'))+'</div></div>';
+    } else if(tab==='search'){
+      inner='<div><div style="display:flex;align-items:center;gap:10px;background:#fff;border-radius:15px;padding:13px 15px;box-shadow:0 10px 24px rgba(4,33,40,.12)">'+svg('<circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4-4"></path>',{c:'#8a929a',w:2.2,s:19})+'<input id="ern_capq" placeholder="Lebensmittel eingeben…" style="flex:1;border:none;outline:none;font-size:15px;font-weight:600;color:#15171B;background:transparent;font-family:inherit"/></div><button data-act="ernCapSearch" '+(S.ernBusy?'disabled ':'')+'style="width:100%;margin-top:14px;padding:15px;border:none;border-radius:15px;background:#0f7a4a;color:#fff;font-weight:900;font-size:15px;cursor:pointer">'+(S.ernBusy?'FINN schätzt …':'Hinzufügen')+'</button><div style="text-align:center;font-size:12px;font-weight:600;color:#8a929a;margin-top:12px;line-height:1.5">Tippe z. B. „150 g Haferflocken mit Banane" – FINN schätzt die Nährwerte.</div></div>';
+    } else {
+      inner='<div><div style="position:relative;border-radius:22px;overflow:hidden;height:260px;background:linear-gradient(135deg,#243b40,#0e2529);display:flex;align-items:center;justify-content:center"><div style="position:absolute;inset:0;background:repeating-linear-gradient(45deg,rgba(255,255,255,.03) 0 12px,transparent 12px 24px)"></div><div style="text-align:center;color:#cfeadd;padding:20px"><div style="font-size:34px">📦</div><div style="font-size:13.5px;font-weight:700;margin-top:10px;line-height:1.5">Barcode-Scan folgt mit<br>Produkt-Datenbank.</div></div></div><button data-act="ernCapTab" data-arg="search" style="width:100%;margin-top:16px;padding:15px;border:1.5px solid rgba(10,73,88,.25);border-radius:15px;background:#fff;color:#0a4958;font-weight:800;font-size:14px;cursor:pointer">Stattdessen per Suche eingeben</button><div style="text-align:center;font-size:12px;font-weight:600;color:#8a929a;margin-top:12px">Verpackte Produkte kommen bald – bis dahin Foto, Sprache oder Suche.</div></div>';
+    }
+    var msg=S.ernMsg?'<div style="font-size:12.5px;font-weight:700;color:'+(S.ernErr?'#c0392b':'#0f7a4a')+';text-align:center;margin-top:14px;line-height:1.4">'+esc(S.ernMsg)+'</div>':'';
+    return '<div style="background:#0a4958;min-height:100%;display:flex;flex-direction:column"><div style="padding:16px 20px 14px;display:flex;align-items:center;justify-content:space-between"><div><div style="font-size:22px;font-weight:900;color:#fff;letter-spacing:-.4px">Essen erfassen</div>'+(S.ernCapTarget?'<div style="font-size:12.5px;font-weight:600;color:#9fc7d0;margin-top:2px">'+esc(S.ernCapTarget)+'</div>':'')+'</div><button data-act="ernCloseCapture" style="width:40px;height:40px;border-radius:13px;border:none;background:rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;cursor:pointer">'+svg('<path d="M18 6L6 18M6 6l12 12"></path>',{c:'#fff',w:2.4,s:18})+'</button></div>'+
+      '<div style="display:flex;gap:8px;padding:2px 16px 14px">'+tabBtn('cam','<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle>','Kamera')+tabBtn('voice','<rect x="9" y="2" width="6" height="12" rx="3"></rect><path d="M5 10a7 7 0 0 0 14 0M12 17v4"></path>','Sprache')+tabBtn('search','<circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4-4"></path>','Suche')+tabBtn('barcode','<path d="M3 5v14M7 5v14M11 5v14M14 5v14M18 5v14M21 5v14"></path>','Barcode')+'</div>'+
+      '<div style="flex:1;background:#eef2f3;border-radius:26px 26px 0 0;padding:20px 18px 40px">'+inner+msg+'</div></div>';
+  }
+  // 5-Schritt-Onboarding (Vollbild, grün) – wie im Claude-Design
   function ernSetup(){
-    var t=ernTargets();
-    var hero='<div style="background:linear-gradient(160deg,'+ERN_G2+','+ERN_G+' 55%,'+ERN_GD+');border-radius:20px;padding:18px 20px;color:#fff;box-shadow:0 14px 36px rgba(15,122,74,.28);margin-bottom:16px;display:flex;align-items:center;gap:13px">'+ernBack()+
-      '<div><div style="font-size:21px;font-weight:900;letter-spacing:-.4px">Ernährungscoach</div><div style="font-size:12.5px;color:#d4f0e2;font-weight:600;margin-top:1px">Dein Tagesziel in 30 Sekunden</div></div></div>';
-    var goals=[['abnehmen','🔥 Abnehmen'],['halten','⚖️ Halten'],['aufbau','💪 Aufbau']];
-    var acts=[['kaum','🪑 Wenig'],['moderat','🚶 Moderat'],['aktiv','🏃 Sehr aktiv']];
-    var diets=[['omnivor','Alles'],['vegetarisch','Vegetarisch'],['vegan','Vegan'],['lowcarb','Low Carb'],['highprotein','High Protein']];
-    var CARD='background:var(--surface);border-radius:20px;box-shadow:0 12px 34px rgba(4,33,40,.10);padding:18px;margin-bottom:14px';
-    var form='<div style="'+CARD+'">'+
-      '<div style="font-size:12px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.4px;margin-bottom:10px">Dein Ziel</div>'+
-      '<div style="display:flex;flex-wrap:wrap;gap:8px">'+goals.map(function(g){ return ernChip('ernGoal',g[0],g[1],S.ernGoal===g[0]); }).join('')+'</div>'+
-      '<div style="font-size:12px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.4px;margin:18px 0 10px">Geschlecht</div>'+
-      '<div style="display:flex;gap:8px">'+ernChip('ernSex','w','Weiblich',S.ernSex==='w')+ernChip('ernSex','m','Männlich',S.ernSex==='m')+'</div>'+
-      '<div style="display:flex;gap:10px;margin-top:16px">'+ernStepper('Größe',S.ernH,' cm','h')+ernStepper('Gewicht',S.ernW,' kg','w')+ernStepper('Alter',S.ernAge,'','age')+'</div>'+
-      '<div style="font-size:12px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.4px;margin:18px 0 10px">Aktivität</div>'+
-      '<div style="display:flex;flex-wrap:wrap;gap:8px">'+acts.map(function(a){ return ernChip('ernAct',a[0],a[1],S.ernAct===a[0]); }).join('')+'</div>'+
-      '<div style="font-size:12px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.4px;margin:18px 0 10px">Ernährungsform</div>'+
-      '<div style="display:flex;flex-wrap:wrap;gap:8px">'+diets.map(function(d){ return ernChip('ernDiet',d[0],d[1],S.ernDiet===d[0]); }).join('')+'</div>'+
-    '</div>';
-    var preview='<div style="background:linear-gradient(160deg,'+ERN_G2+','+ERN_GD+');border-radius:20px;padding:20px;color:#fff;box-shadow:0 14px 36px rgba(15,122,74,.24);margin-bottom:14px;text-align:center">'+
-      '<div style="font-size:11px;font-weight:800;color:#c5ecd7;text-transform:uppercase;letter-spacing:.5px">Dein Kalorienziel</div>'+
-      '<div style="font-size:44px;font-weight:900;letter-spacing:-1.5px;line-height:1;margin-top:6px">'+ernNum(t.kcal)+'</div>'+
-      '<div style="font-size:12.5px;font-weight:700;color:#c5ecd7">kcal pro Tag · '+String(t.water).replace('.',',')+' L Wasser</div>'+
-      '<div style="display:flex;gap:9px;margin-top:16px">'+
-        '<div style="flex:1;background:rgba(255,255,255,.14);border-radius:13px;padding:11px 8px"><div style="font-size:18px;font-weight:900">'+t.protein+'g</div><div style="font-size:10.5px;font-weight:800;color:#c5ecd7">Eiweiß</div></div>'+
-        '<div style="flex:1;background:rgba(255,255,255,.14);border-radius:13px;padding:11px 8px"><div style="font-size:18px;font-weight:900">'+t.carbs+'g</div><div style="font-size:10.5px;font-weight:800;color:#c5ecd7">Kohlenh.</div></div>'+
-        '<div style="flex:1;background:rgba(255,255,255,.14);border-radius:13px;padding:11px 8px"><div style="font-size:18px;font-weight:900">'+t.fat+'g</div><div style="font-size:10.5px;font-weight:800;color:#c5ecd7">Fett</div></div>'+
-      '</div></div>';
-    var btn='<button data-act="ernSaveProfile" '+(S.ernBusy?'disabled ':'')+'style="width:100%;padding:16px;border:none;border-radius:16px;background:'+ERN_G+';color:#fff;font-weight:900;font-size:15.5px;cursor:pointer">'+(S.ernBusy?'Speichert …':(DATA.nutri&&DATA.nutri.onboarded?'Ziel aktualisieren':'Ziel berechnen & loslegen'))+'</button>';
-    var msg=S.ernMsg?'<div style="font-size:12.5px;font-weight:700;color:'+(S.ernErr?'var(--err-fg)':ERN_G)+';text-align:center;margin-top:12px">'+esc(S.ernMsg)+'</div>':'';
-    var note='<div style="font-size:11.5px;color:var(--text-soft);font-weight:500;line-height:1.5;text-align:center;margin-top:14px">Richtwert nach anerkannter Formel – keine medizinische Vorgabe. Deine Angaben bleiben nur bei dir gespeichert.</div>';
-    return hero+form+preview+btn+msg+note;
+    var step=S.ernObStep||0, t=ernTargets();
+    var dots=[0,1,2,3,4].map(function(i){ return '<div style="flex:1;height:5px;border-radius:3px;background:'+(i<=step?'#fff':'rgba(255,255,255,.22)')+'"></div>'; }).join('');
+    var oc=function(sel){ return 'border:1.5px solid '+(sel?'#fff':'rgba(255,255,255,.18)')+';background:'+(sel?'rgba(255,255,255,.16)':'rgba(255,255,255,.06)')+''; };
+    var body='';
+    if(step===0){
+      var feats=[['📸','Foto scannen — Zutaten automatisch erkannt'],['🎙️','Sprich einfach, was du gegessen hast'],['💬','Frag FINN, plane Rezepte, bleib im Ziel']];
+      body='<div style="width:80px;height:80px;border-radius:24px;background:rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;font-size:40px;margin-bottom:22px">🥗</div><div style="font-size:29px;font-weight:900;letter-spacing:-.8px;line-height:1.1;color:#fff">Dein Ernährungs&shy;coach ist da</div><div style="font-size:15px;font-weight:600;color:#d4f0e2;line-height:1.55;margin-top:14px">Tracke Mahlzeiten per Foto, Sprache oder Text. FINN berechnet dein Ziel und begleitet dich Tag für Tag.</div><div style="display:flex;flex-direction:column;gap:12px;margin-top:26px">'+feats.map(function(f){ return '<div style="display:flex;align-items:center;gap:12px"><span style="width:40px;height:40px;border-radius:12px;background:rgba(255,255,255,.13);display:flex;align-items:center;justify-content:center;font-size:19px">'+f[0]+'</span><span style="font-size:14.5px;font-weight:700;color:#fff">'+f[1]+'</span></div>'; }).join('')+'</div>';
+    } else if(step===1){
+      var goals=[['abnehmen','🔥','Abnehmen','Leichtes Kaloriendefizit'],['halten','⚖️','Gewicht halten','Ausgewogen &amp; stabil'],['aufbau','💪','Muskelaufbau','Mehr Eiweiß, leichter Überschuss']];
+      body='<div style="font-size:26px;font-weight:900;letter-spacing:-.6px;color:#fff">Was ist dein Ziel?</div><div style="font-size:14px;font-weight:600;color:#d4f0e2;margin-top:10px">FINN passt dein Kalorienziel an.</div><div style="display:flex;flex-direction:column;gap:11px;margin-top:24px">'+goals.map(function(g){ var sel=S.ernGoal===g[0]; return '<button data-act="ernGoal" data-arg="'+g[0]+'" style="display:flex;align-items:center;gap:14px;'+oc(sel)+';border-radius:16px;padding:16px;cursor:pointer;text-align:left"><span style="font-size:24px">'+g[1]+'</span><div><div style="font-size:16px;font-weight:800;color:#fff">'+g[2]+'</div><div style="font-size:12.5px;font-weight:600;color:#c5ecd7">'+g[3]+'</div></div></button>'; }).join('')+'</div>';
+    } else if(step===2){
+      var st=function(label,val,unit,f){ return '<div style="flex:1;background:rgba(255,255,255,.09);border-radius:16px;padding:16px 12px"><div style="font-size:12px;font-weight:800;color:#c5ecd7;text-transform:uppercase;letter-spacing:.4px">'+label+'</div><div style="display:flex;align-items:center;justify-content:space-between;margin-top:10px"><button data-act="ernStep" data-arg="'+f+':-1" style="width:34px;height:34px;border-radius:10px;border:none;background:rgba(255,255,255,.16);color:#fff;font-size:20px;font-weight:800;cursor:pointer">−</button><span style="font-size:20px;font-weight:900;color:#fff">'+val+'<span style="font-size:12px;color:#c5ecd7;font-weight:700">'+unit+'</span></span><button data-act="ernStep" data-arg="'+f+':1" style="width:34px;height:34px;border-radius:10px;border:none;background:rgba(255,255,255,.16);color:#fff;font-size:20px;font-weight:800;cursor:pointer">+</button></div></div>'; };
+      body='<div style="font-size:26px;font-weight:900;letter-spacing:-.6px;color:#fff">Deine Körperdaten</div><div style="font-size:14px;font-weight:600;color:#d4f0e2;margin-top:10px">Für die Berechnung deines Bedarfs.</div><div style="display:flex;gap:10px;margin-top:22px">'+[['w','Weiblich'],['m','Männlich']].map(function(s){ var sel=S.ernSex===s[0]; return '<button data-act="ernSex" data-arg="'+s[0]+'" style="flex:1;'+oc(sel)+';border-radius:14px;padding:14px;cursor:pointer;font-size:14.5px;font-weight:800;color:#fff">'+s[1]+'</button>'; }).join('')+'</div><div style="display:flex;gap:10px;margin-top:14px">'+st('Größe',S.ernH,' cm','h')+st('Gewicht',S.ernW,' kg','w')+st('Alter',S.ernAge,'','age')+'</div>';
+    } else if(step===3){
+      var acts=[['kaum','🪑','Wenig aktiv','Sitzend, kaum Sport'],['moderat','🚶','Moderat','2–3× Training/Woche'],['aktiv','🏃','Sehr aktiv','4–6× Training/Woche']];
+      var diets=[['omnivor','Alles'],['vegetarisch','Vegetarisch'],['vegan','Vegan'],['lowcarb','Low Carb'],['highprotein','High Protein']];
+      body='<div style="font-size:26px;font-weight:900;letter-spacing:-.6px;color:#fff">Alltag &amp; Ernährung</div><div style="font-size:12px;font-weight:800;color:#c5ecd7;text-transform:uppercase;letter-spacing:.4px;margin:22px 0 10px">Aktivität</div><div style="display:flex;flex-direction:column;gap:9px">'+acts.map(function(a){ var sel=S.ernAct===a[0]; return '<button data-act="ernAct" data-arg="'+a[0]+'" style="display:flex;align-items:center;gap:12px;'+oc(sel)+';border-radius:14px;padding:13px 15px;cursor:pointer;text-align:left"><span style="font-size:19px">'+a[1]+'</span><div><span style="font-size:14.5px;font-weight:800;color:#fff">'+a[2]+'</span><span style="font-size:12px;font-weight:600;color:#c5ecd7;display:block">'+a[3]+'</span></div></button>'; }).join('')+'</div><div style="font-size:12px;font-weight:800;color:#c5ecd7;text-transform:uppercase;letter-spacing:.4px;margin:20px 0 10px">Ernährungsform</div><div style="display:flex;flex-wrap:wrap;gap:8px">'+diets.map(function(d){ var sel=S.ernDiet===d[0]; return '<button data-act="ernDiet" data-arg="'+d[0]+'" style="'+oc(sel)+';border-radius:20px;padding:10px 15px;cursor:pointer;font-size:13.5px;font-weight:800;color:#fff">'+d[1]+'</button>'; }).join('')+'</div>';
+    } else {
+      body='<div style="font-size:26px;font-weight:900;letter-spacing:-.6px;color:#fff">Dein Tagesziel steht</div><div style="font-size:14px;font-weight:600;color:#d4f0e2;margin-top:10px">Berechnet aus deinen Angaben — jederzeit anpassbar.</div><div style="background:#fff;border-radius:22px;padding:24px;margin-top:22px;text-align:center"><div style="font-size:12px;font-weight:800;color:#8a929a;text-transform:uppercase;letter-spacing:.5px">Kalorienziel</div><div style="font-size:46px;font-weight:900;letter-spacing:-1.5px;line-height:1;margin-top:6px;color:#15171B">'+ernNum(t.kcal)+'</div><div style="font-size:13px;font-weight:700;color:#8a929a">kcal pro Tag</div><div style="display:flex;gap:10px;margin-top:20px">'+[[t.protein,'Eiweiß','#FBEFE8','#c5654f'],[t.carbs,'Kohlenh.','#FBF2E1','#b0801f'],[t.fat,'Fett','#F1ECFA','#8b5fc0']].map(function(m){ return '<div style="flex:1;background:'+m[2]+';border-radius:14px;padding:12px 8px"><div style="font-size:18px;font-weight:900;color:'+m[3]+'">'+m[0]+'g</div><div style="font-size:10.5px;font-weight:800;color:'+m[3]+'">'+m[1]+'</div></div>'; }).join('')+'</div><div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:14px;background:#EAF4FB;border-radius:12px;padding:11px"><span style="font-size:13px;font-weight:800;color:#2d84b8">💧 '+String(t.water).replace('.',',')+' L Wasser empfohlen</span></div></div><div style="font-size:11.5px;color:#c5ecd7;font-weight:500;line-height:1.5;text-align:center;margin-top:14px">Richtwert nach anerkannter Formel – keine medizinische Vorgabe. Deine Angaben bleiben nur bei dir.</div>';
+    }
+    var btnLabel=step===0?"Los geht's":(step>=4?(S.ernBusy?'Speichert …':'Coach starten'):'Weiter');
+    var backBtn='<button data-act="'+(step>0?'ernObBack':'nav')+'" '+(step>0?'':'data-arg="home"')+' style="position:absolute;top:16px;left:16px;width:38px;height:38px;border-radius:12px;border:none;background:rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:2">'+svg(IC.back,{c:'#fff',w:2.2,s:19})+'</button>';
+    return '<div style="position:relative;min-height:100%;background:linear-gradient(172deg,#12a06a 0%,#0f7a4a 52%,#0a5a37 100%);padding:56px 22px 26px;display:flex;flex-direction:column">'+backBtn+'<div style="display:flex;gap:6px;margin-bottom:24px">'+dots+'</div><div style="flex:1">'+body+'</div><button data-act="ernObNext" '+(S.ernBusy?'disabled ':'')+'style="margin-top:22px;width:100%;padding:17px;border:none;border-radius:16px;background:#fff;color:#0f7a4a;font-weight:900;font-size:16px;cursor:pointer">'+btnLabel+'</button>'+(S.ernMsg&&S.ernErr?'<div style="font-size:12.5px;font-weight:700;color:#ffd7cf;text-align:center;margin-top:12px">'+esc(S.ernMsg)+'</div>':'')+'</div>';
   }
   function ernDash(){
     var n=DATA.nutri, t=n.targets||{}, td=n.today||{}, tot=td.totals||{kcal:0,p:0,c:0,f:0};
@@ -2112,9 +2136,9 @@
       if(!items.length) return;
       var sum=items.reduce(function(a,b){ return a+(b.kcal||0); },0);
       meals+='<div style="'+CARD.replace('padding:18px','padding:15px 16px')+'"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px"><div style="display:flex;align-items:center;gap:9px"><span style="font-size:18px">'+ml[2]+'</span><span style="font-size:14.5px;font-weight:900;color:var(--text)">'+ml[1]+'</span></div><span style="font-size:13.5px;font-weight:900;color:var(--text)">'+ernNum(sum)+' kcal</span></div>'+
-        items.map(function(it){ return '<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--border)"><div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:700;color:var(--text)">'+esc(it.name)+'</div><div style="font-size:11px;font-weight:600;color:var(--text-soft);margin-top:1px">'+(it.portion?esc(it.portion)+' · ':'')+'E '+(it.p||0)+' · K '+(it.c||0)+' · F '+(it.f||0)+'</div></div><span style="font-size:13px;font-weight:800;color:var(--text-2)">'+ernNum(it.kcal||0)+'</span><button data-act="ernDelete" data-arg="'+esc(it.id)+'" aria-label="Entfernen" style="width:26px;height:26px;border-radius:8px;border:none;background:var(--surface-2);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'+svg('<path d="M18 6L6 18M6 6l12 12"></path>',{c:'var(--text-soft)',w:2.2,s:13})+'</button></div>'; }).join('')+'</div>';
+        items.map(function(it){ return '<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--border)"><div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:700;color:var(--text)">'+esc(it.name)+'</div><div style="font-size:11px;font-weight:600;color:var(--text-soft);margin-top:1px">'+(it.portion?esc(it.portion)+' · ':'')+'E '+(it.p||0)+' · K '+(it.c||0)+' · F '+(it.f||0)+'</div></div><span style="font-size:13px;font-weight:800;color:var(--text-2)">'+ernNum(it.kcal||0)+'</span><button data-act="ernDelete" data-arg="'+esc(it.id)+'" aria-label="Entfernen" style="width:26px;height:26px;border-radius:8px;border:none;background:var(--surface-2);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'+svg('<path d="M18 6L6 18M6 6l12 12"></path>',{c:'var(--text-soft)',w:2.2,s:13})+'</button></div>'; }).join('')+'<button data-act="ernOpenCapture" data-arg="'+ml[1]+'" style="width:100%;margin:8px 0 10px;padding:10px;border:1.5px dashed #cfe0d6;background:#f4faf6;color:#0f7a4a;border-radius:12px;font-weight:800;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px">'+svg('<path d="M12 5v14M5 12h14"></path>',{c:'#0f7a4a',w:2.6,s:15})+'Zu '+ml[1]+' hinzufügen</button></div>';
     });
-    if(!meals){ meals='<div style="'+CARD+';text-align:center;color:var(--text-soft)"><div style="font-size:30px">🍽️</div><div style="font-size:13.5px;font-weight:700;margin-top:6px">Noch nichts protokolliert</div><div style="font-size:12.5px;font-weight:500;margin-top:2px">Logge oben deine erste Mahlzeit.</div></div>'; }
+    if(!meals){ meals='<div style="'+CARD+';text-align:center"><div style="font-size:30px">🍽️</div><div style="font-size:13.5px;font-weight:700;color:var(--text);margin-top:6px">Noch nichts protokolliert</div><div style="font-size:12.5px;font-weight:500;color:var(--text-soft);margin:2px 0 12px">Erfasse deine erste Mahlzeit per Foto, Sprache oder Suche.</div><button data-act="ernOpenCapture" data-arg="Mahlzeit" style="padding:12px 20px;border:none;border-radius:13px;background:'+ERN_G+';color:#fff;font-weight:900;font-size:14px;cursor:pointer">Essen erfassen</button></div>'; }
     var mealsBlock='<div style="font-size:17px;font-weight:900;color:var(--text);letter-spacing:-.3px;margin:22px 2px 12px">Heute gegessen</div>'+meals;
     // FINN Ernährungscoach
     var chips=['Wie viel Eiweiß fehlt mir noch?','Snack-Idee unter 200 kcal','Ist mein Ziel realistisch?'];
@@ -2134,7 +2158,12 @@
         : '<button data-act="ernCoachReq" '+(S.ernCoachBusy?'disabled ':'')+'style="width:100%;margin-top:15px;padding:14px;border:none;border-radius:14px;background:#fff;color:#0a4958;font-weight:900;font-size:14.5px;cursor:pointer">'+(S.ernCoachBusy?'Wird gesendet …':'Unverbindlich anfragen')+'</button>')+
     '</div>';
     var recompute='<button data-act="ernRecompute" style="width:100%;padding:13px;border:1.5px solid var(--border);background:var(--surface);color:var(--text-muted);border-radius:14px;font-weight:800;font-size:13px;cursor:pointer">Ziel &amp; Körperdaten neu berechnen</button>';
-    return ring+fasting+water+log+mealsBlock+coach+cta+recompute;
+    // Proaktiver Check-in (echt, aus dem Streak) – wie im Mockup, ausblendbar
+    var nm=(DATA.profile&&DATA.profile.firstName)||'';
+    var checkin=(!S.ernCheckinDismissed && (n.streak||0)>=2)?('<div style="background:linear-gradient(150deg,#FBEFE2,#f6ddc4);border-radius:18px;padding:14px 16px;margin-bottom:14px;display:flex;align-items:flex-start;gap:12px;position:relative"><span style="font-size:22px;line-height:1;margin-top:1px">🎉</span><div style="flex:1;min-width:0;padding-right:16px"><div style="font-size:13.5px;font-weight:900;color:#b5631f">Stark dabei'+(nm?', '+esc(nm):'')+'!</div><div style="font-size:12.5px;font-weight:600;color:#9a6027;line-height:1.4;margin-top:2px">Du hast '+(n.streak||0)+' Tage in Folge protokolliert – weiter so! 💪</div></div><button data-act="ernCheckinDismiss" style="position:absolute;top:10px;right:10px;width:24px;height:24px;border-radius:8px;border:none;background:rgba(181,99,31,.14);display:flex;align-items:center;justify-content:center;cursor:pointer">'+svg('<path d="M18 6L6 18M6 6l12 12"></path>',{c:'#b5631f',w:2.6,s:13})+'</button></div>'):'';
+    // Studio-Anbindung (motivierende Karte, wie im Mockup)
+    var studio='<div style="'+CARD+';display:flex;align-items:center;gap:13px"><div style="width:46px;height:46px;border-radius:14px;background:#EAF4FB;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+svg('<path d="M6.5 6.5l11 11M4 9l-1.5-1.5M20 15l1.5 1.5M9 4l-1.5-1.5M15 20l1.5 1.5M3 12l3-3 6 6-3 3zM21 12l-3 3-6-6 3-3z"></path>',{c:'#2d84b8',w:1.9,s:24})+'</div><div style="flex:1;min-width:0"><div style="font-size:10.5px;font-weight:800;color:#2d84b8;text-transform:uppercase;letter-spacing:.4px">Aus deinem Fit-Inn Studio</div><div style="font-size:14px;font-weight:900;color:var(--text);margin-top:2px">Trainingstag = mehr Spielraum</div><div style="font-size:12px;font-weight:600;color:var(--text-muted);margin-top:3px;line-height:1.35">An Tagen, an denen du trainierst, darfst du etwas mehr essen – plane es ruhig ein.</div></div></div>';
+    return ring+checkin+fasting+studio+water+log+mealsBlock+coach+cta+recompute;
   }
   // Fasten-Helfer (Client-Countdown; Server hält plan+start)
   function ernFastMs(){
@@ -2158,16 +2187,16 @@
   }
   function ernSectionEmpty(emoji,title,sub){ return '<div style="background:var(--surface);border-radius:20px;box-shadow:0 12px 30px rgba(4,33,40,.09);padding:34px 22px;text-align:center"><div style="font-size:34px">'+emoji+'</div><div style="font-size:16px;font-weight:900;color:var(--text);margin-top:12px">'+esc(title)+'</div><div style="font-size:13px;color:var(--text-muted);font-weight:500;margin-top:6px;line-height:1.5">'+esc(sub)+'</div></div>'; }
   function scrErn(){
-    var n=DATA.nutri;
-    var wrap=function(inner){ return inner; };
-    if(n===null||n===false){ return '<div style="background:var(--surface);border-radius:20px;box-shadow:0 12px 34px rgba(4,33,40,.10);padding:40px 22px;text-align:center;color:var(--text-soft);font-size:14px;font-weight:600">Lade Ernährung …</div>'; }
-    if(!n.ok||n.available===false){
-      return subHeader('Ernährung','Dein Ernährungscoach','profil')+'<div style="background:var(--surface);border-radius:20px;box-shadow:0 12px 34px rgba(4,33,40,.10);padding:30px 22px;text-align:center"><div style="font-size:34px">🥗</div><div style="font-size:16px;font-weight:800;color:var(--text);margin-top:10px">Ernährung ist gerade nicht verfügbar</div><div style="font-size:13.5px;color:var(--text-muted);font-weight:500;margin-top:6px;line-height:1.5">Bitte später erneut versuchen.</div></div>';
-    }
-    if(!n.onboarded||S.ernEdit) return ernSetup();
-    var tab=S.ernTab||'heute';
-    var body = tab==='plan'?ernPlan() : (tab==='rezepte'?ernRezepte() : (tab==='verlauf'?ernVerlauf() : ernDash()));
-    return ernTopbar(tab)+body;
+    var n=DATA.nutri, inner;
+    // Feste helle Mockup-Palette (Claude Design) – über lokale CSS-Variablen erzwungen,
+    // damit der Ernährungsbereich exakt wie das Mockup aussieht (auch im Dark Mode).
+    var LIGHT='--surface:#fff;--surface-2:#eef2f3;--text:#15171B;--text-2:#2c3338;--text-muted:#6b7780;--text-soft:#8a929a;--border:#f0f3f3;--teal-ink:#0a4958;--err-fg:#c0392b;background:#eef2f3;min-height:100%';
+    if(n===null||n===false){ inner='<div style="background:#fff;border-radius:20px;box-shadow:0 12px 34px rgba(4,33,40,.10);padding:40px 22px;text-align:center;color:#8a929a;font-size:14px;font-weight:600">Lade Ernährung …</div>'; }
+    else if(!n.ok||n.available===false){ inner='<div style="background:#fff;border-radius:20px;box-shadow:0 12px 34px rgba(4,33,40,.10);padding:30px 22px;text-align:center"><div style="font-size:34px">🥗</div><div style="font-size:16px;font-weight:800;color:#15171B;margin-top:10px">Ernährung ist gerade nicht verfügbar</div><div style="font-size:13.5px;color:#6b7780;font-weight:500;margin-top:6px;line-height:1.5">Bitte später erneut versuchen.</div></div>'; }
+    else if(S.ernCapture){ inner=ernErfassen(); }
+    else if(!n.onboarded||S.ernEdit) inner=ernSetup();
+    else { var tab=S.ernTab||'heute'; inner=ernTopbar(tab)+(tab==='plan'?ernPlan():(tab==='rezepte'?ernRezepte():(tab==='verlauf'?ernVerlauf():ernDash()))); }
+    return '<div style="'+LIGHT+'">'+inner+'</div>';
   }
   // ── Ernährung · Wochenplan + Einkaufsliste ──
   function ernPlan(){
@@ -2931,6 +2960,9 @@
     }
     var bn=$('btmnav');
     if(bn){
+      // Ernährungs-Modul ist ein eigenständiger Bereich mit eigener Navigation
+      // (grüner Topbar + Zurück) – die App-Bottom-Nav dort ausblenden (wie im Mockup).
+      bn.style.display = (S.screen==='ern') ? 'none' : '';
       var sc=S.screen;
       var profActive = (sc==='profil'||['data','contract','account','referral','fort','ern','card','help','settings'].indexOf(sc)>=0);
       var ni=function(key,label,icon,active){ var col=active?'var(--teal-ink)':'var(--text-soft)';
@@ -2979,7 +3011,7 @@
     // sonst verschwindet getippter Text und die Tastatur klappt zu, sobald im Hintergrund
     // Daten nachladen (das war der große Chat-Bug).
     var keep={};
-    ['finn_q','pf_reply','ern_log','ern_ask','ern_fridge'].forEach(function(id){ var e=$(id); if(e){ keep[id]={v:e.value,f:document.activeElement===e,ss:e.selectionStart,se:e.selectionEnd,h:e.style.height}; } });
+    ['finn_q','pf_reply','ern_log','ern_ask','ern_fridge','ern_capq'].forEach(function(id){ var e=$(id); if(e){ keep[id]={v:e.value,f:document.activeElement===e,ss:e.selectionStart,se:e.selectionEnd,h:e.style.height}; } });
     var keepScroll={};
     ['finn_scroll','pf_scroll'].forEach(function(id){ var e=$(id); if(e){ keepScroll[id]=e.scrollTop; } });
     $('app').innerHTML=html;
@@ -3068,23 +3100,26 @@
       else if(f==='w') S.ernW=Math.max(35,Math.min(250,S.ernW+d));
       else if(f==='age') S.ernAge=Math.max(14,Math.min(100,S.ernAge+d));
       render(); },
-    ernRecompute:function(){ ernSeedForm(); setS({ernEdit:true,ernMsg:''}); },
+    ernRecompute:function(){ ernSeedForm(); setS({ernEdit:true,ernObStep:0,ernMsg:'',ernErr:false}); try{ window.scrollTo(0,0); }catch(e){} },
     ernSaveProfile:function(){ if(S.ernBusy) return; S.ernBusy=true; S.ernMsg=''; S.ernErr=false; render();
       api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'save-profile',profile:{goal:S.ernGoal,sex:S.ernSex,height:S.ernH,weight:S.ernW,age:S.ernAge,activity:S.ernAct,diet:S.ernDiet}})})
-      .then(function(d){ S.ernBusy=false; if(d&&d.ok){ DATA.nutri=d; S.ernEdit=false; } else { S.ernErr=true; S.ernMsg='Konnte nicht speichern. Bitte später erneut.'; } render(); try{ window.scrollTo(0,0); }catch(e){} })
+      .then(function(d){ S.ernBusy=false; if(d&&d.ok){ DATA.nutri=d; S.ernEdit=false; S.ernObStep=0; } else { S.ernErr=true; S.ernMsg='Konnte nicht speichern. Bitte später erneut.'; } render(); try{ window.scrollTo(0,0); }catch(e){} })
       .catch(function(){ S.ernBusy=false; S.ernErr=true; S.ernMsg='Konnte nicht speichern. Bitte später erneut.'; render(); }); },
-    ernLog:function(){ if(S.ernBusy) return; var t=$('ern_log'); var q=t?(t.value||'').trim():''; if(q.length<2) return;
-      S.ernBusy=true; S.ernMsg=''; S.ernErr=false; render();
-      api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'log',text:q})})
-      .then(function(d){ S.ernBusy=false; if(d&&d.ok){ DATA.nutri=d; var added=d.added||[]; if(added.length){ S.ernMsg='Protokolliert: '+added.map(function(x){return x.name;}).join(', '); S.ernErr=false; } else { S.ernMsg=d.message||'Nichts erkannt – beschreib es genauer.'; S.ernErr=true; } } else { S.ernErr=true; S.ernMsg=(d&&d.message)||'Konnte nicht schätzen.'; } render(); })
-      .catch(function(){ S.ernBusy=false; S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); }); },
+    ernLog:function(){ if(S.ernBusy) return; var t=$('ern_log'); var q=t?(t.value||'').trim():''; if(q.length>=2) ernLogText(q); },
+    ernCapSearch:function(){ if(S.ernBusy) return; var t=$('ern_capq'); var q=t?(t.value||'').trim():''; if(q.length>=2) ernLogText(q); },
+    ernOpenCapture:function(a){ setS({ernCapture:true,ernCapTab:'cam',ernCapTarget:a||'',ernMsg:'',ernErr:false}); try{ window.scrollTo(0,0); }catch(e){} },
+    ernCloseCapture:function(){ setS({ernCapture:false}); try{ window.scrollTo(0,0); }catch(e){} },
+    ernCapTab:function(a){ setS({ernCapTab:a}); },
+    ernCheckinDismiss:function(){ setS({ernCheckinDismissed:true}); },
+    ernObNext:function(){ if((S.ernObStep||0)>=4){ ACT.ernSaveProfile(); } else { setS({ernObStep:(S.ernObStep||0)+1}); try{ window.scrollTo(0,0); }catch(e){} } },
+    ernObBack:function(){ if((S.ernObStep||0)>0) setS({ernObStep:S.ernObStep-1}); },
     ernVoice:function(){
       var SR=window.SpeechRecognition||window.webkitSpeechRecognition;
       if(!SR){ S.ernErr=true; S.ernMsg='Sprache wird auf diesem Gerät nicht unterstützt – tippe die Mahlzeit ein (die Tastatur hat oft ein Mikrofon).'; render(); return; }
       if(S.ernRec){ try{ ernRecog&&ernRecog.stop(); }catch(e){} S.ernRec=false; render(); return; }
       try{
         ernRecog=new SR(); ernRecog.lang='de-DE'; ernRecog.interimResults=false; ernRecog.maxAlternatives=1;
-        ernRecog.onresult=function(ev){ var t=''; try{ t=ev.results[0][0].transcript||''; }catch(e){} S.ernRec=false; var el=$('ern_log'); if(el&&t) el.value=t; if(t) ACT.ernLog(); else render(); };
+        ernRecog.onresult=function(ev){ var t=''; try{ t=ev.results[0][0].transcript||''; }catch(e){} S.ernRec=false; if(t) ernLogText(t); else render(); };
         ernRecog.onerror=function(){ S.ernRec=false; S.ernErr=true; S.ernMsg='Ich konnte dich nicht verstehen – bitte nochmal.'; render(); };
         ernRecog.onend=function(){ if(S.ernRec){ S.ernRec=false; render(); } };
         S.ernRec=true; S.ernMsg=''; S.ernErr=false; render(); ernRecog.start();
@@ -3602,6 +3637,7 @@
     if(t.id==='ern_log'){ e.preventDefault(); ACT.ernLog(); }
     if(t.id==='ern_ask'){ e.preventDefault(); ACT.ernAskSend(); }
     if(t.id==='ern_fridge'){ e.preventDefault(); ACT.ernFridgeGo(); }
+    if(t.id==='ern_capq'){ e.preventDefault(); ACT.ernCapSearch(); }
   });
   // Merken, ob der Nutzer im Verlauf hochgescrollt hat (dann nicht nach unten springen).
   document.addEventListener('scroll',function(e){
