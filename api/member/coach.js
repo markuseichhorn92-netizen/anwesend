@@ -81,7 +81,7 @@ async function accountLine(id) {
 // link-Objekt an die App zurück, die daraus einen Button macht.
 const SCREENS = {
   contract: 'Vertragsverwaltung', data: 'Meine Daten', account: 'Beitragskonto',
-  appt: 'Termine', checkins: 'Check-in-Verlauf', fort: 'Fortschritt', ern: 'Ernährung',
+  appt: 'Termine', checkins: 'Check-in-Verlauf', fort: 'Fortschritt',
   card: 'Mitgliedskarte', referral: 'Freunde werben', postfach: 'Postfach',
   help: 'Hilfe & Kontakt', settings: 'Einstellungen', home: 'Übersicht',
 };

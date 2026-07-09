@@ -1940,8 +1940,14 @@
     {name:'Banane',kcal:105,p:1,c:27,f:0,e:'🍌'},{name:'Handvoll Mandeln',kcal:170,p:6,c:6,f:15,e:'🥜'},
     {name:'2 Eier',kcal:156,p:12,c:1,f:11,e:'🥚'},{name:'Apfel',kcal:95,p:0,c:25,f:0,e:'🍎'}
   ];
+  // Feature-Schalter: Ernährungs-Modul komplett aus der App ausblenden, bis alles
+  // fertig ist (happyfigur-Anbindung etc.). Code bleibt erhalten – zum Freischalten
+  // einfach auf true setzen. Blendet Startseiten-Kachel, Profil-Eintrag, FINN-Link
+  // und die direkte Navigation aus.
+  var ERN_ON=false;
   // Einstiegs-Kachel auf der Startseite (führt ins Ernährungs-Modul)
   function ernHomeCard(){
+    if(!ERN_ON) return '';
     var leaf='<path d="M11 21A7 7 0 0 1 4 14C4 8.5 8 4 13.5 4c2.7 0 4.6 1 6.5 1.8 0 8.7-4.3 15.2-9 15.2z"></path><path d="M11 21c0-5.5 3.3-10 7.5-12"></path>';
     return '<div data-act="nav" data-arg="ern" style="background:linear-gradient(150deg,'+ERN_G2+','+ERN_G+' 60%,'+ERN_GD+');border-radius:20px;box-shadow:0 14px 34px rgba(15,122,74,.24);padding:16px 18px;margin-bottom:14px;display:flex;align-items:center;gap:14px;cursor:pointer">'+
       '<div style="width:46px;height:46px;border-radius:14px;background:rgba(255,255,255,.16);display:flex;align-items:center;justify-content:center;flex-shrink:0">'+svg(leaf,{c:'#fff',w:1.9,s:24})+'</div>'+
@@ -2426,7 +2432,7 @@
     var AWARD='<circle cx="12" cy="8" r="6"></circle><path d="M15.5 13.5L17 22l-5-3-5 3 1.5-8.5"></path>';
     var list='<div style="background:var(--surface);border-radius:18px;box-shadow:0 12px 32px rgba(4,33,40,.08);overflow:hidden;margin-top:16px">'+
       row('fort','Fortschritt & Vitalität','Rang, Punkte, Fitness-Alter',AWARD,true)+
-      row('ern','Ernährung','Tagesziel, Tracking & Rezepte','<path d="M11 21A7 7 0 0 1 4 14C4 8.5 8 4 13.5 4c2.7 0 4.6 1 6.5 1.8 0 8.7-4.3 15.2-9 15.2z"></path><path d="M11 21c0-5.5 3.3-10 7.5-12"></path>')+
+      (ERN_ON?row('ern','Ernährung','Tagesziel, Tracking & Rezepte','<path d="M11 21A7 7 0 0 1 4 14C4 8.5 8 4 13.5 4c2.7 0 4.6 1 6.5 1.8 0 8.7-4.3 15.2-9 15.2z"></path><path d="M11 21c0-5.5 3.3-10 7.5-12"></path>'):'')+
       row('data','Meine Daten','Adresse & Bankverbindung',IC.user)+
       row('contract','Vertrag','Tarif, Kündigung, Pause',IC.doc)+
       row('account','Beitragskonto','Offene Posten & Rechnungen','<rect x="2" y="5" width="20" height="14" rx="2"></rect><path d="M2 9h20M6 15h5"></path>')+
@@ -2951,7 +2957,7 @@
   }
   // Navigations-Liste (für Sidebar & Burger-Drawer identisch)
   function navList(){
-    return '<nav style="display:flex;flex-direction:column;gap:4px">'+NAVITEMS.filter(function(it){return !isFormer()||FORMER_OK.indexOf(it[0])>=0;}).map(function(it){var act=S.screen===it[0];var bdg=(it[0]==='postfach'&&pfUnread()>0)?'<span style="background:#E08C53;color:#fff;font-size:11px;font-weight:800;border-radius:20px;min-width:20px;height:20px;padding:0 6px;display:flex;align-items:center;justify-content:center">'+pfUnread()+'</span>':'';return '<button class="sidebtn'+(act?' active':'')+'" data-act="nav" data-arg="'+it[0]+'">'+svg(it[2],{c:act?'#fff':'#bcd7dc',w:1.9,s:20})+'<span style="flex:1">'+it[1]+'</span>'+bdg+'</button>';}).join('')+'</nav>';
+    return '<nav style="display:flex;flex-direction:column;gap:4px">'+NAVITEMS.filter(function(it){return (ERN_ON||it[0]!=='ern') && (!isFormer()||FORMER_OK.indexOf(it[0])>=0);}).map(function(it){var act=S.screen===it[0];var bdg=(it[0]==='postfach'&&pfUnread()>0)?'<span style="background:#E08C53;color:#fff;font-size:11px;font-weight:800;border-radius:20px;min-width:20px;height:20px;padding:0 6px;display:flex;align-items:center;justify-content:center">'+pfUnread()+'</span>':'';return '<button class="sidebtn'+(act?' active':'')+'" data-act="nav" data-arg="'+it[0]+'">'+svg(it[2],{c:act?'#fff':'#bcd7dc',w:1.9,s:20})+'<span style="flex:1">'+it[1]+'</span>'+bdg+'</button>';}).join('')+'</nav>';
   }
   function navLogoutBtn(){
     return '<button class="sidebtn" data-act="logout" style="margin-top:auto;color:#9fc3ca">'+svg('<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"></path>',{c:'#9fc3ca',w:1.9,s:19})+'<span>Abmelden</span></button>';
@@ -3009,6 +3015,8 @@
   }
   var NARROW={contract:1,referral:1,appt:1,card:1,fort:1,ern:1,blog:1,profil:1,checkin:1,insta:1};
   function render(){
+    // Ernährungs-Modul ausgeblendet (Feature-Schalter ERN_ON): nie rendern, zur Übersicht
+    if(!ERN_ON && S.screen==='ern') S.screen='home';
     // Ehemalige Mitglieder: gesperrte Screens immer auf die Übersicht (Rejoin) umleiten
     if(isFormer() && S.screen!=='login' && FORMER_OK.indexOf(S.screen)<0) S.screen='home';
     var html;
@@ -3117,7 +3125,8 @@
       }).catch(function(){ receive('Verbindung gerade nicht möglich. Versuch es gleich nochmal.'); }); },
     // Button unter einer FINN-Antwort: Chat schließen + Ziel-Seite in der App öffnen.
     finnGo:function(a){
-      var allowed=['home','data','contract','account','appt','checkins','postfach','help','settings','card','fort','ern','referral'];
+      var allowed=['home','data','contract','account','appt','checkins','postfach','help','settings','card','fort','referral'];
+      if(ERN_ON) allowed.push('ern');
       if(allowed.indexOf(a)<0) return;
       setS({finnOpen:false}); nav(a);
     },
