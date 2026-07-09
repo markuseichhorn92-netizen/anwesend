@@ -3224,8 +3224,18 @@ function wireWb(scope){
 function openRho(p){
   S.rhoMemberId=p.id; S.rhoName=p.name; S.rhoBusy=false; S.rhoResult=null; S.rhoMsg='';
   S.rhoDisc=0; S.rhoDiscWk=0; S.rhoFree=0; S.rhoWaive=false; S.rhoPause=0;
-  S.rhoFrame=S.wbFrame||null; S.rhoOpen=true; render();
-  if(!S.rhoFrame){ tapi('/api/team/retention').then(function(r){ if(r&&r.ok){ S.wbFrame=r.frame; S.rhoFrame=r.frame; render(); } }).catch(function(){}); }
+  S.rhoFrame=S.wbFrame||null; S.rhoSuggesting=false; S.rhoOpen=true; render();
+  var suggest=function(){
+    if(!S.rhoFrame||!S.rhoFrame.active) return;   // ohne aktiven Rahmen kein Vorschlag
+    S.rhoSuggesting=true; render();
+    tapi('/api/team/retention',{method:'POST',body:{action:'suggest-offer',memberId:p.id,memberName:p.name}}).then(function(r){
+      S.rhoSuggesting=false;
+      if(r&&r.ok && S.rhoOpen && S.rhoMemberId===p.id){ var d=r.details||{}; S.rhoDisc=d.discountPct||0; S.rhoDiscWk=d.discountWeeks||0; S.rhoFree=d.freeWeeks||0; S.rhoWaive=!!d.waiveActivation; S.rhoPause=d.pauseWeeks||0; if(r.message) S.rhoMsg=r.message; }
+      render();
+    }).catch(function(){ S.rhoSuggesting=false; render(); });
+  };
+  if(!S.rhoFrame){ tapi('/api/team/retention').then(function(r){ if(r&&r.ok){ S.wbFrame=r.frame; S.rhoFrame=r.frame; } render(); suggest(); }).catch(function(){ render(); }); }
+  else suggest();
 }
 function closeRho(){ if(S.rhoBusy) return; S.rhoOpen=false; S.rhoResult=null; render(); }
 function rhoSend(){
@@ -3247,6 +3257,7 @@ function rhoModalHTML(){
   if(!f){ inner='<div style="text-align:center;padding:34px"><span class="spin"></span></div>'; }
   else if(!f.active){ inner='<div style="background:#fff6ec;border-radius:12px;padding:14px 16px;font-size:13.5px;font-weight:700;color:#9a6d1f;line-height:1.55">Die Rückholung ist noch nicht aktiviert. Aktiviere sie zuerst im Bereich „Rückholung" und lege den Rahmen fest.</div>'; }
   else if(S.rhoResult){ var url=(S.rhoResult.offer&&S.rhoResult.offer.url)||''; inner='<div style="background:#e7f6ec;border-radius:12px;padding:14px 16px;font-size:13.5px;font-weight:700;color:#1d7a3e;line-height:1.55">Angebot verschickt ✓<div style="font-size:12px;color:#3a7d52;font-weight:600;margin-top:7px;word-break:break-all">Annahme-Link: '+esc(url)+'</div><div style="font-size:12px;color:#6b7780;font-weight:600;margin-top:7px">Bei Annahme entsteht automatisch eine Aufgabe „in Magicline umsetzen". Den Verlauf siehst du unter „Rückholung".</div></div>'; }
+  else if(S.rhoSuggesting){ inner='<div style="text-align:center;padding:34px 10px"><span class="spin"></span><div style="font-size:12.5px;color:#8a929a;font-weight:600;margin-top:12px">FINN bereitet einen Vorschlag im Rahmen vor …</div></div>'; }
   else {
     var numInp=function(id,val,max){ return '<input type="number" id="'+id+'" min="0"'+(max?(' max="'+max+'"'):'')+' value="'+esc(String(val))+'" style="width:80px;padding:9px 11px;border:1.5px solid #dce3e4;border-radius:10px;font-size:14.5px;font-weight:800;text-align:center;background:#fbfcfc;color:#15171B">'; };
     var row=function(label,hint,ctrl){ return '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 0;border-top:1px solid #f0f3f3"><div><div style="font-size:12.5px;font-weight:800;color:#15171B">'+label+'</div><div style="font-size:11px;color:#8a929a;font-weight:600">'+hint+'</div></div>'+ctrl+'</div>'; };
@@ -3256,12 +3267,12 @@ function rhoModalHTML(){
     if(f.maxPauseWeeks>0){ fields+=row('Pause Wochen','max '+f.maxPauseWeeks,numInp('rho_pause',S.rhoPause,f.maxPauseWeeks)); }
     if(f.waiveActivation){ fields+=row('Aktivierungsgebühr erlassen','39 €','<input type="checkbox" id="rho_waive"'+(S.rhoWaive?' checked':'')+' style="width:22px;height:22px;accent-color:'+TEAL+'">'); }
     if(!fields) fields='<div style="font-size:12.5px;color:#9a6d1f;font-weight:700;padding:8px 0">Im Rahmen ist aktuell keine Leistung freigegeben. Passe den Rahmen unter „Rückholung" an.</div>';
-    inner='<div style="font-size:12px;font-weight:800;color:#8a929a;margin-bottom:2px">Leistungen (nur im Rahmen)</div>'+fields+
+    inner='<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:2px"><div style="font-size:12px;font-weight:800;color:#8a929a">Leistungen (nur im Rahmen)</div><span style="font-size:10.5px;font-weight:800;color:#0a4958;background:#e7f1f3;border-radius:20px;padding:3px 9px">✨ Vorschlag von FINN – anpassbar</span></div>'+fields+
       '<div style="margin-top:14px"><div style="font-size:12px;font-weight:800;color:#8a929a;margin-bottom:7px">Nachricht ans Mitglied</div>'+
       '<textarea id="rho_msg" rows="3" placeholder="Persönlicher Text – z. B. „Schade, dass du gehen willst! Wir hätten da ein Angebot für dich …"" style="width:100%;padding:11px 13px;border:1.5px solid #dce3e4;border-radius:11px;font-size:14px;background:#fbfcfc;resize:vertical;line-height:1.5;color:#15171B">'+esc(S.rhoMsg||'')+'</textarea></div>'+
       '<div style="margin-top:12px;background:#f2f8f9;border-radius:11px;padding:11px 13px;font-size:12px;color:#0a4958;font-weight:700;line-height:1.5">Das Mitglied bekommt eine Nachricht mit persönlichem Annahme-Link – rechtssicher, mit Speicherung von Zeitpunkt + IP bei Annahme.</div>';
   }
-  var canSend=f&&f.active&&!S.rhoResult;
+  var canSend=f&&f.active&&!S.rhoResult&&!S.rhoSuggesting;
   return '<div data-rhooverlay="1" style="position:fixed;inset:0;background:rgba(0,18,22,.5);z-index:70;display:flex;align-items:center;justify-content:center;padding:20px">'+
     '<div data-rhocard="1" style="width:100%;max-width:470px;background:#fff;border-radius:20px;box-shadow:0 30px 70px rgba(0,0,0,.3);padding:22px 24px;max-height:90vh;overflow-y:auto">'+
       '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:14px"><div><div style="font-size:16px;font-weight:900;letter-spacing:-.3px">Rückhol-Angebot senden</div><div style="font-size:12.5px;color:#8a929a;font-weight:600;margin-top:2px">an '+esc(S.rhoName||'Mitglied')+'</div></div>'+

@@ -16,7 +16,20 @@
 const TA = require('../../lib/teamAuth');
 const M = require('../../lib/members');
 const R = require('../../lib/retention');
+const AI = require('../../lib/ai');
 const Outreach = require('../../lib/outreach');
+
+// KI-Vorschlag hart auf den Rahmen begrenzen (Sicherheitsnetz, egal was die KI liefert).
+function clampToFrame(d, f) {
+  d = R.normalizeDetails(d);
+  return {
+    discountPct: Math.min(d.discountPct, f.maxDiscountPct || 0),
+    discountWeeks: Math.min(d.discountWeeks, f.maxDiscountWeeks || 0),
+    freeWeeks: Math.min(d.freeWeeks, f.maxFreeWeeks || 0),
+    waiveActivation: !!(d.waiveActivation && f.waiveActivation),
+    pauseWeeks: Math.min(d.pauseWeeks, f.maxPauseWeeks || 0),
+  };
+}
 
 function baseUrl(req) {
   if (process.env.PUBLIC_BASE_URL) return String(process.env.PUBLIC_BASE_URL).replace(/\/+$/, '');
@@ -59,6 +72,21 @@ module.exports = async function handler(req, res) {
     if (action === 'set-frame') {
       const frame = await R.setFrame(body.frame || {}, sess.user || '');
       res.statusCode = 200; return res.end(JSON.stringify({ ok: true, frame: frame, stored: R.hasStore }));
+    }
+
+    // KI-Vorschlag fürs Angebot + persönliche Ansprache (füllt den Komponisten vor).
+    if (action === 'suggest-offer') {
+      const memberId = String(body.memberId || '').trim();
+      const frame = await R.getFrame();
+      if (!frame.active) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'inactive' })); }
+      if (!AI.hasAI) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'no_ai' })); }
+      let name = String(body.memberName || ''), rateName = '', status = '';
+      try { const m = await M.getMember(memberId); if (m) { const nm = ((m.firstName || '') + ' ' + (m.lastName || '')).trim(); if (nm) name = nm; } } catch (e) {}
+      try { const ct = await M.getContract(memberId); if (ct) { rateName = ct.rateName || ''; status = ct.active === false ? 'ehemalig/beendet' : (ct.cancelled ? 'gekündigt' : 'aktiv'); } } catch (e) {}
+      const sug = await AI.winbackSuggest({ name: name, rateName: rateName, status: status, frame: frame });
+      if (!sug.ok) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'ai_failed' })); }
+      res.statusCode = 200;
+      return res.end(JSON.stringify({ ok: true, details: clampToFrame(sug.details, frame), message: sug.message }));
     }
 
     if (action === 'create-offer') {
