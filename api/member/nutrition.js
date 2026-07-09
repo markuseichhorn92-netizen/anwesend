@@ -32,7 +32,13 @@ const SR = require('../../lib/studioReply');
 
 const PKEY = (id) => 'nutri:p:' + String(id);
 const DKEY = (id, d) => 'nutri:d:' + String(id) + ':' + d;
+const FASTKEY = (id) => 'nutri:fast:' + String(id);
+const PLANKEY = (id) => 'nutri:plan:' + String(id);
+const SHOPKEY = (id) => 'nutri:shop:' + String(id);
+const RECKEY = (id) => 'nutri:rec:' + String(id);
 const DAY_TTL = 400 * 86400;              // ~13 Monate
+
+const FAST_PLANS = { '16:8': 16, '18:6': 18, '14:10': 14 };
 
 const GOALS = { abnehmen: 'Abnehmen', halten: 'Gewicht halten', aufbau: 'Muskelaufbau' };
 const ACTS = { kaum: 1.35, moderat: 1.55, aktiv: 1.75 };
@@ -112,6 +118,14 @@ function pointsToday(totals, targets, entryCount, streak) {
   return p;
 }
 
+// Fasten-Status: { plan, start(ms|null), active }.
+async function loadFasting(id) {
+  const f = await kvGetJson(FASTKEY(id));
+  const plan = f && FAST_PLANS[f.plan] ? f.plan : '16:8';
+  const start = f && typeof f.start === 'number' && f.start > 0 ? f.start : null;
+  return { plan: plan, start: start, active: !!start };
+}
+
 // ── Antwortobjekt für GET / nach jeder Mutation ──
 async function buildState(id, profile) {
   const { date } = berlinNow();
@@ -120,6 +134,7 @@ async function buildState(id, profile) {
   const day = await loadDay(id, date);
   const totals = totalsOf(day.entries);
   const streak = await computeStreak(id, date);
+  const fasting = await loadFasting(id);
   return {
     ok: true, available: true, onboarded: onboarded,
     profile: profile ? { goal: profile.goal, sex: profile.sex, height: profile.height, weight: profile.weight, age: profile.age, activity: profile.activity, diet: profile.diet } : null,
@@ -127,6 +142,7 @@ async function buildState(id, profile) {
     today: { date, entries: day.entries, totals, water: day.water, waterGoal: waterGoalCups(targets) },
     streak: streak,
     pointsToday: pointsToday(totals, targets, day.entries.length, streak),
+    fasting: fasting,
   };
 }
 
@@ -245,7 +261,9 @@ module.exports = async function handler(req, res) {
   if (action === 'recipes') {
     if (!(await M.rateLimit('nutri-recipes:' + id, 20, 3600))) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'Kurz durchatmen – gleich wieder versuchen.' })); }
     const t = targetsFor(profile || {});
-    const r = await AI.nutritionRecipes({ goal: GOALS[profile && profile.goal] || 'ausgewogen', kcalTarget: t.kcal, protein: t.protein, diet: (profile && profile.diet) || 'omnivor', wish: body.wish });
+    const fridge = String(body.fridge || '').trim().slice(0, 200);
+    const wish = fridge ? ('Nutze möglichst nur diese vorhandenen Zutaten: ' + fridge) : body.wish;
+    const r = await AI.nutritionRecipes({ goal: GOALS[profile && profile.goal] || 'ausgewogen', kcalTarget: t.kcal, protein: t.protein, diet: (profile && profile.diet) || 'omnivor', wish: wish });
     res.statusCode = 200; return res.end(JSON.stringify(r.ok ? { ok: true, recipes: r.recipes } : { ok: false, message: 'FINN kann gerade keine Rezepte erstellen. Versuch es gleich nochmal.' }));
   }
 
@@ -290,6 +308,101 @@ module.exports = async function handler(req, res) {
       });
     } catch (e) {}
     res.statusCode = 200; return res.end(JSON.stringify({ ok: true }));
+  }
+
+  // ── Intervallfasten: Plan/Start/Stop ──
+  if (action === 'fast') {
+    const cur = await loadFasting(id);
+    const next = { plan: cur.plan, start: cur.start };
+    const doo = String(body.do || '');
+    if (doo === 'plan' && FAST_PLANS[body.plan]) next.plan = body.plan;
+    else if (doo === 'start') next.start = Date.now();
+    else if (doo === 'stop') next.start = null;
+    try { await redisPipeline([['SET', FASTKEY(id), JSON.stringify(next)]]); } catch (e) {}
+    res.statusCode = 200; return res.end(JSON.stringify(await buildState(id, profile)));
+  }
+
+  // ── Wochenplan generieren (FINN) + Einkaufsliste ableiten ──
+  if (action === 'plan-generate') {
+    if (!(await M.rateLimit('nutri-plan:' + id, 10, 3600))) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'Kurz durchatmen – gleich wieder versuchen.' })); }
+    const t = targetsFor(profile || {});
+    const r = await AI.nutritionWeekPlan({ goal: GOALS[profile && profile.goal] || 'ausgewogen', kcalTarget: t.kcal, protein: t.protein, diet: (profile && profile.diet) || 'omnivor' });
+    if (!r.ok) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'FINN kann gerade keinen Plan erstellen. Versuch es gleich nochmal.' })); }
+    const plan = { days: r.days, createdAt: Date.now() };
+    const shop = (r.shopping || []).map(function (s, i) { return { i: i, name: s.name, amount: s.amount, checked: false }; });
+    try { await redisPipeline([['SET', PLANKEY(id), JSON.stringify(plan)], ['SET', SHOPKEY(id), JSON.stringify(shop)]]); } catch (e) {}
+    res.statusCode = 200; return res.end(JSON.stringify({ ok: true, plan: plan, shopping: shop }));
+  }
+
+  // ── Plan + Einkaufsliste laden ──
+  if (action === 'plan-get') {
+    const plan = await kvGetJson(PLANKEY(id));
+    const shop = await kvGetJson(SHOPKEY(id));
+    res.statusCode = 200; return res.end(JSON.stringify({ ok: true, plan: plan || null, shopping: Array.isArray(shop) ? shop : [] }));
+  }
+  if (action === 'shopping-toggle') {
+    const shop = await kvGetJson(SHOPKEY(id)); const list = Array.isArray(shop) ? shop : [];
+    const idx = parseInt(body.i, 10);
+    if (list[idx]) list[idx].checked = !list[idx].checked;
+    try { await redisPipeline([['SET', SHOPKEY(id), JSON.stringify(list)]]); } catch (e) {}
+    res.statusCode = 200; return res.end(JSON.stringify({ ok: true, shopping: list }));
+  }
+  if (action === 'shopping-clear') {
+    const shop = await kvGetJson(SHOPKEY(id)); let list = Array.isArray(shop) ? shop : [];
+    list = list.filter(function (x) { return !x.checked; }).map(function (x, i) { return { i: i, name: x.name, amount: x.amount, checked: false }; });
+    try { await redisPipeline([['SET', SHOPKEY(id), JSON.stringify(list)]]); } catch (e) {}
+    res.statusCode = 200; return res.end(JSON.stringify({ ok: true, shopping: list }));
+  }
+
+  // ── Gespeicherte Rezepte: laden / speichern / löschen / ins Protokoll ──
+  if (action === 'recipes-get') {
+    const saved = await kvGetJson(RECKEY(id));
+    res.statusCode = 200; return res.end(JSON.stringify({ ok: true, saved: Array.isArray(saved) ? saved : [] }));
+  }
+  if (action === 'recipe-save') {
+    const rp = body.recipe || {};
+    const clean = { id: newEntryId(), title: String(rp.title || 'Rezept').slice(0, 100), kcal: n0(rp.kcal), protein: n0(rp.protein), minutes: n0(rp.minutes), ingredients: (Array.isArray(rp.ingredients) ? rp.ingredients : []).slice(0, 15).map(function (x) { return String(x).slice(0, 90); }), steps: (Array.isArray(rp.steps) ? rp.steps : []).slice(0, 8).map(function (x) { return String(x).slice(0, 200); }) };
+    const saved = await kvGetJson(RECKEY(id)); const list = Array.isArray(saved) ? saved : [];
+    if (!list.some(function (x) { return x.title === clean.title; })) list.unshift(clean);
+    const trimmed = list.slice(0, 40);
+    try { await redisPipeline([['SET', RECKEY(id), JSON.stringify(trimmed)]]); } catch (e) {}
+    res.statusCode = 200; return res.end(JSON.stringify({ ok: true, saved: trimmed }));
+  }
+  if (action === 'recipe-delete') {
+    const saved = await kvGetJson(RECKEY(id)); let list = Array.isArray(saved) ? saved : [];
+    list = list.filter(function (x) { return String(x.id) !== String(body.id); });
+    try { await redisPipeline([['SET', RECKEY(id), JSON.stringify(list)]]); } catch (e) {}
+    res.statusCode = 200; return res.end(JSON.stringify({ ok: true, saved: list }));
+  }
+  if (action === 'recipe-log') {
+    const rp = body.recipe || {};
+    const entry = { id: newEntryId(), name: String(rp.title || 'Rezept').slice(0, 80), portion: '1 Portion', kcal: n0(rp.kcal), p: n0(rp.protein), c: n0(rp.carbs), f: n0(rp.fat), meal: mealForHour(hour), ts: Date.now() };
+    const day = await loadDay(id, date); day.entries.push(entry); await saveDay(id, date, day);
+    res.statusCode = 200; return res.end(JSON.stringify(Object.assign(await buildState(id, profile), { added: [{ name: entry.name, kcal: entry.kcal }] })));
+  }
+
+  // ── Verlauf: letzte 7 Tage + FINN-Wochenreview ──
+  if (action === 'week') {
+    const t = targetsFor(profile || {});
+    const keys = []; for (let i = 6; i >= 0; i--) keys.push(DKEY(id, dayKeyMinus(date, i)));
+    const vals = await kvGetMany(keys);
+    const days = vals.map(function (v, idx) {
+      let entries = []; try { const o = JSON.parse(v); if (o && Array.isArray(o.entries)) entries = o.entries; } catch (e) {}
+      const tot = totalsOf(entries);
+      return { date: dayKeyMinus(date, 6 - idx), kcal: tot.kcal, p: tot.p, c: tot.c, f: tot.f, meals: entries.length };
+    });
+    const target = t.kcal || 2000;
+    const trackedDays = days.filter(function (d) { return d.meals > 0; });
+    const tracked = trackedDays.length;
+    const inGoal = trackedDays.filter(function (d) { return d.kcal >= target * 0.85 && d.kcal <= target * 1.1; }).length;
+    const proteinDays = trackedDays.filter(function (d) { return d.p >= t.protein * 0.9; }).length;
+    const avgKcal = tracked ? Math.round(trackedDays.reduce(function (a, d) { return a + d.kcal; }, 0) / tracked) : 0;
+    let review = null;
+    if (AI.hasAI && tracked > 0 && (await M.rateLimit('nutri-week:' + id, 12, 3600))) {
+      const r = await AI.nutritionWeekReview({ goal: GOALS[profile && profile.goal] || '—', kcalTarget: target, protein: t.protein, days: trackedDays.map(function (d) { return { date: d.date.slice(5), kcal: d.kcal, p: d.p }; }), inGoal: inGoal, avgKcal: avgKcal, proteinDays: proteinDays, tracked: tracked });
+      if (r.ok) review = { tip: r.tip, insights: r.insights };
+    }
+    res.statusCode = 200; return res.end(JSON.stringify({ ok: true, days: days, target: target, stats: { inGoal: inGoal, avgKcal: avgKcal, proteinDays: proteinDays, tracked: tracked }, review: review }));
   }
 
   res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'unknown_action' }));
