@@ -109,6 +109,7 @@ var TEAL='#0a4958', ORANGE='#E08C53';
 // GET /api/team/tags?memberId=… -> presets). Wird von S.tagPresets überschrieben.
 var TAG_PRESETS=['VIP','Stammkunde','Beschwerde','Risiko','Beobachten','Interessent'];
 var S={ token:null, role:null, meName:null, screen:'inbox', convs:[], counts:{}, selKey:null, sel:null,
+  asMsgs:[], asBusy:false, asInput:'', asCid:0,
         filter:'open', search:'', loading:false, err:'', draft:'', note:'', replyChannel:'email',
         // Login: Admin (Passwort) <-> Trainer (E-Mail-Code). Additiv, bricht den Passwort-Login nicht.
         loginMode:'admin', liEmail:'', liChallenge:'', liCode:'', liErr:'', liBusy:false, liChannelUsed:'email',
@@ -255,7 +256,7 @@ function logout(){ saveToken(null); saveRole(null,''); S.convs=[]; S.sel=null; S
 // Angestellte (Trainer-Login) sehen nur das Tagesgeschäft. Diese Bereiche
 // bleiben dem Admin (Passwort-Login) vorbehalten. Die eigentliche Sperre
 // sitzt serverseitig – das hier steuert nur, was in der Oberfläche erscheint.
-var ADMIN_ONLY_SCREENS={ stats:1, msg:1, leads:1 };
+var ADMIN_ONLY_SCREENS={ stats:1, msg:1, leads:1, assist:1 };
 function isAdmin(){ return S.role==='admin'; }
 function canSee(k){ return !ADMIN_ONLY_SCREENS[k] || isAdmin(); }
 function meInitials(){ var n=String(S.meName||'').trim(); if(!n) return 'FI'; var p=n.split(/\s+/).filter(Boolean); var i=((p[0]&&p[0][0])||'')+((p[1]&&p[1][0])||''); return (i||n.slice(0,2)||'FI').toUpperCase(); }
@@ -1191,7 +1192,8 @@ var IC={
   back:'<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#0a4958" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>',
   send:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4z"/></svg>',
   burger:'<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#15171B" stroke-width="2.2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>',
-  dots:'<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#0a4958" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg>'
+  dots:'<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#0a4958" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg>',
+  assist:'<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.7 4.3L18 9l-4.3 1.7L12 15l-1.7-4.3L6 9l4.3-1.7z"/><path d="M18.5 14.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/></svg>'
 };
 
 function renderShell(content, title, sub){
@@ -1212,6 +1214,7 @@ function renderShell(content, title, sub){
       '<div style="font-size:11px;color:#9fc3ca;font-weight:700;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><span style="font-size:9px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:'+(isAdmin()?'#0e6072':'#0a4958')+';background:'+(isAdmin()?'#F6A964':'#bfe0e6')+';border-radius:5px;padding:2px 6px;margin-right:6px">'+esc(roleLabel())+'</span>Fit-Inn Trier</div></div></div>'+
     '<nav style="display:flex;flex-direction:column;gap:3px;flex:1">'+
       navItem('dash','Übersicht',IC.dash)+
+      (canSee('assist')?navItem('assist','Assistent',IC.assist):'')+
       navItem('inbox','Posteingang',IC.inbox, open||'')+
       navItem('members','Mitglieder',IC.members)+
       navItem('appts','Termine',IC.appts, apptOpen||'')+
@@ -1259,7 +1262,7 @@ function renderShell(content, title, sub){
     {k:'dash',l:'Übersicht',ic:IC.dash,on:sc==='dash'},
     {k:'inbox',l:'Posteingang',ic:IC.inbox,on:(sc==='inbox'||sc==='thread'),badge:open},
     {k:'members',l:'Mitglieder',ic:IC.members,on:(sc==='members'||sc==='profile')},
-    {k:'__more',l:'Mehr',ic:IC.dots,on:(['appts','trial','help','stats','msg','leads','todo','schicht'].indexOf(sc)>=0)}
+    {k:'__more',l:'Mehr',ic:IC.dots,on:(['appts','trial','help','stats','msg','leads','todo','schicht','assist'].indexOf(sc)>=0)}
   ];
   var bnav=el('<nav class="bottomnav" style="align-items:stretch;padding:6px 8px"></nav>');
   bnav.innerHTML=bnDefs.map(function(it){ var c=it.on?'#0a4958':'#9aa6aa';
@@ -3585,11 +3588,90 @@ function placeholderNode(title){
 }
 
 // ---------- main render ----------
+// ---------- Studio-Assistent (Kommando-Chat, nur Admin) ----------
+function assistNode(){
+  var node=el('<div class="scrl" style="flex:1;min-height:0;overflow-y:auto;padding:24px 28px 20px"></div>');
+  var msgs=S.asMsgs||[];
+  var intro='';
+  if(!msgs.length){
+    var chips=['Zeig mir die offenen Beiträge','Wer war lange nicht da?','Schreib den inaktiven Mitgliedern eine Motivations-Nachricht','Offene Anfragen im Postfach?'];
+    intro='<div style="background:#fff;border-radius:18px;box-shadow:0 10px 26px rgba(4,33,40,.07);padding:22px;margin-bottom:16px">'+
+      '<div style="display:flex;align-items:center;gap:13px"><div style="width:46px;height:46px;border-radius:14px;background:linear-gradient(150deg,#0e6072,#063540);display:flex;align-items:center;justify-content:center;color:#fff">'+IC.assist+'</div>'+
+      '<div><div style="font-size:16.5px;font-weight:900;color:#15171B;letter-spacing:-.3px">Studio-Assistent</div><div style="font-size:12.5px;color:#6b7780;font-weight:600;margin-top:2px">Sag mir, was zu tun ist – ich bereite es vor, du bestätigst.</div></div></div>'+
+      '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:16px">'+chips.map(function(c){ return '<button data-aschip="'+esc(c)+'" style="border:1.5px solid #dce3e4;background:#fbfcfc;color:'+TEAL+';border-radius:100px;padding:9px 14px;font-size:13px;font-weight:800;cursor:pointer;text-align:left">'+esc(c)+'</button>'; }).join('')+'</div></div>';
+  }
+  var thread=msgs.map(function(m){
+    if(m.role==='user'){
+      return '<div style="display:flex;justify-content:flex-end;margin:10px 0"><div style="max-width:78%;background:'+TEAL+';color:#fff;border-radius:16px 16px 4px 16px;padding:11px 14px;font-size:14px;font-weight:600;white-space:pre-wrap;line-height:1.45">'+esc(m.text)+'</div></div>';
+    }
+    if(m.role==='confirm'){
+      var foot = m.done ? '<div style="margin-top:12px;font-size:13px;font-weight:800;color:'+(m.done==='ok'?'#1d7a3e':(m.done==='err'?'#c0392b':'#8a929a'))+'">'+(m.done==='ok'?'✓ Ausgeführt':(m.done==='err'?'Nicht ausgeführt (Fehler)':'Abgebrochen'))+'</div>'
+        : '<div style="display:flex;gap:9px;margin-top:14px">'+
+          '<button data-asconfirm="'+esc(m.id)+'"'+(S.asBusy?' disabled':'')+' style="flex:1;border:none;border-radius:11px;background:#1d7a3e;color:#fff;font-weight:800;font-size:13.5px;padding:11px;cursor:pointer">Bestätigen &amp; ausführen</button>'+
+          '<button data-ascancel="'+esc(m.id)+'" style="border:1.5px solid #dce3e4;border-radius:11px;background:#fff;color:#6b7780;font-weight:800;font-size:13.5px;padding:11px 16px;cursor:pointer">Abbrechen</button></div>';
+      return '<div style="margin:10px 0"><div style="border:1.5px solid #F6A964;background:#FFF8F0;border-radius:14px;padding:14px 16px">'+
+        '<div style="font-size:11px;font-weight:900;letter-spacing:.4px;text-transform:uppercase;color:#C77A2E;display:flex;align-items:center;gap:7px"><span style="width:8px;height:8px;border-radius:50%;background:#F6A964"></span>Bitte bestätigen</div>'+
+        '<div style="font-size:14px;font-weight:600;color:#15171B;white-space:pre-wrap;line-height:1.5;margin-top:9px">'+esc(m.preview)+'</div>'+foot+'</div></div>';
+    }
+    return '<div style="display:flex;margin:10px 0"><div style="max-width:82%;background:#fff;border-radius:16px 16px 16px 4px;box-shadow:0 6px 18px rgba(4,33,40,.07);padding:11px 14px;font-size:14px;font-weight:600;color:#15171B;white-space:pre-wrap;line-height:1.5">'+esc(m.text)+'</div></div>';
+  }).join('');
+  var thinking=S.asBusy?'<div style="display:flex;margin:10px 0"><div style="background:#fff;border-radius:16px;box-shadow:0 6px 18px rgba(4,33,40,.07);padding:13px 16px"><span class="spin"></span></div></div>':'';
+  var composer='<div style="position:sticky;bottom:0;background:#eef2f3;padding:10px 0 6px"><div style="display:flex;gap:9px;align-items:flex-end"><textarea id="asinput" rows="1" placeholder="Was soll ich erledigen?" style="flex:1;border:1.5px solid #dce3e4;border-radius:14px;padding:13px 15px;font-size:14.5px;background:#fff;color:#15171B;resize:none;font-family:inherit;outline:none;max-height:140px">'+esc(S.asInput||'')+'</textarea><button data-assend="1"'+(S.asBusy?' disabled':'')+' style="width:50px;height:48px;border-radius:14px;border:none;background:'+TEAL+';display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'+IC.send+'</button></div><div style="font-size:11px;color:#8a929a;font-weight:600;margin-top:7px;text-align:center">Aktionen nach außen führt der Assistent erst nach deiner Bestätigung aus.</div></div>';
+  node.innerHTML='<div style="max-width:760px;margin:0 auto;min-height:100%;display:flex;flex-direction:column"><div style="flex:1">'+intro+thread+thinking+'</div>'+composer+'</div>';
+  setTimeout(function(){ wireAssist(node); },0);
+  return node;
+}
+function asGrow(t){ try{ t.style.height='auto'; t.style.height=Math.min(140,t.scrollHeight)+'px'; }catch(e){} }
+function assistScrollEnd(){ try{ var s=document.querySelector('#screenwrap .scrl')||document.querySelector('.scrl'); if(s) s.scrollTop=s.scrollHeight; }catch(e){} }
+function wireAssist(node){
+  var ti=node.querySelector('#asinput');
+  if(ti){ ti.oninput=function(){ S.asInput=ti.value; asGrow(ti); }; ti.onkeydown=function(e){ if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); assistSend(); } }; asGrow(ti); if(!S.asBusy) ti.focus(); }
+  var sb=node.querySelector('[data-assend]'); if(sb) sb.onclick=function(){ assistSend(); };
+  node.querySelectorAll('[data-aschip]').forEach(function(b){ b.onclick=function(){ assistSend(b.getAttribute('data-aschip')); }; });
+  node.querySelectorAll('[data-asconfirm]').forEach(function(b){ b.onclick=function(){ assistConfirm(b.getAttribute('data-asconfirm')); }; });
+  node.querySelectorAll('[data-ascancel]').forEach(function(b){ b.onclick=function(){ assistCancel(b.getAttribute('data-ascancel')); }; });
+}
+function assistSend(text){
+  var t=String(text!=null?text:(S.asInput||'')).trim();
+  if(!t || S.asBusy) return;
+  S.asMsgs.push({role:'user',text:t});
+  S.asInput=''; S.asBusy=true; render(); assistScrollEnd();
+  var payload=S.asMsgs.filter(function(m){ return m.role==='user'||m.role==='assistant'; }).map(function(m){ return {role:m.role,content:m.text}; });
+  tapi('/api/team/assistant',{method:'POST',body:{messages:payload}}).then(function(r){
+    S.asBusy=false;
+    if(!r || r.ok===false){ S.asMsgs.push({role:'assistant',text:(r&&(r.text||r.message))||'Der Assistent ist gerade nicht verfügbar.'}); render(); assistScrollEnd(); return; }
+    if(r.kind==='confirm'){
+      if(r.text) S.asMsgs.push({role:'assistant',text:r.text});
+      var a=r.action||{};
+      S.asMsgs.push({role:'confirm',id:'c'+(S.asCid=(S.asCid||0)+1),preview:a.preview||'',tool:a.tool,args:a.args||{}});
+    } else {
+      S.asMsgs.push({role:'assistant',text:r.text||'Alles klar.'});
+    }
+    render(); assistScrollEnd();
+  }).catch(function(){ S.asBusy=false; S.asMsgs.push({role:'assistant',text:'Verbindung gerade nicht möglich.'}); render(); assistScrollEnd(); });
+}
+function assistConfirm(id){
+  var card=(S.asMsgs||[]).find(function(m){ return m.role==='confirm'&&m.id===id; });
+  if(!card || card.done || S.asBusy) return;
+  S.asBusy=true; render();
+  tapi('/api/team/assistant',{method:'POST',body:{confirm:{tool:card.tool,args:card.args}}}).then(function(r){
+    S.asBusy=false; card.done=(r&&r.ok)?'ok':'err';
+    S.asMsgs.push({role:'assistant',text:(r&&r.text)||'Erledigt.'});
+    render(); assistScrollEnd();
+  }).catch(function(){ S.asBusy=false; card.done='err'; S.asMsgs.push({role:'assistant',text:'Aktion fehlgeschlagen.'}); render(); assistScrollEnd(); });
+}
+function assistCancel(id){
+  var card=(S.asMsgs||[]).find(function(m){ return m.role==='confirm'&&m.id===id; });
+  if(!card || card.done) return;
+  card.done='cancel';
+  S.asMsgs.push({role:'assistant',text:'Okay, das lasse ich. Sag mir, wenn ich etwas anpassen soll.'});
+  render(); assistScrollEnd();
+}
 function render(){
   if(!S.token){ renderLogin(); return; }
   if(!canSee(S.screen)) S.screen='dash';   // kein Admin-Bereich für Angestellte (Sicherheitsnetz)
-  var titles={dash:'Übersicht',inbox:'Posteingang',members:'Mitglieder',appts:'Termine',trial:'Probetraining',help:'Hilfe-Artikel',stats:'Statistiken',msg:'Nachrichten',leads:'Leads',todo:'Aufgaben',schicht:'Schichtplan'};
-  var subs={dash:'Dein Studio auf einen Blick',inbox:'Alle Vorgänge & Anfragen',members:'Mitgliederverwaltung',appts:'Anfragen & Buchungen',trial:'Schnell ein Probetraining buchen',help:'Wissensdatenbank verwalten',stats:'Auswertungen & Trends',msg:'Rundnachricht & Direktnachricht',leads:'Interessenten-Pipeline',todo:'Interne Aufgaben fürs Team',schicht:'Dienstplan, Tausch & Verfügbarkeiten'};
+  var titles={dash:'Übersicht',inbox:'Posteingang',members:'Mitglieder',appts:'Termine',trial:'Probetraining',help:'Hilfe-Artikel',stats:'Statistiken',msg:'Nachrichten',leads:'Leads',todo:'Aufgaben',schicht:'Schichtplan',assist:'Assistent'};
+  var subs={dash:'Dein Studio auf einen Blick',inbox:'Alle Vorgänge & Anfragen',members:'Mitgliederverwaltung',appts:'Anfragen & Buchungen',trial:'Schnell ein Probetraining buchen',help:'Wissensdatenbank verwalten',stats:'Auswertungen & Trends',msg:'Rundnachricht & Direktnachricht',leads:'Interessenten-Pipeline',todo:'Interne Aufgaben fürs Team',schicht:'Dienstplan, Tausch & Verfügbarkeiten',assist:'Sag mir, was zu tun ist – ich bereite es vor, du bestätigst'};
   var content;
   if(S.screen==='inbox') content=inboxNode();
   else if(S.screen==='dash') content=dashNode();
@@ -3602,6 +3684,7 @@ function render(){
   else if(S.screen==='leads') content=leadsNode();
   else if(S.screen==='todo') content=todoNode();
   else if(S.screen==='schicht') content=schichtNode();
+  else if(S.screen==='assist') content=assistNode();
   else content=placeholderNode(titles[S.screen]||'');
   renderShell(content, titles[S.screen]||'', subs[S.screen]||'');
 }
