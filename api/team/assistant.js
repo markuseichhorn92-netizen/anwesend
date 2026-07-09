@@ -75,6 +75,14 @@ const READ_TOOLS = {
     description: 'Freie Termin-Slots für eine Terminart und ein Mitglied (liefert start, end, instructorIds für book_appointment).',
     input_schema: { type: 'object', properties: { bookableAppointmentId: { type: 'string' }, memberId: { type: 'string' }, days: { type: 'integer', description: 'Zeitraum in Tagen, Standard 28' } }, required: ['bookableAppointmentId', 'memberId'] },
   },
+  get_conversation: {
+    description: 'Liest einen einzelnen Postfach-Vorgang (Betreff, Status, Verlauf), um ihn zu beantworten oder zusammenzufassen. Braucht memberId und vorgangId (aus list_conversations).',
+    input_schema: { type: 'object', properties: { memberId: { type: 'string' }, vorgangId: { type: 'string' } }, required: ['memberId', 'vorgangId'] },
+  },
+  list_todos: {
+    description: 'Liste der internen Team-Aufgaben (mit id, Text, Status) – etwa um eine Aufgabe als erledigt zu markieren oder zu löschen.',
+    input_schema: { type: 'object', properties: {} },
+  },
 };
 const WRITE_TOOLS = {
   send_message: {
@@ -104,6 +112,38 @@ const WRITE_TOOLS = {
   create_todo: {
     description: 'Legt eine interne Aufgabe fürs Team an (To-do).',
     input_schema: { type: 'object', properties: { text: { type: 'string' }, assignee: { type: 'string', description: 'optional: Mitarbeiter-id' }, due: { type: 'string', description: 'optional: Datum JJJJ-MM-TT' } }, required: ['text'] },
+  },
+  reply_conversation: {
+    description: 'Antwortet dem Mitglied INNERHALB eines bestehenden Postfach-Vorgangs (kanalbewusst: Portal/E-Mail/WhatsApp). Nimm das, wenn eine vorhandene Anfrage im Postfach beantwortet werden soll (nicht send_message).',
+    input_schema: { type: 'object', properties: { memberId: { type: 'string' }, vorgangId: { type: 'string' }, memberName: { type: 'string' }, subject: { type: 'string' }, text: { type: 'string' } }, required: ['memberId', 'vorgangId', 'text'] },
+  },
+  close_conversation: {
+    description: 'Schließt/archiviert einen Postfach-Vorgang (Status „abgeschlossen"). Ein echtes Löschen von Vorgängen gibt es bewusst nicht – Schließen ist der Weg, eine erledigte Anfrage aus der offenen Liste zu nehmen.',
+    input_schema: { type: 'object', properties: { memberId: { type: 'string' }, vorgangId: { type: 'string' }, memberName: { type: 'string' }, subject: { type: 'string' } }, required: ['memberId', 'vorgangId'] },
+  },
+  reopen_conversation: {
+    description: 'Öffnet einen abgeschlossenen Vorgang wieder.',
+    input_schema: { type: 'object', properties: { memberId: { type: 'string' }, vorgangId: { type: 'string' }, memberName: { type: 'string' }, subject: { type: 'string' } }, required: ['memberId', 'vorgangId'] },
+  },
+  set_conversation_status: {
+    description: 'Setzt den Status eines Vorgangs: neu, bearbeitung, wartet oder abgeschlossen.',
+    input_schema: { type: 'object', properties: { memberId: { type: 'string' }, vorgangId: { type: 'string' }, value: { type: 'string', enum: ['neu', 'bearbeitung', 'wartet', 'abgeschlossen'] }, subject: { type: 'string' } }, required: ['memberId', 'vorgangId', 'value'] },
+  },
+  set_conversation_priority: {
+    description: 'Setzt die Priorität eines Vorgangs: hoch, mittel oder niedrig.',
+    input_schema: { type: 'object', properties: { memberId: { type: 'string' }, vorgangId: { type: 'string' }, value: { type: 'string', enum: ['hoch', 'mittel', 'niedrig'] }, subject: { type: 'string' } }, required: ['memberId', 'vorgangId', 'value'] },
+  },
+  conversation_note: {
+    description: 'Fügt einem Vorgang eine interne Notiz hinzu (nur fürs Team sichtbar, geht NICHT ans Mitglied).',
+    input_schema: { type: 'object', properties: { memberId: { type: 'string' }, vorgangId: { type: 'string' }, text: { type: 'string' }, subject: { type: 'string' } }, required: ['memberId', 'vorgangId', 'text'] },
+  },
+  complete_todo: {
+    description: 'Markiert eine interne Aufgabe als erledigt. Braucht die todoId (aus list_todos).',
+    input_schema: { type: 'object', properties: { todoId: { type: 'string' }, text: { type: 'string' } }, required: ['todoId'] },
+  },
+  delete_todo: {
+    description: 'Löscht eine interne Aufgabe. Braucht die todoId (aus list_todos).',
+    input_schema: { type: 'object', properties: { todoId: { type: 'string' }, text: { type: 'string' } }, required: ['todoId'] },
   },
 };
 function toolSpecs() {
@@ -161,6 +201,21 @@ async function executeRead(req, name, input) {
     const r = await callApi(req, 'GET', '/api/team/appointments?slotsFor=' + q(input.bookableAppointmentId) + '&memberId=' + q(input.memberId) + '&days=' + q(input.days || 28));
     return { slots: (r.json.slots || []).slice(0, 20) };
   }
+  if (name === 'get_conversation') {
+    const r = await callApi(req, 'GET', '/api/team/conversation?m=' + q(input.memberId) + '&id=' + q(input.vorgangId));
+    if (!r.json.ok) return { error: 'not_found' };
+    const c = r.json.conversation || {};
+    return { conversation: {
+      subject: c.subject, status: c.teamStatus, priority: c.priority,
+      member: (c.member && c.member.name) || null,
+      messages: (c.messages || []).slice(-8).map(function (mm) { return { from: mm.from, text: String(mm.text || '').slice(0, 400) }; }),
+      notes: (c.notes || []).slice(-4).map(function (nn) { return { author: nn.author, text: String(nn.text || '').slice(0, 300) }; }),
+    } };
+  }
+  if (name === 'list_todos') {
+    const r = await callApi(req, 'GET', '/api/team/todos');
+    return { todos: (r.json.todos || []).slice(0, 50) };
+  }
   return { error: 'unknown_read_tool' };
 }
 
@@ -185,6 +240,14 @@ async function previewWrite(req, name, args) {
   }
   if (name === 'cancel_appointment') return 'Termin absagen' + (args.memberName ? ' für ' + args.memberName : '') + ': ' + (args.summary || ('Buchung ' + args.bookingId));
   if (name === 'create_todo') return 'Neue interne Aufgabe: „' + String(args.text || '') + '"' + (args.due ? ' (bis ' + args.due + ')' : '');
+  if (name === 'reply_conversation') return 'Antwort im Vorgang' + (args.subject ? ' „' + args.subject + '"' : '') + (args.memberName ? ' an ' + args.memberName : '') + ':\n\n„' + String(args.text || '') + '"';
+  if (name === 'close_conversation') return 'Vorgang abschließen' + (args.subject ? ': „' + args.subject + '"' : '') + (args.memberName ? ' (' + args.memberName + ')' : '');
+  if (name === 'reopen_conversation') return 'Vorgang wieder öffnen' + (args.subject ? ': „' + args.subject + '"' : '');
+  if (name === 'set_conversation_status') return 'Status setzen auf „' + args.value + '"' + (args.subject ? ' – Vorgang „' + args.subject + '"' : '');
+  if (name === 'set_conversation_priority') return 'Priorität setzen auf „' + args.value + '"' + (args.subject ? ' – Vorgang „' + args.subject + '"' : '');
+  if (name === 'conversation_note') return 'Interne Notiz zum Vorgang' + (args.subject ? ' „' + args.subject + '"' : '') + ' (nur fürs Team):\n\n„' + String(args.text || '') + '"';
+  if (name === 'complete_todo') return 'Aufgabe als erledigt markieren' + (args.text ? ': „' + args.text + '"' : '');
+  if (name === 'delete_todo') return 'Aufgabe löschen' + (args.text ? ': „' + args.text + '"' : '');
   return 'Aktion: ' + name;
 }
 function fmtWhen(iso) {
@@ -240,6 +303,37 @@ async function executeWrite(req, name, args) {
       if (r.json && r.json.ok) return { ok: true, kind: 'done', text: 'Aufgabe angelegt: „' + String(args.text || '') + '".' };
       return { ok: false, kind: 'done', text: 'Aufgabe konnte nicht angelegt werden.' };
     }
+    // ── Postfach-Vorgänge (Anfragen) ──
+    if (name === 'reply_conversation' || name === 'close_conversation' || name === 'reopen_conversation' || name === 'set_conversation_status' || name === 'set_conversation_priority' || name === 'conversation_note') {
+      const map = { reply_conversation: 'reply', close_conversation: 'close', reopen_conversation: 'reopen', set_conversation_status: 'status', set_conversation_priority: 'priority', conversation_note: 'note' };
+      const payload = { m: args.memberId, id: args.vorgangId, action: map[name] };
+      if (name === 'reply_conversation') payload.text = args.text;
+      if (name === 'conversation_note') payload.text = args.text;
+      if (name === 'set_conversation_status' || name === 'set_conversation_priority') payload.value = args.value;
+      const r = await callApi(req, 'POST', '/api/team/conversation', payload);
+      if (r.json && r.json.ok) {
+        const done = {
+          reply_conversation: 'Antwort im Vorgang gesendet' + (args.memberName ? ' an ' + args.memberName : '') + '.',
+          close_conversation: 'Vorgang abgeschlossen.',
+          reopen_conversation: 'Vorgang wieder geöffnet.',
+          set_conversation_status: 'Status auf „' + args.value + '" gesetzt.',
+          set_conversation_priority: 'Priorität auf „' + args.value + '" gesetzt.',
+          conversation_note: 'Interne Notiz zum Vorgang gespeichert.',
+        };
+        return { ok: true, kind: 'done', text: done[name] };
+      }
+      return { ok: false, kind: 'done', text: (r.json && r.json.message) || 'Aktion am Vorgang fehlgeschlagen.' };
+    }
+    if (name === 'complete_todo') {
+      const r = await callApi(req, 'POST', '/api/team/todos', { action: 'update', id: args.todoId, done: true });
+      if (r.json && r.json.ok) return { ok: true, kind: 'done', text: 'Aufgabe als erledigt markiert.' };
+      return { ok: false, kind: 'done', text: 'Aufgabe konnte nicht aktualisiert werden.' };
+    }
+    if (name === 'delete_todo') {
+      const r = await callApi(req, 'POST', '/api/team/todos', { action: 'delete', id: args.todoId });
+      if (r.json && r.json.ok) return { ok: true, kind: 'done', text: 'Aufgabe gelöscht.' };
+      return { ok: false, kind: 'done', text: 'Aufgabe konnte nicht gelöscht werden.' };
+    }
   } catch (e) { return { ok: false, kind: 'done', text: 'Aktion fehlgeschlagen.' }; }
   return { ok: false, kind: 'done', text: 'Unbekannte Aktion.' };
 }
@@ -255,7 +349,9 @@ function buildSystem(sess) {
     'Nutze die bereitgestellten Werkzeuge, statt zu raten. Suche Mitglieder immer erst mit find_members und arbeite mit der zurückgegebenen id.',
     'Aktionen, die nach außen wirken (Nachricht senden, Rundnachricht, Termin buchen/absagen, Tags, Notizen), rufst du einfach als Werkzeug auf – das System zeigt sie dem Menschen zuerst als Vorschau und führt sie erst nach dessen Bestätigung aus. Erfinde keine Bestätigung und behaupte nicht, etwas sei schon erledigt.',
     'Bei einer Aktion für viele Empfänger bevorzuge broadcast mit passendem Segment statt vieler Einzelnachrichten.',
-    'Wenn eine Anfrage unklar ist (welches Mitglied? welcher Text?), frag kurz nach, statt zu raten.',
+    'Postfach-Vorgänge: Um eine Anfrage zu beantworten, nutze reply_conversation (nicht send_message) – das antwortet im richtigen Vorgang und Kanal. Zum Erledigen einer Anfrage close_conversation (Schließen/Archivieren). Ein echtes Löschen von Vorgängen gibt es nicht; wenn jemand „löschen" sagt, kläre kurz und schließe den Vorgang. Vorgänge findest du über list_conversations (liefert memberId und id=vorgangId).',
+    'Aufgaben: Zum Abhaken oder Löschen erst list_todos aufrufen, um die richtige todoId zu bekommen.',
+    'Wenn eine Anfrage unklar ist (welches Mitglied? welcher Vorgang? welcher Text?), frag kurz nach, statt zu raten.',
     'Gib niemals Bank-/IBAN-Daten aus. Behandle Mitgliederdaten vertraulich.',
     'Formuliere Nachrichten an Mitglieder freundlich, motivierend und im Fit-Inn-Ton (per "du"), sofern der Nutzer keinen eigenen Text vorgibt.',
   ].join('\n');
