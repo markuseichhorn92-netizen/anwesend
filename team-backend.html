@@ -110,6 +110,7 @@ var TEAL='#0a4958', ORANGE='#E08C53';
 var TAG_PRESETS=['VIP','Stammkunde','Beschwerde','Risiko','Beobachten','Interessent'];
 var S={ token:null, role:null, meName:null, screen:'inbox', convs:[], counts:{}, selKey:null, sel:null,
   asMsgs:[], asBusy:false, asInput:'', asCid:0,
+  wbFrame:null, wbOffers:[], wbLoaded:false, wbSaving:false,
         filter:'open', search:'', loading:false, err:'', draft:'', note:'', replyChannel:'email',
         // Login: Admin (Passwort) <-> Trainer (E-Mail-Code). Additiv, bricht den Passwort-Login nicht.
         loginMode:'admin', liEmail:'', liChallenge:'', liCode:'', liErr:'', liBusy:false, liChannelUsed:'email',
@@ -256,7 +257,7 @@ function logout(){ saveToken(null); saveRole(null,''); S.convs=[]; S.sel=null; S
 // Angestellte (Trainer-Login) sehen nur das Tagesgeschäft. Diese Bereiche
 // bleiben dem Admin (Passwort-Login) vorbehalten. Die eigentliche Sperre
 // sitzt serverseitig – das hier steuert nur, was in der Oberfläche erscheint.
-var ADMIN_ONLY_SCREENS={ stats:1, msg:1, leads:1, assist:1 };
+var ADMIN_ONLY_SCREENS={ stats:1, msg:1, leads:1, assist:1, wb:1 };
 function isAdmin(){ return S.role==='admin'; }
 function canSee(k){ return !ADMIN_ONLY_SCREENS[k] || isAdmin(); }
 function meInitials(){ var n=String(S.meName||'').trim(); if(!n) return 'FI'; var p=n.split(/\s+/).filter(Boolean); var i=((p[0]&&p[0][0])||'')+((p[1]&&p[1][0])||''); return (i||n.slice(0,2)||'FI').toUpperCase(); }
@@ -1193,7 +1194,8 @@ var IC={
   send:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4z"/></svg>',
   burger:'<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#15171B" stroke-width="2.2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>',
   dots:'<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#0a4958" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg>',
-  assist:'<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.7 4.3L18 9l-4.3 1.7L12 15l-1.7-4.3L6 9l4.3-1.7z"/><path d="M18.5 14.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/></svg>'
+  assist:'<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.7 4.3L18 9l-4.3 1.7L12 15l-1.7-4.3L6 9l4.3-1.7z"/><path d="M18.5 14.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/></svg>',
+  wb:'<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 8v4l3 2"/></svg>'
 };
 
 function renderShell(content, title, sub){
@@ -1223,6 +1225,7 @@ function renderShell(content, title, sub){
       (canSee('stats')?navItem('stats','Statistiken',IC.stats):'')+
       (canSee('msg')?navItem('msg','Nachrichten',IC.msg):'')+
       (canSee('leads')?navItem('leads','Leads',IC.leads):'')+
+      (canSee('wb')?navItem('wb','Rückholung',IC.wb):'')+
       navItem('todo','Aufgaben',IC.todo)+
       navItem('schicht','Schichtplan',IC.shift)+
     '</nav>'+
@@ -1262,7 +1265,7 @@ function renderShell(content, title, sub){
     {k:'dash',l:'Übersicht',ic:IC.dash,on:sc==='dash'},
     {k:'inbox',l:'Posteingang',ic:IC.inbox,on:(sc==='inbox'||sc==='thread'),badge:open},
     {k:'members',l:'Mitglieder',ic:IC.members,on:(sc==='members'||sc==='profile')},
-    {k:'__more',l:'Mehr',ic:IC.dots,on:(['appts','trial','help','stats','msg','leads','todo','schicht','assist'].indexOf(sc)>=0)}
+    {k:'__more',l:'Mehr',ic:IC.dots,on:(['appts','trial','help','stats','msg','leads','todo','schicht','assist','wb'].indexOf(sc)>=0)}
   ];
   var bnav=el('<nav class="bottomnav" style="align-items:stretch;padding:6px 8px"></nav>');
   bnav.innerHTML=bnDefs.map(function(it){ var c=it.on?'#0a4958':'#9aa6aa';
@@ -3667,11 +3670,69 @@ function assistCancel(id){
   S.asMsgs.push({role:'assistant',text:'Okay, das lasse ich. Sag mir, wenn ich etwas anpassen soll.'});
   render(); assistScrollEnd();
 }
+// ---------- Rückholung: Angebots-Rahmen für die KI (nur Admin) ----------
+function loadWb(){
+  S.wbLoaded=true;
+  tapi('/api/team/retention').then(function(r){ if(r&&r.ok){ S.wbFrame=r.frame||null; S.wbOffers=r.offers||[]; } render(); }).catch(function(){ render(); });
+}
+function wbSave(){
+  if(S.wbSaving) return;
+  var g=function(id){ var e=document.getElementById(id); return e; };
+  var iv=function(id){ var e=g(id); return e?(parseInt(e.value,10)||0):0; };
+  var frame={
+    active: g('wb_active')?g('wb_active').checked:false,
+    autopilot: g('wb_autopilot')?g('wb_autopilot').checked:false,
+    maxDiscountPct: iv('wb_disc'), maxDiscountWeeks: iv('wb_discwk'),
+    maxFreeWeeks: iv('wb_free'), maxPauseWeeks: iv('wb_pause'),
+    waiveActivation: g('wb_waive')?g('wb_waive').checked:false,
+    notes: g('wb_notes')?g('wb_notes').value:''
+  };
+  S.wbSaving=true; render();
+  tapi('/api/team/retention',{method:'POST',body:{action:'set-frame',frame:frame}}).then(function(r){ S.wbSaving=false; if(r&&r.ok){ S.wbFrame=r.frame; } render(); }).catch(function(){ S.wbSaving=false; render(); });
+}
+function wbNode(){
+  var node=el('<div class="scrl" style="flex:1;min-height:0;overflow-y:auto;padding:24px 28px 44px"></div>');
+  if(!S.wbFrame){ node.innerHTML='<div style="display:flex;align-items:center;justify-content:center;padding:70px"><span class="spin"></span></div>'; return node; }
+  var f=S.wbFrame;
+  var CARD='background:#fff;border-radius:16px;box-shadow:0 10px 26px rgba(4,33,40,.07);padding:18px 20px;margin-bottom:16px';
+  var lbl='font-size:12.5px;font-weight:800;color:#15171B';
+  var hint='font-size:11.5px;color:#8a929a;font-weight:600;margin-top:2px';
+  var inp='width:90px;padding:10px 12px;border:1.5px solid #dce3e4;border-radius:10px;font-size:15px;font-weight:800;color:#15171B;background:#fbfcfc;text-align:center';
+  var toggle=function(id,checked){ return '<label style="position:relative;display:inline-block;width:46px;height:27px;flex-shrink:0"><input type="checkbox" id="'+id+'"'+(checked?' checked':'')+' style="opacity:0;width:0;height:0"><span style="position:absolute;inset:0;background:'+(checked?TEAL:'#cfd8da')+';border-radius:20px;transition:.2s"></span><span style="position:absolute;top:3px;left:'+(checked?'22px':'3px')+';width:21px;height:21px;background:#fff;border-radius:50%;transition:.2s;box-shadow:0 1px 3px rgba(0,0,0,.2)"></span></label>'; };
+  var row=function(labelTxt,hintTxt,control){ return '<div style="display:flex;align-items:center;justify-content:space-between;gap:14px;padding:12px 0;border-top:1px solid #f0f3f3"><div style="min-width:0"><div style="'+lbl+'">'+labelTxt+'</div><div style="'+hint+'">'+hintTxt+'</div></div>'+control+'</div>'; };
+
+  var intro='<div style="'+CARD+'"><div style="display:flex;align-items:center;gap:12px"><div style="width:44px;height:44px;border-radius:13px;background:linear-gradient(150deg,#0e6072,#063540);display:flex;align-items:center;justify-content:center;color:#fff">'+IC.wb+'</div><div><div style="font-size:16px;font-weight:900;color:#15171B">Rückhol-Rahmen</div><div style="font-size:12.5px;color:#6b7780;font-weight:600;margin-top:2px">Deine Obergrenzen. Die KI verhandelt nur innerhalb – nie darüber.</div></div></div></div>';
+
+  var settings='<div style="'+CARD+'">'+
+    '<div style="display:flex;align-items:center;justify-content:space-between;gap:14px;padding-bottom:4px"><div><div style="'+lbl+'">Rückholung aktiv</div><div style="'+hint+'">Solange aus, darf die KI keine Angebote machen.</div></div>'+toggle('wb_active',f.active)+'</div>'+
+    row('Auto-Pilot','KI antwortet im Rahmen selbst, eskaliert bei Deal/Überschreitung.',toggle('wb_autopilot',f.autopilot))+
+    row('Max. Rabatt','in Prozent','<input type="number" id="wb_disc" min="0" max="100" value="'+esc(String(f.maxDiscountPct))+'" style="'+inp+'">')+
+    row('… für max. Wochen','Dauer des Rabatts','<input type="number" id="wb_discwk" min="0" value="'+esc(String(f.maxDiscountWeeks))+'" style="'+inp+'">')+
+    row('Max. gratis Wochen','freie Trainingswochen','<input type="number" id="wb_free" min="0" value="'+esc(String(f.maxFreeWeeks))+'" style="'+inp+'">')+
+    row('Max. Beitragspause','Wochen, statt Kündigung','<input type="number" id="wb_pause" min="0" value="'+esc(String(f.maxPauseWeeks))+'" style="'+inp+'">')+
+    row('Aktivierungsgebühr erlassen','39 € dürfen erlassen werden',toggle('wb_waive',f.waiveActivation))+
+    '<div style="padding-top:14px;border-top:1px solid #f0f3f3"><div style="'+lbl+';margin-bottom:8px">Leitplanken für die KI (optional)</div><textarea id="wb_notes" rows="3" placeholder="z. B. Rabatt nur bei Kündigung; nicht für Flex-Tarif; freundlich bleiben." style="width:100%;padding:12px 14px;border:1.5px solid #dce3e4;border-radius:12px;font-size:14px;background:#fbfcfc;resize:vertical;font-family:inherit;color:#15171B">'+esc(f.notes||'')+'</textarea></div>'+
+    '<button data-wbsave="1"'+(S.wbSaving?' disabled':'')+' style="margin-top:16px;width:100%;border:none;border-radius:12px;background:'+TEAL+';color:#fff;font-weight:800;font-size:14.5px;padding:13px;cursor:pointer">'+(S.wbSaving?'Speichert …':'Rahmen speichern')+'</button>'+
+  '</div>';
+
+  var offers=S.wbOffers||[];
+  var stColor={sent:'#C77A2E',accepted:'#1d7a3e',declined:'#8a929a',expired:'#8a929a'};
+  var stLabel={sent:'Verschickt',accepted:'Angenommen',declined:'Abgelehnt',expired:'Abgelaufen'};
+  var offHtml=offers.length? offers.map(function(o){
+    var c=stColor[o.status]||'#8a929a';
+    return '<div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-top:1px solid #f0f3f3"><div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:800;color:#15171B;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(o.memberName||('Mitglied '+o.memberId))+'</div><div style="font-size:12px;color:#6b7780;font-weight:600;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(o.summary||'')+'</div></div><span style="font-size:11px;font-weight:800;color:'+c+';background:'+c+'18;border-radius:20px;padding:4px 10px;flex-shrink:0">'+(stLabel[o.status]||o.status)+'</span></div>';
+  }).join('') : '<div style="font-size:13px;color:#8a929a;font-weight:600;padding:16px 0">Noch keine Angebote verschickt. Bitte den Assistenten: „Mach Max Müller ein Rückhol-Angebot".</div>';
+  var offersCard='<div style="'+CARD+'"><div style="font-size:13px;font-weight:900;color:#15171B;letter-spacing:-.2px">Angebote</div>'+offHtml+'</div>';
+
+  node.innerHTML='<div style="max-width:640px">'+intro+settings+offersCard+'</div>';
+  setTimeout(function(){ var b=node.querySelector('[data-wbsave]'); if(b) b.onclick=wbSave; },0);
+  return node;
+}
 function render(){
   if(!S.token){ renderLogin(); return; }
   if(!canSee(S.screen)) S.screen='dash';   // kein Admin-Bereich für Angestellte (Sicherheitsnetz)
-  var titles={dash:'Übersicht',inbox:'Posteingang',members:'Mitglieder',appts:'Termine',trial:'Probetraining',help:'Hilfe-Artikel',stats:'Statistiken',msg:'Nachrichten',leads:'Leads',todo:'Aufgaben',schicht:'Schichtplan',assist:'Assistent'};
-  var subs={dash:'Dein Studio auf einen Blick',inbox:'Alle Vorgänge & Anfragen',members:'Mitgliederverwaltung',appts:'Anfragen & Buchungen',trial:'Schnell ein Probetraining buchen',help:'Wissensdatenbank verwalten',stats:'Auswertungen & Trends',msg:'Rundnachricht & Direktnachricht',leads:'Interessenten-Pipeline',todo:'Interne Aufgaben fürs Team',schicht:'Dienstplan, Tausch & Verfügbarkeiten',assist:'Sag mir, was zu tun ist – ich bereite es vor, du bestätigst'};
+  var titles={dash:'Übersicht',inbox:'Posteingang',members:'Mitglieder',appts:'Termine',trial:'Probetraining',help:'Hilfe-Artikel',stats:'Statistiken',msg:'Nachrichten',leads:'Leads',todo:'Aufgaben',schicht:'Schichtplan',assist:'Assistent',wb:'Rückholung'};
+  var subs={dash:'Dein Studio auf einen Blick',inbox:'Alle Vorgänge & Anfragen',members:'Mitgliederverwaltung',appts:'Anfragen & Buchungen',trial:'Schnell ein Probetraining buchen',help:'Wissensdatenbank verwalten',stats:'Auswertungen & Trends',msg:'Rundnachricht & Direktnachricht',leads:'Interessenten-Pipeline',todo:'Interne Aufgaben fürs Team',schicht:'Dienstplan, Tausch & Verfügbarkeiten',assist:'Sag mir, was zu tun ist – ich bereite es vor, du bestätigst',wb:'Angebots-Rahmen für die KI-Rückholung'};
   var content;
   if(S.screen==='inbox') content=inboxNode();
   else if(S.screen==='dash') content=dashNode();
@@ -3685,6 +3746,7 @@ function render(){
   else if(S.screen==='todo') content=todoNode();
   else if(S.screen==='schicht') content=schichtNode();
   else if(S.screen==='assist') content=assistNode();
+  else if(S.screen==='wb') content=wbNode();
   else content=placeholderNode(titles[S.screen]||'');
   renderShell(content, titles[S.screen]||'', subs[S.screen]||'');
 }
@@ -3701,6 +3763,7 @@ function goScreen(k){
   if(k==='leads'){ if(!S.leadsLoaded){ loadLeads(); return; } }
   if(k==='todo'){ if(!S.todosLoaded){ loadTodos(); return; } }
   if(k==='schicht'){ if(!S.shLoaded){ loadShifts(); return; } }
+  if(k==='wb'){ if(!S.wbLoaded){ loadWb(); return; } }
   render();
 }
 

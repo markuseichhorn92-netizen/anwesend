@@ -20,6 +20,7 @@
 const TA = require('../../lib/teamAuth');
 const M = require('../../lib/members');
 const AI = require('../../lib/ai');
+const R = require('../../lib/retention');
 
 // ── interner Aufruf der bestehenden Team-Endpunkte (Token weiterreichen) ──
 function apiBase(req) {
@@ -83,6 +84,10 @@ const READ_TOOLS = {
     description: 'Liste der internen Team-Aufgaben (mit id, Text, Status) – etwa um eine Aufgabe als erledigt zu markieren oder zu löschen.',
     input_schema: { type: 'object', properties: {} },
   },
+  get_winback_frame: {
+    description: 'Zeigt den aktuellen Rückhol-Rahmen: erlaubte Höchstwerte für Angebote (Rabatt %, freie Wochen, Aktivierungsgebühr-Erlass, Pause) und ob die Rückholung aktiv ist.',
+    input_schema: { type: 'object', properties: {} },
+  },
 };
 const WRITE_TOOLS = {
   send_message: {
@@ -144,6 +149,10 @@ const WRITE_TOOLS = {
   delete_todo: {
     description: 'Löscht eine interne Aufgabe. Braucht die todoId (aus list_todos).',
     input_schema: { type: 'object', properties: { todoId: { type: 'string' }, text: { type: 'string' } }, required: ['todoId'] },
+  },
+  send_winback_offer: {
+    description: 'Erstellt ein rechtssicheres Rückhol-Angebot für ein Mitglied und schickt ihm eine Nachricht mit persönlichem Annahme-Link. Die Werte MÜSSEN im Rückhol-Rahmen liegen, sonst wird es abgelehnt. Nimm das, um ein Angebot verbindlich zu machen (nicht send_message).',
+    input_schema: { type: 'object', properties: { memberId: { type: 'string' }, memberName: { type: 'string' }, message: { type: 'string', description: 'persönlicher Anschreibe-/Verhandlungstext' }, discountPct: { type: 'integer' }, discountWeeks: { type: 'integer' }, freeWeeks: { type: 'integer' }, waiveActivation: { type: 'boolean' }, pauseWeeks: { type: 'integer' } }, required: ['memberId'] },
   },
 };
 function toolSpecs() {
@@ -216,6 +225,9 @@ async function executeRead(req, name, input) {
     const r = await callApi(req, 'GET', '/api/team/todos');
     return { todos: (r.json.todos || []).slice(0, 50) };
   }
+  if (name === 'get_winback_frame') {
+    try { return { frame: await R.getFrame() }; } catch (e) { return { frame: null }; }
+  }
   return { error: 'unknown_read_tool' };
 }
 
@@ -248,6 +260,13 @@ async function previewWrite(req, name, args) {
   if (name === 'conversation_note') return 'Interne Notiz zum Vorgang' + (args.subject ? ' „' + args.subject + '"' : '') + ' (nur fürs Team):\n\n„' + String(args.text || '') + '"';
   if (name === 'complete_todo') return 'Aufgabe als erledigt markieren' + (args.text ? ': „' + args.text + '"' : '');
   if (name === 'delete_todo') return 'Aufgabe löschen' + (args.text ? ': „' + args.text + '"' : '');
+  if (name === 'send_winback_offer') {
+    const details = { discountPct: args.discountPct, discountWeeks: args.discountWeeks, freeWeeks: args.freeWeeks, waiveActivation: args.waiveActivation, pauseWeeks: args.pauseWeeks };
+    let within = '';
+    try { const f = await R.getFrame(); const chk = R.validateOffer(details, f); within = chk.ok ? '\n\n✓ Im Rahmen.' : '\n\n⚠️ ÜBER DEM RAHMEN: ' + chk.violations.join(' '); } catch (e) {}
+    const desc = R.describeOffer(details);
+    return 'Rückhol-Angebot an ' + who + ': ' + (desc || '(kein Inhalt)') + '\nMit persönlichem, rechtssicherem Annahme-Link.' + (args.message ? '\n\nAnschreiben: „' + String(args.message) + '"' : '') + within;
+  }
   return 'Aktion: ' + name;
 }
 function fmtWhen(iso) {
@@ -334,11 +353,33 @@ async function executeWrite(req, name, args) {
       if (r.json && r.json.ok) return { ok: true, kind: 'done', text: 'Aufgabe gelöscht.' };
       return { ok: false, kind: 'done', text: 'Aufgabe konnte nicht gelöscht werden.' };
     }
+    if (name === 'send_winback_offer') {
+      const r = await callApi(req, 'POST', '/api/team/retention', { action: 'create-offer', memberId: args.memberId, memberName: args.memberName || '', message: args.message || '', details: { discountPct: args.discountPct, discountWeeks: args.discountWeeks, freeWeeks: args.freeWeeks, waiveActivation: args.waiveActivation, pauseWeeks: args.pauseWeeks } });
+      if (r.json && r.json.ok) return { ok: true, kind: 'done', text: 'Angebot an ' + who + ' verschickt (' + ((r.json.offer && r.json.offer.summary) || '') + '). Das Mitglied kann es über den Annahme-Link verbindlich annehmen; bei Annahme entsteht automatisch eine Aufgabe „in Magicline umsetzen".' };
+      if (r.json && r.json.error === 'out_of_frame') return { ok: false, kind: 'done', text: 'Angebot NICHT verschickt – es liegt über dem Rahmen: ' + ((r.json.violations || []).join(' ')) };
+      return { ok: false, kind: 'done', text: (r.json && r.json.message) || 'Angebot konnte nicht erstellt werden.' };
+    }
   } catch (e) { return { ok: false, kind: 'done', text: 'Aktion fehlgeschlagen.' }; }
   return { ok: false, kind: 'done', text: 'Unbekannte Aktion.' };
 }
 
-function buildSystem(sess) {
+function frameLines(frame) {
+  if (!frame || !frame.active) {
+    return ['Rückholung/Angebote: Der Angebots-Rahmen ist NICHT aktiviert. Du darfst KEINE Rabatte oder Angebote zusagen. Wenn jemand ein Rückhol-Angebot will, sag, dass der Rahmen erst in den Einstellungen (Rückholung) aktiviert werden muss.'];
+  }
+  const parts = [];
+  if (frame.maxDiscountPct) parts.push('Rabatt bis ' + frame.maxDiscountPct + '%' + (frame.maxDiscountWeeks ? ' für max ' + frame.maxDiscountWeeks + ' Wochen' : ''));
+  if (frame.maxFreeWeeks) parts.push('bis ' + frame.maxFreeWeeks + ' Wochen gratis');
+  if (frame.waiveActivation) parts.push('Aktivierungsgebühr (39 €) darf erlassen werden');
+  if (frame.maxPauseWeeks) parts.push('Beitragspause bis ' + frame.maxPauseWeeks + ' Wochen');
+  return [
+    'RÜCKHOL-RAHMEN (HARTE OBERGRENZE – NIE überschreiten): ' + (parts.length ? parts.join('; ') : 'keine Hebel freigegeben') + '.',
+    (frame.notes ? 'Zusätzliche Leitplanken des Inhabers: ' + frame.notes : ''),
+    'Verhandle sparsam: Starte mit dem kleinsten sinnvollen Angebot und erhöhe nur, wenn nötig – nie über den Rahmen. Ein formelles Angebot machst du mit send_winback_offer (erzeugt einen rechtssicheren Annahme-Link). Will der Kunde MEHR als der Rahmen erlaubt oder kommt ein Abschluss zustande, führe es NICHT selbst aus – fasse zusammen und übergib an den Menschen.',
+    (frame.autopilot ? 'Auto-Pilot ist AN: Der Inhaber erlaubt Antworten innerhalb des Rahmens.' : 'Auto-Pilot ist AUS: Jede Nachricht wird vom Menschen freigegeben.'),
+  ].filter(Boolean);
+}
+function buildSystem(sess, frame) {
   let today = '';
   try { today = new Intl.DateTimeFormat('de-DE', { dateStyle: 'full', timeZone: 'Europe/Berlin' }).format(new Date()); } catch (e) {}
   return [
@@ -354,12 +395,13 @@ function buildSystem(sess) {
     'Wenn eine Anfrage unklar ist (welches Mitglied? welcher Vorgang? welcher Text?), frag kurz nach, statt zu raten.',
     'Gib niemals Bank-/IBAN-Daten aus. Behandle Mitgliederdaten vertraulich.',
     'Formuliere Nachrichten an Mitglieder freundlich, motivierend und im Fit-Inn-Ton (per "du"), sofern der Nutzer keinen eigenen Text vorgibt.',
-  ].join('\n');
+  ].concat(frameLines(frame)).join('\n');
 }
 
 // ── Tool-Schleife ──
 async function runLoop(req, sess, msgs) {
-  const system = buildSystem(sess);
+  let frame = null; try { frame = await R.getFrame(); } catch (e) {}
+  const system = buildSystem(sess, frame);
   const convo = msgs.slice();
   for (let step = 0; step < 6; step++) {
     const r = await AI.messagesRaw({ system: system, messages: convo, tools: toolSpecs(), maxTokens: 1300 });
