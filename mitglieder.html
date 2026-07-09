@@ -2609,10 +2609,26 @@
       var day=pfDayLabel(mm.at);
       if(day&&day!==lastDay){ lastDay=day; out+='<div style="text-align:center;margin:16px 0 4px"><span style="font-size:11px;font-weight:800;color:var(--text-soft);background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:4px 12px">'+esc(day)+'</span></div>'; }
       var t=pfClock(mm.at);
-      if(mm.from==='system'){ out+='<div style="text-align:center;margin:12px 0"><span style="font-size:12px;color:var(--text-soft);background:var(--surface);border-radius:20px;padding:6px 12px;line-height:1.4">'+esc(mm.text)+'</span></div>'; return; }
+      if(mm.from==='system'){ out+='<div style="text-align:center;margin:12px 0"><span style="font-size:12px;color:var(--text-soft);background:var(--surface);border-radius:20px;padding:6px 12px;line-height:1.4">'+linkifyMsg(mm.text)+'</span></div>'; return; }
       if(mm.from==='member'){ out+='<div style="display:flex;justify-content:flex-end;margin-top:10px"><div style="max-width:84%"><div style="background:'+TEALBG+';color:#fff;border-radius:16px 16px 4px 16px;padding:11px 14px;font-size:14.5px;line-height:1.5;white-space:pre-wrap;box-shadow:0 3px 10px rgba(10,73,88,.18)">'+esc(mm.text)+'</div><div style="font-size:10.5px;color:var(--text-soft);margin-top:4px;text-align:right">'+t+'</div></div></div>'; return; }
-      out+='<div style="display:flex;gap:9px;margin-top:10px;align-items:flex-end">'+FI+'<div style="max-width:84%"><div style="background:var(--surface);border-radius:16px 16px 16px 4px;padding:11px 14px;font-size:14.5px;line-height:1.5;color:var(--text);white-space:pre-wrap;box-shadow:0 3px 10px rgba(4,33,40,.07)">'+esc(mm.text)+'</div>'+(mm.needsAction?'<button data-act="pfConfirm" data-arg="'+esc(v.id)+'" style="margin-top:8px;display:inline-flex;align-items:center;gap:7px;border:none;border-radius:10px;background:'+TEALBG+';color:#fff;font-size:13px;font-weight:700;padding:9px 14px;cursor:pointer">Bestätigen</button>':'')+'<div style="font-size:10.5px;color:var(--text-soft);margin-top:4px">Fit-Inn Team · '+t+'</div></div></div>';
+      out+='<div style="display:flex;gap:9px;margin-top:10px;align-items:flex-end">'+FI+'<div style="max-width:84%"><div style="background:var(--surface);border-radius:16px 16px 16px 4px;padding:11px 14px;font-size:14.5px;line-height:1.5;color:var(--text);white-space:pre-wrap;box-shadow:0 3px 10px rgba(4,33,40,.07)">'+linkifyMsg(mm.text)+'</div>'+(mm.needsAction?'<button data-act="pfConfirm" data-arg="'+esc(v.id)+'" style="margin-top:8px;display:inline-flex;align-items:center;gap:7px;border:none;border-radius:10px;background:'+TEALBG+';color:#fff;font-size:13px;font-weight:700;padding:9px 14px;cursor:pointer">Bestätigen</button>':'')+'<div style="font-size:10.5px;color:var(--text-soft);margin-top:4px">Fit-Inn Team · '+t+'</div></div></div>';
     });
+    return out;
+  }
+  // Links in Nachrichten als anklickbare Buttons rendern (Rest bleibt Text, escaped).
+  function linkifyMsg(text){
+    var raw=String(text==null?'':text);
+    var re=/(https?:\/\/[^\s<>"']+)/g, out='', last=0, m;
+    while((m=re.exec(raw))){
+      out+=esc(raw.slice(last,m.index));
+      var u=m[1], tail=''; var mt=u.match(/[),.;:!?]+$/); if(mt){ tail=mt[0]; u=u.slice(0,u.length-tail.length); }
+      var isOffer=/\/angebot(\?|\/|$)/.test(u);
+      var label=isOffer?'🎁 Angebot ansehen':'Link öffnen';
+      var bg=isOffer?'#0f7a4a':'#0a4958';
+      out+='<a href="'+esc(u)+'" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:7px;margin:6px 0;padding:10px 15px;background:'+bg+';color:#fff;border-radius:12px;font-size:13.5px;font-weight:800;text-decoration:none;box-shadow:0 6px 16px -5px rgba(4,33,40,.5)">'+label+'<span style="font-size:12px;opacity:.85">↗</span></a>';
+      out+=esc(tail); last=re.lastIndex;
+    }
+    out+=esc(raw.slice(last));
     return out;
   }
   function pfThreadHtml(){
