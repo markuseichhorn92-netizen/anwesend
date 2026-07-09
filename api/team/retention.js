@@ -49,7 +49,7 @@ module.exports = async function handler(req, res) {
   if (req.method === 'GET') {
     const frame = await R.getFrame();
     const offers = (await R.listOffers(60)).map((o) => pubOffer(req, o));
-    res.statusCode = 200; return res.end(JSON.stringify({ ok: true, frame: frame, offers: offers }));
+    res.statusCode = 200; return res.end(JSON.stringify({ ok: true, frame: frame, offers: offers, stored: R.hasStore }));
   }
 
   if (req.method === 'POST') {
@@ -58,7 +58,7 @@ module.exports = async function handler(req, res) {
 
     if (action === 'set-frame') {
       const frame = await R.setFrame(body.frame || {}, sess.user || '');
-      res.statusCode = 200; return res.end(JSON.stringify({ ok: true, frame: frame }));
+      res.statusCode = 200; return res.end(JSON.stringify({ ok: true, frame: frame, stored: R.hasStore }));
     }
 
     if (action === 'create-offer') {

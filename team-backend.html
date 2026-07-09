@@ -3743,7 +3743,7 @@ function assistCancel(id){
 // ---------- Rückholung: Angebots-Rahmen für die KI (nur Admin) ----------
 function loadWb(){
   S.wbLoaded=true;
-  tapi('/api/team/retention').then(function(r){ if(r&&r.ok){ S.wbFrame=r.frame||null; S.wbOffers=r.offers||[]; } render(); }).catch(function(){ render(); });
+  tapi('/api/team/retention').then(function(r){ if(r&&r.ok){ S.wbFrame=r.frame||null; S.wbOffers=r.offers||[]; S.wbStored=(r.stored!==false); } render(); }).catch(function(){ render(); });
 }
 function wbSave(){
   if(S.wbSaving) return;
@@ -3757,8 +3757,8 @@ function wbSave(){
     waiveActivation: g('wb_waive')?g('wb_waive').checked:false,
     notes: g('wb_notes')?g('wb_notes').value:''
   };
-  S.wbSaving=true; render();
-  tapi('/api/team/retention',{method:'POST',body:{action:'set-frame',frame:frame}}).then(function(r){ S.wbSaving=false; if(r&&r.ok){ S.wbFrame=r.frame; } render(); }).catch(function(){ S.wbSaving=false; render(); });
+  S.wbSaving=true; S.wbSaved=false; render();
+  tapi('/api/team/retention',{method:'POST',body:{action:'set-frame',frame:frame}}).then(function(r){ S.wbSaving=false; if(r&&r.ok){ S.wbFrame=r.frame; S.wbSaved=true; S.wbStored=(r.stored!==false); } else { alert('Speichern fehlgeschlagen.'); } render(); }).catch(function(){ S.wbSaving=false; alert('Verbindung fehlgeschlagen.'); render(); });
 }
 function wbNode(){
   var node=el('<div class="scrl" style="flex:1;min-height:0;overflow-y:auto;padding:24px 28px 44px"></div>');
@@ -3782,7 +3782,8 @@ function wbNode(){
     row('Max. Beitragspause','Wochen, statt Kündigung','<input type="number" id="wb_pause" min="0" value="'+esc(String(f.maxPauseWeeks))+'" style="'+inp+'">')+
     row('Aktivierungsgebühr erlassen','39 € dürfen erlassen werden',toggle('wb_waive',f.waiveActivation))+
     '<div style="padding-top:14px;border-top:1px solid #f0f3f3"><div style="'+lbl+';margin-bottom:8px">Leitplanken für die KI (optional)</div><textarea id="wb_notes" rows="3" placeholder="z. B. Rabatt nur bei Kündigung; nicht für Flex-Tarif; freundlich bleiben." style="width:100%;padding:12px 14px;border:1.5px solid #dce3e4;border-radius:12px;font-size:14px;background:#fbfcfc;resize:vertical;font-family:inherit;color:#15171B">'+esc(f.notes||'')+'</textarea></div>'+
-    '<button data-wbsave="1"'+(S.wbSaving?' disabled':'')+' style="margin-top:16px;width:100%;border:none;border-radius:12px;background:'+TEAL+';color:#fff;font-weight:800;font-size:14.5px;padding:13px;cursor:pointer">'+(S.wbSaving?'Speichert …':'Rahmen speichern')+'</button>'+
+    (S.wbStored===false?'<div style="margin-top:12px;background:#fdecec;border:1px solid #f0c7c1;border-radius:11px;padding:11px 13px;font-size:12.5px;font-weight:700;color:#b5402f;line-height:1.5">⚠️ Der Speicher ist gerade nicht erreichbar – Änderungen bleiben evtl. nicht erhalten. Bitte KV/Upstash in Vercel prüfen.</div>':'')+
+    '<div style="display:flex;align-items:center;gap:12px;margin-top:16px"><button data-wbsave="1"'+(S.wbSaving?' disabled':'')+' style="flex:1;border:none;border-radius:12px;background:'+TEAL+';color:#fff;font-weight:800;font-size:14.5px;padding:13px;cursor:pointer">'+(S.wbSaving?'Speichert …':'Rahmen speichern')+'</button>'+(S.wbSaved?'<span style="font-size:13px;font-weight:800;color:#1d7a3e;white-space:nowrap">✓ Gespeichert</span>':'')+'</div>'+
   '</div>';
 
   var offers=S.wbOffers||[];
@@ -3799,7 +3800,11 @@ function wbNode(){
   var offersCard='<div style="'+CARD+'"><div style="font-size:13px;font-weight:900;color:#15171B;letter-spacing:-.2px;margin-bottom:2px">Angebote &amp; Verlauf</div><div style="font-size:11.5px;color:#8a929a;font-weight:600;margin-bottom:4px">Jedes Angebot: was, von wem, der Text ans Mitglied und – bei Annahme – Zeit + IP als Nachweis. Den kompletten Chatverlauf findest du im Posteingang.</div>'+offHtml+'</div>';
 
   node.innerHTML='<div style="max-width:640px">'+intro+settings+offersCard+'</div>';
-  setTimeout(function(){ var b=node.querySelector('[data-wbsave]'); if(b) b.onclick=wbSave; },0);
+  setTimeout(function(){
+    var b=node.querySelector('[data-wbsave]'); if(b) b.onclick=wbSave;
+    // Sofortige optische Rückmeldung beim Umlegen der Schalter (sonst wirkt es „tot").
+    ['wb_active','wb_autopilot','wb_waive'].forEach(function(id){ var cb=node.querySelector('#'+id); if(cb){ cb.onchange=function(){ S.wbSaved=false; var sp=cb.parentNode.querySelectorAll('span'); if(sp[0]) sp[0].style.background=cb.checked?TEAL:'#cfd8da'; if(sp[1]) sp[1].style.left=cb.checked?'22px':'3px'; }; } });
+  },0);
   return node;
 }
 function render(){
