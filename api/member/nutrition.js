@@ -191,6 +191,24 @@ module.exports = async function handler(req, res) {
     res.statusCode = 200; return res.end(JSON.stringify(Object.assign(await buildState(id, profile), { added: added.map(function (a) { return { name: a.name, kcal: a.kcal }; }) })));
   }
 
+  // ── Eintrag per FOTO (KI-Vision-Schätzung) ──
+  if (action === 'log-photo') {
+    if (!(await M.rateLimit('nutri-photo:' + id, 20, 3600))) { res.statusCode = 200; return res.end(JSON.stringify(Object.assign(await buildState(id, profile), { added: [], message: 'Kurz durchatmen – gleich wieder versuchen.' }))); }
+    const b64 = String(body.base64 || '');
+    if (b64.length < 100) { res.statusCode = 200; return res.end(JSON.stringify(Object.assign(await buildState(id, profile), { added: [], message: 'Kein Foto empfangen.' }))); }
+    const est = await AI.estimateFoodPhoto(b64, body.mediaType);
+    if (!est.ok || !est.items.length) {
+      res.statusCode = 200; return res.end(JSON.stringify(Object.assign(await buildState(id, profile), { added: [], message: est.ok ? 'Auf dem Foto konnte ich kein Lebensmittel erkennen – versuch es mit einer Texteingabe.' : 'FINN kann das Foto gerade nicht auswerten. Versuch es gleich nochmal.' })));
+    }
+    const day = await loadDay(id, date);
+    const meal = mealForHour(hour);
+    const added = est.items.map(function (it) { return { id: newEntryId(), name: it.name, portion: it.portion, kcal: it.kcal, p: it.p, c: it.c, f: it.f, meal: meal, ts: Date.now() }; });
+    day.entries = day.entries.concat(added);
+    await saveDay(id, date, day);
+    try { require('../../lib/handled').record('ai', id, 'nutri-photo'); } catch (e) {}
+    res.statusCode = 200; return res.end(JSON.stringify(Object.assign(await buildState(id, profile), { added: added.map(function (a) { return { name: a.name, kcal: a.kcal }; }) })));
+  }
+
   // ── Schnell-Favorit (feste Nährwerte) ──
   if (action === 'log-manual') {
     if (!(await M.rateLimit('nutri-log:' + id, 40, 3600))) { res.statusCode = 200; return res.end(JSON.stringify(await buildState(id, profile))); }

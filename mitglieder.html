@@ -346,7 +346,7 @@
     blogSel:null, blogPost:null, instaSel:null,
     obStep:0, obGoal:'Gesundheit & Longevity', obFreq:3, obAge:34, obExp:'gelegentlich',
     ernFormInit:false, ernEdit:false, ernGoal:'abnehmen', ernSex:'w', ernH:170, ernW:70, ernAge:30, ernAct:'moderat', ernDiet:'omnivor',
-    ernBusy:false, ernMsg:'', ernErr:false, ernAsk:'', ernAnswer:'', ernAskBusy:false, ernRecipes:null, ernRecipesBusy:false, ernCoachBusy:false, ernCoachSent:false,
+    ernBusy:false, ernMsg:'', ernErr:false, ernAsk:'', ernAnswer:'', ernAskBusy:false, ernRecipes:null, ernRecipesBusy:false, ernCoachBusy:false, ernCoachSent:false, ernPhotoBusy:false, ernRec:false,
     ctOpen:false, ctSent:false, ctMsg:'', ctBusy:false, ctErr:'', ctMsgServer:'', artFb:null,
     pfFilter:'all', pfSel:null, pfThread:false, pfDraft:'', pfBusy:false, pfErr:'',
     copied:false, dlMsg:false, dlMsg2:'', emailing:false,
@@ -1949,6 +1949,38 @@
   }
   function ernSeedForm(){ var pr=(DATA.nutri&&DATA.nutri.profile)||{};
     S.ernGoal=pr.goal||'abnehmen'; S.ernSex=pr.sex||'w'; S.ernH=pr.height||170; S.ernW=pr.weight||70; S.ernAge=pr.age||30; S.ernAct=pr.activity||'moderat'; S.ernDiet=pr.diet||'omnivor'; }
+  // Foto einer Mahlzeit -> herunterskalieren -> KI-Schätzung (action:log-photo).
+  window.__ernPhoto=function(input){
+    var f=input&&input.files&&input.files[0]; try{ if(input) input.value=''; }catch(e){}
+    if(!f) return;
+    if(!/^image\//.test(f.type||'')){ S.ernPhotoBusy=false; S.ernErr=true; S.ernMsg='Bitte ein Foto auswählen.'; render(); return; }
+    S.ernPhotoBusy=true; S.ernMsg=''; S.ernErr=false; render();
+    var rd=new FileReader();
+    rd.onload=function(e){
+      var src=String((e.target&&e.target.result)||'');
+      var img=new Image();
+      img.onload=function(){ try{
+        var max=1024, w=img.naturalWidth||1, h=img.naturalHeight||1, sc=Math.min(1,max/Math.max(w,h));
+        var cw=Math.max(1,Math.round(w*sc)), ch=Math.max(1,Math.round(h*sc));
+        var cv=document.createElement('canvas'); cv.width=cw; cv.height=ch; cv.getContext('2d').drawImage(img,0,0,cw,ch);
+        var url=cv.toDataURL('image/jpeg',0.82); var ix=url.indexOf('base64,');
+        ernSendPhoto(ix>=0?url.slice(ix+7):'','image/jpeg');
+      }catch(err){ ernSendPhoto('',''); } };
+      img.onerror=function(){ S.ernPhotoBusy=false; S.ernErr=true; S.ernMsg='Foto konnte nicht gelesen werden.'; render(); };
+      img.src=src;
+    };
+    rd.onerror=function(){ S.ernPhotoBusy=false; S.ernErr=true; S.ernMsg='Foto konnte nicht gelesen werden.'; render(); };
+    rd.readAsDataURL(f);
+  };
+  function ernSendPhoto(b64,mt){
+    if(!b64){ S.ernPhotoBusy=false; S.ernErr=true; S.ernMsg='Foto konnte nicht verarbeitet werden.'; render(); return; }
+    api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'log-photo',base64:b64,mediaType:mt})})
+    .then(function(d){ S.ernPhotoBusy=false; if(d&&d.ok){ DATA.nutri=d; var added=d.added||[]; if(added.length){ S.ernMsg='Erkannt: '+added.map(function(x){return x.name;}).join(', '); S.ernErr=false; } else { S.ernMsg=d.message||'Auf dem Foto konnte ich nichts erkennen.'; S.ernErr=true; } } else { S.ernErr=true; S.ernMsg=(d&&d.message)||'Foto-Analyse fehlgeschlagen.'; } render(); })
+    .catch(function(){ S.ernPhotoBusy=false; S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); });
+  }
+  // Sprache -> Text (Web Speech API) -> ins Log-Feld -> KI-Schätzung. Nicht überall verfügbar.
+  var ernRecog=null;
+  function ernVoiceSupported(){ try{ return !!(window.SpeechRecognition||window.webkitSpeechRecognition); }catch(e){ return false; } }
   function loadNutri(){
     if(DATA.nutri===null) DATA.nutri=false;   // „lädt" anzeigen bis Antwort da ist
     api('/api/member/nutrition').then(function(d){
@@ -2043,7 +2075,14 @@
     // Schnell loggen
     var msg=S.ernMsg?'<div style="font-size:12.5px;font-weight:700;color:'+(S.ernErr?'var(--err-fg)':ERN_G)+';margin-top:10px;line-height:1.4">'+esc(S.ernMsg)+'</div>':'';
     var favs='<div style="display:flex;gap:8px;overflow-x:auto;padding:2px 0 2px;margin-top:12px;scrollbar-width:none">'+ERN_FAVS.map(function(f,idx){ return '<button data-act="ernFav" data-arg="'+idx+'" style="flex-shrink:0;display:flex;align-items:center;gap:7px;border:1.5px solid var(--border);background:var(--surface);border-radius:20px;padding:8px 13px;cursor:pointer;font-size:12.5px;font-weight:800;color:var(--text)"><span>'+f.e+'</span>'+esc(f.name)+' <span style="color:var(--text-soft);font-weight:700">'+f.kcal+'</span></button>'; }).join('')+'</div>';
-    var log='<div style="'+CARD+'"><div style="font-size:15px;font-weight:900;color:var(--text);margin-bottom:4px">Mahlzeit loggen</div><div style="font-size:12.5px;color:var(--text-soft);font-weight:600;margin-bottom:12px">Beschreibe einfach, was du gegessen hast – FINN schätzt die Nährwerte.</div>'+
+    var photoBtn='<label style="flex:1;display:flex;align-items:center;justify-content:center;gap:7px;border:1.5px solid var(--border);background:var(--surface-2);border-radius:13px;padding:12px;cursor:pointer;font-size:13.5px;font-weight:800;color:'+ERN_G+'">'+
+      (S.ernPhotoBusy
+        ? '<span style="width:16px;height:16px;border:2.5px solid rgba(15,122,74,.35);border-top-color:'+ERN_G+';border-radius:50%;display:inline-block;animation:ernspin .7s linear infinite"></span>Analysiere …'
+        : svg('<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle>',{c:ERN_G,w:1.9,s:19})+'Foto')+
+      '<input type="file" accept="image/*" capture="environment" onchange="window.__ernPhoto(this)" '+(S.ernPhotoBusy?'disabled ':'')+'style="display:none"></label>';
+    var voiceBtn='<button data-act="ernVoice" style="flex:1;display:flex;align-items:center;justify-content:center;gap:7px;border:1.5px solid '+(S.ernRec?ERN_G:'var(--border)')+';background:'+(S.ernRec?'rgba(15,122,74,.12)':'var(--surface-2)')+';border-radius:13px;padding:12px;cursor:pointer;font-size:13.5px;font-weight:800;color:'+ERN_G+'">'+svg('<rect x="9" y="2" width="6" height="12" rx="3"></rect><path d="M5 10a7 7 0 0 0 14 0M12 17v4"></path>',{c:ERN_G,w:1.9,s:19})+(S.ernRec?'Hört zu …':'Sprechen')+'</button>';
+    var log='<div style="'+CARD+'"><div style="font-size:15px;font-weight:900;color:var(--text);margin-bottom:4px">Mahlzeit loggen</div><div style="font-size:12.5px;color:var(--text-soft);font-weight:600;margin-bottom:12px">Foto, Sprache oder Text – FINN schätzt die Nährwerte.</div>'+
+      '<div style="display:flex;gap:8px;margin-bottom:11px">'+photoBtn+voiceBtn+'</div>'+
       '<div style="display:flex;gap:9px;align-items:flex-end"><textarea id="ern_log" rows="1" placeholder="z. B. Hähnchen mit Reis und Salat" style="flex:1;border:1.5px solid var(--border);border-radius:14px;padding:12px 14px;font-size:14.5px;font-weight:600;outline:none;color:var(--text);background:var(--surface);resize:none;font-family:inherit"></textarea>'+
       '<button data-act="ernLog" '+(S.ernBusy?'disabled ':'')+'style="width:50px;height:48px;border-radius:14px;border:none;background:'+ERN_G+';display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'+(S.ernBusy?'<span style="width:18px;height:18px;border:2.5px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;display:inline-block;animation:ernspin .7s linear infinite"></span>':svg('<path d="M12 5v14M5 12h14"></path>',{c:'#fff',w:2.6,s:22}))+'</button></div>'+
       msg+favs+'</div>';
@@ -2939,6 +2978,18 @@
       api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'log',text:q})})
       .then(function(d){ S.ernBusy=false; if(d&&d.ok){ DATA.nutri=d; var added=d.added||[]; if(added.length){ S.ernMsg='Protokolliert: '+added.map(function(x){return x.name;}).join(', '); S.ernErr=false; } else { S.ernMsg=d.message||'Nichts erkannt – beschreib es genauer.'; S.ernErr=true; } } else { S.ernErr=true; S.ernMsg=(d&&d.message)||'Konnte nicht schätzen.'; } render(); })
       .catch(function(){ S.ernBusy=false; S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); }); },
+    ernVoice:function(){
+      var SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+      if(!SR){ S.ernErr=true; S.ernMsg='Sprache wird auf diesem Gerät nicht unterstützt – tippe die Mahlzeit ein (die Tastatur hat oft ein Mikrofon).'; render(); return; }
+      if(S.ernRec){ try{ ernRecog&&ernRecog.stop(); }catch(e){} S.ernRec=false; render(); return; }
+      try{
+        ernRecog=new SR(); ernRecog.lang='de-DE'; ernRecog.interimResults=false; ernRecog.maxAlternatives=1;
+        ernRecog.onresult=function(ev){ var t=''; try{ t=ev.results[0][0].transcript||''; }catch(e){} S.ernRec=false; var el=$('ern_log'); if(el&&t) el.value=t; if(t) ACT.ernLog(); else render(); };
+        ernRecog.onerror=function(){ S.ernRec=false; S.ernErr=true; S.ernMsg='Ich konnte dich nicht verstehen – bitte nochmal.'; render(); };
+        ernRecog.onend=function(){ if(S.ernRec){ S.ernRec=false; render(); } };
+        S.ernRec=true; S.ernMsg=''; S.ernErr=false; render(); ernRecog.start();
+      }catch(e){ S.ernRec=false; S.ernErr=true; S.ernMsg='Sprache konnte nicht gestartet werden.'; render(); }
+    },
     ernFav:function(a){ var f=ERN_FAVS[parseInt(a,10)]; if(!f) return;
       api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'log-manual',name:f.name,kcal:f.kcal,p:f.p,c:f.c,f:f.f})})
       .then(function(d){ if(d&&d.ok){ DATA.nutri=d; S.ernMsg='Protokolliert: '+f.name; S.ernErr=false; render(); } }).catch(function(){}); },
