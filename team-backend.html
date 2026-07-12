@@ -110,6 +110,7 @@ var TEAL='#0a4958', ORANGE='#E08C53';
 var TAG_PRESETS=['VIP','Stammkunde','Beschwerde','Risiko','Beobachten','Interessent'];
 var S={ token:null, role:null, meName:null, screen:'inbox', convs:[], counts:{}, selKey:null, sel:null,
   asMsgs:[], asBusy:false, asInput:'', asCid:0,
+  alkOpen:false, alkMemberId:'', alkName:'', alkAction:'payment', alkEmail:true, alkWa:false, alkBusy:false, alkResult:null,
   wbFrame:null, wbOffers:[], wbLoaded:false, wbSaving:false,
         filter:'open', search:'', loading:false, err:'', draft:'', note:'', replyChannel:'email',
         // Login: Admin (Passwort) <-> Trainer (E-Mail-Code). Additiv, bricht den Passwort-Login nicht.
@@ -1984,6 +1985,7 @@ function membersNode(){
       '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px">'+
         '<button data-msgsend="1" style="display:inline-flex;align-items:center;gap:8px;border:none;border-radius:12px;background:'+TEAL+';color:#fff;font-size:13.5px;font-weight:800;padding:11px 16px;cursor:pointer">'+IC.send+'Nachricht senden</button>'+
         '<button data-accessinfo="1" style="display:inline-flex;align-items:center;gap:8px;border:1.5px solid rgba(255,255,255,.5);border-radius:12px;background:rgba(255,255,255,.12);color:#fff;font-size:13.5px;font-weight:800;padding:11px 16px;cursor:pointer"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg>Zugangs-Info senden</button>'+
+        '<button data-actionlink="1" style="display:inline-flex;align-items:center;gap:8px;border:1.5px solid rgba(255,255,255,.5);border-radius:12px;background:rgba(255,255,255,.12);color:#fff;font-size:13.5px;font-weight:800;padding:11px 16px;cursor:pointer"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.5 1.5"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.5-1.5"/></svg>Aktions-Link senden</button>'+
         (isAdmin()?'<button data-rhooffer="1" style="display:inline-flex;align-items:center;gap:8px;border:1.5px solid rgba(255,255,255,.5);border-radius:12px;background:rgba(255,255,255,.12);color:#fff;font-size:13.5px;font-weight:800;padding:11px 16px;cursor:pointer">↩ Rückhol-Angebot</button>':'')+
       '</div>'+
       tagsRowHTML()+
@@ -2006,7 +2008,7 @@ function membersNode(){
       '<div style="margin-top:18px;background:#fff;border-radius:20px;box-shadow:0 14px 38px rgba(4,33,40,.09);padding:20px 24px"><div style="font-size:15px;font-weight:900;letter-spacing:-.2px;margin-bottom:4px;color:#15171B">Vorgangs-Historie</div>'+histRows+'</div>'+
       // DSGVO-Zone: bewusst dezent, ganz unten – Anonymisieren ist unwiderruflich (nur Admin).
       (isAdmin()?'<div style="margin-top:20px;display:flex;justify-content:flex-end;padding:0 2px"><button data-anon="1" style="display:inline-flex;align-items:center;gap:7px;border:1.5px solid #e3b8b1;background:#fff;color:#b5402f;border-radius:11px;font-size:12.5px;font-weight:800;padding:9px 14px;cursor:pointer"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#b5402f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>DSGVO: Mitglied anonymisieren</button></div>':'')+
-    '</div>'+dmModalHTML()+cxModalHTML()+apModalHTML()+wbModalHTML()+rhoModalHTML();
+    '</div>'+dmModalHTML()+cxModalHTML()+apModalHTML()+wbModalHTML()+rhoModalHTML()+alkModalHTML();
     setTimeout(function(){
       var b=wrap.querySelector('[data-back]'); if(b) b.onclick=backToMembers;
       wrap.querySelectorAll('[data-hist]').forEach(function(x){ x.onclick=function(){ S.screen='inbox'; openConv(x.getAttribute('data-hist')); }; });
@@ -2046,6 +2048,8 @@ function membersNode(){
       var cxr=wrap.querySelector('[data-cxrevoke]'); if(cxr) cxr.onclick=function(){ doRevoke(p); };
       var wbo=wrap.querySelector('[data-wbopen]'); if(wbo) wbo.onclick=function(){ openWinback(p); };
       var rhoo=wrap.querySelector('[data-rhooffer]'); if(rhoo) rhoo.onclick=function(){ openRho(p); };
+      var alo=wrap.querySelector('[data-actionlink]'); if(alo) alo.onclick=function(){ openActionLink(p); };
+      wireAlk(wrap);
       wireDm(wrap);
       wireCx(wrap, p);
       wireAp(wrap);
@@ -3315,6 +3319,88 @@ function wireRho(scope){
   var w=scope.querySelector('#rho_waive'); if(w) w.onchange=function(){ S.rhoWaive=w.checked; rhoScheduleRedraft(); };
   var mg=scope.querySelector('#rho_msg'); if(mg) mg.oninput=function(){ S.rhoMsg=mg.value; S.rhoMsgEdited=true; };
   var rb=scope.querySelector('[data-rhoredraft]'); if(rb) rb.onclick=function(){ S.rhoMsgEdited=false; rhoRedraft(); };
+}
+
+// ---------- Aktions-Link (Team -> Mitglied, Self-Service per Auto-Login) ----------
+var ALK_ACTIONS=[
+  ['payment','Zahlungsdaten & Bankverbindung','IBAN / Zahlungsart ändern','<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20M6 15h4"/>'],
+  ['address','Adresse & Kontaktdaten','Anschrift, Telefon, E-Mail','<path d="M12 21s-7-5.5-7-11a7 7 0 0 1 14 0c0 5.5-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/>'],
+  ['contract','Vertrag ansehen','Tarif & Laufzeit einsehen','<path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h5M9 13h6M9 17h4"/>'],
+  ['pause','Mitgliedschaft pausieren','Beitragspause beantragen','<rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/>'],
+  ['cancel','Mitgliedschaft kündigen','Kündigung / Widerruf','<path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h5"/><path d="M9.5 13.5l5 5M14.5 13.5l-5 5"/>'],
+  ['documents','Dokumente','Ansehen & hochladen','<path d="M4 5h16v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z"/><path d="M8 3v4M16 3v4M8 12h8M8 16h5"/>']
+];
+function alkLabel(k){ for(var i=0;i<ALK_ACTIONS.length;i++){ if(ALK_ACTIONS[i][0]===k) return ALK_ACTIONS[i][1]; } return ''; }
+function openActionLink(p){
+  S.alkMemberId=String(p.id); S.alkName=p.name||''; S.alkAction='payment';
+  S.alkEmail=true; S.alkWa=false; S.alkBusy=false; S.alkResult=null; S.alkOpen=true; render();
+}
+function closeActionLink(){ if(S.alkBusy) return; S.alkOpen=false; S.alkResult=null; render(); }
+async function alkSend(){
+  if(S.alkBusy||!S.alkMemberId||!S.alkAction) return;
+  S.alkBusy=true; render();
+  try{
+    var r=await tapi('/api/team/action-link',{method:'POST',body:{memberId:S.alkMemberId,memberName:S.alkName,action:S.alkAction,email:!!S.alkEmail,whatsapp:!!S.alkWa,send:true}});
+    S.alkBusy=false;
+    if(r&&r.ok){ S.alkResult=r; }
+    else if(r&&r.error==='rate_limited'){ alert(r.message||'Zu viele Links an dieses Mitglied – bitte kurz warten.'); }
+    else if(r&&r.error==='bad_action'){ alert('Unbekannte Aktion.'); }
+    else { alert((r&&r.message)||'Link konnte nicht erstellt werden.'); }
+  }catch(e){ S.alkBusy=false; alert('Verbindung fehlgeschlagen.'); }
+  render();
+}
+function alkModalHTML(){
+  if(!S.alkOpen) return '';
+  var viaLabel={inbox:'Postfach',push:'Push',email:'E-Mail',whatsapp:'WhatsApp'};
+  var inner;
+  if(S.alkResult){
+    var url=S.alkResult.url||'';
+    var via=(S.alkResult.via&&S.alkResult.via.length)?(' – zugestellt über '+S.alkResult.via.map(function(v){ return viaLabel[v]||v; }).join(', ')+'.'):' – erscheint im Postfach des Mitglieds.';
+    inner='<div style="background:#e7f6ec;border-radius:12px;padding:14px 16px;font-size:13.5px;font-weight:700;color:#1d7a3e;line-height:1.55">Aktions-Link „'+esc(S.alkResult.label||alkLabel(S.alkAction))+'" gesendet ✓'+esc(via)+'</div>'+
+      '<div style="margin-top:12px;font-size:12px;font-weight:800;color:#8a929a">Link (zum Kopieren / manuell teilen)</div>'+
+      '<div style="margin-top:6px;display:flex;gap:8px;align-items:stretch"><div style="flex:1;min-width:0;background:#f6f8f9;border:1px solid #e3e9ea;border-radius:10px;padding:10px 12px;font-size:12px;color:#42454b;word-break:break-all;line-height:1.4">'+esc(url)+'</div>'+
+        '<button data-alkcopy="1" data-url="'+esc(url)+'" style="flex-shrink:0;border:1.5px solid '+TEAL+';background:#fff;color:'+TEAL+';border-radius:10px;font-size:12.5px;font-weight:800;padding:0 14px;cursor:pointer">Kopieren</button></div>'+
+      '<div style="margin-top:12px;background:#f2f8f9;border-radius:11px;padding:11px 13px;font-size:12px;color:#0a4958;font-weight:700;line-height:1.5">Beim Öffnen fragt das Portal einmal das Geburtsdatum ab – dann ist das Mitglied automatisch angemeldet und landet direkt bei der Aktion. Gültig für begrenzte Zeit, einmalig verwendbar.</div>';
+  } else {
+    var rows=ALK_ACTIONS.map(function(a){ var on=(S.alkAction===a[0]);
+      return '<button data-alkaction="'+a[0]+'" style="display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:12px 13px;border:1.5px solid '+(on?TEAL:'#dce3e4')+';background:'+(on?'#eef6f7':'#fff')+';border-radius:13px;cursor:pointer">'+
+        '<div style="width:38px;height:38px;border-radius:11px;background:'+(on?TEAL:'#f1f5f6')+';display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="'+(on?'#fff':'#6b7780')+'" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">'+a[3]+'</svg></div>'+
+        '<div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:800;color:#15171B">'+esc(a[1])+'</div><div style="font-size:11.5px;color:#8a929a;font-weight:600">'+esc(a[2])+'</div></div>'+
+        '<span style="width:20px;height:20px;border-radius:50%;border:2px solid '+(on?TEAL:'#cfd8da')+';flex-shrink:0;display:flex;align-items:center;justify-content:center">'+(on?'<span style="width:10px;height:10px;border-radius:50%;background:'+TEAL+'"></span>':'')+'</span>'+
+      '</button>';
+    }).join('');
+    inner='<div style="font-size:12px;font-weight:800;color:#8a929a;margin-bottom:8px">Wohin soll der Link führen?</div>'+
+      '<div style="display:flex;flex-direction:column;gap:9px">'+rows+'</div>'+
+      '<div style="display:flex;gap:16px;margin-top:14px;flex-wrap:wrap"><span style="font-size:12px;font-weight:800;color:#8a929a;align-self:center">Zusätzlich senden:</span>'+
+        '<label style="display:flex;align-items:center;gap:7px;font-size:13.5px;font-weight:700;cursor:pointer"><input type="checkbox" id="alkemail"'+(S.alkEmail?' checked':'')+' style="width:17px;height:17px;accent-color:#0a4958">E-Mail</label>'+
+        '<label style="display:flex;align-items:center;gap:7px;font-size:13.5px;font-weight:700;cursor:pointer"><input type="checkbox" id="alkwa"'+(S.alkWa?' checked':'')+' style="width:17px;height:17px;accent-color:#0a4958">WhatsApp</label>'+
+      '</div>'+
+      '<div style="font-size:11px;color:#a9b1b6;font-weight:600;margin-top:8px;line-height:1.5">Der Link landet immer im Postfach. E-Mail nur mit hinterlegter Adresse, WhatsApp nur mit Handynummer + Vorlage. Sicherheit: das Mitglied bestätigt beim Öffnen sein Geburtsdatum.</div>';
+  }
+  var canSend=!S.alkResult;
+  return '<div data-alkoverlay="1" style="position:fixed;inset:0;background:rgba(0,18,22,.5);z-index:70;display:flex;align-items:center;justify-content:center;padding:20px">'+
+    '<div data-alkcard="1" style="width:100%;max-width:470px;background:#fff;border-radius:20px;box-shadow:0 30px 70px rgba(0,0,0,.3);padding:22px 24px;max-height:90vh;overflow-y:auto">'+
+      '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:14px"><div style="min-width:0"><div style="font-size:16px;font-weight:900;letter-spacing:-.3px">Aktions-Link senden</div>'+
+        '<div style="font-size:12.5px;color:#8a929a;font-weight:600;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">an '+esc(S.alkName||'Mitglied')+' · meldet automatisch an</div></div>'+
+      '<button data-alkx="1" style="border:none;background:#f1f5f6;border-radius:9px;width:32px;height:32px;font-size:18px;line-height:1;color:#6b7780;cursor:pointer;flex-shrink:0">×</button></div>'+
+      inner+
+      '<div style="display:flex;gap:9px;margin-top:16px">'+
+        '<button data-alkcancel="1" style="flex:1;border:1.5px solid #d6dee0;border-radius:11px;background:#fff;color:#42454b;font-weight:800;font-size:13.5px;padding:11px;cursor:pointer">'+(S.alkResult?'Schließen':'Abbrechen')+'</button>'+
+        (canSend?'<button data-alksend="1"'+(S.alkBusy?' disabled':'')+' style="flex:1;border:none;border-radius:11px;background:'+TEAL+';color:#fff;font-weight:800;font-size:13.5px;padding:11px;cursor:pointer">'+(S.alkBusy?'Sendet …':'Link erstellen & senden')+'</button>':'')+
+      '</div>'+
+    '</div></div>';
+}
+function wireAlk(scope){
+  if(!S.alkOpen) return;
+  var ov=scope.querySelector('[data-alkoverlay]'); if(ov) ov.onclick=closeActionLink;
+  var card=scope.querySelector('[data-alkcard]'); if(card) card.onclick=function(e){ e.stopPropagation(); };
+  var x=scope.querySelector('[data-alkx]'); if(x) x.onclick=closeActionLink;
+  var cc=scope.querySelector('[data-alkcancel]'); if(cc) cc.onclick=closeActionLink;
+  scope.querySelectorAll('[data-alkaction]').forEach(function(b){ b.onclick=function(){ S.alkAction=b.getAttribute('data-alkaction'); render(); }; });
+  var ce=scope.querySelector('#alkemail'); if(ce) ce.onchange=function(){ S.alkEmail=ce.checked; };
+  var cw=scope.querySelector('#alkwa'); if(cw) cw.onchange=function(){ S.alkWa=cw.checked; };
+  var sd=scope.querySelector('[data-alksend]'); if(sd) sd.onclick=alkSend;
+  var cp=scope.querySelector('[data-alkcopy]'); if(cp) cp.onclick=function(){ var u=cp.getAttribute('data-url')||''; if(u&&navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(u).then(function(){ cp.textContent='✓ Kopiert'; setTimeout(function(){ var b=scope.querySelector('[data-alkcopy]'); if(b) b.textContent='Kopieren'; },1500); }).catch(function(){}); } };
 }
 
 // ---------- Vertragskündigung (Team) ----------

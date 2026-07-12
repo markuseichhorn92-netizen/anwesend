@@ -351,6 +351,7 @@
     ernCapture:false, ernCapTab:'cam', ernObStep:0, ernCheckinDismissed:false, ernCapTarget:'',
     ctOpen:false, ctSent:false, ctMsg:'', ctBusy:false, ctErr:'', ctMsgServer:'', artFb:null,
     pfFilter:'offen', pfSearch:'', pfLimit:12, pfSel:null, pfThread:false, pfDraft:'', pfBusy:false, pfErr:'',
+    alToken:'', alLabel:'', alAction:'', alBusy:false, alErr:'', alGo:'', alSub:'', alState:'loading',
     copied:false, dlMsg:false, dlMsg2:'', emailing:false,
     ciRange:'all', ciFrom:'', ciTo:'',
     liEmail:'', liNum:'', liPhone:'', remember:(localStorage.getItem('fi_remember')==='1'),
@@ -747,6 +748,44 @@
       '</div>'+
       '<div class="lbAddr" style="font-size:13px;color:#7ea7af;font-weight:500">Fit-Inn Trier · Auf Hirtenberg 8 · 54296 Trier</div>'+
     '</div>';
+    return '<div class="loginWrap">'+brand+'<div class="loginForm"><div class="loginCard">'+inner+legal+'</div></div></div>';
+  }
+
+  // Bestätigungsseite für Team-Aktions-Links (?alt=<token>): Geburtsdatum als 2. Faktor,
+  // dann automatischer Login + Sprung zur Aktion. Nutzt die Login-Optik.
+  function scrActionLogin(){
+    var legal='<div style="display:flex;flex-wrap:wrap;gap:4px 12px;justify-content:center;margin-top:24px;padding-top:20px;border-top:1px solid #dde4e6">'+
+      [['Impressum','impressum-fit-inn-trier'],['Datenschutz','datenschutz-fit-inn-trier'],['AGB','agbs-fit-inn-trier'],['Widerruf','kundigungsbedingungen-fit-inn-trier']].map(function(l){return '<a href="https://www.fit-inn-trier.de/'+l[1]+'" target="_blank" rel="noopener" style="color:var(--text-soft);font-size:12px;font-weight:600;text-decoration:none">'+l[0]+'</a>';}).join('')+'</div>';
+    var brand='<div class="loginBrand">'+
+      '<div><img src="/assets/fitinn-logo-white.png" alt="Fit-Inn Trier" style="height:30px;width:auto;display:block"></div>'+
+      '<div style="margin-top:22px">'+
+        '<div style="font-size:12px;font-weight:700;color:#9fc3ca;text-transform:uppercase;letter-spacing:2px;margin-bottom:14px">Mitgliederbereich</div>'+
+        '<div class="lbTitle">Kurz<br>bestätigen.</div>'+
+        '<div style="font-size:16px;color:#cfe3e7;margin-top:16px;line-height:1.5;max-width:420px;font-weight:500">Dein Studio hat dir einen sicheren Link geschickt. Bestätige einmal dein Geburtsdatum – danach bist du automatisch angemeldet.</div>'+
+      '</div>'+
+      '<div class="lbAddr" style="font-size:13px;color:#7ea7af;font-weight:500">Fit-Inn Trier · Auf Hirtenberg 8 · 54296 Trier</div>'+
+    '</div>';
+
+    var inner;
+    if(S.alState==='loading'){
+      inner='<div style="font-size:28px;font-weight:900;color:var(--text);letter-spacing:-.6px">Einen Moment …</div>'+
+        '<div style="font-size:15px;color:var(--text-muted);margin-top:7px;line-height:1.5">Wir prüfen deinen Link.</div>'+
+        '<div class="loadDots" style="margin-top:26px;font-size:15px;color:var(--text-soft);font-weight:700">Bitte warten …</div>';
+    } else if(S.alState==='invalid'){
+      inner='<div style="font-size:28px;font-weight:900;color:var(--text);letter-spacing:-.6px">Link nicht gültig</div>'+
+        '<div style="font-size:15px;color:var(--text-muted);margin-top:9px;line-height:1.55">'+esc(S.alInvalidMsg||'Dieser Link ist ungültig, abgelaufen oder wurde bereits verwendet.')+'</div>'+
+        '<div style="display:flex;align-items:flex-start;gap:9px;margin-top:18px;padding:13px 15px;background:var(--surface);border:1px solid #e1e8ea;border-radius:12px">'+svg('<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>',{w:1.9,s:17})+'<span style="font-size:12.5px;color:var(--text-muted);line-height:1.5">Aus Sicherheitsgründen sind diese Links zeitlich begrenzt und einmalig. Bitte fordere im Studio einen neuen an.</span></div>'+
+        '<button class="btn" data-act="alToLogin" style="margin-top:22px;padding:16px;font-size:16px">Zur normalen Anmeldung</button>';
+    } else {
+      var e=S.alErr?'<div class="err" style="margin-top:14px">'+svg(IC.warn,{c:'var(--err-fg)',w:2,s:17})+'<span>'+esc(S.alErr)+'</span></div>':'';
+      var badge=S.alLabel?'<div style="display:inline-flex;align-items:center;gap:7px;margin-top:16px;padding:9px 14px;background:var(--surface-2);border-radius:12px;font-size:13.5px;font-weight:800;color:var(--teal-ink)">'+svg('<path d="M9 18l6-6-6-6"></path>',{c:'var(--teal-ink)',w:2.1,s:15})+esc(S.alLabel)+'</div>':'';
+      inner='<div style="font-size:28px;font-weight:900;color:var(--text);letter-spacing:-.6px">Sicherheitsabfrage</div>'+
+        '<div style="font-size:15px;color:var(--text-muted);margin-top:7px;line-height:1.5">Zur Bestätigung deiner Identität – ganz ohne Passwort. Danach bist du direkt angemeldet.</div>'+
+        badge+
+        '<div style="margin-top:20px">'+dpField()+'</div>'+
+        '<button class="btn" id="al_btn" data-act="alSubmit" style="margin-top:20px;padding:16px;font-size:16px">'+(S.alBusy?'Prüfe …':'Bestätigen & anmelden')+'</button>'+e+
+        '<div style="display:flex;align-items:flex-start;gap:9px;margin-top:18px;padding:13px 15px;background:var(--surface);border:1px solid #e1e8ea;border-radius:12px">'+svg('<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>',{w:1.9,s:17})+'<span style="font-size:12.5px;color:var(--text-muted);line-height:1.5">Dein Geburtsdatum wird nur zur Identitätsprüfung genutzt. Der Link ist zeitlich begrenzt und nur einmal verwendbar.</span></div>';
+    }
     return '<div class="loginWrap">'+brand+'<div class="loginForm"><div class="loginCard">'+inner+legal+'</div></div></div>';
   }
 
@@ -3102,10 +3141,11 @@
     // Ernährungs-Modul ausgeblendet (Feature-Schalter ERN_ON): nie rendern, zur Übersicht
     if(!ERN_ON && S.screen==='ern') S.screen='home';
     // Ehemalige Mitglieder: gesperrte Screens immer auf die Übersicht (Rejoin) umleiten
-    if(isFormer() && S.screen!=='login' && FORMER_OK.indexOf(S.screen)<0) S.screen='home';
+    if(isFormer() && S.screen!=='login' && S.screen!=='alogin' && FORMER_OK.indexOf(S.screen)<0) S.screen='home';
     var html;
     switch(S.screen){
       case 'login': html=scrLogin(); break;
+      case 'alogin': html=scrActionLogin(); break;
       case 'home': html=scrHome(); break;
       case 'card': html=scrCard(); break;
       case 'fort': html=scrFort(); break;
@@ -3125,7 +3165,7 @@
       case 'postfach': html=scrPostfach(); break;
       default: html=scrHome();
     }
-    if(S.screen!=='login') html=appAdHtml()+html;   // App-Werbung im Browser (nie in der App)
+    if(S.screen!=='login'&&S.screen!=='alogin') html=appAdHtml()+html;   // App-Werbung im Browser (nie in der App)
     var narrow = NARROW[S.screen];
     if(narrow) html='<div class="narrow">'+html+'</div>';
     if(S.ciPopup) html+=ciPopupHtml();
@@ -3169,6 +3209,38 @@
 
   var ACT={
     nav:function(a){ nav(a); },
+    // Aktions-Link: Geburtsdatum prüfen -> Session prägen -> zur Aktion springen.
+    alSubmit:function(){
+      if(S.alBusy) return;
+      var dob=S.liDob||'';
+      if(!dob){ setQuiet({alErr:'Bitte gib dein Geburtsdatum ein.'}); return; }
+      S.alBusy=true; S.alErr=''; render();
+      fetch('/api/member/action-login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:S.alToken,birthdate:dob})})
+        .then(function(r){return r.json();})
+        .then(function(j){
+          S.alBusy=false;
+          if(j&&j.ok&&j.token){
+            TOKEN=j.token; localStorage.setItem('fi_member_token',TOKEN); localStorage.setItem('fi_remember','1');
+            S.alToken=''; S.alErr=''; S.liDob=''; cleanMlt();
+            var go=(j.go&&TITLES[j.go])?j.go:'home', sub=j.sub||'';
+            loadMe().then(function(){ loadAppts(); loadPlan(); loadPlanAgg(); loadInbox(); loadPrefs(); if(DATA.checkins===null) loadCheckins(); nav(go); actionSub(sub); })
+              .catch(function(){ nav(go); actionSub(sub); });
+            return;
+          }
+          var err=(j&&j.error)||'failed', msg;
+          if(err==='birthdate'){ msg='Das Geburtsdatum stimmt nicht.'+((j&&j.attemptsLeft!=null)?(' Noch '+j.attemptsLeft+' Versuch'+(j.attemptsLeft===1?'':'e')+'.'):''); }
+          else if(err==='locked'){ msg='Zu viele Fehlversuche. Bitte fordere im Studio einen neuen Link an.'; }
+          else if(err==='expired'){ msg='Dieser Link ist abgelaufen. Bitte fordere im Studio einen neuen an.'; }
+          else if(err==='not_found'){ msg='Dieser Link ist ungültig oder wurde bereits verwendet.'; }
+          else if(err==='rate_limited'){ msg='Zu viele Versuche. Bitte in einer Stunde erneut probieren.'; }
+          else if(err==='no_birthdate'){ msg='Bitte gib dein Geburtsdatum ein.'; }
+          else { msg='Anmeldung fehlgeschlagen. Bitte versuche es erneut.'; }
+          if(err==='locked'||err==='expired'||err==='not_found'){ S.alState='invalid'; S.alInvalidMsg=msg; }
+          S.alErr=msg; render();
+        })
+        .catch(function(){ S.alBusy=false; setQuiet({alErr:'Verbindung fehlgeschlagen. Bitte erneut versuchen.'}); });
+    },
+    alToLogin:function(){ try{ cleanMlt(); }catch(e){} S.alToken=''; S.liDob=''; S.alErr=''; S.alState='loading'; setS({screen:'login'}); },
     // Versteckter Team-Zugang: 5× schnell auf den Avatar (Startseite) tippen -> /team.
     teamTap:function(){ window.__tt=(window.__tt||0)+1; if(window.__ttT) clearTimeout(window.__ttT); window.__ttT=setTimeout(function(){ window.__tt=0; },1500); if(window.__tt>=5){ window.__tt=0; clearTimeout(window.__ttT); if(confirm('Team-Bereich öffnen?')) location.assign('/team'); } },
     openFinn:function(){ setS({finnOpen:true}); setTimeout(function(){ var t=$('finn_q'); if(t) t.focus(); finnScrollBottom(); },60); },
@@ -3834,7 +3906,29 @@
   });
 
   // ---- boot ----
-  function cleanMlt(){ try{ var u=new URL(window.location.href); var ch=false; ['mlt','go','nfc'].forEach(function(k){ if(u.searchParams.has(k)){ u.searchParams.delete(k); ch=true; } }); if(ch) window.history.replaceState({}, document.title, u.pathname+u.search+u.hash); }catch(e){} }
+  function cleanMlt(){ try{ var u=new URL(window.location.href); var ch=false; ['mlt','go','nfc','alt'].forEach(function(k){ if(u.searchParams.has(k)){ u.searchParams.delete(k); ch=true; } }); if(ch) window.history.replaceState({}, document.title, u.pathname+u.search+u.hash); }catch(e){} }
+  // Aktions-Link (?alt=): Bestätigungsseite laden; das eigentliche Login macht ACT.alSubmit.
+  function bootActionLogin(tok){
+    S.alToken=tok; S.alState='loading'; S.alErr=''; S.liDob=''; S.screen='alogin'; render();
+    fetch('/api/member/action-login?token='+encodeURIComponent(tok))
+      .then(function(r){return r.json();})
+      .then(function(j){
+        if(j&&j.ok){ S.alLabel=j.label||''; S.alAction=j.action||''; S.alState='ready'; }
+        else { S.alState='invalid'; S.alInvalidMsg=(j&&j.error==='expired')?'Dieser Link ist abgelaufen.':'Dieser Link ist ungültig oder wurde bereits verwendet.'; }
+        render();
+      })
+      .catch(function(){ S.alState='invalid'; S.alInvalidMsg='Der Link konnte nicht geprüft werden. Bitte versuche es später erneut.'; render(); });
+  }
+  // Nach erfolgreichem Aktions-Login den konkreten Unter-Flow öffnen (Pause/Kündigung).
+  function actionSub(sub){
+    if(!sub) return;
+    setTimeout(function(){
+      try{
+        if(sub==='pause'){ if(typeof startPause==='function') startPause(); }
+        else if(sub==='cancel'){ if(ACT&&ACT.startCancel) ACT.startCancel(); }
+      }catch(e){}
+    }, 140);
+  }
   function magicGo(){ var g=null; try{ g=new URL(window.location.href).searchParams.get('go'); }catch(e){} return (g&&TITLES[g])?g:'home'; }
   function bootMagic(tok){
     S.screen='login'; render();
@@ -3845,6 +3939,7 @@
       .catch(function(){ cleanMlt(); setS({loginErr:'Der Anmelde-Link konnte nicht geprüft werden. Bitte melde dich erneut an.'}); });
   }
   var MLT=null; try{ MLT=new URL(window.location.href).searchParams.get('mlt'); }catch(e){}
+  var ALT=null; try{ ALT=new URL(window.location.href).searchParams.get('alt'); }catch(e){}   // Team-Aktions-Link
   // NFC-Tap am Studio-Terminal: der Sticker enthält .../mitglieder?nfc=1. Nach der
   // Anmeldung wird direkt eingecheckt (Face-ID-Gate greift wie beim manuellen
   // Check-in). Kein Standort-Check. Wiederholtes Auslösen ist per 8s-Sperre entkoppelt.
@@ -3869,7 +3964,8 @@
   var bioGate=false; try{ bioGate = inApp && localStorage.getItem('fi_bio')==='1'; }catch(e){}
   ciLoad();
   loadAppInfo();   // Store-Links fürs App-Banner (nur im Browser relevant)
-  if(MLT){ bootMagic(MLT); }
+  if(ALT){ bootActionLogin(ALT); }
+  else if(MLT){ bootMagic(MLT); }
   else if(bioGate){ S.screen='login'; render(); }
   else if(TOKEN){ loadMe().then(function(){ loadAppts(); loadPlan(); loadPlanAgg(); loadInbox(); loadPrefs(); if(DATA.checkins===null) loadCheckins(); render(); checkArrival(); if(NFC){ NFC=null; nfcArrive(); } }).catch(function(){ logout(); }); }
   else render();
