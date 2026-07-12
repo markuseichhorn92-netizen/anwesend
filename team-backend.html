@@ -111,7 +111,7 @@ var TAG_PRESETS=['VIP','Stammkunde','Beschwerde','Risiko','Beobachten','Interess
 var S={ token:null, role:null, meName:null, screen:'inbox', convs:[], counts:{}, selKey:null, sel:null,
   asMsgs:[], asBusy:false, asInput:'', asCid:0,
   alkOpen:false, alkMemberId:'', alkName:'', alkAction:'payment', alkEmail:true, alkWa:false, alkBusy:false, alkResult:null,
-  pxOpen:false, pxBusy:false, pxResult:null, pxCfg:null, pxLoading:false, pxCurrent:[], pxReason:'', pxStart:'', pxTerm:1,
+  pxOpen:false, pxBusy:false, pxResult:null, pxCfg:null, pxLoading:false, pxCurrent:[], pxReason:'', pxStart:'', pxTerm:1, pxDoc:'', pxDocName:'',
   wbFrame:null, wbOffers:[], wbLoaded:false, wbSaving:false,
         filter:'open', search:'', loading:false, err:'', draft:'', note:'', replyChannel:'email',
         // Login: Admin (Passwort) <-> Trainer (E-Mail-Code). Additiv, bricht den Passwort-Login nicht.
@@ -3537,7 +3537,7 @@ function openPause(p){
   var ct=p.contract||{};
   S.pxOpen=true; S.pxBusy=false; S.pxResult=null; S.pxCfg=null; S.pxCurrent=[]; S.pxLoading=true;
   S.pxMemberId=String(p.id); S.pxName=p.name||''; S.pxRate=ct.rateName||'';
-  S.pxReason=''; S.pxStart=''; S.pxTerm=1;
+  S.pxReason=''; S.pxStart=''; S.pxTerm=1; S.pxDoc=''; S.pxDocName='';
   render();
   loadPauseCfg(p.id);
 }
@@ -3560,10 +3560,11 @@ async function doPauseSubmit(p){
   if(!S.pxReason){ alert('Bitte einen Pausengrund wählen.'); return; }
   if(!S.pxStart){ alert('Bitte ein Startdatum wählen.'); return; }
   if(!S.pxTerm||S.pxTerm<1){ alert('Bitte eine Dauer angeben.'); return; }
+  if(pxReasonDocRequired() && !S.pxDoc){ alert('Für den Grund „'+pxReasonName()+'" ist ein Nachweis erforderlich. Bitte ein Foto oder PDF anhängen.'); return; }
   S.pxBusy=true; render();
   try{
     var r=await tapi('/api/team/pause',{method:'POST',body:{ id:p.id, action:'create',
-      startDate:S.pxStart, temporalUnit:(cfg.temporalUnit||'WEEK'), termValue:S.pxTerm, reasonId:S.pxReason, reason:pxReasonName() }});
+      startDate:S.pxStart, temporalUnit:(cfg.temporalUnit||'WEEK'), termValue:S.pxTerm, reasonId:S.pxReason, reason:pxReasonName(), document:S.pxDoc||'' }});
     S.pxBusy=false;
     if(r&&r.ok){ S.pxResult=r; }
     else { alert((r&&r.message)||'Beitragspause konnte nicht eingetragen werden.'); }
@@ -3579,6 +3580,16 @@ async function doPauseWithdraw(p, ipId){
   }catch(e){ alert('Verbindung fehlgeschlagen.'); }
 }
 function pxReasonName(){ var rs=((S.pxCfg||{}).reasons)||[]; for(var i=0;i<rs.length;i++){ if(String(rs[i].id)===String(S.pxReason)) return rs[i].name||''; } return ''; }
+function pxReasonDocRequired(){ var rs=((S.pxCfg||{}).reasons)||[]; for(var i=0;i<rs.length;i++){ if(String(rs[i].id)===String(S.pxReason)) return !!rs[i].documentRequired; } return false; }
+function pxDocBlock(){
+  var req=pxReasonDocRequired();
+  var head='<div style="font-size:12.5px;font-weight:700;color:#6b7780;margin:14px 0 6px">Nachweis'+(req?' <span style="color:#b5402f">(erforderlich)</span>':' <span style="color:#8a929a;font-weight:600">(optional)</span>')+'</div>';
+  var reqNote=req?'<div style="font-size:11.5px;color:#8a3a2c;font-weight:700;background:#fbeae7;border-radius:9px;padding:8px 11px;margin-bottom:8px;line-height:1.45">Für diesen Grund verlangt Magicline einen Nachweis (z. B. ärztliches Attest). Bitte als Foto oder PDF anhängen.</div>':'';
+  if(S.pxDoc){
+    return head+reqNote+'<div style="display:flex;align-items:center;gap:10px;background:#eef6f7;border:1px solid #cfe0e4;border-radius:11px;padding:10px 12px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0a4958" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h5"/></svg><div style="flex:1;min-width:0;font-size:13px;font-weight:700;color:#0a4958;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(S.pxDocName||'Nachweis')+'</div><button data-pxdocdel="1" style="border:none;background:none;color:#b5402f;font-size:13px;font-weight:800;cursor:pointer;flex-shrink:0">Entfernen</button></div>';
+  }
+  return head+reqNote+'<label style="display:flex;align-items:center;justify-content:center;gap:8px;border:1.5px dashed '+(req?'#e0a99f':'#cfd8da')+';border-radius:11px;padding:13px;cursor:pointer;background:#fbfcfc;color:#42454b;font-size:13px;font-weight:700"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#6b7780" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M7 9l5-5 5 5"/><path d="M20 21H4"/></svg>Datei wählen (Foto oder PDF)<input type="file" id="pxdoc" accept="image/*,application/pdf" style="display:none"></label>';
+}
 function pxModalHTML(){
   if(!S.pxOpen) return '';
   var cfg=S.pxCfg||{};
@@ -3615,6 +3626,7 @@ function pxModalHTML(){
       '</div>'+
       (cfg.maxTerms!=null?'<div style="font-size:11.5px;color:#8a929a;font-weight:600;margin-bottom:12px">Max. '+esc(String(cfg.maxTerms))+' '+pxUnitLabel(unit,cfg.maxTerms)+' pro Vertrag.</div>':'<div style="margin-bottom:12px"></div>')+
       '<div style="font-size:12.5px;font-weight:700;color:#6b7780;margin-bottom:6px">Grund</div>'+reasonBox+feeTxt+
+      pxDocBlock()+
       '<div style="margin-top:14px;background:#f2f8f9;border-radius:12px;padding:12px 14px;font-size:12.5px;font-weight:600;color:#0a4958;line-height:1.5">Die Pause wird <b>direkt in Magicline</b> gebucht. Die Vertragslaufzeit verlängert sich um die Dauer – der Tarif bleibt erhalten. Das Mitglied bekommt eine Bestätigung.</div>'+
       curTxt;
   }
@@ -3640,7 +3652,16 @@ function wirePx(scope, p){
   var dt=scope.querySelector('#pxstart'); if(dt) dt.onchange=function(){ S.pxStart=dt.value; render(); };
   var tm=scope.querySelector('#pxterm'); if(tm) tm.oninput=function(){ S.pxTerm=Math.max(1,parseInt(tm.value,10)||1); };
   if(tm) tm.onchange=function(){ S.pxTerm=Math.max(1,parseInt(tm.value,10)||1); render(); };
-  var rsel=scope.querySelector('#pxreason'); if(rsel) rsel.onchange=function(){ S.pxReason=rsel.value; };
+  var rsel=scope.querySelector('#pxreason'); if(rsel) rsel.onchange=function(){ S.pxReason=rsel.value; render(); };  // Grund-Wechsel -> Nachweis-Block aktualisieren
+  var fi=scope.querySelector('#pxdoc'); if(fi) fi.onchange=function(){
+    var f=fi.files&&fi.files[0]; if(!f) return;
+    if(f.size>6*1024*1024){ alert('Datei zu groß (max. 6 MB). Bitte kleiner wählen.'); fi.value=''; return; }
+    var rd=new FileReader();
+    rd.onload=function(){ S.pxDoc=String(rd.result||''); S.pxDocName=f.name||'Nachweis'; render(); };
+    rd.onerror=function(){ alert('Datei konnte nicht gelesen werden.'); };
+    rd.readAsDataURL(f);
+  };
+  var dd=scope.querySelector('[data-pxdocdel]'); if(dd) dd.onclick=function(){ S.pxDoc=''; S.pxDocName=''; render(); };
   var sb=scope.querySelector('[data-pxsubmit]'); if(sb) sb.onclick=function(){ doPauseSubmit(p); };
   scope.querySelectorAll('[data-pxwithdraw]').forEach(function(b){ b.onclick=function(){ doPauseWithdraw(p, b.getAttribute('data-pxwithdraw')); }; });
 }
