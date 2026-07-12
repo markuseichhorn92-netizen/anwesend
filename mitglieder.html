@@ -933,13 +933,19 @@
     var hist=S.vaMsgs.filter(function(m){ return m.role==='user'||m.role==='assistant'; }).map(function(m){ return {role:m.role,text:m.text}; });
     api('/api/member/concierge',{method:'POST',body:JSON.stringify({messages:hist,context:vaContext()})})
       .then(function(d){ S.vaBusy=false;
-        if(d&&d.ok){ var a=d.action||null; S.vaMsgs.push({role:'assistant',text:d.message||'',chips:d.chips||[],action:a});
+        var msg=(d&&d.message)?String(d.message).trim():''; var a=(d&&d.action)||null; var chips=(d&&d.chips)||[];
+        if(d&&d.ok&&(msg||a||chips.length)){
+          S.vaMsgs.push({role:'assistant',text:msg,chips:chips,action:a});
           if(a&&a.type==='upload_attest'){ var p=a.params||{}; if(p.reasonId!=null){ S.pauseReasonId=p.reasonId; S.pauseReason=p.reasonName||S.pauseReason; } if(p.startDate) S.pauseFrom=p.startDate; }
-        } else { S.vaMsgs.push({role:'assistant',text:'Ich komme gerade nicht weiter. Du kannst deinen Vertrag auch direkt über die Buttons unten regeln oder unserem Team schreiben.',chips:['Nochmal versuchen']}); }
+        } else {
+          S.vaMsgs.push({role:'assistant',text:'Ups, da ist gerade etwas schiefgelaufen. Magst du es nochmal versuchen? Alternativ helfe ich dir gern persönlich weiter.',chips:['↻ Nochmal versuchen','Mit Team sprechen']});
+        }
         renderVa();
       })
-      .catch(function(){ S.vaBusy=false; S.vaMsgs.push({role:'assistant',text:'Verbindung gerade nicht möglich. Versuch es gleich nochmal.',chips:['Nochmal versuchen']}); renderVa(); });
+      .catch(function(){ S.vaBusy=false; S.vaMsgs.push({role:'assistant',text:'Verbindung gerade nicht möglich. Versuch es gleich nochmal.',chips:['↻ Nochmal versuchen']}); renderVa(); });
   }
+  // Letzten (fehlerhaften) Assistenten-Zug verwerfen und dieselbe Frage erneut senden.
+  function vaRetry(){ if(S.vaBusy) return; for(var i=S.vaMsgs.length-1;i>=0;i--){ if(S.vaMsgs[i].role==='assistant'){ S.vaMsgs.splice(i,1); break; } } vaCallAI(); }
   function vaSendText(q){ q=String(q||'').trim(); if(!q||S.vaBusy) return; S.vaMsgs.push({role:'user',text:q}); S.vaInput=''; vaCallAI(); }
   window.__vaSend=function(){ var t=$('va_q'); vaSendText(t?t.value:''); };
   // Attest-Upload im Chat (gleiche Skalierung wie __pausePhoto), danach Scan + KI weiter.
@@ -3465,7 +3471,7 @@
     },
     vaClose:function(){ setS({vaOpen:false}); },
     vaSend:function(){ window.__vaSend&&window.__vaSend(); },
-    vaChip:function(a){ vaSendText(a); },
+    vaChip:function(a){ if(a==='↻ Nochmal versuchen'){ vaRetry(); return; } if(a==='Mit Team sprechen'||a==='Team schreiben'){ vaExecute({type:'contact_team'}); return; } vaSendText(a); },
     vaAct:function(a){ var m=S.vaMsgs[parseInt(a,10)]; if(m&&m.action) vaExecute(m.action); },
     finnSuggest:function(a){ var t=$('finn_q'); if(t) t.value=a; ACT.finnSend(); },
     finnSend:function(){ if(S.finnBusy) return; var t=$('finn_q'); var q=t?(t.value||'').trim():''; if(!q) return;
