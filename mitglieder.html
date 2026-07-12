@@ -334,6 +334,7 @@
     cancelStep:0, cancelReason:'', cancelReasonId:'', pauseWeeks:6, offerDone:'', withdrawConfirm:false, withdrawDone:false, withdrawMsg:'', withdrawErr:'', cancelDone:false, revokeConfirm:false, revokeDone:false, busy:false,
     pauseStep:0, pauseReason:'', pauseReasonText:'', pauseFrom:'', pausePhoto:'', pausePhotoName:'', pauseDone:false,
     pauseReasonId:'', pauseTerm:1, pauseDoneVia:'', pauseDoneMsg:'',
+    pauseAttestUntil:'', pauseAttestKind:'', pauseAttestNote:'', pauseAttestConf:'', pauseAttestScanning:false, pauseAttestDone:false,
     ccBusy:false, ccMsg:'',
     commBusy:'', commMsg:'', commErr:false,
     docUpBusy:false, docMsg:'', docErr:false, docDlId:'',
@@ -374,8 +375,8 @@
         var cw=Math.max(1,Math.round(w*sc)), ch=Math.max(1,Math.round(h*sc));
         var cv=document.createElement('canvas'); cv.width=cw; cv.height=ch; cv.getContext('2d').drawImage(img,0,0,cw,ch);
         S.pausePhoto=cv.toDataURL('image/jpeg',0.82);
-      }catch(err){ S.pausePhoto=src; } S.pausePhotoName=f.name||'attest.jpg'; render(); };
-      img.onerror=function(){ S.pausePhoto=src; S.pausePhotoName=f.name||'attest'; render(); };
+      }catch(err){ S.pausePhoto=src; } S.pausePhotoName=f.name||'attest.jpg'; render(); if(typeof pauseIsMedical==='function'&&pauseIsMedical()) pauseScanAttest(); };
+      img.onerror=function(){ S.pausePhoto=src; S.pausePhotoName=f.name||'attest'; render(); if(typeof pauseIsMedical==='function'&&pauseIsMedical()) pauseScanAttest(); };
       img.src=src;
     };
     rd.readAsDataURL(f);
@@ -1466,11 +1467,39 @@
   function pauseUnitName(u,n){ u=String(u||'WEEK').toUpperCase(); if(u==='MONTH') return n===1?'Monat':'Monate'; if(u==='DAY') return n===1?'Tag':'Tage'; return n===1?'Woche':'Wochen'; }
   function pauseSelReason(){ var pi=DATA.pauseInfo; var rs=(pi&&pi.available&&pi.config&&pi.config.reasons)||[]; for(var i=0;i<rs.length;i++){ if(String(rs[i].id)===String(S.pauseReasonId)) return rs[i]; } return null; }
   function pauseDocRequired(){ var r=pauseSelReason(); return !!(r&&r.documentRequired); }
-  // Schrittzahl: neuer Flow überspringt den Nachweis-Schritt, wenn der Grund keinen verlangt.
-  function pauseMaxStep(){ var pi=DATA.pauseInfo; if(pi&&pi.available) return pauseDocRequired()?4:3; return 4; }
+  // „Medizinischer" Grund (Krankheit/Schwangerschaft): Nachweis PFLICHT, KI liest das
+  // Enddatum aus dem Attest und deckelt die Pause darauf (kein 12-Wochen-Limit).
+  function pauseIsMedical(){ var r=pauseSelReason(); if(!r) return false; return !!(r.documentRequired) || /krank|schwanger/i.test(String(r.name||'')); }
+  // Max. Term (in der Config-Einheit), der bis zum Attest-Datum passt.
+  function pauseAttestMaxTerm(){
+    if(!S.pauseAttestUntil) return null;
+    var cfg=(DATA.pauseInfo&&DATA.pauseInfo.config)||{}; var u=String(cfg.temporalUnit||'WEEK').toUpperCase();
+    var s=new Date(pauseMlStartISO()+'T00:00:00'), e=new Date(S.pauseAttestUntil+'T00:00:00');
+    if(isNaN(s.getTime())||isNaN(e.getTime())||e<=s) return null;
+    var days=Math.round((e-s)/86400000);
+    if(u==='DAY') return Math.max(1,days);
+    if(u==='MONTH'){ var m=(e.getFullYear()-s.getFullYear())*12+(e.getMonth()-s.getMonth()); if(e.getDate()<s.getDate()) m--; return Math.max(1,m); }
+    return Math.max(1,Math.floor(days/7));
+  }
+  // Obergrenze der wählbaren Dauer. Medizinisch: bis Attest-Datum (ohne 12-Wochen-Deckel).
+  // Sonst: max. 12 Wochen (bzw. 3 Monate / 84 Tage) pro Kalenderjahr, zusätzlich Magicline-Limit.
+  function pauseEffMax(){
+    var cfg=(DATA.pauseInfo&&DATA.pauseInfo.config)||{}; var u=String(cfg.temporalUnit||'WEEK').toUpperCase();
+    var mlMax=pauseMlTermMax();
+    if(pauseIsMedical()){ var am=pauseAttestMaxTerm(); return am!=null?am:mlMax; }
+    var cap=(u==='MONTH')?3:(u==='DAY'?84:12);
+    return Math.max(1,Math.min(mlMax,cap));
+  }
+  // Tatsächlich zu buchende Dauer: medizinisch = bis Attest-Datum (falls erkannt), sonst gedeckelte Auswahl.
+  function pauseTermEffective(){
+    if(pauseIsMedical()){ var am=pauseAttestMaxTerm(); if(am!=null) return am; }
+    return Math.max(1,Math.min(S.pauseTerm||1,pauseEffMax()));
+  }
+  // Schrittzahl: Nachweis-Schritt nur bei medizinischem Grund.
+  function pauseMaxStep(){ var pi=DATA.pauseInfo; if(pi&&pi.available) return pauseIsMedical()?4:3; return 4; }
   function pauseMlTermMax(){ var pi=DATA.pauseInfo||{}; var cfg=pi.config||{}; var max=cfg.maxTerms||12; var rem=pi.remaining&&pi.remaining.maxTerms; if(rem&&rem.value!=null&&String(rem.unit||'').toUpperCase()===String(cfg.temporalUnit||'WEEK').toUpperCase()&&rem.value<max) max=rem.value; return Math.max(1,max); }
   function pauseMlStartISO(){ var cfg=(DATA.pauseInfo&&DATA.pauseInfo.config)||{}; var min=cfg.firstPossibleStartDate||isoToday(); if(cfg.nextPossibleStartDateOnly) return min; var v=S.pauseFrom||min; return v<min?min:v; }
-  function pauseMlEndISO(){ try{ var cfg=(DATA.pauseInfo&&DATA.pauseInfo.config)||{}; var d=new Date(pauseMlStartISO()+'T00:00:00'); var u=String(cfg.temporalUnit||'WEEK').toUpperCase(); var n=S.pauseTerm||1; if(u==='MONTH') d.setMonth(d.getMonth()+n); else if(u==='DAY') d.setDate(d.getDate()+n); else d.setDate(d.getDate()+n*7); return fmtD(d); }catch(e){ return '—'; } }
+  function pauseMlEndISO(){ try{ var cfg=(DATA.pauseInfo&&DATA.pauseInfo.config)||{}; var d=new Date(pauseMlStartISO()+'T00:00:00'); var u=String(cfg.temporalUnit||'WEEK').toUpperCase(); var n=pauseTermEffective(); if(u==='MONTH') d.setMonth(d.getMonth()+n); else if(u==='DAY') d.setDate(d.getDate()+n); else d.setDate(d.getDate()+n*7); return fmtD(d); }catch(e){ return '—'; } }
   function pauseFeeTxt(){ var cfg=(DATA.pauseInfo&&DATA.pauseInfo.config)||{}; var f=cfg.fee||{}; if(typeof f.amount==='number'&&f.amount>0) return f.amount.toFixed(2).replace('.',',')+' '+((f.currency&&f.currency!=='EUR')?f.currency:'€'); return ''; }
   // Bestehende/geplante Pausen nur anzeigen (kein Zurückziehen im Portal).
   function pauseCurrentBox(){ var pi=DATA.pauseInfo; var list=(pi&&pi.current)||[]; if(!list.length) return '';
@@ -1490,6 +1519,7 @@
     var cfg=pi.config||{}; var n=S.pauseStep; var total=pauseMaxStep(); if(n>total)n=total;
     var unit=String(cfg.temporalUnit||'WEEK').toUpperCase();
     var docReq=pauseDocRequired();
+    var medical=pauseIsMedical();
     var segs='';for(var i=1;i<=total;i++)segs+='<div class="seg" style="background:'+(i<=n?TEALBG:'var(--border)')+'"></div>';
     var inner='';
     if(n===1){
@@ -1501,31 +1531,49 @@
         +'</div>'
         +'<div style="margin-top:14px"><label class="lbl">Ergänzende Angaben (optional)</label><textarea id="pause_note" rows="3" class="inp" style="resize:vertical" placeholder="z. B. genauer Grund oder Zeitraum" oninput="window.__pauseNote(this.value)">'+esc(S.pauseReasonText||'')+'</textarea></div>';
     } else if(n===2){
-      var minISO=cfg.firstPossibleStartDate||isoToday(); var valISO=pauseMlStartISO(); var fee=pauseFeeTxt(); var tmax=pauseMlTermMax();
+      var minISO=cfg.firstPossibleStartDate||isoToday(); var valISO=pauseMlStartISO(); var fee=pauseFeeTxt(); var tmax=pauseEffMax(); var curT=Math.min(S.pauseTerm||1,tmax);
       var dateHtml=cfg.nextPossibleStartDateOnly
         ?'<div style="background:var(--surface-2);border-radius:12px;padding:12px 14px;margin-top:4px;font-size:15px;font-weight:800">'+esc(deDateFull(minISO))+'<div style="font-size:12px;color:var(--text-soft);font-weight:500;margin-top:2px">Frühestmöglicher Start laut Vertrag – ein anderes Datum ist nicht möglich.</div></div>'
         :'<input type="date" class="inp" value="'+esc(valISO)+'" min="'+esc(minISO)+'" onchange="window.__pauseFrom(this.value)">';
-      inner='<div style="font-size:20px;font-weight:800;letter-spacing:-.3px">Ab wann und wie lange?</div>'
-        +'<div style="font-size:14px;color:var(--text-muted);margin-top:5px;line-height:1.45">Möglich sind bis zu '+tmax+' '+esc(pauseUnitName(unit,tmax))+(cfg.firstPossibleStartDate?(' – frühester Beginn: '+esc(deDateFull(cfg.firstPossibleStartDate))):'')+'.</div>'
-        +'<div style="margin-top:18px"><label class="lbl">Beginn der Pause</label>'+dateHtml+'</div>'
-        +'<div style="margin-top:16px"><label class="lbl">Dauer</label><div style="display:flex;align-items:center;justify-content:space-between;gap:14px;background:var(--surface-2);border-radius:16px;padding:14px 18px;margin-top:4px"><button data-act="pauseTermDec" style="width:44px;height:44px;border-radius:12px;border:none;background:var(--surface);color:'+TEAL+';font-size:24px;font-weight:800;cursor:pointer;box-shadow:0 2px 8px rgba(4,33,40,.10)">−</button><div style="text-align:center"><div style="font-size:28px;font-weight:900;color:'+TEAL+';line-height:1">'+S.pauseTerm+' '+esc(pauseUnitName(unit,S.pauseTerm))+'</div><div style="font-size:12px;color:var(--text-soft);margin-top:2px">beitragsfrei</div></div><button data-act="pauseTermInc" style="width:44px;height:44px;border-radius:12px;border:none;background:var(--surface);color:'+TEAL+';font-size:24px;font-weight:800;cursor:pointer;box-shadow:0 2px 8px rgba(4,33,40,.10)">+</button></div></div>'
-        +'<div style="background:var(--surface-2);border-radius:12px;padding:12px 14px;margin-top:14px;font-size:13px;color:var(--text-2);font-weight:600">Voraussichtliches Ende: <b style="color:'+TEAL+'">'+esc(pauseMlEndISO())+'</b></div>'
-        +(fee?'<div style="background:#FFF7E6;border:1px solid #F2D9A0;border-radius:12px;padding:12px 14px;margin-top:10px;font-size:13px;color:#7a5e15;font-weight:700">Einrichtungsgebühr: '+esc(fee)+'</div>':'');
-    } else if(n===3&&docReq){
-      inner='<div style="font-size:20px;font-weight:800;letter-spacing:-.3px">Nachweis hinzufügen</div>'
-        +'<div style="font-size:14px;color:var(--text-muted);margin-top:5px;line-height:1.45">Für den gewählten Grund benötigen wir einen Nachweis (z. B. Attest), aus dem Grund und Zeitraum hervorgehen. Mach einfach ein Foto.</div>';
-      if(S.pausePhoto){
-        inner+='<div style="margin-top:18px;border-radius:14px;overflow:hidden;border:1px solid var(--border)"><img src="'+S.pausePhoto+'" style="width:100%;display:block;max-height:320px;object-fit:contain;background:var(--surface-2)"></div>'
-          +'<div style="display:flex;align-items:center;gap:8px;margin-top:10px;color:var(--ok-fg);font-size:13px;font-weight:700">'+svg(IC.check,{c:'var(--ok-fg)',w:2.2,s:18})+'Nachweis angehängt</div>'
-          +'<div style="display:flex;gap:10px;margin-top:12px"><label style="flex:1;cursor:pointer;text-align:center;padding:12px;border:1.5px solid '+TEAL+';border-radius:11px;color:'+TEAL+';font-weight:700;font-size:14px">Neues Foto<input type="file" accept="image/*" capture="environment" onchange="window.__pausePhoto(this)" style="display:none"></label><button data-act="pausePhotoRemove" style="flex:1;padding:12px;border:1.5px solid #e3b8b1;border-radius:11px;background:var(--surface);color:var(--err-fg);font-weight:700;font-size:14px;cursor:pointer">Entfernen</button></div>';
+      if(medical){
+        // Medizinischer Grund: Dauer ergibt sich aus dem Attest (nächster Schritt).
+        inner='<div style="font-size:20px;font-weight:800;letter-spacing:-.3px">Ab wann?</div>'
+          +'<div style="font-size:14px;color:var(--text-muted);margin-top:5px;line-height:1.45">Wähle den Beginn. Die Dauer richtet sich nach deinem ärztlichen Nachweis – den lädst du im nächsten Schritt hoch, wir lesen das Datum automatisch aus.</div>'
+          +'<div style="margin-top:18px"><label class="lbl">Beginn der Pause</label>'+dateHtml+'</div>'
+          +'<div style="display:flex;align-items:flex-start;gap:9px;margin-top:16px;padding:13px 15px;background:var(--surface-2);border-radius:12px"><span style="flex-shrink:0">'+svg('<circle cx="12" cy="12" r="9"></circle><path d="M12 8v5M12 16h.01"></path>',{c:TEAL,w:1.9,s:18})+'</span><span style="font-size:12.5px;color:var(--text-2);line-height:1.5;font-weight:600">Die Pause endet automatisch an dem Tag, bis zu dem dein Attest die Sportunfähigkeit bescheinigt.</span></div>';
       } else {
-        inner+='<label style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;margin-top:18px;padding:30px 18px;border:2px dashed #c2d3d6;border-radius:16px;background:var(--surface-2);cursor:pointer;text-align:center">'+svg('<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle>',{c:TEAL,w:1.8,s:40})+'<span style="font-size:15px;font-weight:800;color:'+TEAL+'">Foto aufnehmen</span><span style="font-size:13px;color:var(--text-muted)">Kamera öffnen oder Bild auswählen</span><input type="file" accept="image/*" capture="environment" onchange="window.__pausePhoto(this)" style="display:none"></label>'
-          +'<div style="font-size:12px;color:var(--text-soft);margin-top:12px;text-align:center;line-height:1.4">Du kannst den Nachweis auch später nachreichen – die Pause wird bearbeitet, sobald er vorliegt.</div>';
+        inner='<div style="font-size:20px;font-weight:800;letter-spacing:-.3px">Ab wann und wie lange?</div>'
+          +'<div style="font-size:14px;color:var(--text-muted);margin-top:5px;line-height:1.45">Möglich sind bis zu '+tmax+' '+esc(pauseUnitName(unit,tmax))+' pro Kalenderjahr'+(cfg.firstPossibleStartDate?(' – frühester Beginn: '+esc(deDateFull(cfg.firstPossibleStartDate))):'')+'.</div>'
+          +'<div style="margin-top:18px"><label class="lbl">Beginn der Pause</label>'+dateHtml+'</div>'
+          +'<div style="margin-top:16px"><label class="lbl">Dauer</label><div style="display:flex;align-items:center;justify-content:space-between;gap:14px;background:var(--surface-2);border-radius:16px;padding:14px 18px;margin-top:4px"><button data-act="pauseTermDec" style="width:44px;height:44px;border-radius:12px;border:none;background:var(--surface);color:'+TEAL+';font-size:24px;font-weight:800;cursor:pointer;box-shadow:0 2px 8px rgba(4,33,40,.10)">−</button><div style="text-align:center"><div style="font-size:28px;font-weight:900;color:'+TEAL+';line-height:1">'+curT+' '+esc(pauseUnitName(unit,curT))+'</div><div style="font-size:12px;color:var(--text-soft);margin-top:2px">beitragsfrei</div></div><button data-act="pauseTermInc" style="width:44px;height:44px;border-radius:12px;border:none;background:var(--surface);color:'+TEAL+';font-size:24px;font-weight:800;cursor:pointer;box-shadow:0 2px 8px rgba(4,33,40,.10)">+</button></div></div>'
+          +'<div style="background:var(--surface-2);border-radius:12px;padding:12px 14px;margin-top:14px;font-size:13px;color:var(--text-2);font-weight:600">Voraussichtliches Ende: <b style="color:'+TEAL+'">'+esc(pauseMlEndISO())+'</b></div>'
+          +(fee?'<div style="background:#FFF7E6;border:1px solid #F2D9A0;border-radius:12px;padding:12px 14px;margin-top:10px;font-size:13px;color:#7a5e15;font-weight:700">Einrichtungsgebühr: '+esc(fee)+'</div>':'');
+      }
+    } else if(n===3&&medical){
+      inner='<div style="font-size:20px;font-weight:800;letter-spacing:-.3px">Ärztlichen Nachweis hochladen</div>'
+        +'<div style="font-size:14px;color:var(--text-muted);margin-top:5px;line-height:1.45">Für diesen Grund ist ein Attest <b>erforderlich</b>. Wir lesen das End-Datum automatisch aus und begrenzen deine Pause genau darauf.</div>';
+      if(S.pausePhoto){
+        inner+='<div style="margin-top:18px;border-radius:14px;overflow:hidden;border:1px solid var(--border)"><img src="'+S.pausePhoto+'" style="width:100%;display:block;max-height:280px;object-fit:contain;background:var(--surface-2)"></div>'
+          +'<div style="display:flex;align-items:center;gap:8px;margin-top:10px;color:var(--ok-fg);font-size:13px;font-weight:700">'+svg(IC.check,{c:'var(--ok-fg)',w:2.2,s:18})+'Nachweis angehängt</div>';
+        // KI-Scan-Status
+        if(S.pauseAttestScanning){
+          inner+='<div style="display:flex;align-items:center;gap:10px;margin-top:12px;padding:13px 15px;background:var(--surface-2);border-radius:12px;font-size:13.5px;font-weight:700;color:'+TEAL+'"><span class="finnDots">FINN liest dein Attest …</span></div>';
+        } else if(S.pauseAttestUntil){
+          var amT=pauseAttestMaxTerm();
+          inner+='<div style="margin-top:12px;padding:14px 16px;background:var(--ok-bg);border:1px solid #bfe6cd;border-radius:12px"><div style="display:flex;align-items:center;gap:8px;font-size:14px;font-weight:800;color:var(--ok-fg)">'+svg('<path d="M9 11l3 3L20 5"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>',{c:'var(--ok-fg)',w:2.1,s:18})+'Erkannt: sportfrei bis '+esc(deDateFull(S.pauseAttestUntil))+'</div><div style="font-size:12.5px;color:var(--text-2);font-weight:600;margin-top:5px;line-height:1.5">Deine Pause wird automatisch bis dahin eingetragen'+(amT?(' ('+amT+' '+esc(pauseUnitName(unit,amT))+')'):'')+'. Länger geht aus medizinischen Gründen nicht.</div></div>';
+        } else if(S.pauseAttestDone){
+          inner+='<div style="margin-top:12px;padding:14px 16px;background:#FFF7E6;border:1px solid #F2D9A0;border-radius:12px;font-size:12.5px;color:#7a5e15;font-weight:700;line-height:1.5">Wir konnten das End-Datum nicht sicher aus dem Attest lesen. Kein Problem – das Team prüft dein Attest und legt die Dauer fest. Du kannst unten fortfahren.</div>';
+        }
+        inner+='<div style="display:flex;gap:10px;margin-top:12px"><label style="flex:1;cursor:pointer;text-align:center;padding:12px;border:1.5px solid '+TEAL+';border-radius:11px;color:'+TEAL+';font-weight:700;font-size:14px">Neues Foto<input type="file" accept="image/*" capture="environment" onchange="window.__pausePhoto(this)" style="display:none"></label><button data-act="pausePhotoRemove" style="flex:1;padding:12px;border:1.5px solid #e3b8b1;border-radius:11px;background:var(--surface);color:var(--err-fg);font-weight:700;font-size:14px;cursor:pointer">Entfernen</button></div>';
+      } else {
+        inner+='<label style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;margin-top:18px;padding:30px 18px;border:2px dashed #c2d3d6;border-radius:16px;background:var(--surface-2);cursor:pointer;text-align:center">'+svg('<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle>',{c:TEAL,w:1.8,s:40})+'<span style="font-size:15px;font-weight:800;color:'+TEAL+'">Attest fotografieren</span><span style="font-size:13px;color:var(--text-muted)">Kamera öffnen oder Bild auswählen</span><input type="file" accept="image/*" capture="environment" onchange="window.__pausePhoto(this)" style="display:none"></label>'
+          +'<div style="font-size:12px;color:var(--text-soft);margin-top:12px;text-align:center;line-height:1.4">Achte darauf, dass Datum und Zeitraum gut lesbar sind.</div>';
       }
     } else {
       var p=DATA.profile||{}; var c=DATA.contract||{}; var fee2=pauseFeeTxt();
       var rows=pRow('Name',((p.firstName||'')+' '+(p.lastName||'')).trim())+pRow('Mitgliedsnummer',p.customerNumber)+pRow('E-Mail',p.email)+(c.rateName?pRow('Tarif',c.rateName):'');
-      var det=pRow('Grund',S.pauseReason||'—')+(S.pauseReasonText?pRow('Anmerkung',S.pauseReasonText):'')+pRow('Beginn',deDateFull(pauseMlStartISO()))+pRow('Dauer',S.pauseTerm+' '+pauseUnitName(unit,S.pauseTerm))+pRow('Vsl. Ende',pauseMlEndISO())+(fee2?pRow('Einrichtungsgebühr',fee2):'')+(docReq?pRow('Nachweis',S.pausePhoto?'angehängt':'wird nachgereicht'):'');
+      var effT=pauseTermEffective();
+      var det=pRow('Grund',S.pauseReason||'—')+(S.pauseReasonText?pRow('Anmerkung',S.pauseReasonText):'')+pRow('Beginn',deDateFull(pauseMlStartISO()))+pRow('Dauer',effT+' '+pauseUnitName(unit,effT))+pRow('Vsl. Ende',pauseMlEndISO())+(fee2?pRow('Einrichtungsgebühr',fee2):'')+(medical?pRow('Nachweis',S.pausePhoto?(S.pauseAttestUntil?('angehängt · Attest bis '+deDateFull(S.pauseAttestUntil)):'angehängt'):'fehlt'):'');
       inner='<div style="font-size:20px;font-weight:800;letter-spacing:-.3px">Pause bestätigen</div>'
         +'<div style="font-size:14px;color:var(--text-muted);margin-top:5px;line-height:1.45">Bitte prüfe deine Angaben. Die Pause wird direkt in deinem Vertrag hinterlegt.</div>'
         +'<div style="font-size:12px;font-weight:700;color:var(--text-soft);text-transform:uppercase;letter-spacing:.5px;margin:18px 2px 8px">Deine Daten</div>'
@@ -3623,18 +3671,24 @@
     pauseInc:function(){ setS({pauseWeeks:Math.min(25,S.pauseWeeks+1)}); },
     pauseDec:function(){ setS({pauseWeeks:Math.max(1,S.pauseWeeks-1)}); },
     pauseReason:function(a){ setS({pauseReason:a}); },
-    pauseReasonSel:function(a){ var pi=DATA.pauseInfo; var rs=(pi&&pi.config&&pi.config.reasons)||[]; var nm=''; for(var i=0;i<rs.length;i++){ if(String(rs[i].id)===String(a)){ nm=rs[i].name||''; break; } } setS({pauseReasonId:a,pauseReason:nm}); },
-    pauseTermInc:function(){ setS({pauseTerm:Math.min(pauseMlTermMax(),(S.pauseTerm||1)+1)}); },
+    pauseReasonSel:function(a){ var pi=DATA.pauseInfo; var rs=(pi&&pi.config&&pi.config.reasons)||[]; var nm=''; for(var i=0;i<rs.length;i++){ if(String(rs[i].id)===String(a)){ nm=rs[i].name||''; break; } } setS({pauseReasonId:a,pauseReason:nm,pausePhoto:'',pausePhotoName:'',pauseAttestUntil:'',pauseAttestKind:'',pauseAttestNote:'',pauseAttestConf:'',pauseAttestDone:false,pauseAttestScanning:false}); },
+    pauseTermInc:function(){ setS({pauseTerm:Math.min(pauseEffMax(),(S.pauseTerm||1)+1)}); },
     pauseTermDec:function(){ setS({pauseTerm:Math.max(1,(S.pauseTerm||1)-1)}); },
-    pauseNext:function(){ var pi=DATA.pauseInfo; var mlMode=!!(pi&&pi.available); if(S.pauseStep===1 && (mlMode?!S.pauseReasonId:!S.pauseReason)) return; if(S.pauseStep<pauseMaxStep()) setS({pauseStep:S.pauseStep+1}); },
+    pauseNext:function(){ var pi=DATA.pauseInfo; var mlMode=!!(pi&&pi.available);
+      if(S.pauseStep===1 && (mlMode?!S.pauseReasonId:!S.pauseReason)) return;
+      // Medizinischer Grund: Nachweis-Schritt (3) erst mit hochgeladenem Attest weiter.
+      if(mlMode && pauseIsMedical() && S.pauseStep===3){ if(S.pauseAttestScanning) return; if(!S.pausePhoto){ alert('Bitte lade zuerst dein ärztliches Attest hoch.'); return; } }
+      if(S.pauseStep<pauseMaxStep()) setS({pauseStep:S.pauseStep+1}); },
     pauseBack:function(){ if(S.pauseStep>1) setS({pauseStep:S.pauseStep-1}); else setS({pauseStep:0}); },
-    pausePhotoRemove:function(){ setS({pausePhoto:'',pausePhotoName:''}); },
+    pausePhotoRemove:function(){ setS({pausePhoto:'',pausePhotoName:'',pauseAttestUntil:'',pauseAttestKind:'',pauseAttestNote:'',pauseAttestConf:'',pauseAttestDone:false,pauseAttestScanning:false}); },
     closePauseDone:function(){ setS({pauseDone:false,pauseDoneVia:'',pauseDoneMsg:''}); },
-    confirmPauseSubmit:function(){ if(S.busy) return; setQuiet({busy:true});
+    confirmPauseSubmit:function(){ if(S.busy) return;
       var pi=DATA.pauseInfo; var mlMode=!!(pi&&pi.available&&S.pauseReasonId);
+      if(mlMode && pauseIsMedical() && !S.pausePhoto){ alert('Für diesen Grund ist ein ärztliches Attest erforderlich. Bitte lade es hoch.'); return; }
+      setQuiet({busy:true});
       var payload={ reason:S.pauseReason||'—', reasonText:S.pauseReasonText||'', from:(S.pauseFrom||isoToday()), weeks:S.pauseWeeks, photo:S.pausePhoto||'' };
       if(mlMode){
-        var cfg=pi.config||{}; var u=String(cfg.temporalUnit||'WEEK').toUpperCase(); var t=S.pauseTerm||1;
+        var cfg=pi.config||{}; var u=String(cfg.temporalUnit||'WEEK').toUpperCase(); var t=pauseTermEffective();
         payload.from=pauseMlStartISO(); payload.startDate=payload.from;
         payload.reasonId=S.pauseReasonId; payload.temporalUnit=u; payload.termValue=t;
         // "weeks" nur als Näherung für den E-Mail-Fallback
@@ -3642,7 +3696,7 @@
       }
       api('/api/member/pause',{method:'POST',body:JSON.stringify(payload)})
         .then(function(d){ if(mlMode&&d&&d.via==='magicline'){ DATA.pauseInfo=null; loadPauseInfo(); }
-          setS({busy:false,pauseStep:0,pauseDone:true,pauseDoneVia:(d&&d.via)||'',pauseDoneMsg:(d&&d.message)||'',pausePhoto:'',pausePhotoName:'',pauseReason:'',pauseReasonText:'',pauseReasonId:''}); refreshMe(); loadInbox(); })
+          setS({busy:false,pauseStep:0,pauseDone:true,pauseDoneVia:(d&&d.via)||'',pauseDoneMsg:(d&&d.message)||'',pausePhoto:'',pausePhotoName:'',pauseReason:'',pauseReasonText:'',pauseReasonId:'',pauseAttestUntil:'',pauseAttestKind:'',pauseAttestNote:'',pauseAttestConf:'',pauseAttestDone:false}); refreshMe(); loadInbox(); })
         .catch(function(){ setS({busy:false,pauseStep:0,pauseDone:true,pauseDoneVia:'',pauseDoneMsg:'',pausePhoto:'',pausePhotoName:''}); }); },
     submitCancel:function(){
       var date=val('c_date');
@@ -3771,7 +3825,22 @@
     pfResolve:function(a){ api('/api/member/inbox',{method:'POST',body:JSON.stringify({action:'resolve',id:a})})
         .then(function(d){ if(d&&d.ok&&d.vorgang) updateVorgang(d.vorgang); setS({}); }).catch(function(){}); }
   };
-  function startPause(){ S.cancelStep=0; S.pauseDone=false; S.pauseDoneVia=''; S.pauseDoneMsg=''; S.pauseStep=1; S.pauseReason=''; S.pauseReasonText=''; S.pauseReasonId=''; S.pausePhoto=''; S.pausePhotoName=''; S.pauseFrom=isoToday(); if(!S.pauseWeeks)S.pauseWeeks=6; if(!S.pauseTerm)S.pauseTerm=1; loadPauseInfo(); setS({}); }
+  // Attest per KI scannen: liest das „sportfrei bis"-Datum und deckelt die Pause darauf.
+  function pauseScanAttest(){
+    if(!S.pausePhoto) return;
+    S.pauseAttestScanning=true; S.pauseAttestDone=false; S.pauseAttestUntil=''; render();
+    api('/api/member/pause-attest',{method:'POST',body:JSON.stringify({photo:S.pausePhoto})})
+      .then(function(d){
+        S.pauseAttestScanning=false; S.pauseAttestDone=true;
+        if(d&&d.ok&&d.found&&d.untilDate){
+          S.pauseAttestUntil=d.untilDate; S.pauseAttestKind=d.kind||''; S.pauseAttestNote=d.note||''; S.pauseAttestConf=d.confidence||'';
+          var am=pauseAttestMaxTerm(); if(am) S.pauseTerm=am;   // Dauer automatisch auf das Attest-Datum
+        } else { S.pauseAttestUntil=''; }
+        render();
+      })
+      .catch(function(){ S.pauseAttestScanning=false; S.pauseAttestDone=true; render(); });
+  }
+  function startPause(){ S.cancelStep=0; S.pauseDone=false; S.pauseDoneVia=''; S.pauseDoneMsg=''; S.pauseStep=1; S.pauseReason=''; S.pauseReasonText=''; S.pauseReasonId=''; S.pausePhoto=''; S.pausePhotoName=''; S.pauseAttestUntil=''; S.pauseAttestKind=''; S.pauseAttestNote=''; S.pauseAttestConf=''; S.pauseAttestDone=false; S.pauseAttestScanning=false; S.pauseFrom=isoToday(); if(!S.pauseWeeks)S.pauseWeeks=6; if(!S.pauseTerm)S.pauseTerm=1; loadPauseInfo(); setS({}); }
   function doOffer(offer){ setQuiet({busy:true});
     var extra = offer==='pause' ? (S.pauseWeeks+' Wochen Pause') : '';
     api('/api/member/cancel',{method:'POST',body:JSON.stringify({action:'offer_accepted',offer:offer,reason:(S.cancelReason||'—')+(extra?(' · '+extra):'')})})
