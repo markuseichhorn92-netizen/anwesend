@@ -350,7 +350,7 @@
     ernTab:'heute', ernPlanTab:'woche', ernPlanBusy:false, ernFridge:'', ernRecipeSel:null, ernRecipeSaved:false,
     ernCapture:false, ernCapTab:'cam', ernObStep:0, ernCheckinDismissed:false, ernCapTarget:'',
     ctOpen:false, ctSent:false, ctMsg:'', ctBusy:false, ctErr:'', ctMsgServer:'', artFb:null,
-    pfFilter:'all', pfSel:null, pfThread:false, pfDraft:'', pfBusy:false, pfErr:'',
+    pfFilter:'offen', pfSearch:'', pfLimit:12, pfSel:null, pfThread:false, pfDraft:'', pfBusy:false, pfErr:'',
     copied:false, dlMsg:false, dlMsg2:'', emailing:false,
     ciRange:'all', ciFrom:'', ciTo:'',
     liEmail:'', liNum:'', liPhone:'', remember:(localStorage.getItem('fi_remember')==='1'),
@@ -477,7 +477,7 @@
     if(isFormer() && FORMER_OK.indexOf(s)<0) s='home';   // Ehemalige: gesperrte Screens -> Übersicht
     S.screen=s;
     if(s==='help'){ S.helpSel=null; S.helpCat='all'; S.helpQ=''; S.helpShowAll=false; S.aiPhase='idle'; S.aiQuery=''; S.aiAsked=''; S.aiAnswer=''; S.aiFeedback=null; S.ctOpen=false; S.ctSent=false; S.ctMsg=''; S.ctErr=''; S.artFb=null; }
-    if(s==='postfach'){ S.pfSel=null; S.pfThread=false; S.pfErr=''; S.pfDraft=''; loadInbox(); }
+    if(s==='postfach'){ S.pfSel=null; S.pfThread=false; S.pfErr=''; S.pfDraft=''; S.pfSearch=''; S.pfLimit=12; loadInbox(); }
     if(s==='contract'){ S.cancelStep=0; S.pauseStep=0; S.pauseDone=false; S.offerDone=''; S.docMsg=''; S.docErr=false; S.modMsg=''; S.modErr=false; S.modBusyId=''; loadDocuments(); loadModules(); }
     if(s==='settings'){ S.commMsg=''; S.commErr=false; loadCommPrefs(); }
     if((s==='checkins'||s==='fort')&&!DATA.checkins) loadCheckins();
@@ -2569,27 +2569,79 @@
   }
   setInterval(pollPf,12000);
 
+  function pfIsOpen(v){ return String((v&&v.status)||'')!=='abgeschlossen'; }
+  // Sucht in Betreff, letzter Nachricht und Typ-Label.
+  function pfMatch(v,q){
+    if(!q) return true;
+    var hay=String(v.subject||'')+' '+pfType(v.type).label;
+    var ms=v.messages||[]; if(ms.length) hay+=' '+String(ms[ms.length-1].text||'');
+    return hay.toLowerCase().indexOf(q)>=0;
+  }
+  var PF_CTRL_MIN=6;   // ab so vielen Vorgängen Filter+Suche einblenden
+  // Aktuelle Liste sortiert + gefiltert (Status-Chip + Suche). showCtrl steuert,
+  // ob überhaupt gefiltert wird (bei wenigen Vorgängen zeigen wir einfach alles).
+  function pfFilteredList(){
+    var all=(DATA.inbox||[]).slice().sort(function(a,b){ return (b.updatedAt||0)-(a.updatedAt||0); });
+    var showCtrl=all.length>=PF_CTRL_MIN;
+    var f=showCtrl?(S.pfFilter||'offen'):'alle';
+    var q=showCtrl?String(S.pfSearch||'').trim().toLowerCase():'';
+    var arr;
+    if(q){ arr=all.filter(function(v){ return pfMatch(v,q); }); }   // Suche geht über den GESAMTEN Postfach
+    else { arr=(f==='alle')?all:all.filter(function(v){ return f==='erledigt'?!pfIsOpen(v):pfIsOpen(v); }); }
+    return { all:all, showCtrl:showCtrl, filter:f, q:q, filtered:arr };
+  }
+  function pfRowHtml(v){
+    var ty=pfType(v.type);
+    var last=(v.messages&&v.messages.length)?v.messages[v.messages.length-1].text:'';
+    var sel=(String(S.pfSel)===String(v.id));
+    var done=!pfIsOpen(v);
+    return '<div class="pfRow" data-act="pfOpen" data-arg="'+esc(v.id)+'" style="display:flex;gap:13px;background:var(--surface);border-radius:18px;box-shadow:0 10px 30px rgba(4,33,40,.08);padding:16px;margin-bottom:12px;cursor:pointer'+(sel?';outline:2px solid '+TEAL:'')+(done?';opacity:.7':'')+'">'+
+      '<div style="width:44px;height:44px;border-radius:13px;background:'+ty.bg+';display:flex;align-items:center;justify-content:center;flex-shrink:0">'+svg(ty.icon,{c:ty.col,w:1.85,s:20})+'</div>'+
+      '<div style="flex:1;min-width:0">'+
+        '<div style="display:flex;align-items:flex-start;gap:8px"><div style="flex:1;min-width:0;font-size:15px;font-weight:800;color:var(--text);line-height:1.3">'+esc(v.subject)+'</div>'+
+          '<div style="display:flex;align-items:center;gap:7px;flex-shrink:0;margin-top:1px"><span style="font-size:12px;color:var(--text-soft);font-weight:600;white-space:nowrap">'+relTime(v.updatedAt)+'</span>'+(v.unread?'<span style="width:8px;height:8px;border-radius:50%;background:#E08C53"></span>':(done?svg('<path d="M20 6L9 17l-5-5"></path>',{c:'var(--ok-fg)',w:2.4,s:15}):''))+'</div></div>'+
+        '<div style="font-size:13.5px;color:var(--text-muted);margin-top:5px;line-height:1.45;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">'+esc(last)+'</div>'+
+      '</div></div>';
+  }
+  // Filter-Chips + Suchfeld (nur ab vielen Vorgängen).
+  function pfListControls(all){
+    var nOpen=all.filter(pfIsOpen).length, nAll=all.length, nDone=nAll-nOpen;
+    var f=S.pfFilter||'offen';
+    var chip=function(key,label,n){ var on=(f===key); return '<button data-act="pfFilter" data-arg="'+key+'" style="flex:1;padding:9px 6px;border-radius:12px;border:none;background:'+(on?TEALBG:'var(--surface)')+';color:'+(on?'#fff':'var(--text-2)')+';font-weight:800;font-size:13px;cursor:pointer;box-shadow:'+(on?'0 6px 16px -6px rgba(10,73,88,.55)':'0 4px 14px rgba(4,33,40,.06)')+';white-space:nowrap">'+label+'<span style="opacity:.72;font-weight:700"> '+n+'</span></button>'; };
+    var chips='<div style="display:flex;gap:8px;margin-bottom:12px">'+chip('offen','Offen',nOpen)+chip('erledigt','Erledigt',nDone)+chip('alle','Alle',nAll)+'</div>';
+    var search='<div style="position:relative;margin-bottom:14px"><span style="position:absolute;left:13px;top:50%;transform:translateY(-50%);display:flex;pointer-events:none">'+svg('<circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4.3-4.3"></path>',{c:'var(--text-soft)',w:2,s:17})+'</span>'+
+      '<input id="pf_search" type="search" enterkeyhint="search" placeholder="Vorgänge durchsuchen …" value="'+esc(S.pfSearch||'')+'" oninput="window.__pfSearch(this.value)" style="width:100%;box-sizing:border-box;border:1.5px solid var(--border);border-radius:14px;padding:11px 14px 11px 40px;font-size:14.5px;background:var(--bg);color:var(--text);outline:none">'+
+      (S.pfSearch?'<button data-act="pfSearchClear" aria-label="Leeren" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);border:none;background:var(--surface-2);color:var(--text-soft);width:26px;height:26px;border-radius:50%;font-size:15px;line-height:1;cursor:pointer">×</button>':'')+
+    '</div>';
+    return chips+search;
+  }
+  // Karten + „Weitere anzeigen" – separat, damit die Suche nur diesen Teil neu zeichnet.
+  function pfCardsHtml(){
+    var r=pfFilteredList();
+    var lim=S.pfLimit||12;
+    var shown=r.filtered.slice(0,lim);
+    var moreN=r.filtered.length-shown.length;
+    if(!shown.length){
+      if(!r.all.length) return '<div style="background:var(--surface);border-radius:18px;box-shadow:0 10px 30px rgba(4,33,40,.08);padding:34px 22px;text-align:center;margin-bottom:12px"><div style="font-size:15px;font-weight:800;color:var(--text)">Noch keine Nachrichten</div><div style="font-size:13px;color:var(--text-soft);margin-top:5px;line-height:1.5">Hier findest du Antworten vom Team sowie Termin- und Beitrags-Infos.</div></div>';
+      var txt=r.q?('Keine Treffer für „'+esc(r.q)+'".'):(r.filter==='erledigt'?'Keine erledigten Vorgänge.':'Keine offenen Vorgänge – alles erledigt. 🎉');
+      return '<div style="background:var(--surface);border-radius:18px;box-shadow:0 10px 30px rgba(4,33,40,.08);padding:28px 22px;text-align:center;margin-bottom:12px"><div style="font-size:14px;font-weight:700;color:var(--text-2)">'+txt+'</div></div>';
+    }
+    var cards=shown.map(pfRowHtml).join('');
+    var more=moreN>0?'<div style="text-align:center;margin:2px 0 14px"><button data-act="pfListMore" style="display:inline-flex;align-items:center;gap:6px;border:1.5px solid var(--border);background:var(--surface);color:var(--text-2);font-size:13px;font-weight:800;border-radius:20px;padding:9px 18px;cursor:pointer">'+svg('<path d="M6 9l6 6 6-6"></path>',{c:'var(--text-soft)',w:2.2,s:14})+'Weitere '+moreN+' anzeigen</button></div>':'';
+    return cards+more;
+  }
   function pfListHtml(list){
-    var rows=(list||[]);
-    var cards = rows.length ? rows.map(function(v){
-      var ty=pfType(v.type);
-      var last=(v.messages&&v.messages.length)?v.messages[v.messages.length-1].text:'';
-      var sel=(String(S.pfSel)===String(v.id));
-      return '<div class="pfRow" data-act="pfOpen" data-arg="'+esc(v.id)+'" style="display:flex;gap:13px;background:var(--surface);border-radius:18px;box-shadow:0 10px 30px rgba(4,33,40,.08);padding:16px;margin-bottom:12px;cursor:pointer'+(sel?';outline:2px solid '+TEAL:'')+'">'+
-        '<div style="width:44px;height:44px;border-radius:13px;background:'+ty.bg+';display:flex;align-items:center;justify-content:center;flex-shrink:0">'+svg(ty.icon,{c:ty.col,w:1.85,s:20})+'</div>'+
-        '<div style="flex:1;min-width:0">'+
-          '<div style="display:flex;align-items:flex-start;gap:8px"><div style="flex:1;min-width:0;font-size:15px;font-weight:800;color:var(--text);line-height:1.3">'+esc(v.subject)+'</div>'+
-            '<div style="display:flex;align-items:center;gap:7px;flex-shrink:0;margin-top:1px"><span style="font-size:12px;color:var(--text-soft);font-weight:600;white-space:nowrap">'+relTime(v.updatedAt)+'</span>'+(v.unread?'<span style="width:8px;height:8px;border-radius:50%;background:#E08C53"></span>':'')+'</div></div>'+
-          '<div style="font-size:13.5px;color:var(--text-muted);margin-top:5px;line-height:1.45;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">'+esc(last)+'</div>'+
-        '</div></div>';
-    }).join('') : '<div style="background:var(--surface);border-radius:18px;box-shadow:0 10px 30px rgba(4,33,40,.08);padding:34px 22px;text-align:center;margin-bottom:12px"><div style="font-size:15px;font-weight:800;color:var(--text)">Noch keine Nachrichten</div><div style="font-size:13px;color:var(--text-soft);margin-top:5px;line-height:1.5">Hier findest du Antworten vom Team sowie Termin- und Beitrags-Infos.</div></div>';
+    var r=pfFilteredList();
     var finn='<div data-act="openFinn" style="display:flex;align-items:center;gap:13px;background:linear-gradient(150deg,#0e6072,#063540);border-radius:18px;padding:16px;cursor:pointer;box-shadow:0 12px 30px rgba(4,33,40,.18)">'+
       '<div style="width:44px;height:44px;border-radius:50%;overflow:hidden;flex-shrink:0;background:#0a3d4a"><img src="/assets/brand/finn-mark.svg" alt="FINN" style="width:100%;height:100%;display:block"></div>'+
       '<div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:900;color:#fff">FINN – dein Coach</div><div style="font-size:12px;color:#aed0d6;font-weight:600;margin-top:1px">Antwortet sofort · übergibt bei Bedarf ans Team</div></div>'+
       svg('<path d="M9 18l6-6-6-6"></path>',{c:'#aed0d6',w:2.2,s:20})+
     '</div>';
-    return cards+finn;
+    var controls=r.showCtrl?pfListControls(r.all):'';
+    return controls+'<div id="pf_cards">'+pfCardsHtml()+'</div>'+finn;
   }
+  // Suche schreibt live nur die Kartenliste neu (Suchfeld behält Fokus).
+  window.__pfSearch=function(val){ S.pfSearch=val; S.pfLimit=12; var c=$('pf_cards'); if(c) c.innerHTML=pfCardsHtml(); };
   // Datum für den Trenner zwischen Nachrichtentagen ("Heute", "Gestern", "05.07.").
   function pfDayLabel(at){
     if(!at) return '';
@@ -3616,7 +3668,9 @@
         .then(function(d){ if(d&&d.ok){ setS({ctBusy:false,ctSent:true,ctMsgServer:d.message||''}); } else { setS({ctBusy:false,ctErr:(d&&d.message)||'Übermittlung fehlgeschlagen – bitte später erneut.'}); } })
         .catch(function(){ setS({ctBusy:false,ctErr:'Es ist ein Fehler aufgetreten. Bitte später erneut.'}); }); },
     // postfach
-    pfFilter:function(a){ setQuiet({pfFilter:a}); },
+    pfFilter:function(a){ setQuiet({pfFilter:a,pfLimit:12}); },
+    pfSearchClear:function(){ setQuiet({pfSearch:'',pfLimit:12}); },
+    pfListMore:function(){ setQuiet({pfLimit:(S.pfLimit||12)+15}); },
     pfOpen:function(a){ var arr=DATA.inbox||[]; for(var k=0;k<arr.length;k++){ if(String(arr[k].id)===String(a)){ arr[k].unread=false; break; } }
       S.pfStick=true;
       setS({pfSel:a,pfThread:true,pfErr:'',pfDraft:'',pfExpand:false});
