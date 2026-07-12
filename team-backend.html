@@ -3560,7 +3560,8 @@ async function doPauseSubmit(p){
   if(!S.pxReason){ alert('Bitte einen Pausengrund wählen.'); return; }
   if(!S.pxStart){ alert('Bitte ein Startdatum wählen.'); return; }
   if(!S.pxTerm||S.pxTerm<1){ alert('Bitte eine Dauer angeben.'); return; }
-  if(pxReasonDocRequired() && !S.pxDoc){ alert('Für den Grund „'+pxReasonName()+'" ist ein Nachweis erforderlich. Bitte ein Foto oder PDF anhängen.'); return; }
+  // Team: Nachweis ist NICHT verpflichtend (Override erlaubt). Verlangt Magicline
+  // für den Grund einen Nachweis, meldet es das beim Buchen zurück.
   S.pxBusy=true; render();
   try{
     var r=await tapi('/api/team/pause',{method:'POST',body:{ id:p.id, action:'create',
@@ -3583,8 +3584,9 @@ function pxReasonName(){ var rs=((S.pxCfg||{}).reasons)||[]; for(var i=0;i<rs.le
 function pxReasonDocRequired(){ var rs=((S.pxCfg||{}).reasons)||[]; for(var i=0;i<rs.length;i++){ if(String(rs[i].id)===String(S.pxReason)) return !!rs[i].documentRequired; } return false; }
 function pxDocBlock(){
   var req=pxReasonDocRequired();
-  var head='<div style="font-size:12.5px;font-weight:700;color:#6b7780;margin:14px 0 6px">Nachweis'+(req?' <span style="color:#b5402f">(erforderlich)</span>':' <span style="color:#8a929a;font-weight:600">(optional)</span>')+'</div>';
-  var reqNote=req?'<div style="font-size:11.5px;color:#8a3a2c;font-weight:700;background:#fbeae7;border-radius:9px;padding:8px 11px;margin-bottom:8px;line-height:1.45">Für diesen Grund verlangt Magicline einen Nachweis (z. B. ärztliches Attest). Bitte als Foto oder PDF anhängen.</div>':'';
+  var head='<div style="font-size:12.5px;font-weight:700;color:#6b7780;margin:14px 0 6px">Nachweis <span style="color:#8a929a;font-weight:600">(optional)</span></div>';
+  // Team: nie verpflichtend. Nur ein dezenter Hinweis, falls Magicline für den Grund einen Nachweis erwartet.
+  var reqNote=req?'<div style="font-size:11.5px;color:#7a5e15;font-weight:700;background:#FFF7E6;border-radius:9px;padding:8px 11px;margin-bottom:8px;line-height:1.45">Hinweis: Magicline erwartet für diesen Grund üblicherweise einen Nachweis. Ohne Anhang kann die Buchung abgelehnt werden – du kannst es aber versuchen.</div>':'';
   if(S.pxDoc){
     return head+reqNote+'<div style="display:flex;align-items:center;gap:10px;background:#eef6f7;border:1px solid #cfe0e4;border-radius:11px;padding:10px 12px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0a4958" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h5"/></svg><div style="flex:1;min-width:0;font-size:13px;font-weight:700;color:#0a4958;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(S.pxDocName||'Nachweis')+'</div><button data-pxdocdel="1" style="border:none;background:none;color:#b5402f;font-size:13px;font-weight:800;cursor:pointer;flex-shrink:0">Entfernen</button></div>';
   }
