@@ -38,6 +38,8 @@
     isNative: isNative,
     platform: isNative && Cap.getPlatform ? Cap.getPlatform() : 'web',
     onAuthed: function () {},
+    onTeamAuthed: function () {},
+    onTeamLogout: function () {},
     onLogout: function () {},
     biometricUnlock: function () { return Promise.resolve(null); },
     hasBiometricLogin: function () { return false; },
@@ -111,9 +113,20 @@
   function token() {
     try { return localStorage.getItem('fi_member_token') || sessionStorage.getItem('fi_member_token') || null; } catch (e) { return null; }
   }
+  function teamToken() {
+    try { return localStorage.getItem('fi_team_token') || null; } catch (e) { return null; }
+  }
   function post(path, bodyObj, withAuth) {
     var headers = { 'Content-Type': 'application/json' };
     if (withAuth) { var t = token(); if (t) headers.Authorization = 'Bearer ' + t; }
+    return fetch(path, { method: 'POST', headers: headers, body: JSON.stringify(bodyObj || {}) })
+      .then(function (r) { return r.json().catch(function () { return {}; }); })
+      .catch(function () { return {}; });
+  }
+  // POST mit explizitem Bearer (für das Team-Backend, das einen eigenen Token führt).
+  function postAuth(path, bodyObj, bearerTok) {
+    var headers = { 'Content-Type': 'application/json' };
+    if (bearerTok) headers.Authorization = 'Bearer ' + bearerTok;
     return fetch(path, { method: 'POST', headers: headers, body: JSON.stringify(bodyObj || {}) })
       .then(function (r) { return r.json().catch(function () { return {}; }); })
       .catch(function () { return {}; });
@@ -124,14 +137,24 @@
   // Android -> passt zum FCM-Versand im Backend). Fällt auf @capacitor/push-
   // notifications zurück, falls nur das installiert ist.
   var pushReady = false;
+  var lastPushToken = null;   // zuletzt erhaltenes Geräte-Token (für Nach-Login-Registrierung)
   function pdbg(s) { try { localStorage.setItem('fi_push_dbg', String(s)); } catch (e) {} }
   API.pushStatus = function () { try { return localStorage.getItem('fi_push_dbg') || ''; } catch (e) { return ''; } };
+  // Ein Geräte-Token, zwei mögliche Ziele: als Mitglied (fi_member_token) und/oder
+  // als Team (fi_team_token). So bekommt derselbe App-Nutzer je nach Anmeldung
+  // Mitglieder- UND/ODER Team-Pushes. Registrierung ist idempotent (Set im Backend).
   function registerPushToken(tok) {
     if (!tok) { pdbg('kein-token'); return; }
-    pdbg('token erhalten (len=' + String(tok).length + '), sende …');
-    post('/api/push/register', { token: tok, platform: API.platform }, true)
-      .then(function (r) { pdbg('registriert ok=' + !!(r && r.ok)); })
-      .catch(function () { pdbg('senden fehlgeschlagen'); });
+    lastPushToken = tok;
+    var mt = token(), tt = teamToken();
+    if (!mt && !tt) { pdbg('token erhalten, aber (noch) nicht angemeldet'); return; }
+    pdbg('token erhalten (len=' + String(tok).length + '), sende …' + (mt ? ' [member]' : '') + (tt ? ' [team]' : ''));
+    if (mt) post('/api/push/register', { token: tok, platform: API.platform }, true)
+      .then(function (r) { pdbg('member registriert ok=' + !!(r && r.ok)); })
+      .catch(function () { pdbg('member-registrierung fehlgeschlagen'); });
+    if (tt) postAuth('/api/team/push', { token: tok, platform: API.platform }, tt)
+      .then(function (r) { pdbg('team registriert ok=' + !!(r && r.ok)); })
+      .catch(function () { pdbg('team-registrierung fehlgeschlagen'); });
   }
   function setupPush() {
     if (pushReady) return;
@@ -233,6 +256,20 @@
   API.onAuthed = function (t) {
     setupPush();
     storeBiometric(t || token());
+    if (lastPushToken) registerPushToken(lastPushToken);   // Token schon da? sofort dem Mitglied zuordnen.
+  };
+  // Vom Team-Backend nach dem Login aufgerufen: Push einrichten und das Geräte-Token
+  // dem Team-Pool zuordnen (falls schon vorhanden, sofort – sonst beim Eintreffen).
+  API.onTeamAuthed = function () {
+    setupPush();
+    if (lastPushToken) registerPushToken(lastPushToken);
+  };
+  // MUSS aufgerufen werden, solange fi_team_token noch existiert (vor dem Abmelden):
+  // löst das Geräte-Token aus dem Team-Pool, damit ein abgemeldetes Gerät keine
+  // Team-Pushes (sensible Mitgliederdaten) mehr erhält.
+  API.onTeamLogout = function () {
+    var tt = teamToken();
+    if (lastPushToken && tt) { try { postAuth('/api/team/push', { action: 'unregister', token: lastPushToken }, tt); } catch (e) {} }
   };
   API.onLogout = function () {
     clearBiometric();

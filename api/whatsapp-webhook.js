@@ -47,6 +47,9 @@ function createWaVorgang(memberId, fromPhone, name, snapshot) {
     type: 'whatsapp', channel: 'whatsapp', phone: fromPhone, member: snapshot || undefined,
     subject: 'WhatsApp' + (name ? (' · ' + name) : ''),
     systemText: 'WhatsApp-Konversation' + (name ? (' mit ' + name) : '') + ' gestartet.',
+    // Nur das Gerüst – die eigentliche Nachricht kommt direkt danach über Inbox.reply
+    // und löst dort den Team-Push aus. Doppel-Benachrichtigung vermeiden.
+    notifyTeam: false,
   });
 }
 

@@ -146,11 +146,11 @@ module.exports = async function handler(req, res) {
     try {
       if (body.type === 'address') {
         const na = (((data.street || '') + ' ' + (data.houseNumber || '')).trim() + ', ' + (data.zipCode || '') + ' ' + (data.city || '')).replace(/^,\s*/, '').trim();
-        await Inbox.addVorgang(sess.id, { type: 'adresse', subject: 'Adresse aktualisiert', systemText: 'Deine Adresse wurde aktualisiert: ' + na + '.' });
+        await Inbox.addVorgang(sess.id, { type: 'adresse', subject: 'Adresse aktualisiert', systemText: 'Deine Adresse wurde aktualisiert: ' + na + '.', notifyTeam: false });
       } else if (body.type === 'contact') {
-        await Inbox.addVorgang(sess.id, { type: 'kontakt', subject: 'Kontaktdaten aktualisiert', systemText: 'Deine Kontaktdaten wurden aktualisiert.' });
+        await Inbox.addVorgang(sess.id, { type: 'kontakt', subject: 'Kontaktdaten aktualisiert', systemText: 'Deine Kontaktdaten wurden aktualisiert.', notifyTeam: false });
       } else {
-        await Inbox.addVorgang(sess.id, { type: 'iban', subject: 'Bankverbindung aktualisiert', systemText: 'Deine Bankverbindung wurde aktualisiert (' + (M.maskIban(String(data.iban || '').replace(/\s+/g, '')) || 'neue IBAN') + ').' });
+        await Inbox.addVorgang(sess.id, { type: 'iban', subject: 'Bankverbindung aktualisiert', systemText: 'Deine Bankverbindung wurde aktualisiert (' + (M.maskIban(String(data.iban || '').replace(/\s+/g, '')) || 'neue IBAN') + ').', notifyTeam: false });
       }
     } catch (e) {}
     try { await sendMemberConfirm(m, sess.id, body.type, data, validFromDE, true); } catch (e) {}

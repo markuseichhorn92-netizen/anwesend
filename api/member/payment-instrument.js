@@ -27,7 +27,7 @@ module.exports = async function handler(req, res) {
 
   const ok = !!(r && r.status >= 200 && r.status < 300);
   if (ok) {
-    try { await Inbox.addVorgang(sess.id, { type: 'iban', subject: 'Zahlungsmittel aktualisiert', systemText: 'Dein Zahlungsmittel wurde aktualisiert.' }); } catch (e) {}
+    try { await Inbox.addVorgang(sess.id, { type: 'iban', subject: 'Zahlungsmittel aktualisiert', systemText: 'Dein Zahlungsmittel wurde aktualisiert.', notifyTeam: false }); } catch (e) {}
   }
   res.statusCode = 200;
   return res.end(JSON.stringify({

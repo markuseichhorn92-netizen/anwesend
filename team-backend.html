@@ -10,6 +10,8 @@
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 <!-- jsPDF: Anwesenheitsbestätigung (Check-ins) im Client erzeugen -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" defer></script>
+<!-- Native-Brücke (Capacitor): Push-Registrierung fürs Team. No-Op im Browser. -->
+<script src="/assets/native.js"></script>
 <style>
   *{box-sizing:border-box}
   html,body{margin:0;padding:0}
@@ -253,7 +255,7 @@ function aiDraftFor(sel){
 function loadToken(){ try{ S.token=localStorage.getItem('fi_team_token')||null; S.role=localStorage.getItem('fi_team_role')||null; S.meName=localStorage.getItem('fi_team_name')||null; }catch(e){} }
 function saveToken(t){ S.token=t; try{ t?localStorage.setItem('fi_team_token',t):localStorage.removeItem('fi_team_token'); }catch(e){} }
 function saveRole(r,name){ S.role=r||null; if(name!=null) S.meName=name; try{ r?localStorage.setItem('fi_team_role',r):localStorage.removeItem('fi_team_role'); (name!=null&&name)?localStorage.setItem('fi_team_name',name):(name===''?localStorage.removeItem('fi_team_name'):0); }catch(e){} }
-function logout(){ saveToken(null); saveRole(null,''); S.convs=[]; S.sel=null; S.selKey=null; render(); }
+function logout(){ try{ if(window.FitInnNative&&FitInnNative.onTeamLogout) FitInnNative.onTeamLogout(); }catch(e){} saveToken(null); saveRole(null,''); S.convs=[]; S.sel=null; S.selKey=null; render(); }
 
 // ── Rollen-Sichtbarkeit ──────────────────────────────────────────────
 // Angestellte (Trainer-Login) sehen nur das Tagesgeschäft. Diese Bereiche
@@ -267,14 +269,18 @@ function meDisplayName(){ return String(S.meName||'').trim() || (isAdmin()?'Admi
 function roleLabel(){ return isAdmin()?'Admin':'Angestellte(r)'; }
 // Identität der aktuellen Sitzung nach Reload holen (Rolle sicher bestimmen).
 async function loadMe(){
-  try{ var r=await tapi('/api/team/me'); if(r&&r.ok){ saveRole(r.role||'admin', r.name||''); if(!canSee(S.screen)) S.screen='dash'; render(); } }catch(e){}
+  try{ var r=await tapi('/api/team/me'); if(r&&r.ok){ saveRole(r.role||'admin', r.name||''); if(!canSee(S.screen)) S.screen='dash'; render(); registerTeamPush(); } }catch(e){}
 }
+// In der eigenen App (Capacitor): Geräte-Token dem Team-Pool zuordnen, damit
+// angemeldete Team-Mitglieder Push-Benachrichtigungen über neue Postfach-Nachrichten
+// erhalten. Im normalen Browser ein No-Op (FitInnNative ist dort leer).
+function registerTeamPush(){ try{ if(window.FitInnNative&&FitInnNative.onTeamAuthed) FitInnNative.onTeamAuthed(); }catch(e){} }
 
 async function doLogin(pw){
   S.err=''; S.busy=true; render();
   try{
     var r=await tapi('/api/team/login',{method:'POST',body:{password:pw}});
-    if(r.ok && r.token){ saveToken(r.token); saveRole(r.role||'admin','Admin'); S.busy=false; loadEmployees(); await loadInbox(); return; }
+    if(r.ok && r.token){ saveToken(r.token); saveRole(r.role||'admin','Admin'); S.busy=false; registerTeamPush(); loadEmployees(); await loadInbox(); return; }
     S.err=r.message||'Login fehlgeschlagen.'; S.busy=false; render();
   }catch(e){ S.err='Verbindungsfehler.'; S.busy=false; render(); }
 }
@@ -296,7 +302,7 @@ async function doStaffVerify(){
   S.liErr=''; S.liBusy=true; render();
   try{
     var r=await tapi('/api/team/login',{method:'POST',body:{action:'verifyCode',challenge:S.liChallenge,code:code}});
-    if(r && r.ok && r.token){ saveToken(r.token); saveRole(r.role||'trainer', r.name||''); S.liBusy=false; S.liChallenge=''; S.liCode=''; S.liEmail=''; if(!canSee(S.screen)) S.screen='dash'; loadEmployees(); await loadInbox(); return; }
+    if(r && r.ok && r.token){ saveToken(r.token); saveRole(r.role||'trainer', r.name||''); S.liBusy=false; S.liChallenge=''; S.liCode=''; S.liEmail=''; if(!canSee(S.screen)) S.screen='dash'; registerTeamPush(); loadEmployees(); await loadInbox(); return; }
     S.liBusy=false; S.liErr=(r&&r.message)||'Code falsch oder abgelaufen.'; render();
   }catch(e){ S.liBusy=false; S.liErr='Verbindungsfehler.'; render(); }
 }
