@@ -111,6 +111,7 @@ var TAG_PRESETS=['VIP','Stammkunde','Beschwerde','Risiko','Beobachten','Interess
 var S={ token:null, role:null, meName:null, screen:'inbox', convs:[], counts:{}, selKey:null, sel:null,
   asMsgs:[], asBusy:false, asInput:'', asCid:0,
   alkOpen:false, alkMemberId:'', alkName:'', alkAction:'payment', alkEmail:true, alkWa:false, alkBusy:false, alkResult:null,
+  pxOpen:false, pxBusy:false, pxResult:null, pxCfg:null, pxLoading:false, pxCurrent:[], pxReason:'', pxStart:'', pxTerm:1,
   wbFrame:null, wbOffers:[], wbLoaded:false, wbSaving:false,
         filter:'open', search:'', loading:false, err:'', draft:'', note:'', replyChannel:'email',
         // Login: Admin (Passwort) <-> Trainer (E-Mail-Code). Additiv, bricht den Passwort-Login nicht.
@@ -2008,7 +2009,7 @@ function membersNode(){
       '<div style="margin-top:18px;background:#fff;border-radius:20px;box-shadow:0 14px 38px rgba(4,33,40,.09);padding:20px 24px"><div style="font-size:15px;font-weight:900;letter-spacing:-.2px;margin-bottom:4px;color:#15171B">Vorgangs-Historie</div>'+histRows+'</div>'+
       // DSGVO-Zone: bewusst dezent, ganz unten – Anonymisieren ist unwiderruflich (nur Admin).
       (isAdmin()?'<div style="margin-top:20px;display:flex;justify-content:flex-end;padding:0 2px"><button data-anon="1" style="display:inline-flex;align-items:center;gap:7px;border:1.5px solid #e3b8b1;background:#fff;color:#b5402f;border-radius:11px;font-size:12.5px;font-weight:800;padding:9px 14px;cursor:pointer"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#b5402f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>DSGVO: Mitglied anonymisieren</button></div>':'')+
-    '</div>'+dmModalHTML()+cxModalHTML()+apModalHTML()+wbModalHTML()+rhoModalHTML()+alkModalHTML();
+    '</div>'+dmModalHTML()+cxModalHTML()+apModalHTML()+wbModalHTML()+rhoModalHTML()+alkModalHTML()+pxModalHTML();
     setTimeout(function(){
       var b=wrap.querySelector('[data-back]'); if(b) b.onclick=backToMembers;
       wrap.querySelectorAll('[data-hist]').forEach(function(x){ x.onclick=function(){ S.screen='inbox'; openConv(x.getAttribute('data-hist')); }; });
@@ -2049,7 +2050,9 @@ function membersNode(){
       var wbo=wrap.querySelector('[data-wbopen]'); if(wbo) wbo.onclick=function(){ openWinback(p); };
       var rhoo=wrap.querySelector('[data-rhooffer]'); if(rhoo) rhoo.onclick=function(){ openRho(p); };
       var alo=wrap.querySelector('[data-actionlink]'); if(alo) alo.onclick=function(){ openActionLink(p); };
+      var pxo=wrap.querySelector('[data-pxopen]'); if(pxo) pxo.onclick=function(){ openPause(p); };
       wireAlk(wrap);
+      wirePx(wrap, p);
       wireDm(wrap);
       wireCx(wrap, p);
       wireAp(wrap);
@@ -3417,6 +3420,7 @@ function vertragCard(p){
     } else if(ct.cancelled){
       btns.push('<button data-cxwithdraw="1" style="display:inline-flex;align-items:center;gap:7px;border:1.5px solid #bcd7c4;border-radius:10px;background:#fff;color:#1d7a3e;font-weight:800;font-size:12.5px;padding:9px 13px;cursor:pointer">↩ Kündigung zurücknehmen</button>');
     } else {
+      btns.push('<button data-pxopen="1" style="display:inline-flex;align-items:center;gap:7px;border:1.5px solid #cfe0e4;border-radius:10px;background:#f2f8f9;color:#0a4958;font-weight:800;font-size:12.5px;padding:9px 13px;cursor:pointer"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0a4958" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>Beitragspause eintragen</button>');
       btns.push('<button data-cxopen="1" style="display:inline-flex;align-items:center;gap:7px;border:1.5px solid #e3b8b1;border-radius:10px;background:#fff;color:#b5402f;font-weight:800;font-size:12.5px;padding:9px 13px;cursor:pointer">Vertrag kündigen</button>');
       if(ct.withdrawalEligible) btns.push('<button data-cxrevoke="1" style="display:inline-flex;align-items:center;gap:7px;border:1.5px solid #d8c19a;border-radius:10px;background:#fff;color:#a5701f;font-weight:800;font-size:12.5px;padding:9px 13px;cursor:pointer">14-Tage-Widerruf'+(ct.withdrawalDaysLeft!=null?(' ('+ct.withdrawalDaysLeft+' T.)'):'')+'</button>');
     }
@@ -3517,6 +3521,128 @@ function wireCx(scope, p){
   var dt=scope.querySelector('#cxdate'); if(dt) dt.onchange=function(){ S.cxDate=dt.value; };
   var rsel=scope.querySelector('#cxreason'); if(rsel) rsel.onchange=function(){ S.cxReason=rsel.value; };
   var sb=scope.querySelector('[data-cxsubmit]'); if(sb) sb.onclick=function(){ doCancelSubmit(p); };
+}
+
+// ---------- Beitragspause (Team -> direkt in Magicline) ----------
+function pxDE(iso){ if(!iso) return '—'; var s=String(iso).slice(0,10); var m=s.match(/^(\d{4})-(\d{2})-(\d{2})$/); return m?(m[3]+'.'+m[2]+'.'+m[1]):s; }
+function pxUnitLabel(u,n){ u=String(u||'WEEK').toUpperCase(); if(u==='MONTH') return n===1?'Monat':'Monate'; if(u==='DAY') return n===1?'Tag':'Tage'; return n===1?'Woche':'Wochen'; }
+// Voraussichtliches Ende (Schätzung – das echte Ende liefert Magicline beim Anlegen).
+function pxEndISO(){
+  var cfg=S.pxCfg||{}, u=String(cfg.temporalUnit||'WEEK').toUpperCase(), t=S.pxTerm||1, s=S.pxStart;
+  if(!s) return ''; var d=new Date(s+'T00:00:00Z'); if(isNaN(d.getTime())) return '';
+  if(u==='MONTH') d.setUTCMonth(d.getUTCMonth()+t); else if(u==='DAY') d.setUTCDate(d.getUTCDate()+t); else d.setUTCDate(d.getUTCDate()+t*7);
+  return d.toISOString().slice(0,10);
+}
+function openPause(p){
+  var ct=p.contract||{};
+  S.pxOpen=true; S.pxBusy=false; S.pxResult=null; S.pxCfg=null; S.pxCurrent=[]; S.pxLoading=true;
+  S.pxMemberId=String(p.id); S.pxName=p.name||''; S.pxRate=ct.rateName||'';
+  S.pxReason=''; S.pxStart=''; S.pxTerm=1;
+  render();
+  loadPauseCfg(p.id);
+}
+function closePause(p){ if(S.pxBusy) return; var had=!!S.pxResult; S.pxOpen=false; S.pxResult=null; if(had&&p&&p.id) openProfile(p.id); else render(); }
+async function loadPauseCfg(id){
+  S.pxLoading=true; render();
+  try{
+    var r=await tapi('/api/team/pause?id='+encodeURIComponent(id));
+    if(r&&r.ok){
+      S.pxCfg=r.available?(r.config||{available:true}):{available:false,forbidden:!!r.forbidden,message:r.message||''};
+      S.pxCurrent=r.current||[];
+      if(r.available&&r.config){ S.pxStart=r.config.firstPossibleStartDate||''; S.pxTerm=1; }
+    } else { S.pxCfg={available:false,message:(r&&r.message)||''}; }
+  }catch(e){ S.pxCfg={available:false,message:''}; }
+  S.pxLoading=false; render();
+}
+async function doPauseSubmit(p){
+  if(S.pxBusy) return;
+  var cfg=S.pxCfg||{};
+  if(!S.pxReason){ alert('Bitte einen Pausengrund wählen.'); return; }
+  if(!S.pxStart){ alert('Bitte ein Startdatum wählen.'); return; }
+  if(!S.pxTerm||S.pxTerm<1){ alert('Bitte eine Dauer angeben.'); return; }
+  S.pxBusy=true; render();
+  try{
+    var r=await tapi('/api/team/pause',{method:'POST',body:{ id:p.id, action:'create',
+      startDate:S.pxStart, temporalUnit:(cfg.temporalUnit||'WEEK'), termValue:S.pxTerm, reasonId:S.pxReason, reason:pxReasonName() }});
+    S.pxBusy=false;
+    if(r&&r.ok){ S.pxResult=r; }
+    else { alert((r&&r.message)||'Beitragspause konnte nicht eingetragen werden.'); }
+  }catch(e){ S.pxBusy=false; alert('Verbindung fehlgeschlagen.'); }
+  render();
+}
+async function doPauseWithdraw(p, ipId){
+  if(!confirm('Diese Beitragspause wirklich zurücknehmen?')) return;
+  try{
+    var r=await tapi('/api/team/pause',{method:'POST',body:{ id:p.id, action:'withdraw', idlePeriodId:ipId }});
+    if(r&&r.ok){ alert(r.message||'Pause zurückgenommen.'); openProfile(p.id); }
+    else alert((r&&r.message)||'Rücknahme fehlgeschlagen.');
+  }catch(e){ alert('Verbindung fehlgeschlagen.'); }
+}
+function pxReasonName(){ var rs=((S.pxCfg||{}).reasons)||[]; for(var i=0;i<rs.length;i++){ if(String(rs[i].id)===String(S.pxReason)) return rs[i].name||''; } return ''; }
+function pxModalHTML(){
+  if(!S.pxOpen) return '';
+  var cfg=S.pxCfg||{};
+  var inner;
+  if(S.pxLoading && !S.pxCfg){
+    inner='<div style="padding:26px;text-align:center"><span class="spin"></span></div>';
+  } else if(!cfg.available){
+    inner='<div style="background:#fff6ec;border-radius:12px;padding:14px 16px;font-size:13.5px;font-weight:700;color:#9a6d1f;line-height:1.55">'+esc(cfg.message||'Für diesen Vertrag ist keine Beitragspause verfügbar. Möglicherweise ist der Scope MEMBERSHIP_SELF_SERVICE_WRITE nicht aktiv oder es besteht kein aktiver Vertrag.')+'</div>';
+  } else if(S.pxResult){
+    inner='<div style="background:#e7f6ec;border-radius:12px;padding:14px 16px;font-size:13.5px;font-weight:700;color:#1d7a3e;line-height:1.55">✓ '+esc(S.pxResult.message||'Beitragspause eingetragen.')+' Das Mitglied wurde per E-Mail informiert und sieht die Pause im Portal.</div>';
+  } else {
+    var rs=cfg.reasons||[];
+    var unit=String(cfg.temporalUnit||'WEEK').toUpperCase();
+    var reasonBox='<select id="pxreason" style="width:100%;padding:11px 13px;border:1.5px solid #dce3e4;border-radius:11px;font-size:14px;background:#fbfcfc">'+
+      '<option value="">– Pausengrund wählen –</option>'+
+      rs.map(function(x){ return '<option value="'+esc(String(x.id))+'"'+(String(S.pxReason)===String(x.id)?' selected':'')+'>'+esc(x.name)+(x.documentRequired?' (Nachweis nötig)':'')+'</option>'; }).join('')+
+      '</select>'+(rs.length?'':'<div style="font-size:11.5px;color:#b5402f;font-weight:700;margin-top:6px">Keine Pausengründe abrufbar (Scope evtl. nicht aktiv).</div>');
+    var endEst=pxEndISO();
+    var feeTxt=(cfg.fee&&cfg.fee.amount>0)?('<div style="font-size:11.5px;color:#8a929a;font-weight:600;margin-top:6px">Gebühr laut Vertrag: '+esc(String(cfg.fee.amount))+' '+esc(cfg.fee.currency||'EUR')+'</div>'):'';
+    var curTxt='';
+    if((S.pxCurrent||[]).length){
+      curTxt='<div style="margin-top:14px;padding-top:12px;border-top:1px solid #f0f3f4"><div style="font-size:12px;font-weight:800;color:#8a929a;margin-bottom:8px">Bereits hinterlegt</div>'+
+        S.pxCurrent.map(function(ip){ var st=ip.state==='PENDING_VERIFICATION'?'wird geprüft':'aktiv/geplant';
+          return '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;font-size:12.5px"><div style="color:#42454b;font-weight:700">'+esc(pxDE(ip.startDate))+' – '+esc(ip.endDate?pxDE(ip.endDate):'offen')+'<span style="color:#8a929a;font-weight:600"> · '+esc(st)+'</span></div>'+(ip.id!=null?'<button data-pxwithdraw="'+esc(String(ip.id))+'" style="border:1px solid #e3b8b1;background:#fff;color:#b5402f;border-radius:8px;font-size:11.5px;font-weight:800;padding:5px 10px;cursor:pointer;flex-shrink:0">Zurücknehmen</button>':'')+'</div>';
+        }).join('')+'</div>';
+    }
+    inner='<div style="font-size:12.5px;font-weight:700;color:#6b7780;margin-bottom:6px">Startdatum</div>'+
+      '<input type="date" id="pxstart" value="'+esc(S.pxStart||'')+'"'+(cfg.firstPossibleStartDate?(' min="'+esc(cfg.firstPossibleStartDate)+'"'):'')+' style="width:100%;padding:11px 13px;border:1.5px solid #dce3e4;border-radius:11px;font-size:14px;background:#fbfcfc;margin-bottom:'+(cfg.firstPossibleStartDate?'4px':'12px')+'">'+
+      (cfg.firstPossibleStartDate?'<div style="font-size:11.5px;color:#8a929a;font-weight:600;margin-bottom:12px">Frühestmöglich: '+esc(pxDE(cfg.firstPossibleStartDate))+(cfg.nextPossibleStartDateOnly?' (nur dieses Datum möglich)':'')+'</div>':'')+
+      '<div style="display:flex;gap:12px;align-items:flex-end;margin-bottom:2px">'+
+        '<div style="flex:1"><div style="font-size:12.5px;font-weight:700;color:#6b7780;margin-bottom:6px">Dauer ('+pxUnitLabel(unit,2)+')</div>'+
+          '<input type="number" id="pxterm" min="1" max="'+(cfg.maxTerms||60)+'" value="'+esc(String(S.pxTerm||1))+'" style="width:100%;padding:11px 13px;border:1.5px solid #dce3e4;border-radius:11px;font-size:14px;background:#fbfcfc"></div>'+
+        (endEst?'<div style="flex:1;font-size:12.5px;color:#6b7780;font-weight:700;padding-bottom:11px">ca. bis <b style="color:#15171B">'+esc(pxDE(endEst))+'</b></div>':'')+
+      '</div>'+
+      (cfg.maxTerms!=null?'<div style="font-size:11.5px;color:#8a929a;font-weight:600;margin-bottom:12px">Max. '+esc(String(cfg.maxTerms))+' '+pxUnitLabel(unit,cfg.maxTerms)+' pro Vertrag.</div>':'<div style="margin-bottom:12px"></div>')+
+      '<div style="font-size:12.5px;font-weight:700;color:#6b7780;margin-bottom:6px">Grund</div>'+reasonBox+feeTxt+
+      '<div style="margin-top:14px;background:#f2f8f9;border-radius:12px;padding:12px 14px;font-size:12.5px;font-weight:600;color:#0a4958;line-height:1.5">Die Pause wird <b>direkt in Magicline</b> gebucht. Die Vertragslaufzeit verlängert sich um die Dauer – der Tarif bleibt erhalten. Das Mitglied bekommt eine Bestätigung.</div>'+
+      curTxt;
+  }
+  var canSubmit=cfg.available&&!S.pxResult&&!S.pxLoading;
+  return '<div data-pxoverlay="1" style="position:fixed;inset:0;background:rgba(0,18,22,.5);z-index:70;display:flex;align-items:center;justify-content:center;padding:20px">'+
+    '<div data-pxcard="1" style="width:100%;max-width:460px;background:#fff;border-radius:20px;box-shadow:0 30px 70px rgba(0,0,0,.3);padding:22px 24px;max-height:90vh;overflow-y:auto">'+
+      '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:16px"><div style="min-width:0"><div style="font-size:16px;font-weight:900;letter-spacing:-.3px">Beitragspause eintragen</div>'+
+        '<div style="font-size:12.5px;color:#8a929a;font-weight:600;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(S.pxName||'Mitglied')+(S.pxRate?(' · '+esc(S.pxRate)):'')+'</div></div>'+
+      '<button data-pxx="1" style="border:none;background:#f1f5f6;border-radius:9px;width:32px;height:32px;font-size:18px;line-height:1;color:#6b7780;cursor:pointer;flex-shrink:0">×</button></div>'+
+      inner+
+      '<div style="display:flex;gap:9px;margin-top:16px">'+
+        '<button data-pxcancel="1" style="flex:1;border:1.5px solid #d6dee0;border-radius:11px;background:#fff;color:#42454b;font-weight:800;font-size:13.5px;padding:11px;cursor:pointer">'+(S.pxResult?'Schließen':'Abbrechen')+'</button>'+
+        (canSubmit?'<button data-pxsubmit="1"'+(S.pxBusy?' disabled':'')+' style="flex:1;border:none;border-radius:11px;background:'+TEAL+';color:#fff;font-weight:800;font-size:13.5px;padding:11px;cursor:pointer">'+(S.pxBusy?'Trage ein …':'In Magicline eintragen')+'</button>':'')+
+      '</div>'+
+    '</div></div>';
+}
+function wirePx(scope, p){
+  if(!S.pxOpen) return;
+  var ov=scope.querySelector('[data-pxoverlay]'); if(ov) ov.onclick=function(){ closePause(p); };
+  var card=scope.querySelector('[data-pxcard]'); if(card) card.onclick=function(e){ e.stopPropagation(); };
+  var x=scope.querySelector('[data-pxx]'); if(x) x.onclick=function(){ closePause(p); };
+  var cc=scope.querySelector('[data-pxcancel]'); if(cc) cc.onclick=function(){ closePause(p); };
+  var dt=scope.querySelector('#pxstart'); if(dt) dt.onchange=function(){ S.pxStart=dt.value; render(); };
+  var tm=scope.querySelector('#pxterm'); if(tm) tm.oninput=function(){ S.pxTerm=Math.max(1,parseInt(tm.value,10)||1); };
+  if(tm) tm.onchange=function(){ S.pxTerm=Math.max(1,parseInt(tm.value,10)||1); render(); };
+  var rsel=scope.querySelector('#pxreason'); if(rsel) rsel.onchange=function(){ S.pxReason=rsel.value; };
+  var sb=scope.querySelector('[data-pxsubmit]'); if(sb) sb.onclick=function(){ doPauseSubmit(p); };
+  scope.querySelectorAll('[data-pxwithdraw]').forEach(function(b){ b.onclick=function(){ doPauseWithdraw(p, b.getAttribute('data-pxwithdraw')); }; });
 }
 
 // ---------- Hilfe-Artikel ----------
