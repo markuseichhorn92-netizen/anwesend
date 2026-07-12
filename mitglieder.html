@@ -344,7 +344,7 @@
     helpSel:null, helpCat:'all', helpQ:'', helpShowAll:false,
     aiQuery:'', aiPhase:'idle', aiAsked:'', aiAnswer:'', aiFeedback:null,
     finnOpen:false, finnMsgs:[], finnBusy:false, finnTip:'', finnTipLoaded:false,
-    vaOpen:false, vaMsgs:[], vaBusy:false, vaInput:'',
+    vaOpen:false, vaMsgs:[], vaBusy:false, vaInput:'', vaIntent:'',
     blogSel:null, blogPost:null, instaSel:null,
     obStep:0, obGoal:'Gesundheit & Longevity', obFreq:3, obAge:34, obExp:'gelegentlich',
     ernFormInit:false, ernEdit:false, ernGoal:'abnehmen', ernSex:'w', ernH:170, ernW:70, ernAge:30, ernAct:'moderat', ernDiet:'omnivor',
@@ -917,11 +917,58 @@
   // ===== Vertrags-Assistent (KI-Chat für Pause & Kündigung) =====
   function vaScrollBottom(){ setTimeout(function(){ var e=$('va_scroll'); if(e) e.scrollTop=e.scrollHeight; },30); }
   function renderVa(){ render(); var e=$('va_scroll'); if(e) e.scrollTop=e.scrollHeight; }
+  // Antwort-Chips aus den echten Pausen-/Kündigungsgründen (Fallback, falls noch nicht geladen).
+  function vaPauseChips(){
+    var cfg=(DATA.pauseInfo||{}).config||{}; var rs=(cfg.reasons||[]).map(function(r){ return r.name; }).filter(Boolean);
+    if(!rs.length) rs=['Krankheit','Schwangerschaft','Beruflich abwesend','Urlaub','Sonstiges'];
+    return rs.slice(0,6);
+  }
+  function vaCancelChips(){
+    var rs=(DATA.cancelReasons||[]).map(function(r){ return r.name; }).filter(Boolean);
+    if(!rs.length) rs=['Zu teuer','Keine Zeit','Umzug','Gesundheit','Unzufrieden','Sonstiges'];
+    return rs.slice(0,6);
+  }
+  // Öffnet den Vertrags-Assistenten – wahlweise direkt auf ein Anliegen vorbereitet
+  // ('pause' | 'cancel') oder allgemein (''). Der Begrüßungstext wird clientseitig
+  // gesetzt, damit der Chat sofort da ist; die Gründe laden im Hintergrund nach und
+  // stehen bereit, sobald das Mitglied einen Chip wählt.
+  function openAssistant(intent){
+    intent=(intent==='pause'||intent==='cancel')?intent:'';
+    S.vaIntent=intent;
+    loadPauseInfo(); loadCancelReasons();
+    var nm=(DATA.profile&&DATA.profile.firstName)||''; var hi='Hi'+(nm?(' '+nm):'')+'! ';
+    var greeting, chips;
+    if(intent==='cancel'){
+      greeting=hi+'schade, dass du übers **Kündigen** nachdenkst – vielleicht finden wir gemeinsam eine bessere Lösung. Darf ich kurz fragen, was der Grund ist?';
+      chips=vaCancelChips();
+    } else if(intent==='pause'){
+      greeting=hi+'gern helfe ich dir beim **Pausieren** deiner Mitgliedschaft. Was ist der Grund für die Pause?';
+      chips=vaPauseChips();
+    } else {
+      greeting=hi+'ich bin dein Vertrags-Assistent. Ich helfe dir schnell weiter – beim **Pausieren** oder **Kündigen** – und finde die beste Lösung für dich. Was möchtest du tun?';
+      chips=['Mitgliedschaft pausieren','Ich möchte kündigen','Ich hab eine Frage'];
+    }
+    S.vaMsgs=[{role:'assistant',text:greeting,chips:chips}];
+    S.vaInput=''; setS({vaOpen:true}); vaScrollBottom();
+  }
+  // Fallback aus dem Chat ins klassische Schritt-Formular, falls die KI mal nicht weiterhilft.
+  function vaToClassic(){
+    var intent=S.vaIntent; setS({vaOpen:false});
+    setTimeout(function(){ nav('contract'); if(intent==='cancel'){ ACT.startCancel(); } else { startPause(); } },120);
+  }
+  // Fehler-Chips im Chat: neben „Nochmal" / „Team" auch der Weg ins klassische Formular.
+  function vaFallbackChips(base){
+    var c=(base||['↻ Nochmal versuchen','Mit Team sprechen']).slice();
+    if(S.vaIntent==='pause') c.push('Zum Pause-Formular');
+    else if(S.vaIntent==='cancel') c.push('Zum Kündigungs-Formular');
+    return c;
+  }
   // Kompakter Kontext für die KI aus dem aktuellen State.
   function vaContext(){
     var c=DATA.contract||{}; var pi=DATA.pauseInfo||{}; var cfg=pi.config||{};
     return {
       member:{ firstName:(DATA.profile&&DATA.profile.firstName)||'' },
+      intent:S.vaIntent||'',
       contract:{ rateName:c.rateName||'', active:c.active!==false, cancelled:!!c.cancelled, nextCancellationDate:c.nextCancellationDate||'', nextCancellationDateISO:c.nextCancellationDateISO||'', withdrawalEligible:!!c.withdrawalEligible, withdrawalDaysLeft:c.withdrawalDaysLeft },
       pause:{ available:!!pi.available, reasons:(cfg.reasons||[]).map(function(r){ return {id:r.id,name:r.name,documentRequired:!!r.documentRequired}; }), unit:cfg.temporalUnit||'WEEK', firstStartISO:cfg.firstPossibleStartDate||'', maxTerm:(pi.available?pauseMlTermMax():12) },
       cancelReasons:(DATA.cancelReasons||[]).map(function(r){ return {id:r.id,name:r.name}; }),
@@ -938,11 +985,11 @@
           S.vaMsgs.push({role:'assistant',text:msg,chips:chips,action:a});
           if(a&&a.type==='upload_attest'){ var p=a.params||{}; if(p.reasonId!=null){ S.pauseReasonId=p.reasonId; S.pauseReason=p.reasonName||S.pauseReason; } if(p.startDate) S.pauseFrom=p.startDate; }
         } else {
-          S.vaMsgs.push({role:'assistant',text:'Ups, da ist gerade etwas schiefgelaufen. Magst du es nochmal versuchen? Alternativ helfe ich dir gern persönlich weiter.',chips:['↻ Nochmal versuchen','Mit Team sprechen']});
+          S.vaMsgs.push({role:'assistant',text:'Ups, da ist gerade etwas schiefgelaufen. Magst du es nochmal versuchen? Alternativ helfe ich dir gern persönlich weiter – oder du nutzt das klassische Formular.',chips:vaFallbackChips()});
         }
         renderVa();
       })
-      .catch(function(){ S.vaBusy=false; S.vaMsgs.push({role:'assistant',text:'Verbindung gerade nicht möglich. Versuch es gleich nochmal.',chips:['↻ Nochmal versuchen']}); renderVa(); });
+      .catch(function(){ S.vaBusy=false; S.vaMsgs.push({role:'assistant',text:'Verbindung gerade nicht möglich. Versuch es gleich nochmal.',chips:vaFallbackChips(['↻ Nochmal versuchen'])}); renderVa(); });
   }
   // Letzten (fehlerhaften) Assistenten-Zug verwerfen und dieselbe Frage erneut senden.
   function vaRetry(){ if(S.vaBusy) return; for(var i=S.vaMsgs.length-1;i>=0;i--){ if(S.vaMsgs[i].role==='assistant'){ S.vaMsgs.splice(i,1); break; } } vaCallAI(); }
@@ -1433,7 +1480,7 @@
 
   function row(k,v){ return '<div style="display:flex;justify-content:space-between;padding:11px 0;border-bottom:1px solid var(--surface-2)"><span style="font-size:14px;color:var(--text-muted)">'+k+'</span><span style="font-size:14px;font-weight:700">'+esc(v||'—')+'</span></div>'; }
 
-  function pauseBtn(mt){ return '<button data-act="openPause" style="width:100%;margin-top:'+(mt||14)+'px;padding:15px;border:1.5px solid '+TEAL+';border-radius:13px;background:var(--surface);color:'+TEAL+';font-weight:800;font-size:15px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:9px">'+svg('<rect x="6" y="5" width="4" height="14" rx="1"></rect><rect x="14" y="5" width="4" height="14" rx="1"></rect>',{c:TEAL,w:2,s:18})+'Mitgliedschaft pausieren</button>'; }
+  function pauseBtn(mt){ return '<button data-act="assistPause" style="width:100%;margin-top:'+(mt||14)+'px;padding:15px;border:1.5px solid '+TEAL+';border-radius:13px;background:var(--surface);color:'+TEAL+';font-weight:800;font-size:15px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:9px">'+svg('<rect x="6" y="5" width="4" height="14" rx="1"></rect><rect x="14" y="5" width="4" height="14" rx="1"></rect>',{c:TEAL,w:2,s:18})+'Mitgliedschaft pausieren</button>'; }
   // Einstieg in den geführten KI-Vertrags-Assistenten (Pause & Kündigung).
   function vaCtaCard(){
     return '<div data-act="vaOpen" style="display:flex;align-items:center;gap:13px;background:linear-gradient(150deg,#0e6072,#063540);border-radius:18px;padding:16px;margin-bottom:14px;cursor:pointer;box-shadow:0 12px 30px rgba(4,33,40,.18)">'+
@@ -1460,7 +1507,7 @@
     if(S.cancelStep>0) return head+funnel();
     // overview
     if(!c){
-      return head+'<div class="card" style="padding:30px 22px;text-align:center"><div style="width:60px;height:60px;border-radius:18px;background:var(--err-bg);display:flex;align-items:center;justify-content:center;margin:0 auto 16px">'+svg(IC.warn,{c:'var(--err-fg)',w:2,s:28})+'</div><div style="font-size:19px;font-weight:900;letter-spacing:-.3px">Vertragsdaten nicht verfügbar</div><div style="font-size:14px;color:var(--text-muted);margin-top:7px;line-height:1.55">Wir konnten keinen laufenden Vertrag automatisch zuordnen. Du kannst trotzdem pausieren oder kündigen – wir melden uns.</div>'+pauseBtn(20)+'<button class="btnDanger" data-act="startCancel" style="margin-top:12px">Mitgliedschaft kündigen</button><div style="font-size:12px;color:var(--text-soft);margin-top:14px">Oder ruf uns an: <b style="color:'+TEAL+'">0651 308524</b></div></div>'+(S.cancelDone?okBox('Deine Kündigung wurde eingereicht. Du erhältst eine Bestätigung per E-Mail.'):'')+(S.pauseDone?okBox('Deine Pause-Anfrage ist eingegangen.'):'')+modulesCard()+docsCard();
+      return head+'<div class="card" style="padding:30px 22px;text-align:center"><div style="width:60px;height:60px;border-radius:18px;background:var(--err-bg);display:flex;align-items:center;justify-content:center;margin:0 auto 16px">'+svg(IC.warn,{c:'var(--err-fg)',w:2,s:28})+'</div><div style="font-size:19px;font-weight:900;letter-spacing:-.3px">Vertragsdaten nicht verfügbar</div><div style="font-size:14px;color:var(--text-muted);margin-top:7px;line-height:1.55">Wir konnten keinen laufenden Vertrag automatisch zuordnen. Du kannst trotzdem pausieren oder kündigen – wir melden uns.</div>'+pauseBtn(20)+'<button class="btnDanger" data-act="assistCancel" style="margin-top:12px">Mitgliedschaft kündigen</button><div style="font-size:12px;color:var(--text-soft);margin-top:14px">Oder ruf uns an: <b style="color:'+TEAL+'">0651 308524</b></div></div>'+(S.cancelDone?okBox('Deine Kündigung wurde eingereicht. Du erhältst eine Bestätigung per E-Mail.'):'')+(S.pauseDone?okBox('Deine Pause-Anfrage ist eingegangen.'):'')+modulesCard()+docsCard();
     }
     var cancelled=!!c.cancelled;
     var msgs=(S.cancelDone?okBox('Deine Kündigung wurde verbindlich eingereicht. Du erhältst eine Bestätigung per E-Mail.'):'')+(S.withdrawDone?okBox(S.withdrawMsg||'Schön, dass du bleibst! Deine Kündigung ist zurückgezogen – deine Mitgliedschaft läuft ganz normal weiter.'):'')+(S.withdrawErr?noteBox(S.withdrawErr):'')+(S.revokeDone?okBox('Dein Widerruf ist eingegangen. Wir wickeln deinen Vertrag rück und bestätigen das per E-Mail.'):'');
@@ -1484,7 +1531,7 @@
         '<button data-act="askRevoke" style="width:100%;display:flex;align-items:center;justify-content:center;gap:8px;border:none;cursor:pointer;margin-top:14px;padding:14px;border-radius:13px;background:var(--teal);color:#fff;font-weight:800;font-size:15px">Vertrag widerrufen'+svg('<path d="M9 14L4 9l5-5"></path><path d="M4 9h11a5 5 0 0 1 5 5v0a5 5 0 0 1-5 5H9"></path>',{c:'#fff',w:2,s:17})+'</button>'+
         '<div style="font-size:11px;color:#9a8550;text-align:center;margin-top:9px">Direkt hier im Mitgliederbereich – kein extra Formular nötig.</div></div>';
     }
-    var actions = cancelled ? '' : (pauseBtn(0)+'<button class="btnDanger" data-act="startCancel">Mitgliedschaft kündigen</button>');
+    var actions = cancelled ? '' : (pauseBtn(0)+'<button class="btnDanger" data-act="assistCancel">Mitgliedschaft kündigen</button>');
     var actionCard='<div class="card" style="padding:18px;margin-top:14px;display:flex;flex-direction:column;gap:10px">'+copyBtn+actions+'</div>';
     var dialog = S.withdrawConfirm ? withdrawDialog() : (S.revokeConfirm ? revokeDialog() : '');
     return head+(cancelled?'':vaCtaCard())+msgs+wd+box+actionCard+modulesCard()+docsCard()+dialog;
@@ -3462,16 +3509,13 @@
     noop:function(){},   // fängt Klicks im Overlay-Inneren ab (Backdrop-Klick schließt)
     appAdHide:function(){ try{ sessionStorage.setItem('fi_appad_hide','1'); }catch(e){} render(); },
     closeFinn:function(){ setS({finnOpen:false}); },
-    // Vertrags-Assistent (KI-Chat)
-    vaOpen:function(){
-      loadPauseInfo(); loadCancelReasons();
-      var nm=(DATA.profile&&DATA.profile.firstName)||'';
-      S.vaMsgs=[{role:'assistant',text:'Hi'+(nm?(' '+nm):'')+'! Ich bin dein Vertrags-Assistent. Ich helfe dir schnell weiter – beim **Pausieren** oder **Kündigen** – und finde die beste Lösung für dich. Was möchtest du tun?',chips:['Mitgliedschaft pausieren','Ich möchte kündigen','Ich hab eine Frage']}];
-      S.vaInput=''; setS({vaOpen:true}); vaScrollBottom();
-    },
+    // Vertrags-Assistent (KI-Chat) – allgemeiner Einstieg + vorbereitete Anliegen
+    vaOpen:function(){ openAssistant(''); },
+    assistPause:function(){ openAssistant('pause'); },
+    assistCancel:function(){ openAssistant('cancel'); },
     vaClose:function(){ setS({vaOpen:false}); },
     vaSend:function(){ window.__vaSend&&window.__vaSend(); },
-    vaChip:function(a){ if(a==='↻ Nochmal versuchen'){ vaRetry(); return; } if(a==='Mit Team sprechen'||a==='Team schreiben'){ vaExecute({type:'contact_team'}); return; } vaSendText(a); },
+    vaChip:function(a){ if(a==='↻ Nochmal versuchen'){ vaRetry(); return; } if(a==='Mit Team sprechen'||a==='Team schreiben'){ vaExecute({type:'contact_team'}); return; } if(a==='Zum Pause-Formular'||a==='Zum Kündigungs-Formular'){ vaToClassic(); return; } vaSendText(a); },
     vaAct:function(a){ var m=S.vaMsgs[parseInt(a,10)]; if(m&&m.action) vaExecute(m.action); },
     finnSuggest:function(a){ var t=$('finn_q'); if(t) t.value=a; ACT.finnSend(); },
     finnSend:function(){ if(S.finnBusy) return; var t=$('finn_q'); var q=t?(t.value||'').trim():''; if(!q) return;
