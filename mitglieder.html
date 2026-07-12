@@ -2602,10 +2602,17 @@
   }
   function pfClock(at){ if(!at) return ''; var d=new Date(at); var p=function(n){return(n<10?'0':'')+n;}; return p(d.getHours())+':'+p(d.getMinutes()); }
   // Nachrichtenliste eines Vorgangs (auch für Teil-Updates ohne Voll-Render genutzt).
+  var PF_INIT=8;   // wie viele Nachrichten eines Vorgangs zunächst gezeigt werden
   function pfMsgsHtml(v){
     var FI='<div style="width:30px;height:30px;border-radius:50%;background:linear-gradient(150deg,#0e6072,#073e4b);color:#fff;font-weight:800;font-size:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0">FI</div>';
+    var all=(v.messages||[]);
+    // Standardmäßig nur die letzten Nachrichten zeigen, damit lange Verläufe nicht
+    // erschlagen. „Ältere anzeigen" blendet den Rest ein (S.pfExpand pro Vorgang).
+    var msgs=all, hidden=0;
+    if(!S.pfExpand && all.length>PF_INIT){ hidden=all.length-PF_INIT; msgs=all.slice(-PF_INIT); }
     var out='', lastDay='';
-    (v.messages||[]).forEach(function(mm){
+    if(hidden){ out+='<div style="text-align:center;margin:4px 0 8px"><button data-act="pfMore" style="display:inline-flex;align-items:center;gap:6px;border:1.5px solid var(--border);background:var(--surface);color:var(--text-2);font-size:12.5px;font-weight:800;border-radius:20px;padding:8px 16px;cursor:pointer">'+svg('<path d="M18 15l-6-6-6 6"></path>',{c:'var(--text-soft)',w:2.2,s:14})+hidden+' ältere Nachricht'+(hidden===1?'':'en')+' anzeigen</button></div>'; }
+    msgs.forEach(function(mm){
       var day=pfDayLabel(mm.at);
       if(day&&day!==lastDay){ lastDay=day; out+='<div style="text-align:center;margin:16px 0 4px"><span style="font-size:11px;font-weight:800;color:var(--text-soft);background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:4px 12px">'+esc(day)+'</span></div>'; }
       var t=pfClock(mm.at);
@@ -3612,9 +3619,10 @@
     pfFilter:function(a){ setQuiet({pfFilter:a}); },
     pfOpen:function(a){ var arr=DATA.inbox||[]; for(var k=0;k<arr.length;k++){ if(String(arr[k].id)===String(a)){ arr[k].unread=false; break; } }
       S.pfStick=true;
-      setS({pfSel:a,pfThread:true,pfErr:'',pfDraft:''});
+      setS({pfSel:a,pfThread:true,pfErr:'',pfDraft:'',pfExpand:false});
       api('/api/member/inbox?id='+encodeURIComponent(a)).then(function(d){ if(d&&d.ok&&d.vorgang&&String(S.pfSel)===String(d.vorgang.id)){ updateVorgang(d.vorgang); pfPatchThread(d.vorgang); } }).catch(function(){}); },
     pfBack:function(){ setS({pfThread:false}); },
+    pfMore:function(){ S.pfStick=false; setS({pfExpand:true}); },
     pfReply:function(a){ var ta=$('pf_reply'); var t=ta?(ta.value||'').trim():''; if(!t){ setQuiet({pfErr:'Bitte gib eine Nachricht ein.'}); return; }
       if(S.pfBusy) return;
       S.pfDraft=t; S.pfBusy=true; S.pfErr='';
