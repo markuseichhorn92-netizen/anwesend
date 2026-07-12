@@ -344,6 +344,7 @@
     helpSel:null, helpCat:'all', helpQ:'', helpShowAll:false,
     aiQuery:'', aiPhase:'idle', aiAsked:'', aiAnswer:'', aiFeedback:null,
     finnOpen:false, finnMsgs:[], finnBusy:false, finnTip:'', finnTipLoaded:false,
+    vaOpen:false, vaMsgs:[], vaBusy:false, vaInput:'',
     blogSel:null, blogPost:null, instaSel:null,
     obStep:0, obGoal:'Gesundheit & Longevity', obFreq:3, obAge:34, obExp:'gelegentlich',
     ernFormInit:false, ernEdit:false, ernGoal:'abnehmen', ernSex:'w', ernH:170, ernW:70, ernAge:30, ernAct:'moderat', ernDiet:'omnivor',
@@ -912,6 +913,132 @@
   }
   function finnScrollBottom(){ setTimeout(function(){ var e=$('finn_scroll'); if(e) e.scrollTop=e.scrollHeight; },30); }
   var FINN_AVA='<div style="width:30px;height:30px;border-radius:50%;overflow:hidden;flex-shrink:0"><img src="/assets/brand/finn-mark.svg" style="width:100%;height:100%;display:block"></div>';
+
+  // ===== Vertrags-Assistent (KI-Chat für Pause & Kündigung) =====
+  function vaScrollBottom(){ setTimeout(function(){ var e=$('va_scroll'); if(e) e.scrollTop=e.scrollHeight; },30); }
+  function renderVa(){ render(); var e=$('va_scroll'); if(e) e.scrollTop=e.scrollHeight; }
+  // Kompakter Kontext für die KI aus dem aktuellen State.
+  function vaContext(){
+    var c=DATA.contract||{}; var pi=DATA.pauseInfo||{}; var cfg=pi.config||{};
+    return {
+      member:{ firstName:(DATA.profile&&DATA.profile.firstName)||'' },
+      contract:{ rateName:c.rateName||'', active:c.active!==false, cancelled:!!c.cancelled, nextCancellationDate:c.nextCancellationDate||'', nextCancellationDateISO:c.nextCancellationDateISO||'', withdrawalEligible:!!c.withdrawalEligible, withdrawalDaysLeft:c.withdrawalDaysLeft },
+      pause:{ available:!!pi.available, reasons:(cfg.reasons||[]).map(function(r){ return {id:r.id,name:r.name,documentRequired:!!r.documentRequired}; }), unit:cfg.temporalUnit||'WEEK', firstStartISO:cfg.firstPossibleStartDate||'', maxTerm:(pi.available?pauseMlTermMax():12) },
+      cancelReasons:(DATA.cancelReasons||[]).map(function(r){ return {id:r.id,name:r.name}; }),
+      attest:{ uploaded:!!S.pausePhoto, found:!!S.pauseAttestUntil, untilDate:S.pauseAttestUntil||'', missing:S.pauseAttestMissing||[] }
+    };
+  }
+  function vaCallAI(){
+    S.vaBusy=true; renderVa();
+    var hist=S.vaMsgs.filter(function(m){ return m.role==='user'||m.role==='assistant'; }).map(function(m){ return {role:m.role,text:m.text}; });
+    api('/api/member/concierge',{method:'POST',body:JSON.stringify({messages:hist,context:vaContext()})})
+      .then(function(d){ S.vaBusy=false;
+        if(d&&d.ok){ var a=d.action||null; S.vaMsgs.push({role:'assistant',text:d.message||'',chips:d.chips||[],action:a});
+          if(a&&a.type==='upload_attest'){ var p=a.params||{}; if(p.reasonId!=null){ S.pauseReasonId=p.reasonId; S.pauseReason=p.reasonName||S.pauseReason; } if(p.startDate) S.pauseFrom=p.startDate; }
+        } else { S.vaMsgs.push({role:'assistant',text:'Ich komme gerade nicht weiter. Du kannst deinen Vertrag auch direkt über die Buttons unten regeln oder unserem Team schreiben.',chips:['Nochmal versuchen']}); }
+        renderVa();
+      })
+      .catch(function(){ S.vaBusy=false; S.vaMsgs.push({role:'assistant',text:'Verbindung gerade nicht möglich. Versuch es gleich nochmal.',chips:['Nochmal versuchen']}); renderVa(); });
+  }
+  function vaSendText(q){ q=String(q||'').trim(); if(!q||S.vaBusy) return; S.vaMsgs.push({role:'user',text:q}); S.vaInput=''; vaCallAI(); }
+  window.__vaSend=function(){ var t=$('va_q'); vaSendText(t?t.value:''); };
+  // Attest-Upload im Chat (gleiche Skalierung wie __pausePhoto), danach Scan + KI weiter.
+  window.__vaAttest=function(input){
+    var f=input&&input.files&&input.files[0]; if(!f) return;
+    var rd=new FileReader();
+    rd.onload=function(e){ var src=e.target.result; var img=new Image();
+      img.onload=function(){ try{ var max=1500,w=img.naturalWidth||1,h=img.naturalHeight||1,sc=Math.min(1,max/Math.max(w,h)); var cw=Math.max(1,Math.round(w*sc)),ch=Math.max(1,Math.round(h*sc)); var cv=document.createElement('canvas'); cv.width=cw; cv.height=ch; cv.getContext('2d').drawImage(img,0,0,cw,ch); S.pausePhoto=cv.toDataURL('image/jpeg',0.82); }catch(err){ S.pausePhoto=src; } S.pausePhotoName=f.name||'attest.jpg'; vaAfterAttest(); };
+      img.onerror=function(){ S.pausePhoto=src; S.pausePhotoName=f.name||'attest'; vaAfterAttest(); };
+      img.src=src; };
+    rd.readAsDataURL(f);
+  };
+  function vaAfterAttest(){
+    S.vaMsgs.push({role:'user',text:'📎 Attest hochgeladen'}); S.vaBusy=true; S.pauseAttestScanning=true; S.pauseAttestUntil=''; S.pauseAttestMissing=[]; renderVa();
+    api('/api/member/pause-attest',{method:'POST',body:JSON.stringify({photo:S.pausePhoto})})
+      .then(function(d){ S.pauseAttestScanning=false; S.pauseAttestDone=true; S.pauseAttestMissing=(d&&d.missing)||[];
+        if(d&&d.ok&&d.found&&d.untilDate){ S.pauseAttestUntil=d.untilDate; S.pauseAttestKind=d.kind||''; var am=pauseAttestMaxTerm(); if(am) S.pauseTerm=am; } else { S.pauseAttestUntil=''; }
+        vaCallAI();
+      })
+      .catch(function(){ S.pauseAttestScanning=false; S.pauseAttestDone=true; vaCallAI(); });
+  }
+  // Verbindliche Aktion ausführen (Bestätigen-Button) – nutzt die bestehenden Endpunkte.
+  function vaExecute(action){
+    if(!action||!action.type) return; var t=action.type, p=action.params||{};
+    if(t==='contact_team'){ setS({vaOpen:false}); nav('help'); setTimeout(function(){ setS({ctOpen:true,ctSent:false,ctErr:'',ctMsg:'Ich möchte meinen Vertrag besprechen. Bitte helft mir persönlich weiter.'}); },150); return; }
+    if(t==='apply_discount'){ vaDoDiscount(); return; }
+    if(t==='pause_confirm'){ vaDoPause(p); return; }
+    if(t==='cancel_confirm'){ vaDoCancel(p); return; }
+  }
+  function vaDoDiscount(){
+    if(S.vaBusy) return; S.vaBusy=true; renderVa();
+    api('/api/member/cancel',{method:'POST',body:JSON.stringify({action:'offer_accepted',offer:'discount10',reason:(S.cancelReason||'Über Vertrags-Assistent')})})
+      .then(function(){ S.vaBusy=false; S.vaMsgs.push({role:'assistant',text:'🎉 Schön, dass du bleibst! Ich habe **10 % Rabatt für 6 Monate** für dich vermerkt – unser Team richtet das ein und meldet sich bei dir. Kann ich sonst noch etwas für dich tun?',chips:['Nein, danke','Doch pausieren']}); renderVa(); })
+      .catch(function(){ S.vaBusy=false; S.vaMsgs.push({role:'assistant',text:'Das hat gerade nicht geklappt. Bitte versuch es später erneut.'}); renderVa(); });
+  }
+  function vaDoPause(p){
+    if(S.vaBusy) return; p=p||{}; var pi=DATA.pauseInfo;
+    if(!(pi&&pi.available)){ S.vaMsgs.push({role:'assistant',text:'Die Pause lässt sich gerade nicht direkt einrichten. Ich leite dich am besten an unser Team weiter.',chips:['Team schreiben']}); renderVa(); return; }
+    if(p.reasonId!=null){ S.pauseReasonId=p.reasonId; S.pauseReason=p.reasonName||''; (pi.config.reasons||[]).forEach(function(r){ if(String(r.id)===String(p.reasonId)&&!S.pauseReason) S.pauseReason=r.name; }); }
+    if(p.startDate) S.pauseFrom=p.startDate; if(p.termValue) S.pauseTerm=p.termValue;
+    if(pauseIsMedical() && !S.pausePhoto){ S.vaMsgs.push({role:'assistant',text:'Dafür brauche ich noch dein ärztliches Attest. Bitte lade es hier hoch:',action:{type:'upload_attest',label:'',params:{}}}); renderVa(); return; }
+    S.vaBusy=true; renderVa();
+    var cfg=pi.config||{}; var u=String(cfg.temporalUnit||'WEEK').toUpperCase(); var tv=pauseTermEffective();
+    var payload={ reason:S.pauseReason||'—', reasonText:'', from:pauseMlStartISO(), startDate:pauseMlStartISO(), reasonId:S.pauseReasonId, temporalUnit:u, termValue:tv, weeks:(u==='MONTH')?tv*4:(u==='DAY'?Math.max(1,Math.round(tv/7)):tv), photo:S.pausePhoto||'' };
+    api('/api/member/pause',{method:'POST',body:JSON.stringify(payload)})
+      .then(function(d){ S.vaBusy=false; DATA.pauseInfo=null; loadPauseInfo(); loadMe(); loadInbox();
+        var ok=d&&(d.ok!==false); var msg=ok?('✅ '+((d&&d.message)||'Deine Beitragspause ist eingerichtet.')):('Das hat leider nicht geklappt: '+((d&&d.message)||'unbekannter Fehler'));
+        S.vaMsgs.push({role:'assistant',text:msg,done:ok}); renderVa();
+      })
+      .catch(function(){ S.vaBusy=false; S.vaMsgs.push({role:'assistant',text:'Das hat gerade nicht geklappt. Bitte versuch es später erneut.'}); renderVa(); });
+  }
+  function vaDoCancel(p){
+    if(S.vaBusy) return; p=p||{}; var c=DATA.contract||{};
+    var dateISO=(p.date&&/^\d{4}-\d{2}-\d{2}$/.test(p.date))?p.date:(c.nextCancellationDateISO||'');
+    if(c.nextCancellationDateISO && (!dateISO||dateISO<c.nextCancellationDateISO)) dateISO=c.nextCancellationDateISO;
+    S.vaBusy=true; renderVa();
+    rcToken().then(function(tok){
+      var b={action:'cancel',reason:(p.reasonLabel||p.reasonName||'Kündigung über Assistent'),date:dateISO,recaptchaToken:tok};
+      if(p.reasonId!=null&&p.reasonId!=='') b.cancelationReasonId=p.reasonId;
+      return api('/api/member/cancel',{method:'POST',body:JSON.stringify(b)});
+    }).then(function(d){ S.vaBusy=false; loadMe();
+      var ok=d&&(d.ok!==false); var msg=ok?('✅ Deine Kündigung ist eingereicht'+(dateISO?(' – zum '+deDateFull(dateISO)):'')+'. Du erhältst eine Bestätigung per E-Mail.'):('Das hat leider nicht geklappt: '+((d&&d.message)||'unbekannter Fehler'));
+      S.vaMsgs.push({role:'assistant',text:msg,done:ok}); renderVa();
+    }).catch(function(){ S.vaBusy=false; S.vaMsgs.push({role:'assistant',text:'Das hat gerade nicht geklappt. Bitte versuch es später erneut.'}); renderVa(); });
+  }
+  function vaUploadRow(){
+    var cam='<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle>';
+    var gal='<rect x="3" y="3" width="18" height="18" rx="2"></rect><circle cx="9" cy="9" r="2"></circle><path d="M21 15l-5-5L5 21"></path>';
+    var btn=function(icon,label,cap){ return '<label style="flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 10px;border:1.5px dashed #c2d3d6;border-radius:13px;background:var(--surface);cursor:pointer;text-align:center">'+svg(icon,{c:TEAL,w:1.8,s:24})+'<span style="font-size:12.5px;font-weight:800;color:'+TEAL+'">'+label+'</span><input type="file" accept="image/*"'+(cap?' capture="environment"':'')+' onchange="window.__vaAttest(this)" style="display:none"></label>'; };
+    return '<div style="display:flex;gap:9px">'+btn(cam,'Foto aufnehmen',true)+btn(gal,'Aus Fotos',false)+'</div>';
+  }
+  function vaBubbleHtml(m,idx){
+    if(m.role==='user') return '<div style="display:flex;justify-content:flex-end;margin-top:10px"><div style="background:'+TEALBG+';color:#fff;border-radius:16px 4px 16px 16px;padding:10px 13px;font-size:14.5px;line-height:1.5;max-width:86%;white-space:pre-wrap">'+esc(m.text)+'</div></div>';
+    var chips=(m.chips&&m.chips.length)?('<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px">'+m.chips.map(function(ch){ return '<button data-act="vaChip" data-arg="'+esc(ch)+'" style="border:1.5px solid '+TEAL+';background:var(--surface);color:'+TEAL+';border-radius:20px;padding:8px 14px;font-size:13.5px;font-weight:700;cursor:pointer">'+esc(ch)+'</button>'; }).join('')+'</div>'):'';
+    var act='';
+    if(m.action&&m.action.type){
+      if(m.action.type==='upload_attest'){ act='<div style="margin-top:12px">'+vaUploadRow()+'</div>'; }
+      else if(m.action.type!=='none'){
+        var t=m.action.type; var bg=(t==='cancel_confirm')?'#b5402f':((t==='pause_confirm')?TEALBG:(t==='apply_discount'?'linear-gradient(135deg,#F6A964,#E08C53)':'var(--surface-2)'));
+        var col=(t==='apply_discount')?'#0a4958':'#fff';
+        act='<div style="margin-top:12px"><button data-act="vaAct" data-arg="'+idx+'" style="width:100%;border:none;border-radius:13px;background:'+bg+';color:'+col+';font-weight:800;font-size:15px;padding:14px;cursor:pointer">'+esc(m.action.label||'Bestätigen')+'</button></div>';
+      }
+    }
+    return '<div style="display:flex;gap:9px;align-items:flex-start;max-width:94%;margin-top:10px">'+FINN_AVA+'<div style="flex:1;min-width:0"><div style="background:var(--surface-2);border-radius:4px 16px 16px 16px;padding:11px 14px;font-size:14px;line-height:1.55;color:var(--text)">'+finnFmt(m.text)+'</div>'+chips+act+'</div></div>';
+  }
+  function vaThinkingHtml(){ return '<div style="display:flex;gap:9px;align-items:center;margin-top:10px">'+FINN_AVA+'<div style="background:var(--surface-2);border-radius:14px;padding:11px 14px;font-size:13px;color:var(--text-soft);font-weight:600"><span class="finnDots">Assistent denkt nach …</span></div></div>'; }
+  function vaOverlayHtml(){
+    var body=S.vaMsgs.map(function(m,i){ return vaBubbleHtml(m,i); }).join('')+(S.vaBusy?vaThinkingHtml():'');
+    return '<div class="ciOverlay" data-act="vaClose" style="align-items:stretch;justify-content:center;padding:0">'+
+      '<div class="finnPanel" data-act="noop">'+
+        '<div style="display:flex;align-items:center;gap:11px;background:linear-gradient(150deg,#0e6072,#063540);padding:calc(12px + env(safe-area-inset-top,0px)) 16px 12px;color:#fff;flex-shrink:0">'+
+          FINN_AVA+'<div style="flex:1;min-width:0"><div style="font-size:16px;font-weight:900;letter-spacing:-.3px">Vertrags-Assistent</div><div style="font-size:11.5px;color:#aed0d6;font-weight:600">Pause & Kündigung · geführt</div></div>'+
+          '<button data-act="vaClose" aria-label="Schließen" style="width:36px;height:36px;border-radius:11px;background:rgba(255,255,255,.14);border:none;color:#fff;cursor:pointer;flex-shrink:0">'+svg('<path d="M6 6l12 12M18 6L6 18"></path>',{c:'#fff',w:2.1,s:18})+'</button>'+
+        '</div>'+
+        '<div id="va_scroll" style="flex:1;min-height:0;overflow-y:auto;padding:14px 14px 8px;background:var(--bg);-webkit-overflow-scrolling:touch">'+body+'</div>'+
+        '<div style="padding:10px 12px calc(12px + env(safe-area-inset-bottom,0px));border-top:1px solid var(--border);background:var(--surface);flex-shrink:0"><div style="display:flex;align-items:flex-end;gap:9px"><textarea id="va_q" rows="1" enterkeyhint="send" placeholder="Antwort schreiben …" onkeydown="if(event.key===\'Enter\'&&!event.shiftKey){event.preventDefault();window.__vaSend&&window.__vaSend();}" style="flex:1;border:1.5px solid var(--border);border-radius:18px;padding:11px 15px;font-size:15px;resize:none;max-height:120px;line-height:1.5;outline:none;background:var(--bg);color:var(--text)">'+esc(S.vaInput||'')+'</textarea>'+
+          '<button id="va_send" data-act="vaSend" '+(S.vaBusy?'disabled ':'')+'style="width:46px;height:46px;border-radius:50%;border:none;background:'+TEALBG+';color:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0;cursor:pointer;opacity:'+(S.vaBusy?'.55':'1')+'">'+svg('<path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"></path>',{c:'#fff',w:2,s:19})+'</button></div></div>'+
+      '</div></div>';
+  }
   // FINN-Text hübsch formatieren: erst escapen (XSS-sicher), dann **fett**,
   // "– "-Aufzählungen mit hängendem Einzug und Absätze mit Abstand rendern.
   function finnFmt(t){
@@ -1301,6 +1428,14 @@
   function row(k,v){ return '<div style="display:flex;justify-content:space-between;padding:11px 0;border-bottom:1px solid var(--surface-2)"><span style="font-size:14px;color:var(--text-muted)">'+k+'</span><span style="font-size:14px;font-weight:700">'+esc(v||'—')+'</span></div>'; }
 
   function pauseBtn(mt){ return '<button data-act="openPause" style="width:100%;margin-top:'+(mt||14)+'px;padding:15px;border:1.5px solid '+TEAL+';border-radius:13px;background:var(--surface);color:'+TEAL+';font-weight:800;font-size:15px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:9px">'+svg('<rect x="6" y="5" width="4" height="14" rx="1"></rect><rect x="14" y="5" width="4" height="14" rx="1"></rect>',{c:TEAL,w:2,s:18})+'Mitgliedschaft pausieren</button>'; }
+  // Einstieg in den geführten KI-Vertrags-Assistenten (Pause & Kündigung).
+  function vaCtaCard(){
+    return '<div data-act="vaOpen" style="display:flex;align-items:center;gap:13px;background:linear-gradient(150deg,#0e6072,#063540);border-radius:18px;padding:16px;margin-bottom:14px;cursor:pointer;box-shadow:0 12px 30px rgba(4,33,40,.18)">'+
+      '<div style="width:44px;height:44px;border-radius:50%;overflow:hidden;flex-shrink:0;background:#0a3d4a"><img src="/assets/brand/finn-mark.svg" alt="" style="width:100%;height:100%;display:block"></div>'+
+      '<div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:900;color:#fff">Mit Assistent regeln</div><div style="font-size:12px;color:#aed0d6;font-weight:600;margin-top:1px">Pausieren oder kündigen – ich führe dich Schritt für Schritt.</div></div>'+
+      svg('<path d="M9 18l6-6-6-6"></path>',{c:'#aed0d6',w:2.2,s:20})+
+    '</div>';
+  }
   function pauseDoneBox(){
     var viaMl=(S.pauseDoneVia==='magicline');
     var title=viaMl?'Pause eingerichtet!':'Pause beantragt!';
@@ -1346,7 +1481,7 @@
     var actions = cancelled ? '' : (pauseBtn(0)+'<button class="btnDanger" data-act="startCancel">Mitgliedschaft kündigen</button>');
     var actionCard='<div class="card" style="padding:18px;margin-top:14px;display:flex;flex-direction:column;gap:10px">'+copyBtn+actions+'</div>';
     var dialog = S.withdrawConfirm ? withdrawDialog() : (S.revokeConfirm ? revokeDialog() : '');
-    return head+msgs+wd+box+actionCard+modulesCard()+docsCard()+dialog;
+    return head+(cancelled?'':vaCtaCard())+msgs+wd+box+actionCard+modulesCard()+docsCard()+dialog;
   }
   // "Meine Dokumente"-Karte. Zeigt die in Magicline hinterlegten Dokumente (Vertrag,
   // Bescheinigungen) + Upload. Bei available:false (403/nicht verfügbar) oder solange
@@ -3235,6 +3370,7 @@
     if(narrow) html='<div class="narrow">'+html+'</div>';
     if(S.ciPopup) html+=ciPopupHtml();
     if(S.finnOpen) html+=finnOverlayHtml();
+    if(S.vaOpen) html+=vaOverlayHtml();
     if(TOKEN && S.screen!=='login' && !isFormer() && !obDone()) html+=obOverlayHtml();
     // Chat-Eingaben über die Neu-Zeichnung retten (Wert, Fokus, Cursor & Scroll-Position) –
     // sonst verschwindet getippter Text und die Tastatur klappt zu, sobald im Hintergrund
@@ -3252,7 +3388,7 @@
     renderChrome();
     // Vollbild-Chat offen? -> Seite dahinter einfrieren (verhindert Springen bei Tastatur).
     // WICHTIG: nach renderChrome(), das body.className komplett neu setzt.
-    var chatFull=!!S.finnOpen || (S.screen==='postfach' && !!S.pfThread && window.innerWidth<1000);
+    var chatFull=!!S.finnOpen || !!S.vaOpen || (S.screen==='postfach' && !!S.pfThread && window.innerWidth<1000);
     document.body.classList.toggle('chatLock', chatFull);
     // Overscroll-Farbe oben: teal nur auf der Startseite (passend zum Hero).
     document.body.classList.toggle('onHome', S.screen==='home');
@@ -3320,6 +3456,17 @@
     noop:function(){},   // fängt Klicks im Overlay-Inneren ab (Backdrop-Klick schließt)
     appAdHide:function(){ try{ sessionStorage.setItem('fi_appad_hide','1'); }catch(e){} render(); },
     closeFinn:function(){ setS({finnOpen:false}); },
+    // Vertrags-Assistent (KI-Chat)
+    vaOpen:function(){
+      loadPauseInfo(); loadCancelReasons();
+      var nm=(DATA.profile&&DATA.profile.firstName)||'';
+      S.vaMsgs=[{role:'assistant',text:'Hi'+(nm?(' '+nm):'')+'! Ich bin dein Vertrags-Assistent. Ich helfe dir schnell weiter – beim **Pausieren** oder **Kündigen** – und finde die beste Lösung für dich. Was möchtest du tun?',chips:['Mitgliedschaft pausieren','Ich möchte kündigen','Ich hab eine Frage']}];
+      S.vaInput=''; setS({vaOpen:true}); vaScrollBottom();
+    },
+    vaClose:function(){ setS({vaOpen:false}); },
+    vaSend:function(){ window.__vaSend&&window.__vaSend(); },
+    vaChip:function(a){ vaSendText(a); },
+    vaAct:function(a){ var m=S.vaMsgs[parseInt(a,10)]; if(m&&m.action) vaExecute(m.action); },
     finnSuggest:function(a){ var t=$('finn_q'); if(t) t.value=a; ACT.finnSend(); },
     finnSend:function(){ if(S.finnBusy) return; var t=$('finn_q'); var q=t?(t.value||'').trim():''; if(!q) return;
       S.finnMsgs.push({role:'user',text:q}); S.finnBusy=true; S.finnStick=true;
