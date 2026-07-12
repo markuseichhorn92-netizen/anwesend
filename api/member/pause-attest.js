@@ -50,6 +50,8 @@ module.exports = async function handler(req, res) {
   res.statusCode = 200;
   return res.end(JSON.stringify({
     ok: true, found: !!r.found, untilDate: r.untilDate || null, startDate: r.startDate || null,
-    kind: r.kind || 'sonstiges', confidence: r.confidence || 'low', note: r.note || '',
+    kind: r.kind || 'sonstiges', confidence: r.confidence || 'low',
+    checks: r.checks || null, missing: r.missing || [], complete: r.complete !== false,
+    note: r.note || '',
   }));
 };

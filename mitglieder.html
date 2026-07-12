@@ -334,7 +334,7 @@
     cancelStep:0, cancelReason:'', cancelReasonId:'', pauseWeeks:6, offerDone:'', withdrawConfirm:false, withdrawDone:false, withdrawMsg:'', withdrawErr:'', cancelDone:false, revokeConfirm:false, revokeDone:false, busy:false,
     pauseStep:0, pauseReason:'', pauseReasonText:'', pauseFrom:'', pausePhoto:'', pausePhotoName:'', pauseDone:false,
     pauseReasonId:'', pauseTerm:1, pauseDoneVia:'', pauseDoneMsg:'',
-    pauseAttestUntil:'', pauseAttestKind:'', pauseAttestNote:'', pauseAttestConf:'', pauseAttestScanning:false, pauseAttestDone:false,
+    pauseAttestUntil:'', pauseAttestKind:'', pauseAttestNote:'', pauseAttestConf:'', pauseAttestScanning:false, pauseAttestDone:false, pauseAttestMissing:[],
     ccBusy:false, ccMsg:'',
     commBusy:'', commMsg:'', commErr:false,
     docUpBusy:false, docMsg:'', docErr:false, docDlId:'',
@@ -1550,8 +1550,13 @@
           +(fee?'<div style="background:#FFF7E6;border:1px solid #F2D9A0;border-radius:12px;padding:12px 14px;margin-top:10px;font-size:13px;color:#7a5e15;font-weight:700">Einrichtungsgebühr: '+esc(fee)+'</div>':'');
       }
     } else if(n===3&&medical){
+      var attReq=['Dein vollständiger Name','Ausstellungsdatum (möglichst aktuell)','Bis wann du aus gesundheitlichen Gründen keinen Sport treiben kannst','Bestätigung der Sport-/Trainingsunfähigkeit','Praxisstempel bzw. Anschrift und Unterschrift der Ärztin/des Arztes'];
       inner='<div style="font-size:20px;font-weight:800;letter-spacing:-.3px">Ärztlichen Nachweis hochladen</div>'
-        +'<div style="font-size:14px;color:var(--text-muted);margin-top:5px;line-height:1.45">Für diesen Grund ist ein Attest <b>erforderlich</b>. Wir lesen das End-Datum automatisch aus und begrenzen deine Pause genau darauf.</div>';
+        +'<div style="font-size:14px;color:var(--text-muted);margin-top:5px;line-height:1.45">Für diesen Grund ist ein Attest <b>erforderlich</b>. Wir lesen das End-Datum automatisch aus und begrenzen deine Pause genau darauf.</div>'
+        +'<div style="margin-top:16px;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:14px 16px"><div style="font-size:13px;font-weight:800;color:var(--text);margin-bottom:9px">Das muss auf dem Attest stehen</div>'
+          +'<div style="display:flex;flex-direction:column;gap:7px">'+attReq.map(function(t){return '<div style="display:flex;align-items:flex-start;gap:8px;font-size:12.5px;color:var(--text-2);font-weight:600;line-height:1.4">'+svg('<path d="M20 6L9 17l-5-5"></path>',{c:TEAL,w:2.4,s:15})+'<span>'+esc(t)+'</span></div>';}).join('')+'</div>'
+          +'<div style="font-size:11.5px;color:var(--text-soft);font-weight:600;margin-top:10px;line-height:1.45">Deine <b>Diagnose musst du nicht angeben</b> – eine allgemeine Bestätigung der Sportunfähigkeit genügt (Datenschutz, Art. 2 GG).</div></div>'
+        +'<div style="display:flex;align-items:flex-start;gap:9px;margin-top:12px;padding:12px 14px;background:var(--surface-2);border-radius:12px">'+svg('<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>',{c:'var(--text-soft)',w:1.85,s:17})+'<span style="font-size:11.5px;color:var(--text-muted);line-height:1.5">Dein Attest wird verschlüsselt übertragen und nur zur automatischen Erkennung des Enddatums verarbeitet. Es wird als Nachweis sicher zu deinem Vertrag gespeichert.</span></div>';
       if(S.pausePhoto){
         inner+='<div style="margin-top:18px;border-radius:14px;overflow:hidden;border:1px solid var(--border)"><img src="'+S.pausePhoto+'" style="width:100%;display:block;max-height:280px;object-fit:contain;background:var(--surface-2)"></div>'
           +'<div style="display:flex;align-items:center;gap:8px;margin-top:10px;color:var(--ok-fg);font-size:13px;font-weight:700">'+svg(IC.check,{c:'var(--ok-fg)',w:2.2,s:18})+'Nachweis angehängt</div>';
@@ -1563,6 +1568,10 @@
           inner+='<div style="margin-top:12px;padding:14px 16px;background:var(--ok-bg);border:1px solid #bfe6cd;border-radius:12px"><div style="display:flex;align-items:center;gap:8px;font-size:14px;font-weight:800;color:var(--ok-fg)">'+svg('<path d="M9 11l3 3L20 5"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>',{c:'var(--ok-fg)',w:2.1,s:18})+'Erkannt: sportfrei bis '+esc(deDateFull(S.pauseAttestUntil))+'</div><div style="font-size:12.5px;color:var(--text-2);font-weight:600;margin-top:5px;line-height:1.5">Deine Pause wird automatisch bis dahin eingetragen'+(amT?(' ('+amT+' '+esc(pauseUnitName(unit,amT))+')'):'')+'. Länger geht aus medizinischen Gründen nicht.</div></div>';
         } else if(S.pauseAttestDone){
           inner+='<div style="margin-top:12px;padding:14px 16px;background:#FFF7E6;border:1px solid #F2D9A0;border-radius:12px;font-size:12.5px;color:#7a5e15;font-weight:700;line-height:1.5">Wir konnten das End-Datum nicht sicher aus dem Attest lesen. Kein Problem – das Team prüft dein Attest und legt die Dauer fest. Du kannst unten fortfahren.</div>';
+        }
+        // Fehlende Pflichtangaben (nach deutschem Recht) – Hinweis, kein harter Block (Team prüft final).
+        if(!S.pauseAttestScanning && S.pauseAttestDone && S.pauseAttestMissing && S.pauseAttestMissing.length){
+          inner+='<div style="margin-top:10px;padding:13px 15px;background:#fbeae7;border:1px solid #e3b8b1;border-radius:12px"><div style="font-size:12.5px;font-weight:800;color:#8a3a2c">Bitte prüfen – dem Attest fehlt evtl.:</div><div style="font-size:12px;color:#8a3a2c;font-weight:600;margin-top:5px;line-height:1.5">'+S.pauseAttestMissing.map(esc).join(' · ')+'</div><div style="font-size:11.5px;color:#a2705f;font-weight:600;margin-top:6px;line-height:1.45">Ein unvollständiges Attest kann vom Team abgelehnt werden. Lade bei Bedarf ein vollständiges Attest hoch (Diagnose ist nicht nötig).</div></div>';
         }
         inner+='<div style="display:flex;gap:10px;margin-top:12px"><label style="flex:1;cursor:pointer;text-align:center;padding:12px;border:1.5px solid '+TEAL+';border-radius:11px;color:'+TEAL+';font-weight:700;font-size:14px">Neues Foto<input type="file" accept="image/*" capture="environment" onchange="window.__pausePhoto(this)" style="display:none"></label><button data-act="pausePhotoRemove" style="flex:1;padding:12px;border:1.5px solid #e3b8b1;border-radius:11px;background:var(--surface);color:var(--err-fg);font-weight:700;font-size:14px;cursor:pointer">Entfernen</button></div>';
       } else {
@@ -3828,10 +3837,10 @@
   // Attest per KI scannen: liest das „sportfrei bis"-Datum und deckelt die Pause darauf.
   function pauseScanAttest(){
     if(!S.pausePhoto) return;
-    S.pauseAttestScanning=true; S.pauseAttestDone=false; S.pauseAttestUntil=''; render();
+    S.pauseAttestScanning=true; S.pauseAttestDone=false; S.pauseAttestUntil=''; S.pauseAttestMissing=[]; render();
     api('/api/member/pause-attest',{method:'POST',body:JSON.stringify({photo:S.pausePhoto})})
       .then(function(d){
-        S.pauseAttestScanning=false; S.pauseAttestDone=true;
+        S.pauseAttestScanning=false; S.pauseAttestDone=true; S.pauseAttestMissing=(d&&d.missing)||[];
         if(d&&d.ok&&d.found&&d.untilDate){
           S.pauseAttestUntil=d.untilDate; S.pauseAttestKind=d.kind||''; S.pauseAttestNote=d.note||''; S.pauseAttestConf=d.confidence||'';
           var am=pauseAttestMaxTerm(); if(am) S.pauseTerm=am;   // Dauer automatisch auf das Attest-Datum
