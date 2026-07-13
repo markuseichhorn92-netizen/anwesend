@@ -101,6 +101,26 @@
   input.inp[type="date"]{min-height:50px;font-size:16px;-webkit-appearance:none;appearance:none}
   input.inp[type="date"]::-webkit-date-and-time-value{text-align:left;margin:0}
   input.inp[type="date"]::-webkit-calendar-picker-indicator{opacity:.5;cursor:pointer;padding-left:6px}
+  /* Rad-Datumsauswahl (Geburtstag) – wie native iOS-Trommel, aber gebrandet & auf iOS+Android gleich */
+  .dpTrigger{width:100%;min-height:52px;display:flex;align-items:center;gap:10px;padding:13px 15px;border:1.5px solid var(--border);border-radius:13px;background:var(--surface);color:var(--text);font-size:16px;font-weight:600;cursor:pointer;text-align:left}
+  .dpTrigger .dpPh{color:var(--text-soft);font-weight:500}
+  .dpSheetWrap{position:fixed;inset:0;z-index:2147483000;display:flex;flex-direction:column;justify-content:flex-end}
+  .dpSheetWrap .dpScrim{position:absolute;inset:0;background:rgba(6,24,29,.55);backdrop-filter:blur(2px)}
+  .dpSheet{position:relative;background:var(--surface);border-radius:20px 20px 0 0;box-shadow:0 -18px 50px rgba(4,33,40,.32);padding-bottom:calc(10px + env(safe-area-inset-bottom,0px));animation:dpUp .22s cubic-bezier(.22,.61,.36,1)}
+  @keyframes dpUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
+  .dpHead{display:flex;align-items:center;justify-content:space-between;padding:14px 18px 8px}
+  .dpHead .dpTitle{font-size:15px;font-weight:800;color:var(--text)}
+  .dpHead button{background:none;border:none;font-size:16px;font-weight:700;cursor:pointer;padding:6px 2px}
+  .dpHead .dpCancel{color:var(--text-soft)}
+  .dpHead .dpDone{color:var(--teal-ink)}
+  .dpCols{position:relative;height:220px;display:flex;padding:0 12px;overflow:hidden}
+  .dpBand{position:absolute;left:12px;right:12px;top:50%;height:44px;transform:translateY(-50%);background:var(--surface-2);border-radius:12px;pointer-events:none}
+  .dpCol{flex:1;height:220px;overflow-y:scroll;scroll-snap-type:y mandatory;scrollbar-width:none;-ms-overflow-style:none;-webkit-overflow-scrolling:touch;padding:88px 0;text-align:center}
+  .dpCol::-webkit-scrollbar{width:0;height:0;display:none}
+  .dpCol.dpColD{flex:0 0 22%}
+  .dpCol.dpColY{flex:0 0 30%}
+  .dpItem{height:44px;line-height:44px;scroll-snap-align:center;font-size:20px;font-weight:600;color:var(--text-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 4px}
+  .dpItem.on{color:var(--text);font-weight:800}
   .btn{width:100%;padding:15px;border:none;border-radius:13px;background:var(--teal);color:#fff;font-weight:700;font-size:15px;cursor:pointer}
   .btn:hover{background:#0c5566}.btn:disabled{background:#9fb9bf;cursor:not-allowed}
   .btn2{width:100%;padding:14px;border:none;border-radius:13px;background:var(--surface-2);color:var(--teal-ink);font-weight:700;font-size:15px;cursor:pointer}
@@ -664,10 +684,103 @@
     '<button data-act="nav" data-arg="'+(target||'home')+'" aria-label="Zurück" style="width:40px;height:40px;border-radius:12px;border:none;background:rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'+svg(IC.back,{c:'#fff',w:2.1,s:20})+'</button>'+
     '<div style="min-width:0"><div style="font-size:20px;font-weight:900;letter-spacing:-.4px;line-height:1.1">'+esc(title)+'</div>'+(sub?'<div style="font-size:12.5px;color:#aed0d6;font-weight:600;margin-top:2px">'+esc(sub)+'</div>':'')+'</div></div>'; }
 
+  // ===== Rad-Datumsauswahl (Geburtstag) =====
+  // Native <input type=date> zeigt je nach Gerät ein anderes UI (iOS-Rad, Android-
+  // Kalender). Für Geburtsdaten ist ein Jahres-Rad viel schneller. Diese Komponente
+  // bildet das iOS-Trommel-Rad überall gleich & gebrandet nach – Wert bleibt ISO.
+  var DP_MONTHS=['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
+  function dpDaysIn(y,m){ return new Date(y, m, 0).getDate(); }   // m: 1..12
+  function dpLabelDE(iso){ var m=String(iso||'').match(/^(\d{4})-(\d{2})-(\d{2})$/); if(!m) return ''; return String(+m[3])+'. '+DP_MONTHS[+m[2]-1]+' '+m[1]; }
+  // Feld = angetippter „Button", der das Rad öffnet. Nur Geburtstag (field='liDob').
   function dpField(){
+    var v=S.liDob||''; var lbl=dpLabelDE(v);
+    var cal=svg('<rect x="3" y="4" width="18" height="17" rx="2"></rect><path d="M3 9h18M8 2v4M16 2v4"></path>',{c:'var(--text-soft)',w:1.9,s:20});
     return '<div><label class="lbl">Geburtsdatum</label>'+
-      '<input id="li_dob" type="date" class="inp" max="'+isoToday()+'" min="1920-01-01" value="'+esc(S.liDob||'')+'" oninput="window.__setLi(\'dob\',this.value)"></div>';
+      '<button type="button" class="dpTrigger" data-act="dpOpen" data-arg="liDob">'+
+        '<span style="flex:1">'+(lbl?esc(lbl):'<span class="dpPh">Datum wählen</span>')+'</span>'+cal+
+      '</button></div>';
   }
+  // Bereich (min/max Jahr) je nach Feld. Für Geburtstag: 1920 … heute.
+  function dpConfig(field){
+    var ty=new Date().getFullYear();
+    if(field==='liDob') return { title:'Geburtstag', minY:1920, maxY:ty, maxISO:isoToday(), get:function(){ return S.liDob||''; }, set:function(iso){ S.liDob=iso; } };
+    return null;
+  }
+  // Öffnen: Startwerte aus aktuellem Wert oder sinnvoller Default (1990-06-15).
+  function openDp(field){
+    var cfg=dpConfig(field); if(!cfg) return;
+    var iso=cfg.get(); var mm=String(iso||'').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    var y=mm?+mm[1]:1990, m=mm?+mm[2]:6, d=mm?+mm[3]:15;
+    if(y<cfg.minY) y=cfg.minY; if(y>cfg.maxY) y=cfg.maxY;
+    S.dp={ field:field, title:cfg.title, minY:cfg.minY, maxY:cfg.maxY, y:y, m:m, d:d };
+    render();
+  }
+  var DP_IH=44;   // Item-Höhe (muss zur CSS .dpItem-Höhe passen)
+  function dpColHtml(kind,items,selIdx){
+    var lis=items.map(function(it,i){ return '<div class="dpItem'+(i===selIdx?' on':'')+'">'+esc(it)+'</div>'; }).join('');
+    return '<div class="dpCol dpCol'+kind+'" id="dpCol'+kind+'" data-dpcol="'+kind+'">'+lis+'</div>';
+  }
+  function wheelOverlay(){
+    var dp=S.dp; if(!dp) return '';
+    var days=[]; var dim=dpDaysIn(dp.y,dp.m); for(var i=1;i<=dim;i++) days.push(String(i)+'.');
+    var years=[]; for(var yy=dp.minY;yy<=dp.maxY;yy++) years.push(String(yy));
+    var dIdx=Math.min(dp.d,dim)-1, mIdx=dp.m-1, yIdx=dp.y-dp.minY;
+    return '<div class="dpSheetWrap" role="dialog" aria-label="'+esc(dp.title)+'">'+
+      '<div class="dpScrim" data-act="dpCancel"></div>'+
+      '<div class="dpSheet">'+
+        '<div class="dpHead"><button type="button" class="dpCancel" data-act="dpCancel">Abbrechen</button>'+
+          '<span class="dpTitle">'+esc(dp.title)+'</span>'+
+          '<button type="button" class="dpDone" data-act="dpDone">Fertig</button></div>'+
+        '<div class="dpCols"><div class="dpBand"></div>'+
+          dpColHtml('D',days,dIdx)+dpColHtml('M',DP_MONTHS,mIdx)+dpColHtml('Y',years,yIdx)+
+        '</div>'+
+      '</div></div>';
+  }
+  // Nach dem Zeichnen: Spalten auf die gewählten Indizes scrollen + Rasten-Listener,
+  // die den aktuellen Wert (ohne Voll-Render) pflegen und die Tage-Spalte an den Monat anpassen.
+  function dpMount(){
+    var dp=S.dp; if(!dp) return;
+    var cD=$('dpColD'), cM=$('dpColM'), cY=$('dpColY'); if(!cD||!cM||!cY) return;
+    var dim=dpDaysIn(dp.y,dp.m);
+    var set=function(col,idx){ col.scrollTop=idx*DP_IH; };
+    set(cD, Math.min(dp.d,dim)-1); set(cM, dp.m-1); set(cY, dp.y-dp.minY);
+    dpPaintOn(cD); dpPaintOn(cM); dpPaintOn(cY);
+    // Elemente sind nach jedem Render frisch -> Listener jedes Mal neu anhängen (kein Doppel-Bind).
+    var idxOf=function(col){ return Math.max(0, Math.round(col.scrollTop/DP_IH)); };
+    var timers={};
+    var onScroll=function(kind,col){ dpPaintOn(col);
+      clearTimeout(timers[kind]);
+      timers[kind]=setTimeout(function(){ dpSettle(kind); }, 90);
+    };
+    cD.addEventListener('scroll',function(){ onScroll('D',cD); },{passive:true});
+    cM.addEventListener('scroll',function(){ onScroll('M',cM); },{passive:true});
+    cY.addEventListener('scroll',function(){ onScroll('Y',cY); },{passive:true});
+    dp._idxOf=idxOf;
+  }
+  // Zentriertes Item hervorheben (rein optisch, kein Render).
+  function dpPaintOn(col){
+    if(!col) return; var sel=Math.max(0,Math.round(col.scrollTop/DP_IH));
+    var items=col.children; for(var i=0;i<items.length;i++){ if(items[i].classList) items[i].classList.toggle('on', i===sel); }
+  }
+  // Ein Rad ist zur Ruhe gekommen: Wert in S.dp übernehmen; bei Monat/Jahr ggf. Tage-Spalte neu aufbauen.
+  function dpSettle(kind){
+    var dp=S.dp; if(!dp) return;
+    var cD=$('dpColD'), cM=$('dpColM'), cY=$('dpColY'); if(!cD||!cM||!cY) return;
+    var idxOf=dp._idxOf||function(col){ return Math.max(0,Math.round(col.scrollTop/DP_IH)); };
+    if(kind==='M') dp.m=idxOf(cM)+1;
+    if(kind==='Y') dp.y=dp.minY+idxOf(cY);
+    if(kind==='D') dp.d=idxOf(cD)+1;
+    if(kind==='M'||kind==='Y'){
+      var dim=dpDaysIn(dp.y,dp.m);
+      if(cD.children.length!==dim){
+        var frag=''; for(var i=1;i<=dim;i++) frag+='<div class="dpItem">'+i+'.</div>';
+        cD.innerHTML=frag;
+        if(dp.d>dim){ dp.d=dim; }
+        cD.scrollTop=(dp.d-1)*DP_IH; dpPaintOn(cD);
+      }
+    }
+  }
+  window.__dpNoop=function(){};
   function scrLogin(){
     // Einmalig prüfen, ob der Login-Code auch per WhatsApp angeboten werden kann.
     if(!S.waLoginFetched){ S.waLoginFetched=true; fetch('/api/member/login-options').then(function(r){return r.json();}).then(function(j){ if(j&&j.wa){ S.waLogin=true; render(); } }).catch(function(){}); }
@@ -3424,6 +3537,7 @@
     if(S.ciPopup) html+=ciPopupHtml();
     if(S.finnOpen) html+=finnOverlayHtml();
     if(S.vaOpen) html+=vaOverlayHtml();
+    if(S.dp) html+=wheelOverlay();
     if(TOKEN && S.screen!=='login' && !isFormer() && !obDone()) html+=obOverlayHtml();
     // Chat-Eingaben über die Neu-Zeichnung retten (Wert, Fokus, Cursor & Scroll-Position) –
     // sonst verschwindet getippter Text und die Tastatur klappt zu, sobald im Hintergrund
@@ -3439,6 +3553,7 @@
     var sc1=$('pf_scroll'); if(sc1){ sc1.scrollTop=(S.pfStick===false && keepScroll.pf_scroll!=null)?keepScroll.pf_scroll:sc1.scrollHeight; }
     var sc2=$('finn_scroll'); if(sc2){ sc2.scrollTop=(S.finnStick===false && keepScroll.finn_scroll!=null)?keepScroll.finn_scroll:sc2.scrollHeight; }
     renderChrome();
+    if(S.dp) dpMount();   // Rad-Datumsauswahl: Spalten positionieren + Rasten verdrahten
     // Vollbild-Chat offen? -> Seite dahinter einfrieren (verhindert Springen bei Tastatur).
     // WICHTIG: nach renderChrome(), das body.className komplett neu setzt.
     var chatFull=!!S.finnOpen || !!S.vaOpen || (S.screen==='postfach' && !!S.pfThread && window.innerWidth<1000);
@@ -3507,6 +3622,21 @@
     obExp:function(a){ setS({obExp:a}); },
     obNext:function(){ if((S.obStep||0)>=3){ try{ localStorage.setItem('fi_ob_v1',JSON.stringify({goal:S.obGoal,freq:S.obFreq,age:S.obAge,exp:S.obExp})); }catch(e){} S.finnTipLoaded=false; setS({obStep:0}); loadFinnTip(); } else { setS({obStep:(S.obStep||0)+1}); var o=document.querySelector('.obOverlay'); if(o) o.scrollTop=0; } },
     noop:function(){},   // fängt Klicks im Overlay-Inneren ab (Backdrop-Klick schließt)
+    // Rad-Datumsauswahl (Geburtstag)
+    dpOpen:function(field){ openDp(field||'liDob'); },
+    dpCancel:function(){ setQuiet({dp:null}); },
+    dpDone:function(){
+      var dp=S.dp; if(!dp){ return; }
+      var cD=$('dpColD'), cM=$('dpColM'), cY=$('dpColY');
+      var idxOf=function(col){ return col?Math.max(0,Math.round(col.scrollTop/DP_IH)):0; };
+      var y=cY?(dp.minY+idxOf(cY)):dp.y, m=cM?(idxOf(cM)+1):dp.m;
+      var dim=dpDaysIn(y,m); var d=Math.min(cD?(idxOf(cD)+1):dp.d, dim);
+      var p=function(n){ return (n<10?'0':'')+n; };
+      var iso=y+'-'+p(m)+'-'+p(d);
+      var cfg=dpConfig(dp.field);
+      if(cfg){ if(cfg.maxISO && iso>cfg.maxISO) iso=cfg.maxISO; if(cfg.minISO && iso<cfg.minISO) iso=cfg.minISO; cfg.set(iso); }
+      setS({dp:null});
+    },
     appAdHide:function(){ try{ sessionStorage.setItem('fi_appad_hide','1'); }catch(e){} render(); },
     closeFinn:function(){ setS({finnOpen:false}); },
     // Vertrags-Assistent (KI-Chat) – allgemeiner Einstieg + vorbereitete Anliegen
