@@ -121,6 +121,18 @@
   .dpCol.dpColY{flex:0 0 30%}
   .dpItem{height:44px;line-height:44px;scroll-snap-align:center;font-size:20px;font-weight:600;color:var(--text-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 4px}
   .dpItem.on{color:var(--text);font-weight:800}
+  /* Schnellaktionen-Popup („+\"-Button in der Leiste, Kaiora-Anregung) */
+  .qaScrim{position:fixed;inset:0;z-index:48;background:rgba(6,24,29,.52);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);animation:qaFade .2s ease}
+  @keyframes qaFade{from{opacity:0}to{opacity:1}}
+  .qaSheet{position:fixed;left:12px;right:12px;bottom:calc(90px + env(safe-area-inset-bottom,0px));z-index:49;max-width:456px;margin:0 auto;background:var(--surface);border-radius:22px;box-shadow:0 22px 54px rgba(4,33,40,.4);padding:7px;animation:qaUp .24s cubic-bezier(.22,.61,.36,1)}
+  @keyframes qaUp{from{transform:translateY(20px);opacity:.3}to{transform:translateY(0);opacity:1}}
+  .qaRow{width:100%;display:flex;align-items:center;gap:14px;padding:13px 13px;background:none;border:none;cursor:pointer;text-align:left;border-radius:15px}
+  .qaRow:active{background:var(--surface-2)}
+  .qaIco{width:46px;height:46px;border-radius:50%;background:var(--surface-2);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .qaIco.qaHi{background:linear-gradient(150deg,#0e6072,#063540);box-shadow:0 8px 18px -6px rgba(10,73,88,.6)}
+  .qaLbl{font-size:16px;font-weight:800;color:var(--text)}
+  .qaSub{font-size:12px;font-weight:600;color:var(--text-soft);margin-top:1px}
+  body.qaOn .finnFab{display:none}
   .btn{width:100%;padding:15px;border:none;border-radius:13px;background:var(--teal);color:#fff;font-weight:700;font-size:15px;cursor:pointer}
   .btn:hover{background:#0c5566}.btn:disabled{background:#9fb9bf;cursor:not-allowed}
   .btn2{width:100%;padding:14px;border:none;border-radius:13px;background:var(--surface-2);color:var(--teal-ink);font-weight:700;font-size:15px;cursor:pointer}
@@ -365,6 +377,7 @@
     aiQuery:'', aiPhase:'idle', aiAsked:'', aiAnswer:'', aiFeedback:null,
     finnOpen:false, finnMsgs:[], finnBusy:false, finnTip:'', finnTipLoaded:false,
     vaOpen:false, vaMsgs:[], vaBusy:false, vaInput:'', vaIntent:'',
+    qaOpen:false, dp:null,
     blogSel:null, blogPost:null, instaSel:null,
     obStep:0, obGoal:'Gesundheit & Longevity', obFreq:3, obAge:34, obExp:'gelegentlich',
     ernFormInit:false, ernEdit:false, ernGoal:'abnehmen', ernSex:'w', ernH:170, ernW:70, ernAge:30, ernAct:'moderat', ernDiet:'omnivor',
@@ -781,6 +794,37 @@
     }
   }
   window.__dpNoop=function(){};
+
+  // ===== Schnellaktionen-Popup (Mitte der unteren Leiste = „+") =====
+  // Slide-up-Sheet mit den wichtigsten Aktionen. Der Check-in wanderte von der Mitte
+  // hierher (erste, hervorgehobene Aktion). Kaiora-Anregung – in Fit-Inn-Teal.
+  function qaRow(act,icon,label,sub,hi){
+    return '<button class="qaRow" data-act="qaGo" data-arg="'+act+'">'+
+      '<span class="qaIco'+(hi?' qaHi':'')+'">'+svg(icon,{c:(hi?'#fff':'var(--teal-ink)'),w:2,s:23})+'</span>'+
+      '<span style="flex:1;min-width:0"><span class="qaLbl" style="display:block">'+esc(label)+'</span>'+(sub?'<span class="qaSub">'+esc(sub)+'</span>':'')+'</span>'+
+      svg('<path d="M9 18l6-6-6-6"></path>',{c:'var(--text-soft)',w:2,s:16})+
+    '</button>';
+  }
+  function qaSheet(){
+    var ci=!!S.checkedInAt;
+    var rows=
+      qaRow('checkin','<path d="M9 11l3 3L20 5"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>', ci?'Auschecken':'Check-in', ci?'Du bist gerade eingecheckt':'Im Studio einchecken', true)+
+      qaRow('appt','<rect x="3" y="4" width="18" height="18" rx="2"></rect><path d="M3 10h18M8 2v4M16 2v4"></path>','Termin buchen','Kurs oder Beratung')+
+      qaRow('team','<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>','Nachricht ans Team','Frage ans Studio schicken')+
+      qaRow('assist','<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6M9 13h6M9 17h4"></path>','Vertrags-Assistent','Pause oder Kündigung – geführt')+
+      qaRow('referral','<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"></path>','Freund werben','Empfehlen & Prämie sichern');
+    return '<div class="qaScrim" data-act="qaClose"></div><div class="qaSheet" role="menu" aria-label="Schnellaktionen">'+rows+'</div>';
+  }
+  // Aktion aus dem Popup ausführen: erst schließen, dann in den passenden Bereich.
+  function qaGo(a){
+    S.qaOpen=false;
+    if(a==='checkin'){ nav('checkin'); return; }
+    if(a==='appt'){ nav('appt'); return; }
+    if(a==='referral'){ nav('referral'); return; }
+    if(a==='team'){ nav('help'); setTimeout(function(){ setS({ctOpen:true,ctSent:false,ctErr:'',ctMsg:''}); },140); return; }
+    if(a==='assist'){ nav('contract'); setTimeout(function(){ if(typeof openAssistant==='function') openAssistant(''); },140); return; }
+    render();
+  }
   function scrLogin(){
     // Einmalig prüfen, ob der Login-Code auch per WhatsApp angeboten werden kann.
     if(!S.waLoginFetched){ S.waLoginFetched=true; fetch('/api/member/login-options').then(function(r){return r.json();}).then(function(j){ if(j&&j.wa){ S.waLogin=true; render(); } }).catch(function(){}); }
@@ -3497,9 +3541,12 @@
       var unread=pfUnread()>0;
       var pfCol=(sc==='postfach')?'var(--teal-ink)':'var(--text-soft)';
       var pfBtn='<button data-act="nav" data-arg="postfach" style="flex:1;background:none;border:none;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;padding:5px 0"><span style="position:relative;display:flex">'+svg(IC.mail,{c:pfCol,w:1.9,s:23})+(unread?'<span style="position:absolute;top:-3px;right:-5px;width:8px;height:8px;border-radius:50%;background:#F6A964;border:1.5px solid var(--surface)"></span>':'')+'</span><span style="font-size:10.5px;font-weight:'+(sc==='postfach'?'800':'600')+';color:'+pfCol+'">Postfach</span></button>';
-      var ciIn=!!S.checkedInAt; var onCi=(sc==='checkin');
-      var ciCenter='<button data-act="nav" data-arg="checkin" aria-label="Check-in" style="flex:1;background:none;border:none;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px;padding:0"><span style="width:54px;height:54px;border-radius:50%;background:'+(ciIn?'linear-gradient(150deg,#1f9a4e,#127a3c)':'linear-gradient(150deg,#0e6072,#063540)')+';box-shadow:0 10px 24px -4px rgba(10,73,88,.55);display:flex;align-items:center;justify-content:center;margin-top:-26px;border:4px solid var(--surface)">'+svg('<path d="M9 11l3 3L20 5"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>',{c:'#fff',w:2.1,s:24})+'</span><span style="font-size:10.5px;font-weight:800;color:'+((onCi||ciIn)?'var(--teal-ink)':'var(--text-soft)')+'">'+(ciIn?'Auschecken':'Check-in')+'</span></button>';
-      bn.innerHTML = ni('home','Start',DASH_IC,sc==='home') + ni('appt','Termine',IC.cal,sc==='appt') + ciCenter + pfBtn + ni('profil','Profil',IC.user,profActive);
+      var ciIn=!!S.checkedInAt; var qaOpen=!!S.qaOpen;
+      // Mitte = „+\"-Schnellaktionen (öffnet Slide-up-Popup). Beim Öffnen dreht das „+\" zum „×\".
+      // Ist das Mitglied eingecheckt, leuchtet der Button grün als Erinnerung ans Auschecken.
+      var qaBg=qaOpen?'linear-gradient(150deg,#0e6072,#063540)':(ciIn?'linear-gradient(150deg,#1f9a4e,#127a3c)':'linear-gradient(150deg,#0e6072,#063540)');
+      var qaCenter='<button data-act="'+(qaOpen?'qaClose':'qaOpen')+'" aria-label="Schnellaktionen" style="flex:1;background:none;border:none;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px;padding:0"><span style="width:54px;height:54px;border-radius:50%;background:'+qaBg+';box-shadow:0 10px 24px -4px rgba(10,73,88,.55);display:flex;align-items:center;justify-content:center;margin-top:-26px;border:4px solid var(--surface);transition:transform .22s cubic-bezier(.22,.61,.36,1);transform:rotate('+(qaOpen?'45deg':'0deg')+')">'+svg('<path d="M12 5v14M5 12h14"></path>',{c:'#fff',w:2.6,s:26})+'</span><span style="font-size:10.5px;font-weight:800;color:'+(qaOpen?'var(--teal-ink)':(ciIn?'#127a3c':'var(--text-soft)'))+'">'+(qaOpen?'Schließen':(ciIn?'Eingecheckt':'Aktionen'))+'</span></button>';
+      bn.innerHTML = ni('home','Start',DASH_IC,sc==='home') + ni('appt','Termine',IC.cal,sc==='appt') + qaCenter + pfBtn + ni('profil','Profil',IC.user,profActive);
     }
   }
   var NARROW={contract:1,referral:1,appt:1,card:1,fort:1,ern:1,blog:1,profil:1,checkin:1,insta:1};
@@ -3538,6 +3585,7 @@
     if(S.finnOpen) html+=finnOverlayHtml();
     if(S.vaOpen) html+=vaOverlayHtml();
     if(S.dp) html+=wheelOverlay();
+    if(S.qaOpen) html+=qaSheet();
     if(TOKEN && S.screen!=='login' && !isFormer() && !obDone()) html+=obOverlayHtml();
     // Chat-Eingaben über die Neu-Zeichnung retten (Wert, Fokus, Cursor & Scroll-Position) –
     // sonst verschwindet getippter Text und die Tastatur klappt zu, sobald im Hintergrund
@@ -3560,6 +3608,7 @@
     document.body.classList.toggle('chatLock', chatFull);
     // Overscroll-Farbe oben: teal nur auf der Startseite (passend zum Hero).
     document.body.classList.toggle('onHome', S.screen==='home');
+    document.body.classList.toggle('qaOn', !!S.qaOpen);   // FINN-FAB ausblenden, solange das Popup offen ist
     // Bei offener Tastatur (iOS) den Chat wieder auf den sichtbaren Bereich pinnen –
     // die Neu-Zeichnung hat die Inline-Maße gerade verworfen.
     if(chatFull) syncChatViewport();
@@ -3622,6 +3671,10 @@
     obExp:function(a){ setS({obExp:a}); },
     obNext:function(){ if((S.obStep||0)>=3){ try{ localStorage.setItem('fi_ob_v1',JSON.stringify({goal:S.obGoal,freq:S.obFreq,age:S.obAge,exp:S.obExp})); }catch(e){} S.finnTipLoaded=false; setS({obStep:0}); loadFinnTip(); } else { setS({obStep:(S.obStep||0)+1}); var o=document.querySelector('.obOverlay'); if(o) o.scrollTop=0; } },
     noop:function(){},   // fängt Klicks im Overlay-Inneren ab (Backdrop-Klick schließt)
+    // Schnellaktionen-Popup („+"-Button)
+    qaOpen:function(){ setQuiet({qaOpen:true}); },
+    qaClose:function(){ setQuiet({qaOpen:false}); },
+    qaGo:function(a){ qaGo(a); },
     // Rad-Datumsauswahl (Geburtstag)
     dpOpen:function(field){ openDp(field||'liDob'); },
     dpCancel:function(){ setQuiet({dp:null}); },
