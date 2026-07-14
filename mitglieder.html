@@ -2677,28 +2677,74 @@
       estimated:false, source:'openfoodfacts', barcode:p.barcode };
     S.ernProd=null; S.ernCapture=false; ernOpenConfirm([item],'openfoodfacts');
   }
-  // ── Barcode-Kamera-Scan via BarcodeDetector (nur wenn verfügbar; sonst manuelle Eingabe) ──
-  var ernScanStream=null, ernScanRAF=null, ernScanDet=null, ernScanActive=false;
-  function ernScanSupported(){ try{ return (typeof window.BarcodeDetector!=='undefined') && navigator.mediaDevices && !!navigator.mediaDevices.getUserMedia; }catch(e){ return false; } }
-  window.__ernStartScan=function(){
-    if(!ernScanSupported()||ernScanActive) return; ernScanActive=true; setS({ernScanErr:''});
-    var v=document.getElementById('ern_scan_video'); if(!v){ ernScanActive=false; return; }
+  // ── Barcode-Kamera-Scan ──
+  // Schneller Pfad: native BarcodeDetector-API (Android/Chrome). Fallback (u. a. iOS/Safari,
+  // wo BarcodeDetector fehlt): ZXing-JS – lokal aus /assets/zxing.min.js nachgeladen, nur
+  // beim ersten Scan. Kamera braucht getUserMedia (HTTPS/sichere Umgebung).
+  var ernScanStream=null, ernScanRAF=null, ernScanDet=null, ernScanActive=false, ernZxReader=null, ernZxLoading=null;
+  function ernCamAvailable(){ try{ return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia); }catch(e){ return false; } }
+  // „unterstützt", sobald eine Kamera-API da ist – Dekodierung übernimmt sonst ZXing.
+  function ernScanSupported(){ return ernCamAvailable(); }
+  function ernLoadZXing(){
+    if(window.ZXing) return Promise.resolve(window.ZXing);
+    if(ernZxLoading) return ernZxLoading;
+    ernZxLoading=new Promise(function(res,rej){
+      var s=document.createElement('script'); s.src='/assets/zxing.min.js'; s.async=true;
+      s.onload=function(){ window.ZXing?res(window.ZXing):rej(new Error('zxing')); };
+      s.onerror=function(){ ernZxLoading=null; rej(new Error('zxing-load')); };
+      document.head.appendChild(s);
+    });
+    return ernZxLoading;
+  }
+  function ernScanHit(raw,st){ raw=String(raw||'').replace(/\D/g,''); var now=Date.now();
+    if(raw.length>=8 && (raw!==st.last || now-st.at>2500)){ st.last=raw; st.at=now; ernScanLookup(raw); return true; } return false; }
+  // Nativer Detector (Android/Chrome)
+  function ernStartNativeScan(v){
     navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}}).then(function(stream){
+      if(!ernScanActive){ try{ stream.getTracks().forEach(function(t){ t.stop(); }); }catch(e){} return; }
       ernScanStream=stream; try{ v.srcObject=stream; v.setAttribute('playsinline','true'); v.muted=true; var pp=v.play&&v.play(); if(pp&&pp.catch) pp.catch(function(){}); }catch(e){}
       try{ ernScanDet=new window.BarcodeDetector({formats:['ean_13','ean_8','upc_a','upc_e','code_128']}); }catch(e){ try{ ernScanDet=new window.BarcodeDetector(); }catch(e2){ ernScanDet=null; } }
-      var lastCode='', lastAt=0;
+      if(!ernScanDet){ ernStartZxScan(v); return; }   // Detector doch nicht nutzbar -> ZXing
+      var st={last:'',at:0};
       var loop=function(){ if(!ernScanActive||!ernScanDet) return;
         ernScanDet.detect(v).then(function(codes){ if(!ernScanActive) return;
-          if(codes&&codes.length){ var raw=String(codes[0].rawValue||'').replace(/\D/g,''); var now=Date.now();
-            if(raw.length>=8 && (raw!==lastCode || now-lastAt>2500)){ lastCode=raw; lastAt=now; ernScanLookup(raw); return; } }
+          if(codes&&codes.length && ernScanHit(codes[0].rawValue,st)) return;
           ernScanRAF=requestAnimationFrame(loop);
         }).catch(function(){ if(ernScanActive) ernScanRAF=requestAnimationFrame(loop); });
       };
       ernScanRAF=requestAnimationFrame(loop);
     }).catch(function(err){ ernScanActive=false; var nm=(err&&err.name)||'';
       setS({ernScanErr:(nm==='NotAllowedError'||nm==='SecurityError')?'Kamerazugriff wurde nicht erlaubt – bitte in den Einstellungen freigeben oder den Barcode eintippen.':'Kamera nicht verfügbar – bitte den Barcode eintippen.'}); });
+  }
+  // ZXing-Fallback (iOS/Safari & wo BarcodeDetector fehlt) – verwaltet Kamera selbst.
+  function ernStartZxScan(v){
+    ernLoadZXing().then(function(ZX){
+      if(!ernScanActive) return;
+      var st={last:'',at:0}, hints=null;
+      try{ hints=new Map(); hints.set(ZX.DecodeHintType.POSSIBLE_FORMATS,[ZX.BarcodeFormat.EAN_13,ZX.BarcodeFormat.EAN_8,ZX.BarcodeFormat.UPC_A,ZX.BarcodeFormat.UPC_E,ZX.BarcodeFormat.CODE_128]); }catch(e){ hints=null; }
+      try{ ernZxReader=hints?new ZX.BrowserMultiFormatReader(hints):new ZX.BrowserMultiFormatReader(); }catch(e){ try{ ernZxReader=new ZX.BrowserMultiFormatReader(); }catch(e2){ ernZxReader=null; } }
+      if(!ernZxReader){ ernScanActive=false; setS({ernScanErr:'Scanner konnte nicht gestartet werden – bitte den Barcode eintippen.'}); return; }
+      try{ v.setAttribute('playsinline','true'); v.muted=true; }catch(e){}
+      ernZxReader.decodeFromConstraints({video:{facingMode:'environment'}}, v, function(result,err){
+        if(!ernScanActive||!result) return;
+        var txt=''; try{ txt=result.getText?result.getText():(result.text||''); }catch(e){}
+        ernScanHit(txt,st);
+      }).catch(function(err){ ernScanActive=false; var nm=(err&&err.name)||'';
+        setS({ernScanErr:(nm==='NotAllowedError'||nm==='SecurityError')?'Kamerazugriff wurde nicht erlaubt – bitte freigeben oder den Barcode eintippen.':'Kamera nicht verfügbar – bitte den Barcode eintippen.'}); });
+    }).catch(function(){ ernScanActive=false; setS({ernScanErr:'Scanner konnte nicht geladen werden – bitte den Barcode eintippen.'}); });
+  }
+  window.__ernStartScan=function(){
+    if(ernScanActive) return;
+    if(!ernCamAvailable()){ setS({ernScanErr:'Kamera wird auf diesem Gerät nicht unterstützt – bitte den Barcode eintippen.'}); return; }
+    ernScanActive=true; setS({ernScanErr:''});
+    var v=document.getElementById('ern_scan_video'); if(!v){ ernScanActive=false; return; }
+    if(typeof window.BarcodeDetector!=='undefined') ernStartNativeScan(v); else ernStartZxScan(v);
   };
-  window.__ernStopScan=function(){ ernScanActive=false; if(ernScanRAF){ try{ cancelAnimationFrame(ernScanRAF); }catch(e){} ernScanRAF=null; } if(ernScanStream){ try{ ernScanStream.getTracks().forEach(function(t){ t.stop(); }); }catch(e){} ernScanStream=null; } ernScanDet=null; };
+  window.__ernStopScan=function(){ ernScanActive=false;
+    if(ernScanRAF){ try{ cancelAnimationFrame(ernScanRAF); }catch(e){} ernScanRAF=null; }
+    if(ernZxReader){ try{ ernZxReader.reset(); }catch(e){} ernZxReader=null; }
+    if(ernScanStream){ try{ ernScanStream.getTracks().forEach(function(t){ t.stop(); }); }catch(e){} ernScanStream=null; }
+    ernScanDet=null; };
   window.__ernScanManual=function(){ var el=document.getElementById('ern_bc'); ernScanLookup(el?el.value:''); };
   window.__ernProdSearch=function(){ var el=document.getElementById('ern_prodq'); ernSearchGo(el?el.value:''); };
   // Produkt-Detail: Portion wählen -> Nährwerte -> Übernehmen (Licht-Screen)
