@@ -386,6 +386,9 @@
     ernTab:'heute', ernPlanTab:'woche', ernPlanBusy:false, ernFridge:'', ernRecipeSel:null, ernRecipeSaved:false,
     ernCapture:false, ernCapTab:'cam', ernObStep:0, ernConsent:false, ernCheckinDismissed:false, ernCapTarget:'',
     ernConfirm:null, ernConfirmBusy:false,
+    ernScanCode:'', ernScanBusy:false, ernScanErr:'', ernScanNotFound:false,
+    ernSearchQ:'', ernSearchResults:null, ernSearchBusy:false, ernSearchErr:'',
+    ernProd:null, ernGrams:100,
     ctOpen:false, ctSent:false, ctMsg:'', ctBusy:false, ctErr:'', ctMsgServer:'', artFb:null,
     pfFilter:'offen', pfSearch:'', pfLimit:12, pfSel:null, pfThread:false, pfDraft:'', pfBusy:false, pfErr:'',
     alToken:'', alLabel:'', alAction:'', alBusy:false, alErr:'', alGo:'', alSub:'', alState:'loading',
@@ -523,7 +526,7 @@
     if(s==='insta'){ S.instaSel=null; loadInsta(); maybeRefreshInsta(); }
     if(s==='home'){ loadFinnTip(); maybeRefreshInsta(); maybeRefreshLive(); }
     if(s==='account') loadAccount();
-    if(s==='ern'){ S.ernMsg=''; S.ernErr=false; S.ernAsk=''; S.ernAnswer=''; S.ernRecipes=null; S.ernCoachSent=false; S.ernTab='heute'; S.ernRecipeSel=null; S.ernCapture=false; S.ernConfirm=null; S.ernObStep=0; loadNutri(); }
+    if(s==='ern'){ try{ window.__ernStopScan&&window.__ernStopScan(); }catch(e){} S.ernMsg=''; S.ernErr=false; S.ernAsk=''; S.ernAnswer=''; S.ernRecipes=null; S.ernCoachSent=false; S.ernTab='heute'; S.ernRecipeSel=null; S.ernCapture=false; S.ernConfirm=null; S.ernProd=null; S.ernObStep=0; loadNutri(); }
     if(s==='appt'){ if(!DATA.appts) loadAppts(); if(DATA.bookable===null) loadBookable(); }
     if(s==='home'||s==='checkin') checkArrival();
     setS({}); }
@@ -2520,7 +2523,8 @@
       return { name:String(it.name||''), portion:String(it.portion||''), meal:it.meal||'snack',
         kcal:Math.max(0,parseInt(it.kcal,10)||0), p:Math.max(0,parseInt(it.p,10)||0), c:Math.max(0,parseInt(it.c,10)||0), f:Math.max(0,parseInt(it.f,10)||0),
         estimated:it.estimated!==false, barcode:it.barcode||undefined, source:it.source||source }; }) };
-    S.ernCapture=false; S.ernMsg=''; S.ernErr=false; render(); try{ window.scrollTo(0,0); }catch(e){}
+    try{ window.__ernStopScan&&window.__ernStopScan(); }catch(e){}
+    S.ernCapture=false; S.ernProd=null; S.ernMsg=''; S.ernErr=false; render(); try{ window.scrollTo(0,0); }catch(e){}
   }
   function ernCloseConfirm(){ S.ernConfirm=null; S.ernConfirmBusy=false; render(); }
   // Live-Update der Bestätigen-Felder OHNE Re-Render (Fokus/Tastatur bleiben erhalten).
@@ -2609,6 +2613,96 @@
       '<button data-act="ernStep" data-arg="'+f+':1" style="width:32px;height:32px;border-radius:9px;border:none;background:var(--surface);color:'+ERN_G+';font-size:19px;font-weight:800;cursor:pointer;box-shadow:0 2px 6px rgba(4,33,40,.08)">+</button>'+
     '</div></div>'; }
   function ernMacroPill(v,label,color){ return '<div style="flex:1;background:var(--surface-2);border-radius:13px;padding:11px 8px;text-align:center"><div style="font-size:18px;font-weight:900;color:'+color+'">'+v+'g</div><div style="font-size:10.5px;font-weight:800;color:var(--text-soft)">'+label+'</div></div>'; }
+  // ═══ Open Food Facts: Barcode-Scan + Produktsuche -> Portion -> Bestätigen ═══
+  function ernCurrentMeal(){ var h=new Date().getHours(); return h<11?'fruehstueck':(h<15?'mittag':(h<21?'abend':'snack')); }
+  function ernOffNotice(){ return '<div style="font-size:10.5px;color:var(--text-soft);font-weight:600;line-height:1.55;text-align:center;margin-top:12px">Produktdaten: <a href="https://world.openfoodfacts.org" target="_blank" rel="noopener" style="color:#0a4958;text-decoration:underline">Open Food Facts</a> · Lizenz <a href="https://opendatacommons.org/licenses/odbl/1-0/" target="_blank" rel="noopener" style="color:#0a4958;text-decoration:underline">ODbL</a>. Angaben können unvollständig oder fehlerhaft sein.</div>'; }
+  function ernDefaultGrams(p){ var s=String((p&&p.servingSize)||''); var m=s.match(/(\d+(?:[.,]\d+)?)\s*g/i); if(m){ var n=Math.round(parseFloat(m[1].replace(',','.'))); if(n>0&&n<3000) return n; } return 100; }
+  function ernOpenProduct(prod,stale){ setS({ernProd:Object.assign({stale:!!stale},prod), ernGrams:ernDefaultGrams(prod), ernSearchResults:null, ernScanNotFound:false, ernScanErr:''}); try{ window.scrollTo(0,0); }catch(e){} }
+  window.__ernGrams=function(v){ var n=parseInt(v,10); S.ernGrams=(isNaN(n)||n<1)?1:Math.min(3000,n); };
+  function ernScanLookup(code){
+    try{ if(window.__ernStopScan) window.__ernStopScan(); }catch(e){}
+    var bc=String(code||'').replace(/\D/g,'');
+    if(bc.length<8){ setS({ernScanErr:'Bitte einen gültigen Barcode (mind. 8 Ziffern) eingeben.',ernScanNotFound:false}); return; }
+    S.ernScanBusy=true; S.ernScanErr=''; S.ernScanNotFound=false; render();
+    api('/api/member/food-products',{method:'POST',body:JSON.stringify({action:'barcode',barcode:bc})})
+    .then(function(d){ S.ernScanBusy=false;
+      if(d&&d.ok&&d.found&&d.product){ ernOpenProduct(d.product,d.stale); }
+      else if(d&&d.ok&&!d.found){ setS({ernScanNotFound:true,ernScanCode:bc}); }
+      else { setS({ernScanErr:(d&&d.message)||'Produkt konnte gerade nicht geladen werden – bitte manuell eingeben.'}); } })
+    .catch(function(){ setS({ernScanBusy:false,ernScanErr:'Verbindung gerade nicht möglich.'}); });
+  }
+  function ernSearchGo(q){
+    q=String(q||'').trim(); if(q.length<2){ setS({ernSearchErr:'Bitte mindestens 2 Zeichen eingeben.'}); return; }
+    if(S.ernSearchBusy) return;
+    S.ernSearchQ=q; S.ernSearchBusy=true; S.ernSearchErr=''; S.ernSearchResults=null; render();
+    api('/api/member/food-products',{method:'POST',body:JSON.stringify({action:'search',query:q,limit:15})})
+    .then(function(d){ S.ernSearchBusy=false;
+      if(d&&d.ok&&Array.isArray(d.products)){ S.ernSearchResults=d.products; }
+      else { S.ernSearchErr=(d&&d.message)||'Suche gerade nicht möglich – bitte manuell oder per KI eingeben.'; S.ernSearchResults=[]; } render(); })
+    .catch(function(){ S.ernSearchBusy=false; S.ernSearchErr='Verbindung gerade nicht möglich.'; S.ernSearchResults=[]; render(); });
+  }
+  // Portion deterministisch aus 100-g-Werten (erst am Ende runden), dann Bestätigen-Screen.
+  function ernProdTake(){
+    var p=S.ernProd; if(!p) return; var g=Math.max(1,Math.min(3000,parseInt(S.ernGrams,10)||100)); var n=p.nutriments||{};
+    var per=function(v){ return (v==null)?0:Math.round(v*g/100); };
+    var item={ name:p.name||'Produkt', portion:g+' g'+(p.brand?(' · '+p.brand):''), meal:ernCurrentMeal(),
+      kcal:per(n.kcal100g), p:per(n.protein100g), c:per(n.carbs100g), f:per(n.fat100g),
+      estimated:false, source:'openfoodfacts', barcode:p.barcode };
+    S.ernProd=null; S.ernCapture=false; ernOpenConfirm([item],'openfoodfacts');
+  }
+  // ── Barcode-Kamera-Scan via BarcodeDetector (nur wenn verfügbar; sonst manuelle Eingabe) ──
+  var ernScanStream=null, ernScanRAF=null, ernScanDet=null, ernScanActive=false;
+  function ernScanSupported(){ try{ return (typeof window.BarcodeDetector!=='undefined') && navigator.mediaDevices && !!navigator.mediaDevices.getUserMedia; }catch(e){ return false; } }
+  window.__ernStartScan=function(){
+    if(!ernScanSupported()||ernScanActive) return; ernScanActive=true; setS({ernScanErr:''});
+    var v=document.getElementById('ern_scan_video'); if(!v){ ernScanActive=false; return; }
+    navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}}).then(function(stream){
+      ernScanStream=stream; try{ v.srcObject=stream; v.setAttribute('playsinline','true'); v.muted=true; var pp=v.play&&v.play(); if(pp&&pp.catch) pp.catch(function(){}); }catch(e){}
+      try{ ernScanDet=new window.BarcodeDetector({formats:['ean_13','ean_8','upc_a','upc_e','code_128']}); }catch(e){ try{ ernScanDet=new window.BarcodeDetector(); }catch(e2){ ernScanDet=null; } }
+      var lastCode='', lastAt=0;
+      var loop=function(){ if(!ernScanActive||!ernScanDet) return;
+        ernScanDet.detect(v).then(function(codes){ if(!ernScanActive) return;
+          if(codes&&codes.length){ var raw=String(codes[0].rawValue||'').replace(/\D/g,''); var now=Date.now();
+            if(raw.length>=8 && (raw!==lastCode || now-lastAt>2500)){ lastCode=raw; lastAt=now; ernScanLookup(raw); return; } }
+          ernScanRAF=requestAnimationFrame(loop);
+        }).catch(function(){ if(ernScanActive) ernScanRAF=requestAnimationFrame(loop); });
+      };
+      ernScanRAF=requestAnimationFrame(loop);
+    }).catch(function(err){ ernScanActive=false; var nm=(err&&err.name)||'';
+      setS({ernScanErr:(nm==='NotAllowedError'||nm==='SecurityError')?'Kamerazugriff wurde nicht erlaubt – bitte in den Einstellungen freigeben oder den Barcode eintippen.':'Kamera nicht verfügbar – bitte den Barcode eintippen.'}); });
+  };
+  window.__ernStopScan=function(){ ernScanActive=false; if(ernScanRAF){ try{ cancelAnimationFrame(ernScanRAF); }catch(e){} ernScanRAF=null; } if(ernScanStream){ try{ ernScanStream.getTracks().forEach(function(t){ t.stop(); }); }catch(e){} ernScanStream=null; } ernScanDet=null; };
+  window.__ernScanManual=function(){ var el=document.getElementById('ern_bc'); ernScanLookup(el?el.value:''); };
+  window.__ernProdSearch=function(){ var el=document.getElementById('ern_prodq'); ernSearchGo(el?el.value:''); };
+  // Produkt-Detail: Portion wählen -> Nährwerte -> Übernehmen (Licht-Screen)
+  function ernProductPicker(){
+    var p=S.ernProd; var n=p.nutriments||{}; var g=Math.max(1,Math.min(3000,parseInt(S.ernGrams,10)||100));
+    var pv=function(v,u){ return (v==null)?'<span style="color:var(--text-soft)">—</span>':(v+(u||'')); };
+    var per=function(v){ return (v==null)?null:Math.round(v*g/100); };
+    var img=p.imageUrl?'<div style="width:64px;height:64px;border-radius:12px;overflow:hidden;flex-shrink:0;background:var(--surface-2)"><img src="'+esc(p.imageUrl)+'" alt="" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display=\'none\'"></div>':'';
+    var incomplete=(n.kcal100g==null)?'<div role="alert" style="font-size:12px;font-weight:700;color:#8a6d1f;background:#FBF2E1;border-radius:10px;padding:10px 12px;margin-top:10px">Für dieses Produkt fehlen Nährwertangaben. Bitte im nächsten Schritt selbst ergänzen.</div>':'';
+    var stale=p.stale?'<div style="font-size:11px;font-weight:700;color:var(--text-soft);text-align:center;margin-top:6px">Aus dem Zwischenspeicher – evtl. nicht ganz aktuell.</div>':'';
+    var per100=[['kcal',pv(n.kcal100g)],['Eiweiß',pv(n.protein100g,' g')],['KH',pv(n.carbs100g,' g')],['Fett',pv(n.fat100g,' g')]].map(function(x){ return '<div style="flex:1;text-align:center"><div style="font-size:14px;font-weight:900;color:var(--text)">'+x[1]+'</div><div style="font-size:9.5px;font-weight:800;color:var(--text-soft);text-transform:uppercase">'+x[0]+'</div></div>'; }).join('');
+    var previewVals=[['kcal',per(n.kcal100g)],['Eiweiß',per(n.protein100g)!=null?per(n.protein100g)+' g':'—'],['KH',per(n.carbs100g)!=null?per(n.carbs100g)+' g':'—'],['Fett',per(n.fat100g)!=null?per(n.fat100g)+' g':'—']];
+    var preview=previewVals.map(function(x){ return '<div style="flex:1;text-align:center"><div style="font-size:15px;font-weight:900;color:#0f7a4a">'+(x[1]==null?'—':x[1])+'</div><div style="font-size:9.5px;font-weight:800;color:var(--text-soft);text-transform:uppercase">'+x[0]+'</div></div>'; }).join('');
+    return '<div style="padding:4px 2px 40px">'+
+      '<div style="display:flex;align-items:center;gap:12px;padding:2px 2px 14px"><button data-act="ernProdBack" aria-label="Zurück" style="width:38px;height:38px;border-radius:12px;border:none;background:#fff;box-shadow:0 4px 12px rgba(4,33,40,.08);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'+svg(IC.back,{c:'#0a4958',w:2.2,s:19})+'</button><div style="font-size:20px;font-weight:900;color:var(--text);letter-spacing:-.4px">Produkt übernehmen</div></div>'+
+      '<div style="background:#fff;border-radius:18px;padding:16px;box-shadow:0 8px 24px rgba(4,33,40,.08)">'+
+        '<div style="display:flex;gap:13px;align-items:center">'+img+'<div style="flex:1;min-width:0"><div style="font-size:16px;font-weight:900;color:var(--text);line-height:1.25">'+esc(p.name||'Produkt')+'</div>'+(p.brand?'<div style="font-size:12.5px;font-weight:700;color:var(--text-muted);margin-top:2px">'+esc(p.brand)+(p.quantity?(' · '+esc(p.quantity)):'')+'</div>':'')+'</div></div>'+
+        '<div style="display:flex;gap:6px;margin-top:14px;background:var(--surface-2);border-radius:12px;padding:11px 8px">'+per100+'</div><div style="font-size:10px;font-weight:700;color:var(--text-soft);text-align:center;margin-top:6px">je 100 g</div>'+
+        incomplete+
+      '</div>'+
+      '<div style="background:#fff;border-radius:18px;padding:16px;box-shadow:0 8px 24px rgba(4,33,40,.08);margin-top:12px">'+
+        '<label for="ern_grams" style="font-size:12px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.4px">Menge</label>'+
+        '<div style="display:flex;align-items:center;gap:10px;margin-top:10px"><button data-act="ernGramsStep" data-arg="-10" aria-label="10 Gramm weniger" style="width:44px;height:44px;border-radius:12px;border:none;background:var(--surface-2);color:#0f7a4a;font-size:22px;font-weight:800;cursor:pointer">−</button>'+
+          '<div style="flex:1;display:flex;align-items:baseline;justify-content:center;gap:6px"><input id="ern_grams" type="number" inputmode="numeric" min="1" max="3000" value="'+g+'" oninput="window.__ernGrams(this.value)" aria-label="Menge in Gramm" style="width:90px;border:1.5px solid var(--border);border-radius:12px;padding:10px;font-size:22px;font-weight:900;color:var(--text);text-align:center;background:#fff">'+
+          '<span style="font-size:15px;font-weight:800;color:var(--text-soft)">g</span></div>'+
+          '<button data-act="ernGramsStep" data-arg="10" aria-label="10 Gramm mehr" style="width:44px;height:44px;border-radius:12px;border:none;background:var(--surface-2);color:#0f7a4a;font-size:22px;font-weight:800;cursor:pointer">+</button></div>'+
+        '<div style="display:flex;gap:6px;margin-top:14px;border-top:1px solid var(--border);padding-top:14px">'+preview+'</div>'+
+      '</div>'+
+      '<button data-act="ernProdTake" style="width:100%;margin-top:16px;padding:16px;border:none;border-radius:16px;background:#0f7a4a;color:#fff;font-weight:900;font-size:16px;cursor:pointer">Übernehmen &amp; prüfen</button>'+
+      stale+ernOffNotice()+'</div>';
+  }
   // Vollbild-Erfassen (Kamera/Sprache/Suche/Barcode) – dunkler Screen wie im Mockup
   function ernErfassen(){
     var tab=S.ernCapTab||'cam';
@@ -2622,9 +2716,39 @@
     } else if(tab==='voice'){
       inner='<div style="display:flex;flex-direction:column;align-items:center;padding:14px 0 0"><div style="font-size:15px;font-weight:800;color:#15171B;text-align:center;max-width:250px;line-height:1.4">'+(S.ernRec?'Ich höre zu …':'Sag, was du gegessen hast')+'</div><div style="position:relative;width:150px;height:150px;margin:28px 0;display:flex;align-items:center;justify-content:center">'+(S.ernRec?'<div style="position:absolute;width:110px;height:110px;border-radius:50%;background:#22a866;animation:micRing 1.4s ease-out infinite"></div>':'')+'<button data-act="ernVoice" style="position:relative;width:110px;height:110px;border-radius:50%;border:none;background:'+(S.ernRec?'#22a866':'#0f7a4a')+';cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 16px 34px rgba(15,122,74,.3)">'+svg('<rect x="9" y="2" width="6" height="12" rx="3"></rect><path d="M5 10a7 7 0 0 0 14 0M12 17v4"></path>',{c:'#fff',w:2,s:42})+'</button></div><div style="font-size:13px;font-weight:700;color:#8a929a">'+(S.ernRec?'Tippen zum Stoppen':(S.ernBusy?'Wird verarbeitet …':'Tippen und sprechen'))+'</div></div>';
     } else if(tab==='search'){
-      inner='<div><div style="display:flex;align-items:center;gap:10px;background:#fff;border-radius:15px;padding:13px 15px;box-shadow:0 10px 24px rgba(4,33,40,.12)">'+svg('<circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4-4"></path>',{c:'#8a929a',w:2.2,s:19})+'<input id="ern_capq" placeholder="Lebensmittel eingeben…" style="flex:1;border:none;outline:none;font-size:15px;font-weight:600;color:#15171B;background:transparent;font-family:inherit"/></div><button data-act="ernCapSearch" '+(S.ernBusy?'disabled ':'')+'style="width:100%;margin-top:14px;padding:15px;border:none;border-radius:15px;background:#0f7a4a;color:#fff;font-weight:900;font-size:15px;cursor:pointer">'+(S.ernBusy?'FINN schätzt …':'Hinzufügen')+'</button><div style="text-align:center;font-size:12px;font-weight:600;color:#8a929a;margin-top:12px;line-height:1.5">Tippe z. B. „150 g Haferflocken mit Banane" – FINN schätzt die Nährwerte.</div></div>';
+      // Produktsuche (Open Food Facts) – erst auf Absenden, keine Suche bei jedem Tastendruck.
+      var mag=svg('<circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4-4"></path>',{c:'#8a929a',w:2.2,s:19});
+      var searchBox='<div style="display:flex;align-items:center;gap:10px;background:#fff;border-radius:15px;padding:13px 15px;box-shadow:0 10px 24px rgba(4,33,40,.12)">'+mag+'<input id="ern_prodq" enterkeyhint="search" aria-label="Produkt suchen" placeholder="Produkt suchen (z. B. Magerquark)" value="'+esc(S.ernSearchQ||'')+'" onkeydown="if(event.key===\'Enter\'){event.preventDefault();window.__ernProdSearch&&window.__ernProdSearch();}" style="flex:1;min-width:0;border:none;outline:none;font-size:15px;font-weight:600;color:#15171B;background:transparent;font-family:inherit"></div>'+
+        '<button data-act="ernProdSearchBtn" '+(S.ernSearchBusy?'disabled ':'')+'style="width:100%;margin-top:12px;padding:15px;border:none;border-radius:15px;background:#0f7a4a;color:#fff;font-weight:900;font-size:15px;cursor:pointer;opacity:'+(S.ernSearchBusy?'.6':'1')+'">'+(S.ernSearchBusy?'Suche …':'Suchen')+'</button>';
+      var rs=S.ernSearchResults, sBody='';
+      if(S.ernSearchBusy){ sBody='<div style="text-align:center;color:#8a929a;font-size:13px;font-weight:600;margin-top:18px">Suche in Open Food Facts …</div>'; }
+      else if(rs===null){ sBody='<div style="text-align:center;font-size:12px;font-weight:600;color:#8a929a;margin-top:14px;line-height:1.55">Verpackte Produkte per Name/Marke suchen. Für frische Speisen: Foto, Sprache oder KI-Text auf dem Dashboard.</div>'; }
+      else if(!rs.length){ sBody='<div style="background:#fff;border-radius:15px;padding:20px;margin-top:14px;text-align:center"><div style="font-size:14px;font-weight:800;color:#15171B">Kein Produkt gefunden</div>'+(S.ernSearchErr?'<div style="font-size:12.5px;color:#8a929a;font-weight:600;margin-top:5px;line-height:1.5">'+esc(S.ernSearchErr)+'</div>':'')+'<button data-act="ernSearchToAI" style="width:100%;margin-top:14px;padding:13px;border:1.5px solid rgba(10,73,88,.25);border-radius:13px;background:#fff;color:#0a4958;font-weight:800;font-size:14px;cursor:pointer">Als Text von der KI schätzen lassen</button><button data-act="ernManualEntry" style="width:100%;margin-top:9px;padding:13px;border:none;border-radius:13px;background:var(--surface-2);color:#0a4958;font-weight:800;font-size:14px;cursor:pointer">Manuell eintragen</button></div>'; }
+      else { sBody='<div style="margin-top:14px;display:flex;flex-direction:column;gap:9px">'+rs.map(function(p,i){
+          var kc=(p.nutriments&&p.nutriments.kcal100g!=null)?(ernNum(p.nutriments.kcal100g)+' kcal/100 g'):'<span style="color:#c0392b">Nährwerte unvollständig</span>';
+          var im=p.imageUrl?'<div style="width:46px;height:46px;border-radius:10px;overflow:hidden;flex-shrink:0;background:var(--surface-2)"><img src="'+esc(p.imageUrl)+'" alt="" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display=\'none\'"></div>':'<div style="width:46px;height:46px;border-radius:10px;flex-shrink:0;background:var(--surface-2);display:flex;align-items:center;justify-content:center;font-size:20px">🍽️</div>';
+          return '<button data-act="ernSearchPick" data-arg="'+i+'" style="display:flex;align-items:center;gap:12px;background:#fff;border:none;border-radius:14px;padding:12px;cursor:pointer;text-align:left;box-shadow:0 4px 14px rgba(4,33,40,.05);width:100%">'+im+'<div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:800;color:#15171B;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(p.name||'Produkt')+'</div><div style="font-size:11.5px;font-weight:600;color:#8a929a;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc([p.brand,p.quantity].filter(Boolean).join(' · ')||'Open Food Facts')+'</div><div style="font-size:11px;font-weight:700;color:#0f7a4a;margin-top:3px">'+kc+'</div></div>'+svg('<path d="M9 18l6-6-6-6"></path>',{c:'#c2d3d6',w:2,s:16})+'</button>';
+        }).join('')+'</div>'+ernOffNotice(); }
+      inner=searchBox+sBody;
     } else {
-      inner='<div><div style="position:relative;border-radius:22px;overflow:hidden;height:260px;background:linear-gradient(135deg,#243b40,#0e2529);display:flex;align-items:center;justify-content:center"><div style="position:absolute;inset:0;background:repeating-linear-gradient(45deg,rgba(255,255,255,.03) 0 12px,transparent 12px 24px)"></div><div style="text-align:center;color:#cfeadd;padding:20px"><div style="font-size:34px">📦</div><div style="font-size:13.5px;font-weight:700;margin-top:10px;line-height:1.5">Barcode-Scan folgt mit<br>Produkt-Datenbank.</div></div></div><button data-act="ernCapTab" data-arg="search" style="width:100%;margin-top:16px;padding:15px;border:1.5px solid rgba(10,73,88,.25);border-radius:15px;background:#fff;color:#0a4958;font-weight:800;font-size:14px;cursor:pointer">Stattdessen per Suche eingeben</button><div style="text-align:center;font-size:12px;font-weight:600;color:#8a929a;margin-top:12px">Verpackte Produkte kommen bald – bis dahin Foto, Sprache oder Suche.</div></div>';
+      // Barcode: Kamera-Scan (falls BarcodeDetector verfügbar) + immer manuelle Eingabe.
+      var canScan=ernScanSupported();
+      var video='<video id="ern_scan_video" playsinline muted style="width:100%;height:230px;object-fit:cover;border-radius:20px;background:#0e2529;'+(ernScanActive?'':'display:none;')+'"></video>';
+      var camArea='';
+      if(canScan){
+        camArea=(ernScanActive?video+'<button data-act="ernScanStop" style="width:100%;margin-top:12px;padding:14px;border:1.5px solid rgba(10,73,88,.25);border-radius:15px;background:#fff;color:#0a4958;font-weight:800;font-size:14.5px;cursor:pointer">Kamera stoppen</button><div style="text-align:center;font-size:12px;font-weight:600;color:#8a929a;margin-top:10px">Barcode in den Rahmen halten …</div>'
+          :'<button data-act="ernScanStart" aria-label="Barcode mit Kamera scannen" style="width:100%;padding:16px;border:none;border-radius:16px;background:#0f7a4a;color:#fff;font-weight:900;font-size:15.5px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:9px">'+svg('<path d="M3 5v14M7 5v14M11 5v14M14 5v14M18 5v14M21 5v14"></path>',{c:'#fff',w:2,s:20})+'Barcode scannen</button>'+video);
+      } else {
+        camArea='<div style="background:#fff;border-radius:16px;padding:16px;text-align:center;font-size:12.5px;font-weight:600;color:#8a929a;line-height:1.55">Kamera-Scan wird auf diesem Gerät nicht unterstützt – bitte den Barcode unten eintippen.</div>';
+      }
+      var manual='<div style="margin-top:16px"><label for="ern_bc" style="font-size:12px;font-weight:800;color:#8a929a;text-transform:uppercase;letter-spacing:.4px">Barcode eintippen</label>'+
+        '<div style="display:flex;gap:8px;margin-top:8px"><input id="ern_bc" inputmode="numeric" enterkeyhint="search" aria-label="Barcode-Nummer" placeholder="z. B. 4000417025005" value="'+esc(S.ernScanCode||'')+'" onkeydown="if(event.key===\'Enter\'){event.preventDefault();window.__ernScanManual&&window.__ernScanManual();}" style="flex:1;min-width:0;border:1.5px solid var(--border);border-radius:13px;padding:12px 14px;font-size:15px;font-weight:700;color:#15171B;background:#fff">'+
+        '<button data-act="ernScanManualBtn" '+(S.ernScanBusy?'disabled ':'')+'aria-label="Barcode suchen" style="padding:0 18px;border:none;border-radius:13px;background:#0a4958;color:#fff;font-weight:800;font-size:14px;cursor:pointer">'+(S.ernScanBusy?'…':'Suchen')+'</button></div></div>';
+      var st='';
+      if(S.ernScanBusy) st='<div style="text-align:center;color:#8a929a;font-size:13px;font-weight:600;margin-top:14px">Produkt wird geladen …</div>';
+      else if(S.ernScanErr) st='<div role="alert" style="text-align:center;color:#c0392b;font-size:12.5px;font-weight:700;margin-top:14px;line-height:1.4">'+esc(S.ernScanErr)+'</div>';
+      else if(S.ernScanNotFound) st='<div style="background:#fff;border-radius:15px;padding:18px;margin-top:14px;text-align:center"><div style="font-size:13.5px;font-weight:800;color:#15171B">Kein Produkt zu diesem Barcode</div><button data-act="ernManualEntry" style="width:100%;margin-top:12px;padding:13px;border:none;border-radius:13px;background:var(--surface-2);color:#0a4958;font-weight:800;font-size:14px;cursor:pointer">Manuell eintragen</button></div>';
+      inner=camArea+manual+st+ernOffNotice();
     }
     var msg=S.ernMsg?'<div style="font-size:12.5px;font-weight:700;color:'+(S.ernErr?'#c0392b':'#0f7a4a')+';text-align:center;margin-top:14px;line-height:1.4">'+esc(S.ernMsg)+'</div>':'';
     return '<div style="background:#0a4958;min-height:100%;display:flex;flex-direction:column"><div style="padding:16px 20px 14px;display:flex;align-items:center;justify-content:space-between"><div><div style="font-size:22px;font-weight:900;color:#fff;letter-spacing:-.4px">Essen erfassen</div>'+(S.ernCapTarget?'<div style="font-size:12.5px;font-weight:600;color:#9fc7d0;margin-top:2px">'+esc(S.ernCapTarget)+'</div>':'')+'</div><button data-act="ernCloseCapture" style="width:40px;height:40px;border-radius:13px;border:none;background:rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;cursor:pointer">'+svg('<path d="M18 6L6 18M6 6l12 12"></path>',{c:'#fff',w:2.4,s:18})+'</button></div>'+
@@ -2794,6 +2918,7 @@
     if(n===null||n===false){ inner='<div style="background:#fff;border-radius:20px;box-shadow:0 12px 34px rgba(4,33,40,.10);padding:40px 22px;text-align:center;color:#8a929a;font-size:14px;font-weight:600">Lade Ernährung …</div>'; }
     else if(!n.ok||n.available===false){ inner='<div style="background:#fff;border-radius:20px;box-shadow:0 12px 34px rgba(4,33,40,.10);padding:30px 22px;text-align:center"><div style="font-size:34px">🥗</div><div style="font-size:16px;font-weight:800;color:#15171B;margin-top:10px">Ernährung ist gerade nicht verfügbar</div><div style="font-size:13.5px;color:#6b7780;font-weight:500;margin-top:6px;line-height:1.5">Bitte später erneut versuchen.</div></div>'; }
     else if(S.ernConfirm){ inner=ernConfirmScreen(); }
+    else if(S.ernProd){ inner=ernProductPicker(); }
     else if(S.ernCapture){ inner=ernErfassen(); }
     else if(!n.onboarded||S.ernEdit) inner=ernSetup();
     else { var tab=S.ernTab||'heute'; inner=ernTopbar(tab)+(tab==='plan'?ernPlan():(tab==='rezepte'?ernRezepte():(tab==='coach'?ernCoach():(tab==='verlauf'?ernVerlauf():ernDash())))); }
@@ -3877,7 +4002,7 @@
     ernLog:function(){ if(S.ernBusy) return; var t=$('ern_log'); var q=t?(t.value||'').trim():''; if(q.length>=2) ernLogText(q); },
     ernCapSearch:function(){ if(S.ernBusy) return; var t=$('ern_capq'); var q=t?(t.value||'').trim():''; if(q.length>=2) ernLogText(q); },
     ernOpenCapture:function(a){ setS({ernCapture:true,ernCapTab:'cam',ernCapTarget:a||'',ernMsg:'',ernErr:false}); try{ window.scrollTo(0,0); }catch(e){} },
-    ernCloseCapture:function(){ setS({ernCapture:false}); try{ window.scrollTo(0,0); }catch(e){} },
+    ernCloseCapture:function(){ try{ window.__ernStopScan&&window.__ernStopScan(); }catch(e){} setS({ernCapture:false}); try{ window.scrollTo(0,0); }catch(e){} },
     // Bestätigen-Screen (Punkt 1)
     ernCFRemove:function(a){ var cf=S.ernConfirm; if(!cf) return; cf.items.splice(parseInt(a,10),1); if(!cf.items.length){ ernCloseConfirm(); return; } render(); },
     ernCFAdd:function(){ var cf=S.ernConfirm; if(!cf) return; cf.items.push({name:'',portion:'',meal:'snack',kcal:0,p:0,c:0,f:0,estimated:false,source:'manual'}); render(); },
@@ -3890,7 +4015,18 @@
         else { S.ernErr=true; S.ernMsg=(d&&d.message)||'Speichern fehlgeschlagen.'; render(); }
       })
       .catch(function(){ S.ernConfirmBusy=false; S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); }); },
-    ernCapTab:function(a){ setS({ernCapTab:a}); },
+    ernCapTab:function(a){ if(a!=='barcode'){ try{ window.__ernStopScan&&window.__ernStopScan(); }catch(e){} } setS({ernCapTab:a, ernScanErr:'', ernSearchErr:''}); },
+    // Open Food Facts: Produkt-Picker + Barcode-Scan + Produktsuche (Etappe 2)
+    ernProdBack:function(){ setS({ernProd:null}); },
+    ernProdTake:function(){ ernProdTake(); },
+    ernGramsStep:function(a){ var d=parseInt(a,10)||0; S.ernGrams=Math.max(1,Math.min(3000,(parseInt(S.ernGrams,10)||100)+d)); render(); },
+    ernProdSearchBtn:function(){ window.__ernProdSearch&&window.__ernProdSearch(); },
+    ernSearchPick:function(a){ var p=(S.ernSearchResults||[])[parseInt(a,10)]; if(p) ernOpenProduct(p, false); },
+    ernSearchToAI:function(){ var q=S.ernSearchQ||''; if(q&&q.length>=2){ setS({ernCapTab:'cam'}); ernLogText(q); } },
+    ernManualEntry:function(){ setS({ernCapture:false, ernScanNotFound:false, ernScanErr:'', ernSearchErr:''}); ernOpenConfirm([{name:'',portion:'',meal:ernCurrentMeal(),kcal:0,p:0,c:0,f:0,estimated:false,source:'manual'}],'manual'); },
+    ernScanStart:function(){ window.__ernStartScan&&window.__ernStartScan(); },
+    ernScanStop:function(){ try{ window.__ernStopScan&&window.__ernStopScan(); }catch(e){} render(); },
+    ernScanManualBtn:function(){ window.__ernScanManual&&window.__ernScanManual(); },
     ernCheckinDismiss:function(){ setS({ernCheckinDismissed:true}); },
     ernObNext:function(){ if((S.ernObStep||0)>=4){ if(!S.ernConsent){ S.ernErr=true; S.ernMsg='Bitte bestätige die Einwilligung, um zu starten.'; render(); return; } ACT.ernSaveProfile(); } else { setS({ernObStep:(S.ernObStep||0)+1}); try{ window.scrollTo(0,0); }catch(e){} } },
     ernConsent:function(){ setQuiet({ernConsent:!S.ernConsent, ernErr:false, ernMsg:''}); },
