@@ -2652,9 +2652,10 @@
     if(bc.length<8){ setS({ernScanErr:'Bitte einen gültigen Barcode (mind. 8 Ziffern) eingeben.',ernScanNotFound:false}); return; }
     S.ernScanBusy=true; S.ernScanErr=''; S.ernScanNotFound=false; render();
     api('/api/member/food-products',{method:'POST',body:JSON.stringify({action:'barcode',barcode:bc})})
-    .then(function(d){ S.ernScanBusy=false;
+    .then(function(d){ S.ernScanBusy=false; S.ernScanCode=bc;
       if(d&&d.ok&&d.found&&d.product){ ernOpenProduct(d.product,d.stale); }
-      else if(d&&d.ok&&!d.found){ setS({ernScanNotFound:true,ernScanCode:bc}); }
+      else if(d&&d.available===false){ setS({ernScanErr:'Der Produktdienst ist noch nicht eingerichtet (kein Speicher verbunden) – bitte manuell eintragen.'}); }
+      else if(d&&d.ok&&d.found===false){ setS({ernScanNotFound:true,ernScanCode:bc}); }
       else { setS({ernScanErr:(d&&d.message)||'Produkt konnte gerade nicht geladen werden – bitte manuell eingeben.'}); } })
     .catch(function(){ setS({ernScanBusy:false,ernScanErr:'Verbindung gerade nicht möglich.'}); });
   }
@@ -2665,6 +2666,7 @@
     api('/api/member/food-products',{method:'POST',body:JSON.stringify({action:'search',query:q,limit:15})})
     .then(function(d){ S.ernSearchBusy=false;
       if(d&&d.ok&&Array.isArray(d.products)){ S.ernSearchResults=d.products; }
+      else if(d&&d.available===false){ S.ernSearchErr='Der Produktdienst ist noch nicht eingerichtet (kein Speicher verbunden) – bitte manuell oder per KI eingeben.'; S.ernSearchResults=[]; }
       else { S.ernSearchErr=(d&&d.message)||'Suche gerade nicht möglich – bitte manuell oder per KI eingeben.'; S.ernSearchResults=[]; } render(); })
     .catch(function(){ S.ernSearchBusy=false; S.ernSearchErr='Verbindung gerade nicht möglich.'; S.ernSearchResults=[]; render(); });
   }
@@ -2820,7 +2822,7 @@
       var st='';
       if(S.ernScanBusy) st='<div style="text-align:center;color:#8a929a;font-size:13px;font-weight:600;margin-top:14px">Produkt wird geladen …</div>';
       else if(S.ernScanErr) st='<div role="alert" style="text-align:center;color:#c0392b;font-size:12.5px;font-weight:700;margin-top:14px;line-height:1.4">'+esc(S.ernScanErr)+'</div>';
-      else if(S.ernScanNotFound) st='<div style="background:#fff;border-radius:15px;padding:18px;margin-top:14px;text-align:center"><div style="font-size:13.5px;font-weight:800;color:#15171B">Kein Produkt zu diesem Barcode</div><button data-act="ernManualEntry" style="width:100%;margin-top:12px;padding:13px;border:none;border-radius:13px;background:var(--surface-2);color:#0a4958;font-weight:800;font-size:14px;cursor:pointer">Manuell eintragen</button></div>';
+      else if(S.ernScanNotFound) st='<div style="background:#fff;border-radius:15px;padding:18px;margin-top:14px;text-align:center"><div style="font-size:13.5px;font-weight:800;color:#15171B">Kein Produkt zu diesem Barcode</div>'+(S.ernScanCode?'<div style="font-size:12px;font-weight:700;color:#8a929a;margin-top:4px;font-variant-numeric:tabular-nums">Erkannt: '+esc(S.ernScanCode)+'</div><div style="font-size:11.5px;font-weight:500;color:#8a929a;margin-top:6px;line-height:1.5">Stimmt die Nummer mit dem Strichcode überein? Wenn nicht, bitte unten eintippen. Manche Produkte sind (noch) nicht in der Datenbank.</div>':'')+'<button data-act="ernManualEntry" style="width:100%;margin-top:12px;padding:13px;border:none;border-radius:13px;background:var(--surface-2);color:#0a4958;font-weight:800;font-size:14px;cursor:pointer">Manuell eintragen</button></div>';
       inner=camArea+manual+st+ernOffNotice();
     }
     var msg=S.ernMsg?'<div style="font-size:12.5px;font-weight:700;color:'+(S.ernErr?'#c0392b':'#0f7a4a')+';text-align:center;margin-top:14px;line-height:1.4">'+esc(S.ernMsg)+'</div>':'';
