@@ -79,9 +79,13 @@ nach kurzer Wartezeit erneut. Keine langen Blockaden in Vercel Functions; Locks
 laufen bei Fehlern automatisch aus (TTL).
 
 ## Limits
-- **Global (app-weit), atomar** über `INCR`+`EXPIRE`:
-  - Produktabfragen: `OPENFOODFACTS_PRODUCT_LIMIT_PER_MINUTE` (Default 12/min)
+- **OFF erlaubt** (pro IP): ~100/min Produktabfragen, 10/min Suchabfragen.
+- **Global (app-weit), atomar** über `INCR`+`EXPIRE` (bewusst darunter):
+  - Produktabfragen: `OPENFOODFACTS_PRODUCT_LIMIT_PER_MINUTE` (Default 60/min)
   - Suchabfragen: `OPENFOODFACTS_SEARCH_LIMIT_PER_MINUTE` (Default 8/min)
+- Wichtig: Durch das Caching wird OFF nur beim **ersten** Scan eines Produkts
+  aufgerufen; Wiederholungen kommen aus dem Katalog. Das Limit zählt nur echte
+  OFF-Aufrufe, nicht Cache-Treffer.
 - **Pro Mitglied** (zusätzlich): 40 Barcode-/20 Such-Abfragen pro Stunde.
 - Barcode-Abfragen werden gegenüber Freitextsuche priorisiert; für ungültige Barcodes gibt es keine externen Anfragen.
 - Interne Quellenkennzeichnung: `cache | catalog | openfoodfacts` (+ `stale`).
@@ -98,6 +102,29 @@ laufen bei Fehlern automatisch aus (TTL).
 
 > Vor Go-Live die aktuelle OFF-API- und Lizenz-Doku gegenprüfen; die Endpunkte
 > sind über `OPENFOODFACTS_BASE_URL` austauschbar.
+
+## Katalog vorbefüllen (empfohlen vor Go-Live)
+Damit gleich zu Beginn fast jeder Scan lokal trifft (statt live OFF zu fragen).
+Beide Skripte brauchen dieselben `KV_*/UPSTASH_*`-Env wie die App **plus**
+`OPENFOODFACTS_CONTACT_EMAIL`. Idempotent (Aktualisierung per Barcode).
+
+**A) Warmup – schnell, empfohlen** (`scripts/warmup-openfoodfacts.js`)
+Lädt die **meistgescannten** Deutschland-Produkte über die OFF-Suche
+(nach `unique_scans_n`), paginiert mit Pause (schont das 10/min-Suchlimit).
+```
+node scripts/warmup-openfoodfacts.js --dry-run              # nur anzeigen
+node scripts/warmup-openfoodfacts.js --limit 1000 --country de   # ~1000 Top-Produkte
+```
+~10 Aufrufe für bis zu 1000 Produkte, ~1–2 Minuten. Gelegentliche 503 werden
+einmal wiederholt; einfach erneut laufen lassen füllt Lücken nach.
+
+**B) Voll-Import – gründlich** (`scripts/import-openfoodfacts.js`)
+Streamt den offiziellen JSONL-Voll-Export (mehrere GB) und filtert
+Deutschland-relevante Produkte mit brauchbaren Nährwerten.
+```
+node scripts/import-openfoodfacts.js --file products.jsonl --limit 20000 --country de
+```
+Nur manuell/als Job laufen lassen – nie im Vercel-Deploy.
 
 ## Umgebungsvariablen
 ```
