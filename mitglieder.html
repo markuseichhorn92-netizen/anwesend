@@ -812,6 +812,12 @@
     var head='<div style="display:flex;align-items:center;gap:12px;padding:8px 8px 12px 6px">'+
       '<div style="width:46px;height:46px;border-radius:50%;overflow:hidden;flex-shrink:0;background:#0a3d4a;box-shadow:0 6px 16px rgba(4,33,40,.28)"><img src="/assets/brand/finn-mark.svg" alt="" style="width:100%;height:100%;display:block"></div>'+
       '<div style="flex:1;min-width:0"><div style="font-size:17px;font-weight:900;color:var(--text);letter-spacing:-.3px">Dein Assistent</div><div style="font-size:12.5px;color:var(--text-soft);font-weight:600">Erledige alles an einem Ort</div></div></div>';
+    // Proaktiver Vorschlag (offener Beitrag / lange nicht da) – falls relevant.
+    var sug=qaSuggest();
+    var banner=sug?('<button class="qaRow" data-act="qaGo" data-arg="'+sug.act+'" style="background:'+sug.bg+';border:1px solid '+sug.bd+';margin-bottom:8px">'+
+      '<span class="qaIco" style="background:#fff">'+svg(sug.icon,{c:sug.tone,w:2,s:22})+'</span>'+
+      '<span style="flex:1;min-width:0"><span class="qaLbl" style="display:block;color:'+sug.ink+'">'+esc(sug.title)+'</span><span class="qaSub">'+esc(sug.sub)+'</span></span>'+
+      svg('<path d="M9 18l6-6-6-6"></path>',{c:sug.tone,w:2,s:16})+'</button>'):'';
     // Prominent: „Frag mich alles" -> FINN-Chat (kann Termine, Fragen, Deep-Links …).
     var chat='<button class="qaRow" data-act="qaGo" data-arg="chat" style="background:linear-gradient(150deg,#0e6072,#063540);margin-bottom:6px">'+
       '<span class="qaIco" style="background:rgba(255,255,255,.16)">'+svg('<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>',{c:'#fff',w:2,s:23})+'</span>'+
@@ -822,16 +828,37 @@
       qaRow('assist','<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6M9 13h6M9 17h4"></path>','Beitragspause / Kündigung','Geführt regeln – mit Rückgewinnung')+
       qaRow('checkin','<path d="M9 11l3 3L20 5"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>', ci?'Auschecken':'Check-in', ci?'Du bist gerade eingecheckt':'Im Studio einchecken', ci)+
       qaRow('referral','<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"></path>','Freund werben','Empfehlen & Prämie sichern');
-    return '<div class="qaScrim" data-act="qaClose"></div><div class="qaSheet" role="menu" aria-label="Assistent">'+head+chat+rows+'</div>';
+    return '<div class="qaScrim" data-act="qaClose"></div><div class="qaSheet" role="menu" aria-label="Assistent">'+head+banner+chat+rows+'</div>';
   }
   // Aktion aus dem Assistent-Hub ausführen: erst schließen, dann in den passenden Bereich.
   function qaGo(a){
     S.qaOpen=false;
     if(a==='chat'){ if(ACT&&ACT.openFinn) ACT.openFinn(); else setS({finnOpen:true}); return; }
-    if(a==='checkin'){ nav('checkin'); return; }
-    if(a==='referral'){ nav('referral'); return; }
     if(a==='assist'){ nav('contract'); setTimeout(function(){ if(typeof openAssistant==='function') openAssistant(''); },140); return; }
+    var screens=['home','data','contract','account','appt','checkin','checkins','postfach','help','settings','card','fort','referral'];
+    if(screens.indexOf(a)>=0){ nav(a); return; }
     render();
+  }
+  // Proaktiver Empfang: EIN kontextbezogener Vorschlag oben im Assistent-Hub.
+  // Reihenfolge nach Dringlichkeit: offener Beitrag > lange nicht da gewesen.
+  function qaSuggest(){
+    var acc=DATA.account;
+    if(acc&&acc.ok&&(acc.openTotal||0)>0.005){
+      var sym=(acc.currency&&acc.currency!=='EUR')?(' '+acc.currency):' €';
+      var amt=(Math.round(Math.abs(acc.openTotal)*100)/100).toFixed(2).replace('.',',')+sym;
+      return { act:'account', tone:'#C98A2E', bg:'#FFF7EC', bd:'#F2D9A0', ink:'#7a5e15',
+        icon:'<circle cx="12" cy="12" r="9"></circle><path d="M12 8v4M12 16h.01"></path>',
+        title:'Offener Beitrag: '+amt, sub:'Tippen zum Ansehen & Regeln' };
+    }
+    var ci=Array.isArray(DATA.checkins)?DATA.checkins:null;
+    if(ci){
+      var last=0; ci.forEach(function(x){ var t=(x&&x.in)?Date.parse(x.in):0; if(t&&t>last) last=t; });
+      var days=last?Math.floor((Date.now()-last)/86400000):999;
+      if(days>=14) return { act:'appt', tone:TEAL, bg:'var(--surface-2)', bd:'var(--border)', ink:'var(--teal-ink)',
+        icon:'<rect x="3" y="4" width="18" height="18" rx="2"></rect><path d="M3 10h18M8 2v4M16 2v4"></path>',
+        title:(last?'Länger nicht mehr da gewesen':'Noch kein Besuch – starten wir?'), sub:'Termin buchen & wieder reinkommen' };
+    }
+    return null;
   }
   function scrLogin(){
     // Einmalig prüfen, ob der Login-Code auch per WhatsApp angeboten werden kann.
@@ -1298,9 +1325,11 @@
           '<button data-act="closeFinn" aria-label="Schließen" style="width:36px;height:36px;border-radius:11px;border:none;background:rgba(255,255,255,.14);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer">'+svg('<path d="M18 6L6 18M6 6l12 12"></path>',{c:'#fff',w:2.2,s:18})+'</button>'+
         '</div>'+
         '<div id="finn_scroll" style="flex:1;overflow-y:auto;padding:16px 16px 8px;display:flex;flex-direction:column;gap:12px">'+
-          (msgs.length?'':'<div id="finn_hello" style="display:flex;gap:9px;align-items:flex-start;padding:6px 4px 4px">'+FINN_AVA+'<div style="background:var(--surface-2);border-radius:4px 16px 16px 16px;padding:12px 15px;font-size:14px;line-height:1.55;color:var(--text)">Hi! 👋 Ich bin FINN, dein Fit-Inn Coach – deine erste Anlaufstelle. Frag mich zu Öffnungszeiten, Vertrag, Terminen, Vitalpunkten und mehr. Komme ich nicht weiter, hole ich dir direkt einen Mitarbeiter dazu.</div></div>')+
+          (msgs.length?'':'<div id="finn_hello" style="display:flex;gap:9px;align-items:flex-start;padding:6px 4px 4px">'+FINN_AVA+'<div style="background:var(--surface-2);border-radius:4px 16px 16px 16px;padding:12px 15px;font-size:14px;line-height:1.55;color:var(--text)">Hi! 👋 Ich bin FINN, dein Fit-Inn Coach – deine erste Anlaufstelle. Sag mir einfach, was du brauchst: Termin, Adresse ändern, Beitrag, Vertrag, Öffnungszeiten … Ich bringe dich direkt hin oder beantworte deine Frage. Komme ich nicht weiter, hole ich dir einen Mitarbeiter dazu.</div></div>')+
           bubbles+thinking+
         '</div>'+
+        // Direkt erledigen: Schnell-Links in alle Self-Service-Bereiche (ein Tipp bringt dich hin).
+        (msgs.length?'':'<div style="display:flex;gap:8px;overflow-x:auto;padding:0 16px 8px">'+[['appt','Termin buchen'],['data','Adresse & Daten'],['account','Beitrag'],['contract','Vertrag & Kündigung'],['referral','Freund werben']].map(function(q){return '<button data-act="finnGo" data-arg="'+q[0]+'" style="flex:0 0 auto;border:none;background:linear-gradient(150deg,#0e6072,#063540);color:#fff;border-radius:20px;font-size:12.5px;font-weight:800;padding:9px 14px;cursor:pointer;white-space:nowrap">'+esc(q[1])+'</button>';}).join('')+'</div>')+
         (msgs.length?'':'<div id="finn_chips" style="display:flex;gap:8px;overflow-x:auto;padding:0 16px 10px">'+sugg.map(function(s){return '<button data-act="finnSuggest" data-arg="'+esc(s)+'" style="flex:0 0 auto;border:1.5px solid var(--border);background:var(--surface);color:var(--teal-ink);border-radius:20px;font-size:12.5px;font-weight:700;padding:8px 13px;cursor:pointer;white-space:nowrap">'+esc(s)+'</button>';}).join('')+'</div>')+
         '<div style="padding:0 16px 8px"><button data-act="finnToTeam" style="width:100%;display:flex;align-items:center;justify-content:center;gap:8px;border:none;border-radius:11px;background:var(--surface-2);color:var(--teal-ink);font-weight:800;font-size:13px;padding:11px;cursor:pointer">'+svg('<path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8z"></path><path d="M4 21c0-3.3 3.6-6 8-6s8 2.7 8 6"></path>',{c:'var(--teal-ink)',w:1.9,s:16})+'Hat das nicht geholfen? An Mitarbeiter übergeben</button></div>'+
         '<div style="display:flex;gap:9px;align-items:flex-end;padding:10px 14px calc(12px + env(safe-area-inset-bottom,0px));border-top:1px solid var(--border);background:var(--surface)">'+
@@ -3682,8 +3711,8 @@
     obExp:function(a){ setS({obExp:a}); },
     obNext:function(){ if((S.obStep||0)>=3){ try{ localStorage.setItem('fi_ob_v1',JSON.stringify({goal:S.obGoal,freq:S.obFreq,age:S.obAge,exp:S.obExp})); }catch(e){} S.finnTipLoaded=false; setS({obStep:0}); loadFinnTip(); } else { setS({obStep:(S.obStep||0)+1}); var o=document.querySelector('.obOverlay'); if(o) o.scrollTop=0; } },
     noop:function(){},   // fängt Klicks im Overlay-Inneren ab (Backdrop-Klick schließt)
-    // Schnellaktionen-Popup („+"-Button)
-    qaOpen:function(){ setQuiet({qaOpen:true}); },
+    // Assistent-Hub öffnen. Beitragskonto nachladen, damit der proaktive Vorschlag greifen kann.
+    qaOpen:function(){ if(!DATA.account && typeof loadAccount==='function'){ try{ loadAccount(); }catch(e){} } setQuiet({qaOpen:true}); },
     qaClose:function(){ setQuiet({qaOpen:false}); },
     qaGo:function(a){ qaGo(a); },
     // Rad-Datumsauswahl (Geburtstag)
