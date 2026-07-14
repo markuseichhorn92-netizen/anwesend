@@ -399,6 +399,12 @@ module.exports = async function handler(req, res) {
     res.statusCode = 200; return res.end(JSON.stringify(await buildState(id, profile, targetDate)));
   }
 
+  // ── Punkt 2: Nur-Lesen-Stand für einen (validierten) Tag – für Tages-Navigation/Nachtragen ──
+  if (action === 'state') {
+    const targetDate = validDate(body.date, date);
+    res.statusCode = 200; return res.end(JSON.stringify(await buildState(id, profile, targetDate)));
+  }
+
   // ── Punkt 3: Favoriten (pro Mitglied in KV) ──
   if (action === 'fav-list') {
     const saved = await kvGetJson(FAVKEY(id));

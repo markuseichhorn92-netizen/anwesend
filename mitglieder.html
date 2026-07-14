@@ -389,6 +389,7 @@
     ernScanCode:'', ernScanBusy:false, ernScanErr:'', ernScanNotFound:false,
     ernSearchQ:'', ernSearchResults:null, ernSearchBusy:false, ernSearchErr:'',
     ernProd:null, ernGrams:100,
+    ernViewDate:'', ernDayBusy:false, ernEntryEdit:null, ernEntryBusy:false,
     ctOpen:false, ctSent:false, ctMsg:'', ctBusy:false, ctErr:'', ctMsgServer:'', artFb:null,
     pfFilter:'offen', pfSearch:'', pfLimit:12, pfSel:null, pfThread:false, pfDraft:'', pfBusy:false, pfErr:'',
     alToken:'', alLabel:'', alAction:'', alBusy:false, alErr:'', alGo:'', alSub:'', alState:'loading',
@@ -526,7 +527,7 @@
     if(s==='insta'){ S.instaSel=null; loadInsta(); maybeRefreshInsta(); }
     if(s==='home'){ loadFinnTip(); maybeRefreshInsta(); maybeRefreshLive(); }
     if(s==='account') loadAccount();
-    if(s==='ern'){ try{ window.__ernStopScan&&window.__ernStopScan(); }catch(e){} S.ernMsg=''; S.ernErr=false; S.ernAsk=''; S.ernAnswer=''; S.ernRecipes=null; S.ernCoachSent=false; S.ernTab='heute'; S.ernRecipeSel=null; S.ernCapture=false; S.ernConfirm=null; S.ernProd=null; S.ernObStep=0; loadNutri(); }
+    if(s==='ern'){ try{ window.__ernStopScan&&window.__ernStopScan(); }catch(e){} S.ernMsg=''; S.ernErr=false; S.ernAsk=''; S.ernAnswer=''; S.ernRecipes=null; S.ernCoachSent=false; S.ernTab='heute'; S.ernRecipeSel=null; S.ernCapture=false; S.ernConfirm=null; S.ernProd=null; S.ernEntryEdit=null; S.ernViewDate=''; S.ernObStep=0; loadNutri(); }
     if(s==='appt'){ if(!DATA.appts) loadAppts(); if(DATA.bookable===null) loadBookable(); }
     if(s==='home'||s==='checkin') checkArrival();
     setS({}); }
@@ -2788,6 +2789,55 @@
     var backBtn='<button data-act="'+(step>0?'ernObBack':'nav')+'" '+(step>0?'':'data-arg="home"')+' style="position:absolute;top:16px;left:16px;width:38px;height:38px;border-radius:12px;border:none;background:rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:2">'+svg(IC.back,{c:'#fff',w:2.2,s:19})+'</button>';
     return '<div style="position:relative;min-height:100%;background:linear-gradient(172deg,#12a06a 0%,#0f7a4a 52%,#0a5a37 100%);padding:56px 22px 26px;display:flex;flex-direction:column">'+backBtn+'<div style="display:flex;gap:6px;margin-bottom:24px">'+dots+'</div><div style="flex:1">'+body+'</div>'+consent+'<button data-act="ernObNext" '+(S.ernBusy?'disabled ':'')+'style="margin-top:22px;width:100%;padding:17px;border:none;border-radius:16px;background:#fff;color:#0f7a4a;font-weight:900;font-size:16px;cursor:pointer;opacity:'+((step>=4&&!S.ernConsent)?'.55':'1')+'">'+btnLabel+'</button>'+(S.ernMsg&&S.ernErr?'<div style="font-size:12.5px;font-weight:700;color:#ffd7cf;text-align:center;margin-top:12px">'+esc(S.ernMsg)+'</div>':'')+'</div>';
   }
+  // ═══ Etappe 3: Tages-Navigation (nachtragen) + Eintrag bearbeiten/duplizieren ═══
+  // Aktuell angezeigter Tag (Server liefert today.date; leer = heute laden).
+  function ernActiveDate(){ return (DATA.nutri&&DATA.nutri.today&&DATA.nutri.today.date)||isoToday(); }
+  function isoShift(dateStr,delta){ var p=String(dateStr||'').split('-'); var d=new Date(parseInt(p[0],10),(parseInt(p[1],10)||1)-1,parseInt(p[2],10)||1); d.setDate(d.getDate()+(delta||0)); var z=function(n){return(n<10?'0':'')+n;}; return d.getFullYear()+'-'+z(d.getMonth()+1)+'-'+z(d.getDate()); }
+  function ernDayLabel(dateStr,isToday){ if(isToday) return 'Heute'; var ty=isoToday(); if(dateStr===isoShift(ty,-1)) return 'Gestern'; var p=String(dateStr||'').split('-'); var d=new Date(parseInt(p[0],10),(parseInt(p[1],10)||1)-1,parseInt(p[2],10)||1); var wd=['So.','Mo.','Di.','Mi.','Do.','Fr.','Sa.'][d.getDay()]; var z=function(n){return(n<10?'0':'')+n;}; return wd+' '+z(d.getDate())+'.'+z(d.getMonth()+1)+'.'; }
+  // Stand für einen (validierten) Tag laden – Server begrenzt Vergangenheit selbst.
+  function loadNutriDate(date){ if(S.ernDayBusy) return; S.ernViewDate=date; S.ernDayBusy=true; S.ernMsg=''; render();
+    api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'state',date:date})})
+    .then(function(d){ S.ernDayBusy=false; if(d&&d.ok){ DATA.nutri=d; } render(); try{ window.scrollTo(0,0); }catch(e){} })
+    .catch(function(){ S.ernDayBusy=false; render(); }); }
+  // Tages-Navigator (◀ Datum ▶ + „Heute") – nur auf dem Heute-Tab über der Mahlzeitenliste.
+  function ernDayNav(){ var td=(DATA.nutri&&DATA.nutri.today)||{}, cur=td.date||isoToday(), isToday=td.isToday!==false&&cur===isoToday();
+    var prev=isoShift(cur,-1), next=isoShift(cur,1), canNext=!isToday, ty=isoToday();
+    var arrow=function(act,arg,dis,path){ return '<button data-act="'+act+'" data-arg="'+arg+'" '+(dis?'disabled ':'')+'aria-label="'+(arg==='prev'?'Vorheriger Tag':'Nächster Tag')+'" style="width:38px;height:38px;border-radius:12px;border:none;background:var(--surface);box-shadow:0 4px 12px rgba(4,33,40,.07);display:flex;align-items:center;justify-content:center;cursor:'+(dis?'default':'pointer')+';opacity:'+(dis?'.35':'1')+'">'+svg(path,{c:'#0a4958',w:2.3,s:18})+'</button>'; };
+    return '<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">'+
+      arrow('ernDayShift','prev',false,'<path d="M15 6l-6 6 6 6"></path>')+
+      '<div style="flex:1;text-align:center"><div style="font-size:15px;font-weight:900;color:var(--text);letter-spacing:-.3px">'+esc(ernDayLabel(cur,isToday))+'</div>'+(isToday?'':'<button data-act="ernDayToday" style="margin-top:2px;border:none;background:transparent;color:'+ERN_G+';font-size:11.5px;font-weight:800;cursor:pointer;padding:0">Zu heute springen</button>')+'</div>'+
+      arrow('ernDayShift','next',!canNext,'<path d="M9 6l6 6-6 6"></path>')+'</div>';
+  }
+  // Einzel-Eintrag bearbeiten (Portion/Makros/Mahlzeit ändern, duplizieren, löschen).
+  function ernOpenEntry(id){ var td=(DATA.nutri&&DATA.nutri.today)||{}; var e=(td.entries||[]).filter(function(x){ return String(x.id)===String(id); })[0]; if(!e) return;
+    S.ernEntryEdit={ id:e.id, date:td.date||isoToday(), name:e.name||'', portion:e.portion||'', meal:e.meal||'snack', kcal:+e.kcal||0, p:+e.p||0, c:+e.c||0, f:+e.f||0, source:e.source||'' };
+    S.ernMsg=''; S.ernErr=false; render(); try{ window.scrollTo(0,0); }catch(e){}
+  }
+  // Live-Update ohne Re-Render (Fokus bleibt), analog __ernCF.
+  window.__ernEE=function(field,value){ var e=S.ernEntryEdit; if(!e) return;
+    if(field==='kcal'||field==='p'||field==='c'||field==='f'){ var num=parseInt(value,10); e[field]=(isNaN(num)||num<0)?0:Math.min(9999,num); }
+    else e[field]=value;
+  };
+  function ernEntryEditScreen(){
+    var e=S.ernEntryEdit, td=(DATA.nutri&&DATA.nutri.today)||{}, isToday=td.isToday!==false&&(td.date||isoToday())===isoToday();
+    var q=function(s){ return String(s).replace(/'/g,"\\'"); };
+    var numF=function(field,label,val,color){ return '<div style="flex:1"><label style="font-size:9.5px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.3px">'+label+'</label><input type="number" inputmode="numeric" min="0" aria-label="'+label+' Wert" value="'+(+val||0)+'" oninput="window.__ernEE(\''+field+'\',this.value)" style="width:100%;border:1.5px solid var(--border);border-radius:10px;padding:8px 4px;font-size:15px;font-weight:800;color:'+color+';text-align:center;background:#fff;margin-top:3px"></div>'; };
+    var meal='<select aria-label="Mahlzeit" onchange="window.__ernEE(\'meal\',this.value)" style="width:100%;border:1.5px solid var(--border);border-radius:10px;padding:10px;font-size:14px;font-weight:700;color:var(--text-2);background:#fff;margin-top:8px">'+ERN_MEALS.map(function(m){ return '<option value="'+m[0]+'"'+(e.meal===m[0]?' selected':'')+'>'+m[1]+'</option>'; }).join('')+'</select>';
+    var head='<div style="display:flex;align-items:center;gap:12px;padding:2px 2px 14px"><button data-act="ernEECancel" aria-label="Zurück" style="width:38px;height:38px;border-radius:12px;border:none;background:#fff;box-shadow:0 4px 12px rgba(4,33,40,.08);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'+svg(IC.back,{c:'#0a4958',w:2.2,s:19})+'</button><div style="flex:1"><div style="font-size:20px;font-weight:900;color:var(--text);letter-spacing:-.4px">Eintrag bearbeiten</div><div style="font-size:12px;font-weight:700;color:var(--text-soft)">'+esc(ernDayLabel(e.date,isToday))+'</div></div></div>';
+    var card='<div style="background:#fff;border-radius:16px;padding:15px;box-shadow:0 6px 18px rgba(4,33,40,.06)">'+
+      '<label style="font-size:9.5px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.3px">Name</label>'+
+      '<input aria-label="Name" value="'+esc(e.name)+'" oninput="window.__ernEE(\'name\',this.value)" style="width:100%;border:none;border-bottom:1.5px solid var(--border);padding:6px 2px;font-size:16px;font-weight:800;color:var(--text);background:transparent;margin-top:3px">'+
+      '<div style="margin-top:12px"><label style="font-size:9.5px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.3px">Portion</label>'+
+      '<input aria-label="Portion" placeholder="z. B. 150 g" value="'+esc(e.portion)+'" oninput="window.__ernEE(\'portion\',this.value)" style="width:100%;border:1.5px solid var(--border);border-radius:10px;padding:9px 10px;font-size:14px;font-weight:600;color:var(--text-2);background:#fff;margin-top:3px"></div>'+
+      meal+
+      '<div style="display:flex;gap:7px;margin-top:12px">'+numF('kcal','kcal',e.kcal,'#15171B')+numF('p','Eiweiß',e.p,ERN_PROT)+numF('c','KH',e.c,ERN_CARB)+numF('f','Fett',e.f,ERN_FAT)+'</div>'+
+    '</div>';
+    var save='<button data-act="ernEESave" '+(S.ernEntryBusy?'disabled ':'')+'style="width:100%;margin-top:16px;padding:16px;border:none;border-radius:16px;background:#0f7a4a;color:#fff;font-weight:900;font-size:16px;cursor:pointer;opacity:'+(S.ernEntryBusy?'.6':'1')+'">'+(S.ernEntryBusy?'Speichert …':'Änderungen speichern')+'</button>';
+    var dup=isToday?'':'<button data-act="ernEEDup" style="width:100%;margin-top:10px;padding:14px;border:1.5px solid rgba(10,73,88,.25);border-radius:14px;background:#fff;color:#0a4958;font-weight:800;font-size:14.5px;cursor:pointer">Auf heute übernehmen</button>';
+    var del='<button data-act="ernEEDelete" style="width:100%;margin-top:10px;padding:13px;border:none;border-radius:13px;background:transparent;color:var(--err-fg);font-weight:800;font-size:14px;cursor:pointer">Eintrag löschen</button>';
+    var msg=(S.ernErr&&S.ernMsg)?'<div role="alert" style="font-size:12.5px;font-weight:700;color:var(--err-fg);text-align:center;margin-top:12px">'+esc(S.ernMsg)+'</div>':'';
+    return '<div style="padding:4px 2px 40px">'+head+card+save+dup+del+msg+'</div>';
+  }
   function ernDash(){
     var n=DATA.nutri, t=n.targets||{}, td=n.today||{}, tot=td.totals||{kcal:0,p:0,c:0,f:0};
     var kcalLeft=Math.max(0,(t.kcal||0)-tot.kcal), kcalDeg=t.kcal?Math.min(360,Math.round(tot.kcal/t.kcal*360)):0;
@@ -2844,10 +2894,11 @@
       if(!items.length) return;
       var sum=items.reduce(function(a,b){ return a+(b.kcal||0); },0);
       meals+='<div style="'+CARD.replace('padding:18px','padding:15px 16px')+'"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px"><div style="display:flex;align-items:center;gap:9px"><span style="font-size:18px">'+ml[2]+'</span><span style="font-size:14.5px;font-weight:900;color:var(--text)">'+ml[1]+'</span></div><span style="font-size:13.5px;font-weight:900;color:var(--text)">'+ernNum(sum)+' kcal</span></div>'+
-        items.map(function(it){ return '<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--border)"><div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:700;color:var(--text)">'+esc(it.name)+'</div><div style="font-size:11px;font-weight:600;color:var(--text-soft);margin-top:1px">'+(it.portion?esc(it.portion)+' · ':'')+'E '+(it.p||0)+' · K '+(it.c||0)+' · F '+(it.f||0)+'</div></div><span style="font-size:13px;font-weight:800;color:var(--text-2)">'+ernNum(it.kcal||0)+'</span><button data-act="ernDelete" data-arg="'+esc(it.id)+'" aria-label="Entfernen" style="width:26px;height:26px;border-radius:8px;border:none;background:var(--surface-2);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'+svg('<path d="M18 6L6 18M6 6l12 12"></path>',{c:'var(--text-soft)',w:2.2,s:13})+'</button></div>'; }).join('')+'<button data-act="ernOpenCapture" data-arg="'+ml[1]+'" style="width:100%;margin:8px 0 10px;padding:10px;border:1.5px dashed #cfe0d6;background:#f4faf6;color:#0f7a4a;border-radius:12px;font-weight:800;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px">'+svg('<path d="M12 5v14M5 12h14"></path>',{c:'#0f7a4a',w:2.6,s:15})+'Zu '+ml[1]+' hinzufügen</button></div>';
+        items.map(function(it){ return '<div style="display:flex;align-items:center;gap:8px;padding:10px 0;border-top:1px solid var(--border)"><button data-act="ernEntryOpen" data-arg="'+esc(it.id)+'" aria-label="'+esc(it.name)+' bearbeiten" style="flex:1;min-width:0;text-align:left;border:none;background:transparent;padding:0;cursor:pointer;font-family:inherit"><div style="font-size:13.5px;font-weight:700;color:var(--text)">'+esc(it.name)+(it.source==='openfoodfacts'?' <span style="font-size:9px;font-weight:800;color:#0a4958;background:var(--surface-2);padding:1px 5px;border-radius:6px;vertical-align:middle">OFF</span>':'')+'</div><div style="font-size:11px;font-weight:600;color:var(--text-soft);margin-top:1px">'+(it.portion?esc(it.portion)+' · ':'')+'E '+(it.p||0)+' · K '+(it.c||0)+' · F '+(it.f||0)+'</div></button><span style="font-size:13px;font-weight:800;color:var(--text-2)">'+ernNum(it.kcal||0)+'</span><button data-act="ernDelete" data-arg="'+esc(it.id)+'" aria-label="Entfernen" style="width:26px;height:26px;border-radius:8px;border:none;background:var(--surface-2);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'+svg('<path d="M18 6L6 18M6 6l12 12"></path>',{c:'var(--text-soft)',w:2.2,s:13})+'</button></div>'; }).join('')+'<button data-act="ernOpenCapture" data-arg="'+ml[1]+'" style="width:100%;margin:8px 0 10px;padding:10px;border:1.5px dashed #cfe0d6;background:#f4faf6;color:#0f7a4a;border-radius:12px;font-weight:800;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px">'+svg('<path d="M12 5v14M5 12h14"></path>',{c:'#0f7a4a',w:2.6,s:15})+'Zu '+ml[1]+' hinzufügen</button></div>';
     });
     if(!meals){ meals='<div style="'+CARD+';text-align:center"><div style="font-size:30px">🍽️</div><div style="font-size:13.5px;font-weight:700;color:var(--text);margin-top:6px">Noch nichts protokolliert</div><div style="font-size:12.5px;font-weight:500;color:var(--text-soft);margin:2px 0 12px">Erfasse deine erste Mahlzeit per Foto, Sprache oder Suche.</div><button data-act="ernOpenCapture" data-arg="Mahlzeit" style="padding:12px 20px;border:none;border-radius:13px;background:'+ERN_G+';color:#fff;font-weight:900;font-size:14px;cursor:pointer">Essen erfassen</button></div>'; }
-    var mealsBlock='<div style="font-size:17px;font-weight:900;color:var(--text);letter-spacing:-.3px;margin:22px 2px 12px">Heute gegessen</div>'+meals;
+    var viewIsToday=td.isToday!==false&&(td.date||isoToday())===isoToday();
+    var mealsBlock='<div style="font-size:17px;font-weight:900;color:var(--text);letter-spacing:-.3px;margin:22px 2px 12px">'+(viewIsToday?'Heute gegessen':'An diesem Tag')+'</div>'+meals;
     // FINN Ernährungscoach – kompakter Teaser auf „Heute", der in den Coach-Tab führt
     // (der volle Chat lebt jetzt in ernCoach()).
     var coachTeaser='<button data-act="ernTab" data-arg="coach" style="width:100%;text-align:left;'+CARD+';display:flex;align-items:center;gap:13px;cursor:pointer;border:none;font-family:inherit"><div style="width:44px;height:44px;border-radius:13px;background:linear-gradient(150deg,'+ERN_G2+','+ERN_GD+');display:flex;align-items:center;justify-content:center;flex-shrink:0">'+svg('<path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.5 8.6 8.6 0 0 1-4-1L3 20l1-5a8.4 8.4 0 0 1-1-4A8.5 8.5 0 0 1 11.5 3 8.5 8.5 0 0 1 21 11.5z"></path>',{c:'#fff',w:2,s:22})+'</div><div style="flex:1;min-width:0"><div style="font-size:14.5px;font-weight:900;color:var(--text)">FINN fragen</div><div style="font-size:12px;font-weight:600;color:var(--text-soft);margin-top:2px">Makros, Snack-Ideen, dein Ziel – frag den Coach</div></div>'+svg('<path d="M9 6l6 6-6 6"></path>',{c:'var(--text-soft)',w:2.2,s:20})+'</button>';
@@ -2865,7 +2916,9 @@
     var checkin=(!S.ernCheckinDismissed && (n.streak||0)>=2)?('<div style="background:linear-gradient(150deg,#FBEFE2,#f6ddc4);border-radius:18px;padding:14px 16px;margin-bottom:14px;display:flex;align-items:flex-start;gap:12px;position:relative"><span style="font-size:22px;line-height:1;margin-top:1px">🎉</span><div style="flex:1;min-width:0;padding-right:16px"><div style="font-size:13.5px;font-weight:900;color:#b5631f">Stark dabei'+(nm?', '+esc(nm):'')+'!</div><div style="font-size:12.5px;font-weight:600;color:#9a6027;line-height:1.4;margin-top:2px">Du hast '+(n.streak||0)+' Tage in Folge protokolliert – weiter so! 💪</div></div><button data-act="ernCheckinDismiss" style="position:absolute;top:10px;right:10px;width:24px;height:24px;border-radius:8px;border:none;background:rgba(181,99,31,.14);display:flex;align-items:center;justify-content:center;cursor:pointer">'+svg('<path d="M18 6L6 18M6 6l12 12"></path>',{c:'#b5631f',w:2.6,s:13})+'</button></div>'):'';
     // Studio-Anbindung (motivierende Karte, wie im Mockup)
     var studio='<div style="'+CARD+';display:flex;align-items:center;gap:13px"><div style="width:46px;height:46px;border-radius:14px;background:#EAF4FB;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+svg('<path d="M6.5 6.5l11 11M4 9l-1.5-1.5M20 15l1.5 1.5M9 4l-1.5-1.5M15 20l1.5 1.5M3 12l3-3 6 6-3 3zM21 12l-3 3-6-6 3-3z"></path>',{c:'#2d84b8',w:1.9,s:24})+'</div><div style="flex:1;min-width:0"><div style="font-size:10.5px;font-weight:800;color:#2d84b8;text-transform:uppercase;letter-spacing:.4px">Aus deinem Fit-Inn Studio</div><div style="font-size:14px;font-weight:900;color:var(--text);margin-top:2px">Trainingstag = mehr Spielraum</div><div style="font-size:12px;font-weight:600;color:var(--text-muted);margin-top:3px;line-height:1.35">An Tagen, an denen du trainierst, darfst du etwas mehr essen – plane es ruhig ein.</div></div></div>';
-    return ring+checkin+fasting+studio+water+log+mealsBlock+coachTeaser+cta+recompute;
+    // Vergangene Tage: nur relevante Blöcke (Tagesziel-Ring, Wasser, Nachtragen, Mahlzeiten).
+    if(!viewIsToday) return ernDayNav()+ring+water+log+mealsBlock;
+    return ernDayNav()+ring+checkin+fasting+studio+water+log+mealsBlock+coachTeaser+cta+recompute;
   }
   // Fasten-Helfer (Client-Countdown; Server hält plan+start)
   function ernFastMs(){
@@ -2918,6 +2971,7 @@
     if(n===null||n===false){ inner='<div style="background:#fff;border-radius:20px;box-shadow:0 12px 34px rgba(4,33,40,.10);padding:40px 22px;text-align:center;color:#8a929a;font-size:14px;font-weight:600">Lade Ernährung …</div>'; }
     else if(!n.ok||n.available===false){ inner='<div style="background:#fff;border-radius:20px;box-shadow:0 12px 34px rgba(4,33,40,.10);padding:30px 22px;text-align:center"><div style="font-size:34px">🥗</div><div style="font-size:16px;font-weight:800;color:#15171B;margin-top:10px">Ernährung ist gerade nicht verfügbar</div><div style="font-size:13.5px;color:#6b7780;font-weight:500;margin-top:6px;line-height:1.5">Bitte später erneut versuchen.</div></div>'; }
     else if(S.ernConfirm){ inner=ernConfirmScreen(); }
+    else if(S.ernEntryEdit){ inner=ernEntryEditScreen(); }
     else if(S.ernProd){ inner=ernProductPicker(); }
     else if(S.ernCapture){ inner=ernErfassen(); }
     else if(!n.onboarded||S.ernEdit) inner=ernSetup();
@@ -4045,11 +4099,32 @@
       }catch(e){ S.ernRec=false; S.ernErr=true; S.ernMsg='Sprache konnte nicht gestartet werden.'; render(); }
     },
     ernFav:function(a){ var f=ERN_FAVS[parseInt(a,10)]; if(!f) return;
-      api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'log-manual',name:f.name,kcal:f.kcal,p:f.p,c:f.c,f:f.f})})
+      api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'log-manual',name:f.name,kcal:f.kcal,p:f.p,c:f.c,f:f.f,date:ernActiveDate()})})
       .then(function(d){ if(d&&d.ok){ DATA.nutri=d; S.ernMsg='Protokolliert: '+f.name; S.ernErr=false; render(); } }).catch(function(){}); },
-    ernDelete:function(a){ api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'delete',id:a})}).then(function(d){ if(d&&d.ok){ DATA.nutri=d; render(); } }).catch(function(){}); },
-    ernWater:function(a){ a=String(a||''); var body; if(a.indexOf('to:')===0) body={action:'water',set:parseInt(a.slice(3),10)||0}; else body={action:'water',delta:parseInt(a,10)||0};
+    ernDelete:function(a){ api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'delete',id:a,date:ernActiveDate()})}).then(function(d){ if(d&&d.ok){ DATA.nutri=d; render(); } }).catch(function(){}); },
+    ernWater:function(a){ a=String(a||''); var body; if(a.indexOf('to:')===0) body={action:'water',set:parseInt(a.slice(3),10)||0,date:ernActiveDate()}; else body={action:'water',delta:parseInt(a,10)||0,date:ernActiveDate()};
       api('/api/member/nutrition',{method:'POST',body:JSON.stringify(body)}).then(function(d){ if(d&&d.ok){ DATA.nutri=d; render(); } }).catch(function(){}); },
+    // ── Etappe 3: Tages-Navigation + Eintrag bearbeiten/duplizieren/löschen ──
+    ernDayShift:function(a){ var cur=ernActiveDate(); loadNutriDate(isoShift(cur, a==='next'?1:-1)); },
+    ernDayToday:function(){ S.ernViewDate=''; loadNutri(); },
+    ernEntryOpen:function(a){ ernOpenEntry(a); },
+    ernEECancel:function(){ S.ernEntryEdit=null; S.ernMsg=''; S.ernErr=false; render(); },
+    ernEESave:function(){ if(S.ernEntryBusy) return; var e=S.ernEntryEdit; if(!e) return;
+      if(!(e.kcal>0||e.p>0||e.c>0||e.f>0)){ S.ernErr=true; S.ernMsg='Bitte gib zumindest Kalorien oder Makros an.'; render(); return; }
+      S.ernEntryBusy=true; S.ernErr=false; S.ernMsg=''; render();
+      api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'entry-update',id:e.id,date:e.date,patch:{name:e.name,portion:e.portion,meal:e.meal,kcal:e.kcal,p:e.p,c:e.c,f:e.f}})})
+      .then(function(d){ S.ernEntryBusy=false; if(d&&d.ok){ DATA.nutri=d; S.ernEntryEdit=null; S.ernMsg='Aktualisiert ✓'; S.ernErr=false; } else { S.ernErr=true; S.ernMsg=(d&&d.message)||'Speichern fehlgeschlagen.'; } render(); try{ window.scrollTo(0,0); }catch(e2){} })
+      .catch(function(){ S.ernEntryBusy=false; S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); }); },
+    ernEEDup:function(){ if(S.ernEntryBusy) return; var e=S.ernEntryEdit; if(!e) return;
+      S.ernEntryBusy=true; render();
+      api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'entry-duplicate',id:e.id,date:e.date,toDate:isoToday()})})
+      .then(function(d){ S.ernEntryBusy=false; if(d&&d.ok){ DATA.nutri=d; S.ernEntryEdit=null; S.ernViewDate=''; S.ernMsg='Auf heute übernommen ✓'; S.ernErr=false; } render(); try{ window.scrollTo(0,0); }catch(e2){} })
+      .catch(function(){ S.ernEntryBusy=false; render(); }); },
+    ernEEDelete:function(){ if(S.ernEntryBusy) return; var e=S.ernEntryEdit; if(!e) return;
+      S.ernEntryBusy=true; render();
+      api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'delete',id:e.id,date:e.date})})
+      .then(function(d){ S.ernEntryBusy=false; if(d&&d.ok){ DATA.nutri=d; S.ernEntryEdit=null; S.ernMsg='Eintrag gelöscht'; S.ernErr=false; } render(); try{ window.scrollTo(0,0); }catch(e2){} })
+      .catch(function(){ S.ernEntryBusy=false; render(); }); },
     ernAskSend:function(){ if(S.ernAskBusy) return; var t=$('ern_ask'); var q=t?(t.value||'').trim():''; if(q.length<2) return;
       S.ernAsk=q; S.ernAskBusy=true; S.ernAnswer=''; render();
       api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'coach',question:q,history:[]})})
@@ -4065,7 +4140,7 @@
       .then(function(d){ S.ernCoachBusy=false; if(d&&d.ok){ S.ernCoachSent=true; } render(); })
       .catch(function(){ S.ernCoachBusy=false; render(); }); },
     // ── Ernährung · Sub-Navigation + Zusatz-Screens ──
-    ernTab:function(a){ S.ernTab=a; S.ernMsg=''; S.ernErr=false; S.ernRecipeSel=null; if(a==='plan'&&DATA.nutriPlan==null) loadPlan(); if(a==='rezepte'&&DATA.nutriSaved==null) loadSaved(); if(a==='verlauf') loadWeek(); setS({}); },
+    ernTab:function(a){ S.ernTab=a; S.ernMsg=''; S.ernErr=false; S.ernRecipeSel=null; if(a==='heute'&&S.ernViewDate){ S.ernViewDate=''; loadNutri(); } if(a==='plan'&&DATA.nutriPlan==null) loadPlan(); if(a==='rezepte'&&DATA.nutriSaved==null) loadSaved(); if(a==='verlauf') loadWeek(); setS({}); },
     ernFastPlan:function(a){ api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'fast',do:'plan',plan:a})}).then(function(d){ if(d&&d.ok) DATA.nutri=d; render(); }).catch(function(){}); },
     ernFastToggle:function(){ var act=ernFastMs().active?'stop':'start'; api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'fast',do:act})}).then(function(d){ if(d&&d.ok) DATA.nutri=d; render(); }).catch(function(){}); },
     ernPlanTab:function(a){ setS({ernPlanTab:a}); },
