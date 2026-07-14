@@ -2698,8 +2698,18 @@
     });
     return ernZxLoading;
   }
-  function ernScanHit(raw,st){ raw=String(raw||'').replace(/\D/g,''); var now=Date.now();
-    if(raw.length>=8 && (raw!==st.last || now-st.at>2500)){ st.last=raw; st.at=now; ernScanLookup(raw); return true; } return false; }
+  // GTIN-Prüfziffer (EAN-8/UPC-12/EAN-13/ITF-14) – wie serverseitig; filtert Fehlleser.
+  function ernValidGtin(code){ code=String(code||'').replace(/\D/g,''); if([8,12,13,14].indexOf(code.length)<0) return false;
+    var d=code.split('').map(Number), chk=d.pop(), sum=0; for(var i=d.length-1,w=3;i>=0;i--,w=(w===3?1:3)) sum+=d[i]*w; return ((10-(sum%10))%10)===chk; }
+  // Akzeptiert einen Scan erst nach ZWEI gleichen Lesungen in Folge (gegen Fehlleser);
+  // Codes mit Standardlänge müssen zusätzlich die Prüfziffer bestehen.
+  function ernScanHit(raw,st){ raw=String(raw||'').replace(/\D/g,''); if(raw.length<8) return false;
+    var std=([8,12,13,14].indexOf(raw.length)>=0); if(std && !ernValidGtin(raw)) return false;   // Prüfziffer falsch -> Fehlleser, weiterlesen
+    if(raw===st.pending){ st.count=(st.count||1)+1; } else { st.pending=raw; st.count=1; }
+    if(st.count<2) return false;                                                                   // erst bei 2. gleicher Lesung akzeptieren
+    var now=Date.now();
+    if(raw!==st.last || now-st.at>2500){ st.last=raw; st.at=now; st.pending=''; st.count=0; ernScanLookup(raw); return true; }
+    return false; }
   // Nativer Detector (Android/Chrome)
   function ernStartNativeScan(v){
     navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}}).then(function(stream){
