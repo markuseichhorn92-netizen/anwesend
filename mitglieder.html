@@ -391,6 +391,7 @@
     ernProd:null, ernGrams:100,
     ernViewDate:'', ernDayBusy:false, ernEntryEdit:null, ernEntryBusy:false,
     ernFavMgr:false, ernFavBusy:false, ernFavAddOpen:false,
+    ernChat:[],
     ctOpen:false, ctSent:false, ctMsg:'', ctBusy:false, ctErr:'', ctMsgServer:'', artFb:null,
     pfFilter:'offen', pfSearch:'', pfLimit:12, pfSel:null, pfThread:false, pfDraft:'', pfBusy:false, pfErr:'',
     alToken:'', alLabel:'', alAction:'', alBusy:false, alErr:'', alGo:'', alSub:'', alState:'loading',
@@ -528,7 +529,7 @@
     if(s==='insta'){ S.instaSel=null; loadInsta(); maybeRefreshInsta(); }
     if(s==='home'){ loadFinnTip(); maybeRefreshInsta(); maybeRefreshLive(); }
     if(s==='account') loadAccount();
-    if(s==='ern'){ try{ window.__ernStopScan&&window.__ernStopScan(); }catch(e){} S.ernMsg=''; S.ernErr=false; S.ernAsk=''; S.ernAnswer=''; S.ernRecipes=null; S.ernCoachSent=false; S.ernTab='heute'; S.ernRecipeSel=null; S.ernCapture=false; S.ernConfirm=null; S.ernProd=null; S.ernEntryEdit=null; S.ernViewDate=''; S.ernFavMgr=false; S.ernObStep=0; loadNutri(); loadFavs(); }
+    if(s==='ern'){ try{ window.__ernStopScan&&window.__ernStopScan(); }catch(e){} S.ernMsg=''; S.ernErr=false; S.ernAsk=''; S.ernAnswer=''; S.ernRecipes=null; S.ernCoachSent=false; S.ernTab='heute'; S.ernRecipeSel=null; S.ernCapture=false; S.ernConfirm=null; S.ernProd=null; S.ernEntryEdit=null; S.ernViewDate=''; S.ernFavMgr=false; S.ernObStep=0; S.ernChat=ernChatLoad(); loadNutri(); loadFavs(); }
     if(s==='appt'){ if(!DATA.appts) loadAppts(); if(DATA.bookable===null) loadBookable(); }
     if(s==='home'||s==='checkin') checkArrival();
     setS({}); }
@@ -2966,6 +2967,11 @@
     return {win:win, elapsed:elapsed, remain:Math.max(0,win-elapsed), active:!!fa.active, plan:fa.plan||'16:8'};
   }
   function ernFmtHMS(ms){ var s=Math.floor(ms/1000),h=Math.floor(s/3600),m=Math.floor((s%3600)/60),ss=s%60; return h+':'+(m<10?'0':'')+m+':'+(ss<10?'0':'')+ss; }
+  // ═══ Etappe 5: FINN-Chatverlauf (nur clientseitig, pro Mitglied im localStorage) ═══
+  var ERN_CHAT_KEY='fi_ern_chat_v1';
+  function ernChatLoad(){ try{ var raw=localStorage.getItem(ERN_CHAT_KEY); var a=raw?JSON.parse(raw):[]; return Array.isArray(a)?a.filter(function(m){ return m&&m.text; }).slice(-40):[]; }catch(e){ return []; } }
+  function ernChatSave(){ try{ localStorage.setItem(ERN_CHAT_KEY, JSON.stringify((S.ernChat||[]).slice(-40))); }catch(e){} }
+  function ernChatScroll(){ try{ var c=document.getElementById('ern_chat'); if(c) c.scrollTop=c.scrollHeight; }catch(e){} }
   // Grüner Topbar mit Segment-Nav (Heute/Plan/Rezepte/Verlauf)
   // Grüner Kopf (Datum + Titel + Rezepte-Kürzel + Streak). Navigation läuft über
   // die modul-eigene Bottom-Nav (ernNavHtml, in #btmnav injiziert) – wie im Mockup.
@@ -2989,12 +2995,24 @@
   function ernCoach(){
     var CARD='background:var(--surface);border-radius:20px;box-shadow:0 12px 30px rgba(4,33,40,.09);padding:18px;margin-bottom:14px';
     var chips=['Wie viel Eiweiß fehlt mir noch?','Snack-Idee unter 200 kcal','Ist mein Ziel realistisch?','Wie halte ich mein Ziel durch?'];
-    var ans=S.ernAnswer?'<div style="background:var(--surface-2);border-radius:14px;padding:13px 14px;margin-top:12px;font-size:14px;font-weight:600;color:var(--text);line-height:1.5">'+ernFmt(S.ernAnswer)+'</div>':'';
-    var thinking=S.ernAskBusy?'<div style="display:flex;gap:5px;margin-top:12px;padding:4px 2px"><span style="width:7px;height:7px;border-radius:50%;background:var(--text-soft);animation:ernpulse 1s infinite"></span><span style="width:7px;height:7px;border-radius:50%;background:var(--text-soft);animation:ernpulse 1s infinite .2s"></span><span style="width:7px;height:7px;border-radius:50%;background:var(--text-soft);animation:ernpulse 1s infinite .4s"></span></div>':'';
-    var coach='<div style="'+CARD+'"><div style="display:flex;align-items:center;gap:11px"><div style="width:44px;height:44px;border-radius:50%;background:linear-gradient(150deg,'+ERN_G2+','+ERN_GD+');display:flex;align-items:center;justify-content:center;flex-shrink:0">'+svg('<path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.5 8.6 8.6 0 0 1-4-1L3 20l1-5a8.4 8.4 0 0 1-1-4A8.5 8.5 0 0 1 11.5 3 8.5 8.5 0 0 1 21 11.5z"></path>',{c:'#fff',w:2,s:22})+'</div><div><div style="font-size:15.5px;font-weight:900;color:var(--text)">FINN · Ernährungscoach</div><div style="font-size:12px;font-weight:700;color:'+ERN_OK+';display:flex;align-items:center;gap:5px"><span style="width:7px;height:7px;border-radius:50%;background:'+ERN_OK+';animation:ernpulse 1.6s infinite"></span>online</div></div></div>'+
-      '<div style="display:flex;flex-wrap:wrap;gap:7px;margin-top:14px">'+chips.map(function(c){ return '<button data-act="ernAskChip" data-arg="'+esc(c)+'" style="border:1.5px solid var(--border);background:var(--surface);color:'+ERN_G+';border-radius:18px;padding:8px 12px;cursor:pointer;font-size:12px;font-weight:800">'+esc(c)+'</button>'; }).join('')+'</div>'+
-      ans+thinking+
-      '<div style="display:flex;gap:9px;align-items:flex-end;margin-top:14px"><textarea id="ern_ask" rows="1" placeholder="Frag FINN etwas …" style="flex:1;border:1.5px solid var(--border);border-radius:14px;padding:12px 14px;font-size:14.5px;font-weight:600;outline:none;color:var(--text);background:var(--surface);resize:none;font-family:inherit"></textarea>'+
+    var chat=Array.isArray(S.ernChat)?S.ernChat:[];
+    var avatar=function(sz){ return '<div style="width:'+sz+'px;height:'+sz+'px;border-radius:50%;background:linear-gradient(150deg,'+ERN_G2+','+ERN_GD+');display:flex;align-items:center;justify-content:center;flex-shrink:0">'+svg('<path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.5 8.6 8.6 0 0 1-4-1L3 20l1-5a8.4 8.4 0 0 1-1-4A8.5 8.5 0 0 1 11.5 3 8.5 8.5 0 0 1 21 11.5z"></path>',{c:'#fff',w:2,s:Math.round(sz*.5)})+'</div>'; };
+    var newBtn=chat.length?'<button data-act="ernChatNew" aria-label="Neues Gespräch" style="border:1.5px solid var(--border);background:var(--surface);color:var(--text-muted);border-radius:11px;padding:8px 12px;cursor:pointer;font-size:12px;font-weight:800;display:flex;align-items:center;gap:6px">'+svg('<path d="M12 5v14M5 12h14"></path>',{c:'var(--text-muted)',w:2.2,s:14})+'Neu</button>':'';
+    var head='<div style="display:flex;align-items:center;gap:11px">'+avatar(44)+'<div style="flex:1;min-width:0"><div style="font-size:15.5px;font-weight:900;color:var(--text)">FINN · Ernährungscoach</div><div style="font-size:12px;font-weight:700;color:'+ERN_OK+';display:flex;align-items:center;gap:5px"><span style="width:7px;height:7px;border-radius:50%;background:'+ERN_OK+';animation:ernpulse 1.6s infinite"></span>online</div></div>'+newBtn+'</div>';
+    var thinking=S.ernAskBusy?'<div style="display:flex;gap:9px;align-items:flex-end;margin-top:12px">'+avatar(30)+'<div style="background:var(--surface-2);border-radius:14px 14px 14px 4px;padding:12px 14px"><div style="display:flex;gap:5px"><span style="width:7px;height:7px;border-radius:50%;background:var(--text-soft);animation:ernpulse 1s infinite"></span><span style="width:7px;height:7px;border-radius:50%;background:var(--text-soft);animation:ernpulse 1s infinite .2s"></span><span style="width:7px;height:7px;border-radius:50%;background:var(--text-soft);animation:ernpulse 1s infinite .4s"></span></div></div></div>':'';
+    var body;
+    if(!chat.length){
+      body='<div style="background:var(--surface-2);border-radius:14px;padding:14px;margin-top:14px;font-size:14px;font-weight:600;color:var(--text);line-height:1.5">Hey'+((DATA.profile&&DATA.profile.firstName)?' '+esc(DATA.profile.firstName):'')+'! Ich bin FINN, dein Ernährungscoach. Frag mich zu Makros, Snack-Ideen oder deinem Ziel – oder wähle unten einen Vorschlag.</div>'+
+        '<div style="display:flex;flex-wrap:wrap;gap:7px;margin-top:12px">'+chips.map(function(c){ return '<button data-act="ernAskChip" data-arg="'+esc(c)+'" style="border:1.5px solid var(--border);background:var(--surface);color:'+ERN_G+';border-radius:18px;padding:8px 12px;cursor:pointer;font-size:12px;font-weight:800">'+esc(c)+'</button>'; }).join('')+'</div>'+thinking;
+    } else {
+      var bubbles=chat.map(function(m){
+        if(m.role==='user') return '<div style="display:flex;justify-content:flex-end;margin-top:12px"><div style="max-width:82%;background:'+ERN_G+';color:#fff;border-radius:16px 16px 4px 16px;padding:11px 14px;font-size:14px;font-weight:600;line-height:1.45;white-space:pre-wrap;word-break:break-word">'+esc(m.text)+'</div></div>';
+        return '<div style="display:flex;gap:9px;align-items:flex-end;margin-top:12px">'+avatar(30)+'<div style="max-width:82%;background:var(--surface-2);color:var(--text);border-radius:14px 14px 14px 4px;padding:11px 14px;font-size:14px;font-weight:600;line-height:1.5"'+(m.safety?' role="note"':'')+'>'+ernFmt(m.text)+'</div></div>';
+      }).join('');
+      body='<div id="ern_chat" style="max-height:52vh;overflow-y:auto;margin-top:12px;padding-right:2px;-webkit-overflow-scrolling:touch">'+bubbles+thinking+'</div>';
+    }
+    var coach='<div style="'+CARD+'">'+head+body+
+      '<div style="display:flex;gap:9px;align-items:flex-end;margin-top:14px"><textarea id="ern_ask" rows="1" enterkeyhint="send" placeholder="Frag FINN etwas …" style="flex:1;border:1.5px solid var(--border);border-radius:14px;padding:12px 14px;font-size:14.5px;font-weight:600;outline:none;color:var(--text);background:var(--surface);resize:none;font-family:inherit"></textarea>'+
       '<button data-act="ernAskSend" '+(S.ernAskBusy?'disabled ':'')+'style="width:50px;height:48px;border-radius:14px;border:none;background:'+ERN_G+';display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'+svg('<path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"></path>',{c:'#fff',w:2.1,s:20})+'</button></div></div>';
     var cta='<div style="background:linear-gradient(150deg,#0e6072,#063540);border-radius:20px;padding:18px;color:#fff;box-shadow:0 14px 36px rgba(4,33,40,.2)"><div style="display:flex;align-items:center;gap:13px"><div style="width:46px;height:46px;border-radius:14px;background:rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;font-size:23px;flex-shrink:0">🧬</div><div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:900">Lieber ein Mensch?</div><div style="font-size:12.5px;color:#aed0d6;font-weight:600;line-height:1.4;margin-top:2px">Stoffwechsel-Coaching mit persönlicher Betreuung im Studio.</div></div></div>'+
       (S.ernCoachSent?'<div style="margin-top:14px;background:rgba(127,227,168,.16);border-radius:13px;padding:12px;text-align:center;font-size:13.5px;font-weight:800;color:#7fe3a8">Danke! Wir melden uns. ✓</div>':'<button data-act="ernCoachReq" '+(S.ernCoachBusy?'disabled ':'')+'style="width:100%;margin-top:14px;padding:13px;border:none;border-radius:14px;background:#fff;color:#0a4958;font-weight:900;font-size:14px;cursor:pointer">'+(S.ernCoachBusy?'Wird gesendet …':'Beratung anfragen')+'</button>')+'</div>';
@@ -4189,11 +4207,15 @@
       api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'fav-log',id:fid,factor:factor,date:ernActiveDate()})})
       .then(function(d){ if(d&&d.ok){ DATA.nutri=d; var nm=(d.added&&d.added[0]&&d.added[0].name)||'Favorit'; S.ernMsg='Protokolliert: '+nm; S.ernErr=false; render(); } }).catch(function(){}); },
     ernAskSend:function(){ if(S.ernAskBusy) return; var t=$('ern_ask'); var q=t?(t.value||'').trim():''; if(q.length<2) return;
-      S.ernAsk=q; S.ernAskBusy=true; S.ernAnswer=''; render();
-      api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'coach',question:q,history:[]})})
-      .then(function(d){ S.ernAskBusy=false; S.ernAnswer=(d&&d.ok&&d.answer)?d.answer:((d&&d.message)||'Da komme ich gerade nicht weiter. Frag mich gleich nochmal.'); render(); })
-      .catch(function(){ S.ernAskBusy=false; S.ernAnswer='Verbindung gerade nicht möglich. Versuch es gleich nochmal.'; render(); }); },
-    ernAskChip:function(a){ var t=$('ern_ask'); if(t) t.value=a; else S.ernAsk=a; ACT.ernAskSend(); },
+      // Verlauf (letzte 8) an den Server mitgeben; Server begrenzt & bereinigt zusätzlich.
+      var hist=(S.ernChat||[]).slice(-8).map(function(m){ return {role:m.role,text:m.text}; });
+      S.ernChat=(S.ernChat||[]).concat([{role:'user',text:q}]); ernChatSave();
+      S.ernAskBusy=true; if(t) t.value=''; render(); setTimeout(ernChatScroll,0);
+      api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'coach',question:q,history:hist})})
+      .then(function(d){ S.ernAskBusy=false; var ans=(d&&d.ok&&d.answer)?d.answer:((d&&d.message)||'Da komme ich gerade nicht weiter. Frag mich gleich nochmal.'); S.ernChat=(S.ernChat||[]).concat([{role:'assistant',text:ans,safety:!!(d&&d.safety)}]); ernChatSave(); render(); setTimeout(ernChatScroll,0); })
+      .catch(function(){ S.ernAskBusy=false; S.ernChat=(S.ernChat||[]).concat([{role:'assistant',text:'Verbindung gerade nicht möglich. Versuch es gleich nochmal.'}]); ernChatSave(); render(); setTimeout(ernChatScroll,0); }); },
+    ernAskChip:function(a){ if(S.ernAskBusy) return; var t=$('ern_ask'); if(t) t.value=a; ACT.ernAskSend(); },
+    ernChatNew:function(){ S.ernChat=[]; ernChatSave(); S.ernAskBusy=false; S.ernAnswer=''; render(); },
     ernRecipes:function(){ if(S.ernRecipesBusy) return; S.ernRecipesBusy=true; render();
       api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'recipes'})})
       .then(function(d){ S.ernRecipesBusy=false; S.ernRecipes=(d&&d.ok&&Array.isArray(d.recipes))?d.recipes:[]; render(); })
