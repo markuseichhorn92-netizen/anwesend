@@ -384,7 +384,7 @@
     ernFormInit:false, ernEdit:false, ernGoal:'abnehmen', ernSex:'w', ernH:170, ernW:70, ernAge:30, ernAct:'moderat', ernDiet:'omnivor',
     ernBusy:false, ernMsg:'', ernErr:false, ernAsk:'', ernAnswer:'', ernAskBusy:false, ernRecipes:null, ernRecipesBusy:false, ernCoachBusy:false, ernCoachSent:false, ernPhotoBusy:false, ernRec:false,
     ernTab:'heute', ernPlanTab:'woche', ernPlanBusy:false, ernFridge:'', ernRecipeSel:null, ernRecipeSaved:false,
-    ernCapture:false, ernCapTab:'cam', ernObStep:0, ernCheckinDismissed:false, ernCapTarget:'',
+    ernCapture:false, ernCapTab:'cam', ernObStep:0, ernConsent:false, ernCheckinDismissed:false, ernCapTarget:'',
     ctOpen:false, ctSent:false, ctMsg:'', ctBusy:false, ctErr:'', ctMsgServer:'', artFb:null,
     pfFilter:'offen', pfSearch:'', pfLimit:12, pfSel:null, pfThread:false, pfDraft:'', pfBusy:false, pfErr:'',
     alToken:'', alLabel:'', alAction:'', alBusy:false, alErr:'', alGo:'', alSub:'', alState:'loading',
@@ -2451,11 +2451,12 @@
     {name:'Banane',kcal:105,p:1,c:27,f:0,e:'🍌'},{name:'Handvoll Mandeln',kcal:170,p:6,c:6,f:15,e:'🥜'},
     {name:'2 Eier',kcal:156,p:12,c:1,f:11,e:'🥚'},{name:'Apfel',kcal:95,p:0,c:25,f:0,e:'🍎'}
   ];
-  // Feature-Schalter: Ernährungs-Modul komplett aus der App ausblenden, bis alles
-  // fertig ist (happyfigur-Anbindung etc.). Code bleibt erhalten – zum Freischalten
-  // einfach auf true setzen. Blendet Startseiten-Kachel, Profil-Eintrag, FINN-Link
-  // und die direkte Navigation aus.
-  var ERN_ON=false;
+  // Feature-Schalter: Ernährungs-Modul in der App. Läuft eigenständig (eigene
+  // Bedarfsrechnung + KI-Schätzung, kein Fremdanbieter). happyfigur ist bewusst
+  // NICHT angebunden. Vor dem Start ist eine DSGVO-Einwilligung (Art. 9) Pflicht.
+  // Auf false setzen blendet Startseiten-Kachel, Profil-Eintrag, FINN-Link und
+  // die direkte Navigation wieder aus.
+  var ERN_ON=true;
   // Einstiegs-Kachel auf der Startseite (führt ins Ernährungs-Modul)
   function ernHomeCard(){
     if(!ERN_ON) return '';
@@ -2599,9 +2600,16 @@
     } else {
       body='<div style="font-size:26px;font-weight:900;letter-spacing:-.6px;color:#fff">Dein Tagesziel steht</div><div style="font-size:14px;font-weight:600;color:#d4f0e2;margin-top:10px">Berechnet aus deinen Angaben — jederzeit anpassbar.</div><div style="background:#fff;border-radius:22px;padding:24px;margin-top:22px;text-align:center"><div style="font-size:12px;font-weight:800;color:#8a929a;text-transform:uppercase;letter-spacing:.5px">Kalorienziel</div><div style="font-size:46px;font-weight:900;letter-spacing:-1.5px;line-height:1;margin-top:6px;color:#15171B">'+ernNum(t.kcal)+'</div><div style="font-size:13px;font-weight:700;color:#8a929a">kcal pro Tag</div><div style="display:flex;gap:10px;margin-top:20px">'+[[t.protein,'Eiweiß','#FBEFE8','#c5654f'],[t.carbs,'Kohlenh.','#FBF2E1','#b0801f'],[t.fat,'Fett','#F1ECFA','#8b5fc0']].map(function(m){ return '<div style="flex:1;background:'+m[2]+';border-radius:14px;padding:12px 8px"><div style="font-size:18px;font-weight:900;color:'+m[3]+'">'+m[0]+'g</div><div style="font-size:10.5px;font-weight:800;color:'+m[3]+'">'+m[1]+'</div></div>'; }).join('')+'</div><div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:14px;background:#EAF4FB;border-radius:12px;padding:11px"><span style="font-size:13px;font-weight:800;color:#2d84b8">💧 '+String(t.water).replace('.',',')+' L Wasser empfohlen</span></div></div><div style="font-size:11.5px;color:#c5ecd7;font-weight:500;line-height:1.5;text-align:center;margin-top:14px">Richtwert nach anerkannter Formel – keine medizinische Vorgabe. Deine Angaben bleiben nur bei dir.</div>';
     }
+    // DSGVO-Einwilligung: Ernährungs-/Gesundheitsdaten sind besondere Kategorie (Art. 9) -> vor dem Start Pflicht.
+    var consent = step>=4 ? ('<div style="margin-top:16px">'+
+      '<button data-act="ernConsent" style="width:100%;display:flex;align-items:flex-start;gap:11px;padding:14px 15px;background:rgba(255,255,255,.10);border:1.5px solid '+(S.ernConsent?'#fff':'rgba(255,255,255,.30)')+';border-radius:14px;cursor:pointer;text-align:left">'+
+        '<span style="width:22px;height:22px;border-radius:7px;border:2px solid #fff;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:'+(S.ernConsent?'#fff':'transparent')+';margin-top:1px">'+(S.ernConsent?svg('<path d="M20 6L9 17l-5-5"></path>',{c:'#0f7a4a',w:3.2,s:14}):'')+'</span>'+
+        '<span style="font-size:12.5px;font-weight:600;color:#eafff4;line-height:1.5">Ich willige ein, dass meine Angaben zu <b>Ernährung, Gewicht und Gesundheit</b> für dieses Modul verarbeitet werden. Sie werden <b>nur für mich</b> gespeichert, nicht an Dritte weitergegeben – und ich kann sie jederzeit löschen.</span>'+
+      '</button>'+
+      '<div style="font-size:11px;color:#c5ecd7;font-weight:600;margin-top:8px;text-align:center">Mehr in der <a href="https://www.fit-inn-trier.de/datenschutz-fit-inn-trier" target="_blank" rel="noopener" style="color:#fff;text-decoration:underline">Datenschutzerklärung</a>. Einwilligung jederzeit widerrufbar.</div></div>') : '';
     var btnLabel=step===0?"Los geht's":(step>=4?(S.ernBusy?'Speichert …':'Coach starten'):'Weiter');
     var backBtn='<button data-act="'+(step>0?'ernObBack':'nav')+'" '+(step>0?'':'data-arg="home"')+' style="position:absolute;top:16px;left:16px;width:38px;height:38px;border-radius:12px;border:none;background:rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:2">'+svg(IC.back,{c:'#fff',w:2.2,s:19})+'</button>';
-    return '<div style="position:relative;min-height:100%;background:linear-gradient(172deg,#12a06a 0%,#0f7a4a 52%,#0a5a37 100%);padding:56px 22px 26px;display:flex;flex-direction:column">'+backBtn+'<div style="display:flex;gap:6px;margin-bottom:24px">'+dots+'</div><div style="flex:1">'+body+'</div><button data-act="ernObNext" '+(S.ernBusy?'disabled ':'')+'style="margin-top:22px;width:100%;padding:17px;border:none;border-radius:16px;background:#fff;color:#0f7a4a;font-weight:900;font-size:16px;cursor:pointer">'+btnLabel+'</button>'+(S.ernMsg&&S.ernErr?'<div style="font-size:12.5px;font-weight:700;color:#ffd7cf;text-align:center;margin-top:12px">'+esc(S.ernMsg)+'</div>':'')+'</div>';
+    return '<div style="position:relative;min-height:100%;background:linear-gradient(172deg,#12a06a 0%,#0f7a4a 52%,#0a5a37 100%);padding:56px 22px 26px;display:flex;flex-direction:column">'+backBtn+'<div style="display:flex;gap:6px;margin-bottom:24px">'+dots+'</div><div style="flex:1">'+body+'</div>'+consent+'<button data-act="ernObNext" '+(S.ernBusy?'disabled ':'')+'style="margin-top:22px;width:100%;padding:17px;border:none;border-radius:16px;background:#fff;color:#0f7a4a;font-weight:900;font-size:16px;cursor:pointer;opacity:'+((step>=4&&!S.ernConsent)?'.55':'1')+'">'+btnLabel+'</button>'+(S.ernMsg&&S.ernErr?'<div style="font-size:12.5px;font-weight:700;color:#ffd7cf;text-align:center;margin-top:12px">'+esc(S.ernMsg)+'</div>':'')+'</div>';
   }
   function ernDash(){
     var n=DATA.nutri, t=n.targets||{}, td=n.today||{}, tot=td.totals||{kcal:0,p:0,c:0,f:0};
@@ -3809,7 +3817,7 @@
       render(); },
     ernRecompute:function(){ ernSeedForm(); setS({ernEdit:true,ernObStep:0,ernMsg:'',ernErr:false}); try{ window.scrollTo(0,0); }catch(e){} },
     ernSaveProfile:function(){ if(S.ernBusy) return; S.ernBusy=true; S.ernMsg=''; S.ernErr=false; render();
-      api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'save-profile',profile:{goal:S.ernGoal,sex:S.ernSex,height:S.ernH,weight:S.ernW,age:S.ernAge,activity:S.ernAct,diet:S.ernDiet}})})
+      api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'save-profile',consent:!!S.ernConsent,profile:{goal:S.ernGoal,sex:S.ernSex,height:S.ernH,weight:S.ernW,age:S.ernAge,activity:S.ernAct,diet:S.ernDiet}})})
       .then(function(d){ S.ernBusy=false; if(d&&d.ok){ DATA.nutri=d; S.ernEdit=false; S.ernObStep=0; } else { S.ernErr=true; S.ernMsg='Konnte nicht speichern. Bitte später erneut.'; } render(); try{ window.scrollTo(0,0); }catch(e){} })
       .catch(function(){ S.ernBusy=false; S.ernErr=true; S.ernMsg='Konnte nicht speichern. Bitte später erneut.'; render(); }); },
     ernLog:function(){ if(S.ernBusy) return; var t=$('ern_log'); var q=t?(t.value||'').trim():''; if(q.length>=2) ernLogText(q); },
@@ -3818,7 +3826,8 @@
     ernCloseCapture:function(){ setS({ernCapture:false}); try{ window.scrollTo(0,0); }catch(e){} },
     ernCapTab:function(a){ setS({ernCapTab:a}); },
     ernCheckinDismiss:function(){ setS({ernCheckinDismissed:true}); },
-    ernObNext:function(){ if((S.ernObStep||0)>=4){ ACT.ernSaveProfile(); } else { setS({ernObStep:(S.ernObStep||0)+1}); try{ window.scrollTo(0,0); }catch(e){} } },
+    ernObNext:function(){ if((S.ernObStep||0)>=4){ if(!S.ernConsent){ S.ernErr=true; S.ernMsg='Bitte bestätige die Einwilligung, um zu starten.'; render(); return; } ACT.ernSaveProfile(); } else { setS({ernObStep:(S.ernObStep||0)+1}); try{ window.scrollTo(0,0); }catch(e){} } },
+    ernConsent:function(){ setQuiet({ernConsent:!S.ernConsent, ernErr:false, ernMsg:''}); },
     ernObBack:function(){ if((S.ernObStep||0)>0) setS({ernObStep:S.ernObStep-1}); },
     ernVoice:function(){
       if(!ernVoiceSupported()){ S.ernErr=true; S.ernMsg='Sprache wird auf diesem Gerät nicht direkt unterstützt – tippe die Mahlzeit ein (die Tastatur hat oft ein Mikrofon zum Diktieren).'; render(); return; }

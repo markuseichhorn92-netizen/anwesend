@@ -183,6 +183,9 @@ module.exports = async function handler(req, res) {
       diet: DIETS.indexOf(inp.diet) >= 0 ? inp.diet : 'omnivor',
       updatedAt: Date.now(),
     };
+    // DSGVO-Einwilligung (Gesundheitsdaten, Art. 9) als Nachweis mit Zeitstempel festhalten;
+    // eine bereits erteilte Einwilligung bleibt erhalten.
+    try { const prev = await loadProfile(id); profile.consentAt = body.consent ? Date.now() : ((prev && prev.consentAt) || null); } catch (e) {}
     try { await redisPipeline([['SET', PKEY(id), JSON.stringify(profile)]]); } catch (e) {}
     res.statusCode = 200; return res.end(JSON.stringify(await buildState(id, profile)));
   }
