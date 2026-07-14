@@ -75,7 +75,8 @@
   .finnFab{display:none}
   .finnFab img{width:100%;height:100%;display:block}
   @media(max-width:999px){
-    .app-in .finnFab{position:fixed;right:16px;bottom:calc(88px + env(safe-area-inset-bottom,0px));z-index:49;width:54px;height:54px;border-radius:50%;border:3px solid var(--surface);background:linear-gradient(150deg,#0e6072,#063540);box-shadow:0 12px 28px -6px rgba(10,73,88,.6);cursor:pointer;padding:0;overflow:hidden;display:flex;align-items:center;justify-content:center}
+    /* FINN-FAB in den Assistenten (Leisten-Mitte) eingeschmolzen → ausgeblendet. */
+    .app-in .finnFab{display:none}
   }
   .app-guest .finnFab{display:none!important}
   .logout{background:rgba(255,255,255,.12);border:none;color:#cfe3e7;font-weight:600;font-size:13px;padding:8px 13px;border-radius:9px;cursor:pointer}
@@ -807,21 +808,28 @@
   }
   function qaSheet(){
     var ci=!!S.checkedInAt;
+    // Kopf: der Assistent als Herzstück.
+    var head='<div style="display:flex;align-items:center;gap:12px;padding:8px 8px 12px 6px">'+
+      '<div style="width:46px;height:46px;border-radius:50%;overflow:hidden;flex-shrink:0;background:#0a3d4a;box-shadow:0 6px 16px rgba(4,33,40,.28)"><img src="/assets/brand/finn-mark.svg" alt="" style="width:100%;height:100%;display:block"></div>'+
+      '<div style="flex:1;min-width:0"><div style="font-size:17px;font-weight:900;color:var(--text);letter-spacing:-.3px">Dein Assistent</div><div style="font-size:12.5px;color:var(--text-soft);font-weight:600">Erledige alles an einem Ort</div></div></div>';
+    // Prominent: „Frag mich alles" -> FINN-Chat (kann Termine, Fragen, Deep-Links …).
+    var chat='<button class="qaRow" data-act="qaGo" data-arg="chat" style="background:linear-gradient(150deg,#0e6072,#063540);margin-bottom:6px">'+
+      '<span class="qaIco" style="background:rgba(255,255,255,.16)">'+svg('<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>',{c:'#fff',w:2,s:23})+'</span>'+
+      '<span style="flex:1;min-width:0"><span class="qaLbl" style="display:block;color:#fff">Frag mich alles</span><span class="qaSub" style="color:#bfe0e6">Termin, Frage, Vertrag … einfach schreiben</span></span>'+
+      svg('<path d="M9 18l6-6-6-6"></path>',{c:'#bfe0e6',w:2,s:16})+'</button>';
+    // Schnellaktionen – bewusst OHNE „Termin"/„Postfach" (die sind eigene Leisten-Tabs → keine Doppelung).
     var rows=
-      qaRow('checkin','<path d="M9 11l3 3L20 5"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>', ci?'Auschecken':'Check-in', ci?'Du bist gerade eingecheckt':'Im Studio einchecken', true)+
-      qaRow('appt','<rect x="3" y="4" width="18" height="18" rx="2"></rect><path d="M3 10h18M8 2v4M16 2v4"></path>','Termin buchen','Kurs oder Beratung')+
-      qaRow('team','<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>','Nachricht ans Team','Frage ans Studio schicken')+
-      qaRow('assist','<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6M9 13h6M9 17h4"></path>','Vertrags-Assistent','Pause oder Kündigung – geführt')+
+      qaRow('assist','<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6M9 13h6M9 17h4"></path>','Beitragspause / Kündigung','Geführt regeln – mit Rückgewinnung')+
+      qaRow('checkin','<path d="M9 11l3 3L20 5"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>', ci?'Auschecken':'Check-in', ci?'Du bist gerade eingecheckt':'Im Studio einchecken', ci)+
       qaRow('referral','<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"></path>','Freund werben','Empfehlen & Prämie sichern');
-    return '<div class="qaScrim" data-act="qaClose"></div><div class="qaSheet" role="menu" aria-label="Schnellaktionen">'+rows+'</div>';
+    return '<div class="qaScrim" data-act="qaClose"></div><div class="qaSheet" role="menu" aria-label="Assistent">'+head+chat+rows+'</div>';
   }
-  // Aktion aus dem Popup ausführen: erst schließen, dann in den passenden Bereich.
+  // Aktion aus dem Assistent-Hub ausführen: erst schließen, dann in den passenden Bereich.
   function qaGo(a){
     S.qaOpen=false;
+    if(a==='chat'){ if(ACT&&ACT.openFinn) ACT.openFinn(); else setS({finnOpen:true}); return; }
     if(a==='checkin'){ nav('checkin'); return; }
-    if(a==='appt'){ nav('appt'); return; }
     if(a==='referral'){ nav('referral'); return; }
-    if(a==='team'){ nav('help'); setTimeout(function(){ setS({ctOpen:true,ctSent:false,ctErr:'',ctMsg:''}); },140); return; }
     if(a==='assist'){ nav('contract'); setTimeout(function(){ if(typeof openAssistant==='function') openAssistant(''); },140); return; }
     render();
   }
@@ -3542,10 +3550,13 @@
       var pfCol=(sc==='postfach')?'var(--teal-ink)':'var(--text-soft)';
       var pfBtn='<button data-act="nav" data-arg="postfach" style="flex:1;background:none;border:none;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;padding:5px 0"><span style="position:relative;display:flex">'+svg(IC.mail,{c:pfCol,w:1.9,s:23})+(unread?'<span style="position:absolute;top:-3px;right:-5px;width:8px;height:8px;border-radius:50%;background:#F6A964;border:1.5px solid var(--surface)"></span>':'')+'</span><span style="font-size:10.5px;font-weight:'+(sc==='postfach'?'800':'600')+';color:'+pfCol+'">Postfach</span></button>';
       var ciIn=!!S.checkedInAt; var qaOpen=!!S.qaOpen;
-      // Mitte = „+\"-Schnellaktionen (öffnet Slide-up-Popup). Beim Öffnen dreht das „+\" zum „×\".
-      // Ist das Mitglied eingecheckt, leuchtet der Button grün als Erinnerung ans Auschecken.
-      var qaBg=qaOpen?'linear-gradient(150deg,#0e6072,#063540)':(ciIn?'linear-gradient(150deg,#1f9a4e,#127a3c)':'linear-gradient(150deg,#0e6072,#063540)');
-      var qaCenter='<button data-act="'+(qaOpen?'qaClose':'qaOpen')+'" aria-label="Schnellaktionen" style="flex:1;background:none;border:none;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px;padding:0"><span style="width:54px;height:54px;border-radius:50%;background:'+qaBg+';box-shadow:0 10px 24px -4px rgba(10,73,88,.55);display:flex;align-items:center;justify-content:center;margin-top:-26px;border:4px solid var(--surface);transition:transform .22s cubic-bezier(.22,.61,.36,1);transform:rotate('+(qaOpen?'45deg':'0deg')+')">'+svg('<path d="M12 5v14M5 12h14"></path>',{c:'#fff',w:2.6,s:26})+'</span><span style="font-size:10.5px;font-weight:800;color:'+(qaOpen?'var(--teal-ink)':(ciIn?'#127a3c':'var(--text-soft)'))+'">'+(qaOpen?'Schließen':(ciIn?'Eingecheckt':'Aktionen'))+'</span></button>';
+      // Mitte = DER Assistent (Herzstück). Ein Tipp öffnet den Assistent-Hub (Chat + Schnellaktionen).
+      // Beim Öffnen wird das FINN-Zeichen zum „×". Kleiner grüner Punkt erinnert ans Auschecken.
+      var centerInner=qaOpen
+        ? svg('<path d="M6 6l12 12M18 6L6 18"></path>',{c:'#fff',w:2.4,s:24})
+        : '<img src="/assets/brand/finn-mark.svg" alt="" style="width:30px;height:30px;display:block">';
+      var ciDot=(!qaOpen&&ciIn)?'<span style="position:absolute;top:0;right:2px;width:13px;height:13px;border-radius:50%;background:#1f9a4e;border:2px solid var(--surface)"></span>':'';
+      var qaCenter='<button data-act="'+(qaOpen?'qaClose':'qaOpen')+'" aria-label="Assistent" style="flex:1;background:none;border:none;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px;padding:0"><span style="position:relative;width:54px;height:54px;border-radius:50%;background:linear-gradient(150deg,#0e6072,#063540);box-shadow:0 10px 24px -4px rgba(10,73,88,.55);display:flex;align-items:center;justify-content:center;margin-top:-26px;border:4px solid var(--surface)">'+centerInner+ciDot+'</span><span style="font-size:10.5px;font-weight:800;color:'+(qaOpen?'var(--teal-ink)':'var(--text-soft)')+'">'+(qaOpen?'Schließen':'Assistent')+'</span></button>';
       bn.innerHTML = ni('home','Start',DASH_IC,sc==='home') + ni('appt','Termine',IC.cal,sc==='appt') + qaCenter + pfBtn + ni('profil','Profil',IC.user,profActive);
     }
   }
