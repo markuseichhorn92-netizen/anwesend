@@ -1524,6 +1524,30 @@
       '<button data-act="obNext" style="width:100%;margin-top:20px;border:none;border-radius:15px;background:#fff;color:#0a4958;font-weight:900;font-size:16px;padding:16px;cursor:pointer;flex-shrink:0">'+(step>=3?'Los geht\'s':'Weiter')+'</button>'+
     '</div>';
   }
+  // Kaiora-Anregung: Ring-Fortschritt „Diese Woche" (Trainings ggü. Wochenziel aus dem Onboarding).
+  function weekRingCard(){
+    var ci=Array.isArray(DATA.checkins)?DATA.checkins:null;
+    if(ci===null) return '';   // noch nicht geladen -> kein Flackern
+    var mon=new Date(); mon.setHours(0,0,0,0); mon.setDate(mon.getDate()-((mon.getDay()+6)%7));  // Wochenstart Mo
+    var mStart=new Date(); mStart.setHours(0,0,0,0); mStart.setDate(1);
+    var week=0, month=0, last=0;
+    ci.forEach(function(x){ var t=(x&&x.in)?Date.parse(x.in):0; if(!t) return; if(t>=mon.getTime()) week++; if(t>=mStart.getTime()) month++; if(t>last) last=t; });
+    var goal=3; try{ var ob=JSON.parse(localStorage.getItem('fi_ob_v1')||'{}'); if(ob&&+ob.freq>0) goal=Math.min(7,Math.max(1,+ob.freq)); }catch(e){}
+    var pct=goal?Math.max(0,Math.min(1,week/goal)):0, reached=week>=goal;
+    var R=54, C=2*Math.PI*R, off=C*(1-pct), col=reached?'#1F9A4E':TEAL;
+    var msg=reached?'Wochenziel erreicht – stark! 🎉':(week>0?('Noch '+(goal-week)+' bis zu deinem Wochenziel'):'Auf geht’s – dein Wochenziel wartet');
+    var lastTxt=last?('Letzter Besuch '+deDate(new Date(last).toISOString())):'';
+    var ring='<div style="position:relative;width:120px;height:120px;flex-shrink:0">'+
+      '<svg width="120" height="120" viewBox="0 0 128 128" style="transform:rotate(-90deg)">'+
+        '<circle cx="64" cy="64" r="'+R+'" fill="none" stroke="var(--surface-2)" stroke-width="12"></circle>'+
+        '<circle cx="64" cy="64" r="'+R+'" fill="none" stroke="'+col+'" stroke-width="12" stroke-linecap="round" stroke-dasharray="'+C.toFixed(1)+'" stroke-dashoffset="'+off.toFixed(1)+'"></circle>'+
+      '</svg>'+
+      '<div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center"><div style="font-size:30px;font-weight:900;color:var(--text);line-height:1">'+week+'</div><div style="font-size:12px;font-weight:700;color:var(--text-soft)">von '+goal+'</div></div></div>';
+    return '<div class="card" style="padding:18px;margin-bottom:14px;display:flex;align-items:center;gap:16px">'+ring+
+      '<div style="flex:1;min-width:0"><div style="font-size:11.5px;font-weight:800;color:'+TEAL+';text-transform:uppercase;letter-spacing:1.2px">Diese Woche</div>'+
+      '<div style="font-size:17px;font-weight:900;color:var(--text);margin-top:3px;letter-spacing:-.3px;line-height:1.25">'+esc(msg)+'</div>'+
+      '<div style="font-size:13px;color:var(--text-soft);font-weight:600;margin-top:7px">'+month+' Besuche diesen Monat'+(lastTxt?('<br>'+esc(lastTxt)):'')+'</div></div></div>';
+  }
   function scrHome(){
     if(isFormer()) return scrRejoin();
     loadFinnTip(); loadInsta(); loadTypical(); loadLive(); loadHours();
@@ -1565,6 +1589,7 @@
       homeHero()+
       finnCard()+
       checkinBtn()+
+      weekRingCard()+
       wifiBtn()+
       dupBanner+
       auslastungChart()+
