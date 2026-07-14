@@ -526,7 +526,7 @@ module.exports = async function handler(req, res) {
     const r = await AI.nutritionWeekPlan({ goal: GOALS[profile && profile.goal] || 'ausgewogen', kcalTarget: t.kcal, protein: t.protein, diet: (profile && profile.diet) || 'omnivor' });
     if (!r.ok) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'FINN kann gerade keinen Plan erstellen. Versuch es gleich nochmal.' })); }
     const plan = { days: r.days, createdAt: Date.now() };
-    const shop = (r.shopping || []).map(function (s, i) { return { i: i, name: s.name, amount: s.amount, checked: false }; });
+    const shop = (r.shopping || []).map(function (s, i) { return { i: i, name: s.name, amount: s.amount, category: s.category || 'Sonstiges', checked: false }; });
     try { await redisPipeline([['SET', PLANKEY(id), JSON.stringify(plan)], ['SET', SHOPKEY(id), JSON.stringify(shop)]]); } catch (e) {}
     res.statusCode = 200; return res.end(JSON.stringify({ ok: true, plan: plan, shopping: shop }));
   }

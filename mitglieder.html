@@ -98,6 +98,8 @@
   .lbl{font-size:13px;font-weight:600;color:var(--text-2);margin-bottom:6px;display:block}
   .inp{width:100%;padding:13px 14px;border:1.5px solid var(--border);border-radius:11px;font-size:15px;color:var(--text);outline:none;background:var(--surface)}
   .inp:focus{border-color:var(--teal-ink);box-shadow:0 0 0 3px rgba(10,73,88,.12)}
+  /* Barrierefreiheit: sichtbarer Fokusrahmen NUR bei Tastaturbedienung (überschreibt inline outline:none) */
+  button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible,label:focus-visible,[tabindex]:focus-visible,[data-act]:focus-visible{outline:3px solid #12a06a!important;outline-offset:2px;border-radius:8px}
   /* Native Datumsauswahl: groß & antippbar, 16px verhindert iOS-Zoom */
   input.inp[type="date"]{min-height:50px;font-size:16px;-webkit-appearance:none;appearance:none}
   input.inp[type="date"]::-webkit-date-and-time-value{text-align:left;margin:0}
@@ -2928,7 +2930,7 @@
     '</div>';
     // Wasser
     var wg=td.waterGoal||8, wc=td.water||0, cups='';
-    for(var i=0;i<wg;i++){ cups+='<button data-act="ernWater" data-arg="to:'+(i+1)+'" style="flex:1;height:26px;border-radius:6px;border:none;background:'+(i<wc?ERN_WATER:'var(--surface-2)')+';cursor:pointer;padding:0"></button>'; }
+    for(var i=0;i<wg;i++){ cups+='<button data-act="ernWater" data-arg="to:'+(i+1)+'" aria-label="'+(i+1)+' von '+wg+' Gläsern Wasser" aria-pressed="'+(i<wc?'true':'false')+'" style="flex:1;height:26px;border-radius:6px;border:none;background:'+(i<wc?ERN_WATER:'var(--surface-2)')+';cursor:pointer;padding:0"></button>'; }
     var water='<div style="'+CARD+'"><div style="display:flex;align-items:center;justify-content:space-between"><div style="display:flex;align-items:center;gap:8px">'+svg('<path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z"></path>',{c:ERN_WATER,w:2,s:18})+'<span style="font-size:13px;font-weight:800;color:var(--text)">Wasser</span></div><span style="font-size:15px;font-weight:900;color:var(--text)">'+String((wc*0.25).toFixed(1)).replace('.',',')+' <span style="font-size:12px;color:var(--text-soft)">/ '+String((wg*0.25).toFixed(1)).replace('.',',')+' L</span></span></div>'+
       '<div style="display:flex;gap:4px;margin-top:12px">'+cups+'</div><div style="font-size:10.5px;font-weight:700;color:var(--text-soft);margin-top:8px">Tippen zum Eintragen · 1 Glas = 0,25 L</div></div>';
     // Schnell loggen
@@ -3082,6 +3084,19 @@
     return '<div style="'+LIGHT+'">'+inner+'</div>';
   }
   // ── Ernährung · Wochenplan + Einkaufsliste ──
+  // Warengruppe einer Zutat bestimmen: Server-Kategorie bevorzugt, sonst Stichwort-Heuristik.
+  function ernShopCat(name,cat){
+    var C=['Obst & Gemüse','Milchprodukte & Eier','Fleisch & Fisch','Brot & Backwaren','Trockenwaren & Konserven','Getränke','Sonstiges'];
+    if(cat&&C.indexOf(cat)>=0) return cat;
+    var n=(name||'').toLowerCase();
+    if(/apfel|äpfel|banane|beere|erdbeer|himbeer|tomate|gurke|salat|zwiebel|karotte|möhre|paprika|brokkoli|spinat|zitrone|avocado|kartoffel|obst|gem(ü|ue)se|frucht|zucchini|champignon|pilz|knoblauch|ingwer|limette|orange|mango|birne|lauch|sellerie|kohl|rucola|banan/.test(n)) return 'Obst & Gemüse';
+    if(/milch|joghurt|jogurt|quark|k(ä|ae)se|butter|sahne|skyr|\bei\b|eier|frischk(ä|ae)se|h(ü|ue)ttenk(ä|ae)se|mozzarella|feta|schmand|pudding/.test(n)) return 'Milchprodukte & Eier';
+    if(/h(ä|ae)hnchen|huhn|pute|rind|hack|schwein|fleisch|fisch|lachs|thunfisch|garnele|wurst|schinken|speck|tofu|tempeh|lachsfilet/.test(n)) return 'Fleisch & Fisch';
+    if(/brot|br(ö|oe)tchen|toast|baguette|wrap|tortilla|kn(ä|ae)cke|semmel/.test(n)) return 'Brot & Backwaren';
+    if(/reis|nudel|pasta|haferflocken|mehl|zucker|linse|bohne|kichererbse|dose|konserve|(ö|oe)l|essig|gew(ü|ue)rz|salz|pfeffer|couscous|quinoa|m(ü|ue)sli|honig|nuss|mandel|passata|tomatenmark|br(ü|ue)he|hafer|erdnuss/.test(n)) return 'Trockenwaren & Konserven';
+    if(/wasser|saft|tee|kaffee|drink|getr(ä|ae)nk|cola|smoothie|limo/.test(n)) return 'Getränke';
+    return 'Sonstiges';
+  }
   function ernPlan(){
     var pd=DATA.nutriPlan;
     var CARD='background:var(--surface);border-radius:20px;box-shadow:0 12px 30px rgba(4,33,40,.09);padding:16px;margin-bottom:12px';
@@ -3106,7 +3121,13 @@
     if(!shop.length){ return seg+'<div style="'+CARD+';text-align:center;padding:34px 22px"><div style="width:70px;height:70px;border-radius:22px;background:rgba(15,122,74,.1);display:flex;align-items:center;justify-content:center;font-size:32px;margin:0 auto">🛒</div><div style="font-size:16px;font-weight:900;color:var(--text);margin-top:16px">Noch keine Einkaufsliste</div><div style="font-size:13px;color:var(--text-muted);font-weight:500;margin-top:8px;line-height:1.5">Erstelle deinen Wochenplan – FINN fasst die Zutaten automatisch zusammen.</div>'+genBtn('Woche & Liste erstellen')+'</div>'; }
     var done=shop.filter(function(x){return x.checked;}).length;
     var head='<div style="display:flex;align-items:center;justify-content:space-between;margin:0 2px 12px"><span style="font-size:13px;font-weight:800;color:var(--text-muted)">'+done+' erledigt</span><button data-act="ernShopClear" style="border:none;background:none;color:#c5654f;font-size:12.5px;font-weight:800;cursor:pointer">Erledigte entfernen</button></div>';
-    var items=shop.map(function(it){ return '<button data-act="ernShopToggle" data-arg="'+it.i+'" style="width:100%;display:flex;align-items:center;gap:12px;background:'+(it.checked?'var(--surface-2)':'var(--surface)')+';border:none;border-radius:14px;padding:13px 14px;margin-bottom:8px;cursor:pointer;text-align:left;box-shadow:0 6px 16px rgba(4,33,40,.05)"><span style="width:24px;height:24px;border-radius:8px;background:'+(it.checked?ERN_OK:'var(--surface)')+';border:2px solid '+(it.checked?ERN_OK:'var(--border)')+';display:flex;align-items:center;justify-content:center;flex-shrink:0">'+(it.checked?svg('<path d="M20 6L9 17l-5-5"></path>',{c:'#fff',w:3,s:14}):'')+'</span><span style="flex:1;font-size:14.5px;font-weight:700;color:'+(it.checked?'var(--text-soft)':'var(--text)')+';text-decoration:'+(it.checked?'line-through':'none')+'">'+esc(it.name)+'</span><span style="font-size:13px;font-weight:800;color:var(--text-soft)">'+esc(it.amount||'')+'</span></button>'; }).join('');
+    var itemRow=function(it){ return '<button data-act="ernShopToggle" data-arg="'+it.i+'" aria-pressed="'+(it.checked?'true':'false')+'" style="width:100%;display:flex;align-items:center;gap:12px;background:'+(it.checked?'var(--surface-2)':'var(--surface)')+';border:none;border-radius:14px;padding:13px 14px;margin-bottom:8px;cursor:pointer;text-align:left;box-shadow:0 6px 16px rgba(4,33,40,.05)"><span style="width:24px;height:24px;border-radius:8px;background:'+(it.checked?ERN_OK:'var(--surface)')+';border:2px solid '+(it.checked?ERN_OK:'var(--border)')+';display:flex;align-items:center;justify-content:center;flex-shrink:0">'+(it.checked?svg('<path d="M20 6L9 17l-5-5"></path>',{c:'#fff',w:3,s:14}):'')+'</span><span style="flex:1;font-size:14.5px;font-weight:700;color:'+(it.checked?'var(--text-soft)':'var(--text)')+';text-decoration:'+(it.checked?'line-through':'none')+'">'+esc(it.name)+'</span><span style="font-size:13px;font-weight:800;color:var(--text-soft)">'+esc(it.amount||'')+'</span></button>'; };
+    // Nach Warengruppen gruppieren (Kategorie vom Server, sonst Stichwort-Heuristik).
+    var CATS=['Obst & Gemüse','Milchprodukte & Eier','Fleisch & Fisch','Brot & Backwaren','Trockenwaren & Konserven','Getränke','Sonstiges'];
+    var groups={}; shop.forEach(function(it){ var c=ernShopCat(it.name,it.category); (groups[c]=groups[c]||[]).push(it); });
+    var items=CATS.filter(function(c){ return groups[c]&&groups[c].length; }).map(function(c){
+      return '<div style="font-size:11.5px;font-weight:900;color:var(--text-soft);text-transform:uppercase;letter-spacing:.4px;margin:14px 2px 8px">'+esc(c)+'</div>'+groups[c].map(itemRow).join('');
+    }).join('');
     return seg+head+items;
   }
   // ── Ernährung · Rezepte + Kühlschrank ──
