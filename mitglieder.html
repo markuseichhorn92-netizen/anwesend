@@ -391,7 +391,7 @@
     ernProd:null, ernGrams:100,
     ernViewDate:'', ernDayBusy:false, ernEntryEdit:null, ernEntryBusy:false,
     ernFavMgr:false, ernFavBusy:false, ernFavAddOpen:false,
-    ernChat:[],
+    ernChat:[], ernData:false, ernDataBusy:false,
     ctOpen:false, ctSent:false, ctMsg:'', ctBusy:false, ctErr:'', ctMsgServer:'', artFb:null,
     pfFilter:'offen', pfSearch:'', pfLimit:12, pfSel:null, pfThread:false, pfDraft:'', pfBusy:false, pfErr:'',
     alToken:'', alLabel:'', alAction:'', alBusy:false, alErr:'', alGo:'', alSub:'', alState:'loading',
@@ -2949,7 +2949,8 @@
         ? '<div style="margin-top:15px;background:rgba(127,227,168,.16);border-radius:13px;padding:13px;text-align:center;font-size:13.5px;font-weight:800;color:#7fe3a8">Danke! Wir melden uns bei dir. ✓</div>'
         : '<button data-act="ernCoachReq" '+(S.ernCoachBusy?'disabled ':'')+'style="width:100%;margin-top:15px;padding:14px;border:none;border-radius:14px;background:#fff;color:#0a4958;font-weight:900;font-size:14.5px;cursor:pointer">'+(S.ernCoachBusy?'Wird gesendet …':'Unverbindlich anfragen')+'</button>')+
     '</div>';
-    var recompute='<button data-act="ernRecompute" style="width:100%;padding:13px;border:1.5px solid var(--border);background:var(--surface);color:var(--text-muted);border-radius:14px;font-weight:800;font-size:13px;cursor:pointer">Ziel &amp; Körperdaten neu berechnen</button>';
+    var recompute='<button data-act="ernRecompute" style="width:100%;padding:13px;border:1.5px solid var(--border);background:var(--surface);color:var(--text-muted);border-radius:14px;font-weight:800;font-size:13px;cursor:pointer">Ziel &amp; Körperdaten neu berechnen</button>'+
+      '<button data-act="ernDataOpen" style="width:100%;margin-top:10px;padding:12px;border:none;background:transparent;color:var(--text-soft);border-radius:12px;font-weight:700;font-size:12.5px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px">'+svg('<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>',{c:'var(--text-soft)',w:1.8,s:15})+'Meine Daten &amp; Datenschutz</button>';
     // Proaktiver Check-in (echt, aus dem Streak) – wie im Mockup, ausblendbar
     var nm=(DATA.profile&&DATA.profile.firstName)||'';
     var checkin=(!S.ernCheckinDismissed && (n.streak||0)>=2)?('<div style="background:linear-gradient(150deg,#FBEFE2,#f6ddc4);border-radius:18px;padding:14px 16px;margin-bottom:14px;display:flex;align-items:flex-start;gap:12px;position:relative"><span style="font-size:22px;line-height:1;margin-top:1px">🎉</span><div style="flex:1;min-width:0;padding-right:16px"><div style="font-size:13.5px;font-weight:900;color:#b5631f">Stark dabei'+(nm?', '+esc(nm):'')+'!</div><div style="font-size:12.5px;font-weight:600;color:#9a6027;line-height:1.4;margin-top:2px">Du hast '+(n.streak||0)+' Tage in Folge protokolliert – weiter so! 💪</div></div><button data-act="ernCheckinDismiss" style="position:absolute;top:10px;right:10px;width:24px;height:24px;border-radius:8px;border:none;background:rgba(181,99,31,.14);display:flex;align-items:center;justify-content:center;cursor:pointer">'+svg('<path d="M18 6L6 18M6 6l12 12"></path>',{c:'#b5631f',w:2.6,s:13})+'</button></div>'):'';
@@ -2972,6 +2973,25 @@
   function ernChatLoad(){ try{ var raw=localStorage.getItem(ERN_CHAT_KEY); var a=raw?JSON.parse(raw):[]; return Array.isArray(a)?a.filter(function(m){ return m&&m.text; }).slice(-40):[]; }catch(e){ return []; } }
   function ernChatSave(){ try{ localStorage.setItem(ERN_CHAT_KEY, JSON.stringify((S.ernChat||[]).slice(-40))); }catch(e){} }
   function ernChatScroll(){ try{ var c=document.getElementById('ern_chat'); if(c) c.scrollTop=c.scrollHeight; }catch(e){} }
+  // ═══ Etappe 6: Datenschutz – „Meine Ernährungsdaten" (Export / Tag löschen / alles löschen) ═══
+  function ernDataScreen(){
+    var busy=S.ernDataBusy, CARD='background:#fff;border-radius:18px;padding:17px;box-shadow:0 8px 24px rgba(4,33,40,.08);margin-bottom:14px';
+    var head='<div style="display:flex;align-items:center;gap:12px;padding:2px 2px 14px"><button data-act="ernDataClose" aria-label="Zurück" style="width:38px;height:38px;border-radius:12px;border:none;background:#fff;box-shadow:0 4px 12px rgba(4,33,40,.08);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'+svg(IC.back,{c:'#0a4958',w:2.2,s:19})+'</button><div style="flex:1"><div style="font-size:20px;font-weight:900;color:var(--text);letter-spacing:-.4px">Meine Daten</div><div style="font-size:12px;font-weight:700;color:var(--text-soft)">Ernährung &amp; Datenschutz</div></div></div>';
+    var exportSec='<div style="'+CARD+'"><div style="font-size:15px;font-weight:900;color:var(--text);display:flex;align-items:center;gap:8px">'+svg('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"></path>',{c:'#0a4958',w:2,s:19})+'Exportieren</div>'+
+      '<div style="font-size:12.5px;font-weight:500;color:var(--text-muted);line-height:1.55;margin:8px 0 14px">Lade alle deine Ernährungsdaten (Profil, protokollierte Tage, Favoriten, Plan &amp; Rezepte) als JSON-Datei herunter – nur für dich, nichts wird an Dritte gegeben.</div>'+
+      '<button data-act="ernDataExport" '+(busy?'disabled ':'')+'style="width:100%;padding:14px;border:1.5px solid rgba(10,73,88,.25);border-radius:14px;background:#fff;color:#0a4958;font-weight:800;font-size:14.5px;cursor:pointer;opacity:'+(busy?'.6':'1')+'">'+(busy?'Bitte warten …':'Als JSON-Datei exportieren')+'</button></div>';
+    var delDaySec='<div style="'+CARD+'"><div style="font-size:15px;font-weight:900;color:var(--text)">Einzelnen Tag löschen</div>'+
+      '<div style="font-size:12.5px;font-weight:500;color:var(--text-muted);line-height:1.55;margin:8px 0 12px">Entfernt alle Mahlzeiten &amp; das Wasser eines Tages. Profil und andere Tage bleiben.</div>'+
+      '<div style="display:flex;gap:8px"><input id="ern_delday" type="date" max="'+isoToday()+'" value="'+isoToday()+'" aria-label="Datum" style="flex:1;min-width:0;border:1.5px solid var(--border);border-radius:12px;padding:11px 12px;font-size:14px;font-weight:700;color:var(--text);background:#fff">'+
+      '<button data-act="ernDelDay" '+(busy?'disabled ':'')+'style="padding:0 16px;border:1.5px solid rgba(192,57,43,.3);border-radius:12px;background:#fff;color:var(--err-fg);font-weight:800;font-size:14px;cursor:pointer">Tag löschen</button></div></div>';
+    var delAllSec='<div style="'+CARD.replace('#fff','#FEF4F2')+';border:1.5px solid rgba(192,57,43,.18)"><div style="font-size:15px;font-weight:900;color:var(--err-fg)">Alles löschen</div>'+
+      '<div style="font-size:12.5px;font-weight:500;color:#a24a3c;line-height:1.55;margin:8px 0 12px">Löscht <b>unwiderruflich</b> dein Ernährungsprofil, alle Tage, Favoriten, Plan, Rezepte und Fasten-Einstellungen. Danach startest du bei Bedarf neu mit dem Onboarding.</div>'+
+      '<label for="ern_delall" style="font-size:11.5px;font-weight:800;color:#a24a3c;text-transform:uppercase;letter-spacing:.3px">Zum Bestätigen „LÖSCHEN" eingeben</label>'+
+      '<input id="ern_delall" placeholder="LÖSCHEN" aria-label="Löschen bestätigen" autocapitalize="characters" style="width:100%;border:1.5px solid rgba(192,57,43,.3);border-radius:12px;padding:11px 12px;font-size:15px;font-weight:800;color:var(--err-fg);background:#fff;margin-top:6px">'+
+      '<button data-act="ernDelAll" '+(busy?'disabled ':'')+'style="width:100%;margin-top:12px;padding:14px;border:none;border-radius:14px;background:#c0392b;color:#fff;font-weight:900;font-size:14.5px;cursor:pointer;opacity:'+(busy?'.6':'1')+'">Unwiderruflich alles löschen</button></div>';
+    var msg=S.ernMsg?'<div role="'+(S.ernErr?'alert':'status')+'" style="font-size:12.5px;font-weight:700;color:'+(S.ernErr?'var(--err-fg)':ERN_G)+';text-align:center;margin-top:4px;line-height:1.4">'+esc(S.ernMsg)+'</div>':'';
+    return '<div style="padding:4px 2px 40px">'+head+exportSec+delDaySec+delAllSec+msg+'</div>';
+  }
   // Grüner Topbar mit Segment-Nav (Heute/Plan/Rezepte/Verlauf)
   // Grüner Kopf (Datum + Titel + Rezepte-Kürzel + Streak). Navigation läuft über
   // die modul-eigene Bottom-Nav (ernNavHtml, in #btmnav injiziert) – wie im Mockup.
@@ -3027,6 +3047,7 @@
     if(n===null||n===false){ inner='<div style="background:#fff;border-radius:20px;box-shadow:0 12px 34px rgba(4,33,40,.10);padding:40px 22px;text-align:center;color:#8a929a;font-size:14px;font-weight:600">Lade Ernährung …</div>'; }
     else if(!n.ok||n.available===false){ inner='<div style="background:#fff;border-radius:20px;box-shadow:0 12px 34px rgba(4,33,40,.10);padding:30px 22px;text-align:center"><div style="font-size:34px">🥗</div><div style="font-size:16px;font-weight:800;color:#15171B;margin-top:10px">Ernährung ist gerade nicht verfügbar</div><div style="font-size:13.5px;color:#6b7780;font-weight:500;margin-top:6px;line-height:1.5">Bitte später erneut versuchen.</div></div>'; }
     else if(S.ernConfirm){ inner=ernConfirmScreen(); }
+    else if(S.ernData){ inner=ernDataScreen(); }
     else if(S.ernFavMgr){ inner=ernFavMgrScreen(); }
     else if(S.ernEntryEdit){ inner=ernEntryEditScreen(); }
     else if(S.ernProd){ inner=ernProductPicker(); }
@@ -4206,6 +4227,32 @@
     ernFavLog:function(a){ a=String(a||''); var parts=a.split(':'), fid=parts[0], factor=parts[1]?parseFloat(parts[1]):1;
       api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'fav-log',id:fid,factor:factor,date:ernActiveDate()})})
       .then(function(d){ if(d&&d.ok){ DATA.nutri=d; var nm=(d.added&&d.added[0]&&d.added[0].name)||'Favorit'; S.ernMsg='Protokolliert: '+nm; S.ernErr=false; render(); } }).catch(function(){}); },
+    // ── Etappe 6: Datenschutz – Export / Tag löschen / alles löschen ──
+    ernDataOpen:function(){ setS({ernData:true, ernMsg:'', ernErr:false}); },
+    ernDataClose:function(){ S.ernData=false; S.ernMsg=''; S.ernErr=false; loadNutri(); loadFavs(); },
+    ernDataExport:function(){ if(S.ernDataBusy) return; S.ernDataBusy=true; S.ernMsg=''; S.ernErr=false; render();
+      api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'export'})})
+      .then(function(d){ S.ernDataBusy=false;
+        if(d&&d.ok&&d.export){ var txt=JSON.stringify(d.export,null,2);
+          try{ var b=new Blob([txt],{type:'application/json'}); var u=URL.createObjectURL(b); var el=document.createElement('a'); el.href=u; el.download='fitinn-ernaehrung-'+isoToday()+'.json'; document.body.appendChild(el); el.click(); document.body.removeChild(el); setTimeout(function(){ try{ URL.revokeObjectURL(u); }catch(e){} },4000); S.ernMsg='Export heruntergeladen ✓'; S.ernErr=false; }
+          catch(e){ try{ copyText(txt); S.ernMsg='Download nicht möglich – Daten in die Zwischenablage kopiert.'; S.ernErr=false; }catch(e2){ S.ernErr=true; S.ernMsg='Export gerade nicht möglich.'; } }
+        } else { S.ernErr=true; S.ernMsg='Export gerade nicht möglich.'; }
+        render(); })
+      .catch(function(){ S.ernDataBusy=false; S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); }); },
+    ernDelDay:function(){ if(S.ernDataBusy) return; var el=$('ern_delday'); var date=el?el.value:isoToday();
+      if(!/^\d{4}-\d{2}-\d{2}$/.test(date)){ S.ernErr=true; S.ernMsg='Bitte ein gültiges Datum wählen.'; render(); return; }
+      S.ernDataBusy=true; S.ernMsg=''; S.ernErr=false; render();
+      api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'delete-day',date:date})})
+      .then(function(d){ S.ernDataBusy=false; if(d&&d.ok){ if(DATA.nutri&&DATA.nutri.today&&DATA.nutri.today.date===date) DATA.nutri=d; S.ernMsg='Tag gelöscht ✓'; S.ernErr=false; } else { S.ernErr=true; S.ernMsg='Konnte nicht löschen.'; } render(); })
+      .catch(function(){ S.ernDataBusy=false; S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); }); },
+    ernDelAll:function(){ if(S.ernDataBusy) return; var el=$('ern_delall'); var v=(el?el.value:'').trim().toUpperCase();
+      if(v!=='LÖSCHEN'&&v!=='LOESCHEN'){ S.ernErr=true; S.ernMsg='Bitte „LÖSCHEN" eingeben, um zu bestätigen.'; render(); return; }
+      S.ernDataBusy=true; S.ernMsg=''; S.ernErr=false; render();
+      api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'delete-all',confirm:'LOESCHEN'})})
+      .then(function(d){ S.ernDataBusy=false;
+        if(d&&d.ok&&d.deleted){ try{ localStorage.removeItem(ERN_CHAT_KEY); }catch(e){} S.ernChat=[]; DATA.nutriFavs=[]; S.ernData=false; S.ernViewDate=''; S.ernMsg='Alle Ernährungsdaten wurden gelöscht.'; S.ernErr=false; loadNutri(); }
+        else { S.ernErr=true; S.ernMsg=(d&&d.message)||'Konnte nicht löschen.'; render(); } })
+      .catch(function(){ S.ernDataBusy=false; S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); }); },
     ernAskSend:function(){ if(S.ernAskBusy) return; var t=$('ern_ask'); var q=t?(t.value||'').trim():''; if(q.length<2) return;
       // Verlauf (letzte 8) an den Server mitgeben; Server begrenzt & bereinigt zusätzlich.
       var hist=(S.ernChat||[]).slice(-8).map(function(m){ return {role:m.role,text:m.text}; });
