@@ -1084,7 +1084,7 @@
     return '<div class="homeHero">'+
       '<div style="position:absolute;width:230px;height:230px;right:-80px;top:-70px;border-radius:50%;background:radial-gradient(circle,rgba(246,169,100,.22),transparent 70%);pointer-events:none"></div>'+
       '<div style="position:relative;display:flex;align-items:center;justify-content:space-between;gap:12px">'+
-        '<div style="min-width:0"><div style="font-size:13px;font-weight:600;color:#aed0d6">'+esc(todayLabel)+'</div>'+
+        '<div style="min-width:0"><div data-act="ernTestTap" style="font-size:13px;font-weight:600;color:#aed0d6;-webkit-user-select:none;user-select:none;touch-action:manipulation">'+esc(todayLabel)+'</div>'+
           '<div style="font-size:25px;font-weight:900;color:#fff;letter-spacing:-.5px;margin-top:3px;line-height:1.1">'+esc(greetLine(name))+'</div></div>'+
         '<div style="display:flex;align-items:center;gap:10px;flex-shrink:0">'+
           '<button data-act="nav" data-arg="postfach" aria-label="Postfach" style="position:relative;width:42px;height:42px;border-radius:14px;border:none;background:rgba(255,255,255,.13);display:flex;align-items:center;justify-content:center;cursor:pointer">'+svg('<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.7 21a2 2 0 0 1-3.4 0"></path>',{c:'#fff',w:1.9,s:20})+(unread?'<span style="position:absolute;top:9px;right:10px;width:8px;height:8px;border-radius:50%;background:#F6A964;border:2px solid #0a4958"></span>':'')+'</button>'+
@@ -2461,10 +2461,14 @@
   // Feature-Schalter: Ernährungs-Modul in der App. Läuft eigenständig (eigene
   // Bedarfsrechnung + KI-Schätzung, kein Fremdanbieter). happyfigur ist bewusst
   // NICHT angebunden. Vor dem Start ist eine DSGVO-Einwilligung (Art. 9) Pflicht.
-  // Bleibt AUS, bis die produktionsreife Überarbeitung (Bestätigen/Bearbeiten/
-  // Favoriten/Verlauf + Open-Food-Facts) geprüft ist. Auf true setzen aktiviert
-  // Startseiten-Kachel, Profil-Eintrag, FINN-Link und die direkte Navigation.
-  var ERN_ON=false;
+  // ERN_LAUNCH = öffentlicher Start für ALLE Mitglieder (bleibt aus, bis final).
+  // Zusätzlich gibt es einen versteckten Test-Modus NUR auf dem eigenen Gerät:
+  // 7× schnell auf das Datum im Startbildschirm-Header tippen (ACT.ernTestTap)
+  // schaltet ihn per localStorage frei/aus – so testet nur der Betreiber, während
+  // normale Mitglieder das Modul nicht sehen.
+  var ERN_LAUNCH=false;
+  function ernTestOn(){ try{ return localStorage.getItem('fi_ern_test')==='1'; }catch(e){ return false; } }
+  var ERN_ON = ERN_LAUNCH || ernTestOn();
   // Einstiegs-Kachel auf der Startseite (führt ins Ernährungs-Modul)
   function ernHomeCard(){
     if(!ERN_ON) return '';
@@ -4077,6 +4081,15 @@
     alToLogin:function(){ try{ cleanMlt(); }catch(e){} S.alToken=''; S.liDob=''; S.alErr=''; S.alState='loading'; setS({screen:'login'}); },
     // Versteckter Team-Zugang: 5× schnell auf den Avatar (Startseite) tippen -> /team.
     teamTap:function(){ window.__tt=(window.__tt||0)+1; if(window.__ttT) clearTimeout(window.__ttT); window.__ttT=setTimeout(function(){ window.__tt=0; },1500); if(window.__tt>=5){ window.__tt=0; clearTimeout(window.__ttT); if(confirm('Team-Bereich öffnen?')) location.assign('/team'); } },
+    // Versteckter Ernährungs-Testmodus: 7× schnell aufs Datum tippen -> nur dieses Gerät.
+    ernTestTap:function(){ window.__et=(window.__et||0)+1; if(window.__etT) clearTimeout(window.__etT); window.__etT=setTimeout(function(){ window.__et=0; },2000);
+      if(window.__et>=7){ window.__et=0; clearTimeout(window.__etT);
+        var on=!ernTestOn(); try{ if(on) localStorage.setItem('fi_ern_test','1'); else localStorage.removeItem('fi_ern_test'); }catch(e){}
+        ERN_ON = ERN_LAUNCH || on;
+        if(on){ try{ alert('Ernährungs-Modul: Testmodus AN (nur auf diesem Gerät).'); }catch(e){} nav('ern'); }
+        else { try{ alert('Ernährungs-Modul: Testmodus AUS.'); }catch(e){} if(S.screen==='ern'){ nav('home'); } else { render(); } }
+      }
+    },
     openFinn:function(){ setS({finnOpen:true}); setTimeout(function(){ var t=$('finn_q'); if(t) t.focus(); finnScrollBottom(); },60); },
     finnRefresh:function(){ S.finnTip=''; S.finnTipLoaded=false; loadFinnTip(); render(); },
     ciToggle:function(){ if(S.screen!=='home') nav('home'); if(S.checkedInAt){ if(ACT.doCheckout) ACT.doCheckout(); } else { if(ACT.doCheckin) ACT.doCheckin(); } },
