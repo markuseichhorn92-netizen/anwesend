@@ -394,6 +394,7 @@
     ernViewDate:'', ernDayBusy:false, ernEntryEdit:null, ernEntryBusy:false,
     ernFavMgr:false, ernFavBusy:false, ernFavAddOpen:false,
     ernChat:[], ernData:false, ernDataBusy:false, ernRecipeServ:1,
+    ernUpgrade:false, ernUpgradeBusy:false,
     ctOpen:false, ctSent:false, ctMsg:'', ctBusy:false, ctErr:'', ctMsgServer:'', artFb:null,
     pfFilter:'offen', pfSearch:'', pfLimit:12, pfSel:null, pfThread:false, pfDraft:'', pfBusy:false, pfErr:'',
     alToken:'', alLabel:'', alAction:'', alBusy:false, alErr:'', alGo:'', alSub:'', alState:'loading',
@@ -531,7 +532,7 @@
     if(s==='insta'){ S.instaSel=null; loadInsta(); maybeRefreshInsta(); }
     if(s==='home'){ loadFinnTip(); maybeRefreshInsta(); maybeRefreshLive(); }
     if(s==='account') loadAccount();
-    if(s==='ern'){ try{ window.__ernStopScan&&window.__ernStopScan(); }catch(e){} S.ernMsg=''; S.ernErr=false; S.ernAsk=''; S.ernAnswer=''; S.ernRecipes=null; S.ernCoachSent=false; S.ernTab='heute'; S.ernRecipeSel=null; S.ernCapture=false; S.ernConfirm=null; S.ernProd=null; S.ernEntryEdit=null; S.ernViewDate=''; S.ernFavMgr=false; S.ernObStep=0; S.ernChat=ernChatLoad(); loadNutri(); loadFavs(); }
+    if(s==='ern'){ try{ window.__ernStopScan&&window.__ernStopScan(); }catch(e){} S.ernMsg=''; S.ernErr=false; S.ernAsk=''; S.ernAnswer=''; S.ernRecipes=null; S.ernCoachSent=false; S.ernTab='heute'; S.ernRecipeSel=null; S.ernCapture=false; S.ernConfirm=null; S.ernProd=null; S.ernEntryEdit=null; S.ernViewDate=''; S.ernFavMgr=false; S.ernData=false; S.ernUpgrade=false; S.ernObStep=0; S.ernChat=ernChatLoad(); loadNutri(); loadFavs(); }
     if(s==='appt'){ if(!DATA.appts) loadAppts(); if(DATA.bookable===null) loadBookable(); }
     if(s==='home'||s==='checkin') checkArrival();
     setS({}); }
@@ -2513,7 +2514,47 @@
   function ernSeedForm(){ var pr=(DATA.nutri&&DATA.nutri.profile)||{};
     S.ernGoal=pr.goal||'abnehmen'; S.ernSex=pr.sex||'w'; S.ernH=pr.height||170; S.ernW=pr.weight||70; S.ernAge=pr.age||30; S.ernAct=pr.activity||'moderat'; S.ernDiet=pr.diet||'omnivor'; }
   // Foto einer Mahlzeit -> herunterskalieren -> KI-Schätzung (action:log-photo).
+  // ═══ Freemium: KI-Funktionen = Premium (Basis bleibt gratis) ═══
+  function ernPremium(){ return !!(DATA.nutri && DATA.nutri.premium); }
+  function ernTrialing(){ return !!(DATA.nutri && DATA.nutri.trialing); }
+  // Dashboard-Karte: für Free ein Upgrade-CTA, für Premium ein dezenter Status.
+  function ernPremiumCard(){
+    if(ernPremium()){
+      var until=DATA.nutri&&DATA.nutri.premiumUntil; var days=until?Math.max(0,Math.ceil((until-Date.now())/86400000)):0;
+      var label=ernTrialing()?('Gratis-Test aktiv'+(days?(' · noch '+days+' Tag'+(days===1?'':'e')):'')):'Premium aktiv';
+      return '<div style="display:flex;align-items:center;gap:10px;background:rgba(15,122,74,.10);border:1px solid rgba(15,122,74,.22);border-radius:14px;padding:11px 14px;margin-bottom:14px"><span style="font-size:16px">⭐</span><span style="flex:1;font-size:12.5px;font-weight:800;color:'+ERN_G+'">'+label+'</span><button data-act="ernDataOpen" style="border:none;background:transparent;color:var(--text-soft);font-size:11.5px;font-weight:800;cursor:pointer;padding:0">Verwalten</button></div>';
+    }
+    return '<button data-act="ernUpgradeOpen" aria-label="Ernährung Premium – 7 Tage gratis testen" style="width:100%;text-align:left;border:none;cursor:pointer;background:linear-gradient(150deg,#12a06a,#0a5a37);border-radius:18px;padding:16px;margin-bottom:14px;box-shadow:0 12px 30px rgba(4,33,40,.18);font-family:inherit;display:flex;align-items:center;gap:13px"><span style="width:46px;height:46px;border-radius:14px;background:rgba(255,255,255,.16);display:flex;align-items:center;justify-content:center;font-size:23px;flex-shrink:0">✨</span><div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:900;color:#fff">Ernährung Premium</div><div style="font-size:12.5px;font-weight:600;color:#d4f0e2;margin-top:2px;line-height:1.35">Foto-Analyse, FINN-Coach, Wochenpläne &amp; KI-Rezepte. 7 Tage gratis.</div></div>'+svg('<path d="M9 6l6 6-6 6"></path>',{c:'rgba(255,255,255,.75)',w:2.2,s:20})+'</button>';
+  }
+  // Vor einer KI-Aktion: kein Premium -> Upgrade-Screen zeigen und Aktion abbrechen (true).
+  function ernNeedPremium(){ if(ernPremium()) return false; setS({ernUpgrade:true}); try{ window.scrollTo(0,0); }catch(e){} return true; }
+  var ERN_PREMIUM_FEATURES=[
+    ['📸','Teller fotografieren','Die KI erkennt Zutaten, Portion & Kalorien automatisch.'],
+    ['✍️','Einfach eintippen','Schreib, was du gegessen hast – FINN schätzt die Nährwerte.'],
+    ['💬','FINN-Coach im Chat','Dein persönlicher Ernährungscoach, jederzeit fragbar.'],
+    ['🍳','KI-Rezepte','Passend zu deinem Ziel – auch aus dem, was im Kühlschrank ist.'],
+    ['🗓️','Wochenplan','Automatischer Plan + fertige Einkaufsliste.'],
+    ['📈','Wochen-Auswertung','FINN erkennt Muster und gibt dir wöchentlich Tipps.'],
+  ];
+  function ernUpgradeScreen(){
+    var busy=S.ernUpgradeBusy;
+    var feats=ERN_PREMIUM_FEATURES.map(function(f){ return '<div style="display:flex;align-items:flex-start;gap:13px;padding:11px 0"><span style="width:40px;height:40px;border-radius:12px;background:rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">'+f[0]+'</span><div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:900;color:#fff">'+f[1]+'</div><div style="font-size:12.5px;font-weight:500;color:#d4f0e2;line-height:1.4;margin-top:1px">'+esc(f[2])+'</div></div></div>'; }).join('');
+    var back='<button data-act="ernUpgradeClose" aria-label="Zurück" style="position:absolute;top:16px;left:16px;width:38px;height:38px;border-radius:12px;border:none;background:rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:2">'+svg(IC.back,{c:'#fff',w:2.2,s:19})+'</button>';
+    var err=(S.ernErr&&S.ernMsg)?'<div role="alert" style="font-size:12.5px;font-weight:700;color:#ffd7cf;text-align:center;margin-top:12px">'+esc(S.ernMsg)+'</div>':'';
+    return '<div style="position:relative;min-height:100%;background:linear-gradient(172deg,#12a06a 0%,#0f7a4a 52%,#0a5a37 100%);padding:56px 22px 30px">'+back+
+      '<div style="text-align:center"><div style="display:inline-flex;align-items:center;gap:7px;background:rgba(255,255,255,.16);border-radius:20px;padding:6px 14px;font-size:12px;font-weight:900;color:#fff;letter-spacing:.3px">⭐ ERNÄHRUNG PREMIUM</div>'+
+        '<div style="font-size:27px;font-weight:900;letter-spacing:-.6px;line-height:1.15;color:#fff;margin-top:16px">Hol dir deinen<br>KI-Ernährungscoach</div>'+
+        '<div style="font-size:14.5px;font-weight:600;color:#d4f0e2;line-height:1.5;margin-top:12px">7 Tage gratis testen – danach nur <b style="color:#fff">4,99 €/Monat</b>. Jederzeit kündbar.</div></div>'+
+      '<div style="background:rgba(255,255,255,.08);border-radius:20px;padding:8px 16px;margin-top:22px">'+feats+'</div>'+
+      '<button data-act="ernUpgradeGo" '+(busy?'disabled ':'')+'style="width:100%;margin-top:22px;padding:17px;border:none;border-radius:16px;background:#fff;color:#0f7a4a;font-weight:900;font-size:16.5px;cursor:pointer;opacity:'+(busy?'.6':'1')+'">'+(busy?'Einen Moment …':'7 Tage gratis starten')+'</button>'+
+      '<div style="font-size:11.5px;color:#c5ecd7;font-weight:600;text-align:center;line-height:1.5;margin-top:12px">Sichere Zahlung über Stripe · keine Kartendaten in der App.<br>Nach 7 Tagen 4,99 €/Monat (inkl. MwSt), monatlich kündbar.</div>'+
+      err+
+      '<div style="font-size:12px;color:#aed0d6;font-weight:600;text-align:center;margin-top:16px;line-height:1.5">Basis bleibt gratis: manuell loggen, Barcode, Wasser,<br>Favoriten, Kochbuch &amp; Verlauf.</div>'+
+      '<button data-act="ernUpgradeClose" style="width:100%;margin-top:14px;padding:13px;border:none;background:transparent;color:#eafff4;font-weight:800;font-size:14px;cursor:pointer">Vielleicht später</button>'+
+    '</div>';
+  }
   window.__ernPhoto=function(input){
+    if(ernNeedPremium()){ try{ if(input) input.value=''; }catch(e){} return; }
     var f=input&&input.files&&input.files[0]; try{ if(input) input.value=''; }catch(e){}
     if(!f) return;
     if(!/^image\//.test(f.type||'')){ S.ernPhotoBusy=false; S.ernErr=true; S.ernMsg='Bitte ein Foto auswählen.'; render(); return; }
@@ -2547,6 +2588,7 @@
   // Freitext/Sprache -> KI-SCHÄTZUNG (kein Speichern!) -> Bestätigen-Screen.
   function ernLogText(text){
     var q=String(text||'').trim(); if(q.length<2){ render(); return; }
+    if(ernNeedPremium()) return;
     S.ernBusy=true; S.ernMsg=''; S.ernErr=false; render();
     api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'estimate',text:q})})
     .then(function(d){ S.ernBusy=false;
@@ -3068,7 +3110,7 @@
     var studio='<div style="'+CARD+';display:flex;align-items:center;gap:13px"><div style="width:46px;height:46px;border-radius:14px;background:#EAF4FB;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+svg('<path d="M6.5 6.5l11 11M4 9l-1.5-1.5M20 15l1.5 1.5M9 4l-1.5-1.5M15 20l1.5 1.5M3 12l3-3 6 6-3 3zM21 12l-3 3-6-6 3-3z"></path>',{c:'#2d84b8',w:1.9,s:24})+'</div><div style="flex:1;min-width:0"><div style="font-size:10.5px;font-weight:800;color:#2d84b8;text-transform:uppercase;letter-spacing:.4px">Aus deinem Fit-Inn Studio</div><div style="font-size:14px;font-weight:900;color:var(--text);margin-top:2px">Trainingstag = mehr Spielraum</div><div style="font-size:12px;font-weight:600;color:var(--text-muted);margin-top:3px;line-height:1.35">An Tagen, an denen du trainierst, darfst du etwas mehr essen – plane es ruhig ein.</div></div></div>';
     // Vergangene Tage: nur relevante Blöcke (Tagesziel-Ring, Wasser, Nachtragen, Mahlzeiten).
     if(!viewIsToday) return ernDayNav()+ring+water+log+mealsBlock;
-    return ernDayNav()+ring+checkin+fasting+studio+water+log+mealsBlock+coachTeaser+cta+recompute;
+    return ernDayNav()+ring+ernPremiumCard()+checkin+fasting+studio+water+log+mealsBlock+coachTeaser+cta+recompute;
   }
   // Fasten-Helfer (Client-Countdown; Server hält plan+start)
   function ernFastMs(){
@@ -3087,6 +3129,13 @@
   function ernDataScreen(){
     var busy=S.ernDataBusy, CARD='background:#fff;border-radius:18px;padding:17px;box-shadow:0 8px 24px rgba(4,33,40,.08);margin-bottom:14px';
     var head='<div style="display:flex;align-items:center;gap:12px;padding:2px 2px 14px"><button data-act="ernDataClose" aria-label="Zurück" style="width:38px;height:38px;border-radius:12px;border:none;background:#fff;box-shadow:0 4px 12px rgba(4,33,40,.08);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'+svg(IC.back,{c:'#0a4958',w:2.2,s:19})+'</button><div style="flex:1"><div style="font-size:20px;font-weight:900;color:var(--text);letter-spacing:-.4px">Meine Daten</div><div style="font-size:12px;font-weight:700;color:var(--text-soft)">Ernährung &amp; Datenschutz</div></div></div>';
+    // Abo-Bereich: Premium verwalten/kündigen (Stripe-Portal) oder holen.
+    var pu=DATA.nutri&&DATA.nutri.premiumUntil; var pdays=pu?Math.max(0,Math.ceil((pu-Date.now())/86400000)):0;
+    var aboSec=ernPremium()
+      ? '<div style="'+CARD+'"><div style="font-size:15px;font-weight:900;color:var(--text);display:flex;align-items:center;gap:8px">⭐ Premium</div>'+
+          '<div style="font-size:12.5px;font-weight:600;color:var(--text-muted);line-height:1.55;margin:8px 0 12px">'+(ernTrialing()?('Dein Gratis-Test läuft'+(pdays?(' – noch '+pdays+' Tag'+(pdays===1?'':'e')):'')+', danach 4,99 €/Monat.'):'Premium ist aktiv (4,99 €/Monat).')+' Kündigen oder Zahlungsdaten ändern kannst du jederzeit im Stripe-Portal.</div>'+
+          '<button data-act="ernPortal" '+(busy?'disabled ':'')+'style="width:100%;padding:14px;border:1.5px solid rgba(10,73,88,.25);border-radius:14px;background:#fff;color:#0a4958;font-weight:800;font-size:14.5px;cursor:pointer;opacity:'+(busy?'.6':'1')+'">'+(busy?'Öffne …':'Abo verwalten / kündigen')+'</button></div>'
+      : '<div style="'+CARD+'"><div style="font-size:15px;font-weight:900;color:var(--text)">Premium</div><div style="font-size:12.5px;font-weight:600;color:var(--text-muted);line-height:1.55;margin:8px 0 12px">KI-Funktionen (Foto-Analyse, FINN-Coach, Wochenpläne, KI-Rezepte) sind Premium. Basis bleibt gratis.</div><button data-act="ernUpgradeOpen" style="width:100%;padding:14px;border:none;border-radius:14px;background:'+ERN_G+';color:#fff;font-weight:900;font-size:14.5px;cursor:pointer">7 Tage gratis testen</button></div>';
     var infoSec='<div style="'+CARD+'"><div style="font-size:15px;font-weight:900;color:var(--text);display:flex;align-items:center;gap:8px">'+svg('<circle cx="12" cy="12" r="10"></circle><path d="M12 16v-4M12 8h.01"></path>',{c:'#0a4958',w:2,s:19})+'Was wir speichern</div>'+
       '<div style="font-size:12.5px;font-weight:500;color:var(--text-muted);line-height:1.6;margin-top:10px">Im Ernährungsmodul liegen: dein <b>Profil</b> (Ziel, Körperdaten, Aktivität, Ernährungsform), deine <b>protokollierten Mahlzeiten &amp; Wasser</b> pro Tag, deine <b>Favoriten</b>, <b>Wochenpläne</b>, <b>gespeicherte Rezepte</b> und dein <b>Fasten-Status</b>. Alles ist ausschließlich deinem Konto zugeordnet.</div>'+
       '<div style="font-size:12.5px;font-weight:500;color:var(--text-muted);line-height:1.6;margin-top:10px">Wenn du <b>Text, Sprache oder ein Foto</b> zur Schätzung eingibst, wird das zur <b>KI-Auswertung verarbeitet</b> (an unseren KI-Dienstleister übermittelt), um Lebensmittel und Nährwerte zu erkennen. Fotos werden dafür nur verarbeitet, nicht als Bild dauerhaft gespeichert – gespeichert wird nur, was du im Bestätigen-Schritt übernimmst. Der FINN-Chatverlauf bleibt nur lokal auf deinem Gerät.</div>'+
@@ -3104,7 +3153,7 @@
       '<input id="ern_delall" placeholder="LÖSCHEN" aria-label="Löschen bestätigen" autocapitalize="characters" style="width:100%;border:1.5px solid rgba(192,57,43,.3);border-radius:12px;padding:11px 12px;font-size:15px;font-weight:800;color:var(--err-fg);background:#fff;margin-top:6px">'+
       '<button data-act="ernDelAll" '+(busy?'disabled ':'')+'style="width:100%;margin-top:12px;padding:14px;border:none;border-radius:14px;background:#c0392b;color:#fff;font-weight:900;font-size:14.5px;cursor:pointer;opacity:'+(busy?'.6':'1')+'">Unwiderruflich alles löschen</button></div>';
     var msg=S.ernMsg?'<div role="'+(S.ernErr?'alert':'status')+'" style="font-size:12.5px;font-weight:700;color:'+(S.ernErr?'var(--err-fg)':ERN_G)+';text-align:center;margin-top:4px;line-height:1.4">'+esc(S.ernMsg)+'</div>':'';
-    return '<div style="padding:4px 2px 40px">'+head+infoSec+exportSec+delDaySec+delAllSec+msg+'</div>';
+    return '<div style="padding:4px 2px 40px">'+head+aboSec+infoSec+exportSec+delDaySec+delAllSec+msg+'</div>';
   }
   // Grüner Topbar mit Segment-Nav (Heute/Plan/Rezepte/Verlauf)
   // Grüner Kopf (Datum + Titel + Rezepte-Kürzel + Streak). Navigation läuft über
@@ -3160,6 +3209,7 @@
     var LIGHT='--surface:#fff;--surface-2:#eef2f3;--text:#15171B;--text-2:#2c3338;--text-muted:#6b7780;--text-soft:#8a929a;--border:#f0f3f3;--teal-ink:#0a4958;--err-fg:#c0392b;background:#eef2f3;min-height:100%';
     if(n===null||n===false){ inner='<div style="background:#fff;border-radius:20px;box-shadow:0 12px 34px rgba(4,33,40,.10);padding:40px 22px;text-align:center;color:#8a929a;font-size:14px;font-weight:600">Lade Ernährung …</div>'; }
     else if(!n.ok||n.available===false){ inner='<div style="background:#fff;border-radius:20px;box-shadow:0 12px 34px rgba(4,33,40,.10);padding:30px 22px;text-align:center"><div style="font-size:34px">🥗</div><div style="font-size:16px;font-weight:800;color:#15171B;margin-top:10px">Ernährung ist gerade nicht verfügbar</div><div style="font-size:13.5px;color:#6b7780;font-weight:500;margin-top:6px;line-height:1.5">Bitte später erneut versuchen.</div></div>'; }
+    else if(S.ernUpgrade){ inner=ernUpgradeScreen(); }
     else if(S.ernConfirm){ inner=ernConfirmScreen(); }
     else if(S.ernData){ inner=ernDataScreen(); }
     else if(S.ernFavMgr){ inner=ernFavMgrScreen(); }
@@ -3274,7 +3324,9 @@
     var st=w.stats||{}, rev=w.review;
     var review='<div style="background:linear-gradient(150deg,#0a4958,#063540);border-radius:20px;padding:18px;color:#fff;box-shadow:0 14px 34px rgba(4,33,40,.18);margin-bottom:14px"><div style="font-size:15px;font-weight:900">Deine Woche im Rückblick</div><div style="font-size:11.5px;font-weight:700;color:#7fc9a8;margin-top:1px">FINN · Wochen-Review</div>'+
       '<div style="display:flex;gap:8px;margin-top:14px"><div style="flex:1;background:rgba(255,255,255,.08);border-radius:13px;padding:11px;text-align:center"><div style="font-size:19px;font-weight:900;color:#7fe3a8">'+(st.inGoal||0)+'/7</div><div style="font-size:10px;font-weight:700;color:#a9d9c4;margin-top:2px">Tage im Ziel</div></div><div style="flex:1;background:rgba(255,255,255,.08);border-radius:13px;padding:11px;text-align:center"><div style="font-size:19px;font-weight:900;color:#fff">'+ernNum(st.avgKcal||0)+'</div><div style="font-size:10px;font-weight:700;color:#a9d9c4;margin-top:2px">Ø kcal/Tag</div></div><div style="flex:1;background:rgba(255,255,255,.08);border-radius:13px;padding:11px;text-align:center"><div style="font-size:19px;font-weight:900;color:#fff">'+(st.proteinDays||0)+'/7</div><div style="font-size:10px;font-weight:700;color:#a9d9c4;margin-top:2px">Eiweißziel</div></div></div>'+
-      (rev&&rev.tip?'<div style="display:flex;gap:9px;margin-top:14px;background:rgba(255,255,255,.06);border-radius:13px;padding:12px 13px"><span style="font-size:15px">💡</span><div style="font-size:12.5px;font-weight:600;color:#d4f0e2;line-height:1.45">'+esc(rev.tip)+'</div></div>':(st.tracked?'':'<div style="font-size:12.5px;color:#a9d9c4;font-weight:500;margin-top:12px">Logge ein paar Tage, dann fasst FINN deine Woche zusammen.</div>'))+'</div>';
+      (rev&&rev.tip?'<div style="display:flex;gap:9px;margin-top:14px;background:rgba(255,255,255,.06);border-radius:13px;padding:12px 13px"><span style="font-size:15px">💡</span><div style="font-size:12.5px;font-weight:600;color:#d4f0e2;line-height:1.45">'+esc(rev.tip)+'</div></div>'
+        :(w.reviewLocked&&st.tracked?'<div style="margin-top:14px;background:rgba(255,255,255,.06);border-radius:13px;padding:13px"><div style="font-size:12.5px;font-weight:700;color:#d4f0e2;line-height:1.45">🔒 Deine persönliche KI-Wochenauswertung mit Tipps &amp; Mustern gibt es mit Premium.</div><button data-act="ernUpgradeOpen" style="width:100%;margin-top:11px;padding:11px;border:none;border-radius:12px;background:#fff;color:#0a4958;font-weight:900;font-size:13.5px;cursor:pointer">7 Tage gratis testen</button></div>'
+          :(st.tracked?'':'<div style="font-size:12.5px;color:#a9d9c4;font-weight:500;margin-top:12px">Logge ein paar Tage, dann fasst FINN deine Woche zusammen.</div>')))+'</div>';
     var insights=(rev&&rev.insights&&rev.insights.length)?('<div style="'+CARD+'"><div style="font-size:15px;font-weight:900;color:var(--text);margin-bottom:12px">FINN erkennt Muster</div>'+rev.insights.map(function(i){ return '<div style="display:flex;gap:11px;background:var(--surface-2);border-radius:14px;padding:13px 14px;margin-bottom:9px"><span style="font-size:18px">💬</span><div style="flex:1"><div style="font-size:13.5px;font-weight:900;color:var(--text)">'+esc(i.title)+'</div><div style="font-size:12px;font-weight:600;color:var(--text-muted);line-height:1.45;margin-top:2px">'+esc(i.text)+'</div></div></div>'; }).join('')+'</div>'):'';
     var proto=days.slice().reverse().filter(function(d){return d.meals>0;});
     var protoBlock=proto.length?('<div style="font-size:14px;font-weight:900;color:var(--text);margin:4px 2px 12px">Protokoll</div>'+proto.map(function(d){ var pct=Math.round(Math.min(1,d.kcal/target)*100); var deg=Math.min(360,Math.round(d.kcal/target*360)); var dd=new Date(d.date+'T12:00:00'); var lab=['So','Mo','Di','Mi','Do','Fr','Sa'][dd.getDay()]+', '+dd.getDate()+'.'+(dd.getMonth()+1)+'.'; return '<div style="background:var(--surface);border-radius:18px;box-shadow:0 10px 26px rgba(4,33,40,.07);padding:14px 16px;margin-bottom:10px;display:flex;align-items:center;gap:14px"><div style="position:relative;width:50px;height:50px;flex-shrink:0"><div style="width:50px;height:50px;border-radius:50%;background:conic-gradient('+ERN_OK+' '+deg+'deg,var(--surface-2) 0)"></div><div style="position:absolute;inset:6px;border-radius:50%;background:var(--surface);display:flex;align-items:center;justify-content:center;font-size:10.5px;font-weight:900;color:var(--text)">'+pct+'%</div></div><div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:900;color:var(--text)">'+lab+'</div><div style="font-size:12px;font-weight:700;color:var(--text-soft);margin-top:2px">'+ernNum(d.kcal)+' kcal · '+d.meals+' Einträge</div><div style="display:flex;gap:10px;margin-top:5px"><span style="font-size:11px;font-weight:800;color:'+ERN_PROT+'">EW '+d.p+'g</span><span style="font-size:11px;font-weight:800;color:'+ERN_CARB+'">KH '+d.c+'g</span><span style="font-size:11px;font-weight:800;color:'+ERN_FAT+'">F '+d.f+'g</span></div></div></div>'; }).join('')):ernSectionEmpty('🍽️','Noch keine Tage protokolliert','Sobald du Mahlzeiten loggst, erscheint hier dein Verlauf.');
@@ -4389,6 +4441,18 @@
     ernFavLog:function(a){ a=String(a||''); var parts=a.split(':'), fid=parts[0], factor=parts[1]?parseFloat(parts[1]):1;
       api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'fav-log',id:fid,factor:factor,date:ernActiveDate()})})
       .then(function(d){ if(d&&d.ok){ DATA.nutri=d; var nm=(d.added&&d.added[0]&&d.added[0].name)||'Favorit'; S.ernMsg='Protokolliert: '+nm; S.ernErr=false; render(); } }).catch(function(){}); },
+    // ── Premium (Freemium/Stripe) ──
+    ernUpgradeOpen:function(){ setS({ernUpgrade:true, ernMsg:'', ernErr:false}); },
+    ernUpgradeClose:function(){ setS({ernUpgrade:false, ernMsg:'', ernErr:false}); },
+    ernUpgradeGo:function(){ if(S.ernUpgradeBusy) return; S.ernUpgradeBusy=true; S.ernErr=false; S.ernMsg=''; render();
+      api('/api/member/nutrition-billing',{method:'POST',body:JSON.stringify({action:'checkout'})})
+      .then(function(d){ if(d&&d.ok&&d.url){ window.location.href=d.url; return; }
+        S.ernUpgradeBusy=false; if(d&&d.error==='already_premium'){ S.ernUpgrade=false; loadNutri(); } else { S.ernErr=true; S.ernMsg=(d&&d.message)||'Konnte nicht starten – bitte später erneut.'; } render(); })
+      .catch(function(){ S.ernUpgradeBusy=false; S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); }); },
+    ernPortal:function(){ if(S.ernDataBusy) return; S.ernDataBusy=true; render();
+      api('/api/member/nutrition-billing',{method:'POST',body:JSON.stringify({action:'portal'})})
+      .then(function(d){ if(d&&d.ok&&d.url){ window.location.href=d.url; return; } S.ernDataBusy=false; S.ernErr=true; S.ernMsg=(d&&d.message)||'Abo-Verwaltung nicht möglich.'; render(); })
+      .catch(function(){ S.ernDataBusy=false; S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); }); },
     // ── Etappe 6: Datenschutz – Export / Tag löschen / alles löschen ──
     ernDataOpen:function(){ setS({ernData:true, ernMsg:'', ernErr:false}); },
     ernDataClose:function(){ S.ernData=false; S.ernMsg=''; S.ernErr=false; loadNutri(); loadFavs(); },
@@ -4421,11 +4485,14 @@
       S.ernChat=(S.ernChat||[]).concat([{role:'user',text:q}]); ernChatSave();
       S.ernAskBusy=true; if(t) t.value=''; render(); setTimeout(ernChatScroll,0);
       api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'coach',question:q,history:hist})})
-      .then(function(d){ S.ernAskBusy=false; var ans=(d&&d.ok&&d.answer)?d.answer:((d&&d.message)||'Da komme ich gerade nicht weiter. Frag mich gleich nochmal.'); S.ernChat=(S.ernChat||[]).concat([{role:'assistant',text:ans,safety:!!(d&&d.safety)}]); ernChatSave(); render(); setTimeout(ernChatScroll,0); })
+      .then(function(d){ S.ernAskBusy=false;
+        // Coach ist Premium – aber die Sicherheits-Antwort kommt IMMER (Server prüft zuerst).
+        if(d&&d.error==='premium_required'){ S.ernChat=(S.ernChat||[]).slice(0,-1); ernChatSave(); setS({ernUpgrade:true}); return; }
+        var ans=(d&&d.ok&&d.answer)?d.answer:((d&&d.message)||'Da komme ich gerade nicht weiter. Frag mich gleich nochmal.'); S.ernChat=(S.ernChat||[]).concat([{role:'assistant',text:ans,safety:!!(d&&d.safety)}]); ernChatSave(); render(); setTimeout(ernChatScroll,0); })
       .catch(function(){ S.ernAskBusy=false; S.ernChat=(S.ernChat||[]).concat([{role:'assistant',text:'Verbindung gerade nicht möglich. Versuch es gleich nochmal.'}]); ernChatSave(); render(); setTimeout(ernChatScroll,0); }); },
     ernAskChip:function(a){ if(S.ernAskBusy) return; var t=$('ern_ask'); if(t) t.value=a; ACT.ernAskSend(); },
     ernChatNew:function(){ S.ernChat=[]; ernChatSave(); S.ernAskBusy=false; S.ernAnswer=''; render(); },
-    ernRecipes:function(){ if(S.ernRecipesBusy) return; S.ernRecipesBusy=true; render();
+    ernRecipes:function(){ if(S.ernRecipesBusy) return; if(ernNeedPremium()) return; S.ernRecipesBusy=true; render();
       api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'recipes'})})
       .then(function(d){ S.ernRecipesBusy=false; S.ernRecipes=(d&&d.ok&&Array.isArray(d.recipes))?d.recipes:[]; render(); })
       .catch(function(){ S.ernRecipesBusy=false; S.ernRecipes=[]; render(); }); },
@@ -4438,7 +4505,7 @@
     ernFastPlan:function(a){ api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'fast',do:'plan',plan:a})}).then(function(d){ if(d&&d.ok) DATA.nutri=d; render(); }).catch(function(){}); },
     ernFastToggle:function(){ var act=ernFastMs().active?'stop':'start'; api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'fast',do:act})}).then(function(d){ if(d&&d.ok) DATA.nutri=d; render(); }).catch(function(){}); },
     ernPlanTab:function(a){ setS({ernPlanTab:a}); },
-    ernPlanGen:function(){ if(S.ernPlanBusy) return; S.ernPlanBusy=true; render();
+    ernPlanGen:function(){ if(S.ernPlanBusy) return; if(ernNeedPremium()) return; S.ernPlanBusy=true; render();
       api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'plan-generate'})})
       .then(function(d){ S.ernPlanBusy=false; if(d&&d.ok){ DATA.nutriPlan={plan:d.plan,shopping:d.shopping}; S.ernPlanTab='woche'; } render(); })
       .catch(function(){ S.ernPlanBusy=false; render(); }); },
@@ -4449,7 +4516,7 @@
       .then(function(r){ S.ernBusy=false; if(r&&r.ok){ DATA.nutri=r; S.ernMsg='Ins Protokoll: '+m.title; S.ernErr=false; } render(); }).catch(function(){ S.ernBusy=false; render(); }); },
     ernShopToggle:function(a){ api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'shopping-toggle',i:parseInt(a,10)})}).then(function(d){ if(d&&d.ok&&DATA.nutriPlan) DATA.nutriPlan.shopping=d.shopping; render(); }).catch(function(){}); },
     ernShopClear:function(){ api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'shopping-clear'})}).then(function(d){ if(d&&d.ok&&DATA.nutriPlan) DATA.nutriPlan.shopping=d.shopping; render(); }).catch(function(){}); },
-    ernFridgeGo:function(){ if(S.ernRecipesBusy) return; var el=$('ern_fridge'); var v=el?(el.value||'').trim():(S.ernFridge||''); S.ernFridge=v;
+    ernFridgeGo:function(){ if(S.ernRecipesBusy) return; if(ernNeedPremium()) return; var el=$('ern_fridge'); var v=el?(el.value||'').trim():(S.ernFridge||''); S.ernFridge=v;
       if(v.length<2){ S.ernErr=true; S.ernMsg='Sag FINN, was im Kühlschrank ist.'; render(); return; }
       S.ernRecipesBusy=true; S.ernMsg=''; S.ernErr=false; render();
       api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'recipes',fridge:v})})
@@ -5066,6 +5133,16 @@
   // Anmeldung wird direkt eingecheckt (Face-ID-Gate greift wie beim manuellen
   // Check-in). Kein Standort-Check. Wiederholtes Auslösen ist per 8s-Sperre entkoppelt.
   var NFC=null; try{ NFC=new URL(window.location.href).searchParams.get('nfc'); }catch(e){}
+  // Rückkehr von Stripe-Checkout/Portal (?ern_premium=success|cancel|portal).
+  var EPR=null; try{ EPR=new URL(window.location.href).searchParams.get('ern_premium'); }catch(e){}
+  function ernPremiumReturn(kind){
+    try{ var u=new URL(window.location.href); u.searchParams.delete('ern_premium'); window.history.replaceState({}, document.title, u.pathname+u.search+u.hash); }catch(e){}
+    try{ nav('ern'); }catch(e){}
+    if(kind==='success'){ S.ernMsg='Premium aktiviert – viel Erfolg! 🎉'; S.ernErr=false; setTimeout(function(){ try{ loadNutri(); }catch(e){} }, 2500); }
+    else if(kind==='cancel'){ S.ernMsg='Kein Problem – du kannst Premium jederzeit starten.'; S.ernErr=false; }
+    else { setTimeout(function(){ try{ loadNutri(); }catch(e){} }, 500); }
+    render();
+  }
   var __nfcAt=0;
   function nfcArrive(){
     var now=Date.now(); if(now-__nfcAt<8000) return; __nfcAt=now;
@@ -5089,7 +5166,7 @@
   if(ALT){ bootActionLogin(ALT); }
   else if(MLT){ bootMagic(MLT); }
   else if(bioGate){ S.screen='login'; render(); }
-  else if(TOKEN){ loadMe().then(function(){ loadAppts(); loadPlan(); loadPlanAgg(); loadInbox(); loadPrefs(); if(DATA.checkins===null) loadCheckins(); render(); checkArrival(); if(NFC){ NFC=null; nfcArrive(); } }).catch(function(){ logout(); }); }
+  else if(TOKEN){ loadMe().then(function(){ loadAppts(); loadPlan(); loadPlanAgg(); loadInbox(); loadPrefs(); if(DATA.checkins===null) loadCheckins(); render(); checkArrival(); if(NFC){ NFC=null; nfcArrive(); } if(EPR){ var k=EPR; EPR=null; ernPremiumReturn(k); } }).catch(function(){ logout(); }); }
   else render();
 
   // Sobald die native Brücke bereit ist: Face ID anbieten (App öffnen -> Face ID -> drin).

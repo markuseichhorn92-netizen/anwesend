@@ -37,6 +37,10 @@ const AI = require('../../lib/ai');
 const { redisPipeline, hasStore } = require('../../lib/store');
 const Inbox = require('../../lib/inbox');
 const SR = require('../../lib/studioReply');
+const Ent = require('../../lib/entitlements');
+
+// Freemium: KI-Funktionen sind Premium. Freundliche Meldung fürs Upgrade.
+const PREMIUM_MSG = 'Das ist eine Premium-Funktion (KI). Teste Premium 7 Tage gratis – danach jederzeit kündbar.';
 
 const PKEY = (id) => 'nutri:p:' + String(id);
 const DKEY = (id, d) => 'nutri:d:' + String(id) + ':' + d;
@@ -211,6 +215,7 @@ async function buildState(id, profile, forDate) {
   const totals = totalsOf(day.entries);
   const streak = await computeStreak(id, todayYMD);
   const fasting = await loadFasting(id);
+  const tier = Ent.publicTier(await Ent.getEntitlement(id));   // Premium-Status für die UI (Freemium)
   return {
     ok: true, available: true, onboarded: onboarded,
     profile: profile ? { goal: profile.goal, sex: profile.sex, height: profile.height, weight: profile.weight, age: profile.age, activity: profile.activity, diet: profile.diet } : null,
@@ -219,6 +224,7 @@ async function buildState(id, profile, forDate) {
     streak: streak,
     pointsToday: pointsToday(totals, targets, day.entries.length, streak),
     fasting: fasting,
+    premium: tier.premium, tier: tier.tier, trialing: tier.trialing, premiumUntil: tier.until,
   };
 }
 
@@ -286,9 +292,13 @@ module.exports = async function handler(req, res) {
   }
 
   const profile = await loadProfile(id);
+  // Freemium-Gate: KI-Funktionen nur mit Premium. Serverseitig (Client-Gates sind umgehbar).
+  const premium = Ent.isPremium(await Ent.getEntitlement(id));
+  const denyPremium = function () { res.statusCode = 200; res.end(JSON.stringify({ ok: false, error: 'premium_required', message: PREMIUM_MSG })); return true; };
 
   // ── Punkt 1: KI-SCHÄTZUNG per Freitext – wird NICHT gespeichert, nur zur Bestätigung ──
   if (action === 'estimate' || action === 'log') {
+    if (!premium && denyPremium()) return;
     const text = cleanStr(body.text, 500);
     if (text.length < 2) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'empty', message: 'Bitte beschreibe kurz, was du gegessen hast.' })); }
     if (!AI.hasAI) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'no_ai', message: 'FINN ist gerade nicht verfügbar.' })); }
@@ -302,6 +312,7 @@ module.exports = async function handler(req, res) {
 
   // ── Punkt 1: KI-SCHÄTZUNG per FOTO – wird NICHT gespeichert, nur zur Bestätigung ──
   if (action === 'estimate-photo' || action === 'log-photo') {
+    if (!premium && denyPremium()) return;
     if (!AI.hasAI) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'no_ai', message: 'FINN ist gerade nicht verfügbar.' })); }
     if (!(await M.rateLimit('nutri-photo:' + id, 20, 3600))) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'rate_limited', message: 'Kurz durchatmen – gleich wieder versuchen.' })); }
     const b64 = String(body.base64 || '');
@@ -446,6 +457,7 @@ module.exports = async function handler(req, res) {
 
   // ── KI-Rezepte (nicht gespeichert) ──
   if (action === 'recipes') {
+    if (!premium && denyPremium()) return;
     if (!(await M.rateLimit('nutri-recipes:' + id, 20, 3600))) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'Kurz durchatmen – gleich wieder versuchen.' })); }
     const t = targetsFor(profile || {});
     const fridge = String(body.fridge || '').trim().slice(0, 200);
@@ -464,6 +476,7 @@ module.exports = async function handler(req, res) {
       try { require('../../lib/handled').record('system', id, 'nutri-safety'); } catch (e) {}
       res.statusCode = 200; return res.end(JSON.stringify({ ok: true, answer: safe, safety: true }));
     }
+    if (!premium && denyPremium()) return;   // Sicherheits-Antwort läuft immer, KI-Reply nur mit Premium
     if (!AI.hasAI) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'FINN ist gerade nicht verfügbar.' })); }
     if (!(await M.rateLimit('nutri-coach:' + id, 30, 3600))) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'Kurz durchatmen – gleich wieder versuchen.' })); }
     let m = null; try { m = await M.getMember(id); } catch (e) {}
@@ -521,6 +534,7 @@ module.exports = async function handler(req, res) {
 
   // ── Wochenplan generieren (FINN) + Einkaufsliste ableiten ──
   if (action === 'plan-generate') {
+    if (!premium && denyPremium()) return;
     if (!(await M.rateLimit('nutri-plan:' + id, 10, 3600))) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'Kurz durchatmen – gleich wieder versuchen.' })); }
     const t = targetsFor(profile || {});
     const r = await AI.nutritionWeekPlan({ goal: GOALS[profile && profile.goal] || 'ausgewogen', kcalTarget: t.kcal, protein: t.protein, diet: (profile && profile.diet) || 'omnivor' });
@@ -608,11 +622,12 @@ module.exports = async function handler(req, res) {
     const proteinDays = trackedDays.filter(function (d) { return d.p >= t.protein * 0.9; }).length;
     const avgKcal = tracked ? Math.round(trackedDays.reduce(function (a, d) { return a + d.kcal; }, 0) / tracked) : 0;
     let review = null;
-    if (AI.hasAI && tracked > 0 && (await M.rateLimit('nutri-week:' + id, 12, 3600))) {
+    // Verlauf/Protokoll ist gratis; nur das KI-Wochen-Review ist Premium.
+    if (premium && AI.hasAI && tracked > 0 && (await M.rateLimit('nutri-week:' + id, 12, 3600))) {
       const r = await AI.nutritionWeekReview({ goal: GOALS[profile && profile.goal] || '—', kcalTarget: target, protein: t.protein, days: trackedDays.map(function (d) { return { date: d.date.slice(5), kcal: d.kcal, p: d.p }; }), inGoal: inGoal, avgKcal: avgKcal, proteinDays: proteinDays, tracked: tracked });
       if (r.ok) review = { tip: r.tip, insights: r.insights };
     }
-    res.statusCode = 200; return res.end(JSON.stringify({ ok: true, days: days, target: target, stats: { inGoal: inGoal, avgKcal: avgKcal, proteinDays: proteinDays, tracked: tracked }, review: review }));
+    res.statusCode = 200; return res.end(JSON.stringify({ ok: true, days: days, target: target, stats: { inGoal: inGoal, avgKcal: avgKcal, proteinDays: proteinDays, tracked: tracked }, review: review, reviewLocked: !premium }));
   }
 
   // ── Punkt 8: Datenschutz – Export / einzelnen Tag löschen / alles löschen ──
@@ -627,6 +642,7 @@ module.exports = async function handler(req, res) {
     res.statusCode = 200; return res.end(JSON.stringify({ ok: true, export: {
       exportedAt: new Date().toISOString(),
       profile: prof ? { goal: prof.goal, sex: prof.sex, height: prof.height, weight: prof.weight, age: prof.age, activity: prof.activity, diet: prof.diet, consentAt: prof.consentAt || null } : null,
+      subscription: Ent.publicTier(await Ent.getEntitlement(id)),   // Abo-Status (read-only; Kündigung über Stripe-Portal)
       days: days,
       favorites: (await kvGetJson(FAVKEY(id))) || [],
       plan: (await kvGetJson(PLANKEY(id))) || null,
