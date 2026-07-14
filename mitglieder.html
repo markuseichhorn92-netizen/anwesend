@@ -385,6 +385,7 @@
     ernBusy:false, ernMsg:'', ernErr:false, ernAsk:'', ernAnswer:'', ernAskBusy:false, ernRecipes:null, ernRecipesBusy:false, ernCoachBusy:false, ernCoachSent:false, ernPhotoBusy:false, ernRec:false,
     ernTab:'heute', ernPlanTab:'woche', ernPlanBusy:false, ernFridge:'', ernRecipeSel:null, ernRecipeSaved:false,
     ernCapture:false, ernCapTab:'cam', ernObStep:0, ernConsent:false, ernCheckinDismissed:false, ernCapTarget:'',
+    ernConfirm:null, ernConfirmBusy:false,
     ctOpen:false, ctSent:false, ctMsg:'', ctBusy:false, ctErr:'', ctMsgServer:'', artFb:null,
     pfFilter:'offen', pfSearch:'', pfLimit:12, pfSel:null, pfThread:false, pfDraft:'', pfBusy:false, pfErr:'',
     alToken:'', alLabel:'', alAction:'', alBusy:false, alErr:'', alGo:'', alSub:'', alState:'loading',
@@ -522,7 +523,7 @@
     if(s==='insta'){ S.instaSel=null; loadInsta(); maybeRefreshInsta(); }
     if(s==='home'){ loadFinnTip(); maybeRefreshInsta(); maybeRefreshLive(); }
     if(s==='account') loadAccount();
-    if(s==='ern'){ S.ernMsg=''; S.ernErr=false; S.ernAsk=''; S.ernAnswer=''; S.ernRecipes=null; S.ernCoachSent=false; S.ernTab='heute'; S.ernRecipeSel=null; S.ernCapture=false; S.ernObStep=0; loadNutri(); }
+    if(s==='ern'){ S.ernMsg=''; S.ernErr=false; S.ernAsk=''; S.ernAnswer=''; S.ernRecipes=null; S.ernCoachSent=false; S.ernTab='heute'; S.ernRecipeSel=null; S.ernCapture=false; S.ernConfirm=null; S.ernObStep=0; loadNutri(); }
     if(s==='appt'){ if(!DATA.appts) loadAppts(); if(DATA.bookable===null) loadBookable(); }
     if(s==='home'||s==='checkin') checkArrival();
     setS({}); }
@@ -2493,19 +2494,70 @@
     rd.onerror=function(){ S.ernPhotoBusy=false; S.ernErr=true; S.ernMsg='Foto konnte nicht gelesen werden.'; render(); };
     rd.readAsDataURL(f);
   };
+  // Foto -> KI-SCHÄTZUNG (kein Speichern!) -> Bestätigen-Screen.
   function ernSendPhoto(b64,mt){
     if(!b64){ S.ernPhotoBusy=false; S.ernErr=true; S.ernMsg='Foto konnte nicht verarbeitet werden.'; render(); return; }
-    api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'log-photo',base64:b64,mediaType:mt})})
-    .then(function(d){ S.ernPhotoBusy=false; if(d&&d.ok){ DATA.nutri=d; var added=d.added||[]; if(added.length){ S.ernMsg='Erkannt: '+added.map(function(x){return x.name;}).join(', '); S.ernErr=false; if(S.ernCapture){ S.ernCapture=false; S.ernTab='heute'; } } else { S.ernMsg=d.message||'Auf dem Foto konnte ich nichts erkennen.'; S.ernErr=true; } } else { S.ernErr=true; S.ernMsg=(d&&d.message)||'Foto-Analyse fehlgeschlagen.'; } render(); try{ window.scrollTo(0,0); }catch(e){} })
+    api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'estimate-photo',base64:b64,mediaType:mt})})
+    .then(function(d){ S.ernPhotoBusy=false;
+      if(d&&d.ok&&d.items&&d.items.length){ ernOpenConfirm(d.items,'ai'); }
+      else { S.ernErr=true; S.ernMsg=(d&&d.message)||'Auf dem Foto konnte ich nichts erkennen.'; render(); try{ window.scrollTo(0,0); }catch(e){} } })
     .catch(function(){ S.ernPhotoBusy=false; S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); });
   }
-  // Freitext -> KI-Schätzung (geteilt von Log-Feld, Sprache und Erfassen-Suche)
+  // Freitext/Sprache -> KI-SCHÄTZUNG (kein Speichern!) -> Bestätigen-Screen.
   function ernLogText(text){
     var q=String(text||'').trim(); if(q.length<2){ render(); return; }
     S.ernBusy=true; S.ernMsg=''; S.ernErr=false; render();
-    api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'log',text:q})})
-    .then(function(d){ S.ernBusy=false; if(d&&d.ok){ DATA.nutri=d; var added=d.added||[]; if(added.length){ S.ernMsg='Protokolliert: '+added.map(function(x){return x.name;}).join(', '); S.ernErr=false; if(S.ernCapture){ S.ernCapture=false; S.ernTab='heute'; } } else { S.ernMsg=d.message||'Nichts erkannt – beschreib es genauer.'; S.ernErr=true; } } else { S.ernErr=true; S.ernMsg=(d&&d.message)||'Konnte nicht schätzen.'; } render(); try{ window.scrollTo(0,0); }catch(e){} })
+    api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'estimate',text:q})})
+    .then(function(d){ S.ernBusy=false;
+      if(d&&d.ok&&d.items&&d.items.length){ ernOpenConfirm(d.items,'ai'); }
+      else { S.ernErr=true; S.ernMsg=(d&&d.message)||'Nichts erkannt – beschreib es genauer.'; render(); try{ window.scrollTo(0,0); }catch(e){} } })
     .catch(function(){ S.ernBusy=false; S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); });
+  }
+  // ── Bestätigen-Screen: KI-/Barcode-/manuelle Einträge prüfen, bearbeiten, dann speichern (confirm-log) ──
+  function ernOpenConfirm(items,source){
+    var today=(DATA.nutri&&DATA.nutri.today&&DATA.nutri.today.date)||isoToday();
+    S.ernConfirm={ source:source||'ai', date:today, items:(items||[]).map(function(it){
+      return { name:String(it.name||''), portion:String(it.portion||''), meal:it.meal||'snack',
+        kcal:Math.max(0,parseInt(it.kcal,10)||0), p:Math.max(0,parseInt(it.p,10)||0), c:Math.max(0,parseInt(it.c,10)||0), f:Math.max(0,parseInt(it.f,10)||0),
+        estimated:it.estimated!==false, barcode:it.barcode||undefined, source:it.source||source }; }) };
+    S.ernCapture=false; S.ernMsg=''; S.ernErr=false; render(); try{ window.scrollTo(0,0); }catch(e){}
+  }
+  function ernCloseConfirm(){ S.ernConfirm=null; S.ernConfirmBusy=false; render(); }
+  // Live-Update der Bestätigen-Felder OHNE Re-Render (Fokus/Tastatur bleiben erhalten).
+  window.__ernCF=function(idx,field,value){ var cf=S.ernConfirm; if(!cf||!cf.items[idx]) return;
+    if(field==='kcal'||field==='p'||field==='c'||field==='f'){ var n=parseInt(value,10); cf.items[idx][field]=(isNaN(n)||n<0)?0:Math.min(9999,n); }
+    else cf.items[idx][field]=String(value); };
+  window.__ernCFDate=function(v){ if(S.ernConfirm&&/^\d{4}-\d{2}-\d{2}$/.test(v)) S.ernConfirm.date=v; };
+  var ERN_MEALS=[['fruehstueck','Frühstück'],['mittag','Mittag'],['abend','Abend'],['snack','Snack']];
+  function ernMealLabel(m){ for(var i=0;i<ERN_MEALS.length;i++){ if(ERN_MEALS[i][0]===m) return ERN_MEALS[i][1]; } return 'Snack'; }
+  function ernConfirmScreen(){
+    var cf=S.ernConfirm; var today=(DATA.nutri&&DATA.nutri.today&&DATA.nutri.today.date)||isoToday();
+    var tot=cf.items.reduce(function(t,i){ return {kcal:t.kcal+(+i.kcal||0),p:t.p+(+i.p||0),c:t.c+(+i.c||0),f:t.f+(+i.f||0)}; },{kcal:0,p:0,c:0,f:0});
+    var q=function(s){ return String(s).replace(/'/g,"\\'"); };
+    var numF=function(idx,field,label,val,color){ return '<div style="flex:1"><label style="font-size:9.5px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.3px">'+label+'</label>'+
+      '<input type="number" inputmode="numeric" min="0" aria-label="'+label+' in Gramm/kcal" value="'+(+val||0)+'" oninput="window.__ernCF('+idx+',\''+field+'\',this.value)" style="width:100%;border:1.5px solid var(--border);border-radius:10px;padding:8px 4px;font-size:15px;font-weight:800;color:'+color+';text-align:center;background:#fff;margin-top:3px"></div>'; };
+    var rows=cf.items.map(function(it,idx){
+      var meal='<select aria-label="Mahlzeit" onchange="window.__ernCF('+idx+',\'meal\',this.value)" style="border:1.5px solid var(--border);border-radius:10px;padding:8px 10px;font-size:13.5px;font-weight:700;color:var(--text-2);background:#fff;flex-shrink:0">'+ERN_MEALS.map(function(m){ return '<option value="'+m[0]+'"'+(it.meal===m[0]?' selected':'')+'>'+m[1]+'</option>'; }).join('')+'</select>';
+      return '<div style="background:#fff;border-radius:16px;padding:14px;margin-bottom:10px;box-shadow:0 6px 18px rgba(4,33,40,.06)">'+
+        '<div style="display:flex;gap:8px;align-items:center">'+
+          '<input aria-label="Name" value="'+esc(it.name)+'" oninput="window.__ernCF('+idx+',\'name\',this.value)" style="flex:1;min-width:0;border:none;border-bottom:1.5px solid var(--border);padding:6px 2px;font-size:15px;font-weight:800;color:var(--text);background:transparent">'+
+          (it.source==='openfoodfacts'?'<span title="Open Food Facts" style="font-size:10px;font-weight:800;color:#0a4958;background:var(--surface-2);padding:3px 7px;border-radius:8px;flex-shrink:0">OFF</span>':(it.estimated?'<span style="font-size:10px;font-weight:800;color:#8a6d1f;background:#FBF2E1;padding:3px 7px;border-radius:8px;flex-shrink:0">KI</span>':''))+
+          '<button data-act="ernCFRemove" data-arg="'+idx+'" aria-label="Eintrag entfernen" style="width:30px;height:30px;border-radius:9px;border:none;background:var(--surface-2);cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center">'+svg('<path d="M18 6L6 18M6 6l12 12"></path>',{c:'var(--err-fg)',w:2.2,s:15})+'</button>'+
+        '</div>'+
+        '<div style="display:flex;gap:8px;margin-top:10px">'+
+          '<input aria-label="Portion" placeholder="Portion (z. B. 150 g)" value="'+esc(it.portion)+'" oninput="window.__ernCF('+idx+',\'portion\',this.value)" style="flex:1;min-width:0;border:1.5px solid var(--border);border-radius:10px;padding:8px 10px;font-size:13.5px;font-weight:600;color:var(--text-2);background:#fff">'+meal+'</div>'+
+        '<div style="display:flex;gap:7px;margin-top:10px">'+numF(idx,'kcal','kcal',it.kcal,'#15171B')+numF(idx,'p','Eiweiß',it.p,ERN_PROT)+numF(idx,'c','KH',it.c,ERN_CARB)+numF(idx,'f','Fett',it.f,ERN_FAT)+'</div>'+
+      '</div>';
+    }).join('');
+    var head='<div style="display:flex;align-items:center;gap:12px;padding:2px 2px 14px"><button data-act="ernCFCancel" aria-label="Abbrechen" style="width:38px;height:38px;border-radius:12px;border:none;background:#fff;box-shadow:0 4px 12px rgba(4,33,40,.08);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'+svg(IC.back,{c:'#0a4958',w:2.2,s:19})+'</button>'+
+      '<div style="flex:1"><div style="font-size:20px;font-weight:900;color:var(--text);letter-spacing:-.4px">Prüfen &amp; speichern</div><div style="font-size:12px;font-weight:700;color:'+(cf.source==='openfoodfacts'?'#0a4958':'#8a6d1f')+'">'+(cf.source==='ai'?'KI-Schätzung – bitte kurz prüfen':(cf.source==='openfoodfacts'?'Open Food Facts – bitte Portion prüfen':'Eintrag prüfen'))+'</div></div></div>';
+    var dateRow='<div style="background:#fff;border-radius:14px;padding:12px 14px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;gap:10px"><label for="ern_cf_date" style="font-size:13.5px;font-weight:800;color:var(--text)">Tag</label><input id="ern_cf_date" type="date" max="'+today+'" value="'+esc(cf.date)+'" onchange="window.__ernCFDate(this.value)" aria-label="Datum" style="border:1.5px solid var(--border);border-radius:10px;padding:8px 10px;font-size:14px;font-weight:700;color:var(--text);background:#fff"></div>';
+    var totCard='<div style="display:flex;gap:8px;margin:4px 0 14px">'+[['Gesamt',ernNum(tot.kcal)+' kcal','#15171B'],['Eiweiß',tot.p+' g',ERN_PROT],['KH',tot.c+' g',ERN_CARB],['Fett',tot.f+' g',ERN_FAT]].map(function(x){ return '<div style="flex:1;background:#fff;border-radius:12px;padding:10px 6px;text-align:center"><div style="font-size:13.5px;font-weight:900;color:'+x[2]+'">'+x[1]+'</div><div style="font-size:10px;font-weight:800;color:var(--text-soft);text-transform:uppercase">'+x[0]+'</div></div>'; }).join('')+'</div>';
+    var addBtn='<button data-act="ernCFAdd" style="width:100%;padding:12px;border:1.5px dashed #c2d3d6;border-radius:14px;background:transparent;color:#0a4958;font-weight:800;font-size:13.5px;cursor:pointer;margin-bottom:12px">+ Eintrag hinzufügen</button>';
+    var msg=(S.ernErr&&S.ernMsg)?'<div role="alert" style="font-size:12.5px;font-weight:700;color:var(--err-fg);text-align:center;margin-bottom:10px">'+esc(S.ernMsg)+'</div>':'';
+    var save='<button data-act="ernCFSave" '+(S.ernConfirmBusy?'disabled ':'')+'style="width:100%;padding:16px;border:none;border-radius:16px;background:#0f7a4a;color:#fff;font-weight:900;font-size:16px;cursor:pointer;opacity:'+(S.ernConfirmBusy?'.6':'1')+'">'+(S.ernConfirmBusy?'Speichert …':'Mahlzeit speichern')+'</button>';
+    var hint='<div style="font-size:11px;color:var(--text-soft);font-weight:600;text-align:center;margin-top:10px;line-height:1.5">Alle Werte sind Schätzungen und editierbar. Gespeichert wird erst mit „Mahlzeit speichern".</div>';
+    return '<div style="padding:4px 2px 40px">'+head+dateRow+(rows||'<div style="text-align:center;color:var(--text-soft);font-size:13px;font-weight:600;padding:20px">Keine Einträge – füge einen hinzu.</div>')+addBtn+totCard+msg+save+hint+'</div>';
   }
   // Sprache -> Text (Web Speech API) -> ins Log-Feld -> KI-Schätzung. Nicht überall verfügbar.
   var ernRecog=null;
@@ -2741,6 +2793,7 @@
     var LIGHT='--surface:#fff;--surface-2:#eef2f3;--text:#15171B;--text-2:#2c3338;--text-muted:#6b7780;--text-soft:#8a929a;--border:#f0f3f3;--teal-ink:#0a4958;--err-fg:#c0392b;background:#eef2f3;min-height:100%';
     if(n===null||n===false){ inner='<div style="background:#fff;border-radius:20px;box-shadow:0 12px 34px rgba(4,33,40,.10);padding:40px 22px;text-align:center;color:#8a929a;font-size:14px;font-weight:600">Lade Ernährung …</div>'; }
     else if(!n.ok||n.available===false){ inner='<div style="background:#fff;border-radius:20px;box-shadow:0 12px 34px rgba(4,33,40,.10);padding:30px 22px;text-align:center"><div style="font-size:34px">🥗</div><div style="font-size:16px;font-weight:800;color:#15171B;margin-top:10px">Ernährung ist gerade nicht verfügbar</div><div style="font-size:13.5px;color:#6b7780;font-weight:500;margin-top:6px;line-height:1.5">Bitte später erneut versuchen.</div></div>'; }
+    else if(S.ernConfirm){ inner=ernConfirmScreen(); }
     else if(S.ernCapture){ inner=ernErfassen(); }
     else if(!n.onboarded||S.ernEdit) inner=ernSetup();
     else { var tab=S.ernTab||'heute'; inner=ernTopbar(tab)+(tab==='plan'?ernPlan():(tab==='rezepte'?ernRezepte():(tab==='coach'?ernCoach():(tab==='verlauf'?ernVerlauf():ernDash())))); }
@@ -3825,6 +3878,18 @@
     ernCapSearch:function(){ if(S.ernBusy) return; var t=$('ern_capq'); var q=t?(t.value||'').trim():''; if(q.length>=2) ernLogText(q); },
     ernOpenCapture:function(a){ setS({ernCapture:true,ernCapTab:'cam',ernCapTarget:a||'',ernMsg:'',ernErr:false}); try{ window.scrollTo(0,0); }catch(e){} },
     ernCloseCapture:function(){ setS({ernCapture:false}); try{ window.scrollTo(0,0); }catch(e){} },
+    // Bestätigen-Screen (Punkt 1)
+    ernCFRemove:function(a){ var cf=S.ernConfirm; if(!cf) return; cf.items.splice(parseInt(a,10),1); if(!cf.items.length){ ernCloseConfirm(); return; } render(); },
+    ernCFAdd:function(){ var cf=S.ernConfirm; if(!cf) return; cf.items.push({name:'',portion:'',meal:'snack',kcal:0,p:0,c:0,f:0,estimated:false,source:'manual'}); render(); },
+    ernCFCancel:function(){ ernCloseConfirm(); },
+    ernCFSave:function(){ if(S.ernConfirmBusy) return; var cf=S.ernConfirm; if(!cf||!cf.items.length) return;
+      S.ernConfirmBusy=true; S.ernErr=false; S.ernMsg=''; render();
+      api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'confirm-log',date:cf.date,items:cf.items})})
+      .then(function(d){ S.ernConfirmBusy=false;
+        if(d&&d.ok!==false&&d.today){ S.ernConfirm=null; S.ernTab='heute'; S.ernErr=false; S.ernMsg='Gespeichert ✓'; loadNutri(); }
+        else { S.ernErr=true; S.ernMsg=(d&&d.message)||'Speichern fehlgeschlagen.'; render(); }
+      })
+      .catch(function(){ S.ernConfirmBusy=false; S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); }); },
     ernCapTab:function(a){ setS({ernCapTab:a}); },
     ernCheckinDismiss:function(){ setS({ernCheckinDismissed:true}); },
     ernObNext:function(){ if((S.ernObStep||0)>=4){ if(!S.ernConsent){ S.ernErr=true; S.ernMsg='Bitte bestätige die Einwilligung, um zu starten.'; render(); return; } ACT.ernSaveProfile(); } else { setS({ernObStep:(S.ernObStep||0)+1}); try{ window.scrollTo(0,0); }catch(e){} } },
