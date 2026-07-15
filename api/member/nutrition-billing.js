@@ -23,6 +23,15 @@ const M = require('../../lib/members');
 const Stripe = require('../../lib/stripe');
 const Ent = require('../../lib/entitlements');
 const { hasStore } = require('../../lib/store');
+const Inbox = require('../../lib/inbox');
+const { sendMail, sendMailRaw, hasMail } = require('../../lib/mail');
+const { renderEmail } = require('../../lib/emailTemplate');
+
+function deStamp(ms) {
+  const d = new Date(ms || Date.now());
+  const p = function (n) { return (n < 10 ? '0' : '') + n; };
+  return p(d.getDate()) + '.' + p(d.getMonth() + 1) + '.' + d.getFullYear() + ', ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ' Uhr';
+}
 
 function baseUrl(req) {
   const env = String(process.env.APP_BASE_URL || '').replace(/\/+$/, '');
@@ -120,6 +129,68 @@ module.exports = async function handler(req, res) {
     const r = await Stripe.createPortalSession({ stripeCustomerId: ent.stripeCustomerId, returnUrl: base + '/mitglieder?ern_premium=portal' });
     if (r.ok && r.url) { res.statusCode = 200; return res.end(JSON.stringify({ ok: true, url: r.url })); }
     res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'portal_failed', message: 'Verwaltung konnte nicht geöffnet werden – bitte später erneut.' }));
+  }
+
+  // ── Gesetzlicher Widerruf (Fernabsatz, digitale Leistung) über den Pflicht-Widerrufsbutton ──
+  // Beendet das Abo SOFORT (kein Weiterlaufen), erfasst den Widerruf als Vorgang,
+  // benachrichtigt das Studio (für eine etwaige anteilige Erstattung) und schickt dem
+  // Mitglied eine Eingangsbestätigung auf dauerhaftem Datenträger (E-Mail).
+  if (action === 'widerruf') {
+    if (!ent || !ent.stripeSubId) {
+      res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'no_subscription', message: 'Für dieses Konto gibt es kein widerrufbares Premium-Abo.' }));
+    }
+    if (!(await M.rateLimit('nutri-widerruf:' + id, 5, 3600))) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'rate_limited', message: 'Kurz warten und erneut versuchen.' })); }
+    const at = Date.now();
+    let m = null; try { m = await M.getMember(id); } catch (e) {}
+    const name = m ? ((m.firstName || '') + ' ' + (m.lastName || '')).trim() : '';
+    const kdnr = (m && m.customerNumber) || '';
+    // 1) Abo sofort beenden (Widerruf = Vertrag rückabgewickelt). Webhook entzieht Premium.
+    let ended = false;
+    try { const r = await Stripe.endSubscriptionNow(ent.stripeSubId); ended = !!r.ok; if (!r.ok) console.error('[nutrition-billing] widerruf end-sub failed:', r.error); } catch (e) { console.error('[nutrition-billing] widerruf end-sub threw', e); }
+    // Lokal spiegeln, damit die App sofort reagiert; der Webhook bestätigt/finalisiert.
+    try { await Ent.setEntitlement(id, Object.assign({}, ent, { cancelAtPeriodEnd: true, widerrufAt: at, updatedAt: at })); } catch (e) {}
+    // 2) Als Vorgang erfassen (Studio + Mitglied-Postfach).
+    try {
+      await Inbox.addVorgang(id, {
+        type: 'abo', subject: 'Widerruf Ernährungs-Premium', priority: 'hoch',
+        status: ended ? 'abgeschlossen' : 'offen',
+        systemText: 'Du hast dein Ernährungs-Premium am ' + deStamp(at) + ' widerrufen. Das Abo wurde beendet.',
+        teamText: 'Widerruf des Ernährungs-Premium (digitale Leistung) eingegangen am ' + deStamp(at) + '. Das Abo wurde ' + (ended ? 'sofort beendet' : 'noch NICHT automatisch beendet – bitte in Stripe prüfen') + '. Bitte eine etwaige anteilige Erstattung prüfen.',
+      });
+    } catch (e) {}
+    try { require('../../lib/handled').record('system', id, 'widerruf-premium'); } catch (e) {}
+    // 3) Studio informieren (für die Erstattungs-Abwicklung).
+    if (hasMail) {
+      try {
+        await sendMail('↩️ Widerruf Ernährungs-Premium – ' + (name || ('Mitglied ' + id)),
+          'Ein Mitglied hat sein Ernährungs-Premium (digitale Leistung) über den Widerrufsbutton WIDERRUFEN.\n\n'
+          + 'Mitglied: ' + (name || '—') + '\nKundennr.: ' + (kdnr || '—') + (m && m.email ? ('\nE-Mail: ' + m.email) : '')
+          + '\nZeitpunkt: ' + deStamp(at)
+          + '\nAbo (Stripe-Sub): ' + (ent.stripeSubId || '—')
+          + '\nAbo automatisch beendet: ' + (ended ? 'JA (sofort)' : 'NEIN – bitte manuell in Stripe beenden')
+          + '\n\nBitte eine etwaige anteilige Erstattung nach den gesetzlichen Regeln prüfen und dem Mitglied bestätigen.');
+      } catch (e) {}
+    }
+    // 4) Eingangsbestätigung ans Mitglied (dauerhafter Datenträger) – gesetzlich gefordert.
+    if (hasMail && m && m.email) {
+      try {
+        const wm = renderEmail({
+          preheader: 'Wir haben deinen Widerruf erhalten.',
+          name: m.firstName || '',
+          eyebrow: 'Widerruf bestätigt',
+          headline: 'Wir haben deinen Widerruf erhalten',
+          intro: 'Hiermit bestätigen wir den Eingang deines Widerrufs für das Ernährungs-Premium (digitale Leistung) am ' + deStamp(at) + '. Dein Abo wurde beendet – es entstehen dir keine weiteren Kosten. Eine etwaige anteilige Erstattung für einen bereits gezahlten Zeitraum wickeln wir separat ab und melden uns dazu bei dir.',
+          panel: [
+            { label: 'Vertrag', value: 'Ernährungs-Premium (Abo)' },
+            { label: 'Widerruf eingegangen', value: deStamp(at) },
+            { label: 'Status', value: 'Abo beendet' },
+          ],
+          footer: 'member',
+        });
+        await sendMailRaw({ to: m.email, subject: 'Eingangsbestätigung deines Widerrufs – Fit-Inn Trier', text: wm.text, html: wm.html });
+      } catch (e) {}
+    }
+    res.statusCode = 200; return res.end(JSON.stringify({ ok: true, at: at, ended: ended, message: 'Dein Widerruf ist eingegangen. Wir haben dir eine Bestätigung per E-Mail geschickt.' }));
   }
 
   res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'unknown_action' }));

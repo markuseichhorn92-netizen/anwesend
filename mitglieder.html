@@ -318,7 +318,7 @@
       <a href="https://www.fit-inn-trier.de/impressum-fit-inn-trier" target="_blank" rel="noopener">Impressum</a><span>·</span>
       <a href="https://www.fit-inn-trier.de/datenschutz-fit-inn-trier" target="_blank" rel="noopener">Datenschutz</a><span>·</span>
       <a href="https://www.fit-inn-trier.de/agbs-fit-inn-trier" target="_blank" rel="noopener">AGB</a><span>·</span>
-      <a href="https://www.fit-inn-trier.de/kundigungsbedingungen-fit-inn-trier" target="_blank" rel="noopener">Widerruf</a>
+      <a href="#" id="footWiderruf">Widerruf</a>
       <div class="rc-note">Geschützt durch reCAPTCHA – es gelten die <a href="https://policies.google.com/privacy" target="_blank" rel="noopener">Datenschutzerklärung</a> und <a href="https://policies.google.com/terms" target="_blank" rel="noopener">Nutzungsbedingungen</a> von Google.</div>
     </div>
   </div>
@@ -398,6 +398,7 @@
     ernBusy:false, ernMsg:'', ernErr:false, ernAsk:'', ernAnswer:'', ernAskBusy:false, ernRecipes:null, ernRecipesBusy:false, ernCoachBusy:false, ernCoachSent:false, ernPhotoBusy:false, ernRec:false,
     ernTab:'heute', ernPlanTab:'woche', ernPlanBusy:false, ernFridge:'', ernRecipeSel:null, ernRecipeSaved:false,
     ernCapture:false, ernCapTab:'cam', ernObStep:0, ernConsent:false, ernCheckinDismissed:false, ernCapTarget:'',
+    ernBuyConsent:false, wdStep:0, wdBusy:false, wdErr:false, wdMsg:'', wdDoneAt:0,
     ernConfirm:null, ernConfirmBusy:false,
     ernScanCode:'', ernScanBusy:false, ernScanErr:'', ernScanNotFound:false,
     ernSearchQ:'', ernSearchResults:null, ernSearchBusy:false, ernSearchErr:'',
@@ -550,6 +551,7 @@
     // Abo-Status für die Konto-Einstiege (Profil/Meine Daten/Beitragskonto) + der Abo-Screen selbst.
     if(s==='profil'||s==='data'||s==='account'||s==='abo') loadErnBilling();
     if(s==='abo'){ S.ernMsg=''; S.ernErr=false; DATA.ernSub=undefined; DATA.ernInvoices=undefined; loadNutri(); loadSubInfo(); loadErnInvoices(); }
+    if(s==='recht'){ S.wdStep=0; S.wdErr=false; S.wdMsg=''; loadErnBilling(); if(TOKEN){ loadNutri(); loadSubInfo(); } }
     if(s==='ern'){ try{ window.__ernStopScan&&window.__ernStopScan(); }catch(e){} S.ernMsg=''; S.ernErr=false; S.ernAsk=''; S.ernAnswer=''; S.ernRecipes=null; S.ernCoachSent=false; S.ernTab='heute'; S.ernRecipeSel=null; S.ernCapture=false; S.ernConfirm=null; S.ernProd=null; S.ernEntryEdit=null; S.ernViewDate=''; S.ernFavMgr=false; S.ernData=false; S.ernUpgrade=false; S.ernLesson=null; S.ernLessonData=null; S.ernChatOpen=false; S.ernCk=false; S.ernCkResult=null; S.ernObStep=0; S.ernChat=ernChatLoad(); loadNutri(); loadFavs(); loadCoach(); }
     if(s==='coach'){ S.ernLesson=null; S.ernVert=null; S.ernLessonData=null; S.ernCk=false; S.ernCkResult=null; S.ernChatOpen=false; S.ernUpgrade=false; S.ernMsg=''; S.ernErr=false; S.coachMapOpen=false; S.coachVertOpen=false; S.ernChat=ernChatLoad(); loadFinnTip(); loadCoach(); if(!DATA.checkins) loadCheckins(); }
     if(s==='appt'){ if(!DATA.appts) loadAppts(); if(DATA.bookable===null) loadBookable(); }
@@ -895,7 +897,8 @@
     var e = S.loginErr ? '<div class="err" style="margin-top:14px">'+svg(IC.warn,{c:'var(--err-fg)',w:2,s:17})+'<span>'+esc(S.loginErr)+'</span></div>' : '';
     var remember='<label data-act="toggleRemember" style="display:flex;align-items:center;gap:10px;margin-top:18px;cursor:pointer"><input type="checkbox" '+(S.remember?'checked':'')+' tabindex="-1" style="width:18px;height:18px;accent-color:'+TEAL+';pointer-events:none"><span style="font-size:14px;color:var(--text-2);font-weight:600">Angemeldet bleiben</span></label>';
     var legal='<div style="display:flex;flex-wrap:wrap;gap:4px 12px;justify-content:center;margin-top:24px;padding-top:20px;border-top:1px solid #dde4e6">'+
-      [['Impressum','impressum-fit-inn-trier'],['Datenschutz','datenschutz-fit-inn-trier'],['AGB','agbs-fit-inn-trier'],['Widerruf','kundigungsbedingungen-fit-inn-trier']].map(function(l){return '<a href="https://www.fit-inn-trier.de/'+l[1]+'" target="_blank" rel="noopener" style="color:var(--text-soft);font-size:12px;font-weight:600;text-decoration:none">'+l[0]+'</a>';}).join('')+'</div>';
+      [['Impressum','impressum-fit-inn-trier'],['Datenschutz','datenschutz-fit-inn-trier'],['AGB','agbs-fit-inn-trier']].map(function(l){return '<a href="https://www.fit-inn-trier.de/'+l[1]+'" target="_blank" rel="noopener" style="color:var(--text-soft);font-size:12px;font-weight:600;text-decoration:none">'+l[0]+'</a>';}).join('')+
+      '<button data-act="nav" data-arg="recht" style="background:none;border:none;color:var(--text-soft);font-size:12px;font-weight:600;text-decoration:none;cursor:pointer;padding:0">Widerruf</button></div>';
 
     var inner;
     if(S.loginStep==='number'){
@@ -978,7 +981,8 @@
   // dann automatischer Login + Sprung zur Aktion. Nutzt die Login-Optik.
   function scrActionLogin(){
     var legal='<div style="display:flex;flex-wrap:wrap;gap:4px 12px;justify-content:center;margin-top:24px;padding-top:20px;border-top:1px solid #dde4e6">'+
-      [['Impressum','impressum-fit-inn-trier'],['Datenschutz','datenschutz-fit-inn-trier'],['AGB','agbs-fit-inn-trier'],['Widerruf','kundigungsbedingungen-fit-inn-trier']].map(function(l){return '<a href="https://www.fit-inn-trier.de/'+l[1]+'" target="_blank" rel="noopener" style="color:var(--text-soft);font-size:12px;font-weight:600;text-decoration:none">'+l[0]+'</a>';}).join('')+'</div>';
+      [['Impressum','impressum-fit-inn-trier'],['Datenschutz','datenschutz-fit-inn-trier'],['AGB','agbs-fit-inn-trier']].map(function(l){return '<a href="https://www.fit-inn-trier.de/'+l[1]+'" target="_blank" rel="noopener" style="color:var(--text-soft);font-size:12px;font-weight:600;text-decoration:none">'+l[0]+'</a>';}).join('')+
+      '<button data-act="nav" data-arg="recht" style="background:none;border:none;color:var(--text-soft);font-size:12px;font-weight:600;text-decoration:none;cursor:pointer;padding:0">Widerruf</button></div>';
     var brand='<div class="loginBrand">'+
       '<div><img src="/assets/fitinn-logo-white.png" alt="Fit-Inn Trier" style="height:30px;width:auto;display:block"></div>'+
       '<div style="margin-top:22px">'+
@@ -2445,6 +2449,9 @@
 
   // ── Ernährung (eigenständiges Modul, Tagesziel + KI-Tracking + FINN-Coach) ──
   var ERN_G='#0f7a4a', ERN_G2='#12a06a', ERN_GD='#0a5a37';
+  // ── Rechtstexte Premium – WICHTIG: vor dem Premium-Launch mit den echten
+  // Firmendaten füllen (Widerrufsbelehrung braucht konkrete Anschrift + E-Mail). ──
+  var LEGAL={ firma:'Fit-Inn Trier', anschrift:'[Anschrift laut Impressum – bitte eintragen]', email:'[widerruf@fit-inn-trier.de – bitte eintragen]' };
   var ERN_PROT='#E07A5F', ERN_CARB='#EBA23B', ERN_FAT='#A97BD6', ERN_OK='#22a866', ERN_WATER='#37A9E0';
   var ERN_FAVS=[
     {name:'Protein-Shake',kcal:180,p:30,c:8,f:2,e:'🥤'},{name:'Magerquark 250 g',kcal:170,p:33,c:10,f:1,e:'🧀'},
@@ -2678,14 +2685,22 @@
     // Copy dynamisch aus Stripe-Preis/Trial (Fallback in ernPriceCopy).
     var headline=pc.trialText?(pc.trialText+' testen – danach nur <b style="color:#fff">'+esc(pc.pricePer)+'</b>. Jederzeit kündbar.'):('Nur <b style="color:#fff">'+esc(pc.pricePer)+'</b>. Jederzeit kündbar.');
     var ctaLabel=busy?'Einen Moment …':(pc.trialText?(pc.trialDays+' Tage gratis starten'):'Premium starten');
-    var fine=pc.trialText?('Sichere Zahlung über Stripe · keine Kartendaten in der App.<br>Nach '+pc.trialDays+' Tagen '+esc(pc.pricePer)+' (inkl. MwSt), monatlich kündbar.'):('Sichere Zahlung über Stripe · keine Kartendaten in der App.<br>'+esc(pc.pricePer)+' (inkl. MwSt), monatlich kündbar.');
+    var fine=pc.trialText?('Sichere Zahlung über Stripe · keine Kartendaten in der App.<br>Nach '+pc.trialDays+' Tagen '+esc(pc.pricePer)+' (inkl. MwSt). Verlängert sich automatisch um je 1 Monat, jederzeit zum Monatsende kündbar.'):('Sichere Zahlung über Stripe · keine Kartendaten in der App.<br>'+esc(pc.pricePer)+' (inkl. MwSt). Verlängert sich automatisch um je 1 Monat, jederzeit zum Monatsende kündbar.');
+    // §312j: ausdrückliche Einwilligung zur sofortigen Ausführung (digitale Leistung).
+    var buyConsent='<button data-act="ernBuyConsentToggle" style="width:100%;display:flex;align-items:flex-start;gap:11px;padding:13px 14px;background:rgba(255,255,255,.10);border:1.5px solid '+(S.ernBuyConsent?'#fff':'rgba(255,255,255,.30)')+';border-radius:14px;cursor:pointer;text-align:left;margin-top:20px">'+
+      '<span style="width:22px;height:22px;border-radius:7px;border:2px solid #fff;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:'+(S.ernBuyConsent?'#fff':'transparent')+';margin-top:1px">'+(S.ernBuyConsent?svg('<path d="M20 6L9 17l-5-5"></path>',{c:'#0f7a4a',w:3.2,s:14}):'')+'</span>'+
+      '<span style="font-size:11.5px;font-weight:600;color:#eafff4;line-height:1.5">Ich verlange ausdrücklich, dass Fit-Inn sofort mit der Bereitstellung der Premium-Funktionen beginnt. Mir ist bekannt, dass mein Widerrufsrecht mit vollständiger Vertragserfüllung erlischt und bei einem Widerruf nach Nutzungsbeginn ein anteiliger Betrag anfallen kann.</span>'+
+    '</button>';
+    var legalLink='<div style="text-align:center;margin-top:12px"><button data-act="nav" data-arg="recht" style="background:none;border:none;color:#eafff4;font-size:12px;font-weight:800;text-decoration:underline;cursor:pointer">Pflichtinfos &amp; Widerrufsbelehrung</button></div>';
     return '<div style="position:relative;min-height:100%;background:linear-gradient(172deg,#12a06a 0%,#0f7a4a 52%,#0a5a37 100%);padding:56px 22px 30px">'+back+
       '<div style="text-align:center"><div style="display:inline-flex;align-items:center;gap:7px;background:rgba(255,255,255,.16);border-radius:20px;padding:6px 14px;font-size:12px;font-weight:900;color:#fff;letter-spacing:.3px">⭐ ERNÄHRUNG PREMIUM</div>'+
         '<div style="font-size:27px;font-weight:900;letter-spacing:-.6px;line-height:1.15;color:#fff;margin-top:16px">Hol dir deinen<br>KI-Ernährungscoach</div>'+
         '<div style="font-size:14.5px;font-weight:600;color:#d4f0e2;line-height:1.5;margin-top:12px">'+headline+'</div></div>'+
       '<div style="background:rgba(255,255,255,.08);border-radius:20px;padding:8px 16px;margin-top:22px">'+feats+'</div>'+
-      '<button data-act="ernUpgradeGo" '+(busy?'disabled ':'')+'style="width:100%;margin-top:22px;padding:17px;border:none;border-radius:16px;background:#fff;color:#0f7a4a;font-weight:900;font-size:16.5px;cursor:pointer;opacity:'+(busy?'.6':'1')+'">'+ctaLabel+'</button>'+
+      buyConsent+
+      '<button data-act="ernUpgradeGo" '+(busy?'disabled ':'')+'style="width:100%;margin-top:16px;padding:17px;border:none;border-radius:16px;background:#fff;color:#0f7a4a;font-weight:900;font-size:16.5px;cursor:pointer;opacity:'+((busy||!S.ernBuyConsent)?'.55':'1')+'">'+ctaLabel+'</button>'+
       '<div style="font-size:11.5px;color:#c5ecd7;font-weight:600;text-align:center;line-height:1.5;margin-top:12px">'+fine+'</div>'+
+      legalLink+
       err+
       '<div style="font-size:12px;color:#aed0d6;font-weight:600;text-align:center;margin-top:16px;line-height:1.5">Basis bleibt gratis: manuell loggen, Barcode, Wasser,<br>Favoriten, Kochbuch &amp; Verlauf.</div>'+
       '<button data-act="ernUpgradeClose" style="width:100%;margin-top:14px;padding:13px;border:none;background:transparent;color:#eafff4;font-weight:800;font-size:14px;cursor:pointer">Vielleicht später</button>'+
@@ -3485,7 +3500,62 @@
     if(ernPremium()){ body=ernManageCard(); }
     else { body='<div style="background:var(--surface);border-radius:18px;box-shadow:0 8px 24px rgba(4,33,40,.08);padding:18px;text-align:center"><div style="font-size:15px;font-weight:900;color:var(--text)">Kein aktives Abo</div><div style="font-size:12.5px;font-weight:600;color:var(--text-muted);line-height:1.5;margin:8px 0 14px">Du hast aktuell kein Ernährungs-Premium.</div>'+(ERN_ON?'<button data-act="nav" data-arg="ern" style="width:100%;padding:13px;border:none;border-radius:13px;background:'+ERN_G+';color:#fff;font-weight:900;font-size:14.5px;cursor:pointer">Zum Ernährungscoach</button>':'')+'</div>'; }
     var msg=S.ernMsg?'<div role="'+(S.ernErr?'alert':'status')+'" style="font-size:12.5px;font-weight:700;color:'+(S.ernErr?'var(--err-fg)':ERN_G)+';text-align:center;margin-top:8px;line-height:1.4">'+esc(S.ernMsg)+'</div>':'';
-    return '<div style="padding:4px 2px 40px">'+head+body+msg+'</div>';
+    // Zahlende (nicht vom Studio freigeschaltete) Mitglieder: Widerruf & Pflichtinfos erreichbar.
+    var n=DATA.nutri||{}; var wdLink=(ernPremium()&&!n.premiumComp)?'<div style="text-align:center;margin-top:14px"><button data-act="nav" data-arg="recht" style="background:none;border:none;color:var(--text-soft);font-size:12px;font-weight:700;text-decoration:underline;cursor:pointer">Widerruf &amp; Pflichtinfos</button></div>':'';
+    return '<div style="padding:4px 2px 40px">'+head+body+msg+wdLink+'</div>';
+  }
+  // ── Widerruf & Rechtliches (Fernabsatz, digitale Leistung) ─────────────────
+  // In-App-Rechtsscreen: §312j-Pflichtinfos, Widerrufsbelehrung, Muster-Formular
+  // und der seit 2026 pflichtige Widerrufsbutton (analog zum Kündigungsbutton).
+  function scrRecht(){
+    var CARD='background:var(--surface);border-radius:18px;box-shadow:0 8px 24px rgba(4,33,40,.08);padding:17px 18px;margin-bottom:14px';
+    var H='font-size:15px;font-weight:900;color:var(--text);margin-bottom:9px';
+    var P='font-size:12.5px;font-weight:600;color:var(--text-muted);line-height:1.6';
+    var pc=ernPriceCopy();
+    var bill=DATA.ernBilling||{};
+    var comp=!!bill.comp||!!(DATA.nutri&&DATA.nutri.premiumComp);
+    var hasSub=!!TOKEN&&!!bill.premium&&!comp;   // zahlendes, widerrufbares Abo
+    var back='<button data-act="rechtBack" aria-label="Zurück" style="width:38px;height:38px;border-radius:12px;border:none;background:var(--surface);box-shadow:0 4px 12px rgba(4,33,40,.08);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'+svg(IC.back,{c:'#0a4958',w:2.2,s:19})+'</button>';
+    var head='<div style="display:flex;align-items:center;gap:12px;padding:2px 2px 14px">'+back+'<div style="flex:1"><div style="font-size:20px;font-weight:900;color:var(--text);letter-spacing:-.4px">Widerruf &amp; Rechtliches</div><div style="font-size:12px;font-weight:700;color:var(--text-soft)">Fernabsatz · digitale Leistung</div></div></div>';
+    // A) Pflichtinfos zum Premium-Abo (§312j BGB)
+    var trialLine=pc.trialText?('<li>'+pc.trialDays+' Tage gratis testen, danach '+esc(pc.pricePer)+'</li>'):('<li>'+esc(pc.pricePer)+'</li>');
+    var info='<div style="'+CARD+'"><div style="'+H+'">Ernährungs-Premium – die Eckdaten</div><ul style="'+P+';margin:0;padding-left:18px">'+
+      '<li><b>Leistung:</b> KI-Ernährungscoach – Foto-Analyse, FINN-Chat, KI-Rezepte, Wochenplan &amp; Auswertung</li>'+
+      '<li><b>Preis:</b> '+esc(pc.pricePer)+' inkl. MwSt.</li>'+trialLine+
+      '<li><b>Laufzeit:</b> monatlich; verlängert sich automatisch um je einen Monat</li>'+
+      '<li><b>Kündigung:</b> jederzeit zum Ende des bezahlten Monats – in der App unter „Mein Abo"</li>'+
+      '<li><b>Anbieter:</b> '+esc(LEGAL.firma)+', '+esc(LEGAL.anschrift)+'</li>'+
+      '</ul></div>';
+    // B) Widerrufsbelehrung (amtliches Muster, digitale Dienstleistung)
+    var beleh='<div style="'+CARD+'"><div style="'+H+'">Widerrufsbelehrung</div>'+
+      '<div style="'+P+'"><b>Widerrufsrecht.</b> Du hast das Recht, binnen vierzehn Tagen ohne Angabe von Gründen diesen Vertrag zu widerrufen. Die Widerrufsfrist beträgt vierzehn Tage ab dem Tag des Vertragsabschlusses.<br><br>'+
+      'Um dein Widerrufsrecht auszuüben, musst du uns ('+esc(LEGAL.firma)+', '+esc(LEGAL.anschrift)+', E-Mail: '+esc(LEGAL.email)+') mittels einer eindeutigen Erklärung (z. B. ein mit der Post versandter Brief oder eine E-Mail) über deinen Entschluss, diesen Vertrag zu widerrufen, informieren. Du kannst dafür das Muster-Widerrufsformular verwenden, das ist aber nicht vorgeschrieben. Am einfachsten erklärst du den Widerruf direkt über den <b>Widerrufsbutton</b> unten in dieser App. Zur Wahrung der Widerrufsfrist reicht es aus, dass du die Mitteilung vor Ablauf der Widerrufsfrist absendest.<br><br>'+
+      '<b>Folgen des Widerrufs.</b> Wenn du diesen Vertrag widerrufst, haben wir dir alle Zahlungen, die wir von dir erhalten haben, unverzüglich und spätestens binnen vierzehn Tagen ab dem Tag zurückzuzahlen, an dem die Mitteilung über deinen Widerruf bei uns eingegangen ist. Hast du verlangt, dass die Dienstleistung während der Widerrufsfrist beginnen soll, so hast du uns einen angemessenen Betrag zu zahlen, der dem Anteil der bis zum Widerruf bereits erbrachten Leistungen entspricht.</div></div>';
+    // C) Muster-Widerrufsformular
+    var muster='<div style="'+CARD+'"><div style="'+H+'">Muster-Widerrufsformular</div>'+
+      '<div style="'+P+';white-space:pre-line;font-family:inherit">'+esc('An '+LEGAL.firma+', '+LEGAL.anschrift+', E-Mail: '+LEGAL.email+':\n\nHiermit widerrufe ich den von mir abgeschlossenen Vertrag über die Erbringung der folgenden Dienstleistung: Ernährungs-Premium (Abo)\n\n– Bestellt am: ____________\n– Name: ____________\n– Anschrift: ____________\n– Datum: ____________\n– Unterschrift (nur bei Papier): ____________')+'</div></div>';
+    // D) Widerrufsbutton + Ablauf
+    var wd;
+    if(!hasSub){
+      wd='<div style="'+CARD+'"><div style="'+H+'">Widerruf erklären</div><div style="'+P+'">'+(comp?'Dein Ernährungs-Premium wurde vom Studio kostenlos freigeschaltet – hier gibt es keinen zahlungspflichtigen Vertrag zum Widerrufen.':'Für dein Konto ist aktuell kein zahlungspflichtiges Premium-Abo hinterlegt, das widerrufen werden könnte.')+'</div></div>';
+    } else if(S.wdStep===2){
+      wd='<div style="'+CARD+';border:1.5px solid rgba(15,122,74,.35)"><div style="'+H+';color:'+ERN_G+'">✓ Widerruf eingegangen</div><div style="'+P+'">Wir haben deinen Widerruf am '+esc(ernFmtDate(S.wdDoneAt||Date.now()))+' erhalten und dein Abo beendet. Eine Bestätigung ist an deine E-Mail unterwegs. Eine etwaige anteilige Erstattung wickeln wir separat ab.</div></div>';
+    } else if(S.wdStep===1){
+      var nm=(DATA.profile&&((DATA.profile.firstName||'')+' '+(DATA.profile.lastName||'')).trim())||'';
+      var err=S.wdErr&&S.wdMsg?'<div role="alert" style="font-size:12.5px;font-weight:700;color:var(--err-fg);margin-top:10px">'+esc(S.wdMsg)+'</div>':'';
+      wd='<div style="'+CARD+';border:1.5px solid rgba(192,57,43,.30)"><div style="'+H+'">Widerruf verbindlich erklären</div>'+
+        '<div style="'+P+';margin-bottom:12px">Du widerrufst hiermit deinen Vertrag über <b>Ernährungs-Premium</b>'+(nm?(' als <b>'+esc(nm)+'</b>'):'')+' mit Datum '+esc(ernFmtDate(Date.now()))+'. Dein Abo wird sofort beendet; künftige Abbuchungen entfallen.</div>'+
+        '<div style="display:flex;gap:8px">'+
+          '<button data-act="wdBack" '+(S.wdBusy?'disabled ':'')+'style="flex:1;padding:13px;border:1.5px solid var(--border);border-radius:12px;background:var(--surface);color:var(--text-2);font-weight:800;font-size:14px;cursor:pointer">Abbrechen</button>'+
+          '<button data-act="wdSubmit" '+(S.wdBusy?'disabled ':'')+'style="flex:1.4;padding:13px;border:none;border-radius:12px;background:#c0392b;color:#fff;font-weight:900;font-size:14px;cursor:pointer;opacity:'+(S.wdBusy?'.6':'1')+'">'+(S.wdBusy?'Sende …':'Widerruf absenden')+'</button>'+
+        '</div>'+err+'</div>';
+    } else {
+      wd='<div style="'+CARD+'"><div style="'+H+'">Widerruf erklären</div><div style="'+P+';margin-bottom:13px">Du kannst deinen Vertrag über Ernährungs-Premium mit einem Klick widerrufen. Wir bestätigen dir den Eingang per E-Mail.</div>'+
+        '<button data-act="wdStart" style="width:100%;padding:14px;border:1.5px solid rgba(192,57,43,.35);border-radius:13px;background:var(--surface);color:#c0392b;font-weight:900;font-size:14.5px;cursor:pointer">Vertrag widerrufen</button></div>';
+    }
+    var links='<div style="display:flex;flex-wrap:wrap;gap:6px 14px;justify-content:center;margin-top:8px;padding-top:6px">'+
+      [['Impressum','impressum-fit-inn-trier'],['Datenschutz','datenschutz-fit-inn-trier'],['AGB','agbs-fit-inn-trier']].map(function(l){return '<a href="https://www.fit-inn-trier.de/'+l[1]+'" target="_blank" rel="noopener" style="color:var(--text-soft);font-size:12px;font-weight:700;text-decoration:none">'+l[0]+'</a>';}).join('')+'</div>';
+    return '<div style="padding:4px 2px 40px">'+head+info+wd+beleh+muster+links+'</div>';
   }
   // Grüner Kopf des Essen-Moduls (Datum + Titel + Rezepte-Kürzel + Streak).
   // Die Tab-Navigation läuft über das obere Segment (ernModuleSeg: Heute/Plan/Verlauf);
@@ -4704,7 +4774,7 @@
   // ---- responsive chrome (Desktop-Sidebar + Topbar) ----
   var DASH_IC='<rect x="3" y="3" width="7" height="9" rx="1.5"></rect><rect x="14" y="3" width="7" height="5" rx="1.5"></rect><rect x="14" y="12" width="7" height="9" rx="1.5"></rect><rect x="3" y="16" width="7" height="5" rx="1.5"></rect>';
   var NAVITEMS=[['home','Übersicht',DASH_IC],['card','Mitgliedskarte','<rect x="3" y="3" width="7" height="7" rx="1.4"></rect><rect x="14" y="3" width="7" height="7" rx="1.4"></rect><rect x="3" y="14" width="7" height="7" rx="1.4"></rect><path d="M14 14h3v3h-3z"></path><path d="M20 14v3M14 20h3M20 20v.01"></path>'],['fort','Fortschritt','<circle cx="12" cy="8" r="6"></circle><path d="M15.5 13.5L17 22l-5-3-5 3 1.5-8.5"></path>'],['ern','Ernährung','<path d="M11 21A7 7 0 0 1 4 14C4 8.5 8 4 13.5 4c2.7 0 4.6 1 6.5 1.8 0 8.7-4.3 15.2-9 15.2z"></path><path d="M11 21c0-5.5 3.3-10 7.5-12"></path>'],['insta','Instagram',IG_ICON],['data','Meine Daten',IC.user],['contract','Vertragsverwaltung',IC.doc],['account','Beitragskonto','<rect x="2" y="5" width="20" height="14" rx="2"></rect><path d="M2 9h20M6 15h5"></path>'],['appt','Termine',IC.cal],['referral','Freunde werben',IC.gift],['checkins','Check-ins',IC.list],['postfach','Postfach',IC.mail],['help','Hilfe',IC.help],['settings','Einstellungen',IC.cog]];
-  var TITLES={home:'Übersicht',data:'Meine Daten',contract:'Vertragsverwaltung',account:'Beitragskonto',appt:'Termine',checkin:'Check-in',referral:'Freunde werben',checkins:'Check-in-Verlauf',postfach:'Postfach',help:'Hilfe & Kontakt',settings:'Einstellungen',profil:'Profil',card:'Mitgliedskarte',fort:'Fortschritt',ern:'Ernährung',coach:'Coach',abo:'Mein Abo',blog:'Blog',insta:'Instagram'};
+  var TITLES={home:'Übersicht',data:'Meine Daten',contract:'Vertragsverwaltung',account:'Beitragskonto',appt:'Termine',checkin:'Check-in',referral:'Freunde werben',checkins:'Check-in-Verlauf',postfach:'Postfach',help:'Hilfe & Kontakt',settings:'Einstellungen',profil:'Profil',card:'Mitgliedskarte',fort:'Fortschritt',ern:'Ernährung',coach:'Coach',abo:'Mein Abo',recht:'Widerruf & Recht',blog:'Blog',insta:'Instagram'};
   function initials(p){ p=p||{}; var a=(p.firstName||'').trim(),b=(p.lastName||'').trim(); return (((a?a[0]:'')+(b?b[0]:'')).toUpperCase())||'FT'; }
   // Profil-Kopf für Sidebar/Drawer
   function navProfile(){
@@ -4758,7 +4828,7 @@
       // Neue, einheitliche YAZIO-artige Nav: Start · Coach · (+) · Essen · Profil.
       // Postfach/Termine leben im Profil-Hub bzw. auf der Startseite; der Postfach-Punkt
       // wandert auf den Profil-Tab. „Essen" nur wenn ERN_ON, sonst Fallback „Termine".
-      var profScreens=['profil','data','contract','account','referral','fort','card','help','settings','checkins','postfach','abo'];
+      var profScreens=['profil','data','contract','account','referral','fort','card','help','settings','checkins','postfach','abo','recht'];
       var profActive = (profScreens.indexOf(sc)>=0) || (ERN_ON && sc==='appt');
       var ni=function(key,label,icon,active){ var col=active?'var(--teal-ink)':'var(--text-soft)';
         return '<button data-act="nav" data-arg="'+key+'" style="flex:1;background:none;border:none;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;padding:5px 0">'+svg(icon,{c:col,w:1.9,s:23})+'<span style="font-size:10.5px;font-weight:'+(active?'800':'600')+';color:'+col+'">'+label+'</span></button>'; };
@@ -4798,6 +4868,7 @@
       case 'ern': html=scrErn(); break;
       case 'coach': html=scrCoach(); break;
       case 'abo': html=scrAbo(); break;
+      case 'recht': html=scrRecht(); break;
       case 'profil': html=scrProfil(); break;
       case 'blog': html=scrBlog(); break;
       case 'insta': html=scrInsta(); break;
@@ -5115,7 +5186,20 @@
     // ── Premium (Freemium/Stripe) ──
     ernUpgradeOpen:function(){ setS({ernUpgrade:true, ernMsg:'', ernErr:false}); },
     ernUpgradeClose:function(){ setS({ernUpgrade:false, ernMsg:'', ernErr:false}); },
+    ernBuyConsentToggle:function(){ setQuiet({ernBuyConsent:!S.ernBuyConsent, ernErr:false, ernMsg:''}); },
+    // Rechts-Screen: Widerruf-Ablauf.
+    rechtBack:function(){ S.wdStep=0; S.wdErr=false; S.wdMsg=''; nav(TOKEN?'profil':'login'); },
+    wdStart:function(){ setS({wdStep:1, wdErr:false, wdMsg:''}); },
+    wdBack:function(){ setS({wdStep:0, wdErr:false, wdMsg:''}); },
+    wdSubmit:function(){ if(S.wdBusy) return; S.wdBusy=true; S.wdErr=false; S.wdMsg=''; render();
+      api('/api/member/nutrition-billing',{method:'POST',body:JSON.stringify({action:'widerruf'})})
+      .then(function(d){ S.wdBusy=false;
+        if(d&&d.ok){ S.wdStep=2; S.wdDoneAt=d.at||Date.now(); DATA.ernBilling=null; DATA.ernSub=undefined; loadErnBilling(); loadNutri(); loadSubInfo(); render(); try{ window.scrollTo(0,0); }catch(e){} }
+        else { S.wdErr=true; S.wdMsg=(d&&d.message)||'Widerruf konnte nicht abgesendet werden – bitte später erneut oder melde dich im Studio.'; render(); } })
+      .catch(function(){ S.wdBusy=false; S.wdErr=true; S.wdMsg='Verbindung gerade nicht möglich.'; render(); }); },
     ernUpgradeGo:function(){
+      // §312j: ohne Einwilligung zur sofortigen Bereitstellung kein Kaufstart.
+      if(!S.ernBuyConsent){ S.ernErr=true; S.ernMsg='Bitte bestätige die Einwilligung, um fortzufahren.'; render(); try{ window.scrollTo(0,document.body.scrollHeight); }catch(e){} return; }
       // Bevorzugt Embedded Checkout im Sheet (kein Seitenwechsel). Ohne veröffentlichten
       // Key (pk) Fallback auf den bisherigen Redirect-Checkout.
       if(ernPk()){ ernCoStart(); return; }
@@ -5944,6 +6028,8 @@
   document.addEventListener('visibilitychange', function(){ if(document.visibilityState==='visible') maybeAutoRefresh(); });
   window.addEventListener('focus', maybeAutoRefresh);
   window.addEventListener('pageshow', function(e){ if(e && e.persisted) maybeAutoRefresh(); });
+  // Fußzeilen-Link „Widerruf" (außerhalb von #app) -> In-App-Rechtsscreen.
+  (function(){ var fw=document.getElementById('footWiderruf'); if(fw) fw.addEventListener('click', function(e){ e.preventDefault(); nav('recht'); }); })();
 })();
 </script>
 <script defer src="/_vercel/insights/script.js"></script>
