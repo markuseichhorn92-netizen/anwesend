@@ -129,6 +129,12 @@
   @keyframes qaFade{from{opacity:0}to{opacity:1}}
   .qaSheet{position:fixed;left:12px;right:12px;bottom:calc(90px + env(safe-area-inset-bottom,0px));z-index:49;max-width:456px;margin:0 auto;background:var(--surface);border-radius:22px;box-shadow:0 22px 54px rgba(4,33,40,.4);padding:7px;animation:qaUp .24s cubic-bezier(.22,.61,.36,1)}
   @keyframes qaUp{from{transform:translateY(20px);opacity:.3}to{transform:translateY(0);opacity:1}}
+  /* Ernährung · Erfassen – helles Bottom-Sheet-Popup (Methoden-Picker + Tabs im Sheet) */
+  .ernCapScrim{position:fixed;inset:0;z-index:62;background:rgba(6,24,29,.55);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);animation:qaFade .2s ease}
+  .ernCapSheet{position:fixed;left:0;right:0;bottom:0;z-index:63;max-width:480px;margin:0 auto;display:flex;flex-direction:column;max-height:92vh;background:#eef2f3;border-radius:26px 26px 0 0;box-shadow:0 -16px 50px rgba(4,33,40,.4);animation:ernCapUp .3s cubic-bezier(.22,.61,.36,1);padding-bottom:calc(14px + env(safe-area-inset-bottom,0px))}
+  .ernCapGrip{width:40px;height:5px;border-radius:3px;background:#cfd8db;margin:9px auto 2px;flex-shrink:0}
+  @keyframes ernCapUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
+  .ernCapRow:active{transform:scale(.985)}
   .qaRow{width:100%;display:flex;align-items:center;gap:14px;padding:13px 13px;background:none;border:none;cursor:pointer;text-align:left;border-radius:15px}
   .qaRow:active{background:var(--surface-2)}
   .qaIco{width:46px;height:46px;border-radius:50%;background:var(--surface-2);display:flex;align-items:center;justify-content:center;flex-shrink:0}
@@ -2739,7 +2745,7 @@
   function ernCurrentMeal(){ var h=new Date().getHours(); return h<11?'fruehstueck':(h<15?'mittag':(h<21?'abend':'snack')); }
   function ernOffNotice(){ return '<div style="font-size:10.5px;color:var(--text-soft);font-weight:600;line-height:1.55;text-align:center;margin-top:12px">Produktdaten: <a href="https://world.openfoodfacts.org" target="_blank" rel="noopener" style="color:#0a4958;text-decoration:underline">Open Food Facts</a> · Lizenz <a href="https://opendatacommons.org/licenses/odbl/1-0/" target="_blank" rel="noopener" style="color:#0a4958;text-decoration:underline">ODbL</a>. Angaben können unvollständig oder fehlerhaft sein.</div>'; }
   function ernDefaultGrams(p){ var s=String((p&&p.servingSize)||''); var m=s.match(/(\d+(?:[.,]\d+)?)\s*g/i); if(m){ var n=Math.round(parseFloat(m[1].replace(',','.'))); if(n>0&&n<3000) return n; } return 100; }
-  function ernOpenProduct(prod,stale){ setS({ernProd:Object.assign({stale:!!stale},prod), ernGrams:ernDefaultGrams(prod), ernUnit:'g', ernSearchResults:null, ernScanNotFound:false, ernScanErr:''}); try{ window.scrollTo(0,0); }catch(e){} }
+  function ernOpenProduct(prod,stale){ try{ window.__ernStopScan&&window.__ernStopScan(); }catch(e){} setS({ernProd:Object.assign({stale:!!stale},prod), ernCapture:false, ernGrams:ernDefaultGrams(prod), ernUnit:'g', ernSearchResults:null, ernScanNotFound:false, ernScanErr:''}); try{ window.scrollTo(0,0); }catch(e){} }
   // Übliche Portionsgröße (aus OFF serving_size) bzw. Packungsgröße in Gramm – oder null.
   function ernServingGrams(p){ var s=String((p&&p.servingSize)||''); var m=s.match(/(\d+(?:[.,]\d+)?)\s*g\b/i); if(m){ var n=Math.round(parseFloat(m[1].replace(',','.'))); if(n>0&&n<3000) return n; } return null; }
   function ernQuantityGrams(p){ var s=String((p&&p.quantity)||''); var m=s.match(/(\d+(?:[.,]\d+)?)\s*g\b/i); if(m){ var n=Math.round(parseFloat(m[1].replace(',','.'))); if(n>0&&n<=5000) return n; } return null; }
@@ -2911,10 +2917,43 @@
       '<button data-act="ernProdTake" style="width:100%;margin-top:16px;padding:16px;border:none;border-radius:16px;background:#0f7a4a;color:#fff;font-weight:900;font-size:16px;cursor:pointer">Übernehmen &amp; prüfen</button>'+
       stale+ernOffNotice()+'</div>';
   }
-  // Vollbild-Erfassen (Kamera/Sprache/Suche/Barcode) – dunkler Screen wie im Mockup
+  // Erfassen – helles Bottom-Sheet-Popup: öffnet mit Methoden-Auswahl, hält den
+  // gewählten Schritt (Kamera/Sprache/Suche/Barcode) im selben Sheet.
   function ernErfassen(){
-    var tab=S.ernCapTab||'cam';
-    var tabBtn=function(k,icon,label){ var sel=tab===k; return '<button data-act="ernCapTab" data-arg="'+k+'" style="flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;padding:12px 4px;border:none;border-radius:15px;background:'+(sel?'#fff':'rgba(255,255,255,.1)')+';cursor:pointer">'+svg(icon,{c:sel?ERN_G:'#cfe0e4',w:1.9,s:22})+'<span style="font-size:12px;font-weight:800;color:'+(sel?ERN_G:'#cfe0e4')+'">'+label+'</span></button>'; };
+    var tab=S.ernCapTab||'menu';
+    var addMode=!!S.ernAddToConfirm;
+    // Icon-Pfade (in Picker und Tab-Leiste wiederverwendet)
+    var IC_CAM='<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle>';
+    var IC_VOICE='<rect x="9" y="2" width="6" height="12" rx="3"></rect><path d="M5 10a7 7 0 0 0 14 0M12 17v4"></path>';
+    var IC_SRCH='<circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4-4"></path>';
+    var IC_BAR='<path d="M3 5v14M7 5v14M11 5v14M14 5v14M18 5v14M21 5v14"></path>';
+    var IC_PEN='<path d="M12 20h9"></path><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"></path>';
+    // Kopfzeile des Sheets (Titel + optionaler Zurück-Pfeil zur Auswahl + Schließen)
+    var capBack=(tab!=='menu')?'<button data-act="ernCapMenu" aria-label="Zurück zur Auswahl" style="width:38px;height:38px;border-radius:12px;border:none;background:#fff;box-shadow:0 3px 10px rgba(4,33,40,.08);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'+svg(IC.back,{c:'#0a4958',w:2.2,s:19})+'</button>':'';
+    var capClose='<button data-act="ernCloseCapture" aria-label="Schließen" style="width:38px;height:38px;border-radius:12px;border:none;background:#e4eaeb;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'+svg('<path d="M18 6L6 18M6 6l12 12"></path>',{c:'#5a666c',w:2.4,s:17})+'</button>';
+    var capTitle=addMode?'Zur Mahlzeit hinzufügen':'Essen erfassen';
+    var capSub=addMode?'Suchen, scannen oder Barcode – wird angehängt':(tab==='menu'?'Wie möchtest du erfassen?':(S.ernCapTarget||'Wähle oben eine andere Methode'));
+    var capHead='<div style="display:flex;align-items:center;gap:11px;padding:2px 2px 14px">'+capBack+'<div style="flex:1;min-width:0"><div style="font-size:19px;font-weight:900;color:#15171B;letter-spacing:-.3px">'+esc(capTitle)+'</div><div style="font-size:12.5px;font-weight:600;color:#8a929a;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(capSub)+'</div></div>'+capClose+'</div>';
+    var capShell=function(bodyHtml){ return '<div class="ernCapScrim" data-act="ernCloseCapture"></div><div class="ernCapSheet" role="dialog" aria-modal="true" aria-label="'+esc(capTitle)+'"><div class="ernCapGrip"></div><div style="padding:6px 18px 0">'+capHead+'</div><div style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:0 16px 6px">'+bodyHtml+'</div></div>'; };
+    // ── Auswahl-Popup (Methoden-Picker) ──
+    if(tab==='menu'){
+      var mkPick=function(act,arg,icon,label,sub,accent){ return '<button class="ernCapRow" data-act="'+act+'"'+(arg?' data-arg="'+arg+'"':'')+' style="display:flex;align-items:center;gap:13px;width:100%;background:#fff;border:none;border-radius:16px;padding:14px 15px;cursor:pointer;text-align:left;box-shadow:0 4px 14px rgba(4,33,40,.06);transition:transform .08s ease">'+
+        '<span style="width:44px;height:44px;border-radius:13px;flex-shrink:0;background:'+accent+';display:flex;align-items:center;justify-content:center">'+svg(icon,{c:'#0f7a4a',w:2,s:22})+'</span>'+
+        '<span style="flex:1;min-width:0"><span style="display:block;font-size:15.5px;font-weight:800;color:#15171B">'+label+'</span><span style="display:block;font-size:12.5px;font-weight:600;color:#8a929a;margin-top:1px">'+sub+'</span></span>'+
+        svg('<path d="M9 18l6-6-6-6"></path>',{c:'#c2d3d6',w:2,s:16})+'</button>'; };
+      var gt='rgba(15,122,74,.10)';
+      var pick='<div style="display:flex;flex-direction:column;gap:10px;padding-top:2px">'+
+        mkPick('ernCapTab','cam',IC_CAM,'Teller scannen','Foto — FINN erkennt Zutaten &amp; Portion',gt)+
+        mkPick('ernCapTab','voice',IC_VOICE,'Sprache','Sag einfach, was du gegessen hast',gt)+
+        mkPick('ernCapTab','search',IC_SRCH,'Produkt suchen','Datenbank nach Name oder Marke',gt)+
+        mkPick('ernCapTab','barcode',IC_BAR,'Barcode scannen','Verpackung einscannen',gt)+
+        mkPick('ernManualEntry','',IC_PEN,'Manuell eintragen','Nährwerte selbst eingeben','rgba(10,73,88,.08)')+
+      '</div>'+
+      '<div style="text-align:center;font-size:11.5px;font-weight:600;color:#8a929a;line-height:1.5;margin:16px 6px 4px">Frische Mahlzeiten am besten per Foto oder Sprache, verpackte Produkte per Suche oder Barcode.</div>';
+      return capShell(pick);
+    }
+    // ── Methoden-Ansicht (Tab-Leiste + Inhalt im selben Sheet) ──
+    var tabBtn=function(k,icon,label){ var sel=tab===k; return '<button data-act="ernCapTab" data-arg="'+k+'" style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;padding:10px 4px;border:none;border-radius:14px;background:'+(sel?'#0f7a4a':'#fff')+';cursor:pointer;box-shadow:'+(sel?'0 6px 16px rgba(15,122,74,.28)':'0 3px 10px rgba(4,33,40,.05)')+'">'+svg(icon,{c:sel?'#fff':'#0a4958',w:1.9,s:20})+'<span style="font-size:11px;font-weight:800;color:'+(sel?'#fff':'#0a4958')+'">'+label+'</span></button>'; };
     var inner='';
     if(tab==='cam'){
       var corners=['top:0;left:0;border-top:3px solid #7fe3a8;border-left:3px solid #7fe3a8;border-radius:12px 0 0 0','top:0;right:0;border-top:3px solid #7fe3a8;border-right:3px solid #7fe3a8;border-radius:0 12px 0 0','bottom:0;left:0;border-bottom:3px solid #7fe3a8;border-left:3px solid #7fe3a8;border-radius:0 0 0 12px','bottom:0;right:0;border-bottom:3px solid #7fe3a8;border-right:3px solid #7fe3a8;border-radius:0 0 12px 0'].map(function(s){ return '<div style="position:absolute;'+s+';width:34px;height:34px"></div>'; }).join('');
@@ -2959,9 +2998,8 @@
       inner=camArea+manual+st+ernOffNotice();
     }
     var msg=S.ernMsg?'<div style="font-size:12.5px;font-weight:700;color:'+(S.ernErr?'#c0392b':'#0f7a4a')+';text-align:center;margin-top:14px;line-height:1.4">'+esc(S.ernMsg)+'</div>':'';
-    return '<div style="background:#0a4958;min-height:100%;display:flex;flex-direction:column"><div style="padding:16px 20px 14px;display:flex;align-items:center;justify-content:space-between"><div><div style="font-size:22px;font-weight:900;color:#fff;letter-spacing:-.4px">'+(S.ernAddToConfirm?'Zur Mahlzeit hinzufügen':'Essen erfassen')+'</div>'+(S.ernAddToConfirm?'<div style="font-size:12.5px;font-weight:600;color:#9fc7d0;margin-top:2px">Suchen, scannen oder Barcode – wird angehängt</div>':(S.ernCapTarget?'<div style="font-size:12.5px;font-weight:600;color:#9fc7d0;margin-top:2px">'+esc(S.ernCapTarget)+'</div>':''))+'</div><button data-act="ernCloseCapture" style="width:40px;height:40px;border-radius:13px;border:none;background:rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;cursor:pointer">'+svg('<path d="M18 6L6 18M6 6l12 12"></path>',{c:'#fff',w:2.4,s:18})+'</button></div>'+
-      '<div style="display:flex;gap:8px;padding:2px 16px 14px">'+tabBtn('cam','<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle>','Kamera')+tabBtn('voice','<rect x="9" y="2" width="6" height="12" rx="3"></rect><path d="M5 10a7 7 0 0 0 14 0M12 17v4"></path>','Sprache')+tabBtn('search','<circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4-4"></path>','Suche')+tabBtn('barcode','<path d="M3 5v14M7 5v14M11 5v14M14 5v14M18 5v14M21 5v14"></path>','Barcode')+'</div>'+
-      '<div style="flex:1;background:#eef2f3;border-radius:26px 26px 0 0;padding:20px 18px 40px">'+inner+msg+'</div></div>';
+    var tabbar='<div style="display:flex;gap:7px;margin-bottom:14px">'+tabBtn('cam',IC_CAM,'Kamera')+tabBtn('voice',IC_VOICE,'Sprache')+tabBtn('search',IC_SRCH,'Suche')+tabBtn('barcode',IC_BAR,'Barcode')+'</div>';
+    return capShell(tabbar+inner+msg);
   }
   // 5-Schritt-Onboarding (Vollbild, grün) – wie im Claude-Design
   function ernSetup(){
@@ -3491,7 +3529,7 @@
     else if(!n.ok||n.available===false){ inner='<div style="background:#fff;border-radius:20px;box-shadow:0 12px 34px rgba(4,33,40,.10);padding:30px 22px;text-align:center"><div style="font-size:34px">🥗</div><div style="font-size:16px;font-weight:800;color:#15171B;margin-top:10px">Ernährung ist gerade nicht verfügbar</div><div style="font-size:13.5px;color:#6b7780;font-weight:500;margin-top:6px;line-height:1.5">Bitte später erneut versuchen.</div></div>'; }
     else if(S.ernUpgrade){ inner=ernUpgradeScreen(); }
     else if(S.ernProd){ inner=ernProductPicker(); }
-    else if(S.ernCapture){ inner=ernErfassen(); }
+    // Erfassen ist jetzt ein Bottom-Sheet-Popup (Overlay über dem aktuellen Screen), kein Vollbild mehr.
     else if(S.ernConfirm){ inner=ernConfirmScreen(); }
     else if(S.ernData){ inner=ernDataScreen(); }
     else if(S.ernFavMgr){ inner=ernFavMgrScreen(); }
@@ -4457,12 +4495,13 @@
     if(S.vaOpen) html+=vaOverlayHtml();
     if(S.dp) html+=wheelOverlay();
     if(S.qaOpen) html+=qaSheet();
+    if(S.screen==='ern'&&S.ernCapture) html+=ernErfassen();   // Erfassen-Popup (Bottom-Sheet) über dem Ernährungs-Screen
     if(TOKEN && S.screen!=='login' && !isFormer() && !obDone()) html+=obOverlayHtml();
     // Chat-Eingaben über die Neu-Zeichnung retten (Wert, Fokus, Cursor & Scroll-Position) –
     // sonst verschwindet getippter Text und die Tastatur klappt zu, sobald im Hintergrund
     // Daten nachladen (das war der große Chat-Bug).
     var keep={};
-    ['finn_q','pf_reply','ern_log','ern_ask','ern_fridge','ern_capq'].forEach(function(id){ var e=$(id); if(e){ keep[id]={v:e.value,f:document.activeElement===e,ss:e.selectionStart,se:e.selectionEnd,h:e.style.height}; } });
+    ['finn_q','pf_reply','ern_log','ern_ask','ern_fridge','ern_capq','ern_prodq','ern_bc'].forEach(function(id){ var e=$(id); if(e){ keep[id]={v:e.value,f:document.activeElement===e,ss:e.selectionStart,se:e.selectionEnd,h:e.style.height}; } });
     var keepScroll={};
     ['finn_scroll','pf_scroll'].forEach(function(id){ var e=$(id); if(e){ keepScroll[id]=e.scrollTop; } });
     $('app').innerHTML=html;
@@ -4629,7 +4668,8 @@
       .catch(function(){ S.ernBusy=false; S.ernErr=true; S.ernMsg='Konnte nicht speichern. Bitte später erneut.'; render(); }); },
     ernLog:function(){ if(S.ernBusy) return; var t=$('ern_log'); var q=t?(t.value||'').trim():''; if(q.length>=2) ernLogText(q); },
     ernCapSearch:function(){ if(S.ernBusy) return; var t=$('ern_capq'); var q=t?(t.value||'').trim():''; if(q.length>=2) ernLogText(q); },
-    ernOpenCapture:function(a){ setS({ernCapture:true,ernCapTab:'cam',ernCapTarget:a||'',ernMsg:'',ernErr:false}); try{ window.scrollTo(0,0); }catch(e){} },
+    ernOpenCapture:function(a){ setS({ernCapture:true,ernCapTab:'menu',ernCapTarget:a||'',ernMsg:'',ernErr:false}); },
+    ernCapMenu:function(){ try{ window.__ernStopScan&&window.__ernStopScan(); }catch(e){} setS({ernCapTab:'menu', ernScanErr:'', ernSearchErr:'', ernMsg:''}); },
     ernCloseCapture:function(){ try{ window.__ernStopScan&&window.__ernStopScan(); }catch(e){} S.ernAddToConfirm=false; setS({ernCapture:false}); try{ window.scrollTo(0,0); }catch(e){} },
     // Bestätigen-Screen (Punkt 1)
     ernCFRemove:function(a){ var cf=S.ernConfirm; if(!cf) return; cf.items.splice(parseInt(a,10),1); if(!cf.items.length){ ernCloseConfirm(); return; } render(); },
