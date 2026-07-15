@@ -695,7 +695,7 @@
     // Vorschau für morgen (für die Slot-Auslastung, wenn heute schon geschlossen ist)
     fetch('/api/plan?offset=1',{cache:'no-store'}).then(function(r){return r.json();}).then(function(d){ DATA.planAggTom=d||null; render(); }).catch(function(){});
   }
-  function loadInbox(){ return api('/api/member/inbox').then(function(d){ DATA.inbox=(d&&d.vorgaenge)||[]; render(); }).catch(function(){ DATA.inbox=DATA.inbox||[]; }); }
+  function loadInbox(){ S.pfLoadErr=false; return api('/api/member/inbox').then(function(d){ DATA.inbox=(d&&d.vorgaenge)||[]; render(); }).catch(function(){ if(DATA.inbox==null){ S.pfLoadErr=true; render(); } }); }
   function loadPrefs(){ return api('/api/member/prefs').then(function(d){ if(d&&d.prefs){ DATA.prefs=d.prefs; if(d.prefs.reminders===false) S.planRemind=false; } render(); }).catch(function(){ DATA.prefs=DATA.prefs||{reminders:true}; }); }
 
   // ── „Vormerken" (geplante Trainingszeit heute) ──
@@ -4376,6 +4376,11 @@
     var shown=r.filtered.slice(0,lim);
     var moreN=r.filtered.length-shown.length;
     if(!shown.length){
+      // Lade-/Fehlerzustand vom echten Leer-Zustand unterscheiden (nicht fälschlich „keine Nachrichten").
+      if(DATA.inbox==null){
+        if(S.pfLoadErr) return '<div style="background:var(--surface);border-radius:18px;box-shadow:0 10px 30px rgba(4,33,40,.08);padding:30px 22px;text-align:center;margin-bottom:12px"><div style="font-size:15px;font-weight:800;color:var(--text)">Nachrichten konnten nicht geladen werden</div><div style="font-size:13px;color:var(--text-soft);margin:5px 0 14px;line-height:1.5">Bitte prüfe deine Verbindung.</div><button data-act="pfReload" style="padding:11px 20px;border:none;border-radius:12px;background:'+TEAL+';color:#fff;font-weight:800;font-size:14px;cursor:pointer">Erneut laden</button></div>';
+        return '<div style="background:var(--surface);border-radius:18px;box-shadow:0 10px 30px rgba(4,33,40,.08);padding:34px 22px;text-align:center;margin-bottom:12px"><div style="font-size:14px;font-weight:700;color:var(--text-soft)">Nachrichten werden geladen …</div></div>';
+      }
       if(!r.all.length) return '<div style="background:var(--surface);border-radius:18px;box-shadow:0 10px 30px rgba(4,33,40,.08);padding:34px 22px;text-align:center;margin-bottom:12px"><div style="font-size:15px;font-weight:800;color:var(--text)">Noch keine Nachrichten</div><div style="font-size:13px;color:var(--text-soft);margin-top:5px;line-height:1.5">Hier findest du Antworten vom Team sowie Termin- und Beitrags-Infos.</div></div>';
       var txt=r.q?('Keine Treffer für „'+esc(r.q)+'".'):(r.filter==='erledigt'?'Keine erledigten Vorgänge.':'Keine offenen Vorgänge – alles erledigt. 🎉');
       return '<div style="background:var(--surface);border-radius:18px;box-shadow:0 10px 30px rgba(4,33,40,.08);padding:28px 22px;text-align:center;margin-bottom:12px"><div style="font-size:14px;font-weight:700;color:var(--text-2)">'+txt+'</div></div>';
@@ -5771,6 +5776,7 @@
     pfFilter:function(a){ setQuiet({pfFilter:a,pfLimit:12}); },
     pfSearchClear:function(){ setQuiet({pfSearch:'',pfLimit:12}); },
     pfListMore:function(){ setQuiet({pfLimit:(S.pfLimit||12)+15}); },
+    pfReload:function(){ S.pfLoadErr=false; render(); loadInbox(); },
     pfOpen:function(a){ var arr=DATA.inbox||[]; for(var k=0;k<arr.length;k++){ if(String(arr[k].id)===String(a)){ arr[k].unread=false; break; } }
       S.pfStick=true;
       setS({pfSel:a,pfThread:true,pfErr:'',pfDraft:'',pfExpand:false});
