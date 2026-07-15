@@ -130,6 +130,25 @@ die **Sichtbarkeit** des Moduls, nicht Premium — Premium hängt allein am Abo.
 
 ---
 
+## Premium-Vorschau ohne Stripe (Team-Backend)
+
+Zum Prüfen der kostenpflichtigen Inhalte – oder um einem Mitglied kulanzweise
+freizuschalten – kann ein **Admin** im Team-Backend (Mitglieds-Profil → Karte
+„🔓 Ernährungs-Premium (Vorschau)") mit einem Klick Premium aktivieren, **ohne
+echtes Abo**.
+
+- Endpunkt `api/team/nutrition-preview.js` (`POST {id, action:'grant'|'revoke'}`,
+  nur Admin) schreibt ein ganz normales Entitlement `nutri:prem:<id>`, nur markiert
+  mit **`source:'team_preview'`** und auf **180 Tage** befristet (`until`). Dadurch
+  greifen **alle bestehenden Gates automatisch** – kein Sondercode im Gate nötig.
+- **Ein echtes Stripe-Abo wird nie angetastet:** `revoke` löscht nur `team_preview`-
+  Einträge (sonst `409`); `grant` auf ein aktives echtes Abo lehnt ab (`409`).
+- Beim echten Launch ist die Vorschau **bedeutungslos**: der Stripe-Webhook
+  überschreibt den Eintrag mit den echten Abo-Daten, und die 180-Tage-Frist läuft
+  ohnehin von selbst aus. Zum Beenden genügt „Vorschau beenden" im Team-Backend.
+
+---
+
 ## Noch von dir/rechtlich zu erledigen (kein Code)
 
 Für ein **B2C-Abo in Deutschland/EU** brauchst du zusätzlich zum Technischen:
