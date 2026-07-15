@@ -3189,6 +3189,34 @@
     var msg=S.ernMsg?'<div role="'+(S.ernErr?'alert':'status')+'" style="font-size:12.5px;font-weight:700;color:'+(S.ernErr?'var(--err-fg)':ERN_G)+';text-align:center;margin-top:12px">'+esc(S.ernMsg)+'</div>':'';
     return '<div style="padding:4px 2px 40px">'+head+addForm+list+msg+'</div>';
   }
+  // Prominente Coaching-Karte für „Heute" – rückt das Coach-Programm in den Fokus.
+  function ernCoachCard(){
+    var c=DATA.coach;
+    if(!c||c===true||c===false||!c.ok||c.available===false) return '';
+    var GRAD='background:linear-gradient(150deg,#12a06a,#0f7a4a 58%,#0a5a37)';
+    var ava='<div style="width:42px;height:42px;border-radius:50%;background:rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;flex-shrink:0">'+svg('<path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.5 8.6 8.6 0 0 1-4-1L3 20l1-5a8.4 8.4 0 0 1-1-4A8.5 8.5 0 0 1 11.5 3 8.5 8.5 0 0 1 21 11.5z"></path>',{c:'#fff',w:2,s:22})+'</div>';
+    var arrow=svg('<path d="M9 6l6 6-6 6"></path>',{c:'#fff',w:2.4,s:17});
+    if(!c.enrolled){
+      return '<button data-act="ernTab" data-arg="coach" style="width:100%;text-align:left;border:none;cursor:pointer;font-family:inherit;'+GRAD+';border-radius:20px;padding:18px 20px;color:#fff;box-shadow:0 14px 34px rgba(15,122,74,.26);margin-bottom:14px">'+
+        '<div style="display:flex;align-items:center;gap:11px">'+ava+'<div style="flex:1;min-width:0"><div style="font-size:11px;font-weight:900;color:#c5ecd7;text-transform:uppercase;letter-spacing:.4px">Dein Coaching-Programm</div><div style="font-size:17px;font-weight:900;letter-spacing:-.2px;margin-top:1px">In '+(c.totalWeeks||8)+' Wochen zum Ziel</div></div></div>'+
+        '<div style="font-size:12.5px;font-weight:600;color:#d4f0e2;line-height:1.45;margin-top:10px">Jede Woche eine kurze Lektion und klare Gewohnheiten – FINN begleitet dich. Woche 1 ist gratis.</div>'+
+        '<div style="display:flex;align-items:center;justify-content:space-between;margin-top:14px;background:rgba(255,255,255,.15);border-radius:12px;padding:11px 14px"><span style="font-size:14px;font-weight:900">Coaching starten</span>'+arrow+'</div>'+
+      '</button>';
+    }
+    var cur=c.currentLesson;
+    var habs=Array.isArray(c.todayHabits)?c.todayHabits:[];
+    var hd=habs.filter(function(h){ return h.done; }).length;
+    var done=Array.isArray(c.lessons)?c.lessons.filter(function(l){ return l.completed; }).length:Math.max(0,(c.week||1)-1);
+    var lessonLine=cur
+      ? '<div style="font-size:11px;font-weight:800;color:#c5ecd7;text-transform:uppercase;letter-spacing:.3px;margin-top:13px">'+(cur.completed?'Diese Woche · zum Wiederholen':'Diese Woche')+' · '+cur.minutes+' Min'+((!c.premium&&cur.week>=2)?' · ⭐ Premium':'')+'</div><div style="font-size:16.5px;font-weight:900;margin-top:2px;line-height:1.25">'+esc(cur.title)+'</div>'+(cur.teaser?'<div style="font-size:12.5px;font-weight:600;color:#d4f0e2;line-height:1.4;margin-top:3px">'+esc(cur.teaser)+'</div>':'')
+      : '<div style="font-size:16px;font-weight:900;margin-top:13px">Alle Wochen geschafft 🎉</div>';
+    var pills=(habs.length?'<span style="background:rgba(255,255,255,.16);border-radius:10px;padding:6px 10px;font-size:12px;font-weight:900">Heute dran '+hd+'/'+habs.length+'</span>':'')+'<span style="background:rgba(255,255,255,.16);border-radius:10px;padding:6px 10px;font-size:12px;font-weight:900">🔥 '+(c.streak||0)+'</span>';
+    return '<button data-act="ernTab" data-arg="coach" style="width:100%;text-align:left;border:none;cursor:pointer;font-family:inherit;'+GRAD+';border-radius:20px;padding:18px 20px;color:#fff;box-shadow:0 14px 34px rgba(15,122,74,.26);margin-bottom:14px">'+
+      '<div style="display:flex;align-items:center;gap:11px">'+ava+'<div style="flex:1;min-width:0"><div style="font-size:11px;font-weight:900;color:#c5ecd7;text-transform:uppercase;letter-spacing:.4px">Dein Coaching</div><div style="font-size:16px;font-weight:900">Woche '+c.week+' von '+c.totalWeeks+'</div></div><div style="background:rgba(255,255,255,.16);border-radius:11px;padding:6px 10px;font-size:12.5px;font-weight:900;white-space:nowrap">'+done+'/'+c.totalWeeks+' ✓</div></div>'+
+      lessonLine+
+      '<div style="display:flex;align-items:center;gap:8px;margin-top:14px">'+pills+'<span style="margin-left:auto;display:inline-flex;align-items:center;gap:4px;font-size:13.5px;font-weight:900">'+(cur&&!cur.completed?'Weiterlernen':'Zum Coach')+arrow+'</span></div>'+
+    '</button>';
+  }
   function ernDash(){
     var n=DATA.nutri, t=n.targets||{}, td=n.today||{}, tot=td.totals||{kcal:0,p:0,c:0,f:0};
     var kcalLeft=Math.max(0,(t.kcal||0)-tot.kcal), kcalDeg=t.kcal?Math.min(360,Math.round(tot.kcal/t.kcal*360)):0;
@@ -3260,12 +3288,12 @@
     // „Mehr" – Sekundäres eingeklappt (Coaching-CTA, Studio-Tipp, Premium, Ziel/Daten),
     // damit „Heute" sich auf das Wesentliche konzentriert.
     var chev=svg(S.ernMoreOpen?'<path d="M18 15l-6-6-6 6"></path>':'<path d="M6 9l6 6 6-6"></path>',{c:'var(--text-soft)',w:2.2,s:16});
-    var moreBtn='<button data-act="ernMoreToggle" aria-expanded="'+(S.ernMoreOpen?'true':'false')+'" style="width:100%;display:flex;align-items:center;justify-content:center;gap:7px;padding:14px;border:1.5px solid var(--border);background:var(--surface);border-radius:14px;color:var(--text-muted);font-weight:800;font-size:13.5px;cursor:pointer">'+(S.ernMoreOpen?'Weniger anzeigen':'Mehr: Coaching, Ziel &amp; Daten')+chev+'</button>';
+    var moreBtn='<button data-act="ernMoreToggle" aria-expanded="'+(S.ernMoreOpen?'true':'false')+'" style="width:100%;display:flex;align-items:center;justify-content:center;gap:7px;padding:14px;border:1.5px solid var(--border);background:var(--surface);border-radius:14px;color:var(--text-muted);font-weight:800;font-size:13.5px;cursor:pointer">'+(S.ernMoreOpen?'Weniger anzeigen':'Mehr: Studio-Angebot, Ziel &amp; Daten')+chev+'</button>';
     var more='<div style="margin-top:22px">'+moreBtn+(S.ernMoreOpen?('<div style="margin-top:14px">'+cta+studio+ernPremiumCard()+recompute+'</div>'):'')+'</div>';
     // Vergangene Tage: nur die relevanten Blöcke (Ring, Wasser, Mahlzeiten).
     if(!viewIsToday) return ernDayNav()+ring+msg+water+mealsBlock;
-    // Heute: klare Reihenfolge – Überblick, Wasser, Mahlzeiten, Schnell-Add, Fasten, Mehr.
-    return ernDayNav()+ring+msg+checkin+water+mealsBlock+quickAdd+fasting+more;
+    // Heute: klare Reihenfolge – Überblick, Coaching (im Fokus), Wasser, Mahlzeiten, Schnell-Add, Fasten, Mehr.
+    return ernDayNav()+ring+ernCoachCard()+msg+checkin+water+mealsBlock+quickAdd+fasting+more;
   }
   // Fasten-Helfer (Client-Countdown; Server hält plan+start)
   function ernFastMs(){
@@ -3637,7 +3665,7 @@
           d.meals.map(function(m,mi){ return '<div style="display:flex;align-items:center;gap:11px;padding:10px 0;border-top:1px solid var(--border)"><span style="width:30px;height:30px;border-radius:9px;background:var(--surface-2);display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0">'+(EMO[m.label]||'🍽️')+'</span><div style="flex:1;min-width:0"><div style="font-size:10.5px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.4px">'+esc(m.label)+'</div><div style="font-size:13.5px;font-weight:700;color:var(--text);margin-top:1px">'+esc(m.title)+'</div></div><span style="font-size:12px;font-weight:800;color:var(--text-soft)">'+ernNum(m.kcal)+'</span><button data-act="ernPlanMealLog" data-arg="'+di+':'+mi+'" aria-label="'+esc(m.title)+' ins Protokoll übernehmen" style="width:30px;height:30px;border-radius:9px;border:1.5px solid rgba(15,122,74,.25);background:#f4faf6;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'+svg('<path d="M12 5v14M5 12h14"></path>',{c:ERN_G,w:2.4,s:15})+'</button></div>'; }).join('')+'</div>';
       }).join('');
       var pmsg=S.ernMsg?'<div role="'+(S.ernErr?'alert':'status')+'" style="font-size:12.5px;font-weight:700;color:'+(S.ernErr?'var(--err-fg)':ERN_G)+';margin:0 2px 12px;line-height:1.4">'+esc(S.ernMsg)+'</div>':'';
-      return seg+pmsg+'<button data-act="ernPlanTab" data-arg="einkauf" style="width:100%;padding:14px;border:none;border-radius:14px;background:#0a4958;color:#fff;font-weight:900;font-size:14px;cursor:pointer;margin-bottom:14px">🛒 Einkaufsliste ansehen</button>'+daysHtml+'<button data-act="ernPlanGen" '+(busy?'disabled ':'')+'style="width:100%;padding:12px;border:1.5px solid var(--border);background:var(--surface);color:var(--text-muted);border-radius:14px;font-weight:800;font-size:13px;cursor:pointer">'+(busy?'FINN plant …':'Neue Woche planen')+'</button>';
+      return seg+pmsg+daysHtml+'<button data-act="ernPlanGen" '+(busy?'disabled ':'')+'style="width:100%;padding:12px;border:1.5px solid var(--border);background:var(--surface);color:var(--text-muted);border-radius:14px;font-weight:800;font-size:13px;cursor:pointer">'+(busy?'FINN plant …':'Neue Woche planen')+'</button>';
     }
     var shop=Array.isArray(pd.shopping)?pd.shopping:[];
     if(!shop.length){ return seg+'<div style="'+CARD+';text-align:center;padding:34px 22px"><div style="width:70px;height:70px;border-radius:22px;background:rgba(15,122,74,.1);display:flex;align-items:center;justify-content:center;font-size:32px;margin:0 auto">🛒</div><div style="font-size:16px;font-weight:900;color:var(--text);margin-top:16px">Noch keine Einkaufsliste</div><div style="font-size:13px;color:var(--text-muted);font-weight:500;margin-top:8px;line-height:1.5">Erstelle deinen Wochenplan – FINN fasst die Zutaten automatisch zusammen.</div>'+genBtn('Woche & Liste erstellen')+'</div>'; }
@@ -3688,13 +3716,15 @@
     var savedList=saved.length?('<div style="font-size:12.5px;font-weight:900;color:var(--text-soft);text-transform:uppercase;letter-spacing:.4px;margin:14px 2px 10px">Gespeichert</div>'+saved.map(function(r,i){ return '<div style="position:relative">'+card(r,'ernRecipeOpen','saved:'+i,(r.protein?r.protein+' g Eiweiß':''))+'<button data-act="ernRecipeDel" data-arg="'+esc(r.id)+'" aria-label="Löschen" style="position:absolute;top:-2px;right:6px;width:28px;height:28px;border-radius:8px;border:none;background:var(--surface-2);display:flex;align-items:center;justify-content:center;cursor:pointer">'+svg('<path d="M18 6L6 18M6 6l12 12"></path>',{c:'var(--text-soft)',w:2.2,s:13})+'</button></div>'; }).join('')):'';
     var hint=(!genList&&!savedList)?'<div style="font-size:12.5px;color:var(--text-soft);font-weight:500;text-align:center;padding:8px 14px;line-height:1.5">Noch keine eigenen Rezepte – lass dir welche vorschlagen oder koch aus dem Kühlschrank.</div>':'';
     // Kuratiertes Kochbuch – Bild-Karten (Foto oben, Titel + kcal, Makros darunter).
-    var cook='<div style="font-size:12.5px;font-weight:900;color:var(--text-soft);text-transform:uppercase;letter-spacing:.4px;margin:6px 2px 10px">Kochbuch</div>'+
-      ERN_COOKBOOK.map(function(r,i){ return '<div data-act="ernRecipeOpen" data-arg="cur:'+i+'" role="button" tabindex="0" aria-label="'+esc(r.title)+' – Rezept öffnen" style="'+CARD+';padding:0;overflow:hidden;cursor:pointer">'+
+    var cook=ERN_COOKBOOK.map(function(r,i){ return '<div data-act="ernRecipeOpen" data-arg="cur:'+i+'" role="button" tabindex="0" aria-label="'+esc(r.title)+' – Rezept öffnen" style="'+CARD+';padding:0;overflow:hidden;cursor:pointer">'+
         '<div style="height:150px;background-image:url('+r.image+');background-size:cover;background-position:center;position:relative"><div style="position:absolute;inset:0;background:linear-gradient(to top,rgba(0,0,0,.6),transparent 55%)"></div>'+
           '<div style="position:absolute;left:13px;right:13px;bottom:11px;display:flex;align-items:flex-end;justify-content:space-between;gap:8px"><div style="font-size:16.5px;font-weight:900;color:#fff;text-shadow:0 1px 5px rgba(0,0,0,.45);line-height:1.2">'+esc(r.title)+'</div><span style="background:rgba(255,255,255,.94);color:#0a4958;font-size:11.5px;font-weight:900;padding:4px 9px;border-radius:20px;white-space:nowrap;flex-shrink:0">'+ernNum(r.kcal)+' kcal</span></div></div>'+
         '<div style="padding:11px 14px;display:flex;align-items:center;gap:12px"><span style="font-size:12px;font-weight:800;color:'+ERN_PROT+'">EW '+r.protein+' g</span><span style="font-size:12px;font-weight:800;color:'+ERN_CARB+'">KH '+r.carbs+' g</span><span style="font-size:12px;font-weight:800;color:'+ERN_FAT+'">F '+r.fat+' g</span><span style="margin-left:auto;font-size:12px;font-weight:700;color:var(--text-soft)">'+r.minutes+' Min</span></div>'+
       '</div>'; }).join('');
-    return msg+cook+fridge+gen+genList+savedList+hint;
+    // Deine Werkzeuge zuerst (Kühlschrank-Rezepte, „für mein Ziel", eigene/gespeicherte),
+    // das kuratierte Kochbuch als Inspiration am Ende – statt die Tools darunter zu vergraben.
+    var cookHdr='<div style="font-size:17px;font-weight:900;color:var(--text);letter-spacing:-.3px;margin:24px 2px 12px">Kochbuch – Inspiration</div>';
+    return msg+fridge+gen+genList+savedList+hint+cookHdr+cook;
   }
   // ── Ernährung · Verlauf / Wochen-Review ──
   function ernVerlauf(){
