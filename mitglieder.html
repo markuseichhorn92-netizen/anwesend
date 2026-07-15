@@ -395,6 +395,7 @@
     ernFavMgr:false, ernFavBusy:false, ernFavAddOpen:false,
     ernChat:[], ernData:false, ernDataBusy:false, ernRecipeServ:1,
     ernUpgrade:false, ernUpgradeBusy:false,
+    ernLesson:null, ernLessonData:null, ernLessonBusy:false, ernChatOpen:false, ernEnrollBusy:false,
     ctOpen:false, ctSent:false, ctMsg:'', ctBusy:false, ctErr:'', ctMsgServer:'', artFb:null,
     pfFilter:'offen', pfSearch:'', pfLimit:12, pfSel:null, pfThread:false, pfDraft:'', pfBusy:false, pfErr:'',
     alToken:'', alLabel:'', alAction:'', alBusy:false, alErr:'', alGo:'', alSub:'', alState:'loading',
@@ -532,7 +533,7 @@
     if(s==='insta'){ S.instaSel=null; loadInsta(); maybeRefreshInsta(); }
     if(s==='home'){ loadFinnTip(); maybeRefreshInsta(); maybeRefreshLive(); }
     if(s==='account') loadAccount();
-    if(s==='ern'){ try{ window.__ernStopScan&&window.__ernStopScan(); }catch(e){} S.ernMsg=''; S.ernErr=false; S.ernAsk=''; S.ernAnswer=''; S.ernRecipes=null; S.ernCoachSent=false; S.ernTab='heute'; S.ernRecipeSel=null; S.ernCapture=false; S.ernConfirm=null; S.ernProd=null; S.ernEntryEdit=null; S.ernViewDate=''; S.ernFavMgr=false; S.ernData=false; S.ernUpgrade=false; S.ernObStep=0; S.ernChat=ernChatLoad(); loadNutri(); loadFavs(); }
+    if(s==='ern'){ try{ window.__ernStopScan&&window.__ernStopScan(); }catch(e){} S.ernMsg=''; S.ernErr=false; S.ernAsk=''; S.ernAnswer=''; S.ernRecipes=null; S.ernCoachSent=false; S.ernTab='heute'; S.ernRecipeSel=null; S.ernCapture=false; S.ernConfirm=null; S.ernProd=null; S.ernEntryEdit=null; S.ernViewDate=''; S.ernFavMgr=false; S.ernData=false; S.ernUpgrade=false; S.ernLesson=null; S.ernLessonData=null; S.ernChatOpen=false; S.ernObStep=0; S.ernChat=ernChatLoad(); loadNutri(); loadFavs(); loadCoach(); }
     if(s==='appt'){ if(!DATA.appts) loadAppts(); if(DATA.bookable===null) loadBookable(); }
     if(s==='home'||s==='checkin') checkArrival();
     setS({}); }
@@ -2664,6 +2665,8 @@
   function loadPlan(){ api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'plan-get'})}).then(function(d){ DATA.nutriPlan=(d&&d.ok)?{plan:d.plan,shopping:d.shopping}:{plan:null,shopping:[]}; render(); }).catch(function(){ DATA.nutriPlan={plan:null,shopping:[]}; render(); }); }
   function loadSaved(){ api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'recipes-get'})}).then(function(d){ DATA.nutriSaved=(d&&d.ok&&Array.isArray(d.saved))?d.saved:[]; render(); }).catch(function(){ DATA.nutriSaved=[]; render(); }); }
   function loadWeek(){ api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'week'})}).then(function(d){ DATA.nutriWeek=(d&&d.ok)?d:{ok:false}; render(); }).catch(function(){ DATA.nutriWeek={ok:false}; render(); }); }
+  // Coaching-Programm (8-Wochen-Reise) laden – eigener Endpunkt, Snapshot in DATA.coach.
+  function loadCoach(){ api('/api/member/nutrition-coach').then(function(d){ DATA.coach=(d&&d.ok)?d:{ok:false,available:!!(d&&d.available)}; render(); }).catch(function(){ DATA.coach={ok:false,available:false}; render(); }); }
   // Fasten-Countdown live nachführen (nur auf dem Heute-Tab, ohne Voll-Render)
   setInterval(function(){
     try{
@@ -3199,7 +3202,79 @@
       '<button data-act="ernAskSend" '+(S.ernAskBusy?'disabled ':'')+'style="width:50px;height:48px;border-radius:14px;border:none;background:'+ERN_G+';display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'+svg('<path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"></path>',{c:'#fff',w:2.1,s:20})+'</button></div></div>';
     var cta='<div style="background:linear-gradient(150deg,#0e6072,#063540);border-radius:20px;padding:18px;color:#fff;box-shadow:0 14px 36px rgba(4,33,40,.2)"><div style="display:flex;align-items:center;gap:13px"><div style="width:46px;height:46px;border-radius:14px;background:rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;font-size:23px;flex-shrink:0">🧬</div><div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:900">Lieber ein Mensch?</div><div style="font-size:12.5px;color:#aed0d6;font-weight:600;line-height:1.4;margin-top:2px">Stoffwechsel-Coaching mit persönlicher Betreuung im Studio.</div></div></div>'+
       (S.ernCoachSent?'<div style="margin-top:14px;background:rgba(127,227,168,.16);border-radius:13px;padding:12px;text-align:center;font-size:13.5px;font-weight:800;color:#7fe3a8">Danke! Wir melden uns. ✓</div>':'<button data-act="ernCoachReq" '+(S.ernCoachBusy?'disabled ':'')+'style="width:100%;margin-top:14px;padding:13px;border:none;border-radius:14px;background:#fff;color:#0a4958;font-weight:900;font-size:14px;cursor:pointer">'+(S.ernCoachBusy?'Wird gesendet …':'Beratung anfragen')+'</button>')+'</div>';
-    return coach+cta;
+    return (S.ernChatOpen?'<button data-act="ernCoachChatClose" style="display:flex;align-items:center;gap:6px;border:none;background:none;color:var(--text-muted);font-weight:800;font-size:13px;cursor:pointer;padding:4px 2px 10px">'+svg(IC.back,{c:'var(--text-muted)',w:2.2,s:16})+'Zurück zum Coach</button>':'')+coach+cta;
+  }
+  // FINN-Glyph (Sprechblase) als runder Avatar – für Coaching-Screens.
+  function ernFinnAvatar(sz){ return '<div style="width:'+sz+'px;height:'+sz+'px;border-radius:50%;background:linear-gradient(150deg,'+ERN_G2+','+ERN_GD+');display:flex;align-items:center;justify-content:center;flex-shrink:0">'+svg('<path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.5 8.6 8.6 0 0 1-4-1L3 20l1-5a8.4 8.4 0 0 1-1-4A8.5 8.5 0 0 1 11.5 3 8.5 8.5 0 0 1 21 11.5z"></path>',{c:'#fff',w:2,s:Math.round(sz*0.5)})+'</div>'; }
+  // „Lieber ein Mensch?" – Stoffwechsel-Coaching-Verweis (auf Coach-Home & im Chat).
+  function ernHumanCta(){
+    return '<div style="background:linear-gradient(150deg,#0e6072,#063540);border-radius:20px;padding:18px;color:#fff;box-shadow:0 14px 36px rgba(4,33,40,.2)"><div style="display:flex;align-items:center;gap:13px"><div style="width:46px;height:46px;border-radius:14px;background:rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;font-size:23px;flex-shrink:0">🧬</div><div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:900">Lieber ein Mensch?</div><div style="font-size:12.5px;color:#aed0d6;font-weight:600;line-height:1.4;margin-top:2px">Stoffwechsel-Coaching mit persönlicher Betreuung im Studio.</div></div></div>'+
+      (S.ernCoachSent?'<div style="margin-top:14px;background:rgba(127,227,168,.16);border-radius:13px;padding:12px;text-align:center;font-size:13.5px;font-weight:800;color:#7fe3a8">Danke! Wir melden uns. ✓</div>':'<button data-act="ernCoachReq" '+(S.ernCoachBusy?'disabled ':'')+'style="width:100%;margin-top:14px;padding:13px;border:none;border-radius:14px;background:#fff;color:#0a4958;font-weight:900;font-size:14px;cursor:pointer">'+(S.ernCoachBusy?'Wird gesendet …':'Beratung anfragen')+'</button>')+'</div>';
+  }
+  // ═══ Coaching-Home: die geführte 8-Wochen-Reise (Coach-Tab) ═══
+  function ernCoachHome(){
+    var c=DATA.coach;
+    var CARD='background:var(--surface);border-radius:20px;box-shadow:0 12px 30px rgba(4,33,40,.09);padding:18px;margin-bottom:14px';
+    var chev=svg('<path d="M9 6l6 6-6 6"></path>',{c:'var(--text-soft)',w:2.2,s:20});
+    if(c===undefined||c===null){ return '<div style="'+CARD+';text-align:center;color:var(--text-soft);font-weight:600">Lade Coaching …</div>'; }
+    if(!c.ok||c.available===false){ return ernSectionEmpty('🧭','Coaching gerade nicht verfügbar','Bitte später erneut versuchen.'); }
+    // Noch nicht eingeschrieben -> Einladungs-Hero.
+    if(!c.enrolled){
+      var feats=[['🗓️','8 Wochen, Schritt für Schritt'],['✅','Konkrete Gewohnheiten statt Diät'],['💬','FINN begleitet dich jeden Tag']];
+      var fl=feats.map(function(f){ return '<div style="display:flex;align-items:center;gap:11px;margin-top:11px"><span style="width:34px;height:34px;border-radius:11px;background:rgba(255,255,255,.16);display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0">'+f[0]+'</span><span style="font-size:14px;font-weight:700;color:#eafff4">'+f[1]+'</span></div>'; }).join('');
+      var hero='<div style="'+CARD+';background:linear-gradient(160deg,#12a06a,#0f7a4a 58%,#0a5a37);color:#fff;padding:22px">'+
+        '<div style="display:inline-flex;align-items:center;gap:7px;background:rgba(255,255,255,.16);border-radius:20px;padding:6px 13px;font-size:11.5px;font-weight:900;letter-spacing:.3px">🧭 DEIN COACHING-PROGRAMM</div>'+
+        '<div style="font-size:23px;font-weight:900;letter-spacing:-.5px;line-height:1.2;margin-top:14px">In 8 Wochen zu<br>deinem Ziel</div>'+
+        '<div style="font-size:14px;font-weight:600;color:#d4f0e2;line-height:1.5;margin-top:10px">Jede Woche eine kurze Lektion, klare Gewohnheiten und FINN an deiner Seite – ganz ohne Crash-Diät.</div>'+
+        fl+
+        '<button data-act="ernEnroll" '+(S.ernEnrollBusy?'disabled ':'')+'style="width:100%;margin-top:20px;padding:16px;border:none;border-radius:14px;background:#fff;color:#0f7a4a;font-weight:900;font-size:16px;cursor:pointer;opacity:'+(S.ernEnrollBusy?'.6':'1')+'">'+(S.ernEnrollBusy?'Einen Moment …':'Coaching starten')+'</button>'+
+        '<div style="font-size:11.5px;color:#c5ecd7;font-weight:600;text-align:center;margin-top:10px">Woche 1 ist gratis – jederzeit im eigenen Tempo.</div></div>';
+      return hero+ernHumanCta();
+    }
+    // Eingeschrieben -> Reise-Home.
+    var done=c.lessons.filter(function(l){ return l.completed; }).length;
+    var head='<div style="'+CARD+';display:flex;align-items:center;gap:13px">'+ernFinnAvatar(46)+'<div style="flex:1;min-width:0"><div style="font-size:11.5px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.4px">Dein Coaching</div><div style="font-size:18px;font-weight:900;color:var(--text)">Woche '+c.week+' von '+c.totalWeeks+'</div></div><div style="background:rgba(15,122,74,.10);border:1px solid rgba(15,122,74,.22);border-radius:12px;padding:7px 11px;font-size:13px;font-weight:900;color:'+ERN_G+';white-space:nowrap">'+done+'/'+c.totalWeeks+' ✓</div></div>';
+    var cur=c.currentLesson;
+    var lessonCard;
+    if(cur){
+      lessonCard='<button data-act="ernLessonOpen" data-arg="'+cur.week+'" style="width:100%;text-align:left;'+CARD+';border:none;cursor:pointer;display:flex;align-items:center;gap:14px">'+
+        '<div style="width:52px;height:52px;border-radius:15px;background:linear-gradient(150deg,'+ERN_G2+','+ERN_GD+');display:flex;align-items:center;justify-content:center;color:#fff;font-size:20px;font-weight:900;flex-shrink:0">'+cur.week+'</div>'+
+        '<div style="flex:1;min-width:0"><div style="font-size:11.5px;font-weight:800;color:'+ERN_G+';text-transform:uppercase;letter-spacing:.3px">'+(cur.completed?'Wiederholen':'Diese Woche')+' · '+cur.minutes+' Min</div><div style="font-size:16px;font-weight:900;color:var(--text);margin-top:1px">'+esc(cur.title)+'</div><div style="font-size:12.5px;font-weight:600;color:var(--text-muted);line-height:1.4;margin-top:3px">'+esc(cur.teaser)+'</div></div>'+chev+'</button>';
+    } else {
+      lessonCard='<div style="'+CARD+';text-align:center"><div style="font-size:30px">🎉</div><div style="font-size:16px;font-weight:900;color:var(--text);margin-top:8px">Alle 8 Wochen geschafft!</div><div style="font-size:13px;color:var(--text-muted);font-weight:600;margin-top:5px;line-height:1.5">Stark. Bleib dran – du kannst jede Lektion jederzeit wiederholen.</div></div>';
+    }
+    var rows=c.lessons.map(function(l,i){
+      var badge=l.completed?('background:'+ERN_G+';color:#fff'):(l.unlocked?('background:rgba(15,122,74,.12);color:'+ERN_G):'background:var(--surface-2);color:var(--text-soft)');
+      var act=l.unlocked?(' data-act="ernLessonOpen" data-arg="'+l.week+'"'):'';
+      var right=l.completed?('<span style="font-size:12px;font-weight:800;color:'+ERN_G+'">Fertig</span>'):(l.unlocked?chev:svg('<rect x="5" y="11" width="14" height="9" rx="2"></rect><path d="M8 11V8a4 4 0 0 1 8 0v3"></path>',{c:'var(--text-soft)',w:2,s:16}));
+      return '<div'+act+' role="button" style="display:flex;align-items:center;gap:11px;padding:11px 0;'+(i?'border-top:1px solid var(--border);':'')+'cursor:'+(l.unlocked?'pointer':'default')+'">'+
+        '<span style="width:30px;height:30px;border-radius:9px;'+badge+';display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:900;flex-shrink:0">'+(l.completed?'✓':l.week)+'</span>'+
+        '<div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:800;color:'+(l.unlocked?'var(--text)':'var(--text-soft)')+';white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(l.title)+'</div></div>'+right+'</div>';
+    }).join('');
+    var list='<div style="'+CARD+'"><div style="font-size:13px;font-weight:900;color:var(--text);margin-bottom:4px">Alle Wochen</div>'+rows+'</div>';
+    var askBtn='<button data-act="ernCoachChatOpen" style="width:100%;text-align:left;'+CARD+';border:none;cursor:pointer;display:flex;align-items:center;gap:12px">'+ernFinnAvatar(40)+'<div style="flex:1;min-width:0"><div style="font-weight:900;color:var(--text);font-size:15px">FINN fragen</div><div style="font-size:12.5px;color:var(--text-muted);font-weight:600">Makros, Snack-Ideen, Motivation …</div></div>'+chev+'</button>';
+    var msg=S.ernMsg?'<div role="'+(S.ernErr?'alert':'status')+'" style="font-size:12.5px;font-weight:700;color:'+(S.ernErr?'var(--err-fg)':ERN_G)+';margin:0 2px 12px;line-height:1.4">'+esc(S.ernMsg)+'</div>':'';
+    return head+lessonCard+list+askBtn+msg+ernHumanCta();
+  }
+  // ═══ Lektions-Ansicht (Voll-Screen unter dem Coach-Tab) ═══
+  function ernLesson(){
+    var ld=S.ernLessonData;
+    var back='<button data-act="ernLessonClose" aria-label="Zurück" style="width:38px;height:38px;border-radius:12px;border:none;background:rgba(255,255,255,.16);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'+svg(IC.back,{c:'#fff',w:2.2,s:19})+'</button>';
+    if(S.ernLessonBusy&&!ld){ return '<div style="min-height:60vh;display:flex;align-items:center;justify-content:center;color:var(--text-soft);font-weight:600">Lade Lektion …</div>'; }
+    if(!ld||ld.ok===false){ return '<div style="padding:16px 2px"><button data-act="ernLessonClose" style="border:none;background:none;color:var(--text-muted);font-weight:800;font-size:14px;cursor:pointer">← Zurück</button><div style="margin-top:20px;text-align:center;color:var(--text-muted);font-weight:600">Lektion gerade nicht verfügbar.</div></div>'; }
+    var l=ld.lesson;
+    var green='<div style="background:linear-gradient(160deg,'+ERN_G2+','+ERN_G+' 60%,'+ERN_GD+');border-radius:0 0 24px 24px;padding:14px 18px 22px;color:#fff;box-shadow:0 12px 30px rgba(15,122,74,.22);margin:-2px -2px 14px"><div style="display:flex;align-items:center;gap:11px">'+back+'<div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:700;color:#c5ecd7">Woche '+l.week+(l.minutes?' · '+l.minutes+' Min':'')+(l.theme?' · '+esc(l.theme):'')+'</div><div style="font-size:20px;font-weight:900;letter-spacing:-.4px">'+esc(l.title)+'</div></div></div></div>';
+    if(ld.locked){
+      return green+'<div style="padding:6px 2px 40px"><div style="background:var(--surface);border-radius:20px;box-shadow:0 12px 30px rgba(4,33,40,.09);padding:26px 20px;text-align:center"><div style="font-size:34px">🔒</div><div style="font-size:16px;font-weight:900;color:var(--text);margin-top:10px">Diese Woche ist noch nicht dran</div><div style="font-size:13.5px;color:var(--text-muted);font-weight:600;margin-top:6px;line-height:1.5">'+esc(l.teaser||'')+'</div><div style="font-size:12.5px;color:var(--text-soft);font-weight:700;margin-top:12px">Schließ zuerst die aktuelle Woche ab – dann geht’s weiter.</div></div></div>';
+    }
+    var pers=ld.personalized?'<div style="background:rgba(15,122,74,.07);border:1px solid rgba(15,122,74,.18);border-radius:16px;padding:15px;margin-bottom:16px;display:flex;gap:11px">'+ernFinnAvatar(34)+'<div style="flex:1;font-size:13.5px;color:var(--text);font-weight:600;line-height:1.55">'+esc(ld.personalized)+'</div></div>':'';
+    var sections=(l.body||[]).map(function(s){ return '<div style="margin-top:16px"><div style="font-size:15.5px;font-weight:900;color:var(--text)">'+esc(s.h)+'</div><div style="font-size:14px;color:var(--text-2);font-weight:500;line-height:1.6;margin-top:5px">'+esc(s.p)+'</div></div>'; }).join('');
+    var exercise=l.exercise?'<div style="background:rgba(15,122,74,.07);border:1px solid rgba(15,122,74,.18);border-radius:14px;padding:14px;margin-top:20px"><div style="font-size:11.5px;font-weight:900;color:'+ERN_G+';text-transform:uppercase;letter-spacing:.4px">Deine Aufgabe</div><div style="font-size:14px;color:var(--text);font-weight:600;line-height:1.55;margin-top:6px">'+esc(l.exercise)+'</div></div>':'';
+    var habits=(l.habits&&l.habits.length)?'<div style="margin-top:20px"><div style="font-size:11.5px;font-weight:900;color:var(--text-soft);text-transform:uppercase;letter-spacing:.4px">Gewohnheiten dieser Woche</div>'+l.habits.map(function(h){ return '<div style="display:flex;align-items:center;gap:9px;margin-top:10px"><span style="width:8px;height:8px;border-radius:50%;background:'+ERN_G+';flex-shrink:0"></span><span style="font-size:13.5px;font-weight:700;color:var(--text-2)">'+esc(h.text)+'</span></div>'; }).join('')+'</div>':'';
+    var doneBtn=ld.completed
+      ? '<div style="width:100%;margin-top:22px;padding:15px;border-radius:14px;background:rgba(15,122,74,.10);color:'+ERN_G+';font-weight:900;font-size:15px;text-align:center">Abgeschlossen ✓</div>'
+      : '<button data-act="ernLessonComplete" data-arg="'+l.week+'" '+(S.ernLessonBusy?'disabled ':'')+'style="width:100%;margin-top:22px;padding:16px;border:none;border-radius:14px;background:'+ERN_G+';color:#fff;font-weight:900;font-size:15.5px;cursor:pointer;opacity:'+(S.ernLessonBusy?'.6':'1')+'">'+(S.ernLessonBusy?'Speichere …':'Als erledigt markieren')+'</button>';
+    return green+'<div style="padding:0 2px 40px">'+pers+'<div style="background:var(--surface);border-radius:20px;box-shadow:0 12px 30px rgba(4,33,40,.09);padding:18px">'+sections+exercise+habits+'</div>'+doneBtn+'</div>';
   }
   function ernSectionEmpty(emoji,title,sub){ return '<div style="background:var(--surface);border-radius:20px;box-shadow:0 12px 30px rgba(4,33,40,.09);padding:34px 22px;text-align:center"><div style="font-size:34px">'+emoji+'</div><div style="font-size:16px;font-weight:900;color:var(--text);margin-top:12px">'+esc(title)+'</div><div style="font-size:13px;color:var(--text-muted);font-weight:500;margin-top:6px;line-height:1.5">'+esc(sub)+'</div></div>'; }
   function scrErn(){
@@ -3216,8 +3291,9 @@
     else if(S.ernEntryEdit){ inner=ernEntryEditScreen(); }
     else if(S.ernProd){ inner=ernProductPicker(); }
     else if(S.ernCapture){ inner=ernErfassen(); }
+    else if(S.ernLesson){ inner=ernLesson(); }
     else if(!n.onboarded||S.ernEdit) inner=ernSetup();
-    else { var tab=S.ernTab||'heute'; inner=ernTopbar(tab)+(tab==='plan'?ernPlan():(tab==='rezepte'?ernRezepte():(tab==='coach'?ernCoach():(tab==='verlauf'?ernVerlauf():ernDash())))); }
+    else { var tab=S.ernTab||'heute'; inner=ernTopbar(tab)+(tab==='plan'?ernPlan():(tab==='rezepte'?ernRezepte():(tab==='coach'?(S.ernChatOpen?ernCoach():ernCoachHome()):(tab==='verlauf'?ernVerlauf():ernDash())))); }
     return '<div style="'+LIGHT+'">'+inner+'</div>';
   }
   // ── Ernährung · Wochenplan + Einkaufsliste ──
@@ -4453,6 +4529,24 @@
       api('/api/member/nutrition-billing',{method:'POST',body:JSON.stringify({action:'portal'})})
       .then(function(d){ if(d&&d.ok&&d.url){ window.location.href=d.url; return; } S.ernDataBusy=false; S.ernErr=true; S.ernMsg=(d&&d.message)||'Abo-Verwaltung nicht möglich.'; render(); })
       .catch(function(){ S.ernDataBusy=false; S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); }); },
+    // ── Coaching-Programm (8-Wochen-Reise) ──
+    ernEnroll:function(){ if(S.ernEnrollBusy) return; S.ernEnrollBusy=true; S.ernErr=false; S.ernMsg=''; render();
+      api('/api/member/nutrition-coach',{method:'POST',body:JSON.stringify({action:'enroll'})})
+      .then(function(d){ S.ernEnrollBusy=false; if(d&&d.ok){ DATA.coach=d; S.ernMsg='Willkommen an Bord! Los geht’s mit Woche 1. 🎉'; S.ernErr=false; } else { S.ernErr=true; S.ernMsg=(d&&d.message)||'Konnte nicht starten – bitte später erneut.'; } render(); })
+      .catch(function(){ S.ernEnrollBusy=false; S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); }); },
+    ernLessonOpen:function(a){ var week=parseInt(a,10)||1; S.ernLesson=week; S.ernLessonData=null; S.ernLessonBusy=true; S.ernMsg=''; S.ernErr=false; render();
+      api('/api/member/nutrition-coach',{method:'POST',body:JSON.stringify({action:'lesson-get',week:week})})
+      .then(function(d){ if(d&&d.error==='premium_required'){ S.ernLesson=null; S.ernLessonData=null; S.ernLessonBusy=false; setS({ernUpgrade:true}); return; }
+        S.ernLessonBusy=false; S.ernLessonData=(d&&d.ok)?d:{ok:false}; try{ window.scrollTo(0,0); }catch(e){} render(); })
+      .catch(function(){ S.ernLessonBusy=false; S.ernLessonData={ok:false}; render(); }); },
+    ernLessonClose:function(){ S.ernLesson=null; S.ernLessonData=null; S.ernLessonBusy=false; render(); },
+    ernLessonComplete:function(a){ if(S.ernLessonBusy) return; var week=parseInt(a,10)||1; S.ernLessonBusy=true; render();
+      api('/api/member/nutrition-coach',{method:'POST',body:JSON.stringify({action:'lesson-complete',week:week})})
+      .then(function(d){ if(d&&d.error==='premium_required'){ S.ernLessonBusy=false; S.ernLesson=null; S.ernLessonData=null; setS({ernUpgrade:true}); return; }
+        S.ernLessonBusy=false; if(d&&d.ok){ DATA.coach=d; if(S.ernLessonData&&S.ernLessonData.lesson) S.ernLessonData.completed=true; } render(); })
+      .catch(function(){ S.ernLessonBusy=false; render(); }); },
+    ernCoachChatOpen:function(){ setS({ernChatOpen:true}); try{ window.scrollTo(0,0); }catch(e){} },
+    ernCoachChatClose:function(){ setS({ernChatOpen:false}); },
     // ── Etappe 6: Datenschutz – Export / Tag löschen / alles löschen ──
     ernDataOpen:function(){ setS({ernData:true, ernMsg:'', ernErr:false}); },
     ernDataClose:function(){ S.ernData=false; S.ernMsg=''; S.ernErr=false; loadNutri(); loadFavs(); },
@@ -4501,7 +4595,7 @@
       .then(function(d){ S.ernCoachBusy=false; if(d&&d.ok){ S.ernCoachSent=true; } render(); })
       .catch(function(){ S.ernCoachBusy=false; render(); }); },
     // ── Ernährung · Sub-Navigation + Zusatz-Screens ──
-    ernTab:function(a){ S.ernTab=a; S.ernMsg=''; S.ernErr=false; S.ernRecipeSel=null; if(a==='heute'&&S.ernViewDate){ S.ernViewDate=''; loadNutri(); } if(a==='plan'&&DATA.nutriPlan==null) loadPlan(); if(a==='rezepte'&&DATA.nutriSaved==null) loadSaved(); if(a==='verlauf') loadWeek(); setS({}); },
+    ernTab:function(a){ S.ernTab=a; S.ernMsg=''; S.ernErr=false; S.ernRecipeSel=null; S.ernChatOpen=false; S.ernLesson=null; S.ernLessonData=null; if(a==='heute'&&S.ernViewDate){ S.ernViewDate=''; loadNutri(); } if(a==='plan'&&DATA.nutriPlan==null) loadPlan(); if(a==='rezepte'&&DATA.nutriSaved==null) loadSaved(); if(a==='coach') loadCoach(); if(a==='verlauf') loadWeek(); setS({}); },
     ernFastPlan:function(a){ api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'fast',do:'plan',plan:a})}).then(function(d){ if(d&&d.ok) DATA.nutri=d; render(); }).catch(function(){}); },
     ernFastToggle:function(){ var act=ernFastMs().active?'stop':'start'; api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'fast',do:act})}).then(function(d){ if(d&&d.ok) DATA.nutri=d; render(); }).catch(function(){}); },
     ernPlanTab:function(a){ setS({ernPlanTab:a}); },

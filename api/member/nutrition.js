@@ -38,6 +38,7 @@ const { redisPipeline, hasStore } = require('../../lib/store');
 const Inbox = require('../../lib/inbox');
 const SR = require('../../lib/studioReply');
 const Ent = require('../../lib/entitlements');
+const Coaching = require('../../lib/coaching');
 
 // Freemium: KI-Funktionen sind Premium. Freundliche Meldung fürs Upgrade.
 const PREMIUM_MSG = 'Das ist eine Premium-Funktion (KI). Teste Premium 7 Tage gratis – danach jederzeit kündbar.';
@@ -649,6 +650,7 @@ module.exports = async function handler(req, res) {
       shopping: (await kvGetJson(SHOPKEY(id))) || [],
       recipes: (await kvGetJson(RECKEY(id))) || [],
       fasting: (await kvGetJson(FASTKEY(id))) || null,
+      coaching: await Coaching.exportState(id),   // Coaching-Programm, Gewohnheiten, Check-ins (DSGVO)
     } }));
   }
   if (action === 'delete-day') {
@@ -659,6 +661,7 @@ module.exports = async function handler(req, res) {
   if (action === 'delete-all') {
     if (String(body.confirm || '') !== 'LOESCHEN') { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'confirm_required', message: 'Bitte bestätige das vollständige Löschen.' })); }
     const keys = [PKEY(id), FAVKEY(id), PLANKEY(id), SHOPKEY(id), RECKEY(id), FASTKEY(id)];
+    Coaching.deleteKeys(id).forEach(function (k) { keys.push(k); });   // Coaching-Keys mitlöschen (nutri:prem bleibt bewusst außen vor)
     for (let i = 0; i < 400; i++) keys.push(DKEY(id, dayKeyMinus(date, i)));
     try { await redisPipeline(keys.map(function (k) { return ['DEL', k]; })); } catch (e) {}
     res.statusCode = 200; return res.end(JSON.stringify({ ok: true, deleted: true }));
