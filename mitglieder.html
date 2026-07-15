@@ -2722,8 +2722,22 @@
   function ernCurrentMeal(){ var h=new Date().getHours(); return h<11?'fruehstueck':(h<15?'mittag':(h<21?'abend':'snack')); }
   function ernOffNotice(){ return '<div style="font-size:10.5px;color:var(--text-soft);font-weight:600;line-height:1.55;text-align:center;margin-top:12px">Produktdaten: <a href="https://world.openfoodfacts.org" target="_blank" rel="noopener" style="color:#0a4958;text-decoration:underline">Open Food Facts</a> · Lizenz <a href="https://opendatacommons.org/licenses/odbl/1-0/" target="_blank" rel="noopener" style="color:#0a4958;text-decoration:underline">ODbL</a>. Angaben können unvollständig oder fehlerhaft sein.</div>'; }
   function ernDefaultGrams(p){ var s=String((p&&p.servingSize)||''); var m=s.match(/(\d+(?:[.,]\d+)?)\s*g/i); if(m){ var n=Math.round(parseFloat(m[1].replace(',','.'))); if(n>0&&n<3000) return n; } return 100; }
-  function ernOpenProduct(prod,stale){ setS({ernProd:Object.assign({stale:!!stale},prod), ernGrams:ernDefaultGrams(prod), ernSearchResults:null, ernScanNotFound:false, ernScanErr:''}); try{ window.scrollTo(0,0); }catch(e){} }
-  window.__ernGrams=function(v){ var n=parseInt(v,10); S.ernGrams=(isNaN(n)||n<1)?1:Math.min(3000,n); };
+  function ernOpenProduct(prod,stale){ setS({ernProd:Object.assign({stale:!!stale},prod), ernGrams:ernDefaultGrams(prod), ernUnit:'g', ernSearchResults:null, ernScanNotFound:false, ernScanErr:''}); try{ window.scrollTo(0,0); }catch(e){} }
+  // Übliche Portionsgröße (aus OFF serving_size) bzw. Packungsgröße in Gramm – oder null.
+  function ernServingGrams(p){ var s=String((p&&p.servingSize)||''); var m=s.match(/(\d+(?:[.,]\d+)?)\s*g\b/i); if(m){ var n=Math.round(parseFloat(m[1].replace(',','.'))); if(n>0&&n<3000) return n; } return null; }
+  function ernQuantityGrams(p){ var s=String((p&&p.quantity)||''); var m=s.match(/(\d+(?:[.,]\d+)?)\s*g\b/i); if(m){ var n=Math.round(parseFloat(m[1].replace(',','.'))); if(n>0&&n<=5000) return n; } return null; }
+  // Nährwerte für die aktuell gewählte Menge (aus 100-g-Werten), erst am Ende gerundet.
+  function ernPickScaled(){ var p=S.ernProd; if(!p) return null; var n=p.nutriments||{}; var g=Math.max(1,Math.min(3000,parseInt(S.ernGrams,10)||100));
+    var per=function(v){ return (v==null)?null:Math.round(v*g/100); };
+    return { g:g, kcal:per(n.kcal100g), p:per(n.protein100g), c:per(n.carbs100g), f:per(n.fat100g) }; }
+  // Live-Vorschau im Produkt-Picker aktualisieren OHNE Re-Render (Tastatur/Fokus bleiben).
+  function ernUpdatePickerPreview(){ var r=ernPickScaled(); if(!r) return;
+    var set=function(id,val,u){ var el=document.getElementById(id); if(el) el.textContent=(val==null?'—':(val+(u||''))); };
+    set('pp_kcal',r.kcal); set('pp_p',r.p,' g'); set('pp_c',r.c,' g'); set('pp_f',r.f,' g');
+    var ge=document.getElementById('pp_gecho'); if(ge) ge.textContent='≈ '+r.g+' g'; }
+  window.__ernGrams=function(v){ var n=parseInt(v,10); S.ernGrams=(isNaN(n)||n<1)?1:Math.min(3000,n); ernUpdatePickerPreview(); };
+  // Portions-Eingabe (Anzahl Portionen -> Gramm) im „Portion"-Modus.
+  window.__ernServ=function(v){ var p=S.ernProd; var sg=p?ernServingGrams(p):null; if(!sg) return; var s=parseFloat(String(v).replace(',','.')); if(isNaN(s)||s<=0) s=1; S.ernGrams=Math.max(1,Math.min(3000,Math.round(s*sg))); ernUpdatePickerPreview(); };
   function ernScanLookup(code){
     try{ if(window.__ernStopScan) window.__ernStopScan(); }catch(e){}
     var bc=String(code||'').replace(/\D/g,'');
@@ -2846,8 +2860,22 @@
     var incomplete=(n.kcal100g==null)?'<div role="alert" style="font-size:12px;font-weight:700;color:#8a6d1f;background:#FBF2E1;border-radius:10px;padding:10px 12px;margin-top:10px">Für dieses Produkt fehlen Nährwertangaben. Bitte im nächsten Schritt selbst ergänzen.</div>':'';
     var stale=p.stale?'<div style="font-size:11px;font-weight:700;color:var(--text-soft);text-align:center;margin-top:6px">Aus dem Zwischenspeicher – evtl. nicht ganz aktuell.</div>':'';
     var per100=[['kcal',pv(n.kcal100g)],['Eiweiß',pv(n.protein100g,' g')],['KH',pv(n.carbs100g,' g')],['Fett',pv(n.fat100g,' g')]].map(function(x){ return '<div style="flex:1;text-align:center"><div style="font-size:14px;font-weight:900;color:var(--text)">'+x[1]+'</div><div style="font-size:9.5px;font-weight:800;color:var(--text-soft);text-transform:uppercase">'+x[0]+'</div></div>'; }).join('');
-    var previewVals=[['kcal',per(n.kcal100g)],['Eiweiß',per(n.protein100g)!=null?per(n.protein100g)+' g':'—'],['KH',per(n.carbs100g)!=null?per(n.carbs100g)+' g':'—'],['Fett',per(n.fat100g)!=null?per(n.fat100g)+' g':'—']];
-    var preview=previewVals.map(function(x){ return '<div style="flex:1;text-align:center"><div style="font-size:15px;font-weight:900;color:#0f7a4a">'+(x[1]==null?'—':x[1])+'</div><div style="font-size:9.5px;font-weight:800;color:var(--text-soft);text-transform:uppercase">'+x[0]+'</div></div>'; }).join('');
+    var previewVals=[['kcal','pp_kcal',per(n.kcal100g),''],['Eiweiß','pp_p',per(n.protein100g),' g'],['KH','pp_c',per(n.carbs100g),' g'],['Fett','pp_f',per(n.fat100g),' g']];
+    var preview=previewVals.map(function(x){ return '<div style="flex:1;text-align:center"><div id="'+x[1]+'" style="font-size:15px;font-weight:900;color:#0f7a4a">'+(x[2]==null?'—':(x[2]+x[3]))+'</div><div style="font-size:9.5px;font-weight:800;color:var(--text-soft);text-transform:uppercase">'+x[0]+'</div></div>'; }).join('');
+    // Portionslogik: übliche Portion (OFF serving_size) + Packung; Einheit Gramm / Portion.
+    var servG=ernServingGrams(p), qtyG=ernQuantityGrams(p);
+    var unit=(S.ernUnit==='serv'&&servG)?'serv':'g';
+    var servings=servG?(Math.round((g/servG)*2)/2)||0.5:null;
+    var uToggle=servG?('<div style="display:inline-flex;background:var(--surface-2);border-radius:11px;padding:3px;gap:3px;margin-left:auto">'+['g','serv'].map(function(u){ var on=unit===u; return '<button data-act="ernUnitToggle" data-arg="'+u+'" style="border:none;border-radius:9px;padding:6px 13px;font-size:12px;font-weight:800;cursor:pointer;background:'+(on?'#fff':'transparent')+';color:'+(on?'#0f7a4a':'var(--text-soft)')+';box-shadow:'+(on?'0 2px 6px rgba(4,33,40,.1)':'none')+'">'+(u==='g'?'Gramm':'Portion')+'</button>'; }).join('')+'</div>'):'';
+    var stepAct=unit==='serv'?'ernServStep':'ernGramsStep';
+    var mkStep=function(arg,lbl,sym){ return '<button data-act="'+stepAct+'" data-arg="'+arg+'" aria-label="'+lbl+'" style="width:44px;height:44px;border-radius:12px;border:none;background:var(--surface-2);color:#0f7a4a;font-size:22px;font-weight:800;cursor:pointer">'+sym+'</button>'; };
+    var amtInput=(unit==='serv')
+      ? '<input id="ern_serv" type="number" inputmode="decimal" min="0.25" step="0.5" value="'+servings+'" oninput="window.__ernServ(this.value)" aria-label="Anzahl Portionen" style="width:88px;border:1.5px solid var(--border);border-radius:12px;padding:10px;font-size:22px;font-weight:900;color:var(--text);text-align:center;background:#fff"><span style="font-size:14px;font-weight:800;color:var(--text-soft)">Port.</span>'
+      : '<input id="ern_grams" type="number" inputmode="numeric" min="1" max="3000" value="'+g+'" oninput="window.__ernGrams(this.value)" aria-label="Menge in Gramm" style="width:88px;border:1.5px solid var(--border);border-radius:12px;padding:10px;font-size:22px;font-weight:900;color:var(--text);text-align:center;background:#fff"><span style="font-size:15px;font-weight:800;color:var(--text-soft)">g</span>';
+    var chips=[]; if(servG){ chips.push(['½ Portion',Math.max(1,Math.round(servG*0.5))]); chips.push(['1 Portion',servG]); chips.push(['2 Portionen',servG*2]); } chips.push(['100 g',100]); if(qtyG&&qtyG!==100&&qtyG!==servG) chips.push(['Packung',qtyG]);
+    var chipRow='<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:12px">'+chips.map(function(c){ var active=Math.abs(g-c[1])<1; return '<button data-act="ernGramsSet" data-arg="'+c[1]+'" style="border:1.5px solid '+(active?'#0f7a4a':'var(--border)')+';border-radius:20px;padding:6px 12px;font-size:11.5px;font-weight:800;cursor:pointer;background:'+(active?'rgba(15,122,74,.08)':'#fff')+';color:'+(active?'#0f7a4a':'var(--text-2)')+'">'+esc(c[0])+'</button>'; }).join('')+'</div>';
+    var gecho=(unit==='serv')?'<div id="pp_gecho" style="text-align:center;font-size:11.5px;font-weight:700;color:var(--text-soft);margin-top:8px">≈ '+g+' g</div>':'';
+    var portHint=servG?('<div style="font-size:11.5px;color:var(--text-soft);font-weight:600;margin-top:8px;line-height:1.5">Übliche Portion: ca. '+servG+' g'+(p.quantity?(' · Packung: '+esc(p.quantity)):'')+'</div>'):('<div style="font-size:11.5px;color:var(--text-soft);font-weight:600;margin-top:8px;line-height:1.5">Keine übliche Portionsgröße hinterlegt – Menge in Gramm angeben.</div>');
     return '<div style="padding:4px 2px 40px">'+
       '<div style="display:flex;align-items:center;gap:12px;padding:2px 2px 14px"><button data-act="ernProdBack" aria-label="Zurück" style="width:38px;height:38px;border-radius:12px;border:none;background:#fff;box-shadow:0 4px 12px rgba(4,33,40,.08);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'+svg(IC.back,{c:'#0a4958',w:2.2,s:19})+'</button><div style="font-size:20px;font-weight:900;color:var(--text);letter-spacing:-.4px">Produkt übernehmen</div></div>'+
       '<div style="background:#fff;border-radius:18px;padding:16px;box-shadow:0 8px 24px rgba(4,33,40,.08)">'+
@@ -2856,11 +2884,11 @@
         incomplete+
       '</div>'+
       '<div style="background:#fff;border-radius:18px;padding:16px;box-shadow:0 8px 24px rgba(4,33,40,.08);margin-top:12px">'+
-        '<label for="ern_grams" style="font-size:12px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.4px">Menge</label>'+
-        '<div style="display:flex;align-items:center;gap:10px;margin-top:10px"><button data-act="ernGramsStep" data-arg="-10" aria-label="10 Gramm weniger" style="width:44px;height:44px;border-radius:12px;border:none;background:var(--surface-2);color:#0f7a4a;font-size:22px;font-weight:800;cursor:pointer">−</button>'+
-          '<div style="flex:1;display:flex;align-items:baseline;justify-content:center;gap:6px"><input id="ern_grams" type="number" inputmode="numeric" min="1" max="3000" value="'+g+'" oninput="window.__ernGrams(this.value)" aria-label="Menge in Gramm" style="width:90px;border:1.5px solid var(--border);border-radius:12px;padding:10px;font-size:22px;font-weight:900;color:var(--text);text-align:center;background:#fff">'+
-          '<span style="font-size:15px;font-weight:800;color:var(--text-soft)">g</span></div>'+
-          '<button data-act="ernGramsStep" data-arg="10" aria-label="10 Gramm mehr" style="width:44px;height:44px;border-radius:12px;border:none;background:var(--surface-2);color:#0f7a4a;font-size:22px;font-weight:800;cursor:pointer">+</button></div>'+
+        '<div style="display:flex;align-items:center;gap:10px"><label style="font-size:12px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.4px">Menge</label>'+uToggle+'</div>'+
+        '<div style="display:flex;align-items:center;gap:10px;margin-top:10px">'+mkStep((unit==='serv'?'-0.5':'-10'),'weniger','−')+
+          '<div style="flex:1;display:flex;align-items:baseline;justify-content:center;gap:6px">'+amtInput+'</div>'+
+          mkStep((unit==='serv'?'0.5':'10'),'mehr','+')+'</div>'+
+        gecho+chipRow+portHint+
         '<div style="display:flex;gap:6px;margin-top:14px;border-top:1px solid var(--border);padding-top:14px">'+preview+'</div>'+
       '</div>'+
       '<button data-act="ernProdTake" style="width:100%;margin-top:16px;padding:16px;border:none;border-radius:16px;background:#0f7a4a;color:#fff;font-weight:900;font-size:16px;cursor:pointer">Übernehmen &amp; prüfen</button>'+
@@ -4603,6 +4631,9 @@
     ernProdBack:function(){ setS({ernProd:null}); },
     ernProdTake:function(){ ernProdTake(); },
     ernGramsStep:function(a){ var d=parseInt(a,10)||0; S.ernGrams=Math.max(1,Math.min(3000,(parseInt(S.ernGrams,10)||100)+d)); render(); },
+    ernUnitToggle:function(a){ S.ernUnit=(a==='serv')?'serv':'g'; render(); },
+    ernGramsSet:function(a){ var g=parseInt(a,10)||100; S.ernGrams=Math.max(1,Math.min(3000,g)); render(); },
+    ernServStep:function(a){ var p=S.ernProd; var sg=p?ernServingGrams(p):null; if(!sg){ render(); return; } var d=parseFloat(a)||0; var cur=Math.round((((parseInt(S.ernGrams,10)||100)/sg))*2)/2; var nx=Math.max(0.5,cur+d); S.ernGrams=Math.max(1,Math.min(3000,Math.round(nx*sg))); render(); },
     ernProdSearchBtn:function(){ window.__ernProdSearch&&window.__ernProdSearch(); },
     ernSearchPick:function(a){ var p=(S.ernSearchResults||[])[parseInt(a,10)]; if(p) ernOpenProduct(p, false); },
     ernSearchToAI:function(){ var q=S.ernSearchQ||''; if(q&&q.length>=2){ setS({ernCapTab:'cam'}); ernLogText(q); } },
