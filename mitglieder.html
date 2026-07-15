@@ -395,7 +395,7 @@
     ernFavMgr:false, ernFavBusy:false, ernFavAddOpen:false,
     ernChat:[], ernData:false, ernDataBusy:false, ernRecipeServ:1,
     ernUpgrade:false, ernUpgradeBusy:false,
-    ernLesson:null, ernLessonData:null, ernLessonBusy:false, ernChatOpen:false, ernEnrollBusy:false,
+    ernLesson:null, ernLessonData:null, ernLessonBusy:false, ernChatOpen:false, ernEnrollBusy:false, ernLessonStep:0, ernQuizAns:{},
     ernCk:false, ernCkBusy:false, ernCkResult:null, ernCkMood:3, ernCkAdh:50, ernCkHelp:false, ernCkHist:null, ernCkW:'', ernCkWaist:'', ernCkNote:'',
     ctOpen:false, ctSent:false, ctMsg:'', ctBusy:false, ctErr:'', ctMsgServer:'', artFb:null,
     pfFilter:'offen', pfSearch:'', pfLimit:12, pfSel:null, pfThread:false, pfDraft:'', pfBusy:false, pfErr:'',
@@ -3352,14 +3352,61 @@
     if(ld.locked){
       return green+'<div style="padding:6px 2px 40px"><div style="background:var(--surface);border-radius:20px;box-shadow:0 12px 30px rgba(4,33,40,.09);padding:26px 20px;text-align:center"><div style="font-size:34px">🔒</div><div style="font-size:16px;font-weight:900;color:var(--text);margin-top:10px">Diese Woche ist noch nicht dran</div><div style="font-size:13.5px;color:var(--text-muted);font-weight:600;margin-top:6px;line-height:1.5">'+esc(l.teaser||'')+'</div><div style="font-size:12.5px;color:var(--text-soft);font-weight:700;margin-top:12px">Schließ zuerst die aktuelle Woche ab – dann geht’s weiter.</div></div></div>';
     }
-    var pers=ld.personalized?'<div style="background:rgba(15,122,74,.07);border:1px solid rgba(15,122,74,.18);border-radius:16px;padding:15px;margin-bottom:16px;display:flex;gap:11px">'+ernFinnAvatar(34)+'<div style="flex:1;font-size:13.5px;color:var(--text);font-weight:600;line-height:1.55">'+esc(ld.personalized)+'</div></div>':'';
-    var sections=(l.body||[]).map(function(s){ return '<div style="margin-top:16px"><div style="font-size:15.5px;font-weight:900;color:var(--text)">'+esc(s.h)+'</div><div style="font-size:14px;color:var(--text-2);font-weight:500;line-height:1.6;margin-top:5px">'+esc(s.p)+'</div></div>'; }).join('');
-    var exercise=l.exercise?'<div style="background:rgba(15,122,74,.07);border:1px solid rgba(15,122,74,.18);border-radius:14px;padding:14px;margin-top:20px"><div style="font-size:11.5px;font-weight:900;color:'+ERN_G+';text-transform:uppercase;letter-spacing:.4px">Deine Aufgabe</div><div style="font-size:14px;color:var(--text);font-weight:600;line-height:1.55;margin-top:6px">'+esc(l.exercise)+'</div></div>':'';
-    var habits=(l.habits&&l.habits.length)?'<div style="margin-top:20px"><div style="font-size:11.5px;font-weight:900;color:var(--text-soft);text-transform:uppercase;letter-spacing:.4px">Gewohnheiten dieser Woche</div>'+l.habits.map(function(h){ return '<div style="display:flex;align-items:center;gap:9px;margin-top:10px"><span style="width:8px;height:8px;border-radius:50%;background:'+ERN_G+';flex-shrink:0"></span><span style="font-size:13.5px;font-weight:700;color:var(--text-2)">'+esc(h.text)+'</span></div>'; }).join('')+'</div>':'';
-    var doneBtn=ld.completed
-      ? '<div style="width:100%;margin-top:22px;padding:15px;border-radius:14px;background:rgba(15,122,74,.10);color:'+ERN_G+';font-weight:900;font-size:15px;text-align:center">Abgeschlossen ✓</div>'
-      : '<button data-act="ernLessonComplete" data-arg="'+l.week+'" '+(S.ernLessonBusy?'disabled ':'')+'style="width:100%;margin-top:22px;padding:16px;border:none;border-radius:14px;background:'+ERN_G+';color:#fff;font-weight:900;font-size:15.5px;cursor:pointer;opacity:'+(S.ernLessonBusy?'.6':'1')+'">'+(S.ernLessonBusy?'Speichere …':'Als erledigt markieren')+'</button>';
-    return green+'<div style="padding:0 2px 40px">'+pers+'<div style="background:var(--surface);border-radius:20px;box-shadow:0 12px 30px rgba(4,33,40,.09);padding:18px">'+sections+exercise+habits+'</div>'+doneBtn+'</div>';
+    // ── Seiten-Blätterer: Inhaltsseiten -> Quiz -> Abschluss ──
+    var CARD='background:var(--surface);border-radius:20px;box-shadow:0 12px 30px rgba(4,33,40,.09);padding:18px';
+    var pages=Array.isArray(l.pages)?l.pages:[];
+    var quiz=Array.isArray(l.quiz)?l.quiz:[];
+    var hasQuiz=quiz.length>0;
+    var nSteps=pages.length+(hasQuiz?1:0)+1;               // +Quiz +Abschluss
+    var step=Math.max(0,Math.min(S.ernLessonStep||0,nSteps-1));
+    var quizStep=hasQuiz?pages.length:-1;
+    var doneStep=nSteps-1;
+    // Kopf mit Fortschrittsleiste
+    var pct=Math.round(((step+1)/nSteps)*100);
+    var bar='<div style="height:5px;border-radius:3px;background:rgba(255,255,255,.22);margin-top:12px;overflow:hidden"><div style="height:100%;width:'+pct+'%;background:#fff;border-radius:3px;transition:width .2s"></div></div>';
+    var green2='<div style="background:linear-gradient(160deg,'+ERN_G2+','+ERN_G+' 60%,'+ERN_GD+');border-radius:0 0 24px 24px;padding:14px 18px 20px;color:#fff;box-shadow:0 12px 30px rgba(15,122,74,.22);margin:-2px -2px 14px"><div style="display:flex;align-items:center;gap:11px">'+back+'<div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:700;color:#c5ecd7">Woche '+l.week+' · Seite '+(step+1)+' von '+nSteps+'</div><div style="font-size:19px;font-weight:900;letter-spacing:-.4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(l.title)+'</div></div></div>'+bar+'</div>';
+    var pers=ld.personalized?'<div style="background:rgba(15,122,74,.07);border:1px solid rgba(15,122,74,.18);border-radius:16px;padding:15px;margin-bottom:14px;display:flex;gap:11px">'+ernFinnAvatar(34)+'<div style="flex:1;font-size:13.5px;color:var(--text);font-weight:600;line-height:1.55">'+esc(ld.personalized)+'</div></div>':'';
+    var inner='';
+    if(step<pages.length){
+      var p=pages[step]||{}; var isMeta=p.kind==='metabolism';
+      var paras=(p.paras||[]).map(function(t){ return '<div style="font-size:14.5px;color:var(--text-2);font-weight:500;line-height:1.62;margin-top:12px">'+esc(t)+'</div>'; }).join('');
+      var note=p.note?'<div style="margin-top:16px;background:rgba(15,122,74,.07);border:1px solid rgba(15,122,74,.18);border-radius:13px;padding:12px 14px;font-size:13px;font-weight:700;color:'+ERN_G+';line-height:1.5">💡 '+esc(p.note)+'</div>':'';
+      var metaCta=(isMeta&&p.cta)?(S.ernCoachSent
+          ? '<div style="margin-top:16px;background:rgba(15,122,74,.10);border-radius:13px;padding:12px;text-align:center;font-size:13px;font-weight:800;color:'+ERN_G+'">Danke! Wir melden uns zum Stoffwechsel-Coaching. ✓</div>'
+          : '<button data-act="ernCoachReq" '+(S.ernCoachBusy?'disabled ':'')+'style="width:100%;margin-top:16px;padding:13px;border:none;border-radius:13px;background:linear-gradient(150deg,#0e6072,#063540);color:#fff;font-weight:900;font-size:13.5px;cursor:pointer">'+(S.ernCoachBusy?'Wird gesendet …':'🧬 '+esc(p.cta))+'</button>'):'';
+      var head='<div style="display:flex;align-items:center;gap:11px">'+(p.icon?'<span style="font-size:26px">'+p.icon+'</span>':'')+'<div style="font-size:18px;font-weight:900;color:var(--text);letter-spacing:-.3px">'+esc(p.title||'')+'</div></div>';
+      inner=(step===0?pers:'')+'<div style="'+CARD+'">'+head+paras+note+metaCta+'</div>';
+    } else if(step===quizStep){
+      var correct=0; var answered=0;
+      var qHtml=quiz.map(function(q,qi){
+        var sel=(S.ernQuizAns&&S.ernQuizAns[qi]!=null)?S.ernQuizAns[qi]:null; var isAns=sel!=null;
+        if(isAns){ answered++; if(sel===q.answer) correct++; }
+        var opts=(q.options||[]).map(function(o,oi){
+          var isSel=sel===oi, isRight=oi===q.answer;
+          var bg='var(--surface)',bd='var(--border)',cl='var(--text)';
+          if(isAns){ if(isRight){ bg='rgba(15,122,74,.10)'; bd=ERN_G; cl=ERN_G; } else if(isSel){ bg='rgba(192,57,43,.08)'; bd='var(--err-fg)'; cl='var(--err-fg)'; } }
+          var mark=isAns&&isRight?' ✓':(isAns&&isSel?' ✗':'');
+          return '<button '+(isAns?'':'data-act="ernQuizPick" data-arg="'+qi+':'+oi+'" ')+'style="width:100%;text-align:left;margin-top:8px;padding:12px 14px;border:1.5px solid '+bd+';background:'+bg+';color:'+cl+';border-radius:12px;font-size:13.5px;font-weight:700;cursor:'+(isAns?'default':'pointer')+'">'+esc(o)+mark+'</button>';
+        }).join('');
+        var expl=isAns?'<div style="margin-top:9px;font-size:12.5px;font-weight:600;color:var(--text-muted);line-height:1.5">'+esc(q.explain||'')+'</div>':'';
+        return '<div style="'+(qi?'margin-top:20px;padding-top:18px;border-top:1px solid var(--border)':'')+'"><div style="font-size:15px;font-weight:900;color:var(--text);line-height:1.4">'+(qi+1)+'. '+esc(q.q)+'</div>'+opts+expl+'</div>';
+      }).join('');
+      var score=answered===quiz.length?'<div style="text-align:center;margin-top:16px;font-size:14px;font-weight:900;color:'+ERN_G+'">'+correct+' von '+quiz.length+' richtig'+(correct===quiz.length?' – stark! 🎉':' – gut gemacht!')+'</div>':'';
+      inner='<div style="'+CARD+'"><div style="display:flex;align-items:center;gap:9px;margin-bottom:4px"><span style="font-size:22px">✅</span><div style="font-size:18px;font-weight:900;color:var(--text)">Kurzer Wissens-Check</div></div><div style="font-size:12.5px;color:var(--text-soft);font-weight:600;margin-bottom:6px">Kein Druck – tippe einfach, was du meinst.</div>'+qHtml+score+'</div>';
+    } else {
+      var ex=l.exercise?'<div style="background:rgba(15,122,74,.07);border:1px solid rgba(15,122,74,.18);border-radius:14px;padding:14px"><div style="font-size:11.5px;font-weight:900;color:'+ERN_G+';text-transform:uppercase;letter-spacing:.4px">Deine Aufgabe</div><div style="font-size:14px;color:var(--text);font-weight:600;line-height:1.55;margin-top:6px">'+esc(l.exercise)+'</div></div>':'';
+      var hb=(l.habits&&l.habits.length)?'<div style="margin-top:18px"><div style="font-size:11.5px;font-weight:900;color:var(--text-soft);text-transform:uppercase;letter-spacing:.4px">Gewohnheiten dieser Woche</div>'+l.habits.map(function(h){ return '<div style="display:flex;align-items:center;gap:9px;margin-top:10px"><span style="width:8px;height:8px;border-radius:50%;background:'+ERN_G+';flex-shrink:0"></span><span style="font-size:13.5px;font-weight:700;color:var(--text-2)">'+esc(h.text)+'</span></div>'; }).join('')+'</div>':'';
+      var doneBtn=ld.completed
+        ? '<div style="width:100%;margin-top:20px;padding:15px;border-radius:14px;background:rgba(15,122,74,.10);color:'+ERN_G+';font-weight:900;font-size:15px;text-align:center">Abgeschlossen ✓</div>'
+        : '<button data-act="ernLessonComplete" data-arg="'+l.week+'" '+(S.ernLessonBusy?'disabled ':'')+'style="width:100%;margin-top:20px;padding:16px;border:none;border-radius:14px;background:'+ERN_G+';color:#fff;font-weight:900;font-size:15.5px;cursor:pointer;opacity:'+(S.ernLessonBusy?'.6':'1')+'">'+(S.ernLessonBusy?'Speichere …':'Als erledigt markieren')+'</button>';
+      inner='<div style="'+CARD+';text-align:center"><div style="font-size:30px">🏁</div><div style="font-size:17px;font-weight:900;color:var(--text);margin-top:6px">Lektion geschafft!</div><div style="font-size:13px;color:var(--text-muted);font-weight:600;margin-top:5px;line-height:1.5">Setz die Gewohnheiten dieser Woche um – Schritt für Schritt.</div></div><div style="'+CARD+';margin-top:14px">'+ex+hb+'</div>'+doneBtn;
+    }
+    // Navigation
+    var prevBtn=step>0?'<button data-act="ernLessonPrev" style="flex:1;padding:14px;border:1.5px solid var(--border);background:var(--surface);color:var(--text-muted);border-radius:14px;font-weight:800;font-size:14px;cursor:pointer">Zurück</button>':'';
+    var nextLabel=(step===pages.length-1&&hasQuiz)?'Zum Wissens-Check':'Weiter';
+    var nextBtn=step<doneStep?'<button data-act="ernLessonNext" style="flex:'+(step>0?'2':'1')+';padding:14px;border:none;background:'+ERN_G+';color:#fff;border-radius:14px;font-weight:900;font-size:14.5px;cursor:pointer">'+nextLabel+' →</button>':'';
+    var nav=(prevBtn||nextBtn)?'<div style="display:flex;gap:10px;margin-top:16px">'+prevBtn+nextBtn+'</div>':'';
+    return green2+'<div style="padding:0 2px 40px">'+inner+nav+'</div>';
   }
   function ernSectionEmpty(emoji,title,sub){ return '<div style="background:var(--surface);border-radius:20px;box-shadow:0 12px 30px rgba(4,33,40,.09);padding:34px 22px;text-align:center"><div style="font-size:34px">'+emoji+'</div><div style="font-size:16px;font-weight:900;color:var(--text);margin-top:12px">'+esc(title)+'</div><div style="font-size:13px;color:var(--text-muted);font-weight:500;margin-top:6px;line-height:1.5">'+esc(sub)+'</div></div>'; }
   function scrErn(){
@@ -4620,12 +4667,15 @@
       api('/api/member/nutrition-coach',{method:'POST',body:JSON.stringify({action:'enroll'})})
       .then(function(d){ S.ernEnrollBusy=false; if(d&&d.ok){ DATA.coach=d; S.ernMsg='Willkommen an Bord! Los geht’s mit Woche 1. 🎉'; S.ernErr=false; } else { S.ernErr=true; S.ernMsg=(d&&d.message)||'Konnte nicht starten – bitte später erneut.'; } render(); })
       .catch(function(){ S.ernEnrollBusy=false; S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); }); },
-    ernLessonOpen:function(a){ var week=parseInt(a,10)||1; S.ernLesson=week; S.ernLessonData=null; S.ernLessonBusy=true; S.ernMsg=''; S.ernErr=false; render();
+    ernLessonNext:function(){ setS({ernLessonStep:(S.ernLessonStep||0)+1}); try{ window.scrollTo(0,0); }catch(e){} },
+    ernLessonPrev:function(){ setS({ernLessonStep:Math.max(0,(S.ernLessonStep||0)-1)}); try{ window.scrollTo(0,0); }catch(e){} },
+    ernQuizPick:function(a){ var p=String(a).split(':'); var qi=parseInt(p[0],10), oi=parseInt(p[1],10); if(isNaN(qi)||isNaN(oi)) return; S.ernQuizAns=S.ernQuizAns||{}; if(S.ernQuizAns[qi]!=null) return; S.ernQuizAns[qi]=oi; render(); },
+    ernLessonOpen:function(a){ var week=parseInt(a,10)||1; S.ernLesson=week; S.ernLessonData=null; S.ernLessonBusy=true; S.ernLessonStep=0; S.ernQuizAns={}; S.ernMsg=''; S.ernErr=false; render();
       api('/api/member/nutrition-coach',{method:'POST',body:JSON.stringify({action:'lesson-get',week:week})})
       .then(function(d){ if(d&&d.error==='premium_required'){ S.ernLesson=null; S.ernLessonData=null; S.ernLessonBusy=false; setS({ernUpgrade:true}); return; }
         S.ernLessonBusy=false; S.ernLessonData=(d&&d.ok)?d:{ok:false}; try{ window.scrollTo(0,0); }catch(e){} render(); })
       .catch(function(){ S.ernLessonBusy=false; S.ernLessonData={ok:false}; render(); }); },
-    ernLessonClose:function(){ S.ernLesson=null; S.ernLessonData=null; S.ernLessonBusy=false; render(); },
+    ernLessonClose:function(){ S.ernLesson=null; S.ernLessonData=null; S.ernLessonBusy=false; S.ernLessonStep=0; S.ernQuizAns={}; render(); },
     ernLessonComplete:function(a){ if(S.ernLessonBusy) return; var week=parseInt(a,10)||1; S.ernLessonBusy=true; render();
       api('/api/member/nutrition-coach',{method:'POST',body:JSON.stringify({action:'lesson-complete',week:week})})
       .then(function(d){ if(d&&d.error==='premium_required'){ S.ernLessonBusy=false; S.ernLesson=null; S.ernLessonData=null; setS({ernUpgrade:true}); return; }
