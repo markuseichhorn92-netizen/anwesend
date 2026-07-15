@@ -3234,6 +3234,17 @@
     // Eingeschrieben -> Reise-Home.
     var done=c.lessons.filter(function(l){ return l.completed; }).length;
     var head='<div style="'+CARD+';display:flex;align-items:center;gap:13px">'+ernFinnAvatar(46)+'<div style="flex:1;min-width:0"><div style="font-size:11.5px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.4px">Dein Coaching</div><div style="font-size:18px;font-weight:900;color:var(--text)">Woche '+c.week+' von '+c.totalWeeks+'</div></div><div style="background:rgba(15,122,74,.10);border:1px solid rgba(15,122,74,.22);border-radius:12px;padding:7px 11px;font-size:13px;font-weight:900;color:'+ERN_G+';white-space:nowrap">'+done+'/'+c.totalWeeks+' ✓</div></div>';
+    // Heutige Gewohnheiten-Checkliste (Etappe 2) – tippbar, mit Streak/Punkten.
+    var habs=Array.isArray(c.todayHabits)?c.todayHabits:[];
+    var habitCard='';
+    if(habs.length){
+      var doneN=habs.filter(function(h){ return h.done; }).length;
+      var rowsH=habs.map(function(h,i){ var dn=!!h.done;
+        return '<button data-act="ernHabitToggle" data-arg="'+esc(h.id)+'" style="width:100%;text-align:left;border:none;background:none;cursor:pointer;display:flex;align-items:center;gap:12px;padding:11px 0;'+(i?'border-top:1px solid var(--border);':'')+'">'+
+          '<span style="width:26px;height:26px;border-radius:8px;border:2px solid '+(dn?ERN_G:'var(--border)')+';background:'+(dn?ERN_G:'transparent')+';display:flex;align-items:center;justify-content:center;flex-shrink:0">'+(dn?svg('<path d="M20 6L9 17l-5-5"></path>',{c:'#fff',w:3,s:14}):'')+'</span>'+
+          '<span style="flex:1;min-width:0;font-size:14px;font-weight:700;color:'+(dn?'var(--text-soft)':'var(--text)')+';'+(dn?'text-decoration:line-through':'')+'">'+esc(h.text)+'</span></button>'; }).join('');
+      habitCard='<div style="'+CARD+'"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2px"><div style="font-size:13px;font-weight:900;color:var(--text)">Heute dran</div><div style="display:flex;gap:7px"><span title="Coaching-Streak" style="background:rgba(15,122,74,.10);color:'+ERN_G+';border-radius:9px;padding:4px 9px;font-size:12px;font-weight:900">🔥 '+(c.streak||0)+'</span><span style="background:var(--surface-2);color:var(--text-muted);border-radius:9px;padding:4px 9px;font-size:12px;font-weight:900">'+doneN+'/'+habs.length+'</span></div></div>'+rowsH+'</div>';
+    }
     var cur=c.currentLesson;
     var lessonCard;
     if(cur){
@@ -3254,7 +3265,7 @@
     var list='<div style="'+CARD+'"><div style="font-size:13px;font-weight:900;color:var(--text);margin-bottom:4px">Alle Wochen</div>'+rows+'</div>';
     var askBtn='<button data-act="ernCoachChatOpen" style="width:100%;text-align:left;'+CARD+';border:none;cursor:pointer;display:flex;align-items:center;gap:12px">'+ernFinnAvatar(40)+'<div style="flex:1;min-width:0"><div style="font-weight:900;color:var(--text);font-size:15px">FINN fragen</div><div style="font-size:12.5px;color:var(--text-muted);font-weight:600">Makros, Snack-Ideen, Motivation …</div></div>'+chev+'</button>';
     var msg=S.ernMsg?'<div role="'+(S.ernErr?'alert':'status')+'" style="font-size:12.5px;font-weight:700;color:'+(S.ernErr?'var(--err-fg)':ERN_G)+';margin:0 2px 12px;line-height:1.4">'+esc(S.ernMsg)+'</div>':'';
-    return head+lessonCard+list+askBtn+msg+ernHumanCta();
+    return head+habitCard+lessonCard+list+askBtn+msg+ernHumanCta();
   }
   // ═══ Lektions-Ansicht (Voll-Screen unter dem Coach-Tab) ═══
   function ernLesson(){
@@ -4545,6 +4556,12 @@
       .then(function(d){ if(d&&d.error==='premium_required'){ S.ernLessonBusy=false; S.ernLesson=null; S.ernLessonData=null; setS({ernUpgrade:true}); return; }
         S.ernLessonBusy=false; if(d&&d.ok){ DATA.coach=d; if(S.ernLessonData&&S.ernLessonData.lesson) S.ernLessonData.completed=true; } render(); })
       .catch(function(){ S.ernLessonBusy=false; render(); }); },
+    ernHabitToggle:function(a){ var hid=String(a); var c=DATA.coach;
+      // Optimistisch sofort umschalten; Server liefert Streak/Punkte final zurück.
+      if(c&&Array.isArray(c.todayHabits)){ c.todayHabits=c.todayHabits.map(function(h){ return h.id===hid?Object.assign({},h,{done:!h.done}):h; }); render(); }
+      api('/api/member/nutrition-coach',{method:'POST',body:JSON.stringify({action:'habit-toggle',habitId:hid})})
+      .then(function(d){ if(d&&d.ok){ DATA.coach=d; } render(); })
+      .catch(function(){ loadCoach(); }); },
     ernCoachChatOpen:function(){ setS({ernChatOpen:true}); try{ window.scrollTo(0,0); }catch(e){} },
     ernCoachChatClose:function(){ setS({ernChatOpen:false}); },
     // ── Etappe 6: Datenschutz – Export / Tag löschen / alles löschen ──

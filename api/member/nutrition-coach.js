@@ -30,9 +30,15 @@ async function tierFields(id) {
 
 async function snapshot(id, st) {
   if (st === undefined) st = await Coaching.getState(id);
-  const snap = Coaching.publicSnapshot(st, Coaching.berlinToday());
+  const today = Coaching.berlinToday();
+  const snap = Coaching.publicSnapshot(st, today);
   const tf = await tierFields(id);
-  return Object.assign({ ok: true, available: true }, snap, tf);
+  let hab = { todayHabits: [], streak: 0, points: 0 };
+  if (st && st.enrolled) {
+    const rec = await Coaching.getHabitRec(id);
+    hab = { todayHabits: Coaching.todayHabitList(st, rec, today), streak: Coaching.habitStreak(rec, today), points: Coaching.habitPoints(rec, today) };
+  }
+  return Object.assign({ ok: true, available: true }, snap, hab, tf);
 }
 
 module.exports = async function handler(req, res) {
@@ -76,6 +82,12 @@ module.exports = async function handler(req, res) {
     const ls = st.lessons && st.lessons[String(week)];
     res.statusCode = 200;
     return res.end(JSON.stringify({ ok: true, locked: false, lesson: Coaching.fullLesson(week), completed: !!(ls && ls.completedAt), personalized: (ls && ls.personalized) || null }));
+  }
+
+  if (action === 'habit-toggle') {
+    const r = await Coaching.toggleHabit(id, body.habitId, body.date);
+    if (!r.ok) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: r.error })); }
+    res.statusCode = 200; return res.end(JSON.stringify(await snapshot(id)));
   }
 
   if (action === 'lesson-complete') {
