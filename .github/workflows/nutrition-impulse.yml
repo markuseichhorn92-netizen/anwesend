@@ -1,0 +1,33 @@
+name: Ernährungs-Coaching Tagesimpuls
+
+# Ruft einmal täglich morgens /api/nutrition-impulse auf, damit eingeschriebene
+# Premium-Mitglieder FINNs Tagesimpuls als Push bekommen.
+#
+# Hinweise:
+#  - Geplante Workflows laufen nur auf dem Default-Branch des Repos.
+#  - Der Endpunkt ist anti-doppel-gesichert (impulse.pushedAt + Tages-Lock) und
+#    erzeugt pro Mitglied höchstens 1 KI-Aufruf/Tag (Impuls wird pro Tag gecacht).
+#  - Nach 60 Tagen ohne Repo-Aktivität deaktiviert GitHub den Zeitplan; dann im
+#    Tab "Actions" einmalig wieder aktivieren.
+#  - Optionaler Schutz: Repo-Secret RECORD_SECRET anlegen UND in Vercel dieselbe
+#    Env-Variable RECORD_SECRET setzen. Ohne Secret ist der Endpunkt offen.
+
+on:
+  schedule:
+    - cron: '0 5 * * *'   # täglich ~05:00 UTC (~7:00 Berlin, Morgenimpuls)
+  workflow_dispatch: {}
+
+concurrency:
+  group: nutrition-impulse
+  cancel-in-progress: false
+
+jobs:
+  impulse:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Tagesimpuls senden
+        env:
+          RECORD_SECRET: ${{ secrets.RECORD_SECRET }}
+        run: |
+          curl -fsS -m 30 "https://anwesend.vercel.app/api/nutrition-impulse" \
+            ${RECORD_SECRET:+-H "Authorization: Bearer $RECORD_SECRET"}

@@ -3234,6 +3234,9 @@
     // Eingeschrieben -> Reise-Home.
     var done=c.lessons.filter(function(l){ return l.completed; }).length;
     var head='<div style="'+CARD+';display:flex;align-items:center;gap:13px">'+ernFinnAvatar(46)+'<div style="flex:1;min-width:0"><div style="font-size:11.5px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.4px">Dein Coaching</div><div style="font-size:18px;font-weight:900;color:var(--text)">Woche '+c.week+' von '+c.totalWeeks+'</div></div><div style="background:rgba(15,122,74,.10);border:1px solid rgba(15,122,74,.22);border-radius:12px;padding:7px 11px;font-size:13px;font-weight:900;color:'+ERN_G+';white-space:nowrap">'+done+'/'+c.totalWeeks+' ✓</div></div>';
+    // Tagesimpuls (Etappe 4) – FINNs Morgen-Anstoß, wegtippbar.
+    var imp=c.impulse;
+    var impCard=(imp&&imp.text&&!imp.acked)?'<div style="'+CARD+';background:linear-gradient(150deg,#0e6072,#063540);color:#fff;display:flex;gap:12px;align-items:flex-start">'+ernFinnAvatar(38)+'<div style="flex:1;min-width:0"><div style="font-size:11px;font-weight:800;color:#9fd9c6;text-transform:uppercase;letter-spacing:.4px">Impuls des Tages</div><div style="font-size:14px;font-weight:600;line-height:1.5;margin-top:3px">'+esc(imp.text)+'</div></div><button data-act="ernImpulseAck" aria-label="Erledigt" style="border:none;background:rgba(255,255,255,.16);border-radius:9px;width:30px;height:30px;color:#fff;cursor:pointer;flex-shrink:0;font-size:15px;line-height:1">✓</button></div>':'';
     // Heutige Gewohnheiten-Checkliste (Etappe 2) – tippbar, mit Streak/Punkten.
     var habs=Array.isArray(c.todayHabits)?c.todayHabits:[];
     var habitCard='';
@@ -3266,7 +3269,7 @@
     var list='<div style="'+CARD+'"><div style="font-size:13px;font-weight:900;color:var(--text);margin-bottom:4px">Alle Wochen</div>'+rows+'</div>';
     var askBtn='<button data-act="ernCoachChatOpen" style="width:100%;text-align:left;'+CARD+';border:none;cursor:pointer;display:flex;align-items:center;gap:12px">'+ernFinnAvatar(40)+'<div style="flex:1;min-width:0"><div style="font-weight:900;color:var(--text);font-size:15px">FINN fragen</div><div style="font-size:12.5px;color:var(--text-muted);font-weight:600">Makros, Snack-Ideen, Motivation …</div></div>'+chev+'</button>';
     var msg=S.ernMsg?'<div role="'+(S.ernErr?'alert':'status')+'" style="font-size:12.5px;font-weight:700;color:'+(S.ernErr?'var(--err-fg)':ERN_G)+';margin:0 2px 12px;line-height:1.4">'+esc(S.ernMsg)+'</div>':'';
-    return head+habitCard+lessonCard+list+askBtn+msg+ernHumanCta();
+    return head+impCard+habitCard+lessonCard+list+askBtn+msg+ernHumanCta();
   }
   // ═══ Lektions-Ansicht (Voll-Screen unter dem Coach-Tab) ═══
   function ernLesson(){
@@ -4563,6 +4566,8 @@
       api('/api/member/nutrition-coach',{method:'POST',body:JSON.stringify({action:'habit-toggle',habitId:hid})})
       .then(function(d){ if(d&&d.ok){ DATA.coach=d; } render(); })
       .catch(function(){ loadCoach(); }); },
+    ernImpulseAck:function(){ var c=DATA.coach; if(c&&c.impulse){ c.impulse.acked=true; render(); }
+      api('/api/member/nutrition-coach',{method:'POST',body:JSON.stringify({action:'impulse-ack'})}).then(function(d){ if(d&&d.ok) DATA.coach=d; render(); }).catch(function(){}); },
     ernCoachChatOpen:function(){ setS({ernChatOpen:true}); try{ window.scrollTo(0,0); }catch(e){} },
     ernCoachChatClose:function(){ setS({ernChatOpen:false}); },
     // ── Etappe 6: Datenschutz – Export / Tag löschen / alles löschen ──

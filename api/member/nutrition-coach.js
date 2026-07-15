@@ -38,11 +38,31 @@ async function snapshot(id, st) {
   const snap = Coaching.publicSnapshot(st, today);
   const tf = await tierFields(id);
   let hab = { todayHabits: [], streak: 0, points: 0 };
+  let impulse = null;
   if (st && st.enrolled) {
     const rec = await Coaching.getHabitRec(id);
     hab = { todayHabits: Coaching.todayHabitList(st, rec, today), streak: Coaching.habitStreak(rec, today), points: Coaching.habitPoints(rec, today) };
+    const irec = await Coaching.getImpulse(id);
+    if (irec && irec.date === today) impulse = { text: irec.text, source: irec.source, acked: !!irec.ackedAt, date: irec.date };
   }
-  return Object.assign({ ok: true, available: true }, snap, hab, tf);
+  return Object.assign({ ok: true, available: true }, snap, hab, { impulse: impulse }, tf);
+}
+
+// Heutigen Tagesimpuls sicherstellen (lazy, gecacht pro Berlin-Tag). KI nur Premium
+// (rate-limitiert -> max. 1 Call/Tag); sonst statische Rotation. Auch vom Cron genutzt.
+async function ensureImpulseForRequest(id, st) {
+  const today = Coaching.berlinToday();
+  const premium = Ent.isPremium(await Ent.getEntitlement(id));
+  const aiGen = (premium && AI.hasAI) ? async function () {
+    if (!(await M.rateLimit('nutri-impulse:' + id, 5, 86400))) return null;
+    const prof = (await Coaching.kvGetJson('nutri:p:' + id)) || {};
+    let firstName = ''; try { const m = await M.getMember(id); firstName = (m && m.firstName) || ''; } catch (e) {}
+    const wk = Coaching.activeWeek(st, today); const meta = Coaching.lessonMeta(wk);
+    const streak = Coaching.habitStreak(await Coaching.getHabitRec(id), today);
+    const r = await AI.coachDailyImpulse({ firstName: firstName, goal: prof.goal, week: wk, lessonTitle: meta.title, streak: streak, under18: (Number(prof.age) || 99) < 18 });
+    return (r && r.ok && r.text) ? { text: r.text, focusHabitId: null, source: 'ai' } : null;
+  } : null;
+  return Coaching.ensureImpulse(id, st, today, aiGen);
 }
 
 module.exports = async function handler(req, res) {
@@ -56,7 +76,9 @@ module.exports = async function handler(req, res) {
   const id = sess.id;
 
   if (req.method === 'GET') {
-    res.statusCode = 200; return res.end(JSON.stringify(await snapshot(id)));
+    const st = await Coaching.getState(id);
+    if (st && st.enrolled) { try { await ensureImpulseForRequest(id, st); } catch (e) {} }
+    res.statusCode = 200; return res.end(JSON.stringify(await snapshot(id, st)));
   }
   if (req.method !== 'POST') { res.statusCode = 405; return res.end(JSON.stringify({ ok: false, error: 'method_not_allowed' })); }
 
@@ -108,6 +130,16 @@ module.exports = async function handler(req, res) {
   if (action === 'habit-toggle') {
     const r = await Coaching.toggleHabit(id, body.habitId, body.date);
     if (!r.ok) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: r.error })); }
+    res.statusCode = 200; return res.end(JSON.stringify(await snapshot(id)));
+  }
+
+  if (action === 'impulse-get') {
+    const st = await Coaching.getState(id);
+    if (st && st.enrolled) { try { await ensureImpulseForRequest(id, st); } catch (e) {} }
+    res.statusCode = 200; return res.end(JSON.stringify(await snapshot(id, st)));
+  }
+  if (action === 'impulse-ack') {
+    await Coaching.ackImpulse(id);
     res.statusCode = 200; return res.end(JSON.stringify(await snapshot(id)));
   }
 
