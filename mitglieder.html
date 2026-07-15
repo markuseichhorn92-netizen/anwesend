@@ -544,6 +544,7 @@
     if(s==='home'){ loadFinnTip(); maybeRefreshInsta(); maybeRefreshLive(); }
     if(s==='account') loadAccount();
     if(s==='ern'){ try{ window.__ernStopScan&&window.__ernStopScan(); }catch(e){} S.ernMsg=''; S.ernErr=false; S.ernAsk=''; S.ernAnswer=''; S.ernRecipes=null; S.ernCoachSent=false; S.ernTab='heute'; S.ernRecipeSel=null; S.ernCapture=false; S.ernConfirm=null; S.ernProd=null; S.ernEntryEdit=null; S.ernViewDate=''; S.ernFavMgr=false; S.ernData=false; S.ernUpgrade=false; S.ernLesson=null; S.ernLessonData=null; S.ernChatOpen=false; S.ernCk=false; S.ernCkResult=null; S.ernObStep=0; S.ernChat=ernChatLoad(); loadNutri(); loadFavs(); loadCoach(); }
+    if(s==='coach'){ S.ernLesson=null; S.ernVert=null; S.ernLessonData=null; S.ernCk=false; S.ernCkResult=null; S.ernChatOpen=false; S.ernUpgrade=false; S.ernMsg=''; S.ernErr=false; S.ernChat=ernChatLoad(); loadFinnTip(); loadCoach(); if(!DATA.checkins) loadCheckins(); }
     if(s==='appt'){ if(!DATA.appts) loadAppts(); if(DATA.bookable===null) loadBookable(); }
     if(s==='home'||s==='checkin') checkArrival();
     setS({}); }
@@ -3482,6 +3483,39 @@
     var msg=S.ernMsg?'<div role="'+(S.ernErr?'alert':'status')+'" style="font-size:12.5px;font-weight:700;color:'+(S.ernErr?'var(--err-fg)':ERN_G)+';margin:0 2px 12px;line-height:1.4">'+esc(S.ernMsg)+'</div>':'';
     return head+impCard+habitCard+lessonCard+list+vertCard+ckCard+askBtn+msg+ernHumanCta();
   }
+  // ═══ Coach-Hub (Top-Level-Screen) – Coaching als roter Faden: Tipp + Programm + Motivation ═══
+  // Bündelt: FINN-Tipp des Tages (→ FINN-Chat), Motivation (Vitalpunkte/Streak/Fitness-Alter,
+  // wiederverwendet aus vitalCard) und – falls verfügbar – das Ernährungs-Coaching-Programm
+  // (ernCoachHome). Lektionen/Check-ins/Chat werden per bestehender ern-Renderer angezeigt
+  // (dieselbe helle Palette wie das Ernährungs-Modul; die ACT-Handler sind screen-unabhängig).
+  var ERN_LIGHT='--surface:#fff;--surface-2:#eef2f3;--text:#15171B;--text-2:#2c3338;--text-muted:#6b7780;--text-soft:#8a929a;--border:#f0f3f3;--teal-ink:#0a4958;--err-fg:#c0392b;background:#eef2f3;min-height:100%';
+  function scrCoach(){
+    var wrap=function(inner){ return '<div style="'+ERN_LIGHT+';padding-bottom:40px">'+inner+'</div>'; };
+    // Unteransichten (Lektion / Vertiefung / Check-in / Upgrade / Nutrition-Chat) – bestehende Renderer.
+    if(S.ernUpgrade) return wrap(ernUpgradeScreen());
+    if(S.ernLesson||S.ernVert) return wrap(ernLesson());
+    if(S.ernCk) return wrap(ernCheckinScreen());
+    var nm=(DATA.profile&&DATA.profile.firstName)||'';
+    var header='<div style="background:linear-gradient(160deg,'+ERN_G2+','+ERN_G+' 60%,'+ERN_GD+');border-radius:0 0 24px 24px;padding:16px 18px 20px;color:#fff;box-shadow:0 12px 30px rgba(15,122,74,.22);margin:-2px -2px 16px">'+
+      '<div style="font-size:12px;font-weight:600;color:#c5ecd7">'+(nm?('Hey '+esc(nm)+' 👋'):'Willkommen zurück')+'</div>'+
+      '<div style="font-size:22px;font-weight:900;letter-spacing:-.4px">Dein Coach</div>'+
+      '<div style="font-size:12.5px;font-weight:600;color:#d4f0e2;margin-top:2px">Tipps, Programm &amp; Motivation an einem Ort</div></div>';
+    if(S.ernChatOpen) return wrap(header+ernCoach());
+    // Tipp des Tages (allgemeiner FINN-Coach) – ganze Karte öffnet den FINN-Chat.
+    var tip=S.finnTip||'';
+    var tipHero='<button data-act="openFinn" style="width:100%;text-align:left;border:none;cursor:pointer;font-family:inherit;background:#fff;border-radius:20px;box-shadow:0 12px 30px rgba(4,33,40,.09);padding:16px;margin-bottom:14px;display:flex;gap:13px;align-items:flex-start">'+
+      ernFinnAvatar(46)+'<div style="flex:1;min-width:0"><div style="font-size:11px;font-weight:800;color:#8a929a;text-transform:uppercase;letter-spacing:.4px">FINN · Tipp des Tages</div>'+
+      '<div style="font-size:14px;font-weight:600;color:#15171B;line-height:1.5;margin-top:4px">'+(tip?esc(tip):'FINN stellt dir gleich deinen Tipp zusammen …')+'</div>'+
+      '<div style="font-size:12px;font-weight:800;color:'+ERN_G+';margin-top:8px;display:flex;align-items:center;gap:5px">Frag FINN etwas '+svg('<path d="M9 6l6 6-6 6"></path>',{c:ERN_G,w:2.2,s:14})+'</div></div></button>';
+    // Motivation (Vitalpunkte/Rang/Streak/Fitness-Alter) – wiederverwendet.
+    var motiv=vitalCard();
+    // Coaching-Programm (gate-aware): nur wenn verfügbar; sonst tragen Tipp + Motivation den Hub.
+    var c=DATA.coach, program='';
+    if(c&&c.ok&&c.available!==false){
+      program='<div style="font-size:17px;font-weight:900;color:var(--text);letter-spacing:-.3px;margin:22px 2px 12px">Dein Coaching-Programm</div>'+ernCoachHome();
+    }
+    return wrap(header+tipHero+motiv+program);
+  }
   // ═══ Erfolgskontrolle: Gewichts-Sparkline (einfaches SVG) ═══
   function ernWeightChart(hist){
     var pts=(hist||[]).filter(function(h){ return typeof h.weight==='number'; });
@@ -3880,7 +3914,10 @@
       '<div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:700;color:var(--text)">'+t+'</div><div style="font-size:12.5px;color:var(--text-soft);font-weight:500">'+d+'</div></div>'+
       svg('<path d="M9 18l6-6-6-6"></path>',{c:'var(--text-soft)',w:2.2,s:18})+'</button>'; };
     var AWARD='<circle cx="12" cy="8" r="6"></circle><path d="M15.5 13.5L17 22l-5-3-5 3 1.5-8.5"></path>';
+    var un=pfUnread();
     var list='<div style="background:var(--surface);border-radius:18px;box-shadow:0 12px 32px rgba(4,33,40,.08);overflow:hidden;margin-top:16px">'+
+      row('postfach','Postfach',(un>0?(un+' ungelesene Nachricht'+(un===1?'':'en')):'Nachrichten & FINN'),IC.mail,un>0)+
+      row('appt','Termine','Buchen & verwalten',IC.cal)+
       row('fort','Fortschritt & Vitalität','Rang, Punkte, Fitness-Alter',AWARD,true)+
       (ERN_ON?row('ern','Ernährung','Tagesziel, Tracking & Rezepte','<path d="M11 21A7 7 0 0 1 4 14C4 8.5 8 4 13.5 4c2.7 0 4.6 1 6.5 1.8 0 8.7-4.3 15.2-9 15.2z"></path><path d="M11 21c0-5.5 3.3-10 7.5-12"></path>'):'')+
       row('data','Meine Daten','Adresse & Bankverbindung',IC.user)+
@@ -4482,7 +4519,7 @@
   // ---- responsive chrome (Desktop-Sidebar + Topbar) ----
   var DASH_IC='<rect x="3" y="3" width="7" height="9" rx="1.5"></rect><rect x="14" y="3" width="7" height="5" rx="1.5"></rect><rect x="14" y="12" width="7" height="9" rx="1.5"></rect><rect x="3" y="16" width="7" height="5" rx="1.5"></rect>';
   var NAVITEMS=[['home','Übersicht',DASH_IC],['card','Mitgliedskarte','<rect x="3" y="3" width="7" height="7" rx="1.4"></rect><rect x="14" y="3" width="7" height="7" rx="1.4"></rect><rect x="3" y="14" width="7" height="7" rx="1.4"></rect><path d="M14 14h3v3h-3z"></path><path d="M20 14v3M14 20h3M20 20v.01"></path>'],['fort','Fortschritt','<circle cx="12" cy="8" r="6"></circle><path d="M15.5 13.5L17 22l-5-3-5 3 1.5-8.5"></path>'],['ern','Ernährung','<path d="M11 21A7 7 0 0 1 4 14C4 8.5 8 4 13.5 4c2.7 0 4.6 1 6.5 1.8 0 8.7-4.3 15.2-9 15.2z"></path><path d="M11 21c0-5.5 3.3-10 7.5-12"></path>'],['insta','Instagram',IG_ICON],['data','Meine Daten',IC.user],['contract','Vertragsverwaltung',IC.doc],['account','Beitragskonto','<rect x="2" y="5" width="20" height="14" rx="2"></rect><path d="M2 9h20M6 15h5"></path>'],['appt','Termine',IC.cal],['referral','Freunde werben',IC.gift],['checkins','Check-ins',IC.list],['postfach','Postfach',IC.mail],['help','Hilfe',IC.help],['settings','Einstellungen',IC.cog]];
-  var TITLES={home:'Übersicht',data:'Meine Daten',contract:'Vertragsverwaltung',account:'Beitragskonto',appt:'Termine',checkin:'Check-in',referral:'Freunde werben',checkins:'Check-in-Verlauf',postfach:'Postfach',help:'Hilfe & Kontakt',settings:'Einstellungen',profil:'Profil',card:'Mitgliedskarte',fort:'Fortschritt',ern:'Ernährung',blog:'Blog',insta:'Instagram'};
+  var TITLES={home:'Übersicht',data:'Meine Daten',contract:'Vertragsverwaltung',account:'Beitragskonto',appt:'Termine',checkin:'Check-in',referral:'Freunde werben',checkins:'Check-in-Verlauf',postfach:'Postfach',help:'Hilfe & Kontakt',settings:'Einstellungen',profil:'Profil',card:'Mitgliedskarte',fort:'Fortschritt',ern:'Ernährung',coach:'Coach',blog:'Blog',insta:'Instagram'};
   function initials(p){ p=p||{}; var a=(p.firstName||'').trim(),b=(p.lastName||'').trim(); return (((a?a[0]:'')+(b?b[0]:'')).toUpperCase())||'FT'; }
   // Profil-Kopf für Sidebar/Drawer
   function navProfile(){
@@ -4536,21 +4573,29 @@
       }
       bn.style.display=''; bn.style.background='';
       var sc=S.screen;
-      var profActive = (sc==='profil'||['data','contract','account','referral','fort','ern','card','help','settings'].indexOf(sc)>=0);
+      // Neue, einheitliche YAZIO-artige Nav: Start · Coach · (+) · Essen · Profil.
+      // Postfach/Termine leben im Profil-Hub bzw. auf der Startseite; der Postfach-Punkt
+      // wandert auf den Profil-Tab. „Essen" nur wenn ERN_ON, sonst Fallback „Termine".
+      var profScreens=['profil','data','contract','account','referral','fort','card','help','settings','checkins','postfach'];
+      var profActive = (profScreens.indexOf(sc)>=0) || (ERN_ON && sc==='appt');
       var ni=function(key,label,icon,active){ var col=active?'var(--teal-ink)':'var(--text-soft)';
         return '<button data-act="nav" data-arg="'+key+'" style="flex:1;background:none;border:none;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;padding:5px 0">'+svg(icon,{c:col,w:1.9,s:23})+'<span style="font-size:10.5px;font-weight:'+(active?'800':'600')+';color:'+col+'">'+label+'</span></button>'; };
       var unread=pfUnread()>0;
-      var pfCol=(sc==='postfach')?'var(--teal-ink)':'var(--text-soft)';
-      var pfBtn='<button data-act="nav" data-arg="postfach" style="flex:1;background:none;border:none;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;padding:5px 0"><span style="position:relative;display:flex">'+svg(IC.mail,{c:pfCol,w:1.9,s:23})+(unread?'<span style="position:absolute;top:-3px;right:-5px;width:8px;height:8px;border-radius:50%;background:#F6A964;border:1.5px solid var(--surface)"></span>':'')+'</span><span style="font-size:10.5px;font-weight:'+(sc==='postfach'?'800':'600')+';color:'+pfCol+'">Postfach</span></button>';
+      var COACH_IC='<path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.5 8.6 8.6 0 0 1-4-1L3 20l1-5a8.4 8.4 0 0 1-1-4A8.5 8.5 0 0 1 11.5 3 8.5 8.5 0 0 1 21 11.5z"></path>';
+      var FOOD_IC='<path d="M4 11h16v1a8 8 0 0 1-16 0z"></path><path d="M8.5 4c0 1-1 1.2-1 2.2s1 1.2 1 2.2M12 4c0 1-1 1.2-1 2.2s1 1.2 1 2.2M15.5 4c0 1-1 1.2-1 2.2s1 1.2 1 2.2"></path>';
       var ciIn=!!S.checkedInAt; var qaOpen=!!S.qaOpen;
-      // Mitte = DER Assistent (Herzstück). Ein Tipp öffnet den Assistent-Hub (Chat + Schnellaktionen).
-      // Beim Öffnen wird das FINN-Zeichen zum „×". Kleiner grüner Punkt erinnert ans Auschecken.
+      // Mitte = zentraler „+"/Assistent-Hub (Chat + Schnellaktionen). Beim Öffnen wird das
+      // FINN-Zeichen zum „×". Kleiner grüner Punkt erinnert ans Auschecken.
       var centerInner=qaOpen
         ? svg('<path d="M6 6l12 12M18 6L6 18"></path>',{c:'#fff',w:2.4,s:24})
-        : '<img src="/assets/brand/finn-mark.svg" alt="" style="width:30px;height:30px;display:block">';
+        : svg('<path d="M12 5v14M5 12h14"></path>',{c:'#fff',w:2.6,s:26});
       var ciDot=(!qaOpen&&ciIn)?'<span style="position:absolute;top:0;right:2px;width:13px;height:13px;border-radius:50%;background:#1f9a4e;border:2px solid var(--surface)"></span>':'';
-      var qaCenter='<button data-act="'+(qaOpen?'qaClose':'qaOpen')+'" aria-label="Assistent" style="flex:1;background:none;border:none;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px;padding:0"><span style="position:relative;width:54px;height:54px;border-radius:50%;background:linear-gradient(150deg,#0e6072,#063540);box-shadow:0 10px 24px -4px rgba(10,73,88,.55);display:flex;align-items:center;justify-content:center;margin-top:-26px;border:4px solid var(--surface)">'+centerInner+ciDot+'</span><span style="font-size:10.5px;font-weight:800;color:'+(qaOpen?'var(--teal-ink)':'var(--text-soft)')+'">'+(qaOpen?'Schließen':'Assistent')+'</span></button>';
-      bn.innerHTML = ni('home','Start',DASH_IC,sc==='home') + ni('appt','Termine',IC.cal,sc==='appt') + qaCenter + pfBtn + ni('profil','Profil',IC.user,profActive);
+      var qaCenter='<button data-act="'+(qaOpen?'qaClose':'qaOpen')+'" aria-label="Hinzufügen &amp; Assistent" style="flex:1;background:none;border:none;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px;padding:0"><span style="position:relative;width:54px;height:54px;border-radius:50%;background:linear-gradient(150deg,#0e6072,#063540);box-shadow:0 10px 24px -4px rgba(10,73,88,.55);display:flex;align-items:center;justify-content:center;margin-top:-26px;border:4px solid var(--surface)">'+centerInner+ciDot+'</span><span style="font-size:10.5px;font-weight:800;color:'+(qaOpen?'var(--teal-ink)':'var(--text-soft)')+'">'+(qaOpen?'Schließen':'Hinzufügen')+'</span></button>';
+      // Profil-Tab trägt den Postfach-Ungelesen-Punkt.
+      var profCol=profActive?'var(--teal-ink)':'var(--text-soft)';
+      var profBtn='<button data-act="nav" data-arg="profil" style="flex:1;background:none;border:none;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;padding:5px 0"><span style="position:relative;display:flex">'+svg(IC.user,{c:profCol,w:1.9,s:23})+(unread?'<span style="position:absolute;top:-3px;right:-5px;width:8px;height:8px;border-radius:50%;background:#F6A964;border:1.5px solid var(--surface)"></span>':'')+'</span><span style="font-size:10.5px;font-weight:'+(profActive?'800':'600')+';color:'+profCol+'">Profil</span></button>';
+      var fourth = ERN_ON ? ni('ern','Essen',FOOD_IC,sc==='ern') : ni('appt','Termine',IC.cal,sc==='appt');
+      bn.innerHTML = ni('home','Start',DASH_IC,sc==='home') + ni('coach','Coach',COACH_IC,sc==='coach') + qaCenter + fourth + profBtn;
     }
   }
   var NARROW={contract:1,referral:1,appt:1,card:1,fort:1,ern:1,blog:1,profil:1,checkin:1,insta:1};
@@ -4567,6 +4612,7 @@
       case 'card': html=scrCard(); break;
       case 'fort': html=scrFort(); break;
       case 'ern': html=scrErn(); break;
+      case 'coach': html=scrCoach(); break;
       case 'profil': html=scrProfil(); break;
       case 'blog': html=scrBlog(); break;
       case 'insta': html=scrInsta(); break;
