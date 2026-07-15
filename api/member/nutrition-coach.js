@@ -209,5 +209,24 @@ module.exports = async function handler(req, res) {
     res.statusCode = 200; return res.end(JSON.stringify(await snapshot(id, r.state)));
   }
 
+  // ── Vertiefung (evergreen Deep-Dives): immer offen, aber Premium-Bonus ──
+  if (action === 'vertiefung-get') {
+    const st = await Coaching.getState(id);
+    if (!st || !st.enrolled) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'not_enrolled' })); }
+    const track = Coaching.trackOf(st);
+    const full = Coaching.fullVertiefung(track, body.id);
+    if (!full) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'not_found' })); }
+    // Vertiefungs-Module sind Premium (kein Wochen-Bezug -> direkt über isPremium gaten).
+    if (!Ent.isPremium(await Ent.getEntitlement(id))) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'premium_required', message: PREMIUM_MSG })); }
+    const vd = (st.vertiefung && st.vertiefung[full.id]) || null;
+    res.statusCode = 200; return res.end(JSON.stringify({ ok: true, locked: false, lesson: full, completed: !!(vd && vd.completedAt), personalized: null }));
+  }
+  if (action === 'vertiefung-complete') {
+    if (!Ent.isPremium(await Ent.getEntitlement(id))) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'premium_required', message: PREMIUM_MSG })); }
+    const r = await Coaching.completeVertiefung(id, body.id);
+    if (!r.ok) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: r.error })); }
+    res.statusCode = 200; return res.end(JSON.stringify(await snapshot(id, r.state)));
+  }
+
   res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'unknown_action' }));
 };
