@@ -44,7 +44,8 @@ module.exports = async function handler(req, res) {
   const base = baseUrl(req);
 
   if (action === 'status') {
-    res.statusCode = 200; return res.end(JSON.stringify(Object.assign({ ok: true }, tier)));
+    let priceInfo = null; try { priceInfo = await Stripe.getPriceInfo(); } catch (e) {}
+    res.statusCode = 200; return res.end(JSON.stringify(Object.assign({ ok: true }, tier, { premiumInfo: { price: priceInfo, trialDays: Stripe.TRIAL_DAYS } })));
   }
 
   if (action === 'checkout') {

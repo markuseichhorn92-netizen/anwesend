@@ -57,6 +57,7 @@ auch für Gratis-Nutzer.
    - `customer.subscription.created`
    - `customer.subscription.updated`
    - `customer.subscription.deleted`
+   - `invoice.paid` (bzw. `invoice.payment_succeeded`) — Verlängerung/Recovery
    - `invoice.payment_failed`
 4. Endpunkt anlegen, dann **Signing secret** kopieren → `whsec_…`
    → das ist `STRIPE_WEBHOOK_SECRET`.
@@ -64,6 +65,13 @@ auch für Gratis-Nutzer.
 > Der Webhook ist die **einzige** Stelle, die Premium freischaltet/entzieht.
 > Der Client kann den Status nicht selbst setzen. Ohne gültige Signatur
 > antwortet der Endpunkt mit `400`.
+>
+> **Robustheit (bereits im Code):** jede `event.id` wird nur **einmal**
+> verarbeitet (Idempotenz, 72 h), doppelte/verspätete Zustellungen ändern nichts.
+> Schlägt der Store-Schreibvorgang fehl, antwortet der Endpunkt mit `500` und
+> Stripe stellt automatisch **erneut** zu (statt den Status stillschweigend zu
+> verlieren). Die API-Version ist fest auf `2024-06-20` gepinnt
+> (`STRIPE_API_VERSION`), damit das Feld-Schema vorhersehbar bleibt.
 
 ### 4. Billing-Portal aktivieren (Kündigen/Zahlungsdaten ändern)
 - **Einstellungen → Billing → Kundenportal**: aktivieren und erlauben, dass
@@ -80,30 +88,74 @@ In Vercel → Project → **Settings → Environment Variables** (siehe auch
 | `STRIPE_PRICE_ID` | `price_…` (4,99 €/Monat) | ✅ |
 | `STRIPE_WEBHOOK_SECRET` | `whsec_…` | ✅ (für Freischaltung) |
 | `STRIPE_TRIAL_DAYS` | `7` | – (Default 7) |
+| `STRIPE_API_VERSION` | `2024-06-20` | – (Default gepinnt) |
 | `APP_BASE_URL` | `https://mitglieder.fit-inn-trier.de` | empfohlen |
 
 `APP_BASE_URL` bestimmt, wohin Stripe nach Checkout/Portal zurückleitet
 (`…/mitglieder?ern_premium=success|cancel|portal`). Fehlt sie, wird sie aus dem
 Request-Host abgeleitet — bei Custom-Domain lieber explizit setzen.
 
+> **Harte Zusatz-Abhängigkeit: Upstash/Redis.** Der Premium-Status (Entitlement)
+> und die Idempotenz-Sperre liegen im KV-Store. Ohne ihn kann der Webhook nichts
+> persistieren und die Abrechnung meldet `unavailable`. Die Variablen
+> (`KV_REST_API_URL`/`KV_REST_API_TOKEN` bzw. `UPSTASH_REDIS_REST_URL`/`_TOKEN`)
+> legt die Vercel/Upstash-Integration i. d. R. **automatisch** an — vor dem
+> Livegang prüfen, dass sie in der Produktion gesetzt sind.
+
 Nach dem Setzen: **neu deployen**, damit die Variablen greifen.
 
 ---
 
-## End-to-End testen (Stripe-Testmodus)
+## Go-Live-Checkliste (abhaken)
+
+Technik ist fertig — das hier ist die reine Konfig-/Betriebs-Abfolge:
+
+- [ ] **Stripe-Produkt/Preis** live angelegt: `Fit-Inn Ernährung Premium`,
+      wiederkehrend monatlich **4,99 € EUR** → `STRIPE_PRICE_ID` (`price_…`) notiert.
+- [ ] **Live-Secret-Key** geholt (`sk_live_…`) → `STRIPE_SECRET_KEY`.
+- [ ] **Webhook-Endpoint** `https://mitglieder.fit-inn-trier.de/api/webhooks/stripe`
+      registriert mit **6 Events** (checkout.session.completed,
+      customer.subscription.created/updated/deleted, **invoice.paid**,
+      invoice.payment_failed) → `STRIPE_WEBHOOK_SECRET` (`whsec_…`) notiert.
+- [ ] **Kundenportal** in Stripe aktiviert (Kündigen + Zahlungsdaten ändern).
+- [ ] **Upstash/KV** in der Produktion vorhanden (Entitlement-Store) — geprüft.
+- [ ] Die **5 Env-Vars** in Vercel (Production) gesetzt (Tabelle oben) und
+      **neu deployed**.
+- [ ] **Test-Modus zuerst:** mit Test-Keys + Testkarte den Flow durchgespielt
+      (siehe „End-to-End testen") → Premium schaltet, Portal kündigt.
+- [ ] **Auf Live umgestellt:** Live-Keys eingetragen, erneut deployed, **ein**
+      echter Kauf (ggf. sofort im Portal gekündigt) als finaler Rauch-Test.
+- [ ] **Rechtliches** erledigt (siehe unten): §312j-Button, Preis inkl. MwSt +
+      Laufzeit + Kündigung, Widerruf, AGB/Datenschutz um „Premium/Stripe" ergänzt.
+
+---
+
+## End-to-End testen (Stripe-Testmodus) — abhaken
 
 1. Testmodus in Stripe an, Test-Keys in Vercel (Preview) hinterlegen.
-2. Im Member-Portal Premium starten → Stripe-Checkout öffnet sich.
-3. Testkarte: **`4242 4242 4242 4242`**, beliebiges künftiges Datum, beliebige
+2. Testkarte: **`4242 4242 4242 4242`**, beliebiges künftiges Datum, beliebige
    CVC/PLZ. (Weitere Testkarten: [stripe.com/docs/testing](https://stripe.com/docs/testing).)
-4. Nach „Bezahlen" leitet Stripe zurück (`?ern_premium=success`). Der Webhook
-   feuert `checkout.session.completed` + `customer.subscription.created` →
-   Entitlement `nutri:prem:<memberId>` wird auf `trialing`/`active` gesetzt →
-   KI-Funktionen sind frei.
-5. Im Stripe-Kundenportal kündigen → `customer.subscription.deleted` → Entzug
-   nach Periodenende.
-- Webhook-Zustellung prüfen: **Entwickler → Webhooks → Endpunkt →** „Letzte
-  Ereignisse". Ein Event kann man dort auch **erneut senden**.
+
+- [ ] **Checkout:** Im Member-Portal Premium starten → Stripe-Checkout öffnet sich
+      → mit Testkarte bezahlen. Rückkehr `?ern_premium=success` → die App **pollt**
+      kurz und zeigt „Premium aktiviert" **automatisch** (kein manueller Reload).
+- [ ] **Freischaltung:** KI-Funktionen (Foto, FINN-Chat, Rezepte) sind frei;
+      Entitlement `nutri:prem:<memberId>` steht auf `trialing`/`active`.
+- [ ] **Verlängerung/Recovery (optional):** In Stripe eine Rechnung als bezahlt
+      simulieren → `invoice.paid` → Status bleibt/`active`, `until` verlängert.
+      Zahlung fehlschlagen lassen → `invoice.payment_failed` → `past_due`; danach
+      erfolgreiche Zahlung → wieder `active`.
+- [ ] **Kündigen:** Im Stripe-Kundenportal (App: „Abo verwalten / kündigen")
+      kündigen → `customer.subscription.deleted` → Entzug nach Periodenende.
+- [ ] **Webhook-Log grün:** **Entwickler → Webhooks → Endpunkt → „Letzte
+      Ereignisse"** zeigt `200` (bzw. `dedup:true` bei Wiederholung). Ein Event
+      kann man dort auch **erneut senden** — der Status bleibt idempotent gleich.
+
+Automatisierte Prüfungen liegen unter `scratchpad/` (Entwicklung): der
+Node-Harness `stripe-webhook.test.js` fährt den echten Webhook mit signierten
+Events (Signatur, Idempotenz, item-level Periodenende, invoice.paid→active,
+Kündigung, past_due, Store-Fehler→500) durch; `ern-billing.pw.js` prüft den
+Frontend-Flow (dynamischer Preis, Checkout-Wiring, Erfolgs-Polling).
 
 Der Test-Zugang der App (Modul versteckt) funktioniert unabhängig: In der App
 7× auf das Datum tippen (setzt `localStorage.fi_ern_test`). Das entsperrt nur
@@ -120,9 +172,13 @@ die **Sichtbarkeit** des Moduls, nicht Premium — Premium hängt allein am Abo.
 - `api/member/nutrition-billing.js` — `POST {action:'checkout'|'portal'|'status'}`
   (Bearer-Auth). Legt Checkout-/Portal-Sessions an, gibt eine `url` zurück.
 - `api/webhooks/stripe.js` — empfängt die Stripe-Events und setzt/entzieht das
-  Entitlement. Antwortet immer `200`, damit Stripe nicht retry-stürmt.
+  Entitlement. **Idempotent** (jede `event.id` nur einmal, 72 h), robustes
+  Periodenende (`until` auch aus item-level `current_period_end`, nie unbegrenzt),
+  behandelt `invoice.paid` (Recovery/Verlängerung). Bei Store-Fehler `500` →
+  Stripe-Retry; sonst `200`.
 - `api/member/nutrition.js` — serverseitiges Gate + `buildState` liefert dem
-  Frontend `premium`, `tier`, `trialing`, `premiumUntil`.
+  Frontend `premium`, `tier`, `trialing`, `premiumUntil` **und `premiumInfo`**
+  (Preis/Trial aus Stripe, gecacht → dynamische UI-Copy statt hartcodiert).
 
 **DSGVO:** Beim „alle Ernährungsdaten löschen" wird das **Abo NICHT** gekündigt
 (das ist Abrechnungsstatus, kein Ernährungsdatum). Kündigung läuft ausschließlich

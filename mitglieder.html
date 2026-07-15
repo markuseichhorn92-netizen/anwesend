@@ -2492,13 +2492,23 @@
   function ernPremium(){ return !!(DATA.nutri && DATA.nutri.premium); }
   function ernTrialing(){ return !!(DATA.nutri && DATA.nutri.trialing); }
   // Dashboard-Karte: für Free ein Upgrade-CTA, für Premium ein dezenter Status.
+  // Preis-/Trial-Copy: dynamisch aus dem Backend (Stripe, gecacht), sonst Fallback.
+  function ernPriceCopy(){
+    var pi=(DATA.nutri&&DATA.nutri.premiumInfo)||{};
+    var p=pi.price||null;
+    var td=(typeof pi.trialDays==='number')?pi.trialDays:7;
+    var priceLabel=(p&&p.label)?p.label:'4,99 €';
+    var per=(p&&p.intervalLabel)?p.intervalLabel:'Monat';
+    return { price:priceLabel, per:per, pricePer:priceLabel+'/'+per, trialDays:td, trialText:(td>0?(td+' Tage gratis'):'') };
+  }
   function ernPremiumCard(){
     if(ernPremium()){
       var until=DATA.nutri&&DATA.nutri.premiumUntil; var days=until?Math.max(0,Math.ceil((until-Date.now())/86400000)):0;
       var label=ernTrialing()?('Gratis-Test aktiv'+(days?(' · noch '+days+' Tag'+(days===1?'':'e')):'')):'Premium aktiv';
       return '<div style="display:flex;align-items:center;gap:10px;background:rgba(15,122,74,.10);border:1px solid rgba(15,122,74,.22);border-radius:14px;padding:11px 14px;margin-bottom:14px"><span style="font-size:16px">⭐</span><span style="flex:1;font-size:12.5px;font-weight:800;color:'+ERN_G+'">'+label+'</span><button data-act="ernDataOpen" style="border:none;background:transparent;color:var(--text-soft);font-size:11.5px;font-weight:800;cursor:pointer;padding:0">Verwalten</button></div>';
     }
-    return '<button data-act="ernUpgradeOpen" aria-label="Ernährung Premium – 7 Tage gratis testen" style="width:100%;text-align:left;border:none;cursor:pointer;background:linear-gradient(150deg,#12a06a,#0a5a37);border-radius:18px;padding:16px;margin-bottom:14px;box-shadow:0 12px 30px rgba(4,33,40,.18);font-family:inherit;display:flex;align-items:center;gap:13px"><span style="width:46px;height:46px;border-radius:14px;background:rgba(255,255,255,.16);display:flex;align-items:center;justify-content:center;font-size:23px;flex-shrink:0">✨</span><div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:900;color:#fff">Ernährung Premium</div><div style="font-size:12.5px;font-weight:600;color:#d4f0e2;margin-top:2px;line-height:1.35">Foto-Analyse, FINN-Coach, Wochenpläne &amp; KI-Rezepte. 7 Tage gratis.</div></div>'+svg('<path d="M9 6l6 6-6 6"></path>',{c:'rgba(255,255,255,.75)',w:2.2,s:20})+'</button>';
+    var pc=ernPriceCopy(); var sub='Foto-Analyse, FINN-Coach, Wochenpläne &amp; KI-Rezepte.'+(pc.trialText?(' '+pc.trialText+'.'):'');
+    return '<button data-act="ernUpgradeOpen" aria-label="Ernährung Premium'+(pc.trialText?(' – '+pc.trialText+' testen'):'')+'" style="width:100%;text-align:left;border:none;cursor:pointer;background:linear-gradient(150deg,#12a06a,#0a5a37);border-radius:18px;padding:16px;margin-bottom:14px;box-shadow:0 12px 30px rgba(4,33,40,.18);font-family:inherit;display:flex;align-items:center;gap:13px"><span style="width:46px;height:46px;border-radius:14px;background:rgba(255,255,255,.16);display:flex;align-items:center;justify-content:center;font-size:23px;flex-shrink:0">✨</span><div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:900;color:#fff">Ernährung Premium</div><div style="font-size:12.5px;font-weight:600;color:#d4f0e2;margin-top:2px;line-height:1.35">'+sub+'</div></div>'+svg('<path d="M9 6l6 6-6 6"></path>',{c:'rgba(255,255,255,.75)',w:2.2,s:20})+'</button>';
   }
   // Vor einer KI-Aktion: kein Premium -> Upgrade-Screen zeigen und Aktion abbrechen (true).
   function ernNeedPremium(){ if(ernPremium()) return false; setS({ernUpgrade:true}); try{ window.scrollTo(0,0); }catch(e){} return true; }
@@ -2511,17 +2521,21 @@
     ['📈','Wochen-Auswertung','FINN erkennt Muster und gibt dir wöchentlich Tipps.'],
   ];
   function ernUpgradeScreen(){
-    var busy=S.ernUpgradeBusy;
+    var busy=S.ernUpgradeBusy; var pc=ernPriceCopy();
     var feats=ERN_PREMIUM_FEATURES.map(function(f){ return '<div style="display:flex;align-items:flex-start;gap:13px;padding:11px 0"><span style="width:40px;height:40px;border-radius:12px;background:rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">'+f[0]+'</span><div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:900;color:#fff">'+f[1]+'</div><div style="font-size:12.5px;font-weight:500;color:#d4f0e2;line-height:1.4;margin-top:1px">'+esc(f[2])+'</div></div></div>'; }).join('');
     var back='<button data-act="ernUpgradeClose" aria-label="Zurück" style="position:absolute;top:16px;left:16px;width:38px;height:38px;border-radius:12px;border:none;background:rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:2">'+svg(IC.back,{c:'#fff',w:2.2,s:19})+'</button>';
     var err=(S.ernErr&&S.ernMsg)?'<div role="alert" style="font-size:12.5px;font-weight:700;color:#ffd7cf;text-align:center;margin-top:12px">'+esc(S.ernMsg)+'</div>':'';
+    // Copy dynamisch aus Stripe-Preis/Trial (Fallback in ernPriceCopy).
+    var headline=pc.trialText?(pc.trialText+' testen – danach nur <b style="color:#fff">'+esc(pc.pricePer)+'</b>. Jederzeit kündbar.'):('Nur <b style="color:#fff">'+esc(pc.pricePer)+'</b>. Jederzeit kündbar.');
+    var ctaLabel=busy?'Einen Moment …':(pc.trialText?(pc.trialDays+' Tage gratis starten'):'Premium starten');
+    var fine=pc.trialText?('Sichere Zahlung über Stripe · keine Kartendaten in der App.<br>Nach '+pc.trialDays+' Tagen '+esc(pc.pricePer)+' (inkl. MwSt), monatlich kündbar.'):('Sichere Zahlung über Stripe · keine Kartendaten in der App.<br>'+esc(pc.pricePer)+' (inkl. MwSt), monatlich kündbar.');
     return '<div style="position:relative;min-height:100%;background:linear-gradient(172deg,#12a06a 0%,#0f7a4a 52%,#0a5a37 100%);padding:56px 22px 30px">'+back+
       '<div style="text-align:center"><div style="display:inline-flex;align-items:center;gap:7px;background:rgba(255,255,255,.16);border-radius:20px;padding:6px 14px;font-size:12px;font-weight:900;color:#fff;letter-spacing:.3px">⭐ ERNÄHRUNG PREMIUM</div>'+
         '<div style="font-size:27px;font-weight:900;letter-spacing:-.6px;line-height:1.15;color:#fff;margin-top:16px">Hol dir deinen<br>KI-Ernährungscoach</div>'+
-        '<div style="font-size:14.5px;font-weight:600;color:#d4f0e2;line-height:1.5;margin-top:12px">7 Tage gratis testen – danach nur <b style="color:#fff">4,99 €/Monat</b>. Jederzeit kündbar.</div></div>'+
+        '<div style="font-size:14.5px;font-weight:600;color:#d4f0e2;line-height:1.5;margin-top:12px">'+headline+'</div></div>'+
       '<div style="background:rgba(255,255,255,.08);border-radius:20px;padding:8px 16px;margin-top:22px">'+feats+'</div>'+
-      '<button data-act="ernUpgradeGo" '+(busy?'disabled ':'')+'style="width:100%;margin-top:22px;padding:17px;border:none;border-radius:16px;background:#fff;color:#0f7a4a;font-weight:900;font-size:16.5px;cursor:pointer;opacity:'+(busy?'.6':'1')+'">'+(busy?'Einen Moment …':'7 Tage gratis starten')+'</button>'+
-      '<div style="font-size:11.5px;color:#c5ecd7;font-weight:600;text-align:center;line-height:1.5;margin-top:12px">Sichere Zahlung über Stripe · keine Kartendaten in der App.<br>Nach 7 Tagen 4,99 €/Monat (inkl. MwSt), monatlich kündbar.</div>'+
+      '<button data-act="ernUpgradeGo" '+(busy?'disabled ':'')+'style="width:100%;margin-top:22px;padding:17px;border:none;border-radius:16px;background:#fff;color:#0f7a4a;font-weight:900;font-size:16.5px;cursor:pointer;opacity:'+(busy?'.6':'1')+'">'+ctaLabel+'</button>'+
+      '<div style="font-size:11.5px;color:#c5ecd7;font-weight:600;text-align:center;line-height:1.5;margin-top:12px">'+fine+'</div>'+
       err+
       '<div style="font-size:12px;color:#aed0d6;font-weight:600;text-align:center;margin-top:16px;line-height:1.5">Basis bleibt gratis: manuell loggen, Barcode, Wasser,<br>Favoriten, Kochbuch &amp; Verlauf.</div>'+
       '<button data-act="ernUpgradeClose" style="width:100%;margin-top:14px;padding:13px;border:none;background:transparent;color:#eafff4;font-weight:800;font-size:14px;cursor:pointer">Vielleicht später</button>'+
@@ -3277,11 +3291,12 @@
     var head='<div style="display:flex;align-items:center;gap:12px;padding:2px 2px 14px"><button data-act="ernDataClose" aria-label="Zurück" style="width:38px;height:38px;border-radius:12px;border:none;background:#fff;box-shadow:0 4px 12px rgba(4,33,40,.08);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'+svg(IC.back,{c:'#0a4958',w:2.2,s:19})+'</button><div style="flex:1"><div style="font-size:20px;font-weight:900;color:var(--text);letter-spacing:-.4px">Meine Daten</div><div style="font-size:12px;font-weight:700;color:var(--text-soft)">Ernährung &amp; Datenschutz</div></div></div>';
     // Abo-Bereich: Premium verwalten/kündigen (Stripe-Portal) oder holen.
     var pu=DATA.nutri&&DATA.nutri.premiumUntil; var pdays=pu?Math.max(0,Math.ceil((pu-Date.now())/86400000)):0;
+    var dpc=ernPriceCopy();
     var aboSec=ernPremium()
       ? '<div style="'+CARD+'"><div style="font-size:15px;font-weight:900;color:var(--text);display:flex;align-items:center;gap:8px">⭐ Premium</div>'+
-          '<div style="font-size:12.5px;font-weight:600;color:var(--text-muted);line-height:1.55;margin:8px 0 12px">'+(ernTrialing()?('Dein Gratis-Test läuft'+(pdays?(' – noch '+pdays+' Tag'+(pdays===1?'':'e')):'')+', danach 4,99 €/Monat.'):'Premium ist aktiv (4,99 €/Monat).')+' Kündigen oder Zahlungsdaten ändern kannst du jederzeit im Stripe-Portal.</div>'+
+          '<div style="font-size:12.5px;font-weight:600;color:var(--text-muted);line-height:1.55;margin:8px 0 12px">'+(ernTrialing()?('Dein Gratis-Test läuft'+(pdays?(' – noch '+pdays+' Tag'+(pdays===1?'':'e')):'')+', danach '+esc(dpc.pricePer)+'.'):('Premium ist aktiv ('+esc(dpc.pricePer)+').'))+' Kündigen oder Zahlungsdaten ändern kannst du jederzeit im Stripe-Portal.</div>'+
           '<button data-act="ernPortal" '+(busy?'disabled ':'')+'style="width:100%;padding:14px;border:1.5px solid rgba(10,73,88,.25);border-radius:14px;background:#fff;color:#0a4958;font-weight:800;font-size:14.5px;cursor:pointer;opacity:'+(busy?'.6':'1')+'">'+(busy?'Öffne …':'Abo verwalten / kündigen')+'</button></div>'
-      : '<div style="'+CARD+'"><div style="font-size:15px;font-weight:900;color:var(--text)">Premium</div><div style="font-size:12.5px;font-weight:600;color:var(--text-muted);line-height:1.55;margin:8px 0 12px">KI-Funktionen (Foto-Analyse, FINN-Coach, Wochenpläne, KI-Rezepte) sind Premium. Basis bleibt gratis.</div><button data-act="ernUpgradeOpen" style="width:100%;padding:14px;border:none;border-radius:14px;background:'+ERN_G+';color:#fff;font-weight:900;font-size:14.5px;cursor:pointer">7 Tage gratis testen</button></div>';
+      : '<div style="'+CARD+'"><div style="font-size:15px;font-weight:900;color:var(--text)">Premium</div><div style="font-size:12.5px;font-weight:600;color:var(--text-muted);line-height:1.55;margin:8px 0 12px">KI-Funktionen (Foto-Analyse, FINN-Coach, Wochenpläne, KI-Rezepte) sind Premium. Basis bleibt gratis.</div><button data-act="ernUpgradeOpen" style="width:100%;padding:14px;border:none;border-radius:14px;background:'+ERN_G+';color:#fff;font-weight:900;font-size:14.5px;cursor:pointer">'+(dpc.trialText?(dpc.trialText+' testen'):'Premium holen')+'</button></div>';
     var infoSec='<div style="'+CARD+'"><div style="font-size:15px;font-weight:900;color:var(--text);display:flex;align-items:center;gap:8px">'+svg('<circle cx="12" cy="12" r="10"></circle><path d="M12 16v-4M12 8h.01"></path>',{c:'#0a4958',w:2,s:19})+'Was wir speichern</div>'+
       '<div style="font-size:12.5px;font-weight:500;color:var(--text-muted);line-height:1.6;margin-top:10px">Im Ernährungsmodul liegen: dein <b>Profil</b> (Ziel, Körperdaten, Aktivität, Ernährungsform), deine <b>protokollierten Mahlzeiten &amp; Wasser</b> pro Tag, deine <b>Favoriten</b>, <b>Wochenpläne</b>, <b>gespeicherte Rezepte</b> und dein <b>Fasten-Status</b>. Alles ist ausschließlich deinem Konto zugeordnet.</div>'+
       '<div style="font-size:12.5px;font-weight:500;color:var(--text-muted);line-height:1.6;margin-top:10px">Wenn du <b>Text, Sprache oder ein Foto</b> zur Schätzung eingibst, wird das zur <b>KI-Auswertung verarbeitet</b> (an unseren KI-Dienstleister übermittelt), um Lebensmittel und Nährwerte zu erkennen. Fotos werden dafür nur verarbeitet, nicht als Bild dauerhaft gespeichert – gespeichert wird nur, was du im Bestätigen-Schritt übernimmst. Der FINN-Chatverlauf bleibt nur lokal auf deinem Gerät.</div>'+
@@ -4931,7 +4946,7 @@
     ernUpgradeGo:function(){ if(S.ernUpgradeBusy) return; S.ernUpgradeBusy=true; S.ernErr=false; S.ernMsg=''; render();
       api('/api/member/nutrition-billing',{method:'POST',body:JSON.stringify({action:'checkout'})})
       .then(function(d){ if(d&&d.ok&&d.url){ window.location.href=d.url; return; }
-        S.ernUpgradeBusy=false; if(d&&d.error==='already_premium'){ S.ernUpgrade=false; loadNutri(); } else { S.ernErr=true; S.ernMsg=(d&&d.message)||'Konnte nicht starten – bitte später erneut.'; } render(); })
+        S.ernUpgradeBusy=false; if(d&&d.error==='already_premium'){ S.ernUpgrade=false; S.ernMsg='Du hast Premium bereits aktiv. 🎉'; S.ernErr=false; loadNutri(); } else { S.ernErr=true; S.ernMsg=(d&&d.message)||'Konnte nicht starten – bitte später erneut.'; } render(); })
       .catch(function(){ S.ernUpgradeBusy=false; S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); }); },
     ernPortal:function(){ if(S.ernDataBusy) return; S.ernDataBusy=true; render();
       api('/api/member/nutrition-billing',{method:'POST',body:JSON.stringify({action:'portal'})})
@@ -5681,7 +5696,23 @@
   function ernPremiumReturn(kind){
     try{ var u=new URL(window.location.href); u.searchParams.delete('ern_premium'); window.history.replaceState({}, document.title, u.pathname+u.search+u.hash); }catch(e){}
     try{ nav('ern'); }catch(e){}
-    if(kind==='success'){ S.ernMsg='Premium aktiviert – viel Erfolg! 🎉'; S.ernErr=false; setTimeout(function(){ try{ loadNutri(); }catch(e){} }, 2500); }
+    if(kind==='success'){
+      // Premium wird serverseitig erst durch den Stripe-Webhook gesetzt – das kann ein
+      // paar Sekunden dauern. Statt eines einmaligen Nachladens pollen wir kurz, bis der
+      // Status kippt (max ~9 s), damit die Freischaltung sofort sichtbar ist.
+      S.ernMsg='Premium wird aktiviert …'; S.ernErr=false;
+      var tries=0;
+      var poll=function(){
+        tries++;
+        try{ loadNutri(); }catch(e){}
+        setTimeout(function(){
+          if(DATA.nutri && DATA.nutri.premium){ S.ernMsg='Premium aktiviert – viel Erfolg! 🎉'; S.ernErr=false; render(); return; }
+          if(tries>=6){ S.ernMsg='Fast geschafft – deine Freischaltung kann einen kurzen Moment dauern. Zieh die Seite zum Aktualisieren nach unten.'; S.ernErr=false; render(); return; }
+          poll();
+        }, 1500);
+      };
+      poll();
+    }
     else if(kind==='cancel'){ S.ernMsg='Kein Problem – du kannst Premium jederzeit starten.'; S.ernErr=false; }
     else { setTimeout(function(){ try{ loadNutri(); }catch(e){} }, 500); }
     render();

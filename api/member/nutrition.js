@@ -39,6 +39,7 @@ const Inbox = require('../../lib/inbox');
 const SR = require('../../lib/studioReply');
 const Ent = require('../../lib/entitlements');
 const Coaching = require('../../lib/coaching');
+const Stripe = require('../../lib/stripe');
 
 // Freemium: KI-Funktionen sind Premium. Freundliche Meldung fürs Upgrade.
 const PREMIUM_MSG = 'Das ist eine Premium-Funktion (KI). Teste Premium 7 Tage gratis – danach jederzeit kündbar.';
@@ -229,6 +230,8 @@ async function buildState(id, profile, forDate) {
   const streak = await computeStreak(id, todayYMD);
   const fasting = await loadFasting(id);
   const tier = Ent.publicTier(await Ent.getEntitlement(id));   // Premium-Status für die UI (Freemium)
+  // Preis/Trial dynamisch (aus Stripe, gecacht) – die UI zeigt es statt hartcodierter Copy.
+  let priceInfo = null; try { priceInfo = await Stripe.getPriceInfo(); } catch (e) {}
   return {
     ok: true, available: true, onboarded: onboarded,
     profile: profile ? { goal: profile.goal, sex: profile.sex, height: profile.height, weight: profile.weight, age: profile.age, activity: profile.activity, diet: profile.diet } : null,
@@ -238,6 +241,7 @@ async function buildState(id, profile, forDate) {
     pointsToday: pointsToday(totals, targets, day.entries.length, streak),
     fasting: fasting,
     premium: tier.premium, tier: tier.tier, trialing: tier.trialing, premiumUntil: tier.until,
+    premiumInfo: { price: priceInfo, trialDays: Stripe.TRIAL_DAYS },
   };
 }
 
