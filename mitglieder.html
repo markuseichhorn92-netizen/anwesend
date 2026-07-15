@@ -2521,7 +2521,7 @@
     __stripeJs=new Promise(function(resolve,reject){
       if(window.Stripe){ resolve(window.Stripe); return; }
       var add=function(src,onFail){ var s=document.createElement('script'); s.src=src; s.async=true; s.onload=function(){ window.Stripe?resolve(window.Stripe):onFail(); }; s.onerror=onFail; document.head.appendChild(s); };
-      add('https://js.stripe.com/basil/stripe.js', function(){ add('https://js.stripe.com/v3/', function(){ reject(new Error('stripe_load_failed')); }); });
+      add('https://js.stripe.com/v3/', function(){ add('https://js.stripe.com/basil/stripe.js', function(){ reject(new Error('stripe_load_failed')); }); });
     });
     return __stripeJs;
   }
@@ -2552,7 +2552,8 @@
       lay.innerHTML=ernPaySheet('<div id="ern_co_mount" style="min-height:360px"></div><div id="ern_pay_err" role="alert" style="font-size:12.5px;font-weight:700;color:#c0392b;text-align:center;margin-top:10px"></div>','Premium – sicher bezahlen');
       ernStripe().then(function(stripe){ return stripe.initEmbeddedCheckout({ clientSecret:d.clientSecret, onComplete:function(){ ernCoComplete(); } }); })
       .then(function(checkout){ __ernCheckout=checkout; checkout.mount('#ern_co_mount'); })
-      .catch(function(){ var er=document.getElementById('ern_pay_err'); if(er) er.textContent='Bezahlfeld konnte nicht geladen werden. Bitte später erneut.'; });
+      .catch(function(){ ernPayClose(); // Stripe.js nicht ladbar -> Redirect-Checkout als Fallback
+        api('/api/member/nutrition-billing',{method:'POST',body:JSON.stringify({action:'checkout'})}).then(function(rd){ if(rd&&rd.ok&&rd.url){ window.location.href=rd.url; } else { S.ernErr=true; S.ernMsg='Bezahlung konnte nicht gestartet werden – bitte später erneut.'; render(); } }).catch(function(){ S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); }); });
       render();
     }).catch(function(){ S.ernUpgradeBusy=false; S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); });
   }
@@ -2590,6 +2591,7 @@
   // Karten-Wechsel im Sheet (Payment Element via SetupIntent).
   function ernPmStart(){
     var lay=ernPayLayer(); if(!lay) return;
+    if(!ernPk()){ if(ACT&&ACT.ernPortal) ACT.ernPortal(); return; }   // ohne pk kein In-App-Feld -> Hosted-Portal
     S.ernDataBusy=true; render();
     api('/api/member/nutrition-billing',{method:'POST',body:JSON.stringify({action:'setup-intent'})})
     .then(function(d){ S.ernDataBusy=false; render();
@@ -2597,7 +2599,7 @@
       lay.style.display='block';
       lay.innerHTML=ernPaySheet('<div id="ern_pm_mount" style="min-height:120px"></div><div id="ern_pay_err" role="alert" style="font-size:12.5px;font-weight:700;color:#c0392b;text-align:center;margin-top:10px"></div><button data-act="ernPmSubmit" id="ern_pm_submit" style="width:100%;margin-top:14px;padding:15px;border:none;border-radius:14px;background:'+ERN_G+';color:#fff;font-weight:900;font-size:15px;cursor:pointer">Karte speichern</button>','Zahlungsart ändern');
       ernStripe().then(function(stripe){ __ernPmStripe=stripe; var elements=stripe.elements({clientSecret:d.clientSecret}); __ernPmEl=elements; elements.create('payment').mount('#ern_pm_mount'); })
-      .catch(function(){ var er=document.getElementById('ern_pay_err'); if(er) er.textContent='Bezahlfeld konnte nicht geladen werden. Bitte später erneut.'; });
+      .catch(function(){ var er=document.getElementById('ern_pay_err'); if(er) er.innerHTML='Bezahlfeld konnte nicht geladen werden.<br><button data-act="ernPortal" style="margin-top:10px;padding:10px 14px;border:none;border-radius:12px;background:#0a4958;color:#fff;font-weight:800;font-size:13px;cursor:pointer">Im Stripe-Portal ändern</button>'; });
     }).catch(function(){ S.ernDataBusy=false; S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); });
   }
   function ernPmSubmit(){
