@@ -156,6 +156,7 @@ var S={ token:null, role:null, meName:null, screen:'inbox', convs:[], counts:{},
         accessMedia:null, accessMediaLoading:false, accessMediaAvailable:false, accessMediumBusy:'',
         // Check-ins / Anwesenheitsbestätigung im Mitgliedsprofil (Basis: Magicline-Check-ins)
         memberCheckins:null, memberCheckinsLoading:false, ciFrom:'', ciTo:'', ciMailBusy:false, ciMsg:'',
+        memberCoaching:null, memberCoachingLoading:false,
         // Nachrichtenverlauf mit dem Mitglied (alle Vorgänge zusammengeführt)
         memberMsgs:null, memberMsgsLoading:false, memberMsgsTotal:0,
         // Vertragskündigung aus dem Team-Bereich (Modal: kündigen / zurücknehmen / Widerruf)
@@ -447,11 +448,12 @@ async function openProfile(id){
   S.profileDocs=null; S.profileDocsAvailable=false; S.profileDocsLoading=false; S.docUploadBusy=false; S.docUploadMsg='';
   S.accessMedia=null; S.accessMediaAvailable=false; S.accessMediaLoading=false; S.accessMediumBusy='';
   S.memberCheckins=null; S.memberCheckinsLoading=false; S.ciMsg=''; S.ciMailBusy=false; ciPresetSilent('all');
+  S.memberCoaching=null; S.memberCoachingLoading=false;
   S.memberMsgs=null; S.memberMsgsLoading=false; S.memberMsgsTotal=0;
   S.profileLoading=true; S.profile=null; render();
   try{ var r=await tapi('/api/team/members?id='+encodeURIComponent(id)); if(r.ok) S.profile=r.profile; }
   catch(e){} S.profileLoading=false; render();
-  if(S.profile){ loadProfileTags(id); loadProfileDocs(id); loadAccessMedia(id); loadMemberCheckins(id); loadMemberMessages(id); if(isAdmin()&&!S.rhOffersLoaded) loadRetentionOffers(); }
+  if(S.profile){ loadProfileTags(id); loadProfileDocs(id); loadAccessMedia(id); loadMemberCheckins(id); loadMemberCoaching(id); loadMemberMessages(id); if(isAdmin()&&!S.rhOffersLoaded) loadRetentionOffers(); }
 }
 // ---------- Mitglieder-Tags ----------
 // Tags des offenen Profils laden (GET ?memberId). Ohne Store -> leere Liste, kein Fehler.
@@ -715,6 +717,32 @@ async function loadMemberCheckins(id){
     S.memberCheckins=(r&&r.ok&&Array.isArray(r.checkins))?r.checkins:[];
   }catch(e){ S.memberCheckins=[]; }
   S.memberCheckinsLoading=false; render();
+}
+// ---------- Ernährungs-Coaching (read-only) ----------
+// Coaching-Status des offenen Profils laden. Nicht eingeschrieben/kein Store -> Karte entfällt. Nie werfen.
+async function loadMemberCoaching(id){
+  S.memberCoachingLoading=true; render();
+  try{ var r=await tapi('/api/team/coaching?id='+encodeURIComponent(id)); S.memberCoaching=(r&&r.ok)?r:{enrolled:false}; }
+  catch(e){ S.memberCoaching={enrolled:false}; }
+  S.memberCoachingLoading=false; render();
+}
+// Coaching-Karte im Profil (nur wenn eingeschrieben): Kurswoche, Lektionen, Streak, letzter Check-in.
+function coachingBlock(p){
+  var c=S.memberCoaching;
+  if(!c||!c.enrolled) return '';   // nicht eingeschrieben -> keine Karte
+  var deDate=function(ymd){ if(!ymd) return '—'; var t=String(ymd).split('-'); return t.length===3?(t[2]+'.'+t[1]+'.'+t[0]):ymd; };
+  var moodTxt=['—','sehr schlecht','schlecht','neutral','gut','sehr gut'];
+  var chip=function(label,val){ return '<div style="background:#f2f6f7;border-radius:12px;padding:11px 13px;min-width:0"><div style="font-size:11px;font-weight:800;color:#8a929a;text-transform:uppercase;letter-spacing:.3px">'+label+'</div><div style="font-size:15px;font-weight:900;color:#15171B;margin-top:3px">'+val+'</div></div>'; };
+  var lc=c.lastCheckin;
+  var due=c.overdue?'<span style="color:#b5402f">fällig</span>':deDate(c.nextDue);
+  var grid='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px">'+
+    chip('Kurswoche', (c.week||1)+' / '+(c.totalWeeks||8))+
+    chip('Lektionen', (c.lessonsCompleted||0)+' erledigt')+
+    chip('Streak', '🔥 '+(c.streak||0))+
+    chip('Nächster Check-in', due)+
+  '</div>';
+  var lcBlock=lc?('<div style="margin-top:12px;background:#eef7f1;border:1px solid rgba(15,122,74,.16);border-radius:14px;padding:13px 15px"><div style="font-size:12px;font-weight:800;color:#0f7a4a;text-transform:uppercase;letter-spacing:.3px">Letzter Check-in · '+deDate(lc.date)+'</div><div style="font-size:13.5px;font-weight:700;color:#2c3338;margin-top:5px">'+(lc.weight!=null?(lc.weight+' kg'):'—')+(lc.waist!=null?(' · Taille '+lc.waist+' cm'):'')+' · Umsetzung '+(lc.adherence!=null?lc.adherence+'%':'—')+' · Stimmung '+(moodTxt[lc.mood]||'—')+'</div></div>'):'<div style="margin-top:12px;font-size:12.5px;color:#8a929a;font-weight:600">Noch kein Check-in.</div>';
+  return '<div style="margin-top:18px;background:#fff;border-radius:20px;box-shadow:0 14px 38px rgba(4,33,40,.09);padding:20px 24px"><div style="font-size:15px;font-weight:900;letter-spacing:-.2px;margin-bottom:4px;color:#15171B">🥗 Ernährungs-Coaching</div><div style="font-size:12.5px;color:#8a929a;font-weight:600;margin-bottom:16px">Programm-Status des Mitglieds (nur Ansicht)</div>'+grid+lcBlock+'</div>';
 }
 // yyyy-mm-dd-Presets für den Zeitraum. ...Silent: nur State setzen (kein render), fürs Öffnen.
 function ci2(n){ return (n<10?'0':'')+n; }
@@ -2011,6 +2039,7 @@ function membersNode(){
         accessMediumCard(p)+
       '</div>'+
       checkinsBlock(p)+
+      coachingBlock(p)+
       messagesBlock(p)+
       '<div style="margin-top:18px;background:#fff;border-radius:20px;box-shadow:0 14px 38px rgba(4,33,40,.09);padding:20px 24px"><div style="font-size:15px;font-weight:900;letter-spacing:-.2px;margin-bottom:4px;color:#15171B">Vorgangs-Historie</div>'+histRows+'</div>'+
       // DSGVO-Zone: bewusst dezent, ganz unten – Anonymisieren ist unwiderruflich (nur Admin).
