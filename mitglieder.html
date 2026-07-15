@@ -399,6 +399,7 @@
     ernScanCode:'', ernScanBusy:false, ernScanErr:'', ernScanNotFound:false,
     ernSearchQ:'', ernSearchResults:null, ernSearchBusy:false, ernSearchErr:'',
     ernCamErr:'', ernVoiceText:'', ernCamShot:'', ernMoreOpen:false,
+    coachMapOpen:false, coachVertOpen:false,
     ernProd:null, ernGrams:100,
     ernViewDate:'', ernDayBusy:false, ernEntryEdit:null, ernEntryBusy:false,
     ernFavMgr:false, ernFavBusy:false, ernFavAddOpen:false,
@@ -544,7 +545,7 @@
     if(s==='home'){ loadFinnTip(); maybeRefreshInsta(); maybeRefreshLive(); }
     if(s==='account') loadAccount();
     if(s==='ern'){ try{ window.__ernStopScan&&window.__ernStopScan(); }catch(e){} S.ernMsg=''; S.ernErr=false; S.ernAsk=''; S.ernAnswer=''; S.ernRecipes=null; S.ernCoachSent=false; S.ernTab='heute'; S.ernRecipeSel=null; S.ernCapture=false; S.ernConfirm=null; S.ernProd=null; S.ernEntryEdit=null; S.ernViewDate=''; S.ernFavMgr=false; S.ernData=false; S.ernUpgrade=false; S.ernLesson=null; S.ernLessonData=null; S.ernChatOpen=false; S.ernCk=false; S.ernCkResult=null; S.ernObStep=0; S.ernChat=ernChatLoad(); loadNutri(); loadFavs(); loadCoach(); }
-    if(s==='coach'){ S.ernLesson=null; S.ernVert=null; S.ernLessonData=null; S.ernCk=false; S.ernCkResult=null; S.ernChatOpen=false; S.ernUpgrade=false; S.ernMsg=''; S.ernErr=false; S.ernChat=ernChatLoad(); loadFinnTip(); loadCoach(); if(!DATA.checkins) loadCheckins(); }
+    if(s==='coach'){ S.ernLesson=null; S.ernVert=null; S.ernLessonData=null; S.ernCk=false; S.ernCkResult=null; S.ernChatOpen=false; S.ernUpgrade=false; S.ernMsg=''; S.ernErr=false; S.coachMapOpen=false; S.coachVertOpen=false; S.ernChat=ernChatLoad(); loadFinnTip(); loadCoach(); if(!DATA.checkins) loadCheckins(); }
     if(s==='appt'){ if(!DATA.appts) loadAppts(); if(DATA.bookable===null) loadBookable(); }
     if(s==='home'||s==='checkin') checkArrival();
     setS({}); }
@@ -3408,15 +3409,47 @@
         '<span style="width:30px;height:30px;border-radius:9px;'+badge+';display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:900;flex-shrink:0">'+(l.completed?'✓':l.week)+'</span>'+
         '<div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:800;color:'+(l.unlocked?'var(--text)':'var(--text-soft)')+';white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(l.title)+'</div></div>'+right+'</div>';
     };
+    // ── „Dein Fahrplan": ruhig statt Wochen-Wand. Standard zeigt nur den Fortschritt +
+    //    genau die nächste Woche als Ausblick; der volle, nach Staffel gruppierte Plan
+    //    ist per Toggle aufklappbar (schaltet sich sonst Woche für Woche von selbst frei).
+    var lockIc=svg('<rect x="5" y="11" width="14" height="9" rx="2"></rect><path d="M8 11V8a4 4 0 0 1 8 0v3"></path>',{c:'var(--text-soft)',w:2,s:16});
+    var allLessons=c.lessons.slice().sort(function(a,b){ return a.week-b.week; });
+    var totW=c.totalWeeks||allLessons.length;
+    var doneCount=allLessons.filter(function(l){ return l.completed; }).length;
+    var pct=totW?Math.round(doneCount/totW*100):0;
+    var progBar='<div style="height:7px;border-radius:5px;background:var(--surface-2);overflow:hidden;margin:11px 0 5px"><div style="height:100%;width:'+pct+'%;background:'+ERN_G+';border-radius:5px"></div></div>';
+    var progLbl='<div style="font-size:12px;font-weight:700;color:var(--text-muted)">'+doneCount+' von '+totW+' Lektionen geschafft</div>';
+    // „Als Nächstes" = erste noch offene Woche NACH der aktuellen (Titel sichtbar, Schloss).
+    var curW=(c.currentLesson&&c.currentLesson.week)||c.week||1;
+    var nextL=allLessons.filter(function(l){ return l.week>curW && !l.completed; })[0];
+    var peek='';
+    if(nextL){
+      var when='';
+      if(c.startDate){ var sd=Date.parse(c.startDate); if(!isNaN(sd)){ var ud=new Date(sd+(nextL.week-1)*7*86400000); when='ab '+('0'+ud.getDate()).slice(-2)+'.'+('0'+(ud.getMonth()+1)).slice(-2)+'.'; } }
+      peek='<div style="display:flex;align-items:center;gap:11px;padding:12px 0 2px;border-top:1px solid var(--border);margin-top:6px">'+
+        '<span style="width:30px;height:30px;border-radius:9px;background:var(--surface-2);color:var(--text-soft);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:900;flex-shrink:0">'+nextL.week+'</span>'+
+        '<div style="flex:1;min-width:0"><div style="font-size:11px;font-weight:800;color:'+ERN_G+';text-transform:uppercase;letter-spacing:.3px">Als Nächstes'+(when?(' · '+when):'')+'</div><div style="font-size:13.5px;font-weight:800;color:var(--text-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(nextL.title)+'</div></div>'+lockIc+'</div>';
+    }
+    // Dezente Sammelzeile für den Rest, der sich nach und nach freischaltet.
+    var moreCount=nextL?(totW-nextL.week):0;
+    var moreLine=moreCount>0?'<div style="font-size:12px;font-weight:600;color:var(--text-muted);padding:9px 0 0 41px">+ '+moreCount+' weitere Woche'+(moreCount===1?'':'n')+' · schalten sich Woche für Woche frei</div>':'';
     // Nach Staffel (season) gruppieren – Reihenfolge wie im Programm. Überschrift nur, wenn es mehr als eine Staffel gibt.
     var seasons=[], byS={};
-    c.lessons.forEach(function(l){ var sn=l.season||'Kern'; if(!byS[sn]){ byS[sn]=[]; seasons.push(sn); } byS[sn].push(l); });
+    allLessons.forEach(function(l){ var sn=l.season||'Kern'; if(!byS[sn]){ byS[sn]=[]; seasons.push(sn); } byS[sn].push(l); });
     var groups=seasons.map(function(sn,gi){
-      var hdr=(seasons.length>1)?('<div style="font-size:11px;font-weight:900;color:'+ERN_G+';text-transform:uppercase;letter-spacing:.4px;margin:'+(gi?'16px 0 2px':'6px 0 2px')+'">'+esc(sn)+'</div>'):'';
+      var hdr=(seasons.length>1)?('<div style="font-size:11px;font-weight:900;color:'+ERN_G+';text-transform:uppercase;letter-spacing:.4px;margin:'+(gi?'16px 0 2px':'8px 0 2px')+'">'+esc(sn)+'</div>'):'';
       return hdr+byS[sn].map(function(l,idx){ return lessonRow(l, idx===0); }).join('');
     }).join('');
-    var list='<div style="'+CARD+'"><div style="font-size:13px;font-weight:900;color:var(--text);margin-bottom:4px">Alle Wochen</div>'+groups+'</div>';
-    // Vertiefung (evergreen): immer offene Deep-Dive-Module. Premium-Bonus.
+    var mapChev=svg(S.coachMapOpen?'<path d="M18 15l-6-6-6 6"></path>':'<path d="M6 9l6 6 6-6"></path>',{c:'var(--text-soft)',w:2.2,s:16});
+    var mapBtn='<button data-act="coachMapToggle" aria-expanded="'+(S.coachMapOpen?'true':'false')+'" style="width:100%;display:flex;align-items:center;justify-content:center;gap:7px;padding:12px;margin-top:12px;border:1.5px solid var(--border);background:var(--surface);border-radius:12px;color:var(--text-muted);font-weight:800;font-size:13px;cursor:pointer">'+(S.coachMapOpen?'Weniger zeigen':'Ganzen Fahrplan zeigen')+mapChev+'</button>';
+    var list='<div style="'+CARD+'">'+
+      '<div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px"><div style="font-size:13px;font-weight:900;color:var(--text)">Dein Fahrplan</div><div style="font-size:12px;font-weight:800;color:var(--text-soft);white-space:nowrap">Woche '+(c.week||curW)+' von '+totW+'</div></div>'+
+      progBar+progLbl+
+      (S.coachMapOpen?('<div style="margin-top:8px">'+groups+'</div>'):(peek+moreLine))+
+      mapBtn+
+    '</div>';
+    // Vertiefung (evergreen): immer offene Deep-Dives. Standard eingeklappt, damit die
+    // Übersicht ruhig bleibt; per Toggle aufklappbar.
     var vertCard='';
     var verts=Array.isArray(c.vertiefung)?c.vertiefung:[];
     if(verts.length){
@@ -3428,7 +3461,11 @@
           '<span style="width:30px;height:30px;border-radius:9px;'+badge+';display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0">'+(done?'✓':'📖')+'</span>'+
           '<div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:800;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(v.title)+'</div><div style="font-size:11.5px;font-weight:600;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(v.teaser||'')+'</div></div>'+right+'</div>';
       }).join('');
-      vertCard='<div style="'+CARD+'"><div style="font-size:13px;font-weight:900;color:var(--text)">📚 Vertiefung</div><div style="font-size:12px;font-weight:600;color:var(--text-muted);margin:2px 0 6px;line-height:1.45">Immer offene Deep-Dives zum Nachschlagen – dein Wissen wächst weiter.</div>'+vrows+'</div>';
+      var vLbl=verts.length===1?'1 Thema':(verts.length+' Themen');
+      var vChev=svg(S.coachVertOpen?'<path d="M18 15l-6-6-6 6"></path>':'<path d="M6 9l6 6 6-6"></path>',{c:'var(--text-soft)',w:2.2,s:18});
+      var vHead='<button data-act="coachVertToggle" aria-expanded="'+(S.coachVertOpen?'true':'false')+'" style="width:100%;text-align:left;border:none;background:none;cursor:pointer;display:flex;align-items:center;gap:10px;padding:2px 0">'+
+        '<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:900;color:var(--text)">📚 Vertiefung · '+vLbl+'</div>'+(S.coachVertOpen?'':'<div style="font-size:11.5px;font-weight:600;color:var(--text-muted);margin-top:2px">Immer offene Deep-Dives zum Nachschlagen</div>')+'</div>'+vChev+'</button>';
+      vertCard='<div style="'+CARD+'">'+vHead+(S.coachVertOpen?('<div style="margin-top:8px">'+vrows+'</div>'):'')+'</div>';
     }
     // Erfolgskontrolle (Etappe 5): nächster Check-in / jetzt fällig.
     var nc=c.nextCheckin; var ckCard='';
@@ -4815,6 +4852,8 @@
     ernScanManualBtn:function(){ window.__ernScanManual&&window.__ernScanManual(); },
     ernCheckinDismiss:function(){ setS({ernCheckinDismissed:true}); },
     ernMoreToggle:function(){ setS({ernMoreOpen:!S.ernMoreOpen}); },
+    coachMapToggle:function(){ setS({coachMapOpen:!S.coachMapOpen}); },
+    coachVertToggle:function(){ setS({coachVertOpen:!S.coachVertOpen}); },
     ernObNext:function(){ if((S.ernObStep||0)>=4){ if(!S.ernConsent){ S.ernErr=true; S.ernMsg='Bitte bestätige die Einwilligung, um zu starten.'; render(); return; } ACT.ernSaveProfile(); } else { setS({ernObStep:(S.ernObStep||0)+1}); try{ window.scrollTo(0,0); }catch(e){} } },
     ernConsent:function(){ setQuiet({ernConsent:!S.ernConsent, ernErr:false, ernMsg:''}); },
     ernObBack:function(){ if((S.ernObStep||0)>0) setS({ernObStep:S.ernObStep-1}); },
