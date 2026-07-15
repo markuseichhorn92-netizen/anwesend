@@ -3259,18 +3259,26 @@
         '<div style="width:52px;height:52px;border-radius:15px;background:linear-gradient(150deg,'+ERN_G2+','+ERN_GD+');display:flex;align-items:center;justify-content:center;color:#fff;font-size:20px;font-weight:900;flex-shrink:0">'+cur.week+'</div>'+
         '<div style="flex:1;min-width:0"><div style="font-size:11.5px;font-weight:800;color:'+ERN_G+';text-transform:uppercase;letter-spacing:.3px">'+(cur.completed?'Wiederholen':'Diese Woche')+' · '+cur.minutes+' Min'+((!c.premium&&cur.week>=2)?' · ⭐ Premium':'')+'</div><div style="font-size:16px;font-weight:900;color:var(--text);margin-top:1px">'+esc(cur.title)+'</div><div style="font-size:12.5px;font-weight:600;color:var(--text-muted);line-height:1.4;margin-top:3px">'+esc(cur.teaser)+'</div></div>'+chev+'</button>';
     } else {
-      lessonCard='<div style="'+CARD+';text-align:center"><div style="font-size:30px">🎉</div><div style="font-size:16px;font-weight:900;color:var(--text);margin-top:8px">Alle 8 Wochen geschafft!</div><div style="font-size:13px;color:var(--text-muted);font-weight:600;margin-top:5px;line-height:1.5">Stark. Bleib dran – du kannst jede Lektion jederzeit wiederholen.</div></div>';
+      lessonCard='<div style="'+CARD+';text-align:center"><div style="font-size:30px">🎉</div><div style="font-size:16px;font-weight:900;color:var(--text);margin-top:8px">Alle '+(c.totalWeeks||'')+' Wochen geschafft!</div><div style="font-size:13px;color:var(--text-muted);font-weight:600;margin-top:5px;line-height:1.5">Stark. Bleib dran – du kannst jede Lektion jederzeit wiederholen.</div></div>';
     }
-    var rows=c.lessons.map(function(l,i){
-      var gated=(!c.premium&&l.week>=2);   // Wochen 2–8 sind für Gratis-Nutzer Premium
+    // Eine Wochen-Zeile rendern (first = erste Zeile ihrer Gruppe -> kein oberer Rand).
+    var lessonRow=function(l,first){
+      var gated=(!c.premium&&l.week>=2);   // Wochen 2+ sind für Gratis-Nutzer Premium
       var badge=l.completed?('background:'+ERN_G+';color:#fff'):(l.unlocked?('background:rgba(15,122,74,.12);color:'+ERN_G):'background:var(--surface-2);color:var(--text-soft)');
       var act=l.unlocked?(' data-act="ernLessonOpen" data-arg="'+l.week+'"'):'';
       var right=l.completed?('<span style="font-size:12px;font-weight:800;color:'+ERN_G+'">Fertig</span>'):(l.unlocked?(gated?'<span style="background:rgba(15,122,74,.10);color:'+ERN_G+';border-radius:8px;padding:3px 8px;font-size:10.5px;font-weight:900">Premium</span>':chev):svg('<rect x="5" y="11" width="14" height="9" rx="2"></rect><path d="M8 11V8a4 4 0 0 1 8 0v3"></path>',{c:'var(--text-soft)',w:2,s:16}));
-      return '<div'+act+' role="button" style="display:flex;align-items:center;gap:11px;padding:11px 0;'+(i?'border-top:1px solid var(--border);':'')+'cursor:'+(l.unlocked?'pointer':'default')+'">'+
+      return '<div'+act+' role="button" style="display:flex;align-items:center;gap:11px;padding:11px 0;'+(first?'':'border-top:1px solid var(--border);')+'cursor:'+(l.unlocked?'pointer':'default')+'">'+
         '<span style="width:30px;height:30px;border-radius:9px;'+badge+';display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:900;flex-shrink:0">'+(l.completed?'✓':l.week)+'</span>'+
         '<div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:800;color:'+(l.unlocked?'var(--text)':'var(--text-soft)')+';white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(l.title)+'</div></div>'+right+'</div>';
+    };
+    // Nach Staffel (season) gruppieren – Reihenfolge wie im Programm. Überschrift nur, wenn es mehr als eine Staffel gibt.
+    var seasons=[], byS={};
+    c.lessons.forEach(function(l){ var sn=l.season||'Kern'; if(!byS[sn]){ byS[sn]=[]; seasons.push(sn); } byS[sn].push(l); });
+    var groups=seasons.map(function(sn,gi){
+      var hdr=(seasons.length>1)?('<div style="font-size:11px;font-weight:900;color:'+ERN_G+';text-transform:uppercase;letter-spacing:.4px;margin:'+(gi?'16px 0 2px':'6px 0 2px')+'">'+esc(sn)+'</div>'):'';
+      return hdr+byS[sn].map(function(l,idx){ return lessonRow(l, idx===0); }).join('');
     }).join('');
-    var list='<div style="'+CARD+'"><div style="font-size:13px;font-weight:900;color:var(--text);margin-bottom:4px">Alle Wochen</div>'+rows+'</div>';
+    var list='<div style="'+CARD+'"><div style="font-size:13px;font-weight:900;color:var(--text);margin-bottom:4px">Alle Wochen</div>'+groups+'</div>';
     // Erfolgskontrolle (Etappe 5): nächster Check-in / jetzt fällig.
     var nc=c.nextCheckin; var ckCard='';
     if(nc){
