@@ -54,7 +54,18 @@ const DAY_TTL = 400 * 86400;              // ~13 Monate
 
 const FAST_PLANS = { '16:8': 16, '18:6': 18, '14:10': 14 };
 
-const GOALS = { abnehmen: 'Abnehmen', halten: 'Gewicht halten', aufbau: 'Muskelaufbau' };
+const GOALS = { abnehmen: 'Abnehmen', definieren: 'Definieren', halten: 'Gewicht halten', aufbau: 'Muskelaufbau', gesundheit: 'Gesundheit', longevity: 'Longevity' };
+// Ziel -> Kalorien-Archetyp + Eiweiß (g/kg). Die Ziele unterscheiden sich v. a. im
+// Coaching-Content; die Rechnung bleibt bewusst moderat & sicher (nie unter Grundumsatz).
+// Bestehende Ziele (abnehmen/halten/aufbau) behalten exakt ihre bisherigen Werte.
+const GOAL_MODEL = {
+  abnehmen:   { kind: 'deficit',  pct: 0.18, cap: 500, protein: 1.6 },
+  definieren: { kind: 'deficit',  pct: 0.15, cap: 450, protein: 1.9 },
+  halten:     { kind: 'maintain',                      protein: 1.6 },
+  gesundheit: { kind: 'maintain',                      protein: 1.5 },
+  longevity:  { kind: 'maintain',                      protein: 1.4 },
+  aufbau:     { kind: 'surplus',  pct: 0.12, cap: 400, protein: 1.8 },
+};
 const ACTS = { kaum: 1.35, moderat: 1.55, aktiv: 1.75 };
 const DIETS = ['omnivor', 'vegetarisch', 'vegan', 'lowcarb', 'highprotein'];
 
@@ -134,15 +145,16 @@ function targetsFor(p) {
   const tdee = bmr * factor;
   // Minderjährige nicht automatisch ins Defizit setzen -> als „halten" rechnen.
   let goal = GOALS[p.goal] ? p.goal : 'halten';
-  if (under18 && goal === 'abnehmen') goal = 'halten';
+  let model = GOAL_MODEL[goal] || GOAL_MODEL.halten;
+  if (under18 && model.kind === 'deficit') { goal = 'halten'; model = GOAL_MODEL.halten; }
   let kcal = tdee;
-  if (goal === 'abnehmen') kcal = tdee - Math.min(500, tdee * 0.18);   // moderates Defizit, gedeckelt
-  else if (goal === 'aufbau') kcal = tdee + Math.min(400, tdee * 0.12);
+  if (model.kind === 'deficit') kcal = tdee - Math.min(model.cap, tdee * model.pct);       // moderates Defizit, gedeckelt
+  else if (model.kind === 'surplus') kcal = tdee + Math.min(model.cap, tdee * model.pct);
   // Untergrenze: geschlechtsabhängiges Minimum UND nie unter den Grundumsatz.
   const floor = Math.max(sex === 'm' ? 1500 : 1200, Math.round(bmr));
   kcal = Math.max(floor, Math.round(kcal / 10) * 10);
   // Eiweiß: sinnvolle g/kg, absolut auf 200 g gedeckelt, Untergrenze 40 g.
-  const gPerKg = goal === 'aufbau' ? 1.8 : 1.6;
+  const gPerKg = model.protein;
   const protein = Math.max(40, Math.min(200, Math.round(gPerKg * weight)));
   const fat = Math.max(30, Math.min(150, Math.round(0.9 * weight)));
   const carbs = Math.max(0, Math.round((kcal - protein * 4 - fat * 9) / 4));

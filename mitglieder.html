@@ -2688,14 +2688,17 @@
     var bmr=10*weight+6.25*height-5*age+(sex==='m'?5:-161);
     var factor=({kaum:1.35,moderat:1.55,aktiv:1.75})[S.ernAct]||1.55;
     var tdee=bmr*factor;
-    var goal=({abnehmen:1,halten:1,aufbau:1})[S.ernGoal]?S.ernGoal:'halten';
-    if(under18&&goal==='abnehmen') goal='halten';
+    // Muss EXAKT dem Server (GOAL_MODEL in nutrition.js) entsprechen.
+    var GM={abnehmen:{kind:'deficit',pct:0.18,cap:500,protein:1.6},definieren:{kind:'deficit',pct:0.15,cap:450,protein:1.9},halten:{kind:'maintain',protein:1.6},gesundheit:{kind:'maintain',protein:1.5},longevity:{kind:'maintain',protein:1.4},aufbau:{kind:'surplus',pct:0.12,cap:400,protein:1.8}};
+    var goal=GM[S.ernGoal]?S.ernGoal:'halten';
+    var m=GM[goal];
+    if(under18&&m.kind==='deficit'){ goal='halten'; m=GM.halten; }
     var kcal=tdee;
-    if(goal==='abnehmen') kcal=tdee-Math.min(500,tdee*0.18);
-    else if(goal==='aufbau') kcal=tdee+Math.min(400,tdee*0.12);
+    if(m.kind==='deficit') kcal=tdee-Math.min(m.cap,tdee*m.pct);
+    else if(m.kind==='surplus') kcal=tdee+Math.min(m.cap,tdee*m.pct);
     var floor=Math.max(sex==='m'?1500:1200,Math.round(bmr));
     kcal=Math.max(floor,Math.round(kcal/10)*10);
-    var gPerKg=goal==='aufbau'?1.8:1.6;
+    var gPerKg=m.protein;
     var protein=Math.max(40,Math.min(200,Math.round(gPerKg*weight)));
     var fat=Math.max(30,Math.min(150,Math.round(0.9*weight)));
     var carbs=Math.max(0,Math.round((kcal-protein*4-fat*9)/4));
@@ -2925,7 +2928,7 @@
       var feats=[['📸','Foto scannen — Zutaten automatisch erkannt'],['🎙️','Sprich einfach, was du gegessen hast'],['💬','Frag FINN, plane Rezepte, bleib im Ziel']];
       body='<div style="width:80px;height:80px;border-radius:24px;background:rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;font-size:40px;margin-bottom:22px">🥗</div><div style="font-size:29px;font-weight:900;letter-spacing:-.8px;line-height:1.1;color:#fff">Dein Ernährungs&shy;coach ist da</div><div style="font-size:15px;font-weight:600;color:#d4f0e2;line-height:1.55;margin-top:14px">Tracke Mahlzeiten per Foto, Sprache oder Text. FINN berechnet dein Ziel und begleitet dich Tag für Tag.</div><div style="display:flex;flex-direction:column;gap:12px;margin-top:26px">'+feats.map(function(f){ return '<div style="display:flex;align-items:center;gap:12px"><span style="width:40px;height:40px;border-radius:12px;background:rgba(255,255,255,.13);display:flex;align-items:center;justify-content:center;font-size:19px">'+f[0]+'</span><span style="font-size:14.5px;font-weight:700;color:#fff">'+f[1]+'</span></div>'; }).join('')+'</div>';
     } else if(step===1){
-      var goals=[['abnehmen','🔥','Abnehmen','Leichtes Kaloriendefizit'],['halten','⚖️','Gewicht halten','Ausgewogen &amp; stabil'],['aufbau','💪','Muskelaufbau','Mehr Eiweiß, leichter Überschuss']];
+      var goals=[['abnehmen','🔥','Abnehmen','Leichtes Kaloriendefizit'],['definieren','✨','Definieren','Fett runter, Muskeln halten – viel Eiweiß'],['halten','⚖️','Gewicht halten','Ausgewogen &amp; stabil'],['aufbau','💪','Muskelaufbau','Mehr Eiweiß, leichter Überschuss'],['gesundheit','❤️','Gesundheit','Ausgewogen essen, rundum fit'],['longevity','🌱','Longevity','Lange gesund &amp; vital bleiben']];
       body='<div style="font-size:26px;font-weight:900;letter-spacing:-.6px;color:#fff">Was ist dein Ziel?</div><div style="font-size:14px;font-weight:600;color:#d4f0e2;margin-top:10px">FINN passt dein Kalorienziel an.</div><div style="display:flex;flex-direction:column;gap:11px;margin-top:24px">'+goals.map(function(g){ var sel=S.ernGoal===g[0]; return '<button data-act="ernGoal" data-arg="'+g[0]+'" style="display:flex;align-items:center;gap:14px;'+oc(sel)+';border-radius:16px;padding:16px;cursor:pointer;text-align:left"><span style="font-size:24px">'+g[1]+'</span><div><div style="font-size:16px;font-weight:800;color:#fff">'+g[2]+'</div><div style="font-size:12.5px;font-weight:600;color:#c5ecd7">'+g[3]+'</div></div></button>'; }).join('')+'</div>';
     } else if(step===2){
       var st=function(label,val,unit,f){ return '<div style="flex:1;background:rgba(255,255,255,.09);border-radius:16px;padding:16px 12px"><div style="font-size:12px;font-weight:800;color:#c5ecd7;text-transform:uppercase;letter-spacing:.4px">'+label+'</div><div style="display:flex;align-items:center;justify-content:space-between;margin-top:10px"><button data-act="ernStep" data-arg="'+f+':-1" style="width:34px;height:34px;border-radius:10px;border:none;background:rgba(255,255,255,.16);color:#fff;font-size:20px;font-weight:800;cursor:pointer">−</button><span style="font-size:20px;font-weight:900;color:#fff">'+val+'<span style="font-size:12px;color:#c5ecd7;font-weight:700">'+unit+'</span></span><button data-act="ernStep" data-arg="'+f+':1" style="width:34px;height:34px;border-radius:10px;border:none;background:rgba(255,255,255,.16);color:#fff;font-size:20px;font-weight:800;cursor:pointer">+</button></div></div>'; };
