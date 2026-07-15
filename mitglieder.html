@@ -2601,14 +2601,18 @@
   // ── Bestätigen-Screen: KI-/Barcode-/manuelle Einträge prüfen, bearbeiten, dann speichern (confirm-log) ──
   function ernOpenConfirm(items,source){
     var today=(DATA.nutri&&DATA.nutri.today&&DATA.nutri.today.date)||isoToday();
-    S.ernConfirm={ source:source||'ai', date:today, items:(items||[]).map(function(it){
+    var mapped=(items||[]).map(function(it){
       return { name:String(it.name||''), portion:String(it.portion||''), meal:it.meal||'snack',
         kcal:Math.max(0,parseInt(it.kcal,10)||0), p:Math.max(0,parseInt(it.p,10)||0), c:Math.max(0,parseInt(it.c,10)||0), f:Math.max(0,parseInt(it.f,10)||0),
-        estimated:it.estimated!==false, barcode:it.barcode||undefined, source:it.source||source }; }) };
+        estimated:it.estimated!==false, barcode:it.barcode||undefined, source:it.source||source }; });
+    // „Hinzufügen"-Modus: an die laufende Mahlzeit anhängen statt neu zu beginnen.
+    if(S.ernAddToConfirm && S.ernConfirm){ S.ernConfirm.items=S.ernConfirm.items.concat(mapped); if(mapped.length&&mapped[0].meal) { /* Mahlzeit vom letzten Eintrag übernehmen, wenn gesetzt */ } }
+    else { S.ernConfirm={ source:source||'ai', date:(S.ernConfirm&&S.ernConfirm.date)||today, items:mapped }; }
+    S.ernAddToConfirm=false;
     try{ window.__ernStopScan&&window.__ernStopScan(); }catch(e){}
     S.ernCapture=false; S.ernProd=null; S.ernMsg=''; S.ernErr=false; render(); try{ window.scrollTo(0,0); }catch(e){}
   }
-  function ernCloseConfirm(){ S.ernConfirm=null; S.ernConfirmBusy=false; render(); }
+  function ernCloseConfirm(){ S.ernConfirm=null; S.ernConfirmBusy=false; S.ernAddToConfirm=false; render(); }
   // Live-Update der Bestätigen-Felder OHNE Re-Render (Fokus/Tastatur bleiben erhalten).
   window.__ernCF=function(idx,field,value){ var cf=S.ernConfirm; if(!cf||!cf.items[idx]) return;
     if(field==='kcal'||field==='p'||field==='c'||field==='f'){ var n=parseInt(value,10); cf.items[idx][field]=(isNaN(n)||n<0)?0:Math.min(9999,n); }
@@ -2639,7 +2643,9 @@
       '<div style="flex:1"><div style="font-size:20px;font-weight:900;color:var(--text);letter-spacing:-.4px">Prüfen &amp; speichern</div><div style="font-size:12px;font-weight:700;color:'+(cf.source==='openfoodfacts'?'#0a4958':'#8a6d1f')+'">'+(cf.source==='ai'?'KI-Schätzung – bitte kurz prüfen':(cf.source==='openfoodfacts'?'Open Food Facts – bitte Portion prüfen':'Eintrag prüfen'))+'</div></div></div>';
     var dateRow='<div style="background:#fff;border-radius:14px;padding:12px 14px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;gap:10px"><label for="ern_cf_date" style="font-size:13.5px;font-weight:800;color:var(--text)">Tag</label><input id="ern_cf_date" type="date" max="'+today+'" value="'+esc(cf.date)+'" onchange="window.__ernCFDate(this.value)" aria-label="Datum" style="border:1.5px solid var(--border);border-radius:10px;padding:8px 10px;font-size:14px;font-weight:700;color:var(--text);background:#fff"></div>';
     var totCard='<div style="display:flex;gap:8px;margin:4px 0 14px">'+[['Gesamt',ernNum(tot.kcal)+' kcal','#15171B'],['Eiweiß',tot.p+' g',ERN_PROT],['KH',tot.c+' g',ERN_CARB],['Fett',tot.f+' g',ERN_FAT]].map(function(x){ return '<div style="flex:1;background:#fff;border-radius:12px;padding:10px 6px;text-align:center"><div style="font-size:13.5px;font-weight:900;color:'+x[2]+'">'+x[1]+'</div><div style="font-size:10px;font-weight:800;color:var(--text-soft);text-transform:uppercase">'+x[0]+'</div></div>'; }).join('')+'</div>';
-    var addBtn='<button data-act="ernCFAdd" style="width:100%;padding:12px;border:1.5px dashed #c2d3d6;border-radius:14px;background:transparent;color:#0a4958;font-weight:800;font-size:13.5px;cursor:pointer;margin-bottom:12px">+ Eintrag hinzufügen</button>';
+    var addBtn='<div style="display:flex;gap:8px;margin-bottom:12px">'+
+      '<button data-act="ernCFAdd" style="flex:1;padding:12px;border:1.5px dashed #9cc3b3;border-radius:14px;background:rgba(15,122,74,.05);color:#0f7a4a;font-weight:800;font-size:13.5px;cursor:pointer">🔍 Suchen / Scannen</button>'+
+      '<button data-act="ernCFAddManual" style="padding:12px 14px;border:1.5px dashed #c2d3d6;border-radius:14px;background:transparent;color:#0a4958;font-weight:800;font-size:13.5px;cursor:pointer">+ manuell</button></div>';
     var msg=(S.ernErr&&S.ernMsg)?'<div role="alert" style="font-size:12.5px;font-weight:700;color:var(--err-fg);text-align:center;margin-bottom:10px">'+esc(S.ernMsg)+'</div>':'';
     var save='<button data-act="ernCFSave" '+(S.ernConfirmBusy?'disabled ':'')+'style="width:100%;padding:16px;border:none;border-radius:16px;background:#0f7a4a;color:#fff;font-weight:900;font-size:16px;cursor:pointer;opacity:'+(S.ernConfirmBusy?'.6':'1')+'">'+(S.ernConfirmBusy?'Speichert …':'Mahlzeit speichern')+'</button>';
     var hint='<div style="font-size:11px;color:var(--text-soft);font-weight:600;text-align:center;margin-top:10px;line-height:1.5">Alle Werte sind Schätzungen und editierbar. Gespeichert wird erst mit „Mahlzeit speichern".</div>';
@@ -2942,7 +2948,7 @@
       inner=camArea+manual+st+ernOffNotice();
     }
     var msg=S.ernMsg?'<div style="font-size:12.5px;font-weight:700;color:'+(S.ernErr?'#c0392b':'#0f7a4a')+';text-align:center;margin-top:14px;line-height:1.4">'+esc(S.ernMsg)+'</div>':'';
-    return '<div style="background:#0a4958;min-height:100%;display:flex;flex-direction:column"><div style="padding:16px 20px 14px;display:flex;align-items:center;justify-content:space-between"><div><div style="font-size:22px;font-weight:900;color:#fff;letter-spacing:-.4px">Essen erfassen</div>'+(S.ernCapTarget?'<div style="font-size:12.5px;font-weight:600;color:#9fc7d0;margin-top:2px">'+esc(S.ernCapTarget)+'</div>':'')+'</div><button data-act="ernCloseCapture" style="width:40px;height:40px;border-radius:13px;border:none;background:rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;cursor:pointer">'+svg('<path d="M18 6L6 18M6 6l12 12"></path>',{c:'#fff',w:2.4,s:18})+'</button></div>'+
+    return '<div style="background:#0a4958;min-height:100%;display:flex;flex-direction:column"><div style="padding:16px 20px 14px;display:flex;align-items:center;justify-content:space-between"><div><div style="font-size:22px;font-weight:900;color:#fff;letter-spacing:-.4px">'+(S.ernAddToConfirm?'Zur Mahlzeit hinzufügen':'Essen erfassen')+'</div>'+(S.ernAddToConfirm?'<div style="font-size:12.5px;font-weight:600;color:#9fc7d0;margin-top:2px">Suchen, scannen oder Barcode – wird angehängt</div>':(S.ernCapTarget?'<div style="font-size:12.5px;font-weight:600;color:#9fc7d0;margin-top:2px">'+esc(S.ernCapTarget)+'</div>':''))+'</div><button data-act="ernCloseCapture" style="width:40px;height:40px;border-radius:13px;border:none;background:rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;cursor:pointer">'+svg('<path d="M18 6L6 18M6 6l12 12"></path>',{c:'#fff',w:2.4,s:18})+'</button></div>'+
       '<div style="display:flex;gap:8px;padding:2px 16px 14px">'+tabBtn('cam','<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle>','Kamera')+tabBtn('voice','<rect x="9" y="2" width="6" height="12" rx="3"></rect><path d="M5 10a7 7 0 0 0 14 0M12 17v4"></path>','Sprache')+tabBtn('search','<circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4-4"></path>','Suche')+tabBtn('barcode','<path d="M3 5v14M7 5v14M11 5v14M14 5v14M18 5v14M21 5v14"></path>','Barcode')+'</div>'+
       '<div style="flex:1;background:#eef2f3;border-radius:26px 26px 0 0;padding:20px 18px 40px">'+inner+msg+'</div></div>';
   }
@@ -3473,12 +3479,12 @@
     if(n===null||n===false){ inner='<div style="background:#fff;border-radius:20px;box-shadow:0 12px 34px rgba(4,33,40,.10);padding:40px 22px;text-align:center;color:#8a929a;font-size:14px;font-weight:600">Lade Ernährung …</div>'; }
     else if(!n.ok||n.available===false){ inner='<div style="background:#fff;border-radius:20px;box-shadow:0 12px 34px rgba(4,33,40,.10);padding:30px 22px;text-align:center"><div style="font-size:34px">🥗</div><div style="font-size:16px;font-weight:800;color:#15171B;margin-top:10px">Ernährung ist gerade nicht verfügbar</div><div style="font-size:13.5px;color:#6b7780;font-weight:500;margin-top:6px;line-height:1.5">Bitte später erneut versuchen.</div></div>'; }
     else if(S.ernUpgrade){ inner=ernUpgradeScreen(); }
+    else if(S.ernProd){ inner=ernProductPicker(); }
+    else if(S.ernCapture){ inner=ernErfassen(); }
     else if(S.ernConfirm){ inner=ernConfirmScreen(); }
     else if(S.ernData){ inner=ernDataScreen(); }
     else if(S.ernFavMgr){ inner=ernFavMgrScreen(); }
     else if(S.ernEntryEdit){ inner=ernEntryEditScreen(); }
-    else if(S.ernProd){ inner=ernProductPicker(); }
-    else if(S.ernCapture){ inner=ernErfassen(); }
     else if(S.ernLesson||S.ernVert){ inner=ernLesson(); }
     else if(S.ernCk){ inner=ernCheckinScreen(); }
     else if(!n.onboarded||S.ernEdit) inner=ernSetup();
@@ -4613,10 +4619,13 @@
     ernLog:function(){ if(S.ernBusy) return; var t=$('ern_log'); var q=t?(t.value||'').trim():''; if(q.length>=2) ernLogText(q); },
     ernCapSearch:function(){ if(S.ernBusy) return; var t=$('ern_capq'); var q=t?(t.value||'').trim():''; if(q.length>=2) ernLogText(q); },
     ernOpenCapture:function(a){ setS({ernCapture:true,ernCapTab:'cam',ernCapTarget:a||'',ernMsg:'',ernErr:false}); try{ window.scrollTo(0,0); }catch(e){} },
-    ernCloseCapture:function(){ try{ window.__ernStopScan&&window.__ernStopScan(); }catch(e){} setS({ernCapture:false}); try{ window.scrollTo(0,0); }catch(e){} },
+    ernCloseCapture:function(){ try{ window.__ernStopScan&&window.__ernStopScan(); }catch(e){} S.ernAddToConfirm=false; setS({ernCapture:false}); try{ window.scrollTo(0,0); }catch(e){} },
     // Bestätigen-Screen (Punkt 1)
     ernCFRemove:function(a){ var cf=S.ernConfirm; if(!cf) return; cf.items.splice(parseInt(a,10),1); if(!cf.items.length){ ernCloseConfirm(); return; } render(); },
-    ernCFAdd:function(){ var cf=S.ernConfirm; if(!cf) return; cf.items.push({name:'',portion:'',meal:'snack',kcal:0,p:0,c:0,f:0,estimated:false,source:'manual'}); render(); },
+    // „+ Eintrag hinzufügen" -> Suche/Scan/Barcode/KI im Erfassen-Sheet; das Ergebnis wird an
+    // die laufende Mahlzeit angehängt (statt eine neue zu beginnen). „manuell" bleibt als Fallback.
+    ernCFAdd:function(){ if(!S.ernConfirm) return; S.ernAddToConfirm=true; S.ernCapTab='search'; S.ernSearchResults=null; S.ernSearchQ=''; S.ernSearchErr=''; S.ernScanErr=''; S.ernScanNotFound=false; setS({ernCapture:true}); try{ window.scrollTo(0,0); }catch(e){} },
+    ernCFAddManual:function(){ var cf=S.ernConfirm; if(!cf) return; cf.items.push({name:'',portion:'',meal:'snack',kcal:0,p:0,c:0,f:0,estimated:false,source:'manual'}); render(); },
     ernCFCancel:function(){ ernCloseConfirm(); },
     ernCFSave:function(){ if(S.ernConfirmBusy) return; var cf=S.ernConfirm; if(!cf||!cf.items.length) return;
       S.ernConfirmBusy=true; S.ernErr=false; S.ernMsg=''; render();
