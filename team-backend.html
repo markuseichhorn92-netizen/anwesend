@@ -340,9 +340,10 @@ async function openConv(key){
   loadConvProfile(p[0], key);
   try{
     var r=await tapi('/api/team/conversation?m='+encodeURIComponent(p[0])+'&id='+encodeURIComponent(p[1]));
+    if(S.selKey!==key) return;   // Nutzer hat inzwischen einen anderen Vorgang gewählt -> alte Antwort verwerfen
     if(r.ok){ S.sel=r.conversation; var c=findConv(key); if(c) c.teamUnread=false; S.replyChannel=(S.sel&&S.sel.channel==='whatsapp')?'whatsapp':'email'; }
     render();
-  }catch(e){ render(); }
+  }catch(e){ if(S.selKey===key) render(); }
 }
 // Vollständiges Magicline-Profil des Mitglieds fürs Kontext-Panel laden (nicht bei
 // Interessenten/Pseudo-IDs "wa…"). Per key gegen Races abgesichert.
@@ -414,13 +415,15 @@ async function act(action, extra){
   else if(r.message){ alert(r.message); }
   S.busy=false;
   if(action==='reply'){
-    S.draft='';
+    // Entwurf NUR bei Erfolg leeren – sonst geht der getippte Text bei einem Sende-Fehler
+    // verloren, obwohl die Antwort nie zugestellt wurde (stiller Datenverlust).
     if(r.ok){
+      S.draft='';
       if(r.channelUsed===null) alert('Antwort gespeichert, konnte aber weder per WhatsApp noch E-Mail zugestellt werden – es fehlen Kontaktdaten.');
       else if(r.channelFallback) alert('Konnte nicht per '+((extra&&extra.channel==='whatsapp')?'WhatsApp':'E-Mail')+' zustellen – stattdessen per '+(r.channelUsed==='whatsapp'?'WhatsApp':'E-Mail')+' verschickt.');
-    }
+    } else if(!r.message){ alert('Antwort konnte nicht gesendet werden – dein Text bleibt stehen, bitte erneut senden.'); }
   }
-  if(action==='note'){ S.note=''; }
+  if(action==='note'){ if(r.ok){ S.note=''; } else if(!r.message){ alert('Notiz konnte nicht gespeichert werden – dein Text bleibt stehen.'); } }
   render();
   loadInbox();   // Liste/Badges aktualisieren
 }
@@ -1059,13 +1062,18 @@ async function doMerge(c){
 async function apptConfirm(m, id, first){
   var d=window.prompt('Bestätigter Termin (z. B. „Sa, 28.06. um 11:00 Uhr"):','');
   if(d==null || !d.trim()) return;
-  await actOn(m, id, 'reply', { text:'Hallo '+(first||'')+', dein Termin ist bestätigt: '+d.trim()+'. Wir freuen uns auf dich! 💪' });
+  var r=await actOn(m, id, 'reply', { text:'Hallo '+(first||'')+', dein Termin ist bestätigt: '+d.trim()+'. Wir freuen uns auf dich! 💪' });
+  if(!(r&&r.ok)){ alert((r&&r.message)||'Bestätigung konnte nicht gesendet werden – bitte erneut versuchen.'); return; }
+  if(r.channelUsed===null) alert('Nachricht gespeichert, aber nicht zustellbar – dem Mitglied fehlen Kontaktdaten.');
   await loadInbox(); render();
 }
 async function apptDecline(m, id, first){
   var rsn=window.prompt('Ablehnen – kurze Begründung (optional):','');
   if(rsn==null) return;
-  await actOn(m, id, 'reply', { text:'Hallo '+(first||'')+', leider können wir den gewünschten Termin nicht anbieten'+(rsn.trim()?': '+rsn.trim():'.')+' Melde dich gern für einen Alternativtermin – wir finden gemeinsam etwas Passendes.' });
+  var r=await actOn(m, id, 'reply', { text:'Hallo '+(first||'')+', leider können wir den gewünschten Termin nicht anbieten'+(rsn.trim()?': '+rsn.trim():'.')+' Melde dich gern für einen Alternativtermin – wir finden gemeinsam etwas Passendes.' });
+  // Vorgang NICHT schließen, wenn die Ablehnung nicht zugestellt wurde – sonst erfährt das Mitglied nie davon.
+  if(!(r&&r.ok)){ alert((r&&r.message)||'Antwort konnte nicht gesendet werden – Vorgang bleibt offen.'); return; }
+  if(r.channelUsed===null){ alert('Antwort gespeichert, aber nicht zustellbar (Kontaktdaten fehlen) – Vorgang bleibt offen.'); await loadInbox(); render(); return; }
   await actOn(m, id, 'close');
   await loadInbox(); render();
 }

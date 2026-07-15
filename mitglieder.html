@@ -5400,16 +5400,20 @@
     menu:function(){ openMenu(); },
     menuClose:function(){ closeMenu(); },
     setTheme:function(a){ if(window.__setTheme) window.__setTheme(a); setS({}); },
+    // Optimistisch – aber bei Fehler den Schalter zurücksetzen (nicht falschen Zustand zeigen).
     toggleReminders:function(){
-      var cur=!(DATA.prefs&&DATA.prefs.reminders===false), val=!cur;
+      var prev=!(DATA.prefs&&DATA.prefs.reminders===false), val=!prev;
       DATA.prefs=DATA.prefs||{}; DATA.prefs.reminders=val; S.planRemind=val;
       setS({});   // optimistisch
-      api('/api/member/prefs',{method:'POST',body:JSON.stringify({reminders:val})}).then(function(r){ if(r&&r.prefs){ DATA.prefs=r.prefs; } }).catch(function(){});
+      var revert=function(){ DATA.prefs.reminders=prev; S.planRemind=prev; render(); };
+      api('/api/member/prefs',{method:'POST',body:JSON.stringify({reminders:val})}).then(function(r){ if(r&&r.prefs){ DATA.prefs=r.prefs; render(); } else { revert(); } }).catch(revert);
     },
-    togglePush:function(){ var cur=!(DATA.prefs&&DATA.prefs.push===false); var val=!cur; DATA.prefs=DATA.prefs||{}; DATA.prefs.push=val; setS({});
-      api('/api/member/prefs',{method:'POST',body:JSON.stringify({push:val})}).then(function(r){ if(r&&r.prefs) DATA.prefs=r.prefs; }).catch(function(){}); },
-    togglePushCat:function(a){ if(!a) return; var cur=!(DATA.prefs&&DATA.prefs[a]===false); var val=!cur; DATA.prefs=DATA.prefs||{}; DATA.prefs[a]=val; setS({});
-      var b={}; b[a]=val; api('/api/member/prefs',{method:'POST',body:JSON.stringify(b)}).then(function(r){ if(r&&r.prefs) DATA.prefs=r.prefs; }).catch(function(){}); },
+    togglePush:function(){ var prev=!(DATA.prefs&&DATA.prefs.push===false); var val=!prev; DATA.prefs=DATA.prefs||{}; DATA.prefs.push=val; setS({});
+      var revert=function(){ DATA.prefs.push=prev; render(); };
+      api('/api/member/prefs',{method:'POST',body:JSON.stringify({push:val})}).then(function(r){ if(r&&r.prefs){ DATA.prefs=r.prefs; render(); } else { revert(); } }).catch(revert); },
+    togglePushCat:function(a){ if(!a) return; var prev=!(DATA.prefs&&DATA.prefs[a]===false); var val=!prev; DATA.prefs=DATA.prefs||{}; DATA.prefs[a]=val; setS({});
+      var revert=function(){ DATA.prefs[a]=prev; render(); };
+      var b={}; b[a]=val; api('/api/member/prefs',{method:'POST',body:JSON.stringify(b)}).then(function(r){ if(r&&r.prefs){ DATA.prefs=r.prefs; render(); } else { revert(); } }).catch(revert); },
     // Kommunikations-/Marketing-Einwilligung je Kanal (Magicline). Optimistisch mit
     // Rücksetzen bei Fehler; bei 403 ehrlicher Hinweis „aktuell nicht möglich".
     toggleComm:function(a){ if(!a) return; var cp=DATA.commPrefs;
@@ -5556,19 +5560,24 @@
         .catch(function(){ setS({busy:false,loginErr:'Es ist ein Fehler aufgetreten.'}); });
     },
     toggleRemember:function(){ S.remember=!S.remember; if(!S.remember) localStorage.removeItem('fi_remember'); setQuiet({}); },
-    saveAddr:function(){ var data={street:val('d_street'),houseNumber:val('d_house'),zipCode:val('d_zip'),city:val('d_city')};
-      api('/api/member/update',{method:'POST',body:JSON.stringify({type:'address',data:data})}).then(function(d){ setS({msg:(d&&d.message)||(d&&d.ok?'Übermittelt.':'Keine Änderung erkannt.')}); refreshMe(); loadInbox(); }).catch(function(){}); },
-    saveContact:function(){ var email=val('d_email'), phone=val('d_phone');
+    // Speichern in „Meine Daten": Doppel-Submit-Guard + ehrliches Ergebnis (kein „Übermittelt."
+    // bei ok:false, kein stiller Fehler im .catch). Server liefert immer explizites ok+message.
+    saveAddr:function(){ if(S.dataBusy) return; var data={street:val('d_street'),houseNumber:val('d_house'),zipCode:val('d_zip'),city:val('d_city')};
+      S.dataBusy=true; setQuiet({});
+      api('/api/member/update',{method:'POST',body:JSON.stringify({type:'address',data:data})}).then(function(d){ S.dataBusy=false; var okv=!!(d&&d.ok); setS({msg:(d&&d.message)||(okv?'Übermittelt.':'Übermittlung fehlgeschlagen – bitte später erneut.')}); if(okv){ refreshMe(); loadInbox(); } }).catch(function(){ S.dataBusy=false; setS({msg:'Übermittlung fehlgeschlagen – bitte später erneut.'}); }); },
+    saveContact:function(){ if(S.dataBusy) return; var email=val('d_email'), phone=val('d_phone');
       if(!email&&!phone){ setS({msg:'Bitte E-Mail oder Telefonnummer angeben.'}); return; }
       if(email&&!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){ setS({msg:'Bitte eine gültige E-Mail-Adresse eingeben.'}); return; }
-      api('/api/member/update',{method:'POST',body:JSON.stringify({type:'contact',data:{email:email,phone:phone}})}).then(function(d){ setS({msg:(d&&d.message)||'Übermittelt.'}); refreshMe(); loadInbox(); }).catch(function(){}); },
-    saveIban:function(){ var iban=val('d_iban'); if(!iban){ setS({msg:'Bitte neue IBAN eingeben.'}); return; }
+      S.dataBusy=true; setQuiet({});
+      api('/api/member/update',{method:'POST',body:JSON.stringify({type:'contact',data:{email:email,phone:phone}})}).then(function(d){ S.dataBusy=false; var okv=!!(d&&d.ok); setS({msg:(d&&d.message)||(okv?'Übermittelt.':'Übermittlung fehlgeschlagen – bitte später erneut.')}); if(okv){ refreshMe(); loadInbox(); } }).catch(function(){ S.dataBusy=false; setS({msg:'Übermittlung fehlgeschlagen – bitte später erneut.'}); }); },
+    saveIban:function(){ if(S.dataBusy) return; var iban=val('d_iban'); if(!iban){ setS({msg:'Bitte neue IBAN eingeben.'}); return; }
       if(!ibanValid(iban)){ setS({msg:'Die IBAN ist ungültig – bitte prüfe deine Eingabe.'}); return; }
       var holder=val('d_holder'), bank=val('d_bank'), bic=val('d_bic');
       if(!holder){ setS({msg:'Bitte Kontoinhaber:in angeben.'}); return; }
       if(!bank||!bic){ setS({msg:'Bank/BIC konnten nicht automatisch erkannt werden – bitte ergänze sie manuell (Banking-App oder Bankkarte).'}); return; }
       var data={accountHolder:holder,iban:iban,bankName:bank,bic:bic};
-      api('/api/member/update',{method:'POST',body:JSON.stringify({type:'payment',data:data})}).then(function(d){ setS({msg:(d&&d.message)||'Übermittelt.'}); refreshMe(); loadInbox(); }).catch(function(){}); },
+      S.dataBusy=true; setQuiet({});
+      api('/api/member/update',{method:'POST',body:JSON.stringify({type:'payment',data:data})}).then(function(d){ S.dataBusy=false; var okv=!!(d&&d.ok); setS({msg:(d&&d.message)||(okv?'Übermittelt.':'Übermittlung fehlgeschlagen – bitte später erneut.')}); if(okv){ refreshMe(); loadInbox(); } }).catch(function(){ S.dataBusy=false; setS({msg:'Übermittlung fehlgeschlagen – bitte später erneut.'}); }); },
     logout:function(){ logout(); },
     // contract
     contractCopy:function(){ if(S.ccBusy) return; setQuiet({ccBusy:true,ccMsg:''});
@@ -5633,9 +5642,11 @@
         payload.weeks=(u==='MONTH')?t*4:(u==='DAY'?Math.max(1,Math.round(t/7)):t);
       }
       api('/api/member/pause',{method:'POST',body:JSON.stringify(payload)})
-        .then(function(d){ if(mlMode&&d&&d.via==='magicline'){ DATA.pauseInfo=null; loadPauseInfo(); }
-          setS({busy:false,pauseStep:0,pauseDone:true,pauseDoneVia:(d&&d.via)||'',pauseDoneMsg:(d&&d.message)||'',pausePhoto:'',pausePhotoName:'',pauseReason:'',pauseReasonText:'',pauseReasonId:'',pauseAttestUntil:'',pauseAttestKind:'',pauseAttestNote:'',pauseAttestConf:'',pauseAttestDone:false}); refreshMe(); loadInbox(); })
-        .catch(function(){ setS({busy:false,pauseStep:0,pauseDone:true,pauseDoneVia:'',pauseDoneMsg:'',pausePhoto:'',pausePhotoName:''}); }); },
+        .then(function(d){
+          if(d&&d.ok){ if(mlMode&&d.via==='magicline'){ DATA.pauseInfo=null; loadPauseInfo(); }
+            setS({busy:false,pauseStep:0,pauseDone:true,pauseDoneVia:(d&&d.via)||'',pauseDoneMsg:(d&&d.message)||'',pausePhoto:'',pausePhotoName:'',pauseReason:'',pauseReasonText:'',pauseReasonId:'',pauseAttestUntil:'',pauseAttestKind:'',pauseAttestNote:'',pauseAttestConf:'',pauseAttestDone:false}); refreshMe(); loadInbox(); }
+          else { setS({busy:false}); alert((d&&d.message)||'Beitragspause konnte nicht übermittelt werden – bitte später erneut.'); } })
+        .catch(function(){ setS({busy:false}); alert('Verbindung gerade nicht möglich – bitte später erneut.'); }); },
     submitCancel:function(){
       var date=val('c_date');
       var rid=val('c_reason');   // Magicline-Kündigungsgrund (nur wenn Auswahl angeboten)
@@ -5647,9 +5658,12 @@
         if(rid) b.cancelationReasonId=rid;
         return api('/api/member/cancel',{method:'POST',body:JSON.stringify(b)});
       })
-        .then(function(){ S.busy=false; S.cancelStep=0; S.cancelDone=true; return loadMe(); })
-        .then(function(){ render(); window.scrollTo(0,0); })
-        .catch(function(){ setS({busy:false,cancelStep:0,cancelDone:true}); });
+        .then(function(d){ S.busy=false;
+          // Nur bei echter Server-Bestätigung Erfolg zeigen – sonst glaubt das Mitglied,
+          // gekündigt zu haben, ist aber weiter gebunden (Vertrauens-/Rechtsrisiko).
+          if(d&&d.ok){ S.cancelStep=0; S.cancelDone=true; render(); window.scrollTo(0,0); loadMe().then(function(){ render(); }).catch(function(){}); }
+          else { render(); alert((d&&d.message)||'Kündigung konnte nicht übermittelt werden – bitte erneut versuchen oder kurz im Studio melden.'); } })
+        .catch(function(){ S.busy=false; render(); alert('Verbindung gerade nicht möglich – bitte erneut versuchen.'); });
     },
     askWithdraw:function(){ setS({withdrawConfirm:true,withdrawDone:false,withdrawErr:'',withdrawMsg:''}); },
     cancelWithdraw:function(){ setS({withdrawConfirm:false}); },
@@ -5676,8 +5690,8 @@
       if(a==='mine') loadAppts(); else if(DATA.bookable===null) loadBookable();
       setS({}); },
     bookType:function(a){ setS({bookType:a}); },
-    reqAppt:function(){ var pref=val('a_pref'); var t=(APPT_TYPES.filter(function(x){return x[0]===S.bookType;})[0]||[])[1]||''; setQuiet({busy:true});
-      api('/api/member/appointment',{method:'POST',body:JSON.stringify({type:t,preferred:pref})}).then(function(d){ setS({busy:false,apptMsg:d.message||'Dein Terminwunsch ist eingegangen.',bookDone:false,bookType:''}); }).catch(function(){ setS({busy:false,apptMsg:'Dein Terminwunsch ist eingegangen.'}); }); },
+    reqAppt:function(){ if(S.busy) return; var pref=val('a_pref'); var t=(APPT_TYPES.filter(function(x){return x[0]===S.bookType;})[0]||[])[1]||''; setQuiet({busy:true});
+      api('/api/member/appointment',{method:'POST',body:JSON.stringify({type:t,preferred:pref})}).then(function(d){ if(d&&d.ok){ setS({busy:false,apptMsg:d.message||'Dein Terminwunsch ist eingegangen.',bookDone:false,bookType:''}); } else { setS({busy:false,apptErr:true,apptMsg:(d&&d.message)||'Terminwunsch konnte nicht gesendet werden – bitte erneut versuchen.'}); } }).catch(function(){ setS({busy:false,apptErr:true,apptMsg:'Terminwunsch konnte nicht gesendet werden – bitte erneut versuchen.'}); }); },
     // ---- echte Buchung ----
     pickBookType:function(a){ var t=(DATA.bookable||[]).filter(function(x){return String(x.id)===String(a);})[0]||{}; S.bookType=a; S.bookTypeTitle=t.title||''; S.fallbackBook=false; S.bookDay=''; S.bookSlot=null; S.bookErr=''; loadSlots(a); },
     // ---- Fallback (Terminwunsch per E-Mail, wenn keine Magicline-Terminarten konfiguriert sind) ----
@@ -5689,8 +5703,8 @@
     confirmBook:function(){ var sl=S.bookSlot; if(!sl||S.busy) return;
       if(sl.fallback){ var tt=(APPT_TYPES.filter(function(x){return x[0]===S.bookType;})[0]||[])[1]||S.bookTypeTitle||''; var pref=deDateLong(sl.start)+', '+deTime(sl.start)+' Uhr'; setQuiet({busy:true,bookErr:''});
         api('/api/member/appointment',{method:'POST',body:JSON.stringify({type:tt,preferred:pref})})
-          .then(function(d){ DATA.appts=null; loadAppts(); setS({busy:false,apptMsg:(d&&d.message)||('Wir melden uns zur Bestätigung deines Wunschtermins ('+pref+').'),bookDone:false,bookType:'',bookTypeTitle:'',bookSlot:null,fallbackBook:false,bookErr:''}); })
-          .catch(function(){ setS({busy:false,apptMsg:'Dein Terminwunsch ist eingegangen.',bookType:'',bookTypeTitle:'',bookSlot:null,fallbackBook:false}); });
+          .then(function(d){ if(d&&d.ok){ DATA.appts=null; loadAppts(); setS({busy:false,apptMsg:(d&&d.message)||('Wir melden uns zur Bestätigung deines Wunschtermins ('+pref+').'),bookDone:false,bookType:'',bookTypeTitle:'',bookSlot:null,fallbackBook:false,bookErr:''}); } else { setS({busy:false,bookErr:(d&&d.message)||'Terminwunsch konnte nicht gesendet werden – bitte erneut versuchen.'}); } })
+          .catch(function(){ setS({busy:false,bookErr:'Terminwunsch konnte nicht gesendet werden – bitte erneut versuchen.'}); });
         return; }
       var bid=S.bookType; setQuiet({busy:true,bookErr:''});
       api('/api/member/appointment-book',{method:'POST',body:JSON.stringify({bookableAppointmentId:bid,startDateTime:sl.start,endDateTime:sl.end,instructorIds:(sl.instructorIds||[]).slice(0,1),title:S.bookTypeTitle})})
@@ -5703,12 +5717,16 @@
     ciRange:function(a){ S.ciRange=a||'all'; S.dlMsg2=''; setS({}); },
     emailPdf:function(){ emailPdf(); },
     cancelAppt:function(a){ if(!a) return; var id=a;
-      // Sofort aus der Liste entfernen (optimistisch), danach frisch laden
+      // Rückfrage vor dem Stornieren (versehentlicher Tap löscht sonst einen festen Termin).
+      var appt=Array.isArray(DATA.appts)?DATA.appts.filter(function(x){return String(x.id)===String(id);})[0]:null;
+      var when=(appt&&appt.start)?(deDateLong(appt.start)+', '+deTime(appt.start)+' Uhr'):'';
+      if(!window.confirm('Termin'+(when?(' am '+when):'')+' wirklich stornieren?')) return;
+      // Sofort aus der Liste entfernen (optimistisch), danach frisch laden + ehrliches Feedback.
       if(Array.isArray(DATA.appts)) DATA.appts=DATA.appts.filter(function(x){return String(x.id)!==String(id);});
       setQuiet({});
       api('/api/member/appointment-cancel',{method:'POST',body:JSON.stringify({bookingId:id})})
-        .then(function(d){ DATA.appts=null; loadAppts(); })
-        .catch(function(){ DATA.appts=null; loadAppts(); }); },
+        .then(function(d){ DATA.appts=null; loadAppts(); if(d&&d.ok!==false){ setS({apptErr:false,apptMsg:'Termin storniert.'}); } else { setS({apptErr:true,apptMsg:(d&&d.message)||'Stornierung fehlgeschlagen – bitte erneut versuchen.'}); } })
+        .catch(function(){ DATA.appts=null; loadAppts(); setS({apptErr:true,apptMsg:'Stornierung fehlgeschlagen – bitte erneut versuchen.'}); }); },
     // help & kontakt
     openArticle:function(a){ var art=HELP_ARTICLES[+a]; if(art&&art.id){ try{ fetch('/api/articles?id='+encodeURIComponent(art.id)); }catch(e){} } setS({helpSel:+a,artFb:null}); },
     helpBack:function(){ setS({helpSel:null}); },
@@ -6005,7 +6023,13 @@
   if(ALT){ bootActionLogin(ALT); }
   else if(MLT){ bootMagic(MLT); }
   else if(bioGate){ S.screen='login'; render(); }
-  else if(TOKEN){ loadMe().then(function(){ loadAppts(); loadPlan(); loadPlanAgg(); loadInbox(); loadPrefs(); if(DATA.checkins===null) loadCheckins(); render(); checkArrival(); var go=magicGo(); if(go!=='home'){ try{ nav(go); }catch(e){} } if(NFC){ NFC=null; nfcArrive(); } if(EPR){ var k=EPR; EPR=null; ernPremiumReturn(k); } }).catch(function(){ logout(); }); }
+  else if(TOKEN){ loadMe().then(function(){ loadAppts(); loadPlan(); loadPlanAgg(); loadInbox(); loadPrefs(); if(DATA.checkins===null) loadCheckins(); render(); checkArrival(); var go=magicGo(); if(go!=='home'){ try{ nav(go); }catch(e){} } if(NFC){ NFC=null; nfcArrive(); } if(EPR){ var k=EPR; EPR=null; ernPremiumReturn(k); } }).catch(function(e){
+    // 401 hat api() bereits sauber ausgeloggt. Ein TRANSIENTER Fehler (Timeout/kurzes
+    // Funkloch) darf die gültige Sitzung NICHT löschen – sonst Zwangs-Logout beim Öffnen.
+    if(e&&e.message==='unauthorized') return;
+    try{ render(); }catch(_){}
+    setTimeout(function(){ if(TOKEN) refreshAll(); }, 4000);
+  }); }
   else render();
 
   // Sobald die native Brücke bereit ist: Face ID anbieten (App öffnen -> Face ID -> drin).
