@@ -475,6 +475,7 @@
   var IBAN_LEN={DE:22,AT:20,CH:21,LU:20,NL:18,BE:16,FR:27,IT:27,ES:24,PL:28,DK:18,SE:24,FI:18,NO:15,CZ:24,SK:24,PT:25,GB:22};
   // Beim Tippen: formatieren, prüfen, Bank+BIC aus BLZ holen.
   var __ibanReqId=0;
+  var __ernWaterReq=0;   // gegen Out-of-Order-Antworten beim schnellen Wasser-Tippen
   function ibanInput(el){
     el.value=fmtIban(el.value);
     var raw=el.value.replace(/[^a-zA-Z0-9]/g,'').toUpperCase();
@@ -5109,9 +5110,10 @@
     ernScanStop:function(){ try{ window.__ernStopScan&&window.__ernStopScan(); }catch(e){} render(); },
     ernScanManualBtn:function(){ window.__ernScanManual&&window.__ernScanManual(); },
     ernCheckinDismiss:function(){ setS({ernCheckinDismissed:true}); },
-    ernMoreToggle:function(){ setS({ernMoreOpen:!S.ernMoreOpen}); },
-    coachMapToggle:function(){ setS({coachMapOpen:!S.coachMapOpen}); },
-    coachVertToggle:function(){ setS({coachVertOpen:!S.coachVertOpen}); },
+    // In-Place-Aufklapp-Sektionen: setQuiet -> Scrollposition bleibt (kein Sprung nach oben).
+    ernMoreToggle:function(){ setQuiet({ernMoreOpen:!S.ernMoreOpen}); },
+    coachMapToggle:function(){ setQuiet({coachMapOpen:!S.coachMapOpen}); },
+    coachVertToggle:function(){ setQuiet({coachVertOpen:!S.coachVertOpen}); },
     ernObNext:function(){ if((S.ernObStep||0)>=4){ if(!S.ernConsent){ S.ernErr=true; S.ernMsg='Bitte bestätige die Einwilligung, um zu starten.'; render(); return; } ACT.ernSaveProfile(); } else { setS({ernObStep:(S.ernObStep||0)+1}); try{ window.scrollTo(0,0); }catch(e){} } },
     ernConsent:function(){ setQuiet({ernConsent:!S.ernConsent, ernErr:false, ernMsg:''}); },
     ernObBack:function(){ if((S.ernObStep||0)>0) setS({ernObStep:S.ernObStep-1}); },
@@ -5136,8 +5138,13 @@
       api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'log-manual',name:f.name,kcal:f.kcal,p:f.p,c:f.c,f:f.f,date:ernActiveDate()})})
       .then(function(d){ if(d&&d.ok){ DATA.nutri=d; S.ernMsg='Protokolliert: '+f.name; S.ernErr=false; render(); } }).catch(function(){}); },
     ernDelete:function(a){ api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'delete',id:a,date:ernActiveDate()})}).then(function(d){ if(d&&d.ok){ DATA.nutri=d; render(); } }).catch(function(){}); },
-    ernWater:function(a){ a=String(a||''); var body; if(a.indexOf('to:')===0) body={action:'water',set:parseInt(a.slice(3),10)||0,date:ernActiveDate()}; else body={action:'water',delta:parseInt(a,10)||0,date:ernActiveDate()};
-      api('/api/member/nutrition',{method:'POST',body:JSON.stringify(body)}).then(function(d){ if(d&&d.ok){ DATA.nutri=d; render(); } }).catch(function(){}); },
+    ernWater:function(a){ a=String(a||''); var body; var nu=DATA.nutri&&DATA.nutri.today;
+      // Sofortiges (optimistisches) Feedback – kein Warten auf den Server-Roundtrip.
+      if(a.indexOf('to:')===0){ var set=parseInt(a.slice(3),10)||0; body={action:'water',set:set,date:ernActiveDate()}; if(nu) nu.water=Math.max(0,set); }
+      else { var delta=parseInt(a,10)||0; body={action:'water',delta:delta,date:ernActiveDate()}; if(nu) nu.water=Math.max(0,(nu.water||0)+delta); }
+      render();
+      var rid=++__ernWaterReq;
+      api('/api/member/nutrition',{method:'POST',body:JSON.stringify(body)}).then(function(d){ if(rid!==__ernWaterReq) return; if(d&&d.ok){ DATA.nutri=d; render(); } }).catch(function(){}); },
     // ── Etappe 3: Tages-Navigation + Eintrag bearbeiten/duplizieren/löschen ──
     ernDayShift:function(a){ var cur=ernActiveDate(); loadNutriDate(isoShift(cur, a==='next'?1:-1)); },
     ernDayToday:function(){ S.ernViewDate=''; loadNutri(); },
@@ -5259,8 +5266,8 @@
     ernCheckinOpen:function(){ S.ernCk=true; S.ernCkResult=null; S.ernCkHelp=false; S.ernCkMood=3; S.ernCkAdh=50; S.ernCkW=''; S.ernCkWaist=''; S.ernCkNote=''; S.ernMsg=''; S.ernErr=false; S.ernCkHist=null; try{ window.scrollTo(0,0); }catch(e){} render();
       api('/api/member/nutrition-coach',{method:'POST',body:JSON.stringify({action:'checkin-history'})}).then(function(d){ var h=(d&&d.ok&&Array.isArray(d.history))?d.history:[]; S.ernCkHist=h; if(h.length&&!S.ernCkW) S.ernCkW=String(h[h.length-1].weight); render(); }).catch(function(){ S.ernCkHist=[]; render(); }); },
     ernCheckinClose:function(){ S.ernCk=false; S.ernCkResult=null; S.ernMsg=''; S.ernErr=false; loadCoach(); },
-    ernCkMood:function(a){ setS({ernCkMood:parseInt(a,10)||3}); },
-    ernCkHelp:function(){ setS({ernCkHelp:!S.ernCkHelp}); },
+    ernCkMood:function(a){ setQuiet({ernCkMood:parseInt(a,10)||3}); },
+    ernCkHelp:function(){ setQuiet({ernCkHelp:!S.ernCkHelp}); },
     ernCheckinSave:function(){ if(S.ernCkBusy) return;
       // Werte aus dem DOM lesen (falls oninput mal nicht feuerte) und in den State spiegeln.
       var w=$('ern_ck_w'); if(w) S.ernCkW=w.value; var waistEl=$('ern_ck_waist'); if(waistEl) S.ernCkWaist=waistEl.value;
@@ -5322,10 +5329,10 @@
       .then(function(d){ S.ernCoachBusy=false; if(d&&d.ok){ S.ernCoachSent=true; } render(); })
       .catch(function(){ S.ernCoachBusy=false; render(); }); },
     // ── Ernährung · Sub-Navigation + Zusatz-Screens ──
-    ernTab:function(a){ S.ernTab=a; S.ernMsg=''; S.ernErr=false; S.ernRecipeSel=null; S.ernChatOpen=false; S.ernLesson=null; S.ernVert=null; S.ernLessonData=null; S.ernCk=false; S.ernCkResult=null; if(a==='heute'&&S.ernViewDate){ S.ernViewDate=''; loadNutri(); } if(a==='plan'&&DATA.nutriPlan==null) loadPlan(); if(a==='rezepte'&&DATA.nutriSaved==null) loadSaved(); if(a==='coach') loadCoach(); if(a==='verlauf') loadWeek(); setS({}); },
+    ernTab:function(a){ S.ernTab=a; S.ernMsg=''; S.ernErr=false; S.ernRecipeSel=null; S.ernChatOpen=false; S.ernLesson=null; S.ernVert=null; S.ernLessonData=null; S.ernCk=false; S.ernCkResult=null; if(a==='heute'&&S.ernViewDate){ S.ernViewDate=''; loadNutri(); } if(a==='plan'&&DATA.nutriPlan==null) loadPlan(); if(a==='rezepte'&&DATA.nutriSaved==null) loadSaved(); if(a==='coach') loadCoach(); if(a==='verlauf') loadWeek(); setQuiet({}); },
     ernFastPlan:function(a){ api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'fast',do:'plan',plan:a})}).then(function(d){ if(d&&d.ok) DATA.nutri=d; render(); }).catch(function(){}); },
     ernFastToggle:function(){ var act=ernFastMs().active?'stop':'start'; api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'fast',do:act})}).then(function(d){ if(d&&d.ok) DATA.nutri=d; render(); }).catch(function(){}); },
-    ernPlanTab:function(a){ setS({ernPlanTab:a}); },
+    ernPlanTab:function(a){ setQuiet({ernPlanTab:a}); },
     ernPlanGen:function(){ if(S.ernPlanBusy) return; if(ernNeedPremium()) return; S.ernPlanBusy=true; render();
       api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'plan-generate'})})
       .then(function(d){ S.ernPlanBusy=false; if(d&&d.ok){ DATA.nutriPlan={plan:d.plan,shopping:d.shopping}; S.ernPlanTab='woche'; } render(); })
@@ -5399,7 +5406,7 @@
     },
     menu:function(){ openMenu(); },
     menuClose:function(){ closeMenu(); },
-    setTheme:function(a){ if(window.__setTheme) window.__setTheme(a); setS({}); },
+    setTheme:function(a){ if(window.__setTheme) window.__setTheme(a); setQuiet({}); },
     // Optimistisch – aber bei Fehler den Schalter zurücksetzen (nicht falschen Zustand zeigen).
     toggleReminders:function(){
       var prev=!(DATA.prefs&&DATA.prefs.reminders===false), val=!prev;
@@ -5714,7 +5721,7 @@
     copyRef:function(){ var p=DATA.profile||{}; var code=p.referralCode||''; var link=window.location.origin+'/einladung?ref='+encodeURIComponent(code)+(p.firstName?('&name='+encodeURIComponent(p.firstName)):''); copyText(link); setS({copied:true}); setTimeout(function(){ S.copied=false; render(); },1800); },
     shareRef:function(){ var p=DATA.profile||{}; var code=p.referralCode||''; var link=window.location.origin+'/einladung?ref='+encodeURIComponent(code)+(p.firstName?('&name='+encodeURIComponent(p.firstName)):''); var txt='Trainier mit mir im Fit-Inn Trier! 💪 Mit meinem Code '+code+' bekommst du 2 Wochen gratis: '+link; if(navigator.share){ navigator.share({title:'Fit-Inn Trier',text:txt,url:link}).catch(function(){}); } else { copyText(txt); setS({copied:true}); setTimeout(function(){ S.copied=false; render(); },1800); } },
     // checkins
-    ciRange:function(a){ S.ciRange=a||'all'; S.dlMsg2=''; setS({}); },
+    ciRange:function(a){ S.ciRange=a||'all'; S.dlMsg2=''; setQuiet({}); },
     emailPdf:function(){ emailPdf(); },
     cancelAppt:function(a){ if(!a) return; var id=a;
       // Rückfrage vor dem Stornieren (versehentlicher Tap löscht sonst einen festen Termin).
@@ -5730,7 +5737,7 @@
     // help & kontakt
     openArticle:function(a){ var art=HELP_ARTICLES[+a]; if(art&&art.id){ try{ fetch('/api/articles?id='+encodeURIComponent(art.id)); }catch(e){} } setS({helpSel:+a,artFb:null}); },
     helpBack:function(){ setS({helpSel:null}); },
-    helpCat:function(a){ S.helpCat=(S.helpCat===a?'all':a); S.helpQ=''; S.helpShowAll=false; setS({}); },
+    helpCat:function(a){ S.helpCat=(S.helpCat===a?'all':a); S.helpQ=''; S.helpShowAll=false; setQuiet({}); },
     helpToggleAll:function(){ setQuiet({helpShowAll:!S.helpShowAll}); },
     aiSuggest:function(a){ S.aiQuery=a||''; var t=$('ai_q'); if(t){ t.value=a||''; t.focus(); } },
     helpAsk:function(){ var q=(val('ai_q')||''); if(!q){ var el=$('ai_q'); if(el) el.focus(); return; } if(S.aiPhase==='thinking') return;
