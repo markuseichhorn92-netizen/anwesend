@@ -21,6 +21,8 @@ const M = require('../../lib/members');
 const AI = require('../../lib/ai');
 const Ent = require('../../lib/entitlements');
 const Coaching = require('../../lib/coaching');
+const Inbox = require('../../lib/inbox');
+const SR = require('../../lib/studioReply');
 const { hasStore } = require('../../lib/store');
 
 // Freemium: Wochen 2–8 & KI-Personalisierung sind Premium (wie nutrition.js).
@@ -45,7 +47,9 @@ async function snapshot(id, st) {
     const irec = await Coaching.getImpulse(id);
     if (irec && irec.date === today) impulse = { text: irec.text, source: irec.source, acked: !!irec.ackedAt, date: irec.date };
   }
-  return Object.assign({ ok: true, available: true }, snap, hab, { impulse: impulse }, tf);
+  let nextCheckin = null;
+  if (st && st.enrolled) nextCheckin = Coaching.nextCheckinInfo(await Coaching.getCheckins(id), today);
+  return Object.assign({ ok: true, available: true }, snap, hab, { impulse: impulse, nextCheckin: nextCheckin }, tf);
 }
 
 // Heutigen Tagesimpuls sicherstellen (lazy, gecacht pro Berlin-Tag). KI nur Premium
@@ -89,6 +93,52 @@ module.exports = async function handler(req, res) {
     if (!(await M.rateLimit('nutri-enroll:' + id, 8, 3600))) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'rate_limited', message: 'Kurz warten und erneut versuchen.' })); }
     const st = await Coaching.enroll(id, { prefs: body.prefs });
     res.statusCode = 200; return res.end(JSON.stringify(await snapshot(id, st)));
+  }
+
+  if (action === 'checkin-history') {
+    const rec = await Coaching.getCheckins(id);
+    res.statusCode = 200; return res.end(JSON.stringify({ ok: true, history: Coaching.checkinHistory(rec) }));
+  }
+
+  if (action === 'checkin-submit') {
+    const st = await Coaching.getState(id);
+    if (!st || !st.enrolled) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'not_enrolled' })); }
+    if (!(await M.rateLimit('nutri-checkin:' + id, 6, 86400))) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'rate_limited', message: 'Kurz warten und erneut versuchen.' })); }
+    const today = Coaching.berlinToday();
+    const entry = Coaching.buildCheckinEntry(body, today);
+    if (!entry) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'bad_input', message: 'Bitte gib ein gültiges Gewicht ein.' })); }
+    let rec = await Coaching.getCheckins(id);
+    rec = Coaching.appendCheckin(rec, entry, today).rec;
+    const prof = (await Coaching.kvGetJson('nutri:p:' + id)) || {};
+    // Premium: KI-Auswertung; sonst reviewLocked (Zahlen + Chart bleiben frei).
+    const premium = Ent.isPremium(await Ent.getEntitlement(id));
+    let reviewLocked = true;
+    if (premium && AI.hasAI) {
+      try {
+        const r = await AI.coachCheckinReview({ goal: prof.goal, week: Coaching.activeWeek(st, today), series: Coaching.checkinHistory(rec).slice(-6), latest: entry });
+        if (r && r.ok) { entry.review = { summary: r.summary, insights: r.insights, tip: r.tip }; reviewLocked = false; }
+      } catch (e) {}
+    }
+    // Team an Schlüsselpunkten einschleifen (Vorgang ins Studio-Postfach).
+    const loop = Coaching.shouldLoopTeam(rec, prof.goal);
+    if (loop.loop) {
+      try {
+        let m = null; try { m = await M.getMember(id); } catch (e) {}
+        const who = ((((m && m.firstName) || '') + ' ' + ((m && m.lastName) || '')).trim() || 'Mitglied') + ((m && m.customerNumber) ? (' (' + m.customerNumber + ')') : '');
+        const vorgang = await Inbox.addVorgang(id, {
+          type: 'kontakt', subject: 'Ernährungs-Coaching · ' + loop.reason,
+          systemText: 'Deine Erfolgskontrolle ist da – wir schauen sie uns an und melden uns, falls wir dich unterstützen können.',
+          teamText: 'Hallo' + ((m && m.firstName) ? (' ' + m.firstName) : '') + ', danke für deine Erfolgskontrolle. Wir melden uns bei dir.',
+          member: m ? { name: ((m.firstName || '') + ' ' + (m.lastName || '')).trim(), nr: m.customerNumber || null, email: m.email || null } : null,
+        });
+        if (vorgang && vorgang.id) entry.teamVorgangId = vorgang.id;
+        try { await SR.notifyStudio({ member: m ? { id: id, customerId: id, firstName: m.firstName, lastName: m.lastName } : { id: id }, vorgang: vorgang || {}, subject: '🥗 Coaching-Check-in – ' + loop.reason + ' · ' + who, text: 'Ein Mitglied hat eine Erfolgskontrolle abgegeben, die Aufmerksamkeit verdient (' + loop.reason + ').\n\nMitglied: ' + who + '\nGewicht: ' + entry.weight + ' kg, Umsetzung: ' + entry.adherence + '%, Stimmung: ' + entry.mood + '/5.' + (entry.note ? ('\nNotiz: ' + entry.note) : '') + '\n\nBitte kurz persönlich melden.' }); } catch (e) {}
+      } catch (e) {}
+    }
+    await Coaching.saveCheckins(id, rec);
+    const snap = await snapshot(id, st);
+    res.statusCode = 200;
+    return res.end(JSON.stringify(Object.assign(snap, { review: entry.review || null, reviewLocked: reviewLocked, teamLooped: !!loop.loop, history: Coaching.checkinHistory(rec) })));
   }
 
   if (action === 'lesson-get') {
