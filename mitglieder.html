@@ -398,7 +398,7 @@
     ernConfirm:null, ernConfirmBusy:false,
     ernScanCode:'', ernScanBusy:false, ernScanErr:'', ernScanNotFound:false,
     ernSearchQ:'', ernSearchResults:null, ernSearchBusy:false, ernSearchErr:'',
-    ernCamErr:'', ernVoiceText:'', ernCamShot:'',
+    ernCamErr:'', ernVoiceText:'', ernCamShot:'', ernMoreOpen:false,
     ernProd:null, ernGrams:100,
     ernViewDate:'', ernDayBusy:false, ernEntryEdit:null, ernEntryBusy:false,
     ernFavMgr:false, ernFavBusy:false, ernFavAddOpen:false,
@@ -3222,20 +3222,10 @@
     for(var i=0;i<wg;i++){ cups+='<button data-act="ernWater" data-arg="to:'+(i+1)+'" aria-label="'+(i+1)+' von '+wg+' Gläsern Wasser" aria-pressed="'+(i<wc?'true':'false')+'" style="flex:1;height:26px;border-radius:6px;border:none;background:'+(i<wc?ERN_WATER:'var(--surface-2)')+';cursor:pointer;padding:0"></button>'; }
     var water='<div style="'+CARD+'"><div style="display:flex;align-items:center;justify-content:space-between"><div style="display:flex;align-items:center;gap:8px">'+svg('<path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z"></path>',{c:ERN_WATER,w:2,s:18})+'<span style="font-size:13px;font-weight:800;color:var(--text)">Wasser</span></div><span style="font-size:15px;font-weight:900;color:var(--text)">'+String((wc*0.25).toFixed(1)).replace('.',',')+' <span style="font-size:12px;color:var(--text-soft)">/ '+String((wg*0.25).toFixed(1)).replace('.',',')+' L</span></span></div>'+
       '<div style="display:flex;gap:4px;margin-top:12px">'+cups+'</div><div style="font-size:10.5px;font-weight:700;color:var(--text-soft);margin-top:8px">Tippen zum Eintragen · 1 Glas = 0,25 L</div></div>';
-    // Schnell loggen
-    var msg=S.ernMsg?'<div style="font-size:12.5px;font-weight:700;color:'+(S.ernErr?'var(--err-fg)':ERN_G)+';margin-top:10px;line-height:1.4">'+esc(S.ernMsg)+'</div>':'';
-    var favs=ernFavChips();
-    var photoBtn='<label style="flex:1;display:flex;align-items:center;justify-content:center;gap:7px;border:1.5px solid var(--border);background:var(--surface-2);border-radius:13px;padding:12px;cursor:pointer;font-size:13.5px;font-weight:800;color:'+ERN_G+'">'+
-      (S.ernPhotoBusy
-        ? '<span style="width:16px;height:16px;border:2.5px solid rgba(15,122,74,.35);border-top-color:'+ERN_G+';border-radius:50%;display:inline-block;animation:ernspin .7s linear infinite"></span>Analysiere …'
-        : svg('<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle>',{c:ERN_G,w:1.9,s:19})+'Foto')+
-      '<input type="file" accept="image/*" capture="environment" onchange="window.__ernPhoto(this)" '+(S.ernPhotoBusy?'disabled ':'')+'style="display:none"></label>';
-    var voiceBtn='<button data-act="ernVoice" style="flex:1;display:flex;align-items:center;justify-content:center;gap:7px;border:1.5px solid '+(S.ernRec?ERN_G:'var(--border)')+';background:'+(S.ernRec?'rgba(15,122,74,.12)':'var(--surface-2)')+';border-radius:13px;padding:12px;cursor:pointer;font-size:13.5px;font-weight:800;color:'+ERN_G+'">'+svg('<rect x="9" y="2" width="6" height="12" rx="3"></rect><path d="M5 10a7 7 0 0 0 14 0M12 17v4"></path>',{c:ERN_G,w:1.9,s:19})+(S.ernRec?'Hört zu …':'Sprechen')+'</button>';
-    var log='<div style="'+CARD+'"><div style="font-size:15px;font-weight:900;color:var(--text);margin-bottom:4px">Mahlzeit loggen</div><div style="font-size:12.5px;color:var(--text-soft);font-weight:600;margin-bottom:12px">Foto, Sprache oder Text – FINN schätzt die Nährwerte.</div>'+
-      '<div style="display:flex;gap:8px;margin-bottom:11px">'+photoBtn+voiceBtn+'</div>'+
-      '<div style="display:flex;gap:9px;align-items:flex-end"><textarea id="ern_log" rows="1" placeholder="z. B. Hähnchen mit Reis und Salat" style="flex:1;border:1.5px solid var(--border);border-radius:14px;padding:12px 14px;font-size:14.5px;font-weight:600;outline:none;color:var(--text);background:var(--surface);resize:none;font-family:inherit"></textarea>'+
-      '<button data-act="ernLog" '+(S.ernBusy?'disabled ':'')+'style="width:50px;height:48px;border-radius:14px;border:none;background:'+ERN_G+';display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'+(S.ernBusy?'<span style="width:18px;height:18px;border:2.5px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;display:inline-block;animation:ernspin .7s linear infinite"></span>':svg('<path d="M12 5v14M5 12h14"></path>',{c:'#fff',w:2.6,s:22}))+'</button></div>'+
-      msg+favs+'</div>';
+    // Status-Meldung + Favoriten-Schnellzugriff. Das Loggen läuft jetzt komplett über den
+    // „+"-Button (Erfassen-Popup) – die alte „Mahlzeit loggen"-Karte entfällt (war doppelt).
+    var msg=S.ernMsg?'<div style="font-size:12.5px;font-weight:700;color:'+(S.ernErr?'var(--err-fg)':ERN_G)+';margin:12px 2px 0;line-height:1.4">'+esc(S.ernMsg)+'</div>':'';
+    var quickAdd='<div style="font-size:12px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.4px;margin:22px 2px 0">Schnell hinzufügen</div>'+ernFavChips();
     // Heute gegessen
     var MEALS=[['fruehstueck','Frühstück','🌅'],['mittag','Mittagessen','☀️'],['abend','Abendessen','🌙'],['snack','Snacks','🍎']];
     var entries=Array.isArray(td.entries)?td.entries:[];
@@ -3250,9 +3240,8 @@
     if(!meals){ meals='<div style="'+CARD+';text-align:center"><div style="font-size:30px">🍽️</div><div style="font-size:13.5px;font-weight:700;color:var(--text);margin-top:6px">Noch nichts protokolliert</div><div style="font-size:12.5px;font-weight:500;color:var(--text-soft);margin:2px 0 12px">Erfasse deine erste Mahlzeit per Foto, Sprache oder Suche.</div><button data-act="ernOpenCapture" data-arg="Mahlzeit" style="padding:12px 20px;border:none;border-radius:13px;background:'+ERN_G+';color:#fff;font-weight:900;font-size:14px;cursor:pointer">Essen erfassen</button></div>'; }
     var viewIsToday=td.isToday!==false&&(td.date||isoToday())===isoToday();
     var mealsBlock='<div style="font-size:17px;font-weight:900;color:var(--text);letter-spacing:-.3px;margin:22px 2px 12px">'+(viewIsToday?'Heute gegessen':'An diesem Tag')+'</div>'+meals;
-    // FINN Ernährungscoach – kompakter Teaser auf „Heute", der in den Coach-Tab führt
-    // (der volle Chat lebt jetzt in ernCoach()).
-    var coachTeaser='<button data-act="ernTab" data-arg="coach" style="width:100%;text-align:left;'+CARD+';display:flex;align-items:center;gap:13px;cursor:pointer;border:none;font-family:inherit"><div style="width:44px;height:44px;border-radius:13px;background:linear-gradient(150deg,'+ERN_G2+','+ERN_GD+');display:flex;align-items:center;justify-content:center;flex-shrink:0">'+svg('<path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.5 8.6 8.6 0 0 1-4-1L3 20l1-5a8.4 8.4 0 0 1-1-4A8.5 8.5 0 0 1 11.5 3 8.5 8.5 0 0 1 21 11.5z"></path>',{c:'#fff',w:2,s:22})+'</div><div style="flex:1;min-width:0"><div style="font-size:14.5px;font-weight:900;color:var(--text)">FINN fragen</div><div style="font-size:12px;font-weight:600;color:var(--text-soft);margin-top:2px">Makros, Snack-Ideen, dein Ziel – frag den Coach</div></div>'+svg('<path d="M9 6l6 6-6 6"></path>',{c:'var(--text-soft)',w:2.2,s:20})+'</button>';
+    // (Der FINN-Coach ist über den eigenen „Coach"-Tab in der unteren Leiste erreichbar –
+    //  der frühere Teaser hier entfällt, um „Heute" aufgeräumt zu halten.)
     // Stoffwechsel-Coaching CTA
     var cta='<div style="background:linear-gradient(150deg,#0e6072,#063540);border-radius:20px;padding:20px;color:#fff;box-shadow:0 14px 36px rgba(4,33,40,.2);margin-bottom:14px">'+
       '<div style="display:flex;align-items:center;gap:13px"><div style="width:48px;height:48px;border-radius:15px;background:rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0">🧬</div>'+
@@ -3268,9 +3257,15 @@
     var checkin=(!S.ernCheckinDismissed && (n.streak||0)>=2)?('<div style="background:linear-gradient(150deg,#FBEFE2,#f6ddc4);border-radius:18px;padding:14px 16px;margin-bottom:14px;display:flex;align-items:flex-start;gap:12px;position:relative"><span style="font-size:22px;line-height:1;margin-top:1px">🎉</span><div style="flex:1;min-width:0;padding-right:16px"><div style="font-size:13.5px;font-weight:900;color:#b5631f">Stark dabei'+(nm?', '+esc(nm):'')+'!</div><div style="font-size:12.5px;font-weight:600;color:#9a6027;line-height:1.4;margin-top:2px">Du hast '+(n.streak||0)+' Tage in Folge protokolliert – weiter so! 💪</div></div><button data-act="ernCheckinDismiss" style="position:absolute;top:10px;right:10px;width:24px;height:24px;border-radius:8px;border:none;background:rgba(181,99,31,.14);display:flex;align-items:center;justify-content:center;cursor:pointer">'+svg('<path d="M18 6L6 18M6 6l12 12"></path>',{c:'#b5631f',w:2.6,s:13})+'</button></div>'):'';
     // Studio-Anbindung (motivierende Karte, wie im Mockup)
     var studio='<div style="'+CARD+';display:flex;align-items:center;gap:13px"><div style="width:46px;height:46px;border-radius:14px;background:#EAF4FB;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+svg('<path d="M6.5 6.5l11 11M4 9l-1.5-1.5M20 15l1.5 1.5M9 4l-1.5-1.5M15 20l1.5 1.5M3 12l3-3 6 6-3 3zM21 12l-3 3-6-6 3-3z"></path>',{c:'#2d84b8',w:1.9,s:24})+'</div><div style="flex:1;min-width:0"><div style="font-size:10.5px;font-weight:800;color:#2d84b8;text-transform:uppercase;letter-spacing:.4px">Aus deinem Fit-Inn Studio</div><div style="font-size:14px;font-weight:900;color:var(--text);margin-top:2px">Trainingstag = mehr Spielraum</div><div style="font-size:12px;font-weight:600;color:var(--text-muted);margin-top:3px;line-height:1.35">An Tagen, an denen du trainierst, darfst du etwas mehr essen – plane es ruhig ein.</div></div></div>';
-    // Vergangene Tage: nur relevante Blöcke (Tagesziel-Ring, Wasser, Nachtragen, Mahlzeiten).
-    if(!viewIsToday) return ernDayNav()+ring+water+log+mealsBlock;
-    return ernDayNav()+ring+ernPremiumCard()+checkin+fasting+studio+water+log+mealsBlock+coachTeaser+cta+recompute;
+    // „Mehr" – Sekundäres eingeklappt (Coaching-CTA, Studio-Tipp, Premium, Ziel/Daten),
+    // damit „Heute" sich auf das Wesentliche konzentriert.
+    var chev=svg(S.ernMoreOpen?'<path d="M18 15l-6-6-6 6"></path>':'<path d="M6 9l6 6 6-6"></path>',{c:'var(--text-soft)',w:2.2,s:16});
+    var moreBtn='<button data-act="ernMoreToggle" aria-expanded="'+(S.ernMoreOpen?'true':'false')+'" style="width:100%;display:flex;align-items:center;justify-content:center;gap:7px;padding:14px;border:1.5px solid var(--border);background:var(--surface);border-radius:14px;color:var(--text-muted);font-weight:800;font-size:13.5px;cursor:pointer">'+(S.ernMoreOpen?'Weniger anzeigen':'Mehr: Coaching, Ziel &amp; Daten')+chev+'</button>';
+    var more='<div style="margin-top:22px">'+moreBtn+(S.ernMoreOpen?('<div style="margin-top:14px">'+cta+studio+ernPremiumCard()+recompute+'</div>'):'')+'</div>';
+    // Vergangene Tage: nur die relevanten Blöcke (Ring, Wasser, Mahlzeiten).
+    if(!viewIsToday) return ernDayNav()+ring+msg+water+mealsBlock;
+    // Heute: klare Reihenfolge – Überblick, Wasser, Mahlzeiten, Schnell-Add, Fasten, Mehr.
+    return ernDayNav()+ring+msg+checkin+water+mealsBlock+quickAdd+fasting+more;
   }
   // Fasten-Helfer (Client-Countdown; Server hält plan+start)
   function ernFastMs(){
@@ -4782,6 +4777,7 @@
     ernScanStop:function(){ try{ window.__ernStopScan&&window.__ernStopScan(); }catch(e){} render(); },
     ernScanManualBtn:function(){ window.__ernScanManual&&window.__ernScanManual(); },
     ernCheckinDismiss:function(){ setS({ernCheckinDismissed:true}); },
+    ernMoreToggle:function(){ setS({ernMoreOpen:!S.ernMoreOpen}); },
     ernObNext:function(){ if((S.ernObStep||0)>=4){ if(!S.ernConsent){ S.ernErr=true; S.ernMsg='Bitte bestätige die Einwilligung, um zu starten.'; render(); return; } ACT.ernSaveProfile(); } else { setS({ernObStep:(S.ernObStep||0)+1}); try{ window.scrollTo(0,0); }catch(e){} } },
     ernConsent:function(){ setQuiet({ernConsent:!S.ernConsent, ernErr:false, ernMsg:''}); },
     ernObBack:function(){ if((S.ernObStep||0)>0) setS({ernObStep:S.ernObStep-1}); },
