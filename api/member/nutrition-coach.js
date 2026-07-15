@@ -18,9 +18,13 @@
  */
 
 const M = require('../../lib/members');
+const AI = require('../../lib/ai');
 const Ent = require('../../lib/entitlements');
 const Coaching = require('../../lib/coaching');
 const { hasStore } = require('../../lib/store');
+
+// Freemium: Wochen 2–8 & KI-Personalisierung sind Premium (wie nutrition.js).
+const PREMIUM_MSG = 'Das ist eine Premium-Funktion (KI). Teste Premium 7 Tage gratis – danach jederzeit kündbar.';
 
 // Premium-Felder für den Client (gleiche Namen wie nutrition.js buildState).
 async function tierFields(id) {
@@ -71,17 +75,34 @@ module.exports = async function handler(req, res) {
     const week = Coaching.clampInt(body.week, 1, Coaching.TOTAL_WEEKS, 0);
     if (!week) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'bad_week' })); }
     const today = Coaching.berlinToday();
-    const unlocked = Coaching.isWeekUnlocked(st, week, today);
     const meta = Coaching.lessonMeta(week);
-    if (!unlocked) {
-      // Gesperrt: nur Meta (Titel/Teaser) + wann es frei wird – kein Inhalt.
+    if (!Coaching.isWeekUnlocked(st, week, today)) {
+      // Zeitlich noch gesperrt: nur Meta (Titel/Teaser) + wann es frei wird – kein Inhalt.
       const uw = Coaching.unlockedWeek(st, today);
       res.statusCode = 200;
       return res.end(JSON.stringify({ ok: true, locked: true, lesson: meta, unlocksInDays: Math.max(0, (week - uw) * 7 - (Coaching.daysBetween(st.startDate, today) % 7)) }));
     }
-    const ls = st.lessons && st.lessons[String(week)];
+    const premium = Ent.isPremium(await Ent.getEntitlement(id));
+    // Woche 1 gratis (Kostprobe); Wochen 2–8 sind Premium.
+    if (week >= 2 && !premium) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'premium_required', message: PREMIUM_MSG })); }
+    let ls = st.lessons && st.lessons[String(week)];
+    let personalized = (ls && ls.personalized) || null;
+    // Premium: FINN personalisiert die Lektion einmalig (gecacht im State).
+    if (premium && !personalized && AI.hasAI && (await M.rateLimit('nutri-lessonai:' + id, 20, 3600))) {
+      const prof = (await Coaching.kvGetJson('nutri:p:' + id)) || {};
+      let firstName = ''; try { const m = await M.getMember(id); firstName = (m && m.firstName) || ''; } catch (e) {}
+      const r = await AI.coachLessonPersonalize({ firstName: firstName, goal: prof.goal, diet: prof.diet, week: week, lessonTitle: meta.title, lessonTheme: meta.theme, under18: (Number(prof.age) || 99) < 18 });
+      if (r && r.ok && r.intro) {
+        personalized = r.intro;
+        st.lessons = st.lessons || {};
+        st.lessons[String(week)] = st.lessons[String(week)] || { unlockedAt: Date.now(), completedAt: null, personalized: null };
+        st.lessons[String(week)].personalized = personalized;
+        await Coaching.saveState(id, st);
+        ls = st.lessons[String(week)];
+      }
+    }
     res.statusCode = 200;
-    return res.end(JSON.stringify({ ok: true, locked: false, lesson: Coaching.fullLesson(week), completed: !!(ls && ls.completedAt), personalized: (ls && ls.personalized) || null }));
+    return res.end(JSON.stringify({ ok: true, locked: false, lesson: Coaching.fullLesson(week), completed: !!(ls && ls.completedAt), personalized: personalized }));
   }
 
   if (action === 'habit-toggle') {
@@ -93,6 +114,8 @@ module.exports = async function handler(req, res) {
   if (action === 'lesson-complete') {
     const week = Coaching.clampInt(body.week, 1, Coaching.TOTAL_WEEKS, 0);
     if (!week) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'bad_week' })); }
+    // Wochen 2–8 sind Premium – ohne Recht auch nicht abschließbar.
+    if (week >= 2 && !Ent.isPremium(await Ent.getEntitlement(id))) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'premium_required', message: PREMIUM_MSG })); }
     const r = await Coaching.completeLesson(id, week);
     if (!r.ok) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: r.error })); }
     res.statusCode = 200; return res.end(JSON.stringify(await snapshot(id, r.state)));
