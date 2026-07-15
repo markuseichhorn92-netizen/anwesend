@@ -1108,22 +1108,11 @@
       '</div>'+
     '</div>';
   }
-  // ── FINN – KI-Coach: Karte auf der Übersicht + Chat-Overlay ──
+  // ── FINN – KI-Coach: Tipp des Tages laden (Start-Hero + Coach-Hub) + Chat-Overlay ──
   function loadFinnTip(){
     if(S.finnTipLoaded||!TOKEN) return; S.finnTipLoaded=true;
     var ob=obData(); var q=(ob&&ob.goal)?('?goal='+encodeURIComponent(ob.goal)):'';
-    api('/api/member/coach'+q).then(function(d){ if(d&&d.message){ S.finnTip=d.message; if(S.screen==='home') render(); } }).catch(function(){});
-  }
-  function finnCard(){
-    var tip=S.finnTip||'';
-    return '<div data-act="openFinn" style="position:relative;overflow:hidden;background:var(--surface);border-radius:20px;box-shadow:0 12px 34px rgba(4,33,40,.12);padding:16px;margin-bottom:14px;cursor:pointer">'+
-      '<div style="display:flex;align-items:center;gap:11px">'+
-        '<div style="width:42px;height:42px;border-radius:50%;overflow:hidden;flex-shrink:0;box-shadow:0 4px 12px rgba(4,33,40,.18)"><img src="/assets/brand/finn-mark.svg" alt="FINN" style="width:100%;height:100%;display:block"></div>'+
-        '<div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:900;color:var(--text)">FINN · dein Coach</div><div style="font-size:11.5px;color:var(--text-soft);font-weight:600">auf dein Ziel abgestimmt</div></div>'+
-        '<button data-act="finnRefresh" aria-label="Neuer Impuls" style="width:34px;height:34px;border-radius:11px;border:none;background:var(--surface-2);color:'+TEAL+';display:flex;align-items:center;justify-content:center;flex-shrink:0;cursor:pointer">'+svg('<path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 3v5h-5M21 12a9 9 0 0 1-15 6.7L3 16M3 21v-5h5"></path>',{c:TEAL,w:1.9,s:18})+'</button>'+
-      '</div>'+
-      '<div style="font-size:14px;color:var(--text-2);font-weight:600;line-height:1.5;margin-top:12px">'+(tip?esc(tip):'Tippen und loslegen 💬')+'</div>'+
-    '</div>';
+    api('/api/member/coach'+q).then(function(d){ if(d&&d.message){ S.finnTip=d.message; if(S.screen==='home'||S.screen==='coach') render(); } }).catch(function(){});
   }
   function finnScrollBottom(){ setTimeout(function(){ var e=$('finn_scroll'); if(e) e.scrollTop=e.scrollHeight; },30); }
   var FINN_AVA='<div style="width:30px;height:30px;border-radius:50%;overflow:hidden;flex-shrink:0"><img src="/assets/brand/finn-mark.svg" style="width:100%;height:100%;display:block"></div>';
@@ -1509,14 +1498,6 @@
     '</div>';
   }
   // Tipp des Tages – rotierend (tagesstabil).
-  function tippCard(){
-    var tips=['Trink vor dem Training ein großes Glas Wasser – das steigert deine Leistung spürbar.','Schon 20 Minuten Training zählen. Jeder Besuch bringt dich weiter.','Wärm dich 5 Minuten auf – das beugt Verletzungen vor und macht jede Übung effektiver.','Konstanz schlägt Intensität: lieber 3× kurz als 1× lang.','Nach dem Training ist Erholung Teil des Fortschritts – gönn dir Schlaf und Eiweiß.','Setz dir für heute ein kleines, erreichbares Ziel – und feiere es danach.','Ein fester Trainingspartner hält dich am Ball.'];
-    var t=tips[(new Date().getDate())%tips.length];
-    return '<div style="display:flex;gap:13px;align-items:center;background:linear-gradient(135deg,#0e6072,#073e4b);border-radius:20px;padding:18px;margin-top:18px;color:#fff">'+
-      '<div style="width:44px;height:44px;border-radius:14px;background:rgba(255,255,255,.13);display:flex;align-items:center;justify-content:center;flex-shrink:0">'+svg('<path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.3 1 2.1h6c0-.8.4-1.6 1-2.1A7 7 0 0 0 12 2z"></path>',{c:'#F6A964',w:1.9,s:22})+'</div>'+
-      '<div><div style="font-size:12px;font-weight:700;color:#aed0d6;text-transform:uppercase;letter-spacing:.4px">Tipp des Tages</div><div style="font-size:14px;font-weight:600;line-height:1.4;margin-top:3px">'+esc(t)+'</div></div>'+
-    '</div>';
-  }
   // ── Onboarding (4 Schritte, einmalig) – wie im Mockup ──
   function obDone(){ try{ return !!localStorage.getItem('fi_ob_v1'); }catch(e){ return true; } }
   function obData(){ try{ var v=localStorage.getItem('fi_ob_v1'); return v?JSON.parse(v):null; }catch(e){ return null; } }
@@ -1545,30 +1526,6 @@
       '<div style="display:flex;gap:6px;margin-bottom:28px;flex-shrink:0">'+dots+'</div>'+inner+
       '<button data-act="obNext" style="width:100%;margin-top:20px;border:none;border-radius:15px;background:#fff;color:#0a4958;font-weight:900;font-size:16px;padding:16px;cursor:pointer;flex-shrink:0">'+(step>=3?'Los geht\'s':'Weiter')+'</button>'+
     '</div>';
-  }
-  // Kaiora-Anregung: Ring-Fortschritt „Diese Woche" (Trainings ggü. Wochenziel aus dem Onboarding).
-  function weekRingCard(){
-    var ci=Array.isArray(DATA.checkins)?DATA.checkins:null;
-    if(ci===null) return '';   // noch nicht geladen -> kein Flackern
-    var mon=new Date(); mon.setHours(0,0,0,0); mon.setDate(mon.getDate()-((mon.getDay()+6)%7));  // Wochenstart Mo
-    var mStart=new Date(); mStart.setHours(0,0,0,0); mStart.setDate(1);
-    var week=0, month=0, last=0;
-    ci.forEach(function(x){ var t=(x&&x.in)?Date.parse(x.in):0; if(!t) return; if(t>=mon.getTime()) week++; if(t>=mStart.getTime()) month++; if(t>last) last=t; });
-    var goal=3; try{ var ob=JSON.parse(localStorage.getItem('fi_ob_v1')||'{}'); if(ob&&+ob.freq>0) goal=Math.min(7,Math.max(1,+ob.freq)); }catch(e){}
-    var pct=goal?Math.max(0,Math.min(1,week/goal)):0, reached=week>=goal;
-    var R=54, C=2*Math.PI*R, off=C*(1-pct), col=reached?'#1F9A4E':TEAL;
-    var msg=reached?'Wochenziel erreicht – stark! 🎉':(week>0?('Noch '+(goal-week)+' bis zu deinem Wochenziel'):'Auf geht’s – dein Wochenziel wartet');
-    var lastTxt=last?('Letzter Besuch '+deDate(new Date(last).toISOString())):'';
-    var ring='<div style="position:relative;width:120px;height:120px;flex-shrink:0">'+
-      '<svg width="120" height="120" viewBox="0 0 128 128" style="transform:rotate(-90deg)">'+
-        '<circle cx="64" cy="64" r="'+R+'" fill="none" stroke="var(--surface-2)" stroke-width="12"></circle>'+
-        '<circle cx="64" cy="64" r="'+R+'" fill="none" stroke="'+col+'" stroke-width="12" stroke-linecap="round" stroke-dasharray="'+C.toFixed(1)+'" stroke-dashoffset="'+off.toFixed(1)+'"></circle>'+
-      '</svg>'+
-      '<div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center"><div style="font-size:30px;font-weight:900;color:var(--text);line-height:1">'+week+'</div><div style="font-size:12px;font-weight:700;color:var(--text-soft)">von '+goal+'</div></div></div>';
-    return '<div class="card" style="padding:18px;margin-bottom:14px;display:flex;align-items:center;gap:16px">'+ring+
-      '<div style="flex:1;min-width:0"><div style="font-size:11.5px;font-weight:800;color:'+TEAL+';text-transform:uppercase;letter-spacing:1.2px">Diese Woche</div>'+
-      '<div style="font-size:17px;font-weight:900;color:var(--text);margin-top:3px;letter-spacing:-.3px;line-height:1.25">'+esc(msg)+'</div>'+
-      '<div style="font-size:13px;color:var(--text-soft);font-weight:600;margin-top:7px">'+month+' Besuche diesen Monat'+(lastTxt?('<br>'+esc(lastTxt)):'')+'</div></div></div>';
   }
   // Kompakter Coach-Anreißer für die Startseite: FINN-Tipp des Tages + Motivations-Mini
   // (Streak/VP/Fitness-Alter) → führt in den Coach-Tab. Ersetzt die frühere finnCard + vitalCard.
@@ -2527,16 +2484,6 @@
   var ERN_LAUNCH=false;
   function ernTestOn(){ try{ return localStorage.getItem('fi_ern_test')==='1'; }catch(e){ return false; } }
   var ERN_ON = ERN_LAUNCH || ernTestOn();
-  // Einstiegs-Kachel auf der Startseite (führt ins Ernährungs-Modul)
-  function ernHomeCard(){
-    if(!ERN_ON) return '';
-    var leaf='<path d="M11 21A7 7 0 0 1 4 14C4 8.5 8 4 13.5 4c2.7 0 4.6 1 6.5 1.8 0 8.7-4.3 15.2-9 15.2z"></path><path d="M11 21c0-5.5 3.3-10 7.5-12"></path>';
-    return '<div data-act="nav" data-arg="ern" style="background:linear-gradient(150deg,'+ERN_G2+','+ERN_G+' 60%,'+ERN_GD+');border-radius:20px;box-shadow:0 14px 34px rgba(15,122,74,.24);padding:16px 18px;margin-bottom:14px;display:flex;align-items:center;gap:14px;cursor:pointer">'+
-      '<div style="width:46px;height:46px;border-radius:14px;background:rgba(255,255,255,.16);display:flex;align-items:center;justify-content:center;flex-shrink:0">'+svg(leaf,{c:'#fff',w:1.9,s:24})+'</div>'+
-      '<div style="flex:1;min-width:0"><div style="font-size:15.5px;font-weight:900;color:#fff">Ernährungscoach</div><div style="font-size:12.5px;color:#d4f0e2;font-weight:600;line-height:1.4;margin-top:2px">Tagesziel, Tracking &amp; KI-Rezepte – dein Plan für heute</div></div>'+
-      svg('<path d="M9 18l6-6-6-6"></path>',{c:'rgba(255,255,255,.8)',w:2.2,s:20})+
-    '</div>';
-  }
   function ernSeedForm(){ var pr=(DATA.nutri&&DATA.nutri.profile)||{};
     S.ernGoal=pr.goal||'abnehmen'; S.ernSex=pr.sex||'w'; S.ernH=pr.height||170; S.ernW=pr.weight||70; S.ernAge=pr.age||30; S.ernAct=pr.activity||'moderat'; S.ernDiet=pr.diet||'omnivor'; }
   // Foto einer Mahlzeit -> herunterskalieren -> KI-Schätzung (action:log-photo).
@@ -3353,9 +3300,9 @@
     var msg=S.ernMsg?'<div role="'+(S.ernErr?'alert':'status')+'" style="font-size:12.5px;font-weight:700;color:'+(S.ernErr?'var(--err-fg)':ERN_G)+';text-align:center;margin-top:4px;line-height:1.4">'+esc(S.ernMsg)+'</div>':'';
     return '<div style="padding:4px 2px 40px">'+head+aboSec+infoSec+exportSec+delDaySec+delAllSec+msg+'</div>';
   }
-  // Grüner Topbar mit Segment-Nav (Heute/Plan/Rezepte/Verlauf)
-  // Grüner Kopf (Datum + Titel + Rezepte-Kürzel + Streak). Navigation läuft über
-  // die modul-eigene Bottom-Nav (ernNavHtml, in #btmnav injiziert) – wie im Mockup.
+  // Grüner Kopf des Essen-Moduls (Datum + Titel + Rezepte-Kürzel + Streak).
+  // Die Tab-Navigation läuft über das obere Segment (ernModuleSeg: Heute/Plan/Verlauf);
+  // die untere Leiste ist die EINE globale App-Nav (Start·Coach·[+]·Essen·Profil).
   function ernTopbar(tab){
     var streak=(DATA.nutri&&DATA.nutri.streak)||0;
     var d=new Date(); var date=['Sonntag','Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag'][d.getDay()]+', '+d.toLocaleDateString('de-DE',{day:'2-digit',month:'long'});
@@ -5673,7 +5620,9 @@
       }catch(e){}
     }, 140);
   }
-  function magicGo(){ var g=null; try{ g=new URL(window.location.href).searchParams.get('go'); }catch(e){} return (g&&TITLES[g])?g:'home'; }
+  // Ziel-Screen aus der URL (Deep-Links aus Push/Magic-Links): ?go=<screen>, oder
+  // ?ern=coach (Coaching-Push) → globaler Coach-Tab, ?ern=<x> → Essen-Modul.
+  function magicGo(){ try{ var sp=new URL(window.location.href).searchParams; var e=sp.get('ern'); if(e==='coach') return 'coach'; if(e) return 'ern'; var g=sp.get('go'); if(g&&TITLES[g]) return g; }catch(e){} return 'home'; }
   function bootMagic(tok){
     S.screen='login'; render();
     var go=magicGo();
@@ -5721,7 +5670,7 @@
   if(ALT){ bootActionLogin(ALT); }
   else if(MLT){ bootMagic(MLT); }
   else if(bioGate){ S.screen='login'; render(); }
-  else if(TOKEN){ loadMe().then(function(){ loadAppts(); loadPlan(); loadPlanAgg(); loadInbox(); loadPrefs(); if(DATA.checkins===null) loadCheckins(); render(); checkArrival(); if(NFC){ NFC=null; nfcArrive(); } if(EPR){ var k=EPR; EPR=null; ernPremiumReturn(k); } }).catch(function(){ logout(); }); }
+  else if(TOKEN){ loadMe().then(function(){ loadAppts(); loadPlan(); loadPlanAgg(); loadInbox(); loadPrefs(); if(DATA.checkins===null) loadCheckins(); render(); checkArrival(); var go=magicGo(); if(go!=='home'){ try{ nav(go); }catch(e){} } if(NFC){ NFC=null; nfcArrive(); } if(EPR){ var k=EPR; EPR=null; ernPremiumReturn(k); } }).catch(function(){ logout(); }); }
   else render();
 
   // Sobald die native Brücke bereit ist: Face ID anbieten (App öffnen -> Face ID -> drin).
