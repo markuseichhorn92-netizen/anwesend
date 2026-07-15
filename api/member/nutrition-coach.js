@@ -61,7 +61,7 @@ async function ensureImpulseForRequest(id, st) {
     if (!(await M.rateLimit('nutri-impulse:' + id, 5, 86400))) return null;
     const prof = (await Coaching.kvGetJson('nutri:p:' + id)) || {};
     let firstName = ''; try { const m = await M.getMember(id); firstName = (m && m.firstName) || ''; } catch (e) {}
-    const wk = Coaching.activeWeek(st, today); const meta = Coaching.lessonMeta(wk);
+    const wk = Coaching.activeWeek(st, today); const meta = Coaching.lessonMeta(Coaching.trackOf(st), wk);
     const streak = Coaching.habitStreak(await Coaching.getHabitRec(id), today);
     const r = await AI.coachDailyImpulse({ firstName: firstName, goal: prof.goal, week: wk, lessonTitle: meta.title, streak: streak, under18: (Number(prof.age) || 99) < 18 });
     return (r && r.ok && r.text) ? { text: r.text, focusHabitId: null, source: 'ai' } : null;
@@ -81,7 +81,10 @@ module.exports = async function handler(req, res) {
 
   if (req.method === 'GET') {
     const st = await Coaching.getState(id);
-    if (st && st.enrolled) { try { await ensureImpulseForRequest(id, st); } catch (e) {} }
+    if (st && st.enrolled) {
+      if (!st.track) { try { const prof = await Coaching.kvGetJson('nutri:p:' + id); await Coaching.ensureTrack(id, st, prof && prof.goal); } catch (e) {} }
+      try { await ensureImpulseForRequest(id, st); } catch (e) {}
+    }
     res.statusCode = 200; return res.end(JSON.stringify(await snapshot(id, st)));
   }
   if (req.method !== 'POST') { res.statusCode = 405; return res.end(JSON.stringify({ ok: false, error: 'method_not_allowed' })); }
@@ -91,7 +94,8 @@ module.exports = async function handler(req, res) {
 
   if (action === 'enroll') {
     if (!(await M.rateLimit('nutri-enroll:' + id, 8, 3600))) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'rate_limited', message: 'Kurz warten und erneut versuchen.' })); }
-    const st = await Coaching.enroll(id, { prefs: body.prefs });
+    let goal = ''; try { const prof = await Coaching.kvGetJson('nutri:p:' + id); goal = (prof && prof.goal) || ''; } catch (e) {}
+    const st = await Coaching.enroll(id, { prefs: body.prefs, goal: goal });
     res.statusCode = 200; return res.end(JSON.stringify(await snapshot(id, st)));
   }
 
@@ -144,10 +148,11 @@ module.exports = async function handler(req, res) {
   if (action === 'lesson-get') {
     const st = await Coaching.getState(id);
     if (!st || !st.enrolled) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'not_enrolled' })); }
-    const week = Coaching.clampInt(body.week, 1, Coaching.TOTAL_WEEKS, 0);
+    const track = Coaching.trackOf(st);
+    const week = Coaching.clampInt(body.week, 1, Coaching.weeksFor(track), 0);
     if (!week) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'bad_week' })); }
     const today = Coaching.berlinToday();
-    const meta = Coaching.lessonMeta(week);
+    const meta = Coaching.lessonMeta(track, week);
     if (!Coaching.isWeekUnlocked(st, week, today)) {
       // Zeitlich noch gesperrt: nur Meta (Titel/Teaser) + wann es frei wird – kein Inhalt.
       const uw = Coaching.unlockedWeek(st, today);
@@ -174,7 +179,7 @@ module.exports = async function handler(req, res) {
       }
     }
     res.statusCode = 200;
-    return res.end(JSON.stringify({ ok: true, locked: false, lesson: Coaching.fullLesson(week), completed: !!(ls && ls.completedAt), personalized: personalized }));
+    return res.end(JSON.stringify({ ok: true, locked: false, lesson: Coaching.fullLesson(track, week), completed: !!(ls && ls.completedAt), personalized: personalized }));
   }
 
   if (action === 'habit-toggle') {
@@ -194,9 +199,10 @@ module.exports = async function handler(req, res) {
   }
 
   if (action === 'lesson-complete') {
-    const week = Coaching.clampInt(body.week, 1, Coaching.TOTAL_WEEKS, 0);
+    const cst = await Coaching.getState(id);
+    const week = Coaching.clampInt(body.week, 1, Coaching.weeksFor(Coaching.trackOf(cst)), 0);
     if (!week) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'bad_week' })); }
-    // Wochen 2–8 sind Premium – ohne Recht auch nicht abschließbar.
+    // Modul 1 (Kern) gratis; ab Modul 2 ist Premium – ohne Recht auch nicht abschließbar.
     if (week >= 2 && !Ent.isPremium(await Ent.getEntitlement(id))) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'premium_required', message: PREMIUM_MSG })); }
     const r = await Coaching.completeLesson(id, week);
     if (!r.ok) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: r.error })); }
