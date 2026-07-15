@@ -60,7 +60,10 @@ module.exports = async function handler(req, res) {
       cancelUrl: base + '/mitglieder?ern_premium=cancel',
     });
     if (r.ok && r.url) { res.statusCode = 200; return res.end(JSON.stringify({ ok: true, url: r.url })); }
-    res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'checkout_failed', message: 'Bezahlung konnte nicht gestartet werden – bitte später erneut.' }));
+    // Konkreten Stripe-Grund durchreichen (Diagnose; Stripe redigiert Keys selbst).
+    const reason = (r && r.error && r.error !== 'checkout_failed') ? String(r.error) : (r && r.status ? ('HTTP ' + r.status) : 'unbekannt');
+    console.error('[nutrition-billing] checkout failed:', reason, 'status=', r && r.status);
+    res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'checkout_failed', message: 'Bezahlung konnte nicht gestartet werden. Grund: ' + reason, detail: reason, status: (r && r.status) || 0 }));
   }
 
   if (action === 'portal') {
