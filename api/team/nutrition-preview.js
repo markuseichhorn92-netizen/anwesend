@@ -26,9 +26,11 @@
 const TA = require('../../lib/teamAuth');
 const Ent = require('../../lib/entitlements');
 const M = require('../../lib/members');            // readBody
+const Stripe = require('../../lib/stripe');        // echtes Abo kündigen/reaktivieren
 const { redisPipeline, hasStore } = require('../../lib/store');
 
-const PREVIEW_DAYS = 180;
+const PREVIEW_DAYS = 30;   // Default-Testzeitraum, wenn keine Dauer angegeben wird
+const MAX_DAYS = 3650;
 
 function tierPayload(ent) {
   return { ok: true, tier: Ent.publicTier(ent), source: (ent && ent.source) || null, until: (ent && ent.until) ? Number(ent.until) : null };
@@ -57,7 +59,7 @@ module.exports = async function handler(req, res) {
   const id = body.id;
   const action = String(body.action || '').toLowerCase();
   if (id == null || String(id).trim() === '') { res.statusCode = 400; return res.end(JSON.stringify({ ok: false, error: 'missing_id' })); }
-  if (action !== 'grant' && action !== 'revoke') { res.statusCode = 400; return res.end(JSON.stringify({ ok: false, error: 'bad_action' })); }
+  if (['grant', 'revoke', 'sub-cancel', 'sub-reactivate'].indexOf(action) < 0) { res.statusCode = 400; return res.end(JSON.stringify({ ok: false, error: 'bad_action' })); }
   if (!hasStore) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'no_store', tier: Ent.publicTier(null) })); }
 
   const prev = await Ent.getEntitlement(id);
@@ -68,12 +70,33 @@ module.exports = async function handler(req, res) {
       res.statusCode = 409; return res.end(JSON.stringify({ ok: false, error: 'has_real_subscription', tier: Ent.publicTier(prev) }));
     }
     const now = Date.now();
-    const ent = { tier: 'premium', status: 'active', until: now + PREVIEW_DAYS * 86400000, since: now, source: 'team_preview', grantedBy: (sess && (sess.user || sess.email)) || 'team', updatedAt: now };
+    // Dauer: `permanent:true` -> dauerhaft gratis (until:null); sonst `days` (Default 30, Cap 3650).
+    const permanent = body.permanent === true || body.permanent === 'true';
+    let until = null;
+    if (!permanent) {
+      let days = parseInt(body.days, 10);
+      if (!Number.isFinite(days) || days <= 0) days = PREVIEW_DAYS;
+      days = Math.min(MAX_DAYS, Math.max(1, days));
+      until = now + days * 86400000;
+    }
+    const ent = { tier: 'premium', status: 'active', until: until, since: (prev && prev.since) || now, source: 'team_preview', permanent: permanent, grantedBy: (sess && (sess.user || sess.email)) || 'team', updatedAt: now };
     await Ent.setEntitlement(id, ent);
     res.statusCode = 200; return res.end(JSON.stringify(Object.assign({ id: String(id) }, tierPayload(ent))));
   }
 
-  // revoke: nur die eigene Vorschau entfernen, nie ein echtes Abo.
+  // Echtes (zahlendes) Stripe-Abo kündigen/reaktivieren – Team-Support.
+  if (action === 'sub-cancel' || action === 'sub-reactivate') {
+    if (!prev || prev.source === 'team_preview' || !prev.stripeSubId) {
+      res.statusCode = 409; return res.end(JSON.stringify({ ok: false, error: 'no_real_subscription', tier: Ent.publicTier(prev) }));
+    }
+    const r = await Stripe.cancelSubscription(prev.stripeSubId, action === 'sub-cancel');
+    if (!r.ok) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'stripe_failed', tier: Ent.publicTier(prev) })); }
+    const ent = Object.assign({}, prev, { cancelAtPeriodEnd: !!r.cancelAtPeriodEnd, updatedAt: Date.now() });
+    await Ent.setEntitlement(id, ent);
+    res.statusCode = 200; return res.end(JSON.stringify(Object.assign({ id: String(id) }, tierPayload(ent))));
+  }
+
+  // revoke: nur die eigene Vorschau/Gratis-Freischaltung entfernen, nie ein echtes Abo.
   if (prev && prev.source !== 'team_preview') {
     res.statusCode = 409; return res.end(JSON.stringify({ ok: false, error: 'not_a_preview', tier: Ent.publicTier(prev) }));
   }

@@ -755,14 +755,17 @@ async function loadMemberPreview(id){
   catch(e){ S.memberPreview=null; }
   S.memberPreviewLoading=false; render();
 }
-async function nutritionPreviewAction(id, action){
+async function nutritionPreviewAction(id, action, extra){
   if(S.memberPreviewBusy) return;
   S.memberPreviewBusy=true; S.memberPreviewMsg=''; render();
   try{
-    var r=await tapi('/api/team/nutrition-preview', { method:'POST', body:{ id:id, action:action } });
-    if(r&&r.ok){ S.memberPreview=r; }
-    else if(r&&r.error==='has_real_subscription'){ S.memberPreview={ ok:true, tier:r.tier, source:'stripe' }; S.memberPreviewMsg='Mitglied hat ein echtes Abo – Vorschau nicht nötig.'; }
-    else if(r&&r.error==='not_a_preview'){ S.memberPreviewMsg='Echtes Abo – wird nicht angetastet.'; }
+    var body=Object.assign({ id:id, action:action }, extra||{});
+    var r=await tapi('/api/team/nutrition-preview', { method:'POST', body:body });
+    if(r&&r.ok){ S.memberPreview=r; if(action==='grant') S.memberPreviewMsg=(extra&&extra.permanent)?'Dauerhaft gratis freigeschaltet.':'Gratis-Zugang freigeschaltet.'; else if(action==='sub-cancel') S.memberPreviewMsg='Abo gekündigt (läuft zum Periodenende aus).'; else if(action==='sub-reactivate') S.memberPreviewMsg='Kündigung zurückgenommen.'; }
+    else if(r&&r.error==='has_real_subscription'){ S.memberPreview={ ok:true, tier:r.tier, source:'stripe' }; S.memberPreviewMsg='Mitglied hat ein echtes Abo – Gratis-Zugang nicht nötig.'; }
+    else if(r&&r.error==='not_a_preview'){ S.memberPreviewMsg='Echtes Abo – nutze „Abo kündigen".'; }
+    else if(r&&r.error==='no_real_subscription'){ S.memberPreviewMsg='Kein echtes Abo vorhanden.'; }
+    else if(r&&r.error==='stripe_failed'){ S.memberPreviewMsg='Stripe-Aktion fehlgeschlagen – später erneut.'; }
     else { S.memberPreviewMsg='Nicht möglich.'; }
   }catch(e){ S.memberPreviewMsg='Fehler.'; }
   S.memberPreviewBusy=false; render();
@@ -775,24 +778,31 @@ function nutritionPreviewBlock(p){
   if(S.memberPreviewLoading && pv==null){
     body='<div style="padding:6px 0"><span class="spin"></span></div>';
   } else {
-    var isPrem=pv&&pv.tier&&pv.tier.premium;
-    var isPreview=isPrem&&pv.source==='team_preview';
-    var isReal=isPrem&&pv.source!=='team_preview';
-    var status, btn;
+    var t=(pv&&pv.tier)||{};
+    var isPrem=!!t.premium;
+    var isPreview=isPrem&&pv&&pv.source==='team_preview';
+    var isReal=isPrem&&pv&&pv.source!=='team_preview';
+    var btnG='border:none;background:linear-gradient(135deg,#0e6072,#063540);color:#fff;border-radius:11px;font-size:12.5px;font-weight:800;padding:9px 14px;cursor:pointer';
+    var btnO='border:1.5px solid #cfd8db;background:#fff;color:#0a4958;border-radius:11px;font-size:12.5px;font-weight:800;padding:9px 14px;cursor:pointer';
+    var btnR='border:1.5px solid #e3b8b1;background:#fff;color:#b5402f;border-radius:11px;font-size:12.5px;font-weight:800;padding:9px 15px;cursor:pointer';
+    var status, controls;
     if(isReal){
-      status='<span style="color:#0f7a4a;font-weight:800">Echtes Premium-Abo aktiv (Stripe)</span>';
-      btn='';   // echtes Abo -> nichts zu tun
+      status='<span style="color:#0f7a4a;font-weight:800">Echtes Premium-Abo aktiv (Stripe)</span>'+(t.cancelAtPeriodEnd?(' <span style="color:#b5402f;font-weight:700">- gekuendigt zum '+pvDate(pv.until)+'</span>'):(pv.until?(' <span style="color:#8a929a;font-weight:600">- naechste Abbuchung '+pvDate(pv.until)+'</span>'):''));
+      controls=t.cancelAtPeriodEnd
+        ? '<button data-nprevsubreact="1" '+(S.memberPreviewBusy?'disabled ':'')+'style="'+btnG+'">Kuendigung zuruecknehmen</button>'
+        : '<button data-nprevsubcancel="1" '+(S.memberPreviewBusy?'disabled ':'')+'style="'+btnR+'">Abo kuendigen (zum Periodenende)</button>';
     } else if(isPreview){
-      status='<span style="color:#0f7a4a;font-weight:800">Vorschau aktiv</span> <span style="color:#8a929a;font-weight:600">bis '+pvDate(pv.until)+'</span>';
-      btn='<button data-nprevrevoke="1" '+(S.memberPreviewBusy?'disabled ':'')+'style="border:1.5px solid #e3b8b1;background:#fff;color:#b5402f;border-radius:11px;font-size:12.5px;font-weight:800;padding:9px 15px;cursor:pointer">Vorschau beenden</button>';
+      status='<span style="color:#0f7a4a;font-weight:800">Gratis-Zugang aktiv</span> <span style="color:#8a929a;font-weight:600">'+(t.permanent?'- dauerhaft':('- bis '+pvDate(pv.until)))+'</span>';
+      controls='<button data-nprevrevoke="1" '+(S.memberPreviewBusy?'disabled ':'')+'style="'+btnR+'">Gratis-Zugang beenden</button>';
     } else {
       status='<span style="color:#8a929a;font-weight:700">Kein Premium</span>';
-      btn='<button data-nprevgrant="1" '+(S.memberPreviewBusy?'disabled ':'')+'style="border:none;background:linear-gradient(135deg,#0e6072,#063540);color:#fff;border-radius:11px;font-size:12.5px;font-weight:800;padding:10px 16px;cursor:pointer">Premium-Vorschau freischalten</button>';
+      var mk=function(lbl,days,perm){ return '<button data-nprevgrant="1" '+(days?('data-days="'+days+'" '):'')+(perm?'data-permanent="1" ':'')+(S.memberPreviewBusy?'disabled ':'')+'style="'+(perm?btnG:btnO)+'">'+lbl+'</button>'; };
+      controls='<div style="display:flex;flex-wrap:wrap;gap:8px">'+mk('7 Tage',7)+mk('14 Tage',14)+mk('30 Tage',30)+mk('90 Tage',90)+mk('Dauerhaft gratis',null,true)+'</div>';
     }
-    var msg=S.memberPreviewMsg?('<div style="margin-top:9px;font-size:12px;font-weight:700;color:#8a929a">'+esc(S.memberPreviewMsg)+'</div>'):'';
-    body='<div style="display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap"><div style="font-size:13.5px">'+status+'</div>'+(btn?('<div>'+btn+'</div>'):'')+'</div>'+msg;
+    var msg=S.memberPreviewMsg?('<div style="margin-top:10px;font-size:12px;font-weight:700;color:#8a929a">'+esc(S.memberPreviewMsg)+'</div>'):'';
+    body='<div style="font-size:13.5px;margin-bottom:13px">'+status+'</div>'+controls+msg;
   }
-  return '<div style="margin-top:18px;background:#fff;border-radius:20px;box-shadow:0 14px 38px rgba(4,33,40,.09);padding:20px 24px"><div style="font-size:15px;font-weight:900;letter-spacing:-.2px;margin-bottom:4px;color:#15171B">🔓 Ernährungs-Premium (Vorschau)</div><div style="font-size:12.5px;color:#8a929a;font-weight:600;margin-bottom:16px">Schaltet die kostenpflichtigen Coaching-/KI-Inhalte frei – zum Prüfen oder kulanzweise, ohne Stripe. Befristet auf 180 Tage.</div>'+body+'</div>';
+  return '<div style="margin-top:18px;background:#fff;border-radius:20px;box-shadow:0 14px 38px rgba(4,33,40,.09);padding:20px 24px"><div style="font-size:15px;font-weight:900;letter-spacing:-.2px;margin-bottom:4px;color:#15171B">🔓 Ernaehrungs-Premium</div><div style="font-size:12.5px;color:#8a929a;font-weight:600;margin-bottom:16px">Gratis-/Test-Zugang vergeben (Zeitraum oder dauerhaft) oder ein echtes Abo verwalten. Ein echtes Stripe-Abo wird nur ueber „Abo kuendigen" angetastet.</div>'+body+'</div>';
 }
 // yyyy-mm-dd-Presets für den Zeitraum. ...Silent: nur State setzen (kein render), fürs Öffnen.
 function ci2(n){ return (n<10?'0':'')+n; }
@@ -2104,8 +2114,10 @@ function membersNode(){
       var es=wrap.querySelector('[data-edsave]'); if(es) es.onclick=function(){ saveMember(p.id); };
       var anb=wrap.querySelector('[data-anon]'); if(anb) anb.onclick=function(){ anonymiseMember(p); };
       var ms=wrap.querySelector('[data-msgsend]'); if(ms) ms.onclick=function(){ openDirectMsg(p.id, p.name); };
-      var npg=wrap.querySelector('[data-nprevgrant]'); if(npg) npg.onclick=function(){ nutritionPreviewAction(p.id, 'grant'); };
+      var npgs=wrap.querySelectorAll('[data-nprevgrant]'); for(var gi=0;gi<npgs.length;gi++){ (function(b){ b.onclick=function(){ var perm=b.getAttribute('data-permanent')==='1'; var d=parseInt(b.getAttribute('data-days'),10); nutritionPreviewAction(p.id,'grant', perm?{permanent:true}:{days:d}); }; })(npgs[gi]); }
       var npr=wrap.querySelector('[data-nprevrevoke]'); if(npr) npr.onclick=function(){ nutritionPreviewAction(p.id, 'revoke'); };
+      var nsc=wrap.querySelector('[data-nprevsubcancel]'); if(nsc) nsc.onclick=function(){ if(confirm('Das echte, zahlende Abo dieses Kunden zum Periodenende kuendigen?')) nutritionPreviewAction(p.id,'sub-cancel'); };
+      var nsr=wrap.querySelector('[data-nprevsubreact]'); if(nsr) nsr.onclick=function(){ nutritionPreviewAction(p.id,'sub-reactivate'); };
       var aif=wrap.querySelector('[data-accessinfo]'); if(aif) aif.onclick=function(){ sendAccessInfo(p); };
       // Tags: aufklappen, Preset/Freitext hinzufügen, per Chip entfernen.
       var ta=wrap.querySelector('[data-tagadd]'); if(ta) ta.onclick=function(){ S.tagAddOpen=!S.tagAddOpen; S.tagInput=''; render(); };

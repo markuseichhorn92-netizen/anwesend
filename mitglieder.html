@@ -547,6 +547,9 @@
     if(s==='insta'){ S.instaSel=null; loadInsta(); maybeRefreshInsta(); }
     if(s==='home'){ loadFinnTip(); maybeRefreshInsta(); maybeRefreshLive(); }
     if(s==='account') loadAccount();
+    // Abo-Status für die Konto-Einstiege (Profil/Meine Daten/Beitragskonto) + der Abo-Screen selbst.
+    if(s==='profil'||s==='data'||s==='account'||s==='abo') loadErnBilling();
+    if(s==='abo'){ S.ernMsg=''; S.ernErr=false; DATA.ernSub=undefined; DATA.ernInvoices=undefined; loadNutri(); loadSubInfo(); loadErnInvoices(); }
     if(s==='ern'){ try{ window.__ernStopScan&&window.__ernStopScan(); }catch(e){} S.ernMsg=''; S.ernErr=false; S.ernAsk=''; S.ernAnswer=''; S.ernRecipes=null; S.ernCoachSent=false; S.ernTab='heute'; S.ernRecipeSel=null; S.ernCapture=false; S.ernConfirm=null; S.ernProd=null; S.ernEntryEdit=null; S.ernViewDate=''; S.ernFavMgr=false; S.ernData=false; S.ernUpgrade=false; S.ernLesson=null; S.ernLessonData=null; S.ernChatOpen=false; S.ernCk=false; S.ernCkResult=null; S.ernObStep=0; S.ernChat=ernChatLoad(); loadNutri(); loadFavs(); loadCoach(); }
     if(s==='coach'){ S.ernLesson=null; S.ernVert=null; S.ernLessonData=null; S.ernCk=false; S.ernCkResult=null; S.ernChatOpen=false; S.ernUpgrade=false; S.ernMsg=''; S.ernErr=false; S.coachMapOpen=false; S.coachVertOpen=false; S.ernChat=ernChatLoad(); loadFinnTip(); loadCoach(); if(!DATA.checkins) loadCheckins(); }
     if(s==='appt'){ if(!DATA.appts) loadAppts(); if(DATA.bookable===null) loadBookable(); }
@@ -1667,7 +1670,7 @@
         '<div><div style="font-size:21px;font-weight:900;color:#fff;letter-spacing:-.5px;line-height:1.1">Meine Daten</div><div style="font-size:12.5px;font-weight:600;color:#aed0d6;margin-top:2px">Adresse &amp; Bankverbindung</div></div>'+
       '</div>'+
     '</div>';
-    return head+m+
+    return head+m+ernAboRow()+
     '<div class="gCols2">'+
     '<div class="card" style="background:var(--surface);border-radius:20px;box-shadow:0 12px 34px rgba(4,33,40,.10);padding:20px 22px">'+
       '<div style="font-size:17px;font-weight:900;color:var(--text);letter-spacing:-.3px">Adresse</div>'+
@@ -2618,6 +2621,14 @@
   function ernManageCard(){
     var CARD='background:#fff;border-radius:18px;padding:17px;box-shadow:0 8px 24px rgba(4,33,40,.08);margin-bottom:14px';
     var busy=S.ernDataBusy, dpc=ernPriceCopy(), n=DATA.nutri||{}, sub=DATA.ernSub;
+    // Vom Studio kostenlos freigeschaltet (Team-Grant) -> kein Zahl-/Kündigen-UI.
+    if(n.premiumComp){
+      var endTxt=n.premiumPermanent?'dauerhaft freigeschaltet':(n.premiumUntil?('freigeschaltet bis '+ernFmtDate(n.premiumUntil)):'freigeschaltet');
+      return '<div style="'+CARD+'">'+
+        '<div style="font-size:15px;font-weight:900;color:var(--text);display:flex;align-items:center;gap:8px">⭐ Premium · gratis</div>'+
+        '<div style="font-size:12.5px;font-weight:600;color:var(--text-muted);line-height:1.55;margin-top:8px">Dein Studio hat dir das Ernährungs-Premium <b>kostenlos</b> '+endTxt+'. Du musst nichts bezahlen und nichts kündigen – viel Erfolg! 💚</div>'+
+      '</div>';
+    }
     var trialing=ernTrialing();
     var cancelAt=(sub&&typeof sub.cancelAtPeriodEnd==='boolean')?sub.cancelAtPeriodEnd:!!n.premiumCancelAt;
     var periodEnd=(sub&&sub.currentPeriodEnd)||n.premiumUntil||0;
@@ -3453,6 +3464,29 @@
     var msg=S.ernMsg?'<div role="'+(S.ernErr?'alert':'status')+'" style="font-size:12.5px;font-weight:700;color:'+(S.ernErr?'var(--err-fg)':ERN_G)+';text-align:center;margin-top:4px;line-height:1.4">'+esc(S.ernMsg)+'</div>':'';
     return '<div style="padding:4px 2px 40px">'+head+aboSec+infoSec+exportSec+delDaySec+delAllSec+msg+'</div>';
   }
+  // ── „Mein Ernährungs-Abo" – eigener Konto-Screen (aus Profil/Meine Daten/Beitragskonto) ──
+  // Leichter Abo-Status für die Konto-Einstiege (zeigt die Zeile nur, wenn Premium).
+  function loadErnBilling(){
+    api('/api/member/nutrition-billing',{method:'POST',body:JSON.stringify({action:'status'})})
+    .then(function(d){ DATA.ernBilling=(d&&d.ok)?d:null; render(); }).catch(function(){ DATA.ernBilling=null; });
+  }
+  function ernAboRow(){
+    var eb=DATA.ernBilling; if(!(eb&&eb.premium)) return '';
+    var sub=eb.comp?'Vom Studio freigeschaltet':(eb.cancelAtPeriodEnd?'Gekündigt – läuft aus':(eb.trialing?'Gratis-Test aktiv':'Verwalten, Karte & Rechnungen'));
+    return '<button data-act="nav" data-arg="abo" style="width:100%;text-align:left;border:none;background:var(--surface);border-radius:16px;box-shadow:0 8px 24px rgba(4,33,40,.08);padding:15px 16px;margin-bottom:14px;cursor:pointer;display:flex;align-items:center;gap:13px">'+
+      '<div style="width:38px;height:38px;border-radius:11px;background:rgba(15,122,74,.10);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:18px">⭐</div>'+
+      '<div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:800;color:var(--text)">Mein Ernährungs-Abo</div><div style="font-size:12.5px;color:var(--text-soft);font-weight:600">'+esc(sub)+'</div></div>'+
+      svg('<path d="M9 18l6-6-6-6"></path>',{c:'var(--text-soft)',w:2.2,s:18})+'</button>';
+  }
+  function scrAbo(){
+    var back='<button data-act="nav" data-arg="profil" aria-label="Zurück" style="width:38px;height:38px;border-radius:12px;border:none;background:var(--surface);box-shadow:0 4px 12px rgba(4,33,40,.08);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'+svg(IC.back,{c:'#0a4958',w:2.2,s:19})+'</button>';
+    var head='<div style="display:flex;align-items:center;gap:12px;padding:2px 2px 14px">'+back+'<div style="flex:1"><div style="font-size:20px;font-weight:900;color:var(--text);letter-spacing:-.4px">Mein Ernährungs-Abo</div><div style="font-size:12px;font-weight:700;color:var(--text-soft)">Status, Zahlung &amp; Rechnungen</div></div></div>';
+    var body;
+    if(ernPremium()){ body=ernManageCard(); }
+    else { body='<div style="background:var(--surface);border-radius:18px;box-shadow:0 8px 24px rgba(4,33,40,.08);padding:18px;text-align:center"><div style="font-size:15px;font-weight:900;color:var(--text)">Kein aktives Abo</div><div style="font-size:12.5px;font-weight:600;color:var(--text-muted);line-height:1.5;margin:8px 0 14px">Du hast aktuell kein Ernährungs-Premium.</div>'+(ERN_ON?'<button data-act="nav" data-arg="ern" style="width:100%;padding:13px;border:none;border-radius:13px;background:'+ERN_G+';color:#fff;font-weight:900;font-size:14.5px;cursor:pointer">Zum Ernährungscoach</button>':'')+'</div>'; }
+    var msg=S.ernMsg?'<div role="'+(S.ernErr?'alert':'status')+'" style="font-size:12.5px;font-weight:700;color:'+(S.ernErr?'var(--err-fg)':ERN_G)+';text-align:center;margin-top:8px;line-height:1.4">'+esc(S.ernMsg)+'</div>':'';
+    return '<div style="padding:4px 2px 40px">'+head+body+msg+'</div>';
+  }
   // Grüner Kopf des Essen-Moduls (Datum + Titel + Rezepte-Kürzel + Streak).
   // Die Tab-Navigation läuft über das obere Segment (ernModuleSeg: Heute/Plan/Verlauf);
   // die untere Leiste ist die EINE globale App-Nav (Start·Coach·[+]·Essen·Profil).
@@ -4080,7 +4114,7 @@
       row('settings','Einstellungen','Benachrichtigungen, Datenschutz',IC.cog)+
     '</div>';
     var head='<div style="background:linear-gradient(165deg,#0e6072,#063540);border-radius:20px;box-shadow:0 12px 34px rgba(4,33,40,.18);padding:18px 20px;color:#fff;margin-bottom:16px"><div style="font-size:22px;font-weight:900;letter-spacing:-.4px">Profil</div><div style="font-size:13px;color:#aed0d6;font-weight:600;margin-top:1px">Mitgliedschaft verwalten</div></div>';
-    return head+hero+list+
+    return head+hero+'<div style="margin-top:16px">'+ernAboRow()+'</div>'+list+
       '<button data-act="logout" style="width:100%;margin-top:14px;border:1.5px solid var(--border);border-radius:14px;background:var(--surface);color:var(--err-fg);font-weight:800;font-size:15px;padding:14px;cursor:pointer">Abmelden</button>';
   }
   function scrAccount(){
@@ -4089,7 +4123,7 @@
     var gradHd='<div style="display:flex;align-items:center;gap:13px;background:linear-gradient(165deg,#0e6072,#063540);border-radius:20px;box-shadow:0 12px 34px rgba(4,33,40,.18);padding:16px 18px;color:#fff;margin-bottom:14px">'
       +'<button data-act="nav" data-arg="home" style="width:38px;height:38px;border-radius:12px;border:none;background:rgba(255,255,255,.13);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'+svg(IC.back,{c:'#fff',w:2.2,s:19})+'</button>'
       +'<div style="font-size:19px;font-weight:900;letter-spacing:-.4px;color:#fff">Beitragskonto</div></div>';
-    head+=gradHd;
+    head+=gradHd+ernAboRow();
     var a=DATA.account;
     if(a===null) return head+'<div style="background:var(--surface);border-radius:20px;box-shadow:0 12px 34px rgba(4,33,40,.10);padding:24px 20px;text-align:center;color:var(--text-soft);font-size:14px;font-weight:600">Lade Beitragskonto …</div>';
     if(!a.ok) return head+'<div style="background:var(--surface);border-radius:20px;box-shadow:0 12px 34px rgba(4,33,40,.10);padding:26px 22px;text-align:center"><div style="width:56px;height:56px;border-radius:50%;background:var(--surface-2);display:flex;align-items:center;justify-content:center;margin:0 auto 14px">'+svg(IC.warn,{c:'var(--text-soft)',w:2,s:26})+'</div><div style="font-size:16px;font-weight:800">Beitragskonto nicht verfügbar</div><div style="font-size:13.5px;color:var(--text-muted);margin-top:6px;line-height:1.5">Bitte später erneut versuchen oder im Studio nachfragen.</div></div>';
@@ -4670,7 +4704,7 @@
   // ---- responsive chrome (Desktop-Sidebar + Topbar) ----
   var DASH_IC='<rect x="3" y="3" width="7" height="9" rx="1.5"></rect><rect x="14" y="3" width="7" height="5" rx="1.5"></rect><rect x="14" y="12" width="7" height="9" rx="1.5"></rect><rect x="3" y="16" width="7" height="5" rx="1.5"></rect>';
   var NAVITEMS=[['home','Übersicht',DASH_IC],['card','Mitgliedskarte','<rect x="3" y="3" width="7" height="7" rx="1.4"></rect><rect x="14" y="3" width="7" height="7" rx="1.4"></rect><rect x="3" y="14" width="7" height="7" rx="1.4"></rect><path d="M14 14h3v3h-3z"></path><path d="M20 14v3M14 20h3M20 20v.01"></path>'],['fort','Fortschritt','<circle cx="12" cy="8" r="6"></circle><path d="M15.5 13.5L17 22l-5-3-5 3 1.5-8.5"></path>'],['ern','Ernährung','<path d="M11 21A7 7 0 0 1 4 14C4 8.5 8 4 13.5 4c2.7 0 4.6 1 6.5 1.8 0 8.7-4.3 15.2-9 15.2z"></path><path d="M11 21c0-5.5 3.3-10 7.5-12"></path>'],['insta','Instagram',IG_ICON],['data','Meine Daten',IC.user],['contract','Vertragsverwaltung',IC.doc],['account','Beitragskonto','<rect x="2" y="5" width="20" height="14" rx="2"></rect><path d="M2 9h20M6 15h5"></path>'],['appt','Termine',IC.cal],['referral','Freunde werben',IC.gift],['checkins','Check-ins',IC.list],['postfach','Postfach',IC.mail],['help','Hilfe',IC.help],['settings','Einstellungen',IC.cog]];
-  var TITLES={home:'Übersicht',data:'Meine Daten',contract:'Vertragsverwaltung',account:'Beitragskonto',appt:'Termine',checkin:'Check-in',referral:'Freunde werben',checkins:'Check-in-Verlauf',postfach:'Postfach',help:'Hilfe & Kontakt',settings:'Einstellungen',profil:'Profil',card:'Mitgliedskarte',fort:'Fortschritt',ern:'Ernährung',coach:'Coach',blog:'Blog',insta:'Instagram'};
+  var TITLES={home:'Übersicht',data:'Meine Daten',contract:'Vertragsverwaltung',account:'Beitragskonto',appt:'Termine',checkin:'Check-in',referral:'Freunde werben',checkins:'Check-in-Verlauf',postfach:'Postfach',help:'Hilfe & Kontakt',settings:'Einstellungen',profil:'Profil',card:'Mitgliedskarte',fort:'Fortschritt',ern:'Ernährung',coach:'Coach',abo:'Mein Abo',blog:'Blog',insta:'Instagram'};
   function initials(p){ p=p||{}; var a=(p.firstName||'').trim(),b=(p.lastName||'').trim(); return (((a?a[0]:'')+(b?b[0]:'')).toUpperCase())||'FT'; }
   // Profil-Kopf für Sidebar/Drawer
   function navProfile(){
@@ -4724,7 +4758,7 @@
       // Neue, einheitliche YAZIO-artige Nav: Start · Coach · (+) · Essen · Profil.
       // Postfach/Termine leben im Profil-Hub bzw. auf der Startseite; der Postfach-Punkt
       // wandert auf den Profil-Tab. „Essen" nur wenn ERN_ON, sonst Fallback „Termine".
-      var profScreens=['profil','data','contract','account','referral','fort','card','help','settings','checkins','postfach'];
+      var profScreens=['profil','data','contract','account','referral','fort','card','help','settings','checkins','postfach','abo'];
       var profActive = (profScreens.indexOf(sc)>=0) || (ERN_ON && sc==='appt');
       var ni=function(key,label,icon,active){ var col=active?'var(--teal-ink)':'var(--text-soft)';
         return '<button data-act="nav" data-arg="'+key+'" style="flex:1;background:none;border:none;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;padding:5px 0">'+svg(icon,{c:col,w:1.9,s:23})+'<span style="font-size:10.5px;font-weight:'+(active?'800':'600')+';color:'+col+'">'+label+'</span></button>'; };
@@ -4763,6 +4797,7 @@
       case 'fort': html=scrFort(); break;
       case 'ern': html=scrErn(); break;
       case 'coach': html=scrCoach(); break;
+      case 'abo': html=scrAbo(); break;
       case 'profil': html=scrProfil(); break;
       case 'blog': html=scrBlog(); break;
       case 'insta': html=scrInsta(); break;

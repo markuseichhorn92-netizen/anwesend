@@ -2,7 +2,9 @@
 
 Das Ernährungsmodul ist **Freemium**: Basis-Funktionen sind gratis, die teuren
 KI-Funktionen kosten **4,99 €/Monat** mit **7 Tagen Gratis-Test**. Abgerechnet
-wird über **Stripe** (Stripe-hosted Checkout — die App sieht **nie** Kartendaten).
+wird über **Stripe** — Kauf und Verwaltung laufen **in der App eingebettet**
+(Stripe Embedded Checkout / Payment Element in einem Sheet), die App sieht dabei
+**nie** Kartendaten. Angebotene Zahlungsarten steuerst du im **Stripe-Dashboard**.
 Verkauft wird nur an eingeloggte Fit-Inn-Mitglieder.
 
 > **Solange Stripe nicht eingerichtet ist, passiert nichts:** ohne
@@ -73,14 +75,27 @@ auch für Gratis-Nutzer.
 > verlieren). Die API-Version ist fest auf `2024-06-20` gepinnt
 > (`STRIPE_API_VERSION`), damit das Feld-Schema vorhersehbar bleibt.
 
-### 4. Billing-Portal aktivieren (nur noch Fallback)
+### 4. Zahlungsarten aktivieren (alle gewünschten Methoden)
+- **Einstellungen → Zahlungen → Zahlungsmethoden**: hier alle Methoden
+  einschalten, die du anbieten willst (Karte ist Standard; zusätzlich z. B.
+  **SEPA-Lastschrift**, **Apple Pay**, **Google Pay**, ggf. weitere).
+- Der Code gibt **keine** feste Methodenliste vor: sowohl der **Kauf**
+  (Embedded Checkout) als auch das **Karte-ändern**-Feld (Payment Element,
+  `automatic_payment_methods`) zeigen **automatisch** genau die Methoden, die im
+  Dashboard aktiv **und** für ein wiederkehrendes Abo geeignet sind. Du steuerst
+  das Angebot also komplett über das Dashboard – ohne Redeploy.
+- Hinweis: Für ein **Abo** erscheinen nur recurring-fähige Methoden. Apple/Google
+  Pay laufen über Karte und tauchen automatisch auf passenden Geräten auf.
+
+### 5. Billing-Portal aktivieren (nur noch Fallback)
 - **Einstellungen → Billing → Kundenportal**: aktivieren und erlauben, dass
   Kunden das Abo **kündigen** und Zahlungsdaten ändern können.
-- **Neu:** Kaufen, Kündigen/Reaktivieren, **Karte ändern** und **Rechnungen** laufen
-  jetzt **direkt in der App** (Stripe Embedded Checkout + Payment Element). Das
-  Hosted-Portal ist nur noch ein dezenter **Fallback-Link** – trotzdem aktiviert lassen.
+- **Neu:** Kaufen, Kündigen/Reaktivieren, **Karte/Zahlungsart ändern** und
+  **Rechnungen** laufen jetzt **direkt in der App** (Stripe Embedded Checkout +
+  Payment Element). Das Hosted-Portal ist nur noch ein dezenter **Fallback-Link**
+  – trotzdem aktiviert lassen.
 
-### 5. Environment-Variablen setzen (Vercel)
+### 6. Environment-Variablen setzen (Vercel)
 In Vercel → Project → **Settings → Environment Variables** (siehe auch
 `.env.example`):
 
@@ -122,6 +137,9 @@ Technik ist fertig — das hier ist die reine Konfig-/Betriebs-Abfolge:
       registriert mit **6 Events** (checkout.session.completed,
       customer.subscription.created/updated/deleted, **invoice.paid**,
       invoice.payment_failed) → `STRIPE_WEBHOOK_SECRET` (`whsec_…`) notiert.
+- [ ] **Zahlungsmethoden** in Stripe aktiviert (Einstellungen → Zahlungen →
+      Zahlungsmethoden): Karte + gewünschte Extras (SEPA, Apple/Google Pay …).
+      Erscheinen ohne Redeploy automatisch in Kauf **und** Karte-ändern.
 - [ ] **Kundenportal** in Stripe aktiviert (Kündigen + Zahlungsdaten ändern).
 - [ ] **Upstash/KV** in der Produktion vorhanden (Entitlement-Store) — geprüft.
 - [ ] Die **5 Env-Vars** in Vercel (Production) gesetzt (Tabelle oben) und
@@ -150,10 +168,13 @@ Technik ist fertig — das hier ist die reine Konfig-/Betriebs-Abfolge:
       simulieren → `invoice.paid` → Status bleibt/`active`, `until` verlängert.
       Zahlung fehlschlagen lassen → `invoice.payment_failed` → `past_due`; danach
       erfolgreiche Zahlung → wieder `active`.
-- [ ] **In-App-Verwaltung:** „Meine Daten → Premium" zeigt Status, nächste
-      Abbuchung, **Karte** (Marke + letzte 4) und die **Rechnungen**. **Kündigen**
-      (zum Periodenende) → `cancel_at_period_end=true`; **Reaktivieren** hebt es auf;
-      **Karte ändern** (Payment Element) speichert eine neue Standard-Zahlungsmethode.
+- [ ] **In-App-Verwaltung:** der Abo-Bereich „Mein Ernährungs-Abo" ist aus dem
+      **Profil-Hub**, aus **„Meine Daten"** und aus dem **Beitragskonto** je über
+      eine Karte erreichbar (erscheint nur, wenn Premium aktiv). Er zeigt Status,
+      nächste Abbuchung, **Karte/Zahlungsart** (Marke + letzte 4) und die
+      **Rechnungen**. **Kündigen** (zum Periodenende) → `cancel_at_period_end=true`;
+      **Reaktivieren** hebt es auf; **Zahlungsart ändern** (Payment Element)
+      speichert eine neue Standard-Zahlungsmethode (alle im Dashboard aktiven).
 - [ ] **Kündigen/Ablauf:** nach Kündigung läuft es zum Periodenende aus →
       `customer.subscription.deleted` → Entzug. Der Hosted-Portal-Link bleibt als Fallback.
 - [ ] **Webhook-Log grün:** **Entwickler → Webhooks → Endpunkt → „Letzte
@@ -164,8 +185,13 @@ Automatisierte Prüfungen liegen unter `scratchpad/` (Entwicklung):
 `stripe-webhook.test.js` (echter Webhook: Signatur, Idempotenz, item-level
 Periodenende, invoice.paid→active, Kündigung, past_due, Store-Fehler→500),
 `stripe-billing.test.js` (lib/stripe-Helfer: Embedded-Checkout, Kündigen/Reaktivieren,
-SetupIntent, Standard-Zahlungsmethode, Rechnungen), `ern-embedded.pw.js` (In-App-Kauf-
-Sheet ohne Seitenwechsel + In-App-Verwaltung) und `ern-billing.pw.js` (dynamischer Preis).
+SetupIntent mit `automatic_payment_methods`, Standard-Zahlungsmethode, Rechnungen),
+`team-preview.test.js` (Team-Endpoint: grant mit `days`/`permanent`, revoke, echtes
+Abo geschützt, `sub-cancel`/`sub-reactivate` ruft Stripe, GET-Mapping),
+`ern-embedded.pw.js` (In-App-Kauf-Sheet ohne Seitenwechsel, In-App-Verwaltung,
+**Comp-Fall** „vom Studio freigeschaltet", Erreichbarkeit via `nav abo`),
+`team-preview.pw.js` (Team-UI: Zeitraum-/Dauerhaft-Grant + Beenden) und
+`ern-billing.pw.js` (dynamischer Preis).
 
 Der Test-Zugang der App (Modul versteckt) funktioniert unabhängig: In der App
 7× auf das Datum tippen (setzt `localStorage.fi_ern_test`). Das entsperrt nur
@@ -184,8 +210,10 @@ die **Sichtbarkeit** des Moduls, nicht Premium — Premium hängt allein am Abo.
   ein Sheet – kein Seitenwechsel. Der öffentliche `pk_…` kommt über `premiumInfo.pk`.
 - `lib/entitlements.js` — liest/schreibt `nutri:prem:<memberId>` in Upstash;
   `isPremium()` = `tier=premium` UND Status `active`/`trialing` UND Periode nicht abgelaufen.
-- `api/member/nutrition-billing.js` — `POST {action:'checkout'|'portal'|'status'}`
-  (Bearer-Auth). Legt Checkout-/Portal-Sessions an, gibt eine `url` zurück.
+- `api/member/nutrition-billing.js` — `POST {action:…}` (Bearer-Auth):
+  `checkout` (Redirect **oder** Embedded), `portal`, `status`, `sub-info`,
+  `cancel`/`reactivate`, `setup-intent` + `set-default-pm` (Zahlungsart ändern),
+  `invoices`. Betrifft **immer nur das eigene** Abo des eingeloggten Mitglieds.
 - `api/webhooks/stripe.js` — empfängt die Stripe-Events und setzt/entzieht das
   Entitlement. **Idempotent** (jede `event.id` nur einmal, 72 h), robustes
   Periodenende (`until` auch aus item-level `current_period_end`, nie unbegrenzt),
@@ -201,22 +229,37 @@ die **Sichtbarkeit** des Moduls, nicht Premium — Premium hängt allein am Abo.
 
 ---
 
-## Premium-Vorschau ohne Stripe (Team-Backend)
+## Gratis-/Test-Zugang & Abo-Verwaltung im Team-Backend
 
-Zum Prüfen der kostenpflichtigen Inhalte – oder um einem Mitglied kulanzweise
-freizuschalten – kann ein **Admin** im Team-Backend (Mitglieds-Profil → Karte
-„🔓 Ernährungs-Premium (Vorschau)") mit einem Klick Premium aktivieren, **ohne
-echtes Abo**.
+Ein **Admin** verwaltet das Ernährungs-Premium pro Mitglied direkt im Profil
+(Karte „🔓 Ernährungs-Premium"). Endpunkt: `api/team/nutrition-preview.js`
+(nur Admin). Drei Situationen:
 
-- Endpunkt `api/team/nutrition-preview.js` (`POST {id, action:'grant'|'revoke'}`,
-  nur Admin) schreibt ein ganz normales Entitlement `nutri:prem:<id>`, nur markiert
-  mit **`source:'team_preview'`** und auf **180 Tage** befristet (`until`). Dadurch
-  greifen **alle bestehenden Gates automatisch** – kein Sondercode im Gate nötig.
-- **Ein echtes Stripe-Abo wird nie angetastet:** `revoke` löscht nur `team_preview`-
-  Einträge (sonst `409`); `grant` auf ein aktives echtes Abo lehnt ab (`409`).
-- Beim echten Launch ist die Vorschau **bedeutungslos**: der Stripe-Webhook
-  überschreibt den Eintrag mit den echten Abo-Daten, und die 180-Tage-Frist läuft
-  ohnehin von selbst aus. Zum Beenden genügt „Vorschau beenden" im Team-Backend.
+**1. Kein Premium → Gratis-/Test-Zugang vergeben.** Buttons für **7 / 14 / 30 /
+90 Tage** oder **„Dauerhaft gratis"**.
+- `POST {id, action:'grant', days:<n>}` schreibt ein normales Entitlement
+  `nutri:prem:<id>`, markiert mit **`source:'team_preview'`**, befristet auf `days`
+  (Default 30, Cap 3650). `POST {id, action:'grant', permanent:true}` setzt
+  `until:null` → **dauerhaft** gratis (läuft nie ab).
+- Dadurch greifen **alle bestehenden Premium-Gates automatisch** – kein Sondercode.
+- Im Mitglieder-Screen sieht das Mitglied **„Premium · gratis"** ohne jede Zahl-/
+  Kündigen-UI (die App liefert dazu `premiumComp`/`premiumPermanent`).
+
+**2. Aktiver Gratis-Zugang → beenden.** `POST {id, action:'revoke'}` löscht **nur**
+`team_preview`-Einträge. Ein echtes Abo wird nie gelöscht (sonst `409 not_a_preview`).
+
+**3. Echtes (zahlendes) Stripe-Abo → für das Mitglied verwalten.** Die Karte zeigt
+„Echtes Premium-Abo aktiv (Stripe)" mit **„Abo kündigen (zum Periodenende)"** bzw.
+**„Kündigung zurücknehmen"**.
+- `POST {id, action:'sub-cancel'|'sub-reactivate'}` ruft
+  `Stripe.cancelSubscription(subId, true/false)` und spiegelt `cancelAtPeriodEnd`
+  ins Entitlement. Nur bei echtem Abo möglich (sonst `409 no_real_subscription`);
+  scheitert Stripe, kommt `stripe_failed` und der Status bleibt unverändert.
+- `grant` auf ein aktives echtes Abo wird abgelehnt (`409 has_real_subscription`) –
+  ein Gratis-Zugang ist da überflüssig.
+
+Beim echten Launch überschreibt der Stripe-Webhook einen `team_preview`-Eintrag
+ohnehin mit den echten Abo-Daten; befristete Gratis-Zugänge laufen von selbst aus.
 
 ---
 

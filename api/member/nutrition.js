@@ -242,6 +242,7 @@ async function buildState(id, profile, forDate) {
     fasting: fasting,
     premium: tier.premium, tier: tier.tier, trialing: tier.trialing, premiumUntil: tier.until,
     premiumCancelAt: tier.cancelAtPeriodEnd || false,
+    premiumComp: tier.comp || false, premiumPermanent: tier.permanent || false,
     premiumInfo: { price: priceInfo, trialDays: Stripe.TRIAL_DAYS, pk: Stripe.PUBLISHABLE || '' },
   };
 }
