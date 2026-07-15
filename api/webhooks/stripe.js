@@ -66,6 +66,7 @@ async function applySubscription(memberId, sub) {
     tier: 'premium',
     status: String(sub.status || ''),
     until: until,
+    cancelAtPeriodEnd: !!sub.cancel_at_period_end,
     since: (prev && prev.since) || Date.now(),
     stripeCustomerId: sub.customer || (prev && prev.stripeCustomerId) || null,
     stripeSubId: sub.id || (prev && prev.stripeSubId) || null,

@@ -323,6 +323,9 @@
     </div>
   </div>
   <div id="rcContainer"></div>
+  <!-- Persistenter Layer für Stripe-Sheets (Embedded Checkout / Payment Element).
+       Liegt AUSSERHALB von #app, damit render() den Stripe-Iframe nie abreißt. -->
+  <div id="ern_pay_layer" style="display:none"></div>
 </div>
 
 <script>
@@ -2510,6 +2513,140 @@
     var pc=ernPriceCopy(); var sub='Foto-Analyse, FINN-Coach, Wochenpläne &amp; KI-Rezepte.'+(pc.trialText?(' '+pc.trialText+'.'):'');
     return '<button data-act="ernUpgradeOpen" aria-label="Ernährung Premium'+(pc.trialText?(' – '+pc.trialText+' testen'):'')+'" style="width:100%;text-align:left;border:none;cursor:pointer;background:linear-gradient(150deg,#12a06a,#0a5a37);border-radius:18px;padding:16px;margin-bottom:14px;box-shadow:0 12px 30px rgba(4,33,40,.18);font-family:inherit;display:flex;align-items:center;gap:13px"><span style="width:46px;height:46px;border-radius:14px;background:rgba(255,255,255,.16);display:flex;align-items:center;justify-content:center;font-size:23px;flex-shrink:0">✨</span><div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:900;color:#fff">Ernährung Premium</div><div style="font-size:12.5px;font-weight:600;color:#d4f0e2;margin-top:2px;line-height:1.35">'+sub+'</div></div>'+svg('<path d="M9 6l6 6-6 6"></path>',{c:'rgba(255,255,255,.75)',w:2.2,s:20})+'</button>';
   }
+  // ═══ Stripe.js (nur bei Bedarf laden) – für Embedded Checkout & Payment Element ═══
+  var __stripeJs=null, __stripeInst=null, __ernCheckout=null, __ernPmEl=null, __ernPmStripe=null;
+  function ernPk(){ return (DATA.nutri&&DATA.nutri.premiumInfo&&DATA.nutri.premiumInfo.pk)||''; }
+  function ernStripeLoad(){
+    if(__stripeJs) return __stripeJs;
+    __stripeJs=new Promise(function(resolve,reject){
+      if(window.Stripe){ resolve(window.Stripe); return; }
+      var add=function(src,onFail){ var s=document.createElement('script'); s.src=src; s.async=true; s.onload=function(){ window.Stripe?resolve(window.Stripe):onFail(); }; s.onerror=onFail; document.head.appendChild(s); };
+      add('https://js.stripe.com/basil/stripe.js', function(){ add('https://js.stripe.com/v3/', function(){ reject(new Error('stripe_load_failed')); }); });
+    });
+    return __stripeJs;
+  }
+  function ernStripe(){ var pk=ernPk(); if(!pk) return Promise.reject(new Error('no_pk')); return ernStripeLoad().then(function(St){ if(!__stripeInst) __stripeInst=St(pk); return __stripeInst; }); }
+  // Persistenter Sheet-Layer außerhalb von #app (render() fasst ihn nie an).
+  function ernPayLayer(){ return document.getElementById('ern_pay_layer'); }
+  function ernPaySheet(inner, title){
+    return '<div class="ernCapScrim" data-act="ernPayClose"></div>'+
+      '<div class="ernCapSheet" role="dialog" aria-modal="true"><div class="ernCapGrip"></div>'+
+      '<div style="display:flex;align-items:center;gap:10px;padding:2px 18px 10px"><div style="flex:1;font-size:17px;font-weight:900;color:#15171B">'+esc(title)+'</div>'+
+      '<button data-act="ernPayClose" aria-label="Schließen" style="width:34px;height:34px;border-radius:11px;border:none;background:#e3e9ea;color:#5a666c;cursor:pointer;font-size:20px;line-height:1">×</button></div>'+
+      '<div style="flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:0 18px 8px">'+inner+'</div></div>';
+  }
+  function ernPayClose(){
+    if(__ernCheckout){ try{ __ernCheckout.destroy(); }catch(e){} __ernCheckout=null; }
+    __ernPmEl=null; __ernPmStripe=null;
+    var lay=ernPayLayer(); if(lay){ lay.style.display='none'; lay.innerHTML=''; }
+  }
+  // ── Embedded Checkout (Kauf im Sheet, kein Seitenwechsel) ──
+  function ernCoStart(){
+    if(S.ernUpgradeBusy) return; S.ernUpgradeBusy=true; S.ernErr=false; S.ernMsg=''; render();
+    api('/api/member/nutrition-billing',{method:'POST',body:JSON.stringify({action:'checkout',embedded:true})})
+    .then(function(d){ S.ernUpgradeBusy=false;
+      if(d&&d.error==='already_premium'){ S.ernUpgrade=false; S.ernMsg='Du hast Premium bereits aktiv. 🎉'; S.ernErr=false; loadNutri(); render(); return; }
+      if(!(d&&d.ok&&d.clientSecret)){ S.ernErr=true; S.ernMsg=(d&&d.message)||'Konnte nicht starten – bitte später erneut.'; render(); return; }
+      var lay=ernPayLayer(); if(!lay){ S.ernErr=true; render(); return; }
+      lay.style.display='block';
+      lay.innerHTML=ernPaySheet('<div id="ern_co_mount" style="min-height:360px"></div><div id="ern_pay_err" role="alert" style="font-size:12.5px;font-weight:700;color:#c0392b;text-align:center;margin-top:10px"></div>','Premium – sicher bezahlen');
+      ernStripe().then(function(stripe){ return stripe.initEmbeddedCheckout({ clientSecret:d.clientSecret, onComplete:function(){ ernCoComplete(); } }); })
+      .then(function(checkout){ __ernCheckout=checkout; checkout.mount('#ern_co_mount'); })
+      .catch(function(){ var er=document.getElementById('ern_pay_err'); if(er) er.textContent='Bezahlfeld konnte nicht geladen werden. Bitte später erneut.'; });
+      render();
+    }).catch(function(){ S.ernUpgradeBusy=false; S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); });
+  }
+  function ernCoComplete(){
+    ernPayClose(); S.ernUpgrade=false;
+    // Premium wird serverseitig per Webhook gesetzt -> kurz pollen (wie ernPremiumReturn).
+    S.ernMsg='Premium wird aktiviert …'; S.ernErr=false; render();
+    var tries=0;
+    var poll=function(){ tries++; try{ loadNutri(); }catch(e){}
+      setTimeout(function(){
+        if(DATA.nutri&&DATA.nutri.premium){ S.ernMsg='Premium aktiviert – viel Erfolg! 🎉'; S.ernErr=false; render(); return; }
+        if(tries>=6){ S.ernMsg='Fast geschafft – die Freischaltung kann einen kurzen Moment dauern.'; S.ernErr=false; render(); return; }
+        poll();
+      },1500);
+    };
+    poll();
+  }
+  // ── In-App-Abo-Verwaltung: Live-Status, Kündigen/Reaktivieren, Karte, Rechnungen ──
+  function ernFmtDate(ms){ try{ var d=new Date(ms); return ('0'+d.getDate()).slice(-2)+'.'+('0'+(d.getMonth()+1)).slice(-2)+'.'+d.getFullYear(); }catch(e){ return ''; } }
+  function loadSubInfo(){ if(!ernPremium()) return;
+    api('/api/member/nutrition-billing',{method:'POST',body:JSON.stringify({action:'sub-info'})})
+    .then(function(d){ DATA.ernSub=(d&&d.ok)?(d.subscription||{}):null; if(S.ernData) render(); }).catch(function(){ DATA.ernSub=null; }); }
+  function loadErnInvoices(){ if(!ernPremium()) return;
+    api('/api/member/nutrition-billing',{method:'POST',body:JSON.stringify({action:'invoices'})})
+    .then(function(d){ DATA.ernInvoices=(d&&d.ok&&Array.isArray(d.invoices))?d.invoices:[]; if(S.ernData) render(); }).catch(function(){ DATA.ernInvoices=[]; }); }
+  function ernSubToggle(action){
+    S.ernDataBusy=true; S.ernErr=false; S.ernMsg=''; render();
+    api('/api/member/nutrition-billing',{method:'POST',body:JSON.stringify({action:action})})
+    .then(function(d){ S.ernDataBusy=false;
+      if(d&&d.ok){ S.ernMsg=(action==='cancel')?'Gekündigt – dein Zugang bleibt bis zum Periodenende.':'Willkommen zurück – deine Kündigung ist zurückgenommen. 🎉'; S.ernErr=false; loadSubInfo(); loadNutri(); }
+      else { S.ernErr=true; S.ernMsg=(d&&d.message)||'Konnte nicht ausgeführt werden – bitte später erneut.'; }
+      render();
+    }).catch(function(){ S.ernDataBusy=false; S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); });
+  }
+  // Karten-Wechsel im Sheet (Payment Element via SetupIntent).
+  function ernPmStart(){
+    var lay=ernPayLayer(); if(!lay) return;
+    S.ernDataBusy=true; render();
+    api('/api/member/nutrition-billing',{method:'POST',body:JSON.stringify({action:'setup-intent'})})
+    .then(function(d){ S.ernDataBusy=false; render();
+      if(!(d&&d.ok&&d.clientSecret)){ S.ernErr=true; S.ernMsg=(d&&d.message)||'Karten-Änderung nicht möglich.'; render(); return; }
+      lay.style.display='block';
+      lay.innerHTML=ernPaySheet('<div id="ern_pm_mount" style="min-height:120px"></div><div id="ern_pay_err" role="alert" style="font-size:12.5px;font-weight:700;color:#c0392b;text-align:center;margin-top:10px"></div><button data-act="ernPmSubmit" id="ern_pm_submit" style="width:100%;margin-top:14px;padding:15px;border:none;border-radius:14px;background:'+ERN_G+';color:#fff;font-weight:900;font-size:15px;cursor:pointer">Karte speichern</button>','Zahlungsart ändern');
+      ernStripe().then(function(stripe){ __ernPmStripe=stripe; var elements=stripe.elements({clientSecret:d.clientSecret}); __ernPmEl=elements; elements.create('payment').mount('#ern_pm_mount'); })
+      .catch(function(){ var er=document.getElementById('ern_pay_err'); if(er) er.textContent='Bezahlfeld konnte nicht geladen werden. Bitte später erneut.'; });
+    }).catch(function(){ S.ernDataBusy=false; S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); });
+  }
+  function ernPmSubmit(){
+    if(!__ernPmStripe||!__ernPmEl) return;
+    var btn=document.getElementById('ern_pm_submit'); var er=document.getElementById('ern_pay_err');
+    if(btn){ btn.disabled=true; btn.textContent='Speichere …'; } if(er) er.textContent='';
+    __ernPmStripe.confirmSetup({ elements:__ernPmEl, redirect:'if_required' }).then(function(res){
+      if(res&&res.error){ if(er) er.textContent=res.error.message||'Karte konnte nicht gespeichert werden.'; if(btn){ btn.disabled=false; btn.textContent='Karte speichern'; } return; }
+      var pmId=(res&&res.setupIntent&&res.setupIntent.payment_method)||'';
+      api('/api/member/nutrition-billing',{method:'POST',body:JSON.stringify({action:'set-default-pm',paymentMethodId:pmId})})
+      .then(function(d){ ernPayClose(); if(d&&d.ok){ S.ernMsg='Zahlungsart aktualisiert. ✓'; S.ernErr=false; } else { S.ernErr=true; S.ernMsg=(d&&d.message)||'Karte konnte nicht gesetzt werden.'; } loadSubInfo(); render(); })
+      .catch(function(){ ernPayClose(); S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); });
+    }).catch(function(){ if(er) er.textContent='Karte konnte nicht gespeichert werden.'; if(btn){ btn.disabled=false; btn.textContent='Karte speichern'; } });
+  }
+  // Verwaltungs-Karte (ersetzt den früheren „Portal öffnen"-Block).
+  function ernManageCard(){
+    var CARD='background:#fff;border-radius:18px;padding:17px;box-shadow:0 8px 24px rgba(4,33,40,.08);margin-bottom:14px';
+    var busy=S.ernDataBusy, dpc=ernPriceCopy(), n=DATA.nutri||{}, sub=DATA.ernSub;
+    var trialing=ernTrialing();
+    var cancelAt=(sub&&typeof sub.cancelAtPeriodEnd==='boolean')?sub.cancelAtPeriodEnd:!!n.premiumCancelAt;
+    var periodEnd=(sub&&sub.currentPeriodEnd)||n.premiumUntil||0;
+    var endLbl=periodEnd?ernFmtDate(periodEnd):'';
+    var statusLine;
+    if(cancelAt){ statusLine='Gekündigt – dein Zugang bleibt bis '+esc(endLbl)+'. Danach endet Premium automatisch.'; }
+    else if(trialing){ var pd=n.premiumUntil?Math.max(0,Math.ceil((n.premiumUntil-Date.now())/86400000)):0; statusLine='Gratis-Test'+(pd?(' – noch '+pd+' Tag'+(pd===1?'':'e')):'')+', danach '+esc(dpc.pricePer)+(endLbl?(' (erste Abbuchung '+esc(endLbl)+')'):'')+'.'; }
+    else { statusLine='Premium aktiv – '+esc(dpc.pricePer)+(endLbl?('. Nächste Abbuchung am '+esc(endLbl)):'')+'.'; }
+    var card=sub&&sub.card;
+    var cardLine=card?((card.brand?(card.brand.charAt(0).toUpperCase()+card.brand.slice(1)):'Karte')+' •••• '+esc(String(card.last4||''))+' · gültig bis '+('0'+(card.expMonth||'')).slice(-2)+'/'+String(card.expYear||'').slice(-2)):(DATA.ernSub===undefined?'Zahlungsart wird geladen …':'Keine Karte hinterlegt');
+    var cancelBtn=cancelAt
+      ? '<button data-act="ernReactivateSub" '+(busy?'disabled ':'')+'style="flex:1;padding:12px;border:none;border-radius:12px;background:'+ERN_G+';color:#fff;font-weight:800;font-size:14px;cursor:pointer">Kündigung zurücknehmen</button>'
+      : '<button data-act="ernCancelSub" '+(busy?'disabled ':'')+'style="flex:1;padding:12px;border:1.5px solid rgba(192,57,43,.3);border-radius:12px;background:#fff;color:var(--err-fg);font-weight:800;font-size:14px;cursor:pointer">Kündigen</button>';
+    var cardBtn='<button data-act="ernCardChange" '+(busy?'disabled ':'')+'style="flex:1;padding:12px;border:1.5px solid rgba(10,73,88,.25);border-radius:12px;background:#fff;color:#0a4958;font-weight:800;font-size:14px;cursor:pointer">Karte ändern</button>';
+    var invs=DATA.ernInvoices, invHtml='';
+    if(Array.isArray(invs)&&invs.length){
+      invHtml='<div style="margin-top:14px;border-top:1px solid #eef2f3;padding-top:12px"><div style="font-size:11px;font-weight:900;color:var(--text-soft);text-transform:uppercase;letter-spacing:.3px;margin-bottom:6px">Rechnungen</div>'+
+        invs.slice(0,6).map(function(iv){ var dt=iv.date?ernFmtDate(iv.date):''; var amt=((iv.amount||0)/100).toFixed(2).replace('.',',')+' '+(iv.currency==='EUR'?'€':esc(iv.currency||'')); var link=iv.pdf||iv.hostedUrl;
+          return '<div style="display:flex;align-items:center;gap:10px;padding:6px 0;font-size:13px"><span style="flex:1;color:var(--text-2);font-weight:600">'+esc(dt)+'</span><span style="font-weight:800;color:var(--text)">'+amt+'</span>'+(link?('<a href="'+esc(link)+'" target="_blank" rel="noopener" style="color:'+ERN_G+';font-weight:800;text-decoration:none">PDF</a>'):'')+'</div>';
+        }).join('')+'</div>';
+    }
+    var badge=cancelAt?' · gekündigt':(trialing?' · Test':' · aktiv');
+    return '<div style="'+CARD+'">'+
+      '<div style="font-size:15px;font-weight:900;color:var(--text);display:flex;align-items:center;gap:8px">⭐ Premium'+badge+'</div>'+
+      '<div style="font-size:12.5px;font-weight:600;color:var(--text-muted);line-height:1.55;margin:8px 0 12px">'+statusLine+'</div>'+
+      '<div style="font-size:12.5px;font-weight:700;color:var(--text-2);margin-bottom:12px">💳 '+cardLine+'</div>'+
+      '<div style="display:flex;gap:8px">'+cancelBtn+cardBtn+'</div>'+
+      invHtml+
+      '<button data-act="ernPortal" '+(busy?'disabled ':'')+'style="width:100%;margin-top:12px;padding:9px;border:none;background:transparent;color:var(--text-soft);font-weight:700;font-size:12px;cursor:pointer;text-decoration:underline">Im Stripe-Portal verwalten</button>'+
+    '</div>';
+  }
   // Vor einer KI-Aktion: kein Premium -> Upgrade-Screen zeigen und Aktion abbrechen (true).
   function ernNeedPremium(){ if(ernPremium()) return false; setS({ernUpgrade:true}); try{ window.scrollTo(0,0); }catch(e){} return true; }
   var ERN_PREMIUM_FEATURES=[
@@ -3293,9 +3430,7 @@
     var pu=DATA.nutri&&DATA.nutri.premiumUntil; var pdays=pu?Math.max(0,Math.ceil((pu-Date.now())/86400000)):0;
     var dpc=ernPriceCopy();
     var aboSec=ernPremium()
-      ? '<div style="'+CARD+'"><div style="font-size:15px;font-weight:900;color:var(--text);display:flex;align-items:center;gap:8px">⭐ Premium</div>'+
-          '<div style="font-size:12.5px;font-weight:600;color:var(--text-muted);line-height:1.55;margin:8px 0 12px">'+(ernTrialing()?('Dein Gratis-Test läuft'+(pdays?(' – noch '+pdays+' Tag'+(pdays===1?'':'e')):'')+', danach '+esc(dpc.pricePer)+'.'):('Premium ist aktiv ('+esc(dpc.pricePer)+').'))+' Kündigen oder Zahlungsdaten ändern kannst du jederzeit im Stripe-Portal.</div>'+
-          '<button data-act="ernPortal" '+(busy?'disabled ':'')+'style="width:100%;padding:14px;border:1.5px solid rgba(10,73,88,.25);border-radius:14px;background:#fff;color:#0a4958;font-weight:800;font-size:14.5px;cursor:pointer;opacity:'+(busy?'.6':'1')+'">'+(busy?'Öffne …':'Abo verwalten / kündigen')+'</button></div>'
+      ? ernManageCard()
       : '<div style="'+CARD+'"><div style="font-size:15px;font-weight:900;color:var(--text)">Premium</div><div style="font-size:12.5px;font-weight:600;color:var(--text-muted);line-height:1.55;margin:8px 0 12px">KI-Funktionen (Foto-Analyse, FINN-Coach, Wochenpläne, KI-Rezepte) sind Premium. Basis bleibt gratis.</div><button data-act="ernUpgradeOpen" style="width:100%;padding:14px;border:none;border-radius:14px;background:'+ERN_G+';color:#fff;font-weight:900;font-size:14.5px;cursor:pointer">'+(dpc.trialText?(dpc.trialText+' testen'):'Premium holen')+'</button></div>';
     var infoSec='<div style="'+CARD+'"><div style="font-size:15px;font-weight:900;color:var(--text);display:flex;align-items:center;gap:8px">'+svg('<circle cx="12" cy="12" r="10"></circle><path d="M12 16v-4M12 8h.01"></path>',{c:'#0a4958',w:2,s:19})+'Was wir speichern</div>'+
       '<div style="font-size:12.5px;font-weight:500;color:var(--text-muted);line-height:1.6;margin-top:10px">Im Ernährungsmodul liegen: dein <b>Profil</b> (Ziel, Körperdaten, Aktivität, Ernährungsform), deine <b>protokollierten Mahlzeiten &amp; Wasser</b> pro Tag, deine <b>Favoriten</b>, <b>Wochenpläne</b>, <b>gespeicherte Rezepte</b> und dein <b>Fasten-Status</b>. Alles ist ausschließlich deinem Konto zugeordnet.</div>'+
@@ -4943,15 +5078,24 @@
     // ── Premium (Freemium/Stripe) ──
     ernUpgradeOpen:function(){ setS({ernUpgrade:true, ernMsg:'', ernErr:false}); },
     ernUpgradeClose:function(){ setS({ernUpgrade:false, ernMsg:'', ernErr:false}); },
-    ernUpgradeGo:function(){ if(S.ernUpgradeBusy) return; S.ernUpgradeBusy=true; S.ernErr=false; S.ernMsg=''; render();
+    ernUpgradeGo:function(){
+      // Bevorzugt Embedded Checkout im Sheet (kein Seitenwechsel). Ohne veröffentlichten
+      // Key (pk) Fallback auf den bisherigen Redirect-Checkout.
+      if(ernPk()){ ernCoStart(); return; }
+      if(S.ernUpgradeBusy) return; S.ernUpgradeBusy=true; S.ernErr=false; S.ernMsg=''; render();
       api('/api/member/nutrition-billing',{method:'POST',body:JSON.stringify({action:'checkout'})})
       .then(function(d){ if(d&&d.ok&&d.url){ window.location.href=d.url; return; }
         S.ernUpgradeBusy=false; if(d&&d.error==='already_premium'){ S.ernUpgrade=false; S.ernMsg='Du hast Premium bereits aktiv. 🎉'; S.ernErr=false; loadNutri(); } else { S.ernErr=true; S.ernMsg=(d&&d.message)||'Konnte nicht starten – bitte später erneut.'; } render(); })
       .catch(function(){ S.ernUpgradeBusy=false; S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); }); },
+    ernPayClose:function(){ ernPayClose(); },
     ernPortal:function(){ if(S.ernDataBusy) return; S.ernDataBusy=true; render();
       api('/api/member/nutrition-billing',{method:'POST',body:JSON.stringify({action:'portal'})})
       .then(function(d){ if(d&&d.ok&&d.url){ window.location.href=d.url; return; } S.ernDataBusy=false; S.ernErr=true; S.ernMsg=(d&&d.message)||'Abo-Verwaltung nicht möglich.'; render(); })
       .catch(function(){ S.ernDataBusy=false; S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); }); },
+    ernCancelSub:function(){ if(S.ernDataBusy) return; var sub=DATA.ernSub; var pe=(sub&&sub.currentPeriodEnd)||(DATA.nutri&&DATA.nutri.premiumUntil)||0; var end=pe?(' zum '+ernFmtDate(pe)):''; if(!window.confirm('Premium'+end+' kündigen? Dein Zugang bleibt bis dahin aktiv.')) return; ernSubToggle('cancel'); },
+    ernReactivateSub:function(){ if(S.ernDataBusy) return; ernSubToggle('reactivate'); },
+    ernCardChange:function(){ if(S.ernDataBusy) return; ernPmStart(); },
+    ernPmSubmit:function(){ ernPmSubmit(); },
     // ── Coaching-Programm (8-Wochen-Reise) ──
     ernEnroll:function(){ if(S.ernEnrollBusy) return; S.ernEnrollBusy=true; S.ernErr=false; S.ernMsg=''; render();
       api('/api/member/nutrition-coach',{method:'POST',body:JSON.stringify({action:'enroll'})})
@@ -5010,7 +5154,7 @@
     ernCoachChatOpen:function(){ setS({ernChatOpen:true}); try{ window.scrollTo(0,0); }catch(e){} },
     ernCoachChatClose:function(){ setS({ernChatOpen:false}); },
     // ── Etappe 6: Datenschutz – Export / Tag löschen / alles löschen ──
-    ernDataOpen:function(){ setS({ernData:true, ernMsg:'', ernErr:false}); },
+    ernDataOpen:function(){ DATA.ernSub=undefined; DATA.ernInvoices=undefined; setS({ernData:true, ernMsg:'', ernErr:false}); if(ernPremium()){ loadSubInfo(); loadErnInvoices(); } },
     ernDataClose:function(){ S.ernData=false; S.ernMsg=''; S.ernErr=false; loadNutri(); loadFavs(); },
     ernDataExport:function(){ if(S.ernDataBusy) return; S.ernDataBusy=true; S.ernMsg=''; S.ernErr=false; render();
       api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'export'})})

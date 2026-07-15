@@ -241,7 +241,8 @@ async function buildState(id, profile, forDate) {
     pointsToday: pointsToday(totals, targets, day.entries.length, streak),
     fasting: fasting,
     premium: tier.premium, tier: tier.tier, trialing: tier.trialing, premiumUntil: tier.until,
-    premiumInfo: { price: priceInfo, trialDays: Stripe.TRIAL_DAYS },
+    premiumCancelAt: tier.cancelAtPeriodEnd || false,
+    premiumInfo: { price: priceInfo, trialDays: Stripe.TRIAL_DAYS, pk: Stripe.PUBLISHABLE || '' },
   };
 }
 

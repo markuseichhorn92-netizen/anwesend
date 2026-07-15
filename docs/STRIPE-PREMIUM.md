@@ -73,10 +73,12 @@ auch für Gratis-Nutzer.
 > verlieren). Die API-Version ist fest auf `2024-06-20` gepinnt
 > (`STRIPE_API_VERSION`), damit das Feld-Schema vorhersehbar bleibt.
 
-### 4. Billing-Portal aktivieren (Kündigen/Zahlungsdaten ändern)
+### 4. Billing-Portal aktivieren (nur noch Fallback)
 - **Einstellungen → Billing → Kundenportal**: aktivieren und erlauben, dass
-  Kunden das Abo **kündigen** und Zahlungsdaten ändern können. Über dieses
-  Portal läuft „Abo verwalten / kündigen" in der App.
+  Kunden das Abo **kündigen** und Zahlungsdaten ändern können.
+- **Neu:** Kaufen, Kündigen/Reaktivieren, **Karte ändern** und **Rechnungen** laufen
+  jetzt **direkt in der App** (Stripe Embedded Checkout + Payment Element). Das
+  Hosted-Portal ist nur noch ein dezenter **Fallback-Link** – trotzdem aktiviert lassen.
 
 ### 5. Environment-Variablen setzen (Vercel)
 In Vercel → Project → **Settings → Environment Variables** (siehe auch
@@ -85,6 +87,7 @@ In Vercel → Project → **Settings → Environment Variables** (siehe auch
 | Variable | Wert | Pflicht |
 |---|---|---|
 | `STRIPE_SECRET_KEY` | `sk_live_…` (bzw. `sk_test_…`) | ✅ |
+| `STRIPE_PUBLISHABLE_KEY` | `pk_live_…` (bzw. `pk_test_…`) – öffentlich | ✅ (für In-App-Kauf) |
 | `STRIPE_PRICE_ID` | `price_…` (4,99 €/Monat) | ✅ |
 | `STRIPE_WEBHOOK_SECRET` | `whsec_…` | ✅ (für Freischaltung) |
 | `STRIPE_TRIAL_DAYS` | `7` | – (Default 7) |
@@ -113,6 +116,8 @@ Technik ist fertig — das hier ist die reine Konfig-/Betriebs-Abfolge:
 - [ ] **Stripe-Produkt/Preis** live angelegt: `Fit-Inn Ernährung Premium`,
       wiederkehrend monatlich **4,99 € EUR** → `STRIPE_PRICE_ID` (`price_…`) notiert.
 - [ ] **Live-Secret-Key** geholt (`sk_live_…`) → `STRIPE_SECRET_KEY`.
+- [ ] **Veröffentlichbarer Live-Key** geholt (`pk_live_…`) → `STRIPE_PUBLISHABLE_KEY`
+      (öffentlich, kein Geheimnis; nötig für den In-App-Kauf per Stripe.js).
 - [ ] **Webhook-Endpoint** `https://mitglieder.fit-inn-trier.de/api/webhooks/stripe`
       registriert mit **6 Events** (checkout.session.completed,
       customer.subscription.created/updated/deleted, **invoice.paid**,
@@ -145,17 +150,22 @@ Technik ist fertig — das hier ist die reine Konfig-/Betriebs-Abfolge:
       simulieren → `invoice.paid` → Status bleibt/`active`, `until` verlängert.
       Zahlung fehlschlagen lassen → `invoice.payment_failed` → `past_due`; danach
       erfolgreiche Zahlung → wieder `active`.
-- [ ] **Kündigen:** Im Stripe-Kundenportal (App: „Abo verwalten / kündigen")
-      kündigen → `customer.subscription.deleted` → Entzug nach Periodenende.
+- [ ] **In-App-Verwaltung:** „Meine Daten → Premium" zeigt Status, nächste
+      Abbuchung, **Karte** (Marke + letzte 4) und die **Rechnungen**. **Kündigen**
+      (zum Periodenende) → `cancel_at_period_end=true`; **Reaktivieren** hebt es auf;
+      **Karte ändern** (Payment Element) speichert eine neue Standard-Zahlungsmethode.
+- [ ] **Kündigen/Ablauf:** nach Kündigung läuft es zum Periodenende aus →
+      `customer.subscription.deleted` → Entzug. Der Hosted-Portal-Link bleibt als Fallback.
 - [ ] **Webhook-Log grün:** **Entwickler → Webhooks → Endpunkt → „Letzte
       Ereignisse"** zeigt `200` (bzw. `dedup:true` bei Wiederholung). Ein Event
       kann man dort auch **erneut senden** — der Status bleibt idempotent gleich.
 
-Automatisierte Prüfungen liegen unter `scratchpad/` (Entwicklung): der
-Node-Harness `stripe-webhook.test.js` fährt den echten Webhook mit signierten
-Events (Signatur, Idempotenz, item-level Periodenende, invoice.paid→active,
-Kündigung, past_due, Store-Fehler→500) durch; `ern-billing.pw.js` prüft den
-Frontend-Flow (dynamischer Preis, Checkout-Wiring, Erfolgs-Polling).
+Automatisierte Prüfungen liegen unter `scratchpad/` (Entwicklung):
+`stripe-webhook.test.js` (echter Webhook: Signatur, Idempotenz, item-level
+Periodenende, invoice.paid→active, Kündigung, past_due, Store-Fehler→500),
+`stripe-billing.test.js` (lib/stripe-Helfer: Embedded-Checkout, Kündigen/Reaktivieren,
+SetupIntent, Standard-Zahlungsmethode, Rechnungen), `ern-embedded.pw.js` (In-App-Kauf-
+Sheet ohne Seitenwechsel + In-App-Verwaltung) und `ern-billing.pw.js` (dynamischer Preis).
 
 Der Test-Zugang der App (Modul versteckt) funktioniert unabhängig: In der App
 7× auf das Datum tippen (setzt `localStorage.fi_ern_test`). Das entsperrt nur
@@ -165,8 +175,13 @@ die **Sichtbarkeit** des Moduls, nicht Premium — Premium hängt allein am Abo.
 
 ## Wie es intern funktioniert (Kurzüberblick)
 
-- `lib/stripe.js` — schlanker `fetch`-Client (kein npm-SDK): Checkout-/Portal-
-  Session anlegen, Webhook-Signatur prüfen (`t=…,v1=…`, HMAC-SHA256, 5-Min-Toleranz).
+- `lib/stripe.js` — schlanker `fetch`-Client (kein npm-SDK): Checkout-Session
+  (**Redirect ODER Embedded** via `ui_mode:embedded`), Portal, **Subscription
+  kündigen/reaktivieren**, **SetupIntent** (Karte), **Rechnungen**, Preis-Info,
+  Webhook-Signatur prüfen (`t=…,v1=…`, HMAC-SHA256, 5-Min-Toleranz).
+- **Client:** `mitglieder.html` lädt **Stripe.js** bei Bedarf (`js.stripe.com`) und
+  mountet **Embedded Checkout** (Kauf) bzw. das **Payment Element** (Karte ändern) in
+  ein Sheet – kein Seitenwechsel. Der öffentliche `pk_…` kommt über `premiumInfo.pk`.
 - `lib/entitlements.js` — liest/schreibt `nutri:prem:<memberId>` in Upstash;
   `isPremium()` = `tier=premium` UND Status `active`/`trialing` UND Periode nicht abgelaufen.
 - `api/member/nutrition-billing.js` — `POST {action:'checkout'|'portal'|'status'}`
@@ -220,6 +235,14 @@ Für ein **B2C-Abo in Deutschland/EU** brauchst du zusätzlich zum Technischen:
 
 Stripe deckt **Zahlung, PCI-Konformität und Rechnung** ab — die **Vertragstexte**
 (Widerruf/AGB/Datenschutz) musst du ergänzen und rechtlich prüfen lassen.
+
+> **App-Store / In-App-Kauf (IAP):** Kauf und Verwaltung sind **in der App
+> eingebettet** (Stripe.js) und laufen so auch in der nativen iOS/Android-App. Apple
+> und Google verlangen für **digitale** Abos in nativen Apps grundsätzlich ihre
+> **eigene IAP-Abrechnung** – eingebettetes Stripe kann bei der Store-Prüfung
+> beanstandet werden. Für die **Web-/PWA-Nutzung** (`mitglieder.fit-inn-trier.de`) ist
+> Stripe unkritisch. Die Store-Freigabe der nativen App ist separat zu klären
+> (z. B. Kauf in der App-Variante ausblenden oder IAP nachrüsten).
 
 ---
 
