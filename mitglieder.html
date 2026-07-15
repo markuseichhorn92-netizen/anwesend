@@ -569,7 +569,16 @@
   function refreshAll(){ if(!TOKEN) return; loadMe().then(function(){ loadAppts(); loadPlan(); loadPlanAgg(); loadInbox(); loadPrefs(); render(); }).catch(function(){}); }
   // Gedrosseltes Auto-Aktualisieren, wenn App/Tab wieder sichtbar wird.
   var __lastRefresh=Date.now();
-  function maybeAutoRefresh(){ if(!TOKEN||S.screen==='login') return; var now=Date.now(); if(now-__lastRefresh<15000) return; __lastRefresh=now; refreshAll(); checkArrival(); }
+  function maybeAutoRefresh(){ if(!TOKEN||S.screen==='login') return; var now=Date.now(); if(now-__lastRefresh<15000) return; __lastRefresh=now; refreshAll(); checkArrival();
+    // Zusätzlich den GERADE sichtbaren Screen live nachziehen (ohne vorher zu leeren -> kein Flackern),
+    // damit man nach Rückkehr in die App aktuelle Daten sieht, ohne neu zu laden.
+    var s=S.screen;
+    if(s==='home'||s==='insta') maybeRefreshLive();
+    if(s==='home'||s==='account') loadAccount();
+    if(s==='ern'||s==='coach'||s==='abo'||s==='recht') loadNutri();
+    if(s==='coach') loadCoach();
+    if(s==='checkins'||s==='fort') loadCheckins();
+  }
   // Mehrere Magicline-Konten zu denselben Daten? -> Hinweis-Banner im Portal.
   function checkDup(){
     api('/api/member/duplicates').then(function(d){ if(d&&d.ok){ S.dupNotice={ hasDuplicates:!!d.hasDuplicates, count:d.count||0, requested:!!d.requested }; render(); } }).catch(function(){});
@@ -2832,7 +2841,9 @@
     }).catch(function(){ DATA.nutri={ok:false,available:false}; render(); });
   }
   function loadFavs(){ api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'fav-list'})}).then(function(d){ DATA.nutriFavs=(d&&d.ok&&Array.isArray(d.favorites))?d.favorites:[]; render(); }).catch(function(){ DATA.nutriFavs=[]; render(); }); }
-  function loadPlan(){ api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'plan-get'})}).then(function(d){ DATA.nutriPlan=(d&&d.ok)?{plan:d.plan,shopping:d.shopping}:{plan:null,shopping:[]}; render(); }).catch(function(){ DATA.nutriPlan={plan:null,shopping:[]}; render(); }); }
+  // WICHTIG: eigener Name (früher hieß das auch loadPlan und überschrieb per Hoisting
+  // die Trainings-Vormerkung loadPlan() – dadurch wurde DATA.plan nie geladen).
+  function loadNutriPlan(){ api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'plan-get'})}).then(function(d){ DATA.nutriPlan=(d&&d.ok)?{plan:d.plan,shopping:d.shopping}:{plan:null,shopping:[]}; render(); }).catch(function(){ DATA.nutriPlan={plan:null,shopping:[]}; render(); }); }
   function loadSaved(){ api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'recipes-get'})}).then(function(d){ DATA.nutriSaved=(d&&d.ok&&Array.isArray(d.saved))?d.saved:[]; render(); }).catch(function(){ DATA.nutriSaved=[]; render(); }); }
   function loadWeek(){ api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'week'})}).then(function(d){ DATA.nutriWeek=(d&&d.ok)?d:{ok:false}; render(); }).catch(function(){ DATA.nutriWeek={ok:false}; render(); }); }
   // Coaching-Programm (8-Wochen-Reise) laden – eigener Endpunkt, Snapshot in DATA.coach.
@@ -5329,7 +5340,7 @@
       .then(function(d){ S.ernCoachBusy=false; if(d&&d.ok){ S.ernCoachSent=true; } render(); })
       .catch(function(){ S.ernCoachBusy=false; render(); }); },
     // ── Ernährung · Sub-Navigation + Zusatz-Screens ──
-    ernTab:function(a){ S.ernTab=a; S.ernMsg=''; S.ernErr=false; S.ernRecipeSel=null; S.ernChatOpen=false; S.ernLesson=null; S.ernVert=null; S.ernLessonData=null; S.ernCk=false; S.ernCkResult=null; if(a==='heute'&&S.ernViewDate){ S.ernViewDate=''; loadNutri(); } if(a==='plan'&&DATA.nutriPlan==null) loadPlan(); if(a==='rezepte'&&DATA.nutriSaved==null) loadSaved(); if(a==='coach') loadCoach(); if(a==='verlauf') loadWeek(); setQuiet({}); },
+    ernTab:function(a){ S.ernTab=a; S.ernMsg=''; S.ernErr=false; S.ernRecipeSel=null; S.ernChatOpen=false; S.ernLesson=null; S.ernVert=null; S.ernLessonData=null; S.ernCk=false; S.ernCkResult=null; if(a==='heute'&&S.ernViewDate){ S.ernViewDate=''; loadNutri(); } if(a==='plan'&&DATA.nutriPlan==null) loadNutriPlan(); if(a==='rezepte'&&DATA.nutriSaved==null) loadSaved(); if(a==='coach') loadCoach(); if(a==='verlauf') loadWeek(); setQuiet({}); },
     ernFastPlan:function(a){ api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'fast',do:'plan',plan:a})}).then(function(d){ if(d&&d.ok) DATA.nutri=d; render(); }).catch(function(){}); },
     ernFastToggle:function(){ var act=ernFastMs().active?'stop':'start'; api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'fast',do:act})}).then(function(d){ if(d&&d.ok) DATA.nutri=d; render(); }).catch(function(){}); },
     ernPlanTab:function(a){ setQuiet({ernPlanTab:a}); },
@@ -5997,7 +6008,7 @@
         try{ loadNutri(); }catch(e){}
         setTimeout(function(){
           if(DATA.nutri && DATA.nutri.premium){ S.ernMsg='Premium aktiviert – viel Erfolg! 🎉'; S.ernErr=false; render(); return; }
-          if(tries>=6){ S.ernMsg='Fast geschafft – deine Freischaltung kann einen kurzen Moment dauern. Zieh die Seite zum Aktualisieren nach unten.'; S.ernErr=false; render(); return; }
+          if(tries>=8){ S.ernMsg='Fast geschafft – die Freischaltung kann einen Moment dauern. Tippe unten erneut auf „Essen", dann ist Premium da.'; S.ernErr=false; render(); return; }
           poll();
         }, 1500);
       };

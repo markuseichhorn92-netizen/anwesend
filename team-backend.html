@@ -4260,7 +4260,14 @@ if(S.token){ render(); loadMe(); loadEmployees(); loadInbox(); } else { render()
 // Offenen Chat live nachladen (neue Nachrichten erscheinen automatisch).
 setInterval(pollThread, 6000);
 // Liste/Badges seltener aktualisieren (kein Voll-Render, wenn gerade getippt wird).
-setInterval(function(){ if(S.token && (S.screen==='inbox'||S.screen==='appts') && !S.busy && !(S.draft||'').trim()) loadInbox(); }, 30000);
+setInterval(function(){
+  if(!(S.token && (S.screen==='inbox'||S.screen==='appts') && !S.busy && !(S.draft||'').trim())) return;
+  // Nicht refreshen, während getippt/gesucht wird – der Voll-Render würde Fokus klauen
+  // und Liste/Modal-Suche nach oben springen lassen.
+  if((S.note||'').trim()) return;
+  var ae=document.activeElement; if(ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName||'')) return;
+  loadInbox();
+}, 30000);
 </script>
 </body>
 </html>
