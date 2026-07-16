@@ -485,12 +485,13 @@ async function openProfile(id){
   S.memberCheckins=null; S.memberCheckinsLoading=false; S.ciMsg=''; S.ciMailBusy=false; ciPresetSilent('all');
   S.memberCoaching=null; S.memberCoachingLoading=false;
   S.memberMsgs=null; S.memberMsgsLoading=false; S.memberMsgsTotal=0;
+  S.memberNutri=null; S.memberNutriLoading=false; S.mnDate=''; S.mnBusy=false; S.mnEditId=null; S.mnAddOpen=false; S.mnGoalOpen=false; S.mnAssign=null; S.mnRecipes=null; S.mnRecipesLoading=false; S.mnAssignServ=1; S.mnAssignMeal='mittag';
   S.profTab='ueber'; S.acc={};   // Profil öffnet auf „Übersicht"; alle Sektionen zugeklappt
   S._profId=String(id); mainScrollMap['members:'+id]=0;   // neues Profil beginnt oben
   S.profileLoading=true; S.profile=null; syncUrl(true); render();   // URL -> /team/mitglieder/<id>
   try{ var r=await tapi('/api/team/members?id='+encodeURIComponent(id)); if(r.ok) S.profile=r.profile; }
   catch(e){} S.profileLoading=false; render();
-  if(S.profile){ loadProfileTags(id); loadProfileDocs(id); loadAccessMedia(id); loadMemberCheckins(id); loadMemberCoaching(id); loadMemberPreview(id); loadMemberMessages(id); if(isAdmin()&&!S.rhOffersLoaded) loadRetentionOffers(); }
+  if(S.profile){ loadProfileTags(id); loadProfileDocs(id); loadAccessMedia(id); loadMemberCheckins(id); loadMemberCoaching(id); loadMemberPreview(id); loadMemberMessages(id); loadMemberNutrition(id); if(isAdmin()&&!S.rhOffersLoaded) loadRetentionOffers(); }
 }
 // ---------- Mitglieder-Tags ----------
 // Tags des offenen Profils laden (GET ?memberId). Ohne Store -> leere Liste, kein Fehler.
@@ -854,6 +855,169 @@ function nutritionPreviewBlock(p){
     body='<div style="font-size:13.5px;margin-bottom:13px">'+status+'</div>'+controls+msg;
   }
   return accWrap('nutri','🔓 Ernährungs-Premium', body, 'Gratis-/Test-Zugang vergeben (Zeitraum oder dauerhaft) oder ein echtes Abo verwalten. Ein echtes Stripe-Abo wird nur über „Abo kündigen" angetastet.');
+}
+
+// ====== Team betreut die Ernährung eines Mitglieds (Profil-Tab „Ernährung") ======
+// Liest/schreibt über /api/team/nutrition (Tagebuch, Zielwerte, Rezept-Zuweisung).
+var MN_MEALS=[['fruehstueck','Frühstück'],['mittag','Mittag'],['abend','Abend'],['snack','Snack']];
+var MN_GOALS=[['abnehmen','Abnehmen'],['definieren','Definieren'],['halten','Gewicht halten'],['aufbau','Muskelaufbau'],['gesundheit','Gesundheit'],['longevity','Longevity']];
+var MN_ACTS=[['kaum','Wenig aktiv'],['moderat','Moderat aktiv'],['aktiv','Sehr aktiv']];
+var MN_DIETS=[['omnivor','Omnivor'],['vegetarisch','Vegetarisch'],['vegan','Vegan'],['lowcarb','Low Carb'],['highprotein','High Protein']];
+function mnLabel(list,k){ for(var i=0;i<list.length;i++) if(list[i][0]===k) return list[i][1]; return '—'; }
+function mnDE(ymd){ if(!ymd) return ''; var t=String(ymd).split('-'); return t.length===3?(t[2]+'.'+t[1]+'.'+t[0]):ymd; }
+function mnShiftDate(ymd, delta){ try{ var d=new Date(ymd+'T12:00:00Z'); d.setUTCDate(d.getUTCDate()+delta); return d.toISOString().slice(0,10); }catch(e){ return ymd; } }
+function mnCurDate(){ return S.mnDate || (S.memberNutri&&S.memberNutri.date) || ''; }
+async function loadMemberNutrition(id, date){
+  if(S.memberNutri==null) S.memberNutriLoading=true; scheduleRender();
+  try{ var r=await tapi('/api/team/nutrition?id='+encodeURIComponent(id)+(date?('&date='+encodeURIComponent(date)):'')); S.memberNutri=r||{available:true,error:true}; if(r&&r.date) S.mnDate=r.date; }
+  catch(e){ S.memberNutri={available:true,error:true}; }
+  S.memberNutriLoading=false; scheduleRender();
+}
+async function mnAction(action, extra){
+  if(S.mnBusy) return; S.mnBusy=true; render();
+  var r=null;
+  try{ r=await tapi('/api/team/nutrition',{method:'POST',body:Object.assign({action:action, id:S._profId}, extra||{})}); }catch(e){}
+  S.mnBusy=false;
+  if(r&&r.ok){ if(r.targets){ S.memberNutri=r; S.mnDate=r.date||S.mnDate; } else if(S.memberNutri){ if(r.day) S.memberNutri.day=r.day; if(r.cookplan) S.memberNutri.cookplan=r.cookplan; } }
+  else { alert((r&&r.message)||'Aktion nicht möglich.'); }
+  render();
+}
+async function mnSearchRecipes(q){ S.mnRecipesLoading=true; render(); try{ var r=await tapi('/api/team/nutrition',{method:'POST',body:{action:'recipe-search', q:q||''}}); S.mnRecipes=(r&&r.ok)?(r.recipes||[]):[]; }catch(e){ S.mnRecipes=[]; } S.mnRecipesLoading=false; render(); }
+
+function mnMacroLine(e){ return '<span style="font-size:12px;color:#8a929a;font-weight:700">'+n(e.kcal)+' kcal</span> <span style="font-size:11.5px;color:#a9b1b6;font-weight:600">· E '+n(e.p)+' · KH '+n(e.c)+' · F '+n(e.f)+'</span>'; }
+function n(v){ return Math.round(Number(v)||0); }
+function mnInput(id,val,ph,w){ return '<input id="'+id+'" value="'+esc(val==null?'':val)+'" placeholder="'+esc(ph||'')+'" style="width:'+(w||'100%')+';border:1.5px solid #d6dee0;border-radius:9px;padding:8px 10px;font-size:13px;font-weight:700;color:#15171B;background:#fbfcfc;outline:none">'; }
+function mnNum(id,val,ph){ return '<input id="'+id+'" type="number" inputmode="numeric" value="'+esc(val==null?'':val)+'" placeholder="'+esc(ph||'')+'" style="width:100%;border:1.5px solid #d6dee0;border-radius:9px;padding:8px 10px;font-size:13px;font-weight:700;color:#15171B;background:#fbfcfc;outline:none">'; }
+function mnSelect(id,list,cur){ return '<select id="'+id+'" style="width:100%;border:1.5px solid #d6dee0;border-radius:9px;padding:8px 10px;font-size:13px;font-weight:700;color:#15171B;background:#fbfcfc;outline:none">'+list.map(function(o){ return '<option value="'+esc(o[0])+'"'+(String(cur)===String(o[0])?' selected':'')+'>'+esc(o[1])+'</option>'; }).join('')+'</select>'; }
+function mnField(lbl,inner){ return '<div style="display:flex;flex-direction:column;gap:4px;min-width:0"><span style="font-size:11px;font-weight:800;color:#8a929a">'+lbl+'</span>'+inner+'</div>'; }
+
+// Ziel & Zielwerte
+function mnGoalCard(d){
+  var pr=d.profile||{}, t=d.targets||{};
+  var CARD='background:#fff;border-radius:20px;box-shadow:0 14px 38px rgba(4,33,40,.09);padding:20px 24px;margin-top:16px';
+  var head='<div style="display:flex;align-items:center;justify-content:space-between;gap:10px"><div><div style="font-size:15px;font-weight:900;letter-spacing:-.2px;color:#15171B">Ziel & Zielwerte</div><div style="font-size:12.5px;color:#8a929a;font-weight:600;margin-top:1px">'+(pr.onboarded?('Ziel: '+esc(mnLabel(MN_GOALS,pr.goal))):'Noch keine Körperdaten – Zielwerte sind Richtwerte')+'</div></div><button data-mngoaledit="1" style="border:1.5px solid #d6dee0;background:#fff;border-radius:10px;font-size:12.5px;font-weight:800;color:#0a4958;padding:8px 13px;cursor:pointer">'+(S.mnGoalOpen?'Schließen':'Ziel bearbeiten')+'</button></div>';
+  var chips=[['kcal',n(t.kcal),'#0a4958'],['Eiweiß',n(t.protein)+' g','#1d7a3e'],['Kohlenhyd.',n(t.carbs)+' g','#C77A2E'],['Fett',n(t.fat)+' g','#7a5326'],['Wasser',(t.water||'—')+' l','#2C5FB8']];
+  var chipRow='<div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:14px">'+chips.map(function(x){ return '<div style="background:#f2f6f7;border-radius:13px;padding:11px 14px;min-width:92px"><div style="font-size:11px;font-weight:800;color:#8a929a;text-transform:uppercase;letter-spacing:.3px">'+x[0]+'</div><div style="font-size:17px;font-weight:900;color:'+x[2]+';margin-top:2px">'+x[1]+'</div></div>'; }).join('')+'</div>';
+  var editor='';
+  if(S.mnGoalOpen){
+    editor='<div style="margin-top:16px;padding-top:16px;border-top:1px solid #f0f3f4;display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px">'+
+      mnField('Ziel', mnSelect('mng_goal',MN_GOALS,pr.goal||'halten'))+
+      mnField('Geschlecht', mnSelect('mng_sex',[['w','Weiblich'],['m','Männlich']],pr.sex||'w'))+
+      mnField('Größe (cm)', mnNum('mng_h',pr.height,'170'))+
+      mnField('Gewicht (kg)', mnNum('mng_w',pr.weight,'70'))+
+      mnField('Alter', mnNum('mng_age',pr.age,'30'))+
+      mnField('Aktivität', mnSelect('mng_act',MN_ACTS,pr.activity||'moderat'))+
+      mnField('Ernährung', mnSelect('mng_diet',MN_DIETS,pr.diet||'omnivor'))+
+    '</div><div style="display:flex;gap:8px;margin-top:14px"><button data-mngoalsave="1"'+(S.mnBusy?' disabled':'')+' style="border:none;border-radius:11px;background:'+TEAL+';color:#fff;font-size:13px;font-weight:800;padding:10px 16px;cursor:pointer">Speichern & neu berechnen</button><button data-mngoalcancel="1" style="border:1.5px solid #d6dee0;background:#fff;border-radius:11px;font-size:13px;font-weight:800;color:#42454b;padding:10px 16px;cursor:pointer">Abbrechen</button></div>';
+  }
+  return '<div style="'+CARD+'">'+head+(S.mnGoalOpen?'':chipRow)+editor+'</div>';
+}
+
+// Ernährungstagebuch für einen Tag
+function mnDiaryCard(d){
+  var day=d.day||{entries:[],totals:{kcal:0,p:0,c:0,f:0},water:0,waterGoal:8}, t=d.targets||{};
+  var cur=mnCurDate(), isToday=(cur===d.today);
+  var CARD='background:#fff;border-radius:20px;box-shadow:0 14px 38px rgba(4,33,40,.09);padding:20px 24px;margin-top:16px';
+  var nav='<div style="display:flex;align-items:center;gap:8px"><button data-mnprev="1" style="border:1.5px solid #e2e8ea;background:#fff;border-radius:9px;width:32px;height:32px;cursor:pointer;font-size:16px;color:#0a4958;font-weight:900">‹</button>'+
+    '<div style="font-size:13.5px;font-weight:800;color:#15171B;min-width:104px;text-align:center">'+esc(mnDE(cur))+(isToday?' · heute':'')+'</div>'+
+    '<button data-mnnext="1"'+(isToday?' disabled':'')+' style="border:1.5px solid #e2e8ea;background:#fff;border-radius:9px;width:32px;height:32px;cursor:'+(isToday?'default':'pointer')+';font-size:16px;color:'+(isToday?'#c8cfd2':'#0a4958')+';font-weight:900">›</button>'+
+    (isToday?'':'<button data-mntoday="1" style="border:1.5px solid #d6dee0;background:#fff;border-radius:9px;font-size:12px;font-weight:800;color:#0a4958;padding:7px 11px;cursor:pointer">Heute</button>')+'</div>';
+  var tot=day.totals||{kcal:0,p:0,c:0,f:0};
+  var pct=t.kcal?Math.min(100,Math.round(tot.kcal/t.kcal*100)):0;
+  var summary='<div style="margin-top:14px;background:linear-gradient(165deg,#e7f1f3,#f2f8f9);border-radius:14px;padding:14px 16px">'+
+    '<div style="display:flex;align-items:baseline;gap:8px"><span style="font-size:26px;font-weight:900;color:#0a4958;letter-spacing:-1px">'+n(tot.kcal)+'</span><span style="font-size:13px;font-weight:700;color:#4a565c">/ '+n(t.kcal)+' kcal</span></div>'+
+    '<div style="height:8px;background:rgba(10,73,88,.12);border-radius:6px;overflow:hidden;margin:8px 0"><div style="height:100%;border-radius:6px;background:'+(tot.kcal>t.kcal*1.1?'#e2685a':'#0a4958')+';width:'+pct+'%"></div></div>'+
+    '<div style="font-size:12.5px;font-weight:700;color:#4a565c">Eiweiß '+n(tot.p)+' / '+n(t.protein)+' g · KH '+n(tot.c)+' g · Fett '+n(tot.f)+' g · 💧 '+n(day.water)+'/'+n(day.waterGoal)+'</div></div>';
+  // Einträge nach Mahlzeit
+  var entries=day.entries||[];
+  var mealsHtml=MN_MEALS.map(function(m){
+    var list=entries.filter(function(e){ return (e.meal||'snack')===m[0]; });
+    if(!list.length) return '';
+    return '<div style="margin-top:12px"><div style="font-size:11px;font-weight:800;color:#8a929a;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px">'+m[1]+'</div>'+list.map(function(e){ return mnEntryRow(e); }).join('')+'</div>';
+  }).join('');
+  if(!entries.length) mealsHtml='<div style="font-size:12.5px;color:#a9b1b6;font-weight:600;padding:10px 0">Für diesen Tag ist nichts getrackt.</div>';
+  var addBtn='<div style="margin-top:14px;padding-top:12px;border-top:1px solid #f0f3f4">'+
+    (S.mnAddOpen? mnEntryForm('mna',{}) :
+      '<button data-mnadd="1" style="display:inline-flex;align-items:center;gap:7px;border:1.5px dashed #c2ccce;border-radius:10px;background:#fff;color:#0a4958;font-weight:800;font-size:12.5px;padding:9px 14px;cursor:pointer">+ Eintrag hinzufügen</button>')+'</div>';
+  return '<div style="'+CARD+'"><div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap"><div style="font-size:15px;font-weight:900;letter-spacing:-.2px;color:#15171B">Ernährungstagebuch</div>'+nav+'</div>'+summary+mealsHtml+addBtn+'</div>';
+}
+function mnEntryRow(e){
+  if(String(S.mnEditId)===String(e.id)) return mnEntryForm('mne', e);
+  return '<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid #f4f6f7">'+
+    '<div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:800;color:#15171B;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(e.name||'Mahlzeit')+(e.portion?(' <span style="color:#8a929a;font-weight:600">· '+esc(e.portion)+'</span>'):'')+'</div><div style="margin-top:2px">'+mnMacroLine(e)+'</div></div>'+
+    '<button data-mnedit="'+esc(e.id)+'" title="Bearbeiten" style="border:1.5px solid #d6dee0;background:#fff;border-radius:9px;color:#0a4958;font-size:12px;font-weight:800;padding:6px 10px;cursor:pointer">Bearbeiten</button>'+
+    '<button data-mndel="'+esc(e.id)+'" title="Löschen" style="border:1.5px solid #e3b8b1;background:#fff;border-radius:9px;color:#b5402f;font-size:12px;font-weight:800;padding:6px 10px;cursor:pointer">×</button>'+
+  '</div>';
+}
+// Formular für neuen (pre='mna') oder zu bearbeitenden (pre='mne') Eintrag.
+function mnEntryForm(pre, e){
+  var save=(pre==='mna')?'data-mnaddsave':'data-mneditsave', cancel=(pre==='mna')?'data-mnaddcancel':'data-mneditcancel';
+  return '<div style="background:#f7fafb;border:1.5px solid #e2e8ea;border-radius:13px;padding:13px 14px;margin-top:8px">'+
+    '<div style="display:grid;grid-template-columns:2fr 1fr;gap:10px">'+mnField('Bezeichnung', mnInput(pre+'_name', e.name||'', 'z. B. Joghurt'))+mnField('Mahlzeit', mnSelect(pre+'_meal',MN_MEALS,e.meal||'snack'))+'</div>'+
+    '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:10px">'+mnField('kcal', mnNum(pre+'_kcal',e.kcal!=null?e.kcal:'', '0'))+mnField('Eiweiß g', mnNum(pre+'_p',e.p!=null?e.p:'', '0'))+mnField('KH g', mnNum(pre+'_c',e.c!=null?e.c:'', '0'))+mnField('Fett g', mnNum(pre+'_f',e.f!=null?e.f:'', '0'))+'</div>'+
+    '<div style="display:flex;gap:8px;margin-top:12px"><button '+save+'="1"'+(S.mnBusy?' disabled':'')+' style="border:none;border-radius:10px;background:'+TEAL+';color:#fff;font-size:12.5px;font-weight:800;padding:9px 15px;cursor:pointer">Speichern</button><button '+cancel+'="1" style="border:1.5px solid #d6dee0;background:#fff;border-radius:10px;font-size:12.5px;font-weight:800;color:#42454b;padding:9px 15px;cursor:pointer">Abbrechen</button></div>'+
+  '</div>';
+}
+
+// 7-Tage-Überblick
+function mnWeekCard(d){
+  var wk=(d.week||[]).slice().reverse(); var t=d.targets||{}; var maxK=Math.max(t.kcal||2000, 1);
+  (d.week||[]).forEach(function(w){ if(w.kcal>maxK) maxK=w.kcal; });
+  var CARD='background:#fff;border-radius:20px;box-shadow:0 14px 38px rgba(4,33,40,.09);padding:20px 24px;margin-top:16px';
+  var bars=wk.map(function(w){ var h=Math.max(4,Math.round((w.kcal/maxK)*72)); var col=w.tracked?(w.kcal>t.kcal*1.1?'#e2685a':(w.kcal>=t.kcal*0.85?'#1d7a3e':'#5aa9bb')):'#e2e8ea';
+    return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;min-width:0"><div style="font-size:10.5px;font-weight:800;color:#8a929a">'+(w.tracked?n(w.kcal):'–')+'</div><div style="width:100%;max-width:26px;height:72px;display:flex;align-items:flex-end"><div title="'+esc(mnDE(w.date))+'" style="width:100%;height:'+h+'px;border-radius:6px 6px 3px 3px;background:'+col+'"></div></div><div style="font-size:10.5px;font-weight:700;color:#a9b1b6">'+esc(mnDE(w.date).slice(0,5))+'</div></div>'; }).join('');
+  return '<div style="'+CARD+'"><div style="font-size:15px;font-weight:900;letter-spacing:-.2px;color:#15171B;margin-bottom:4px">7-Tage-Überblick</div><div style="font-size:12.5px;color:#8a929a;font-weight:600;margin-bottom:14px">kcal je Tag · grau = kein Eintrag · Zielband '+n(t.kcal)+' kcal</div><div style="display:flex;gap:6px;align-items:flex-end">'+bars+'</div></div>';
+}
+
+// Rezept zuweisen (Studio-Bibliothek -> Essens-/Koch-Plan des Mitglieds)
+function mnRecipeCard(d){
+  var CARD='background:#fff;border-radius:20px;box-shadow:0 14px 38px rgba(4,33,40,.09);padding:20px 24px;margin-top:16px';
+  var search='<div style="display:flex;gap:8px;margin-top:12px"><input id="mnr_q" placeholder="Rezept in der Studio-Bibliothek suchen …" style="flex:1;min-width:0;border:1.5px solid #d6dee0;border-radius:10px;padding:10px 12px;font-size:13.5px;font-weight:700;color:#15171B;background:#fbfcfc;outline:none"><button data-mnsearch="1" style="border:none;border-radius:10px;background:'+TEAL+';color:#fff;font-size:13px;font-weight:800;padding:10px 16px;cursor:pointer">Suchen</button></div>';
+  var results='';
+  if(S.mnRecipesLoading){ results='<div style="padding:12px 0;text-align:center"><span class="spin" style="width:18px;height:18px;border-width:2px"></span></div>'; }
+  else if(S.mnRecipes){ results = S.mnRecipes.length ? '<div style="margin-top:10px">'+S.mnRecipes.map(function(r){ return '<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid #f4f6f7"><div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:800;color:#15171B;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(r.title)+'</div><div style="font-size:11.5px;color:#8a929a;font-weight:600">'+n(r.kcal)+' kcal · E '+n(r.protein)+' · '+(r.servings||1)+' Port.'+(r.nutri&&r.nutri.grade?(' · Nutri-Score '+esc(r.nutri.grade)):'')+'</div></div><button data-mnassign="'+esc(r.id)+'" data-mntitle="'+esc(r.title)+'" style="border:1.5px solid #bcd7c4;background:#fff;border-radius:9px;color:#1d7a3e;font-size:12px;font-weight:800;padding:6px 12px;cursor:pointer">Zuweisen</button></div>'; }).join('')+'</div>' : '<div style="font-size:12.5px;color:#a9b1b6;font-weight:600;padding:10px 0">Keine Rezepte gefunden.</div>'; }
+  var assign='';
+  if(S.mnAssign){
+    assign='<div style="margin-top:12px;background:#eef7f1;border:1px solid #bfe6cd;border-radius:13px;padding:13px 14px"><div style="font-size:13px;font-weight:800;color:#0f7a4a;margin-bottom:10px">„'+esc(S.mnAssign.title)+'" in den Plan legen</div>'+
+      '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">'+mnField('Tag', mnInput('mnas_date', S.mnAssign.date||d.today, 'JJJJ-MM-TT'))+mnField('Portionen', mnNum('mnas_serv','', '1'))+mnField('Mahlzeit', mnSelect('mnas_meal',[['','—']].concat(MN_MEALS),''))+'</div>'+
+      '<div style="display:flex;gap:8px;margin-top:12px"><button data-mnassignconfirm="1"'+(S.mnBusy?' disabled':'')+' style="border:none;border-radius:10px;background:'+TEAL+';color:#fff;font-size:12.5px;font-weight:800;padding:9px 15px;cursor:pointer">In den Plan legen</button><button data-mnassigncancel="1" style="border:1.5px solid #d6dee0;background:#fff;border-radius:10px;font-size:12.5px;font-weight:800;color:#42454b;padding:9px 15px;cursor:pointer">Abbrechen</button></div></div>';
+  }
+  var plan=(d.cookplan&&d.cookplan.length)? '<div style="margin-top:16px;padding-top:14px;border-top:1px solid #f0f3f4"><div style="font-size:12px;font-weight:800;color:#8a929a;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">Zugewiesene Rezepte</div>'+d.cookplan.map(function(it){ return '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid #f4f6f7"><div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:800;color:#15171B;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(it.title)+'</div><div style="font-size:11.5px;color:#8a929a;font-weight:600">'+esc(mnDE(it.date))+(it.meal?(' · '+esc(mnLabel(MN_MEALS,it.meal))):'')+' · '+(it.servings||1)+' Port. · '+n(it.kcal)+' kcal'+(it.done?' · ✓ gekocht':'')+'</div></div><button data-mnplandel="'+esc(it.id)+'" style="border:1.5px solid #e3b8b1;background:#fff;border-radius:9px;color:#b5402f;font-size:12px;font-weight:800;padding:6px 10px;cursor:pointer">Entfernen</button></div>'; }).join('')+'</div>' : '';
+  return '<div style="'+CARD+'"><div style="font-size:15px;font-weight:900;letter-spacing:-.2px;color:#15171B">Rezept zuweisen</div><div style="font-size:12.5px;color:#8a929a;font-weight:600;margin-top:1px">Aus der Studio-Rezeptbibliothek in den Essens-/Koch-Plan des Mitglieds legen.</div>'+search+results+assign+plan+'</div>';
+}
+
+function nutritionBlock(p){
+  if(S.memberNutriLoading && S.memberNutri==null) return '<div style="padding:50px;text-align:center"><span class="spin"></span></div>';
+  var d=S.memberNutri;
+  if(!d) return '<div style="padding:50px;text-align:center"><span class="spin"></span></div>';
+  if(d.available===false) return '<div style="background:#fff;border-radius:20px;box-shadow:0 14px 38px rgba(4,33,40,.09);padding:24px;margin-top:16px;font-size:13.5px;color:#8a929a;font-weight:600">Das Ernährungs-Modul ist gerade nicht verfügbar (kein Datenspeicher).</div>';
+  if(d.error) return '<div style="background:#fff;border-radius:20px;box-shadow:0 14px 38px rgba(4,33,40,.09);padding:24px;margin-top:16px;font-size:13.5px;color:#b53a2c;font-weight:700">Ernährungsdaten konnten nicht geladen werden.</div>';
+  var hint = d.everTracked ? '' : '<div style="background:#FBF4E9;border:1px solid #F1DFC2;border-radius:14px;padding:13px 16px;margin-top:16px;font-size:12.5px;color:#7a5326;font-weight:600">Dieses Mitglied hat das Ernährungs-Tracking noch nicht gestartet. Du kannst trotzdem ein Ziel setzen und Rezepte zuweisen.</div>';
+  return hint + mnGoalCard(d) + mnDiaryCard(d) + mnWeekCard(d) + mnRecipeCard(d);
+}
+function wireNutrition(wrap, p){
+  if(S.profTab!=='ernaehrung' || !S.memberNutri) return;
+  var q=function(s){ return wrap.querySelector(s); };
+  var v=function(s){ var e=q(s); return e?e.value:''; };
+  var pd=q('[data-mnprev]'); if(pd) pd.onclick=function(){ loadMemberNutrition(p.id, mnShiftDate(mnCurDate(),-1)); };
+  var nd=q('[data-mnnext]'); if(nd) nd.onclick=function(){ var c=mnCurDate(); if(c<S.memberNutri.today) loadMemberNutrition(p.id, mnShiftDate(c,1)); };
+  var tdy=q('[data-mntoday]'); if(tdy) tdy.onclick=function(){ loadMemberNutrition(p.id, S.memberNutri.today); };
+  var ge=q('[data-mngoaledit]'); if(ge) ge.onclick=function(){ S.mnGoalOpen=!S.mnGoalOpen; render(); };
+  var gc=q('[data-mngoalcancel]'); if(gc) gc.onclick=function(){ S.mnGoalOpen=false; render(); };
+  var gs=q('[data-mngoalsave]'); if(gs) gs.onclick=function(){ var prof={goal:v('#mng_goal'),sex:v('#mng_sex'),height:v('#mng_h'),weight:v('#mng_w'),age:v('#mng_age'),activity:v('#mng_act'),diet:v('#mng_diet')}; S.mnGoalOpen=false; mnAction('save-profile',{profile:prof,date:mnCurDate()}); };
+  var ao=q('[data-mnadd]'); if(ao) ao.onclick=function(){ S.mnAddOpen=true; S.mnEditId=null; render(); };
+  var ac=q('[data-mnaddcancel]'); if(ac) ac.onclick=function(){ S.mnAddOpen=false; render(); };
+  var as=q('[data-mnaddsave]'); if(as) as.onclick=function(){ var b={date:mnCurDate(),name:v('#mna_name'),kcal:v('#mna_kcal'),p:v('#mna_p'),c:v('#mna_c'),f:v('#mna_f'),meal:v('#mna_meal')}; S.mnAddOpen=false; mnAction('entry-add',b); };
+  wrap.querySelectorAll('[data-mnedit]').forEach(function(b){ b.onclick=function(){ S.mnEditId=b.getAttribute('data-mnedit'); S.mnAddOpen=false; render(); }; });
+  var ec=q('[data-mneditcancel]'); if(ec) ec.onclick=function(){ S.mnEditId=null; render(); };
+  var es=q('[data-mneditsave]'); if(es) es.onclick=function(){ var eid=S.mnEditId, patch={name:v('#mne_name'),kcal:v('#mne_kcal'),p:v('#mne_p'),c:v('#mne_c'),f:v('#mne_f'),meal:v('#mne_meal')}; S.mnEditId=null; mnAction('entry-update',{date:mnCurDate(),entryId:eid,patch:patch}); };
+  wrap.querySelectorAll('[data-mndel]').forEach(function(b){ b.onclick=function(){ if(confirm('Eintrag löschen?')) mnAction('entry-delete',{date:mnCurDate(),entryId:b.getAttribute('data-mndel')}); }; });
+  var sb=q('[data-mnsearch]'); if(sb) sb.onclick=function(){ mnSearchRecipes(v('#mnr_q')); };
+  var sq=q('#mnr_q'); if(sq) sq.onkeydown=function(e){ if(e.key==='Enter'){ e.preventDefault(); mnSearchRecipes(sq.value); } };
+  wrap.querySelectorAll('[data-mnassign]').forEach(function(b){ b.onclick=function(){ S.mnAssign={ id:b.getAttribute('data-mnassign'), title:b.getAttribute('data-mntitle'), date:S.memberNutri.today }; render(); }; });
+  var xc=q('[data-mnassigncancel]'); if(xc) xc.onclick=function(){ S.mnAssign=null; render(); };
+  var xs=q('[data-mnassignconfirm]'); if(xs) xs.onclick=function(){ var b={recipeId:S.mnAssign.id, date:v('#mnas_date'), servings:v('#mnas_serv'), meal:v('#mnas_meal')}; S.mnAssign=null; mnAction('cookplan-add',b); };
+  wrap.querySelectorAll('[data-mnplandel]').forEach(function(b){ b.onclick=function(){ mnAction('cookplan-remove',{itemId:b.getAttribute('data-mnplandel')}); }; });
 }
 // yyyy-mm-dd-Presets für den Zeitraum. ...Silent: nur State setzen (kein render), fürs Öffnen.
 function ci2(n){ return (n<10?'0':'')+n; }
@@ -2324,7 +2488,7 @@ function membersNode(){
       ? p.history.map(function(h){ var t=tm(h.type),st=sm(h.teamStatus); return '<div class="lrow" data-hist="'+esc(h.key)+'" style="display:flex;align-items:center;gap:12px;padding:12px 0;border-top:1px solid #f0f3f4;cursor:pointer"><div style="width:36px;height:36px;border-radius:11px;background:'+t.b+';color:'+t.c+';display:flex;align-items:center;justify-content:center;flex-shrink:0;font-weight:900;font-size:11px">'+esc(t.l.slice(0,2))+'</div><div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:800;color:#15171B">'+esc(t.l)+'</div><div style="font-size:12px;color:#8a929a;font-weight:600">'+esc(h.ref)+' · '+esc(rel(h.updatedAt))+'</div></div><span style="font-size:11px;font-weight:800;color:'+st.c+';background:'+st.b+';border-radius:20px;padding:4px 11px">'+st.l+'</span></div>'; }).join('')
       : '<div style="font-size:12.5px;color:#a9b1b6;font-weight:600;padding:4px 0">Keine Vorgänge.</div>';
     // Profil in 4 Tabs gegliedert (Übersicht offen · schwere Sektionen als Akkordeon).
-    var TABS=[['ueber','Übersicht'],['train','Training'],['docs','Dokumente & Bestätigungen'],['komm','Nachrichten & Vorgänge']];
+    var TABS=[['ueber','Übersicht'],['train','Training'],['ernaehrung','Ernährung'],['docs','Dokumente & Bestätigungen'],['komm','Nachrichten & Vorgänge']];
     var curTab=S.profTab||'ueber';
     var tabBar='<div style="display:flex;gap:4px;margin-top:18px;background:#eef2f3;border-radius:15px;padding:5px;overflow-x:auto">'+
       TABS.map(function(t){ var on=(t[0]===curTab);
@@ -2332,7 +2496,9 @@ function membersNode(){
     '</div>';
     var tabHtml;
     if(curTab==='train'){
-      tabHtml=checkinsBlock(p)+coachingBlock(p)+nutritionPreviewBlock(p);
+      tabHtml=checkinsBlock(p)+coachingBlock(p);
+    } else if(curTab==='ernaehrung'){
+      tabHtml=nutritionBlock(p)+nutritionPreviewBlock(p);
     } else if(curTab==='docs'){
       tabHtml=membershipBlock(p)+docsCard(p)+accessMediumCard(p);
     } else if(curTab==='komm'){
@@ -2371,6 +2537,7 @@ function membersNode(){
       // Tabs umschalten (Scroll oben) + aufklappbare Sektionen toggeln.
       wrap.querySelectorAll('[data-ptab]').forEach(function(x){ x.onclick=function(){ S.profTab=x.getAttribute('data-ptab'); mainScrollMap['members:'+p.id]=0; render(); }; });
       wrap.querySelectorAll('[data-acc]').forEach(function(x){ x.onclick=function(){ var k=x.getAttribute('data-acc'); S.acc=S.acc||{}; S.acc[k]=!S.acc[k]; render(); }; });
+      wireNutrition(wrap, p);   // Ernährungs-Tab: Diary/Ziel/Rezepte verdrahten
       wrap.querySelectorAll('[data-hist]').forEach(function(x){ x.onclick=function(){ S.screen='inbox'; openConv(x.getAttribute('data-hist')); }; });
       var em=wrap.querySelector('[data-editmember]'); if(em) em.onclick=function(){ S.edStreet=p.street||''; S.edHouse=p.houseNumber||''; S.edZip=p.zipCode||''; S.edCity=p.city||''; S.editMsg=''; S.editMember=true; render(); };
       var ec=wrap.querySelector('[data-edcancel]'); if(ec) ec.onclick=function(){ S.editMember=false; S.editMsg=''; render(); };
