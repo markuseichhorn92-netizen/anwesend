@@ -83,7 +83,10 @@ module.exports = async function handler(req, res) {
     const st = await Coaching.getState(id);
     if (st && st.enrolled) {
       if (!st.track) { try { const prof = await Coaching.kvGetJson('nutri:p:' + id); await Coaching.ensureTrack(id, st, prof && prof.goal); } catch (e) {} }
-      try { await ensureImpulseForRequest(id, st); } catch (e) {}
+      // Tagesimpuls NICHT im GET awaiten: die KI-Erzeugung kann Sekunden dauern und würde den
+      // Coach-Snapshot blockieren (Spinner). Der Snapshot liefert den bereits gecachten Impuls
+      // (der Cron erzeugt ihn ohnehin vorab); hier nur best-effort nachziehen fürs nächste Laden.
+      ensureImpulseForRequest(id, st).catch(function () {});
     }
     res.statusCode = 200; return res.end(JSON.stringify(await snapshot(id, st)));
   }

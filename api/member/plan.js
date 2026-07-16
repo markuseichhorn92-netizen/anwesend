@@ -95,8 +95,10 @@ module.exports = async function handler(req, res) {
     const dayOffset = (parseInt(body.dayOffset, 10) === 1) ? 1 : 0;
     const minutes = (body.minutes != null) ? body.minutes : (body.hour != null ? body.hour * 60 : null);
     const r = await P.setPlan(sess.id, minutes, { email: email, firstName: firstName, remind: remind, dayOffset: dayOffset });
-    // Sofort-Bestätigung per E-Mail, wenn Benachrichtigungen aktiv sind
-    if (r.ok && r.plan && remind) await sendConfirmation(sess.id, email, firstName, r.plan.slot, r.plan.date, referralCode, r.plan.dayOffset);
+    // Sofort-Bestätigung per E-Mail anstoßen, aber NICHT awaiten: eine langsame SMTP-Verbindung
+    // darf die „vorgemerkt"-Rückmeldung nicht verzögern. Der Plan ist bereits gespeichert;
+    // die Mail ist best-effort (interne Fehlerbehandlung + .catch).
+    if (r.ok && r.plan && remind) sendConfirmation(sess.id, email, firstName, r.plan.slot, r.plan.date, referralCode, r.plan.dayOffset).catch(function () {});
     res.statusCode = r.ok ? 200 : 400;
     return res.end(JSON.stringify(r));
   } catch (e) {

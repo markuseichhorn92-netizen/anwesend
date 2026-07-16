@@ -33,7 +33,10 @@ module.exports = async function handler(req, res) {
   let openTotal = 0, currency = (balance && balance.currency) || 'EUR';
   try {
     let offset = 0;
-    for (let page = 0; page < 8; page++) {            // bis ~400 Buchungen
+    // Sequenzielle Magicline-Aufrufe kosten Zeit. Wir brauchen nur die offenen Posten
+    // (praktisch immer die jüngsten) + die letzten ~10 Buchungen – 4 Seiten (~200 Buchungen)
+    // reichen dafür weit; der maßgebliche Gesamtsaldo kommt ohnehin aus /balances.
+    for (let page = 0; page < 4; page++) {            // bis ~200 Buchungen
       const tr = await M.ml('GET', '/customers/' + id + '/account/transactions?sliceSize=50&offset=' + offset);
       if (tr.status !== 200 || !tr.json) break;
       const list = Array.isArray(tr.json.result) ? tr.json.result : [];

@@ -424,8 +424,13 @@ module.exports = async function handler(req, res) {
     let cups = day.water;
     if (body.set != null) cups = n0(body.set);
     else cups = (day.water || 0) + clamp(body.delta, -20, 20, 0);
-    day.water = Math.max(0, Math.min(goal + 4, cups));
-    await saveDay(id, targetDate, day);
+    const nextWater = Math.max(0, Math.min(goal + 4, cups));
+    // Lost-Update vermeiden: unmittelbar vor dem Schreiben die aktuellsten entries neu laden
+    // und nur das Wasser übernehmen. So löscht ein Wasser-Tap kein gerade parallel geloggtes
+    // Lebensmittel (der Tages-Datensatz enthält entries + water in einem Objekt).
+    const fresh = await loadDay(id, targetDate);
+    fresh.water = nextWater;
+    await saveDay(id, targetDate, fresh);
     res.statusCode = 200; return res.end(JSON.stringify(await buildState(id, profile, targetDate)));
   }
 
