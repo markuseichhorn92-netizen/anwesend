@@ -582,7 +582,17 @@ module.exports = async function handler(req, res) {
     const MEAL_DEF = { fruehstueck: { label: 'Frühstück', share: 0.25 }, mittag: { label: 'Mittag', share: 0.35 }, abend: { label: 'Abend', share: 0.30 }, snack: { label: 'Snack', share: 0.12 } };
     const seenM = {}; const mealsReq = [];
     (Array.isArray(body.meals) ? body.meals : []).forEach(function (x) { const k = String(x || '').toLowerCase(); if (MEAL_DEF[k] && !seenM[k]) { seenM[k] = 1; mealsReq.push(k); } });
-    const mealsForAI = mealsReq.map(function (k) { const d = MEAL_DEF[k]; return { key: k, label: d.label, kcal: Math.round((t.kcal || 0) * d.share), protein: Math.round((t.protein || 0) * d.share) }; });
+    // Mehrtagesplanung: eine Mahlzeit je Tag, über mehrere Tage verteilt (gedeckelt, damit die
+    // Generierung handhabbar bleibt). dayOffset = 0..days-1 wird pro Rezept mitgegeben.
+    const RCAP = 16;
+    let daysReq = Math.max(1, Math.min(7, parseInt(body.days, 10) || 1));
+    if (mealsReq.length && mealsReq.length * daysReq > RCAP) { daysReq = Math.max(1, Math.floor(RCAP / mealsReq.length)); }
+    const mealsForAI = [];
+    if (mealsReq.length) {
+      for (let dOff = 0; dOff < daysReq; dOff++) {
+        mealsReq.forEach(function (k) { const d = MEAL_DEF[k]; mealsForAI.push({ key: k, dayOffset: dOff, label: d.label, kcal: Math.round((t.kcal || 0) * d.share), protein: Math.round((t.protein || 0) * d.share) }); });
+      }
+    }
     // Vorlieben: Ernährungsform-Override (egal/vegetarisch/vegan) + Fokus (gesund/eiweißreich/schnell).
     const DIET_OK = { omnivor: 1, vegetarisch: 1, vegan: 1 };
     const dietOverride = DIET_OK[String(body.diet || '').toLowerCase()] ? String(body.diet).toLowerCase() : null;
@@ -593,25 +603,25 @@ module.exports = async function handler(req, res) {
     const share = Math.max(0.15, Math.min(0.6, Number(body.mealShare) || 0.33));
     const mealKcal = Math.round((t.kcal || 0) * share);
     const mealProtein = Math.round((t.protein || 0) * share);
-    const count = mealsReq.length ? mealsReq.length : Math.max(1, Math.min(5, parseInt(body.count, 10) || 3));
+    const count = mealsForAI.length ? mealsForAI.length : Math.max(1, Math.min(5, parseInt(body.count, 10) || 3));
     const avoidTitles = Array.isArray(body.avoidTitles) ? body.avoidTitles.slice(0, 8).map(function (x) { return cleanStr(x, 60); }).filter(Boolean) : [];
-    const r = await AI.nutritionRecipes({ goal: GOALS[profile && profile.goal] || 'ausgewogen', kcalTarget: t.kcal, protein: t.protein, diet: diet, wish: wish, count: count, mealKcal: mealKcal, mealProtein: mealProtein, avoidTitles: avoidTitles, meals: mealsForAI, focus: focus });
+    const r = await AI.nutritionRecipes({ goal: GOALS[profile && profile.goal] || 'ausgewogen', kcalTarget: t.kcal, protein: t.protein, diet: diet, wish: wish, count: count, mealKcal: mealKcal, mealProtein: mealProtein, avoidTitles: avoidTitles, meals: mealsForAI, focus: focus, days: daysReq });
     if (!r.ok) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'FINN kann gerade keine Rezepte erstellen. Versuch es gleich nochmal.' })); }
     // Jedes generierte Rezept in die gemeinsame Bibliothek übernehmen (dedupliziert) und die
     // kanonischen Rezepte inkl. berechnetem Nutri-Score zurückgeben (wachsende Datenbank).
     try { require('../../lib/handled').record('ai', id, 'nutri-recipes'); } catch (e) {}
     const saved = await Recipes.addMany(r.recipes, 'ai');
-    // Mahlzeiten-Zuordnung (transient, nicht in der Bibliothek gespeichert): pro Rezept die
-    // Mahlzeit als Schlüssel (fruehstueck/mittag/abend/snack) für die Plan-Kategorisierung.
-    if (mealsReq.length) {
-      const labelToKey = {}; mealsForAI.forEach(function (m) { labelToKey[m.label.toLowerCase()] = m.key; });
+    // Mahlzeiten-/Tages-Zuordnung (transient, nicht in der Bibliothek gespeichert): pro Rezept die
+    // Mahlzeit (fruehstueck/…) + der Tages-Offset für die Plan-Kategorisierung. Index-Zuordnung,
+    // da die KI die Rezepte in genau der angeforderten Reihenfolge liefert.
+    if (mealsForAI.length) {
       saved.forEach(function (rec, i) {
-        const rawLabel = (r.recipes[i] && r.recipes[i].meal) ? String(r.recipes[i].meal).toLowerCase() : '';
-        rec.meal = labelToKey[rawLabel] || (mealsForAI[i] ? mealsForAI[i].key : null);
+        rec.meal = mealsForAI[i] ? mealsForAI[i].key : null;
+        rec.dayOffset = mealsForAI[i] ? mealsForAI[i].dayOffset : 0;
       });
     }
     const quota = await chargeAI();
-    res.statusCode = 200; return res.end(JSON.stringify({ ok: true, recipes: saved, quota: quota }));
+    res.statusCode = 200; return res.end(JSON.stringify({ ok: true, recipes: saved, quota: quota, days: daysReq }));
   }
 
   // ── Studioweite Rezept-Bibliothek durchstöbern/suchen (wächst mit jeder Generierung) ──

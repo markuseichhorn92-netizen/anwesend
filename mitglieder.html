@@ -4037,8 +4037,10 @@
     else if(S.ernCk){ inner=ernCheckinScreen(); }
     else if(!n.onboarded||S.ernEdit) inner=ernSetup();
     else { var tab=S.ernTab||'heute'; if(tab==='coach') tab='heute';   // Coach ist jetzt ein globaler Tab
-      var seg=(tab==='rezepte')?'':ernModuleSeg(tab);   // Rezepte über das Kopf-Icon, kein Segment
-      inner=ernTopbar(tab)+seg+(tab==='plan'?ernPlan():(tab==='rezepte'?ernRezepte():(tab==='verlauf'?ernVerlauf():ernDash()))); }
+      // Ist ein Rezept geöffnet (auch aus dem Plan-Entwurf), immer die Detailansicht zeigen –
+      // egal aus welchem Tab, damit man Zutaten & Zubereitung vor dem Speichern prüfen kann.
+      var seg=(tab==='rezepte'||S.ernRecipeSel)?'':ernModuleSeg(tab);   // Rezepte über das Kopf-Icon, kein Segment
+      inner=ernTopbar(tab)+seg+(S.ernRecipeSel?ernRezepte():(tab==='plan'?ernPlan():(tab==='rezepte'?ernRezepte():(tab==='verlauf'?ernVerlauf():ernDash())))); }
     // Koch-Modus als Vollbild-Overlay über allem (nur wenn aktiv + Rezept offen).
     var koch=(S.ernKoch!=null&&S.ernRecipeSel)?ernKochModus():'';
     // FINN-Fragebogen als Bottom-Sheet-Overlay (vor der Plan-Generierung).
@@ -4067,7 +4069,8 @@
   var ERN_QMEALS=[['fruehstueck','Frühstück','🌅'],['mittag','Mittagessen','☀️'],['abend','Abendessen','🌙'],['snack','Snacks','🍎']];
   var ERN_QDIET=[['egal','Egal'],['vegetarisch','Vegetarisch'],['vegan','Vegan']];
   var ERN_QFOCUS=[['gesund','Gesund','🥗'],['eiweissreich','Eiweißreich','💪'],['schnell','Schnell','⏱️']];
-  function ernPlanQuizDefaults(){ return { meals:{fruehstueck:false,mittag:true,abend:true,snack:false}, diet:'egal', focus:{gesund:true,eiweissreich:false,schnell:false}, wish:'' }; }
+  function ernPlanQuizDefaults(){ return { meals:{fruehstueck:false,mittag:true,abend:true,snack:false}, days:1, diet:'egal', focus:{gesund:true,eiweissreich:false,schnell:false}, wish:'' }; }
+  var ERN_QDAYS=[[1,'1 Tag'],[3,'3 Tage'],[5,'5 Tage'],[7,'1 Woche']];
   window.__ernQuizWish=function(v){ if(S.ernPlanQuiz) S.ernPlanQuiz.wish=String(v||''); };
   function ernPlanQuizSheet(){
     var q=S.ernPlanQuiz; if(!q) return '';
@@ -4077,6 +4080,7 @@
     var mealsHtml=ERN_QMEALS.map(function(m){ return chip(q.meals[m[0]],m[2],m[1],'ernPlanQuizMeal',m[0]); }).join('');
     var dietHtml=ERN_QDIET.map(function(d){ var on=q.diet===d[0]; return '<button data-act="ernPlanQuizDiet" data-arg="'+d[0]+'" style="flex:1;border:1.5px solid '+(on?ERN_G:'var(--border)')+';background:'+(on?'rgba(15,122,74,.12)':'var(--surface)')+';color:'+(on?ERN_G:'var(--text)')+';border-radius:12px;padding:11px 6px;font-size:13px;font-weight:800;cursor:pointer">'+esc(d[1])+'</button>'; }).join('');
     var focusHtml=ERN_QFOCUS.map(function(f){ return chip(q.focus[f[0]],f[2],f[1],'ernPlanQuizFocus',f[0]); }).join('');
+    var daysHtml=ERN_QDAYS.map(function(d){ var on=(q.days||1)===d[0]; return '<button data-act="ernPlanQuizDays" data-arg="'+d[0]+'" style="flex:1;border:1.5px solid '+(on?ERN_G:'var(--border)')+';background:'+(on?'rgba(15,122,74,.12)':'var(--surface)')+';color:'+(on?ERN_G:'var(--text)')+';border-radius:12px;padding:11px 4px;font-size:12.5px;font-weight:800;cursor:pointer">'+esc(d[1])+'</button>'; }).join('');
     var section=function(t,inner){ return '<div style="margin-top:16px"><div style="font-size:12px;font-weight:900;color:var(--text-soft);text-transform:uppercase;letter-spacing:.4px;margin-bottom:9px">'+t+'</div>'+inner+'</div>'; };
     var err=(S.ernErr&&S.ernMsg)?'<div role="alert" style="font-size:12.5px;font-weight:700;color:var(--err-fg);text-align:center;margin-top:12px">'+esc(S.ernMsg)+'</div>':'';
     return '<div data-act="ernPlanQuizClose" style="position:fixed;inset:0;background:rgba(4,20,24,.5);z-index:120;display:flex;align-items:flex-end;justify-content:center"><div data-act="noop" style="width:100%;max-width:520px;max-height:92vh;overflow-y:auto;background:var(--surface);border-radius:22px 22px 0 0;padding:20px 18px calc(20px + env(safe-area-inset-bottom));box-shadow:0 -12px 40px rgba(0,0,0,.28)">'+
@@ -4084,6 +4088,7 @@
       '<div style="display:flex;align-items:center;gap:10px">'+ernFinnAvatar(34)+'<div><div style="font-size:17px;font-weight:900;color:var(--text)">FINN plant für dich</div><div style="font-size:12.5px;font-weight:600;color:var(--text-soft)">Ein paar Fragen – dann schlägt FINN passende Rezepte vor.</div></div></div>'+
       (ernQuotaPill(false)?'<div style="margin-top:12px">'+ernQuotaPill(false)+'</div>':'')+
       section('Was soll FINN planen?','<div style="display:flex;flex-wrap:wrap;gap:8px">'+mealsHtml+'</div>')+
+      section('Für wie viele Tage?','<div style="display:flex;gap:7px">'+daysHtml+'</div>')+
       section('Ernährungsform','<div style="display:flex;gap:8px">'+dietHtml+'</div>')+
       section('Worauf legst du Wert? (optional)','<div style="display:flex;flex-wrap:wrap;gap:8px">'+focusHtml+'</div>')+
       section('Besonderer Wunsch (optional)','<input id="ern_quiz_wish" value="'+esc(q.wish)+'" oninput="window.__ernQuizWish(this.value)" placeholder="z. B. mediterran, Meal-Prep, ohne Nüsse" style="width:100%;border:1.5px solid var(--border);border-radius:12px;padding:11px 12px;font-size:14px;font-weight:600;color:var(--text-2);background:#fff">')+
@@ -4110,16 +4115,28 @@
         '</div>'+
         '<button data-act="ernPlanReplace" data-arg="'+idx+'" '+(S.ernPlanDraftBusy?'disabled ':'')+'style="width:100%;margin-top:9px;padding:9px;border:1.5px solid var(--border);background:var(--surface);color:var(--teal-ink);border-radius:11px;font-weight:800;font-size:12.5px;cursor:pointer">'+(repl?'FINN ersetzt …':'🔄 Anderes Rezept')+'</button></div>';
     };
-    // Nach Mahlzeit gruppieren, wenn eine Zuordnung vorhanden ist (aus dem Fragebogen).
+    // Nach Tag (bei Mehrtagesplanung) und Mahlzeit gruppieren. Die Tages-kcal beziehen sich auf
+    // EINE Portion je Mahlzeit (das isst du) – so sieht man sofort, ob der Tag zum Ziel passt.
     var MLAB={fruehstueck:['🌅','Frühstück'],mittag:['☀️','Mittagessen'],abend:['🌙','Abendessen'],snack:['🍎','Snacks']};
     var MORD=['fruehstueck','mittag','abend','snack'];
+    var renderMealGroups=function(idxs){
+      var g={}; idxs.forEach(function(idx){ var k=MLAB[draft[idx].meal]?draft[idx].meal:'snack'; (g[k]=g[k]||[]).push(idx); });
+      var keys=MORD.filter(function(k){ return g[k]; }).concat(Object.keys(g).filter(function(k){ return MORD.indexOf(k)<0; }));
+      return keys.map(function(k){ var head=MLAB[k]?('<div style="font-size:12px;font-weight:900;color:'+ERN_G+';text-transform:uppercase;letter-spacing:.4px;margin:8px 2px 8px">'+MLAB[k][0]+' '+MLAB[k][1]+'</div>'):''; return head+g[k].map(function(idx){ return renderSlot(draft[idx],idx); }).join(''); }).join('');
+    };
     var slots;
-    if(draft.some(function(s){ return s.meal; })){
-      var groups={}; draft.forEach(function(s,idx){ var k=MLAB[s.meal]?s.meal:'snack'; (groups[k]=groups[k]||[]).push(idx); });
-      slots=MORD.filter(function(k){ return groups[k]; }).map(function(k){
-        return '<div style="font-size:12.5px;font-weight:900;color:'+ERN_G+';text-transform:uppercase;letter-spacing:.4px;margin:8px 2px 8px">'+MLAB[k][0]+' '+MLAB[k][1]+'</div>'+groups[k].map(function(idx){ return renderSlot(draft[idx],idx); }).join('');
+    var hasMeal=draft.some(function(s){ return s.meal; });
+    var multiDay=draft.some(function(s){ return (parseInt(s.dayOffset,10)||0)>0; });
+    if(multiDay){
+      var byDay={}; draft.forEach(function(s,idx){ var d=parseInt(s.dayOffset,10)||0; (byDay[d]=byDay[d]||[]).push(idx); });
+      slots=Object.keys(byDay).map(Number).sort(function(a,b){ return a-b; }).map(function(d){
+        var idxs=byDay[d];
+        var kc=idxs.reduce(function(a,idx){ var s=draft[idx]; return a+((+s.recipe.kcal||0)*(s.servings||1)); },0);
+        var dayHead='<div style="display:flex;align-items:center;justify-content:space-between;margin:18px 2px 2px"><span style="font-size:15px;font-weight:900;color:var(--text)">'+esc(ernPlanDate(ernOffsetDate(d)))+'</span>'+(kc?'<span style="font-size:12px;font-weight:800;color:'+ERN_G+'">≈ '+ernNum(kc)+' kcal</span>':'')+'</div>';
+        return dayHead+renderMealGroups(idxs);
       }).join('');
-    } else { slots=draft.map(renderSlot).join(''); }
+    } else if(hasMeal){ slots=renderMealGroups(draft.map(function(_,i){ return i; })); }
+    else { slots=draft.map(renderSlot).join(''); }
     var footer='<div style="display:flex;gap:9px;margin-top:6px"><button data-act="ernPlanDiscard" style="flex:1;padding:14px;border:1.5px solid var(--border);background:var(--surface);color:var(--text-muted);border-radius:14px;font-weight:800;font-size:13.5px;cursor:pointer">Verwerfen</button><button data-act="ernPlanSave" '+(S.ernBusy?'disabled ':'')+'style="flex:2;padding:14px;border:none;background:'+ERN_G+';color:#fff;border-radius:14px;font-weight:900;font-size:14px;cursor:pointer">'+(S.ernBusy?'…':('Plan speichern ('+draft.length+')'))+'</button></div>';
     return header+slots+footer;
   }
@@ -5733,8 +5750,8 @@
     ernRecipeOpen:function(a){ var p=String(a||'').split(':'); var i=parseInt(p[1],10);
       var r = p[0]==='draft' ? ((S.ernPlanDraft&&S.ernPlanDraft[i])?S.ernPlanDraft[i].recipe:null)
         : (p[0]==='saved'?(DATA.nutriSaved||[]) : p[0]==='lib'?(DATA.nutriLib||[]) : p[0]==='cook'?((DATA.nutriCook&&DATA.nutriCook.cookplan)||[]) : (S.ernRecipes||[]))[i];
-      if(r) setS({ernRecipeSel:r,ernRecipeSaved:(p[0]==='saved'),ernRecipeServ:Math.max(1,Math.min(12,parseInt(r.servings,10)||1)),ernKoch:null,ernCookPick:false,ernMsg:'',ernErr:false}); },
-    ernRecipeBack:function(){ setS({ernRecipeSel:null,ernKoch:null,ernCookPick:false}); },
+      if(r) setS({ernRecipeSel:r,ernRecipeSaved:(p[0]==='saved'),ernRecipeServ:Math.max(1,Math.min(12,parseInt(r.servings,10)||1)),ernKoch:null,ernKochDirect:false,ernCookPick:false,ernMsg:'',ernErr:false}); },
+    ernRecipeBack:function(){ setS({ernRecipeSel:null,ernKoch:null,ernKochDirect:false,ernCookPick:false}); },
     ernRecipeServ:function(a){ var d=parseInt(a,10)||0; S.ernRecipeServ=Math.max(1,Math.min(12,(parseInt(S.ernRecipeServ,10)||1)+d)); render(); },
     ernLibSearch:function(){ var el=$('ern_libq'); var v=el?(el.value||'').trim():''; S.ernLibQ=v; DATA.nutriLib=null; loadLib(v); render(); },
     ernRecipeSave:function(){ var r=S.ernRecipeSel; if(!r) return; api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'recipe-save',recipe:r})}).then(function(d){ if(d&&d.ok){ DATA.nutriSaved=d.saved; S.ernRecipeSaved=true; render(); } else { S.ernErr=true; S.ernMsg=(d&&d.message)||'Rezept konnte nicht gespeichert werden.'; render(); } }).catch(function(){ S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); }); },
@@ -5761,6 +5778,7 @@
     // Fragebogen: Mahlzeiten (Mehrfachauswahl), Ernährungsform, Fokus, Freitext.
     ernPlanQuizMeal:function(a){ if(!S.ernPlanQuiz) return; S.ernPlanQuiz.meals[a]=!S.ernPlanQuiz.meals[a]; setQuiet({}); },
     ernPlanQuizDiet:function(a){ if(!S.ernPlanQuiz) return; S.ernPlanQuiz.diet=a; setQuiet({}); },
+    ernPlanQuizDays:function(a){ if(!S.ernPlanQuiz) return; S.ernPlanQuiz.days=Math.max(1,Math.min(7,parseInt(a,10)||1)); setQuiet({}); },
     ernPlanQuizFocus:function(a){ if(!S.ernPlanQuiz) return; S.ernPlanQuiz.focus[a]=!S.ernPlanQuiz.focus[a]; setQuiet({}); },
     ernPlanQuizClose:function(){ if(S.ernPlanDraftBusy) return; setQuiet({ernPlanQuiz:null,ernMsg:'',ernErr:false}); },
     // Fragebogen absenden -> Rezepte je gewählter Mahlzeit generieren -> Entwurf (nach Mahlzeit gruppiert).
@@ -5769,15 +5787,18 @@
       if(!meals.length){ S.ernErr=true; S.ernMsg='Wähle mindestens eine Mahlzeit.'; render(); return; }
       if(ernNeedPremium()){ S.ernPlanQuiz=null; return; }   // Gratis-Kontingent leer -> Upgrade
       var focus=['gesund','eiweissreich','schnell'].filter(function(k){ return q.focus[k]; });
-      var payload={ action:'recipes', meals:meals, focus:focus, wish:String(q.wish||'').slice(0,140) };
+      var days=Math.max(1,Math.min(7,parseInt(q.days,10)||1));
+      var payload={ action:'recipes', meals:meals, days:days, focus:focus, wish:String(q.wish||'').slice(0,140) };
       if(q.diet==='vegetarisch'||q.diet==='vegan') payload.diet=q.diet;
       S.ernPlanDraftBusy=true; S.ernMsg=''; S.ernErr=false; render();
-      api('/api/member/nutrition',{method:'POST',timeoutMs:90000,body:JSON.stringify(payload)})
+      api('/api/member/nutrition',{method:'POST',timeoutMs:120000,body:JSON.stringify(payload)})
       .then(function(d){ S.ernPlanDraftBusy=false;
         if(d&&d.error==='premium_required'){ S.ernPlanQuiz=null; setS({ernUpgrade:true}); return; }
         ernQuotaApply(d);
         if(d&&d.ok&&Array.isArray(d.recipes)&&d.recipes.length){
-          S.ernPlanDraft=d.recipes.map(function(r){ return {recipe:r, meal:(r.meal||null), dayOffset:0, servings:Math.max(1,Math.min(12,parseInt(r.servings,10)||1))}; });
+          // Planslots: EINE Portion je Mahlzeit (das isst du) – so bleibt die Tages-kcal realistisch.
+          // dayOffset kommt vom Server (Mehrtagesplanung).
+          S.ernPlanDraft=d.recipes.map(function(r){ return {recipe:r, meal:(r.meal||null), dayOffset:Math.max(0,Math.min(13,parseInt(r.dayOffset,10)||0)), servings:1}; });
           S.ernPlanQuiz=null; S.ernTab='plan'; S.ernPlanTab='kochplan'; DATA.nutriLib=null; loadLib();
         } else { S.ernErr=true; S.ernMsg=(d&&d.message)||'FINN kann gerade nicht planen. Versuch es gleich nochmal.'; }
         render(); try{ window.scrollTo(0,0); }catch(e){}
@@ -5803,13 +5824,15 @@
     // ── Koch-Modus (Schritt-für-Schritt) ──
     ernKochStart:function(){ if(!(S.ernRecipeSel&&S.ernRecipeSel.steps&&S.ernRecipeSel.steps.length)) return; setQuiet({ernKoch:-1}); },   // -1 = Vorbereitung zuerst
     ernKochStep:function(a){ var r=S.ernRecipeSel; if(!r||!r.steps) return; var n=r.steps.length; var cur=parseInt(S.ernKoch,10); if(isNaN(cur)) cur=-1; var i=cur+(parseInt(a,10)||0); setQuiet({ernKoch:Math.max(-1,Math.min(n-1,i))}); },
-    ernKochExit:function(){ setQuiet({ernKoch:null}); },
+    // Koch-Modus verlassen. Kam man direkt aus Heute/Plan (ohne Rezept-Detail), auch das
+    // ausgewählte Rezept löschen, damit man NICHT in der Detailansicht landet, sondern zurück.
+    ernKochExit:function(){ if(S.ernKochDirect){ setQuiet({ernKoch:null, ernRecipeSel:null, ernKochDirect:false}); } else { setQuiet({ernKoch:null}); } },
     // „Gegessen": Plan-Rezept als gekocht markieren + ins Tagesprotokoll übernehmen.
     ernCookEaten:function(a){ if(S.ernBusy) return; S.ernBusy=true; render();
       api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'cookplan-eaten',id:a})})
       .then(function(d){ S.ernBusy=false; if(d&&d.ok){ DATA.nutri=d; DATA.nutriCook={cookplan:d.cookplan||[],shopping:d.shopping||[]}; S.ernMsg=(d.added&&d.added[0])?('Ins Protokoll: '+d.added[0].name):'Als gegessen übernommen.'; S.ernErr=false; } else { S.ernErr=true; S.ernMsg=(d&&d.message)||'Konnte nicht übernehmen – bitte erneut.'; } render(); }).catch(function(){ S.ernBusy=false; S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); }); },
     // Koch-Modus direkt von der Heute-/Plan-Ansicht starten (Rezept aus dem Koch-Plan).
-    ernCookCook:function(a){ var list=(DATA.nutriCook&&DATA.nutriCook.cookplan)||[]; var it=list.filter(function(x){ return String(x.id)===String(a); })[0]; if(!it||!(it.steps&&it.steps.length)) return; setQuiet({ernRecipeSel:it, ernRecipeServ:Math.max(1,Math.min(12,parseInt(it.servings,10)||1)), ernKoch:-1}); },
+    ernCookCook:function(a){ var list=(DATA.nutriCook&&DATA.nutriCook.cookplan)||[]; var it=list.filter(function(x){ return String(x.id)===String(a); })[0]; if(!it||!(it.steps&&it.steps.length)) return; setQuiet({ernRecipeSel:it, ernRecipeServ:Math.max(1,Math.min(12,parseInt(it.servings,10)||1)), ernKoch:-1, ernKochDirect:true}); },
     openBlog:function(a){ closeMenu(); S.blogSel=a; S.blogPost=null; setS({screen:'blog'}); try{ window.scrollTo(0,0); }catch(e){} api('/api/member/blog?id='+encodeURIComponent(a)).then(function(d){ if(d&&d.ok&&d.post){ S.blogPost=d.post; if(S.blogSel===a&&S.screen==='blog') render(); } }).catch(function(){}); },
     openInsta:function(a){ closeMenu(); S.instaSel=a; setS({screen:'insta'}); loadInsta(); },
     doCheckin:function(){
