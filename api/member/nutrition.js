@@ -553,18 +553,38 @@ module.exports = async function handler(req, res) {
     const t = targetsFor(profile || {});
     const fridge = String(body.fridge || '').trim().slice(0, 200);
     const wish = fridge ? ('Nutze möglichst nur diese vorhandenen Zutaten: ' + fridge) : cleanStr(body.wish, 140);
+    // Mahlzeiten-Fragebogen: welche Mahlzeiten geplant werden (mit sinnvollem kcal-Anteil je Mahlzeit).
+    const MEAL_DEF = { fruehstueck: { label: 'Frühstück', share: 0.25 }, mittag: { label: 'Mittag', share: 0.35 }, abend: { label: 'Abend', share: 0.30 }, snack: { label: 'Snack', share: 0.12 } };
+    const seenM = {}; const mealsReq = [];
+    (Array.isArray(body.meals) ? body.meals : []).forEach(function (x) { const k = String(x || '').toLowerCase(); if (MEAL_DEF[k] && !seenM[k]) { seenM[k] = 1; mealsReq.push(k); } });
+    const mealsForAI = mealsReq.map(function (k) { const d = MEAL_DEF[k]; return { key: k, label: d.label, kcal: Math.round((t.kcal || 0) * d.share), protein: Math.round((t.protein || 0) * d.share) }; });
+    // Vorlieben: Ernährungsform-Override (egal/vegetarisch/vegan) + Fokus (gesund/eiweißreich/schnell).
+    const DIET_OK = { omnivor: 1, vegetarisch: 1, vegan: 1 };
+    const dietOverride = DIET_OK[String(body.diet || '').toLowerCase()] ? String(body.diet).toLowerCase() : null;
+    const diet = dietOverride || (profile && profile.diet) || 'omnivor';
+    const FOCUS_OK = { gesund: 1, eiweissreich: 1, schnell: 1 };
+    const focus = (Array.isArray(body.focus) ? body.focus : []).map(function (x) { return String(x || '').toLowerCase(); }).filter(function (f) { return FOCUS_OK[f]; });
     // Auf die Person zuschneiden: eine Portion ~ Anteil einer Hauptmahlzeit am Tagesziel (Standard 33 %).
     const share = Math.max(0.15, Math.min(0.6, Number(body.mealShare) || 0.33));
     const mealKcal = Math.round((t.kcal || 0) * share);
     const mealProtein = Math.round((t.protein || 0) * share);
-    const count = Math.max(1, Math.min(5, parseInt(body.count, 10) || 3));
+    const count = mealsReq.length ? mealsReq.length : Math.max(1, Math.min(5, parseInt(body.count, 10) || 3));
     const avoidTitles = Array.isArray(body.avoidTitles) ? body.avoidTitles.slice(0, 8).map(function (x) { return cleanStr(x, 60); }).filter(Boolean) : [];
-    const r = await AI.nutritionRecipes({ goal: GOALS[profile && profile.goal] || 'ausgewogen', kcalTarget: t.kcal, protein: t.protein, diet: (profile && profile.diet) || 'omnivor', wish: wish, count: count, mealKcal: mealKcal, mealProtein: mealProtein, avoidTitles: avoidTitles });
+    const r = await AI.nutritionRecipes({ goal: GOALS[profile && profile.goal] || 'ausgewogen', kcalTarget: t.kcal, protein: t.protein, diet: diet, wish: wish, count: count, mealKcal: mealKcal, mealProtein: mealProtein, avoidTitles: avoidTitles, meals: mealsForAI, focus: focus });
     if (!r.ok) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'FINN kann gerade keine Rezepte erstellen. Versuch es gleich nochmal.' })); }
     // Jedes generierte Rezept in die gemeinsame Bibliothek übernehmen (dedupliziert) und die
     // kanonischen Rezepte inkl. berechnetem Nutri-Score zurückgeben (wachsende Datenbank).
     try { require('../../lib/handled').record('ai', id, 'nutri-recipes'); } catch (e) {}
     const saved = await Recipes.addMany(r.recipes, 'ai');
+    // Mahlzeiten-Zuordnung (transient, nicht in der Bibliothek gespeichert): pro Rezept die
+    // Mahlzeit als Schlüssel (fruehstueck/mittag/abend/snack) für die Plan-Kategorisierung.
+    if (mealsReq.length) {
+      const labelToKey = {}; mealsForAI.forEach(function (m) { labelToKey[m.label.toLowerCase()] = m.key; });
+      saved.forEach(function (rec, i) {
+        const rawLabel = (r.recipes[i] && r.recipes[i].meal) ? String(r.recipes[i].meal).toLowerCase() : '';
+        rec.meal = labelToKey[rawLabel] || (mealsForAI[i] ? mealsForAI[i].key : null);
+      });
+    }
     res.statusCode = 200; return res.end(JSON.stringify({ ok: true, recipes: saved }));
   }
 
@@ -752,6 +772,7 @@ module.exports = async function handler(req, res) {
       minutes: rec.minutes,
       kcal: rec.kcal, protein: rec.protein, carbs: rec.carbs, fat: rec.fat,
       nutri: rec.nutri || null,
+      meal: (MEALS.indexOf(String(body.meal || (body.recipe && body.recipe.meal) || '')) >= 0) ? String(body.meal || body.recipe.meal) : null,
       ingredients: rec.ingredients,
       steps: rec.steps,
       utensils: rec.utensils || [],
@@ -770,10 +791,12 @@ module.exports = async function handler(req, res) {
       raw = raw || {}; const rec = Recipes.normalizeRecipe(raw.recipe || {}, (raw.recipe && raw.recipe.source));
       const when = validDate(raw.date, date);
       const servings = clamp(raw.servings, 1, 12, rec.servings || 1);
+      const rawMeal = String(raw.meal || (raw.recipe && raw.recipe.meal) || '');
       cook.items.unshift({
         id: newEntryId(), title: rec.title, date: when, servings: servings, baseServings: rec.servings || 1,
         minutes: rec.minutes, kcal: rec.kcal, protein: rec.protein, carbs: rec.carbs, fat: rec.fat,
-        nutri: rec.nutri || null, ingredients: rec.ingredients, steps: rec.steps, utensils: rec.utensils || [], done: false,
+        nutri: rec.nutri || null, meal: (MEALS.indexOf(rawMeal) >= 0) ? rawMeal : null,
+        ingredients: rec.ingredients, steps: rec.steps, utensils: rec.utensils || [], done: false,
       });
     });
     cook.items = cook.items.slice(0, 60);
@@ -803,7 +826,8 @@ module.exports = async function handler(req, res) {
     const targetDate = validDate(it.date, date);   // an dem geplanten Tag protokollieren
     const servings = clamp(it.servings, 1, 12, 1);
     const entry = sanitizeEntry({
-      name: it.title, portion: servings + ' Portion' + (servings > 1 ? 'en' : ''), meal: body.meal,
+      // In die geplante Mahlzeit protokollieren (fällt der Eintrag ohne Mahlzeit zurück auf die Uhrzeit).
+      name: it.title, portion: servings + ' Portion' + (servings > 1 ? 'en' : ''), meal: it.meal || body.meal,
       kcal: n0(it.kcal) * servings, p: n0(it.protein) * servings, c: n0(it.carbs) * servings, f: n0(it.fat) * servings,
     }, hour);
     const day = await loadDay(id, targetDate); day.entries.push(entry); await saveDay(id, targetDate, day);
