@@ -1840,8 +1840,15 @@
     }
     var actions = cancelled ? '' : (pauseBtn(0)+'<button class="btnDanger" data-act="assistCancel">Mitgliedschaft kündigen</button>');
     var actionCard='<div class="card" style="padding:18px;margin-top:14px;display:flex;flex-direction:column;gap:10px">'+copyBtn+actions+'</div>';
+    // Mitgliedschaftsbestätigung (Nachweis „Mitglied seit …") – herunterladen oder per E-Mail.
+    var mbCard='<div class="card" style="padding:18px;margin-top:14px"><div style="font-size:15px;font-weight:900;color:var(--text)">Mitgliedschaftsbestätigung</div>'+
+      '<div style="font-size:13px;color:var(--text-muted);margin-top:4px;line-height:1.5">Offizieller Nachweis, dass du seit '+esc(c.startDate||'—')+' Mitglied bist – z. B. für Arbeitgeber, Krankenkasse oder Behörden.</div>'+
+      '<div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap">'+
+        '<button class="btn2" data-act="dlMembership" style="flex:1;min-width:150px;display:flex;align-items:center;justify-content:center;gap:8px;border-radius:13px">'+svg('<path d="M12 3v13M7 11l5 5 5-5M5 21h14"></path>',{c:'var(--teal-ink)',w:1.9,s:18})+'Herunterladen</button>'+
+        '<button class="btn2" data-act="emailMembership" style="flex:1;min-width:150px;display:flex;align-items:center;justify-content:center;gap:8px;border-radius:13px">'+svg('<rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="M3 7l9 6 9-6"></path>',{c:'var(--apricot)',w:1.9,s:18})+(S.mbEmailing?'Wird gesendet …':'Per E-Mail')+'</button>'+
+      '</div>'+(S.mbMsg?'<div style="font-size:13px;color:var(--teal-ink);font-weight:600;text-align:center;margin-top:10px">'+esc(S.mbMsg)+'</div>':'')+'</div>';
     var dialog = S.withdrawConfirm ? withdrawDialog() : (S.revokeConfirm ? revokeDialog() : '');
-    return head+(cancelled?'':vaCtaCard())+msgs+wd+box+actionCard+modulesCard()+docsCard()+dialog;
+    return head+(cancelled?'':vaCtaCard())+msgs+wd+box+mbCard+actionCard+modulesCard()+docsCard()+dialog;
   }
   // "Meine Dokumente"-Karte. Zeigt die in Magicline hinterlegten Dokumente (Vertrag,
   // Bescheinigungen) + Upload. Bei available:false (403/nicht verfügbar) oder solange
@@ -6771,6 +6778,8 @@
     // checkins
     ciRange:function(a){ S.ciRange=a||'all'; S.dlMsg2=''; setQuiet({}); },
     emailPdf:function(){ emailPdf(); },
+    dlMembership:function(){ downloadMembershipPdf(); },
+    emailMembership:function(){ emailMembershipPdf(); },
     cancelAppt:function(a){ if(!a) return; var id=a;
       // Rückfrage vor dem Stornieren (versehentlicher Tap löscht sonst einen festen Termin).
       var appt=Array.isArray(DATA.appts)?DATA.appts.filter(function(x){return String(x.id)===String(id);})[0]:null;
@@ -6896,6 +6905,40 @@
     api('/api/member/checkin-pdf',{method:'POST',body:JSON.stringify({pdf:b64})})
       .then(function(r){ setS({emailing:false, dlMsg2:(r.message||(r.ok?'Gesendet.':'Versand fehlgeschlagen.'))}); })
       .catch(function(){ setS({emailing:false, dlMsg2:'Versand fehlgeschlagen.'}); });
+  }
+  // ── Mitgliedschaftsbestätigung (PDF): Nachweis „Mitglied seit … bis heute", mit Logo. ──
+  function buildMembershipPdfDoc(){
+    var ns=window.jspdf; if(!ns||!ns.jsPDF){ return null; }
+    var p=DATA.profile||{}; var c=DATA.contract||{};
+    var doc=new ns.jsPDF({unit:'mm',format:'a4'}); var W=210, M=14;
+    doc.setFillColor(10,73,88); doc.rect(0,0,W,26,'F');
+    var lh=11, lw=lh*(LOGO_RATIO||3.6); if(lw>72) lw=72;
+    if(LOGO_DATAURL){ try{ doc.addImage(LOGO_DATAURL,'PNG',M,8,lw,lh); }catch(e){ logoTxt(doc,M); } } else logoTxt(doc,M);
+    doc.setTextColor(21,23,27); doc.setFont('helvetica','bold'); doc.setFontSize(18); doc.text('Mitgliedschaftsbestätigung',M,40);
+    var y=50; doc.setFontSize(11);
+    var status=(c.active===false)?'Beendet':(c.cancelled?'Gekündigt – Laufzeit läuft noch':'Aktiv');
+    [['Name',p.lastName],['Vorname',p.firstName],['Mitgliedsnummer',p.customerNumber],['Geburtsdatum',deDateFull(p.dateOfBirth)],['Tarif',c.rateName],['Mitglied seit',c.startDate],['Status',status]].forEach(function(r){ doc.setFont('helvetica','bold'); doc.setTextColor(60,66,72); doc.text(r[0]+':',M,y); doc.setFont('helvetica','normal'); doc.setTextColor(21,23,27); doc.text(String(r[1]||'—'),62,y); y+=7; });
+    y+=4; doc.setFont('helvetica','normal'); doc.setTextColor(60,66,72); doc.setFontSize(10.5);
+    var name=((p.firstName||'')+' '+(p.lastName||'')).trim()||'das oben genannte Mitglied';
+    var since=c.startDate||'—';
+    var intro=(c.active===false && c.endDate)
+      ? ('Hiermit bestätigt das Fit-Inn Trier, dass '+name+' vom '+since+' bis zum '+c.endDate+' Mitglied im Fit-Inn Trier war.')
+      : ('Hiermit bestätigt das Fit-Inn Trier, dass '+name+' seit dem '+since+' Mitglied im Fit-Inn Trier ist. Die Mitgliedschaft besteht zum Ausstellungsdatum dieser Bescheinigung ('+todayStr()+') fort.');
+    var lines=doc.splitTextToSize(intro,W-2*M); doc.text(lines,M,y); y+=lines.length*5.5+7;
+    var note='Diese Bescheinigung wurde auf Wunsch des Mitglieds ausgestellt und dient als Nachweis der Mitgliedschaft (z. B. für Arbeitgeber, Krankenkasse oder Behörden).';
+    var nl=doc.splitTextToSize(note,W-2*M); doc.text(nl,M,y); y+=nl.length*5.5+16;
+    doc.setDrawColor(200); doc.line(M,y,M+70,y); doc.setFontSize(9); doc.setTextColor(120); doc.text('Fit-Inn Trier · Studioleitung',M,y+5);
+    doc.setFontSize(8.5); doc.setTextColor(150); doc.text('Ausgestellt am '+todayStr()+'  ·  Fit-Inn Trier  ·  Auf Hirtenberg 8  ·  54296 Trier',M,285);
+    return doc;
+  }
+  function downloadMembershipPdf(){ var d=buildMembershipPdfDoc(); if(d){ d.save('mitgliedschaftsbestaetigung.pdf'); setS({mbMsg:'Bestätigung heruntergeladen.'}); } else setS({mbMsg:'PDF-Bibliothek lädt noch – bitte kurz erneut.'}); }
+  function emailMembershipPdf(){
+    var d=buildMembershipPdfDoc(); if(!d){ setS({mbMsg:'PDF-Bibliothek lädt noch – bitte kurz erneut.'}); return; }
+    var b64=d.output('datauristring'); var ix=b64.indexOf('base64,'); if(ix>=0) b64=b64.slice(ix+7);
+    setQuiet({mbEmailing:true, mbMsg:''});
+    api('/api/member/membership-pdf',{method:'POST',body:JSON.stringify({pdf:b64})})
+      .then(function(r){ setS({mbEmailing:false, mbMsg:(r.message||(r.ok?'Gesendet.':'Versand fehlgeschlagen.'))}); })
+      .catch(function(){ setS({mbEmailing:false, mbMsg:'Versand fehlgeschlagen.'}); });
   }
 
   document.addEventListener('click',function(e){

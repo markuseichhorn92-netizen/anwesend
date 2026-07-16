@@ -937,6 +937,50 @@ function emailCheckinPdf(p){
     .then(function(r){ S.ciMailBusy=false; S.ciMsg=(r&&r.message)||(r&&r.ok?'Gesendet.':'Versand fehlgeschlagen.'); render(); })
     .catch(function(){ S.ciMailBusy=false; S.ciMsg='Versand fehlgeschlagen.'; render(); });
 }
+// Logo als dataURL vorladen (echtes Logo im PDF-Kopf).
+var TEAM_LOGO_DATAURL=null, TEAM_LOGO_RATIO=3.6;
+(function(){ try{ var img=new Image(); img.onload=function(){ try{ var nw=img.naturalWidth||img.width, nh=img.naturalHeight||img.height; var cv=document.createElement('canvas'); cv.width=nw; cv.height=nh; cv.getContext('2d').drawImage(img,0,0); TEAM_LOGO_DATAURL=cv.toDataURL('image/png'); TEAM_LOGO_RATIO=nw/nh; }catch(e){} }; img.src='/assets/fitinn-logo-white.png'; }catch(e){} })();
+function ciLogoImg(doc,MG){ var lh=11, lw=lh*(TEAM_LOGO_RATIO||3.6); if(lw>72) lw=72; if(TEAM_LOGO_DATAURL){ try{ doc.addImage(TEAM_LOGO_DATAURL,'PNG',MG,8,lw,lh); return; }catch(e){} } ciLogoTxt(doc,MG); }
+// ── Mitgliedschaftsbestätigung (PDF): Nachweis „Mitglied seit … bis heute" ──
+function buildMembershipPdf(p){
+  var ns=window.jspdf; if(!ns||!ns.jsPDF) return null;
+  var c=(p&&p.contract)||{};
+  var doc=new ns.jsPDF({unit:'mm',format:'a4'}); var W=210, MG=14;
+  doc.setFillColor(10,73,88); doc.rect(0,0,W,26,'F'); ciLogoImg(doc,MG);
+  doc.setTextColor(21,23,27); doc.setFont('helvetica','bold'); doc.setFontSize(18); doc.text('Mitgliedschaftsbestätigung',MG,40);
+  var y=50; doc.setFontSize(11);
+  var status=(c.active===false)?'Beendet':(c.cancelled?'Gekündigt – Laufzeit läuft noch':'Aktiv');
+  [['Name',p.name],['Mitgliedsnummer',p.nr],['Geburtsdatum',p.birthday?ciDate(p.birthday):''],['Tarif',c.rateName],['Mitglied seit',c.startDate],['Status',status]].forEach(function(r){ doc.setFont('helvetica','bold'); doc.setTextColor(60,66,72); doc.text(r[0]+':',MG,y); doc.setFont('helvetica','normal'); doc.setTextColor(21,23,27); doc.text(String(r[1]||'—'),62,y); y+=7; });
+  y+=4; doc.setFont('helvetica','normal'); doc.setTextColor(60,66,72); doc.setFontSize(10.5);
+  var name=p.name||'das oben genannte Mitglied'; var since=c.startDate||'—';
+  var intro=(c.active===false && c.endDate)
+    ? ('Hiermit bestätigt das Fit-Inn Trier, dass '+name+' vom '+since+' bis zum '+c.endDate+' Mitglied im Fit-Inn Trier war.')
+    : ('Hiermit bestätigt das Fit-Inn Trier, dass '+name+' seit dem '+since+' Mitglied im Fit-Inn Trier ist. Die Mitgliedschaft besteht zum Ausstellungsdatum dieser Bescheinigung ('+ciToday()+') fort.');
+  var lines=doc.splitTextToSize(intro,W-2*MG); doc.text(lines,MG,y); y+=lines.length*5.5+7;
+  var note='Diese Bescheinigung wurde auf Wunsch des Mitglieds ausgestellt und dient als Nachweis der Mitgliedschaft (z. B. für Arbeitgeber, Krankenkasse oder Behörden).';
+  var nl=doc.splitTextToSize(note,W-2*MG); doc.text(nl,MG,y); y+=nl.length*5.5+16;
+  doc.setDrawColor(200); doc.line(MG,y,MG+70,y); doc.setFontSize(9); doc.setTextColor(120); doc.text('Fit-Inn Trier · Studioleitung',MG,y+5);
+  doc.setFontSize(8.5); doc.setTextColor(150); doc.text('Ausgestellt am '+ciToday()+'  ·  Fit-Inn Trier  ·  Auf Hirtenberg 8  ·  54296 Trier',MG,285);
+  return doc;
+}
+function downloadMembershipPdf(p){ var d=buildMembershipPdf(p); if(!d){ S.mbMsg='PDF-Bibliothek lädt noch – bitte kurz erneut.'; render(); return; } d.save('mitgliedschaftsbestaetigung.pdf'); S.mbMsg='Bestätigung heruntergeladen.'; render(); }
+function emailMembershipPdf(p){
+  var d=buildMembershipPdf(p); if(!d){ S.mbMsg='PDF-Bibliothek lädt noch – bitte kurz erneut.'; render(); return; }
+  var b64=d.output('datauristring'); var ix=b64.indexOf('base64,'); if(ix>=0) b64=b64.slice(ix+7);
+  if(b64.length>6000000){ S.mbMsg='Das PDF ist für den Versand zu groß.'; render(); return; }
+  S.mbMailBusy=true; S.mbMsg=''; render();
+  tapi('/api/team/membership-pdf',{method:'POST',body:{ id:p.id, pdf:b64 }})
+    .then(function(r){ S.mbMailBusy=false; S.mbMsg=(r&&r.message)||(r&&r.ok?'Gesendet.':'Versand fehlgeschlagen.'); render(); })
+    .catch(function(){ S.mbMailBusy=false; S.mbMsg='Versand fehlgeschlagen.'; render(); });
+}
+function membershipBlock(p){
+  var c=(p&&p.contract)||{}; var since=c.startDate||'—';
+  var actions='<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px">'+
+    '<button data-mbdownload="1" style="display:inline-flex;align-items:center;gap:8px;border:none;border-radius:12px;background:'+TEAL+';color:#fff;font-size:13.5px;font-weight:800;padding:11px 16px;cursor:pointer"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v13"/><path d="M7 11l5 5 5-5"/><path d="M5 21h14"/></svg>Herunterladen</button>'+
+    '<button data-mbmail="1"'+(S.mbMailBusy?' disabled':'')+' style="display:inline-flex;align-items:center;gap:8px;border:1.5px solid #d6dee0;border-radius:12px;background:#fff;color:#0a4958;font-size:13.5px;font-weight:800;padding:11px 16px;cursor:pointer">'+(S.mbMailBusy?'<span class="spin" style="width:14px;height:14px;border-width:2px"></span>Wird gesendet …':'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0a4958" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg>Per E-Mail an Mitglied')+'</button>'+
+    '</div>'+(S.mbMsg?'<div style="font-size:12.5px;font-weight:700;color:#0a4958;margin-top:10px">'+esc(S.mbMsg)+'</div>':'');
+  return '<div style="margin-top:18px;background:#fff;border-radius:20px;box-shadow:0 14px 38px rgba(4,33,40,.09);padding:20px 24px"><div style="font-size:15px;font-weight:900;letter-spacing:-.2px;margin-bottom:4px;color:#15171B">Mitgliedschaftsbestätigung</div><div style="font-size:12.5px;color:#8a929a;font-weight:600;margin-bottom:4px">Nachweis, dass das Mitglied seit '+esc(since)+' im Fit-Inn Trier ist – als PDF mit Logo.</div>'+actions+'</div>';
+}
 
 // ---------- Nachrichtenverlauf mit dem Mitglied ----------
 // Alle Nachrichten über alle Vorgänge des Mitglieds, chronologisch. Nie werfen.
@@ -2154,6 +2198,7 @@ function membersNode(){
         accessMediumCard(p)+
       '</div>'+
       checkinsBlock(p)+
+      membershipBlock(p)+
       coachingBlock(p)+
       nutritionPreviewBlock(p)+
       messagesBlock(p)+
@@ -2194,6 +2239,9 @@ function membersNode(){
       wrap.querySelectorAll('[data-cipreset]').forEach(function(b){ b.onclick=function(){ ciPreset(b.getAttribute('data-cipreset')); }; });
       var cdl=wrap.querySelector('[data-cidownload]'); if(cdl) cdl.onclick=function(){ downloadCheckinPdf(p); };
       var cml=wrap.querySelector('[data-cimail]'); if(cml) cml.onclick=function(){ emailCheckinPdf(p); };
+      // Mitgliedschaftsbestätigung: PDF herunterladen oder an das Mitglied mailen.
+      var mbd=wrap.querySelector('[data-mbdownload]'); if(mbd) mbd.onclick=function(){ downloadMembershipPdf(p); };
+      var mbm=wrap.querySelector('[data-mbmail]'); if(mbm) mbm.onclick=function(){ emailMembershipPdf(p); };
       // Nachrichtenverlauf: Bubble antippen -> Vorgang öffnen (antworten); Button -> neue Direktnachricht.
       wrap.querySelectorAll('[data-msgkey]').forEach(function(b){ var k=b.getAttribute('data-msgkey'); if(k) b.onclick=function(){ S.screen='inbox'; openConv(k); }; });
       var ms2=wrap.querySelector('[data-msgsend2]'); if(ms2) ms2.onclick=function(){ openDirectMsg(p.id, p.name); };
