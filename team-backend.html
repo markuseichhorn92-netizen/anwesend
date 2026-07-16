@@ -939,7 +939,14 @@ function emailCheckinPdf(p){
 }
 // Logo als dataURL vorladen (echtes Logo im PDF-Kopf).
 var TEAM_LOGO_DATAURL=null, TEAM_LOGO_RATIO=3.6;
-(function(){ try{ var img=new Image(); img.onload=function(){ try{ var nw=img.naturalWidth||img.width, nh=img.naturalHeight||img.height; var cv=document.createElement('canvas'); cv.width=nw; cv.height=nh; cv.getContext('2d').drawImage(img,0,0); TEAM_LOGO_DATAURL=cv.toDataURL('image/png'); TEAM_LOGO_RATIO=nw/nh; }catch(e){} }; img.src='/assets/fitinn-logo-white.png'; }catch(e){} })();
+(function(){ try{ var img=new Image(); img.onload=function(){ try{
+  var nw=img.naturalWidth||320, nh=img.naturalHeight||90;
+  // WICHTIG: herunterskalieren (Original ~2917px). In voller Auflösung bläht das
+  // eingebettete Logo das PDF auf ~5–7 MB auf und der E-Mail-Versand schlägt fehl.
+  var maxW=900, sc=Math.min(1,maxW/nw), cw=Math.round(nw*sc), ch=Math.round(nh*sc);
+  var cv=document.createElement('canvas'); cv.width=cw; cv.height=ch; cv.getContext('2d').drawImage(img,0,0,cw,ch);
+  TEAM_LOGO_DATAURL=cv.toDataURL('image/png'); TEAM_LOGO_RATIO=nw/nh;
+}catch(e){} }; img.src='/assets/fitinn-logo-white.png'; }catch(e){} })();
 function ciLogoImg(doc,MG){ var lh=11, lw=lh*(TEAM_LOGO_RATIO||3.6); if(lw>72) lw=72; if(TEAM_LOGO_DATAURL){ try{ doc.addImage(TEAM_LOGO_DATAURL,'PNG',MG,8,lw,lh); return; }catch(e){} } ciLogoTxt(doc,MG); }
 // ── Mitgliedschaftsbestätigung (PDF): Nachweis „Mitglied seit … bis heute" ──
 function buildMembershipPdf(p){
@@ -958,9 +965,10 @@ function buildMembershipPdf(p){
     : ('Hiermit bestätigt das Fit-Inn Trier, dass '+name+' seit dem '+since+' Mitglied im Fit-Inn Trier ist. Die Mitgliedschaft besteht zum Ausstellungsdatum dieser Bescheinigung ('+ciToday()+') fort.');
   var lines=doc.splitTextToSize(intro,W-2*MG); doc.text(lines,MG,y); y+=lines.length*5.5+7;
   var note='Diese Bescheinigung wurde auf Wunsch des Mitglieds ausgestellt und dient als Nachweis der Mitgliedschaft (z. B. für Arbeitgeber, Krankenkasse oder Behörden).';
-  var nl=doc.splitTextToSize(note,W-2*MG); doc.text(nl,MG,y); y+=nl.length*5.5+16;
-  doc.setDrawColor(200); doc.line(MG,y,MG+70,y); doc.setFontSize(9); doc.setTextColor(120); doc.text('Fit-Inn Trier · Studioleitung',MG,y+5);
-  doc.setFontSize(8.5); doc.setTextColor(150); doc.text('Ausgestellt am '+ciToday()+'  ·  Fit-Inn Trier  ·  Auf Hirtenberg 8  ·  54296 Trier',MG,285);
+  var nl=doc.splitTextToSize(note,W-2*MG); doc.text(nl,MG,y); y+=nl.length*5.5+14;
+  doc.setFont('helvetica','bold'); doc.setFontSize(10.5); doc.setTextColor(21,23,27); doc.text('Fit-Inn Trier',MG,y);
+  doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(110); doc.text('Auf Hirtenberg 8 · 54296 Trier · info@fit-inn-trier.de',MG,y+5.5);
+  doc.setFontSize(8.5); doc.setTextColor(150); var vl=doc.splitTextToSize('Dieses Dokument wurde maschinell erstellt und ist auch ohne Unterschrift gültig. Ausgestellt am '+ciToday()+'.',W-2*MG); doc.text(vl,MG,286);
   return doc;
 }
 function downloadMembershipPdf(p){ var d=buildMembershipPdf(p); if(!d){ S.mbMsg='PDF-Bibliothek lädt noch – bitte kurz erneut.'; render(); return; } d.save('mitgliedschaftsbestaetigung.pdf'); S.mbMsg='Bestätigung heruntergeladen.'; render(); }
@@ -2178,9 +2186,9 @@ function membersNode(){
           '<div style="font-size:13px;color:#aed0d6;font-weight:600;margin-top:4px">'+esc(p.nr||'—')+(ct.rateName?' · '+esc(ct.rateName):'')+(ct.startDate?' · seit '+esc(ct.startDate):'')+'</div></div></div>'+
       '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px">'+
         '<button data-msgsend="1" style="display:inline-flex;align-items:center;gap:8px;border:none;border-radius:12px;background:'+TEAL+';color:#fff;font-size:13.5px;font-weight:800;padding:11px 16px;cursor:pointer">'+IC.send+'Nachricht senden</button>'+
-        '<button data-accessinfo="1" style="display:inline-flex;align-items:center;gap:8px;border:1.5px solid rgba(255,255,255,.5);border-radius:12px;background:rgba(255,255,255,.12);color:#fff;font-size:13.5px;font-weight:800;padding:11px 16px;cursor:pointer"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg>Zugangs-Info senden</button>'+
-        '<button data-actionlink="1" style="display:inline-flex;align-items:center;gap:8px;border:1.5px solid rgba(255,255,255,.5);border-radius:12px;background:rgba(255,255,255,.12);color:#fff;font-size:13.5px;font-weight:800;padding:11px 16px;cursor:pointer"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.5 1.5"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.5-1.5"/></svg>Aktions-Link senden</button>'+
-        (isAdmin()?'<button data-rhooffer="1" style="display:inline-flex;align-items:center;gap:8px;border:1.5px solid rgba(255,255,255,.5);border-radius:12px;background:rgba(255,255,255,.12);color:#fff;font-size:13.5px;font-weight:800;padding:11px 16px;cursor:pointer">↩ Rückhol-Angebot</button>':'')+
+        '<button data-accessinfo="1" style="display:inline-flex;align-items:center;gap:8px;border:1.5px solid #d6dee0;border-radius:12px;background:#fff;color:#0a4958;font-size:13.5px;font-weight:800;padding:11px 16px;cursor:pointer"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#0a4958" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg>Zugangs-Info senden</button>'+
+        '<button data-actionlink="1" style="display:inline-flex;align-items:center;gap:8px;border:1.5px solid #d6dee0;border-radius:12px;background:#fff;color:#0a4958;font-size:13.5px;font-weight:800;padding:11px 16px;cursor:pointer"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#0a4958" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.5 1.5"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.5-1.5"/></svg>Aktions-Link senden</button>'+
+        (isAdmin()?'<button data-rhooffer="1" style="display:inline-flex;align-items:center;gap:8px;border:1.5px solid #d6dee0;border-radius:12px;background:#fff;color:#0a4958;font-size:13.5px;font-weight:800;padding:11px 16px;cursor:pointer">↩ Rückhol-Angebot</button>':'')+
       '</div>'+
       tagsRowHTML()+
       handledLineHTML(p)+

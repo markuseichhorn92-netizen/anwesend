@@ -6926,15 +6926,17 @@
       : ('Hiermit bestätigt das Fit-Inn Trier, dass '+name+' seit dem '+since+' Mitglied im Fit-Inn Trier ist. Die Mitgliedschaft besteht zum Ausstellungsdatum dieser Bescheinigung ('+todayStr()+') fort.');
     var lines=doc.splitTextToSize(intro,W-2*M); doc.text(lines,M,y); y+=lines.length*5.5+7;
     var note='Diese Bescheinigung wurde auf Wunsch des Mitglieds ausgestellt und dient als Nachweis der Mitgliedschaft (z. B. für Arbeitgeber, Krankenkasse oder Behörden).';
-    var nl=doc.splitTextToSize(note,W-2*M); doc.text(nl,M,y); y+=nl.length*5.5+16;
-    doc.setDrawColor(200); doc.line(M,y,M+70,y); doc.setFontSize(9); doc.setTextColor(120); doc.text('Fit-Inn Trier · Studioleitung',M,y+5);
-    doc.setFontSize(8.5); doc.setTextColor(150); doc.text('Ausgestellt am '+todayStr()+'  ·  Fit-Inn Trier  ·  Auf Hirtenberg 8  ·  54296 Trier',M,285);
+    var nl=doc.splitTextToSize(note,W-2*M); doc.text(nl,M,y); y+=nl.length*5.5+14;
+    doc.setFont('helvetica','bold'); doc.setFontSize(10.5); doc.setTextColor(21,23,27); doc.text('Fit-Inn Trier',M,y);
+    doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(110); doc.text('Auf Hirtenberg 8 · 54296 Trier · info@fit-inn-trier.de',M,y+5.5);
+    doc.setFontSize(8.5); doc.setTextColor(150); var vl=doc.splitTextToSize('Dieses Dokument wurde maschinell erstellt und ist auch ohne Unterschrift gültig. Ausgestellt am '+todayStr()+'.',W-2*M); doc.text(vl,M,286);
     return doc;
   }
   function downloadMembershipPdf(){ var d=buildMembershipPdfDoc(); if(d){ d.save('mitgliedschaftsbestaetigung.pdf'); setS({mbMsg:'Bestätigung heruntergeladen.'}); } else setS({mbMsg:'PDF-Bibliothek lädt noch – bitte kurz erneut.'}); }
   function emailMembershipPdf(){
     var d=buildMembershipPdfDoc(); if(!d){ setS({mbMsg:'PDF-Bibliothek lädt noch – bitte kurz erneut.'}); return; }
     var b64=d.output('datauristring'); var ix=b64.indexOf('base64,'); if(ix>=0) b64=b64.slice(ix+7);
+    if(b64.length>6000000){ setS({mbMsg:'Das PDF ist gerade zu groß für den Versand – bitte lade es direkt herunter.'}); return; }
     setQuiet({mbEmailing:true, mbMsg:''});
     api('/api/member/membership-pdf',{method:'POST',body:JSON.stringify({pdf:b64})})
       .then(function(r){ setS({mbEmailing:false, mbMsg:(r.message||(r.ok?'Gesendet.':'Versand fehlgeschlagen.'))}); })
