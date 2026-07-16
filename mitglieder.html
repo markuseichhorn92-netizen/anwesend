@@ -2963,9 +2963,11 @@
   // Trainingspartner-Snapshot laden (Opt-in/Buddys/Anfragen) – speist Screen, Startseite & Profil.
   function loadSocial(){
     if(DATA.social==null) DATA.social=false;   // „lädt" bis Antwort da ist
-    api('/api/member/social').then(function(d){ DATA.social=(d&&d.ok)?d:{ok:false,available:false}; rIf(['social','home','profil']); })
+    api('/api/member/social').then(function(d){ DATA.social=(d&&d.ok)?d:{ok:false,available:false}; rIf(['social','home','profil']); if(d&&d.ok&&d.enabled&&S.screen==='social') loadBuddyDetails(); })
     .catch(function(){ DATA.social={ok:false,available:false}; rIf(['social','home','profil']); });
   }
+  // Präsenz + freigegebene Statistik je Buddy nachladen (lazy, nur was fehlt).
+  function loadBuddyDetails(){ var d=DATA.social; if(!(d&&d.enabled&&Array.isArray(d.buddies))) return; if(!DATA.socDetail) DATA.socDetail={}; d.buddies.forEach(function(b){ if(DATA.socDetail[String(b.id)]) return; api('/api/member/social',{method:'POST',body:JSON.stringify({action:'buddy-detail',buddyId:b.id})}).then(function(r){ if(r&&r.ok){ DATA.socDetail[String(b.id)]=r; rIf(['social']); } }).catch(function(){}); }); }
   // WICHTIG: eigener Name (früher hieß das auch loadPlan und überschrieb per Hoisting
   // die Trainings-Vormerkung loadPlan() – dadurch wurde DATA.plan nie geladen).
   function loadNutriPlan(){ api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'plan-get'})}).then(function(d){ DATA.nutriPlan=(d&&d.ok)?{plan:d.plan,shopping:d.shopping}:{plan:null,shopping:[]}; render(); }).catch(function(){ DATA.nutriPlan={plan:null,shopping:[]}; render(); }); }
@@ -4799,12 +4801,13 @@
     var buddyCard;
     if(buddies.length){
       buddyCard='<div style="font-size:17px;font-weight:900;color:var(--text);letter-spacing:-.3px;margin:22px 2px 12px">Deine Trainingspartner ('+buddies.length+')</div>'+
-        buddies.map(function(b){ var un=(d.unread&&d.unread[b.id])?d.unread[b.id]:0; return '<div style="'+CARD.replace('padding:18px','padding:14px 16px')+'"><div style="display:flex;align-items:center;gap:12px">'+socAva(b)+
-          '<div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:800;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(b.name)+'</div><div style="font-size:11.5px;font-weight:600;color:'+(b.active?SOC:'var(--text-soft)')+'">'+(b.active?'Verbunden':'Zurzeit inaktiv')+'</div></div>'+
+        buddies.map(function(b){ var un=(d.unread&&d.unread[b.id])?d.unread[b.id]:0; var stat=socStatLine(b.id); return '<div style="'+CARD.replace('padding:18px','padding:14px 16px')+'"><div style="display:flex;align-items:center;gap:12px">'+socAva(b)+
+          '<div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:800;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(b.name)+'</div>'+(stat||'<div style="font-size:11.5px;font-weight:600;color:'+(b.active?SOC:'var(--text-soft)')+'">'+(b.active?'Verbunden':'Zurzeit inaktiv')+'</div>')+'</div>'+
           '<button data-act="socOpenChat" data-arg="'+esc(b.id)+'" style="position:relative;padding:9px 15px;border:none;background:'+SOC+';color:#fff;border-radius:12px;font-weight:800;font-size:13px;cursor:pointer">Chat'+(un>0?'<span style="position:absolute;top:-6px;right:-6px;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:#F6A964;color:#3a230a;font-size:10.5px;font-weight:900;display:flex;align-items:center;justify-content:center">'+un+'</span>':'')+'</button></div>'+
           '<div style="display:flex;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">'+
-            '<button data-act="socRemove" data-arg="'+esc(b.id)+'" style="flex:1;padding:8px;border:1.5px solid var(--border);background:var(--surface);color:var(--text-soft);border-radius:10px;font-weight:700;font-size:12px;cursor:pointer">Entfernen</button>'+
-            '<button data-act="socBlock" data-arg="'+esc(b.id)+'" style="flex:1;padding:8px;border:1.5px solid var(--border);background:var(--surface);color:var(--err-fg);border-radius:10px;font-weight:700;font-size:12px;cursor:pointer">Blockieren</button>'+
+            '<button data-act="socPlanOpen" data-arg="'+esc(b.id)+'" style="flex:2;padding:9px;border:1.5px solid rgba(45,132,184,.3);background:'+SOCBG+';color:'+SOC+';border-radius:10px;font-weight:800;font-size:12.5px;cursor:pointer">📅 Zusammen trainieren</button>'+
+            '<button data-act="socRemove" data-arg="'+esc(b.id)+'" style="flex:1;padding:9px;border:1.5px solid var(--border);background:var(--surface);color:var(--text-soft);border-radius:10px;font-weight:700;font-size:12px;cursor:pointer">Entfernen</button>'+
+            '<button data-act="socBlock" data-arg="'+esc(b.id)+'" aria-label="Blockieren" title="Blockieren" style="width:36px;padding:9px 0;border:1.5px solid var(--border);background:var(--surface);border-radius:10px;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'+svg('<circle cx="12" cy="12" r="9"></circle><path d="M5.6 5.6l12.8 12.8"></path>',{c:'var(--err-fg)',w:2,s:14})+'</button>'+
           '</div></div>'; }).join('');
     } else {
       buddyCard='<div style="'+CARD+';text-align:center"><div style="font-size:30px">🤝</div><div style="font-size:14px;font-weight:800;color:var(--text);margin-top:6px">Noch keine Trainingspartner</div><div style="font-size:12.5px;font-weight:500;color:var(--text-soft);margin:4px 0 0;line-height:1.5">Teile deinen Code oder gib den Code eines Freundes ein, um euch zu verbinden.</div></div>';
@@ -4818,9 +4821,50 @@
       '<div style="height:1px;background:var(--border)"></div>'+
       socSwitch('socShareToggle','nutrition',!!sh.nutrition,'Ernährungs-Fortschritt','Ernährungs-Streak & Tagesziel')+'</div>'+
       '<button data-act="socDisable" style="width:100%;padding:13px;border:1.5px solid var(--border);background:var(--surface);color:var(--err-fg);border-radius:14px;font-weight:800;font-size:13.5px;cursor:pointer">Trainingspartner deaktivieren</button>';
-    return socHeader('Gemeinsam mehr erreichen')+socMsg()+codeCard+connCard+reqCard+buddyCard+setCard;
+    return socHeader('Gemeinsam mehr erreichen')+socMsg()+socPlansSection(d.plans)+codeCard+connCard+reqCard+buddyCard+setCard+socPlanSheet();
   }
   function socAva(b){ return '<div style="width:42px;height:42px;border-radius:50%;background:'+SOCBG+';color:'+SOC+';font-weight:900;font-size:15px;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+esc(b.initials||'··')+'</div>'; }
+  function socTime(slot){ var h=Math.floor((slot||0)/60), m=(slot||0)%60; return (h<10?'0':'')+h+':'+(m<10?'0':'')+m; }
+  function socOffDate(n){ var d=new Date(); d.setHours(0,0,0,0); d.setDate(d.getDate()+(n||0)); var p=function(x){return(x<10?'0':'')+x;}; return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate()); }
+  function socDayLabel(dateStr){ try{ var d=new Date(dateStr+'T12:00:00'); var t=new Date(); t.setHours(0,0,0,0); var diff=Math.round((new Date(dateStr+'T00:00:00')-t)/864e5); if(diff===0) return 'Heute'; if(diff===1) return 'Morgen'; var wd=['So','Mo','Di','Mi','Do','Fr','Sa'][d.getDay()]; return wd+', '+d.getDate()+'.'+(d.getMonth()+1)+'.'; }catch(e){ return dateStr; } }
+  // Präsenz-/Statistik-Zeile für die Buddy-Karte (aus buddy-detail, lazy geladen).
+  function socStatLine(bid){ var det=(DATA.socDetail||{})[String(bid)]; if(!det) return ''; var parts=[];
+    if(det.here) parts.push('<span style="color:#1d9a4e;font-weight:800">🟢 Jetzt im Studio</span>'); else if(det.today) parts.push('<span style="color:'+SOC+';font-weight:800">✅ Heute trainiert</span>');
+    if(det.weekVisits!=null) parts.push(det.weekVisits+'× diese Woche');
+    if(det.weekStreak) parts.push('🔥 '+det.weekStreak+' Wo.');
+    if(det.points!=null) parts.push(deNum(det.points)+' VP');
+    if(!parts.length) return '';
+    return '<div style="font-size:11.5px;font-weight:600;color:var(--text-soft);margin-top:3px;line-height:1.35">'+parts.join(' · ')+'</div>';
+  }
+  // Trainingsverabredungen (gemeinsam trainieren) – oben in der Hauptansicht.
+  function socPlansSection(plans){
+    if(!plans||!plans.length) return '';
+    var CARD='background:var(--surface);border-radius:20px;box-shadow:0 12px 30px rgba(4,33,40,.09);padding:14px 16px;margin-bottom:14px';
+    return '<div style="font-size:15px;font-weight:900;color:var(--text);margin:4px 2px 10px">📅 Zusammen trainieren</div>'+
+      plans.map(function(p){ var both=p.both; return '<div style="'+CARD+'"><div style="display:flex;align-items:center;gap:12px">'+socAva(p.buddy)+
+        '<div style="flex:1;min-width:0"><div style="font-size:14.5px;font-weight:900;color:var(--text)">'+socDayLabel(p.date)+' · '+socTime(p.slot)+' Uhr</div>'+
+        '<div style="font-size:12px;font-weight:700;color:'+(both?'#1d9a4e':SOC)+';margin-top:1px">'+(both?('Ihr trainiert zusammen mit '+esc(p.buddy.name)):('mit '+esc(p.buddy.name)+' · '+(p.joined?'du bist dabei':'Vorschlag')))+'</div></div>'+
+        (both||p.joined?'<button data-act="socPlanCancel" data-arg="'+esc(p.buddy.id)+'|'+esc(p.date)+'" style="padding:8px 13px;border:1.5px solid var(--border);background:var(--surface);color:var(--text-soft);border-radius:11px;font-weight:700;font-size:12px;cursor:pointer">'+(p.mine?'Absagen':'Austragen')+'</button>'
+          :'<button data-act="socPlanJoin" data-arg="'+esc(p.buddy.id)+'|'+esc(p.date)+'" style="padding:9px 15px;border:none;background:'+SOC+';color:#fff;border-radius:11px;font-weight:800;font-size:12.5px;cursor:pointer">Bin dabei</button>')+
+      '</div></div>'; }).join('');
+  }
+  // Sheet: gemeinsame Trainingszeit vorschlagen.
+  function socPlanSheet(){
+    if(!S.socPlanFor) return '';
+    var d=DATA.social; var buddy=(d&&Array.isArray(d.buddies))?d.buddies.filter(function(x){return String(x.id)===String(S.socPlanFor);})[0]:null;
+    var days=[[0,'Heute'],[1,'Morgen'],[2,socDayLabel(socOffDate(2))]];
+    var dayChips=days.map(function(dd){ var sel=(S.socPlanDay||0)===dd[0]; return '<button data-act="socPlanDay" data-arg="'+dd[0]+'" style="flex:1;padding:11px 0;border:1.5px solid '+(sel?SOC:'var(--border)')+';background:'+(sel?SOCBG:'var(--surface)')+';color:'+(sel?SOC:'var(--text-muted)')+';border-radius:12px;font-weight:800;font-size:13px;cursor:pointer">'+esc(dd[1])+'</button>'; }).join('');
+    var slots=''; for(var h=6;h<=21;h++){ var mn=h*60; var sel=(S.socPlanSlot||1080)===mn; slots+='<button data-act="socPlanSlot" data-arg="'+mn+'" style="padding:10px 0;border:1.5px solid '+(sel?SOC:'var(--border)')+';background:'+(sel?SOC:'var(--surface)')+';color:'+(sel?'#fff':'var(--text-muted)')+';border-radius:10px;font-weight:800;font-size:13px;cursor:pointer">'+socTime(mn)+'</button>'; }
+    var sheet='<div style="background:var(--surface);border-radius:22px 22px 0 0;padding:20px;box-shadow:0 -12px 40px rgba(4,33,40,.2);max-height:82vh;overflow-y:auto">'+
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px"><div style="font-size:18px;font-weight:900;color:var(--text)">Zusammen trainieren</div><button data-act="socPlanClose" aria-label="Schließen" style="width:34px;height:34px;border-radius:11px;border:none;background:var(--surface-2);display:flex;align-items:center;justify-content:center;cursor:pointer">'+svg('<path d="M18 6L6 18M6 6l12 12"></path>',{c:'var(--text-soft)',w:2.2,s:16})+'</button></div>'+
+      (buddy?'<div style="font-size:13px;font-weight:600;color:var(--text-soft);margin-bottom:14px">Schlag '+esc(buddy.name)+' eine gemeinsame Trainingszeit vor.</div>':'')+
+      socMsg()+
+      '<div style="font-size:12px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px">Tag</div><div style="display:flex;gap:8px;margin-bottom:16px">'+dayChips+'</div>'+
+      '<div style="font-size:12px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px">Uhrzeit</div><div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:18px">'+slots+'</div>'+
+      '<button data-act="socPlanGo" '+(S.socBusy?'disabled ':'')+'style="width:100%;padding:15px;border:none;border-radius:14px;background:'+SOC+';color:#fff;font-weight:900;font-size:15px;cursor:pointer">'+(S.socBusy?'Wird gesendet …':'Vorschlagen')+'</button>'+
+    '</div>';
+    return '<div data-act="socPlanClose" style="position:fixed;inset:0;background:rgba(4,20,25,.45);z-index:60;display:flex;align-items:flex-end"><div data-act="noop" style="width:100%;max-width:520px;margin:0 auto">'+sheet+'</div></div>';
+  }
   // ── 1:1-Chat ──
   function socMsgsHtml(msgs){
     if(!msgs||!msgs.length) return '<div style="text-align:center;color:var(--text-soft);font-size:12.5px;font-weight:600;padding:34px 12px">Noch keine Nachrichten.<br>Schreib die erste! 👋</div>';
@@ -6495,6 +6539,16 @@
       .then(function(dd){ S.socChatBusy=false; if(dd&&dd.ok&&Array.isArray(dd.messages)){ if(DATA.socDm&&String(DATA.socDm.buddyId)===String(bid)) DATA.socDm.messages=dd.messages; } else { S.socErr=true; S.socMsg=(dd&&dd.message)||'Nachricht konnte nicht gesendet werden.'; } render(); socDmScrollBottom(); })
       .catch(function(){ S.socChatBusy=false; S.socErr=true; S.socMsg='Verbindung gerade nicht möglich.'; render(); }); },
     socReport:function(a){ try{ if(!confirm('Diesen Trainingspartner dem Studio melden? Das Team prüft die Meldung.')) return; }catch(e){} api('/api/member/social',{method:'POST',body:JSON.stringify({action:'report',buddyId:a})}).then(function(d){ if(d&&d.ok) DATA.social=d; S.socMsg='Danke – die Meldung ist beim Studio eingegangen.'; S.socErr=false; render(); }).catch(function(){}); },
+    socPlanOpen:function(a){ S.socPlanFor=String(a); S.socPlanDay=0; S.socPlanSlot=18*60; S.socMsg=''; S.socErr=false; render(); },
+    socPlanClose:function(){ S.socPlanFor=null; render(); },
+    socPlanDay:function(a){ S.socPlanDay=parseInt(a,10)||0; render(); },
+    socPlanSlot:function(a){ S.socPlanSlot=parseInt(a,10)||1080; render(); },
+    socPlanGo:function(){ if(S.socBusy||!S.socPlanFor) return; var bid=S.socPlanFor; var date=socOffDate(S.socPlanDay||0); var slot=S.socPlanSlot||1080; S.socBusy=true; render();
+      api('/api/member/social',{method:'POST',body:JSON.stringify({action:'plan-propose',buddyId:bid,date:date,slot:slot})})
+      .then(function(d){ S.socBusy=false; if(d&&d.ok){ DATA.social=d; S.socPlanFor=null; S.socMsg='Trainingszeit vorgeschlagen – dein Partner wird benachrichtigt.'; S.socErr=false; } else { S.socErr=true; S.socMsg=(d&&d.message)||'Konnte nicht vorgeschlagen werden.'; } render(); })
+      .catch(function(){ S.socBusy=false; S.socErr=true; S.socMsg='Verbindung gerade nicht möglich.'; render(); }); },
+    socPlanJoin:function(a){ var p=String(a||'').split('|'); if(p.length<2) return; api('/api/member/social',{method:'POST',body:JSON.stringify({action:'plan-join',buddyId:p[0],date:p[1]})}).then(function(d){ if(d&&d.ok){ DATA.social=d; S.socMsg='Du bist dabei! 💪'; S.socErr=false; render(); } }).catch(function(){}); },
+    socPlanCancel:function(a){ var p=String(a||'').split('|'); if(p.length<2) return; try{ if(!confirm('Diese Trainingsverabredung absagen?')) return; }catch(e){} api('/api/member/social',{method:'POST',body:JSON.stringify({action:'plan-cancel',buddyId:p[0],date:p[1]})}).then(function(d){ if(d&&d.ok){ DATA.social=d; render(); } }).catch(function(){}); },
     // checkins
     ciRange:function(a){ S.ciRange=a||'all'; S.dlMsg2=''; setQuiet({}); },
     emailPdf:function(){ emailPdf(); },

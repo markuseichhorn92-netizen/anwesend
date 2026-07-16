@@ -69,6 +69,10 @@ module.exports = async function handler(req, res) {
     if (action === 'dm-thread') { return j(await Social.getDm(id, buddyId)); }
     if (action === 'dm-send') { return j(await Social.sendDm(id, buddyId, body.text)); }
     if (action === 'report') { await Social.report(id, buddyId, body.reason); return j(await Social.snapshot(id)); }
+    if (action === 'buddy-detail') { return j(await Social.buddyDetail(id, buddyId)); }
+    if (action === 'plan-propose') { const r = await Social.proposePlan(id, buddyId, body.date, body.slot); return j(r.ok ? await Social.snapshot(id) : r); }
+    if (action === 'plan-join') { await Social.joinPlan(id, buddyId, body.date); return j(await Social.snapshot(id)); }
+    if (action === 'plan-cancel') { await Social.cancelPlan(id, buddyId, body.date); return j(await Social.snapshot(id)); }
     return j({ ok: false, error: 'unknown_action' });
   } catch (e) {
     return j({ ok: false, error: 'server_error', message: 'Etwas ist schiefgelaufen – bitte erneut.' });
