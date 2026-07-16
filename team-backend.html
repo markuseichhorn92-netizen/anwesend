@@ -116,6 +116,7 @@ var S={ token:null, role:null, meName:null, screen:'dash', convs:[], counts:{}, 
   pxOpen:false, pxBusy:false, pxResult:null, pxCfg:null, pxLoading:false, pxCurrent:[], pxReason:'', pxStart:'', pxTerm:1, pxDoc:'', pxDocName:'',
   wbFrame:null, wbOffers:[], wbLoaded:false, wbSaving:false,
         filter:'open', search:'', loading:false, err:'', draft:'', note:'', replyChannel:'email',
+        selMode:false, selected:{}, bulkBusy:false, bulkMenu:'',   // Postfach: Mehrfachauswahl + Sammelaktionen
         // Login: Admin (Passwort) <-> Trainer (E-Mail-Code). Additiv, bricht den Passwort-Login nicht.
         loginMode:'admin', liEmail:'', liChallenge:'', liCode:'', liErr:'', liBusy:false, liChannelUsed:'email',
         mobileThread:false, panelOpen:false, busy:false, quickOpen:false,
@@ -1590,9 +1591,11 @@ function rowsHTML(){
   }
   return rows.map(function(c){
     var t=tm(c.type), st=sm(c.teamStatus), active=c.key===S.selKey;
+    var checked=!!(S.selMode && S.selected && S.selected[c.key]);
     var prev=(c.lastFrom==='team'?'Team: ':c.lastFrom==='system'?'• ':'')+(c.lastText||'');
-    return '<div class="convrow" data-open="'+esc(c.key)+'" style="padding:13px 16px;border-bottom:1px solid #f3f6f6;background:'+(active?'#f1f6f7':'#fff')+';border-left:3px solid '+(active?TEAL:'transparent')+'">'+
-      '<div style="display:flex;align-items:center;gap:10px">'+
+    var cbox=S.selMode?('<div style="flex-shrink:0;width:22px;height:22px;border-radius:7px;border:2px solid '+(checked?TEAL:'#c4ccce')+';background:'+(checked?TEAL:'#fff')+';display:flex;align-items:center;justify-content:center">'+(checked?'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"/></svg>':'')+'</div>'):'';
+    return '<div class="convrow" data-open="'+esc(c.key)+'" style="padding:13px 16px;border-bottom:1px solid #f3f6f6;background:'+(checked?'#e7f1f3':(active?'#f1f6f7':'#fff'))+';border-left:3px solid '+((checked||active)?TEAL:'transparent')+'">'+
+      '<div style="display:flex;align-items:center;gap:10px">'+cbox+
         '<div style="position:relative;flex-shrink:0"><div style="width:38px;height:38px;border-radius:11px;background:'+chs(c.channel).b+';color:'+chs(c.channel).c+';display:flex;align-items:center;justify-content:center">'+chic(c.channel)+'</div>'+
           (c.priority==='hoch'&&c.teamStatus!=='abgeschlossen'?'<span style="position:absolute;top:-3px;right:-3px;width:12px;height:12px;border-radius:50%;background:#e2685a;border:2px solid #fff"></span>':'')+'</div>'+
         '<div style="flex:1;min-width:0">'+
@@ -1606,8 +1609,54 @@ function rowsHTML(){
         (c.teamUnread?'<span style="margin-left:auto;width:8px;height:8px;border-radius:50%;background:'+ORANGE+'"></span>':'')+'</div></div>';
   }).join('');
 }
-function wireRows(container){ container.querySelectorAll('[data-open]').forEach(function(b){ b.onclick=function(){ openConv(b.getAttribute('data-open')); }; });
+function wireRows(container){ container.querySelectorAll('[data-open]').forEach(function(b){ var k=b.getAttribute('data-open'); b.onclick=function(){ if(S.selMode) toggleSel(k); else openConv(k); }; });
   var rt=container.querySelector('[data-inboxretry]'); if(rt) rt.onclick=function(){ S.inboxErr=false; loadInbox(); }; }
+
+// ---------- Postfach: Mehrfachauswahl + Sammelaktionen ----------
+function selCount(){ var s=S.selected||{}, n=0; for(var k in s){ if(s[k]) n++; } return n; }
+function selKeys(){ var s=S.selected||{}, a=[]; for(var k in s){ if(s[k]) a.push(k); } return a; }
+function toggleSel(key){ S.selected=S.selected||{}; if(S.selected[key]) delete S.selected[key]; else S.selected[key]=true; render(); }
+function bulkSelectAll(){ S.selected={}; filtered().forEach(function(c){ S.selected[c.key]=true; }); render(); }
+function bulkClear(){ S.selected={}; render(); }
+function exitSelMode(){ S.selMode=false; S.selected={}; S.bulkMenu=''; render(); }
+// Aktion auf alle ausgewählten Vorgänge anwenden (der Reihe nach; kein Bulk-Endpoint).
+async function bulkApply(action, extra){
+  var keys=selKeys(); if(!keys.length || S.bulkBusy) return;
+  if(action==='status' && extra && extra.value==='abgeschlossen' && keys.length>1){ if(!window.confirm(keys.length+' Vorgänge als erledigt markieren?')) return; }
+  S.bulkBusy=true; S.bulkMenu=''; render();
+  var okc=0, fail=0;
+  for(var i=0;i<keys.length;i++){ var c=findConv(keys[i]); if(!c){ fail++; continue; } var r=await actOn(c.memberId, c.id, action, extra); if(r&&r.ok) okc++; else fail++; }
+  S.bulkBusy=false; S.selected={}; S.selMode=false; S.bulkMenu='';
+  try{ await loadInbox(); }catch(e){}
+  render();
+  if(fail) alert(fail+' von '+keys.length+' Vorgängen konnten nicht aktualisiert werden.');
+}
+// Kopfzeile mit „Auswählen"-Umschalter bzw. der Sammelaktions-Leiste (nur im Auswahlmodus).
+function bulkHeadHTML(){
+  if(!S.selMode){
+    return '<div style="margin-top:10px;display:flex;justify-content:flex-end">'+
+      '<button data-selmode="1" style="display:inline-flex;align-items:center;gap:6px;border:1.5px solid #d6dee0;background:#fff;border-radius:10px;font-size:12px;font-weight:800;color:#0a4958;padding:7px 12px;cursor:pointer"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0a4958" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>Auswählen</button></div>';
+  }
+  var total=filtered().length, n=selCount();
+  var STATC=[['abgeschlossen','Erledigt','#1d7a3e','#e7f6ec'],['bearbeitung','In Bearbeitung','#C77A2E','#fbf0e3'],['neu','Neu','#b53a2c','#fbeae7'],['wartet','Wartet','#2f7d8c','#e7f1f3']];
+  var actionBtns=STATC.map(function(x){ return '<button data-bulkstatus="'+x[0]+'"'+(n&&!S.bulkBusy?'':' disabled')+' style="border:1.5px solid '+x[3]+';background:'+x[3]+';color:'+x[2]+';border-radius:10px;font-size:12px;font-weight:800;padding:8px 12px;cursor:'+(n&&!S.bulkBusy?'pointer':'default')+';opacity:'+(n&&!S.bulkBusy?'1':'.5')+'">'+x[1]+'</button>'; }).join('');
+  var assignToggle=(S.employees&&S.employees.length) ? '<button data-bulkmenu="assign"'+(n&&!S.bulkBusy?'':' disabled')+' style="border:1.5px solid '+(S.bulkMenu==='assign'?TEAL:'#d6dee0')+';background:#fff;color:#0a4958;border-radius:10px;font-size:12px;font-weight:800;padding:8px 12px;cursor:'+(n&&!S.bulkBusy?'pointer':'default')+';opacity:'+(n&&!S.bulkBusy?'1':'.5')+'">Zuweisen ▾</button>' : '';
+  var assignPanel='';
+  if(S.bulkMenu==='assign' && S.employees && S.employees.length){
+    assignPanel='<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">'+
+      [{id:'',name:'Niemand',none:true}].concat(S.employees).map(function(emp){ return '<button data-bulkassignid="'+esc(emp.none?'':(emp.id||''))+'" data-bulkassignname="'+esc(emp.none?'':emp.name)+'" style="border:1.5px solid #e4eaeb;background:#fff;border-radius:100px;font-size:12px;font-weight:700;color:#42454b;padding:6px 11px;cursor:pointer">'+esc(emp.name)+'</button>'; }).join('')+'</div>';
+  }
+  return '<div style="margin-top:10px;background:#fff;border-radius:13px;box-shadow:0 6px 18px rgba(4,33,40,.06);padding:11px 12px">'+
+    '<div style="display:flex;align-items:center;gap:8px'+(n?';margin-bottom:10px':'')+'">'+
+      '<span style="font-size:12.5px;font-weight:800;color:#15171B">'+(n?(n+' ausgewählt'):'Vorgänge antippen …')+'</span>'+
+      '<button data-selall="1" style="border:none;background:none;color:#0a4958;font-size:12px;font-weight:800;cursor:pointer;padding:2px 4px">Alle ('+total+')</button>'+
+      (n?'<button data-selnone="1" style="border:none;background:none;color:#8a929a;font-size:12px;font-weight:700;cursor:pointer;padding:2px 4px">Keine</button>':'')+
+      '<button data-selexit="1" style="margin-left:auto;border:none;background:none;color:#8a929a;font-size:12px;font-weight:800;cursor:pointer;padding:2px 4px">Fertig</button>'+
+    '</div>'+
+    (n?('<div style="display:flex;flex-wrap:wrap;gap:6px">'+actionBtns+assignToggle+'</div>'+assignPanel):'')+
+    (S.bulkBusy?'<div style="font-size:11.5px;color:#8a929a;font-weight:700;margin-top:8px"><span class="spin" style="width:12px;height:12px;border-width:2px;vertical-align:middle"></span> Wird angewendet …</div>':'')+
+  '</div>';
+}
 
 // Eine Zeile „Label: Wert" fürs Mitgliedsdaten-Panel (leere Werte werden weggelassen).
 function pinfoRow(label, val){
@@ -1653,7 +1702,7 @@ function inboxNode(){
       '<input id="isearch" value="'+esc(S.search)+'" placeholder="Vorgang oder Mitglied suchen" style="width:100%;padding:12px 14px 12px 40px;border:none;border-radius:13px;font-size:14px;background:#fff;outline:none;box-shadow:0 6px 18px rgba(4,33,40,.06)"></div>'+
       '<div style="display:flex;gap:7px;flex-wrap:wrap">'+filters.map(function(f){ var a=S.filter===f[0];
         return '<button data-filter="'+f[0]+'" style="display:flex;align-items:center;gap:6px;border:none;background:'+(a?TEAL:'#fff')+';color:'+(a?'#fff':'#42454b')+';border-radius:11px;font-size:12.5px;font-weight:800;padding:8px 13px;box-shadow:0 6px 18px rgba(4,33,40,.06);cursor:pointer">'+f[1]+(f[2]!=null?'<span style="font-size:11px;font-weight:800;opacity:'+(a?'.8':'.55')+'">'+f[2]+'</span>':'')+'</button>';
-      }).join('')+'</div>';
+      }).join('')+'</div>'+bulkHeadHTML();
   listWrap.appendChild(fhead);
 
   var listScroll=el('<div id="convrows" class="scrl" style="flex:1;overflow-y:auto;min-height:0"></div>');
@@ -1883,6 +1932,14 @@ async function deleteSnip(id){ if(!id) return; if(!window.confirm('Diesen Bauste
 function wireInbox(node){
   var is=node.querySelector('#isearch'); if(is) is.oninput=function(){ S.search=is.value; var c=node.querySelector('#convrows'); if(c){ c.innerHTML=rowsHTML(); wireRows(c); } };
   node.querySelectorAll('[data-filter]').forEach(function(b){ b.onclick=function(){ S.filter=b.getAttribute('data-filter'); render(); }; });
+  // Mehrfachauswahl + Sammelaktionen
+  var smb=node.querySelector('[data-selmode]'); if(smb) smb.onclick=function(){ S.selMode=true; S.selected={}; S.bulkMenu=''; render(); };
+  var sax=node.querySelector('[data-selall]'); if(sax) sax.onclick=bulkSelectAll;
+  var snx=node.querySelector('[data-selnone]'); if(snx) snx.onclick=bulkClear;
+  var sex=node.querySelector('[data-selexit]'); if(sex) sex.onclick=exitSelMode;
+  var bmn=node.querySelector('[data-bulkmenu]'); if(bmn) bmn.onclick=function(){ var m=bmn.getAttribute('data-bulkmenu'); S.bulkMenu=(S.bulkMenu===m?'':m); render(); };
+  node.querySelectorAll('[data-bulkstatus]').forEach(function(b){ b.onclick=function(){ bulkApply('status',{value:b.getAttribute('data-bulkstatus')}); }; });
+  node.querySelectorAll('[data-bulkassignid]').forEach(function(b){ b.onclick=function(){ bulkApply('assign',{assigneeId:b.getAttribute('data-bulkassignid')||null, assigneeName:b.getAttribute('data-bulkassignname')||null}); }; });
   wireRows(node);
   var back=node.querySelector('[data-back]'); if(back) back.onclick=function(){ S.mobileThread=false; render(); };
   var pt=node.querySelector('[data-panel]'); if(pt) pt.onclick=function(){ S.panelOpen=!S.panelOpen; render(); };
@@ -4553,6 +4610,7 @@ window.addEventListener('popstate', function(){
 });
 function goScreen(k){
   if(!canSee(k)) k='dash';   // Angestellte werden aus Admin-Bereichen sanft umgeleitet
+  if(k!=='inbox' && S.selMode){ S.selMode=false; S.selected={}; S.bulkMenu=''; }   // Auswahlmodus beim Verlassen des Postfachs beenden
   S.screen=k; S.navOpen=false; syncUrl(true);
   if(k==='dash'){ loadUtil(); loadChurn(); if(isAdmin()){ loadDues(); loadRetentionOffers(); } if(!S.convs.length && !S.loading) loadInbox(); }
   if(k==='members'){ S.profile=null; if(!S.membersLoaded){ loadMembers(); return; } }
