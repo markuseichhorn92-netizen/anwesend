@@ -220,7 +220,12 @@ async function tapi(path, opts){
   if(opts.body && typeof opts.body!=='string'){ opts.headers['Content-Type']='application/json'; opts.body=JSON.stringify(opts.body); }
   var r=await fetch(path, opts);
   if(r.status===401){ logout(); throw new Error('unauthorized'); }
-  return r.json();
+  // Body defensiv parsen: ein 500 mit HTML-Fehlerseite darf r.json() nicht werfen lassen
+  // (sonst geht die Server-Meldung verloren und Aufrufer ohne try/catch stürzen ab).
+  var j=null; try{ j=await r.json(); }catch(e){ j=null; }
+  if(j==null) return { ok:false, http:r.status };
+  if(j.ok===undefined && !r.ok) j.ok=false;
+  return j;
 }
 
 // ---------- meta ----------
@@ -338,10 +343,11 @@ async function loadInbox(){
   S.loading=true; render();
   try{
     var r=await tapi('/api/team/conversations');
-    if(r.ok){ S.convs=r.conversations||[]; S.counts=r.counts||{}; }
+    if(r.ok){ S.convs=r.conversations||[]; S.counts=r.counts||{}; S.inboxErr=false; }
+    else S.inboxErr=!S.convs.length;   // Fehler nur zeigen, wenn wir nichts anzuzeigen haben
     S.loading=false; render();
     if(S.screen==='inbox' && !S.selKey && S.convs.length && window.innerWidth>860){ openConv(S.convs[0].key); }
-  }catch(e){ S.loading=false; render(); }
+  }catch(e){ S.inboxErr=!S.convs.length; S.loading=false; render(); }
 }
 // Mitarbeiter (Magicline, Scope EMPLOYEE_READ) einmalig laden und in S cachen.
 // available:false (Scope fehlt) -> S.employees bleibt null, die Auswahl wird nicht gerendert.
@@ -433,7 +439,8 @@ async function actOn(memberId, id, action, extra){
   catch(e){ return { ok:false }; }
 }
 async function act(action, extra){
-  if(!S.sel) return; S.busy=true; render();
+  if(!S.sel || S.busy) return;   // re-entrant guard: Doppelklick auf Status/Prio/Zuständig/Schließen ignorieren
+  S.busy=true; render();
   var r=await actOn(S.sel.memberId, S.sel.id, action, extra);
   if(r.ok && r.conversation){ S.sel=r.conversation; }
   else if(r.message){ alert(r.message); }
@@ -455,8 +462,8 @@ async function act(action, extra){
 // ---------- members data ----------
 async function loadMembers(){
   S.membersLoading=true; render();
-  try{ var r=await tapi('/api/team/members'); if(r.ok){ S.members=r.members||[]; } S.membersLoaded=true; }
-  catch(e){} S.membersLoading=false; render();
+  try{ var r=await tapi('/api/team/members'); if(r.ok){ S.members=r.members||[]; S.membersErr=false; } else S.membersErr=!(S.members&&S.members.length); S.membersLoaded=true; }
+  catch(e){ S.membersErr=!(S.members&&S.members.length); } S.membersLoading=false; render();
 }
 var _msTimer=null;
 function onMemberSearch(v){
@@ -1431,6 +1438,7 @@ function filtered(){
 
 function rowsHTML(){
   if(S.loading && !S.convs.length) return '<div style="padding:40px;text-align:center"><span class="spin"></span></div>';
+  if(S.inboxErr && !S.convs.length) return '<div style="padding:36px 22px;text-align:center"><div style="font-size:13.5px;color:#42454b;font-weight:700;margin-bottom:4px">Postfach konnte nicht geladen werden.</div><div style="font-size:12.5px;color:#8a929a;font-weight:600;margin-bottom:14px">Prüf deine Verbindung – deine Vorgänge sind sicher gespeichert.</div><button data-inboxretry="1" style="border:1.5px solid #d6dee0;background:#fff;border-radius:11px;font-size:13px;font-weight:800;padding:9px 16px;color:'+TEAL+';cursor:pointer">Erneut laden</button></div>';
   var rows=filtered();
   if(!rows.length){
     var msg = S.filter==='open' ? 'Keine offenen Vorgänge – alles erledigt! 🎉'
@@ -1457,7 +1465,8 @@ function rowsHTML(){
         (c.teamUnread?'<span style="margin-left:auto;width:8px;height:8px;border-radius:50%;background:'+ORANGE+'"></span>':'')+'</div></div>';
   }).join('');
 }
-function wireRows(container){ container.querySelectorAll('[data-open]').forEach(function(b){ b.onclick=function(){ openConv(b.getAttribute('data-open')); }; }); }
+function wireRows(container){ container.querySelectorAll('[data-open]').forEach(function(b){ b.onclick=function(){ openConv(b.getAttribute('data-open')); }; });
+  var rt=container.querySelector('[data-inboxretry]'); if(rt) rt.onclick=function(){ S.inboxErr=false; loadInbox(); }; }
 
 // Eine Zeile „Label: Wert" fürs Mitgliedsdaten-Panel (leere Werte werden weggelassen).
 function pinfoRow(label, val){
@@ -1628,7 +1637,8 @@ function inboxNode(){
       mbox.innerHTML=
         '<div style="padding:18px 20px 14px;border-bottom:1px solid #eef1f2"><div style="font-size:16px;font-weight:900;letter-spacing:-.3px;color:#15171B">Vorgänge zusammenführen</div>'+
           '<div style="font-size:12.5px;color:#8a929a;font-weight:600;margin-top:3px">Wähle den Vorgang, der in <b style="color:#5a636a">'+esc(sel2.member.name)+'</b> zusammengeführt wird. Er wird aufgelöst, alle Nachrichten landen hier.</div></div>'+
-        '<div style="padding:14px 18px 8px"><input id="mgsearch" value="'+esc(S.mergeSearch)+'" placeholder="Nach Name, Nummer oder Referenz filtern" autocomplete="off" style="width:100%;padding:12px 14px;border:1.5px solid #d6dee0;border-radius:12px;font-size:14.5px;outline:none"></div>'+
+        '<div style="padding:14px 18px 4px"><input id="mgsearch" value="'+esc(S.mergeSearch)+'" placeholder="Nach Name, Nummer oder Referenz filtern" autocomplete="off" style="width:100%;padding:12px 14px;border:1.5px solid #d6dee0;border-radius:12px;font-size:14.5px;outline:none"></div>'+
+        '<div style="padding:0 20px 8px;font-size:11.5px;color:#a9b1b6;font-weight:600">Durchsucht die aktuell geladenen Vorgänge. Fehlt einer, lade das Postfach neu.</div>'+
         '<div id="mgrows" class="scrl" style="flex:1;overflow-y:auto;min-height:90px;max-height:46vh"></div>'+
         '<div style="padding:12px 18px;border-top:1px solid #eef1f2;display:flex;justify-content:flex-end"><button id="mgcancel" style="border:1.5px solid #d6dee0;background:#fff;border-radius:12px;font-size:13.5px;font-weight:800;padding:10px 16px;color:#6b7780;cursor:pointer">Abbrechen</button></div>';
       mov.appendChild(mbox);
@@ -1735,13 +1745,13 @@ function wireInbox(node){
   wireRows(node);
   var back=node.querySelector('[data-back]'); if(back) back.onclick=function(){ S.mobileThread=false; render(); };
   var pt=node.querySelector('[data-panel]'); if(pt) pt.onclick=function(){ S.panelOpen=!S.panelOpen; render(); };
-  var dr=node.querySelector('#draft'); if(dr){ dr.oninput=function(){ S.draft=dr.value; var sb=node.querySelector('#send'); if(sb) sb.style.background=(dr.value.trim()?TEAL:'#9fb4b8'); };
+  var dr=node.querySelector('#draft'); if(dr){ asGrow(dr); dr.oninput=function(){ S.draft=dr.value; asGrow(dr); var sb=node.querySelector('#send'); if(sb) sb.style.background=(dr.value.trim()?TEAL:'#9fb4b8'); };
     dr.onkeydown=function(e){ if(e.key==='Enter'&&(e.metaKey||e.ctrlKey)){ e.preventDefault(); sendReply(); } }; }
   var sd=node.querySelector('#send'); if(sd) sd.onclick=sendReply;
   node.querySelectorAll('[data-ch]').forEach(function(b){ b.onclick=function(){ S.replyChannel=b.getAttribute('data-ch'); render(); }; });
   var aid=node.querySelector('[data-aidraft]'); if(aid) aid.onclick=suggestReply;
   var qk=node.querySelector('[data-quick]'); if(qk) qk.onclick=function(){ S.quickOpen=!S.quickOpen; if(S.quickOpen && !S.snippetsLoaded) loadSnippets(); render(); };
-  node.querySelectorAll('[data-tpl]').forEach(function(b){ b.onclick=function(){ var i=+b.getAttribute('data-tpl'); var items=snipItems(); var tp=(items[i]&&items[i].text)||''; S.draft=(S.draft&&S.draft.trim())?(S.draft.replace(/\s+$/,'')+'\n\n'+tp):tp; S.quickOpen=false; render(); var d=root.querySelector('#draft'); if(d){ d.focus(); d.setSelectionRange(d.value.length,d.value.length); } }; });
+  node.querySelectorAll('[data-tpl]').forEach(function(b){ b.onclick=function(){ var i=+b.getAttribute('data-tpl'); var items=snipItems(); var tp=(items[i]&&items[i].text)||''; S.draft=(S.draft&&S.draft.trim())?(S.draft.replace(/\s+$/,'')+'\n\n'+tp):tp; S.quickOpen=false; render(); var d=root.querySelector('#draft'); if(d){ asGrow(d); d.focus(); d.setSelectionRange(d.value.length,d.value.length); } }; });
   // Textbausteine verwalten (Dialog)
   var msb=node.querySelector('[data-managesnip]'); if(msb) msb.onclick=function(){ S.manageOpen=true; S.snipEdit=null; if(!S.snippetsLoaded) loadSnippets(); render(); };
   var scl=node.querySelector('[data-snipclose]'); if(scl) scl.onclick=function(){ S.manageOpen=false; S.snipEdit=null; render(); };
@@ -1752,7 +1762,7 @@ function wireInbox(node){
   var seb=node.querySelector('#snipeditbox'); if(seb) seb.oninput=function(){ if(S.snipEdit) S.snipEdit.text=seb.value; };
   var ses=node.querySelector('#snipeditsave'); if(ses) ses.onclick=function(){ if(S.snipEdit) updateSnip(S.snipEdit.id, S.snipEdit.text); };
   var sec=node.querySelector('#snipeditcancel'); if(sec) sec.onclick=function(){ S.snipEdit=null; render(); };
-  var nt=node.querySelector('#note'); if(nt) nt.oninput=function(){ S.note=nt.value; };
+  var nt=node.querySelector('#note'); if(nt){ asGrow(nt); nt.oninput=function(){ S.note=nt.value; asGrow(nt); }; }
   var an=node.querySelector('#addnote'); if(an) an.onclick=function(){ var v=(S.note||'').trim(); if(v) act('note',{text:v}); };
   node.querySelectorAll('[data-status]').forEach(function(b){ b.onclick=function(){ act('status',{value:b.getAttribute('data-status')}); }; });
   node.querySelectorAll('[data-prio]').forEach(function(b){ b.onclick=function(){ act('priority',{value:b.getAttribute('data-prio')}); }; });
@@ -1792,15 +1802,16 @@ async function suggestReply(){
   catch(e){ r={ok:false}; }
   S.aiBusy=false;
   if(r && r.ok && r.draft){
-    // nur einfügen, wenn noch derselbe Vorgang offen ist
-    if(S.sel && S.sel.memberId===memberId && String(S.sel.id)===String(id)){ S.draft=r.draft; S.quickOpen=false; }
+    // nur einfügen, wenn noch derselbe Vorgang offen ist. Bereits getippten Text NICHT
+    // überschreiben – den KI-Vorschlag anhängen (sonst geht die Handarbeit verloren).
+    if(S.sel && S.sel.memberId===memberId && String(S.sel.id)===String(id)){ var cur=(S.draft||'').trim(); S.draft=cur?(cur+'\n\n'+r.draft):r.draft; S.quickOpen=false; }
   } else if(r && r.error==='no_ai'){
     S.aiUnavailable=true;
   } else {
     alert((r&&r.message)||'KI-Entwurf konnte nicht erstellt werden.');
   }
   render();
-  var d=root.querySelector('#draft'); if(d && r && r.ok){ d.focus(); d.setSelectionRange(d.value.length,d.value.length); }
+  var d=root.querySelector('#draft'); if(d && r && r.ok){ asGrow(d); d.focus(); d.setSelectionRange(d.value.length,d.value.length); }
 }
 
 // ---------- render: dashboard ----------
@@ -1958,6 +1969,7 @@ function memberRowsHTML(){
   }
   if(S.membersLoading && !S.members.length) return '<div style="padding:34px;text-align:center"><span class="spin"></span></div>';
   if(S.tagFilter && S.tagFilterLoading) return '<div style="padding:34px;text-align:center"><span class="spin"></span></div>';
+  if(S.membersErr && !S.members.length) return '<div style="padding:34px 22px;text-align:center"><div style="font-size:13.5px;color:#42454b;font-weight:700;margin-bottom:12px">Liste konnte nicht geladen werden.</div><button data-membersretry="1" style="border:1.5px solid #d6dee0;background:#fff;border-radius:11px;font-size:13px;font-weight:800;padding:9px 16px;color:'+TEAL+';cursor:pointer">Erneut laden</button></div>';
   if(!S.members.length) return '<div style="padding:34px 22px;text-align:center;color:#8a929a;font-size:13.5px;font-weight:600">Noch keine Mitglieder mit Vorgängen.<br>Nutze die Suche, um jemanden in Magicline zu finden.</div>';
   var list=filteredMembers();
   var head=S.tagFilter
@@ -1972,7 +1984,7 @@ function memberRowsHTML(){
       '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#c9d3d5" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg></div>';
   }).join('');
 }
-function updateMemberRows(){ var c=document.getElementById('memberrows'); if(c){ c.innerHTML=memberRowsHTML(); c.querySelectorAll('[data-prof]').forEach(function(b){ b.onclick=function(){ openProfile(b.getAttribute('data-prof')); }; }); } }
+function updateMemberRows(){ var c=document.getElementById('memberrows'); if(c){ c.innerHTML=memberRowsHTML(); c.querySelectorAll('[data-prof]').forEach(function(b){ b.onclick=function(){ openProfile(b.getAttribute('data-prof')); }; }); var mrt=c.querySelector('[data-membersretry]'); if(mrt) mrt.onclick=function(){ S.membersErr=false; loadMembers(); }; } }
 
 function profileCard(title, rows){
   return '<div style="background:#fff;border-radius:18px;box-shadow:0 12px 32px rgba(4,33,40,.08);padding:20px 22px"><div style="font-size:15px;font-weight:900;margin-bottom:6px">'+esc(title)+'</div>'+rows+'</div>';
@@ -2219,6 +2231,7 @@ function membersNode(){
     '<div style="background:#fff;border-radius:18px;box-shadow:0 12px 32px rgba(4,33,40,.08);overflow:hidden"><div id="memberrows">'+memberRowsHTML()+'</div></div></div>';
   setTimeout(function(){
     var s=node.querySelector('#msearch'); if(s) s.oninput=function(){ onMemberSearch(s.value); };
+    var mrt=node.querySelector('[data-membersretry]'); if(mrt) mrt.onclick=function(){ S.membersErr=false; loadMembers(); };
     var dc=node.querySelector('[data-dupcheck]'); if(dc) dc.onclick=loadDuplicates;
     node.querySelectorAll('[data-tagfilter]').forEach(function(b){ b.onclick=function(){ toggleTagFilter(b.getAttribute('data-tagfilter')); }; });
     var tcl=node.querySelector('[data-tagclear]'); if(tcl) tcl.onclick=function(){ S.tagFilter=null; S.tagFilterIds=null; render(); };
@@ -2375,8 +2388,8 @@ function leadInitials(nm){ var p=String(nm||'').trim().split(/\s+/).filter(Boole
 
 async function loadLeads(){
   S.leadsLoading=true; render();
-  try{ var r=await tapi('/api/team/leads'); if(r && r.ok){ S.leads=r.leads||[]; } S.leadsLoaded=true; }
-  catch(e){}
+  try{ var r=await tapi('/api/team/leads'); if(r && r.ok){ S.leads=r.leads||[]; S.leadsErr=false; } else S.leadsErr=!(S.leads&&S.leads.length); S.leadsLoaded=true; }
+  catch(e){ S.leadsErr=!(S.leads&&S.leads.length); }
   S.leadsLoading=false; render();
 }
 function setLeadFilter(k){ if(S.leadFilter===k) return; S.leadFilter=k; render(); }
@@ -2444,6 +2457,11 @@ function leadsNode(){
     node.innerHTML='<div style="display:flex;align-items:center;justify-content:center;padding:70px"><span class="spin"></span></div>';
     return node;
   }
+  if(S.leadsErr && !(S.leads&&S.leads.length)){
+    node.innerHTML='<div style="padding:60px 22px;text-align:center"><div style="font-size:14px;color:#42454b;font-weight:700;margin-bottom:12px">Leads konnten nicht geladen werden.</div><button data-leadsretry="1" style="border:1.5px solid #d6dee0;background:#fff;border-radius:11px;font-size:13px;font-weight:800;padding:9px 16px;color:'+TEAL+';cursor:pointer">Erneut laden</button></div>';
+    var lr=node.querySelector('[data-leadsretry]'); if(lr) lr.onclick=function(){ S.leadsErr=false; loadLeads(); };
+    return node;
+  }
   var leads=S.leads||[];
   var counts={neu:0,kontaktiert:0,gewonnen:0,verloren:0};
   leads.forEach(function(l){ if(counts[l.status]!=null) counts[l.status]++; else counts.neu++; });
@@ -2485,8 +2503,8 @@ function todoDueState(due){
 }
 async function loadTodos(){
   S.todosLoading=true; render();
-  try{ var r=await tapi('/api/team/todos'); if(r && r.ok){ S.todos=r.todos||[]; } S.todosLoaded=true; }
-  catch(e){}
+  try{ var r=await tapi('/api/team/todos'); if(r && r.ok){ S.todos=r.todos||[]; S.todosErr=false; } else S.todosErr=!(S.todos&&S.todos.length); S.todosLoaded=true; }
+  catch(e){ S.todosErr=!(S.todos&&S.todos.length); }
   S.todosLoading=false; render();
 }
 function setTodoFilter(k){ if(S.todoFilter===k) return; S.todoFilter=k; render(); }
@@ -2555,6 +2573,11 @@ function todoNode(){
   var node=el('<div class="scrl" style="flex:1;min-height:0;overflow-y:auto;padding:24px 28px 44px"></div>');
   if(S.todosLoading && !(S.todos&&S.todos.length)){
     node.innerHTML='<div style="display:flex;align-items:center;justify-content:center;padding:70px"><span class="spin"></span></div>';
+    return node;
+  }
+  if(S.todosErr && !(S.todos&&S.todos.length)){
+    node.innerHTML='<div style="padding:60px 22px;text-align:center"><div style="font-size:14px;color:#42454b;font-weight:700;margin-bottom:12px">Aufgaben konnten nicht geladen werden.</div><button data-todosretry="1" style="border:1.5px solid #d6dee0;background:#fff;border-radius:11px;font-size:13px;font-weight:800;padding:9px 16px;color:'+TEAL+';cursor:pointer">Erneut laden</button></div>';
+    var tr=node.querySelector('[data-todosretry]'); if(tr) tr.onclick=function(){ S.todosErr=false; loadTodos(); };
     return node;
   }
   var todos=S.todos||[];
@@ -3819,8 +3842,8 @@ function deNum(n){ return Number(n||0).toLocaleString('de-DE'); }
 // Ø Reaktionszeit in Minuten -> lesbares Label ("18 Min.", "2,5 h") bzw. "—" wenn nicht berechenbar.
 function rtLabel(min){ if(min==null||isNaN(min)) return '—'; var m=Number(min); if(m<60) return Math.round(m)+' Min.'; var h=m/60; return (h>=10?Math.round(h):Number(h.toFixed(1))).toLocaleString('de-DE')+' h'; }
 
-async function loadArticles(){ S.articlesLoading=true; render(); try{ var r=await tapi('/api/team/articles'); if(r.ok) S.articles=r.articles||[]; S.articlesLoaded=true; }catch(e){} S.articlesLoading=false; render(); }
-async function loadStats(){ S.statsLoading=true; render(); try{ var r=await tapi('/api/team/stats'); if(r.ok) S.stats=r; }catch(e){} S.statsLoading=false; render(); }
+async function loadArticles(){ S.articlesLoading=true; render(); try{ var r=await tapi('/api/team/articles'); if(r.ok){ S.articles=r.articles||[]; S.articlesErr=false; } else S.articlesErr=!(S.articles&&S.articles.length); S.articlesLoaded=true; }catch(e){ S.articlesErr=!(S.articles&&S.articles.length); } S.articlesLoading=false; render(); }
+async function loadStats(){ S.statsLoading=true; render(); try{ var r=await tapi('/api/team/stats'); if(r.ok){ S.stats=r; S.statsErr=false; } else S.statsErr=!S.stats; }catch(e){ S.statsErr=!S.stats; } S.statsLoading=false; render(); }
 // Live-Auslastung (öffentlicher Endpunkt, echte Magicline-Daten).
 async function loadUtil(){ try{ var r=await fetch('/api/auslastung').then(function(x){return x.json();}); if(r && (r.count!=null||r.percent!=null)){ S.util=r; scheduleRender(); } }catch(e){} }
 // Churn-Radar: Risiko-Mitglieder (degradiert still – Karte bleibt bei Fehler/leer aus).
@@ -3891,6 +3914,7 @@ function helpNode(){
   var cats=[['all','Alle']].concat(Object.keys(HCAT).map(function(k){return [k,HCAT[k].l];}));
   function rowsH(){
     if(S.articlesLoading && !S.articles.length) return '<div style="padding:34px;text-align:center"><span class="spin"></span></div>';
+    if(S.articlesErr && !S.articles.length) return '<div style="padding:34px 22px;text-align:center"><div style="font-size:13.5px;color:#42454b;font-weight:700;margin-bottom:12px">Artikel konnten nicht geladen werden.</div><button data-articlesretry="1" style="border:1.5px solid #d6dee0;background:#fff;border-radius:11px;font-size:13px;font-weight:800;padding:9px 16px;color:'+TEAL+';cursor:pointer">Erneut laden</button></div>';
     if(!vis.length) return '<div style="padding:34px 22px;text-align:center;color:#8a929a;font-size:13.5px;font-weight:600">Keine Artikel.'+(S.articles.length?'':' Lege deinen ersten an. ✍️')+'</div>';
     return vis.map(function(a){ var c=hcat(a.cat),st=ASTAT[a.status]||ASTAT.entwurf;
       return '<div class="lrow" data-aedit="'+esc(a.id)+'" style="display:flex;align-items:center;gap:13px;padding:15px 18px;border-top:1px solid #f0f3f4;cursor:pointer">'+
@@ -3916,6 +3940,7 @@ function helpNode(){
     node2.querySelectorAll('[data-hcat]').forEach(function(b){ b.onclick=function(){ S.helpCat=b.getAttribute('data-hcat'); render(); }; });
     var nn=node2.querySelector('[data-hnew]'); if(nn) nn.onclick=helpNew;
     node2.querySelectorAll('[data-aedit]').forEach(function(b){ b.onclick=function(){ helpEdit(b.getAttribute('data-aedit')); }; });
+    var arr=node2.querySelector('[data-articlesretry]'); if(arr) arr.onclick=function(){ S.articlesErr=false; loadArticles(); };
   },0);
   return node2;
 }
@@ -3924,6 +3949,7 @@ function helpNode(){
 function statsNode(){
   var node=el('<div class="scrl" style="flex:1;min-height:0;overflow-y:auto;padding:18px 18px 28px"></div>');
   if(S.statsLoading && !S.stats){ node.innerHTML='<div style="padding:60px;text-align:center"><span class="spin"></span></div>'; return node; }
+  if(S.statsErr && !S.stats){ node.innerHTML='<div style="padding:60px 22px;text-align:center"><div style="font-size:14px;color:#42454b;font-weight:700;margin-bottom:12px">Statistiken konnten nicht geladen werden.</div><button data-statsretry="1" style="border:1.5px solid #d6dee0;background:#fff;border-radius:11px;font-size:13px;font-weight:800;padding:9px 16px;color:'+TEAL+';cursor:pointer">Erneut laden</button></div>'; var sr=node.querySelector('[data-statsretry]'); if(sr) sr.onclick=function(){ S.statsErr=false; loadStats(); }; return node; }
   var s=S.stats||{counts:{},vorgangBreakdown:[],checkinDays:[],topArticles:[],avgUtil:0,articlesPublished:0,articleViews:0,employeeStats:[]};
   var c=s.counts||{};
   var kpis=[['Offene Vorgänge',c.open||0,TEAL],['Aktion erforderlich',c.neu||0,'#b53a2c'],['Ø Auslastung',(s.avgUtil||0)+' Pers.','#1d7a3e'],['Veröffentl. Artikel',s.articlesPublished||0,ORANGE]];
