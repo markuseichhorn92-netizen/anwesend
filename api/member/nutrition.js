@@ -754,6 +754,7 @@ module.exports = async function handler(req, res) {
       nutri: rec.nutri || null,
       ingredients: rec.ingredients,
       steps: rec.steps,
+      utensils: rec.utensils || [],
       done: false,
     };
     cook.items.unshift(item);
@@ -772,7 +773,7 @@ module.exports = async function handler(req, res) {
       cook.items.unshift({
         id: newEntryId(), title: rec.title, date: when, servings: servings, baseServings: rec.servings || 1,
         minutes: rec.minutes, kcal: rec.kcal, protein: rec.protein, carbs: rec.carbs, fat: rec.fat,
-        nutri: rec.nutri || null, ingredients: rec.ingredients, steps: rec.steps, done: false,
+        nutri: rec.nutri || null, ingredients: rec.ingredients, steps: rec.steps, utensils: rec.utensils || [], done: false,
       });
     });
     cook.items = cook.items.slice(0, 60);
@@ -791,6 +792,23 @@ module.exports = async function handler(req, res) {
     if (it) it.done = !it.done;
     await saveCook(id, cook);
     res.statusCode = 200; return res.end(JSON.stringify({ ok: true, cookplan: cook.items, shopping: buildShopping(cook) }));
+  }
+  // „Gegessen": Plan-Rezept als gekocht markieren UND ins Tagesprotokoll übernehmen (ein Schritt).
+  if (action === 'cookplan-eaten') {
+    const cook = await loadCook(id);
+    const it = cook.items.filter(function (x) { return String(x.id) === String(body.id); })[0];
+    if (!it) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'Eintrag nicht gefunden.' })); }
+    it.done = true;
+    await saveCook(id, cook);
+    const targetDate = validDate(it.date, date);   // an dem geplanten Tag protokollieren
+    const servings = clamp(it.servings, 1, 12, 1);
+    const entry = sanitizeEntry({
+      name: it.title, portion: servings + ' Portion' + (servings > 1 ? 'en' : ''), meal: body.meal,
+      kcal: n0(it.kcal) * servings, p: n0(it.protein) * servings, c: n0(it.carbs) * servings, f: n0(it.fat) * servings,
+    }, hour);
+    const day = await loadDay(id, targetDate); day.entries.push(entry); await saveDay(id, targetDate, day);
+    const state = await buildState(id, profile, targetDate);
+    res.statusCode = 200; return res.end(JSON.stringify(Object.assign(state, { cookplan: cook.items, shopping: buildShopping(cook), added: [{ name: entry.name, kcal: entry.kcal }] })));
   }
   if (action === 'cook-check') {
     // Einkaufslisten-Position (nach normalisiertem Namen) abhaken/wieder freigeben.
