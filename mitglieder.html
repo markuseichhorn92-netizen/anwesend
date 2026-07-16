@@ -559,6 +559,7 @@
     if(s==='contract'){ S.cancelStep=0; S.pauseStep=0; S.pauseDone=false; S.offerDone=''; S.docMsg=''; S.docErr=false; S.modMsg=''; S.modErr=false; S.modBusyId=''; loadDocuments(); loadModules(); }
     if(s==='settings'){ S.commMsg=''; S.commErr=false; loadCommPrefs(); }
     if(s==='checkins'||s==='fort') loadCheckins();   // immer frisch: Studio-Check-ins vom Band erscheinen sofort
+    if(ERN_ON&&(s==='home'||s==='fort')) loadNutri();   // Ernährungs-Vitalpunkte für Startseite/Fortschritt frisch halten
     if(s==='blog'){ S.blogSel=null; S.blogPost=null; loadBlog(); }
     if(s==='insta'){ S.instaSel=null; loadInsta(); maybeRefreshInsta(); }
     if(s==='home'){ loadFinnTip(); maybeRefreshInsta(); maybeRefreshLive(); }
@@ -591,6 +592,7 @@
     if(s==='home'||s==='insta') maybeRefreshLive();
     if(s==='home'||s==='account') loadAccount();
     if(s==='ern'||s==='coach'||s==='abo'||s==='recht') loadNutri();
+    if(ERN_ON&&(s==='home'||s==='fort')) loadNutri();
     if(s==='coach') loadCoach();
     if(s==='checkins'||s==='fort') loadCheckins();
   }
@@ -1576,9 +1578,32 @@
       '<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">'+pills+'</div>'+
     '</button>';
   }
+  // Ernährungs-Karte auf der Startseite – nur wenn das Modul freigeschaltet ist (ERN_ON).
+  // Zeigt live: kcal übrig (Ring), Streak und die heute verdienten Vitalpunkte; führt ins Essen-Modul.
+  function homeErnCard(){
+    if(!ERN_ON) return '';
+    var n=DATA.nutri;
+    var wrap=function(inner){ return '<button data-act="nav" data-arg="ern" style="width:100%;text-align:left;border:none;cursor:pointer;font-family:inherit;background:var(--surface);border-radius:20px;box-shadow:0 12px 30px rgba(4,33,40,.09);padding:16px 18px;margin-bottom:16px">'+inner+'</button>'; };
+    var head='<div style="display:flex;align-items:center;gap:11px;margin-bottom:12px"><div style="width:38px;height:38px;border-radius:12px;background:rgba(15,122,74,.12);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:20px">🥗</div><div style="flex:1;min-width:0"><div style="font-size:10.5px;font-weight:900;color:'+ERN_G+';text-transform:uppercase;letter-spacing:.4px">Ernährung</div><div style="font-size:15.5px;font-weight:900;color:var(--text)">Heute im Blick</div></div>'+svg('<path d="M9 6l6 6-6 6"></path>',{c:'var(--text-soft)',w:2.4,s:18})+'</div>';
+    // Noch nicht geladen / nicht verfügbar -> dezente Teaser-Karte, die trotzdem ins Modul führt.
+    if(!(n&&n.ok)){
+      var sub=(n&&n.available===false)?'Bald in deiner App verfügbar':'Tagesziel, Tracking &amp; Rezepte – tippe zum Öffnen';
+      return wrap(head+'<div style="font-size:13px;font-weight:600;color:var(--text-muted);line-height:1.45">'+sub+'</div>');
+    }
+    if(!n.onboarded){
+      return wrap(head+'<div style="font-size:13px;font-weight:600;color:var(--text-muted);line-height:1.45">In 1 Minute dein Tagesziel einrichten und Essen tracken – bringt dir Vitalpunkte für deinen Rang.</div>');
+    }
+    var t=n.targets||{}, td=n.today||{}, tot=td.totals||{kcal:0,p:0,c:0,f:0};
+    var kcalLeft=Math.max(0,(t.kcal||0)-tot.kcal), deg=t.kcal?Math.min(360,Math.round(tot.kcal/t.kcal*360)):0;
+    var ring='<div style="position:relative;width:70px;height:70px;flex-shrink:0"><div style="width:70px;height:70px;border-radius:50%;background:conic-gradient('+ERN_OK+' '+deg+'deg,var(--surface-2) 0)"></div><div style="position:absolute;inset:7px;border-radius:50%;background:var(--surface);display:flex;flex-direction:column;align-items:center;justify-content:center"><span style="font-size:17px;font-weight:900;color:var(--text);letter-spacing:-.5px;line-height:1">'+ernNum(kcalLeft)+'</span><span style="font-size:7px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.3px;margin-top:1px">kcal übrig</span></div></div>';
+    var pill=function(v,l,c){ return '<div style="flex:1;background:var(--surface-2);border-radius:12px;padding:9px 11px"><div style="font-size:15px;font-weight:900;color:'+(c||'var(--teal-ink)')+'">'+v+'</div><div style="font-size:10px;font-weight:700;color:var(--text-soft);margin-top:1px">'+l+'</div></div>'; };
+    var body='<div style="display:flex;align-items:center;gap:13px">'+ring+'<div style="flex:1;min-width:0;display:flex;gap:8px">'+pill('🔥 '+(n.streak||0),'Tage-Streak')+pill('+'+(n.pointsToday||0),'VP heute',ERN_G)+'</div></div>';
+    return wrap(head+body);
+  }
   function scrHome(){
     if(isFormer()) return scrRejoin();
     loadFinnTip(); loadInsta(); loadTypical(); loadLive(); loadHours();
+    if(ERN_ON&&DATA.nutri==null) loadNutri();   // Ernährungs-Karte auf der Startseite mit Live-Daten füttern
     var p=DATA.profile||{}; var name=p.firstName||'';
     // Schnellzugriff – 4 Kacheln mit Live-Daten (wie im Design). Rest liegt im Profil-Hub + Bottom-Nav.
     if(DATA.account===null) loadAccount();
@@ -1620,6 +1645,7 @@
     return ''+
       homeHero()+
       homeCoachHero()+
+      homeErnCard()+
       checkinBtn()+
       wifiBtn()+
       dupBanner+
@@ -2367,6 +2393,11 @@
       }
       closeGap(curM);
     }
+    // ── Ernährung ↔ Vitalpunkte: getrackte Tage aus dem Essen-Modul fließen in dieselbe
+    //    Punktesumme (Rang, Ring, Punkte-Verlauf) ein. Server liefert je Tag {date,pts}. ──
+    if(ERN_ON && DATA.nutri && DATA.nutri.ok && Array.isArray(DATA.nutri.vitalLedger)){
+      DATA.nutri.vitalLedger.forEach(function(d){ if(!d||!(d.pts>0)) return; var t=Date.parse((d.date||'')+'T20:00:00'); entries.push({t:isNaN(t)?Date.now():t,emoji:'🥗',bg:'#E7F6EC',title:'Ernährung getrackt',sub:d.date?deDate(d.date+'T12:00:00'):'',pts:d.pts,color:'#176b37'}); });
+    }
     var points=entries.reduce(function(s,e){ return s+e.pts; },0); if(points<0) points=0;
     entries.sort(function(a,b){ return b.t-a.t; });
     return {points:points, ledger:entries};
@@ -2914,8 +2945,8 @@
     api('/api/member/nutrition').then(function(d){
       DATA.nutri=(d&&d.ok)?d:{ok:false,available:!!(d&&d.available)};
       if(d&&d.ok&&!d.onboarded&&!S.ernFormInit){ ernSeedForm(); S.ernFormInit=true; }
-      rIf(['ern','coach','abo','recht','finnusage']);
-    }).catch(function(){ DATA.nutri={ok:false,available:false}; rIf(['ern','coach','abo','recht','finnusage']); });
+      rIf(['ern','coach','abo','recht','finnusage','home','fort']);
+    }).catch(function(){ DATA.nutri={ok:false,available:false}; rIf(['ern','coach','abo','recht','finnusage','home','fort']); });
   }
   function loadFavs(){ api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'fav-list'})}).then(function(d){ DATA.nutriFavs=(d&&d.ok&&Array.isArray(d.favorites))?d.favorites:[]; rIf(['ern']); }).catch(function(){ DATA.nutriFavs=[]; rIf(['ern']); }); }
   // WICHTIG: eigener Name (früher hieß das auch loadPlan und überschrieb per Hoisting

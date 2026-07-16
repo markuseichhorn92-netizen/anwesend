@@ -273,22 +273,38 @@ function totalsOf(entries) {
 function waterGoalCups(t) { return Math.max(6, Math.round(((t && t.water) || 2) / 0.25)); }
 
 // Zusammenhängende Tage mit mindestens einem Eintrag (endet heute oder gestern).
-async function computeStreak(id, todayDate) {
-  const keys = []; for (let i = 0; i < 30; i++) keys.push(DKEY(id, dayKeyMinus(todayDate, i)));
-  const vals = await kvGetMany(keys);
-  const tracked = vals.map(function (v) { try { const o = JSON.parse(v); return !!(o && Array.isArray(o.entries) && o.entries.length); } catch (e) { return false; } });
-  let i = tracked[0] ? 0 : 1;                 // heute noch nichts? -> laufender Streak bis gestern
-  if (i === 1 && !tracked[1]) return 0;
-  let s = 0; while (tracked[i]) { s++; i++; }
-  return s;
-}
-function pointsToday(totals, targets, entryCount, streak) {
+// Vitalpunkte eines EINZELNEN Tages (0–60): protokolliert + Eiweißziel + Kalorienfenster.
+// Bewusst OHNE Streak-Term – die Serie wird separat als 🔥-Wert geführt. Diese Punkte
+// fließen (aufsummiert über das Fenster) in die globale Vitalpunkte-/Rang-Anzeige ein und
+// verknüpfen so das Ernährungs-Tracking mit dem Fortschritt.
+function dayVitalPoints(totals, targets, entryCount) {
   let p = 0;
-  if (entryCount > 0) p += 50;                                    // heute getrackt
-  if (targets && totals.p >= targets.protein * 0.9) p += 30;      // Eiweißziel (fast) erreicht
+  if (entryCount > 0) p += 20;                                    // heute protokolliert
+  if (targets && totals.p >= targets.protein * 0.9) p += 20;      // Eiweißziel (fast) erreicht
   if (targets && totals.kcal >= targets.kcal * 0.85 && totals.kcal <= targets.kcal * 1.1) p += 20; // im Kalorienfenster
-  if (streak >= 3) p += 20;                                       // Serie
   return p;
+}
+// Streak + kumulierte Vitalpunkte aus EINEM Redis-Read (60-Tage-Fenster).
+// -> { streak, vitalPoints, ledger:[{date,pts}] }. Der Ledger speist den Punkte-Verlauf.
+async function computeVitals(id, todayDate, targets) {
+  const N = 60;
+  const keys = []; for (let i = 0; i < N; i++) keys.push(DKEY(id, dayKeyMinus(todayDate, i)));
+  const vals = await kvGetMany(keys);
+  const days = vals.map(function (v) { try { const o = JSON.parse(v); return (o && Array.isArray(o.entries)) ? o.entries : null; } catch (e) { return null; } });
+  const tracked = days.map(function (e) { return !!(e && e.length); });
+  // Streak: zusammenhängende getrackte Tage ab heute (heute noch leer -> ab gestern zählen).
+  let si = tracked[0] ? 0 : 1, streak = 0;
+  if (!(si === 1 && !tracked[1])) { while (tracked[si]) { streak++; si++; } }
+  // Vitalpunkte: Summe der Tagespunkte über das Fenster + Verlauf (jüngste zuerst).
+  let vitalPoints = 0; const ledger = [];
+  for (let i = 0; i < N; i++) {
+    if (!tracked[i]) continue;
+    const pts = dayVitalPoints(totalsOf(days[i]), targets, days[i].length);
+    if (pts <= 0) continue;
+    vitalPoints += pts;
+    ledger.push({ date: dayKeyMinus(todayDate, i), pts: pts });
+  }
+  return { streak: streak, vitalPoints: vitalPoints, ledger: ledger };
 }
 
 // Fasten-Status: { plan, start(ms|null), active }.
@@ -310,7 +326,7 @@ async function buildState(id, profile, forDate) {
   const targets = targetsFor(profile || {});
   const day = await loadDay(id, date);
   const totals = totalsOf(day.entries);
-  const streak = await computeStreak(id, todayYMD);
+  const vit = await computeVitals(id, todayYMD, targets);
   const fasting = await loadFasting(id);
   const tier = Ent.publicTier(await Ent.getEntitlement(id));   // Premium-Status für die UI (Freemium)
   // Gratis-Kontingent (Basic) für den aktuellen Monat – die UI zeigt „Noch X von 5".
@@ -324,8 +340,9 @@ async function buildState(id, profile, forDate) {
     profile: profile ? { goal: profile.goal, sex: profile.sex, height: profile.height, weight: profile.weight, age: profile.age, activity: profile.activity, diet: profile.diet } : null,
     targets: targets,
     today: { date, isToday: date === todayYMD, entries: day.entries, totals, water: day.water, waterGoal: waterGoalCups(targets) },
-    streak: streak,
-    pointsToday: pointsToday(totals, targets, day.entries.length, streak),
+    streak: vit.streak,
+    pointsToday: dayVitalPoints(totals, targets, day.entries.length),
+    vitalPoints: vit.vitalPoints, vitalLedger: vit.ledger,
     fasting: fasting,
     premium: tier.premium, tier: tier.tier, trialing: tier.trialing, premiumUntil: tier.until,
     premiumCancelAt: tier.cancelAtPeriodEnd || false,
