@@ -572,7 +572,7 @@
     if(s==='abo'){ S.ernMsg=''; S.ernErr=false; DATA.ernSub=undefined; DATA.ernInvoices=undefined; loadNutri(); loadSubInfo(); loadErnInvoices(); }
     if(s==='recht'){ S.wdStep=0; S.wdErr=false; S.wdMsg=''; loadErnBilling(); if(TOKEN){ loadNutri(); loadSubInfo(); } }
     if(s==='ern'){ try{ window.__ernStopScan&&window.__ernStopScan(); }catch(e){} S.ernMsg=''; S.ernErr=false; S.ernAsk=''; S.ernAnswer=''; S.ernRecipes=null; S.ernCoachSent=false; S.ernTab='heute'; S.ernRecipeSel=null; S.ernKoch=null; S.ernCookPick=false; S.ernPlanDraft=null; S.ernPlanReplaceIdx=-1; S.ernCapture=false; S.ernConfirm=null; S.ernProd=null; S.ernEntryEdit=null; S.ernViewDate=''; S.ernFavMgr=false; S.ernData=false; S.ernUpgrade=false; S.ernLesson=null; S.ernLessonData=null; S.ernChatOpen=false; S.ernCk=false; S.ernCkResult=null; S.ernObStep=0; S.ernChat=ernChatLoad(); loadNutri(); loadFavs(); loadCoach(); loadCook(); }
-    if(s==='coach'){ S.ernLesson=null; S.ernVert=null; S.ernLessonData=null; S.ernCk=false; S.ernCkResult=null; S.ernChatOpen=false; S.ernUpgrade=false; S.ernMsg=''; S.ernErr=false; S.coachMapOpen=false; S.coachVertOpen=false; S.ernChat=ernChatLoad(); S.trainDetail=null; S.trainGenOpen=false; S.trainGenPlan=null; S.trainGenBusy=false; S.trainBusy=false; S.trainMsg=''; loadFinnTip(); loadCoach(); loadTraining(); if(!DATA.checkins) loadCheckins(); }
+    if(s==='coach'){ S.ernLesson=null; S.ernVert=null; S.ernLessonData=null; S.ernCk=false; S.ernCkResult=null; S.ernChatOpen=false; S.ernUpgrade=false; S.ernMsg=''; S.ernErr=false; S.coachMapOpen=false; S.coachVertOpen=false; S.ernChat=ernChatLoad(); S.trainDetail=null; S.trainExOpen=false; S.trainGenOpen=false; S.trainGenPlan=null; S.trainGenBusy=false; S.trainBusy=false; S.trainMsg=''; loadFinnTip(); loadCoach(); loadTraining(); if(!DATA.checkins) loadCheckins(); }
     if(s==='appt'){ if(!DATA.appts) loadAppts(); if(DATA.bookable===null) loadBookable(); }
     if(s==='home'||s==='checkin') checkArrival();
     setS({}); }
@@ -4042,10 +4042,12 @@
     if(!d.ok) return trainCardBox('<div style="font-size:14px;font-weight:700;color:#b5402f">Training konnte nicht geladen werden.</div>')+'<button data-act="trainReload" style="width:100%;padding:13px;border:none;border-radius:13px;background:'+ERN_G+';color:#fff;font-weight:800;font-size:14px;cursor:pointer">Erneut versuchen</button>';
     // Detailansicht eines Plans?
     if(S.trainDetail){ return trainingDetail(); }
+    // Übungsdatenbank offen?
+    if(S.trainExOpen){ return trainingExercises(); }
     // Generator-Formular offen?
     if(S.trainGenOpen){ return trainingGenSheet(); }
     var msg=S.trainMsg?('<div style="background:rgba(15,122,74,.08);border:1px solid rgba(15,122,74,.2);border-radius:12px;padding:11px 14px;margin-bottom:14px;font-size:13px;font-weight:700;color:'+ERN_GD+'">'+esc(S.trainMsg)+'</div>'):'';
-    return msg+trainingTipCard(d)+trainingMyPlanCard(d)+trainingGenCta(d)+trainingLibrary(d)+trainingInspiration(d)+trainingBookCta()+'<div style="height:60px"></div>';
+    return msg+trainingTipCard(d)+trainingMyPlanCard(d)+trainingGenCta(d)+trainingExerciseCta(d)+trainingLibrary(d)+trainingInspiration(d)+trainingBookCta()+'<div style="height:60px"></div>';
   }
   function trainingTipCard(d){
     return '<button data-act="openFinn" style="width:100%;text-align:left;border:none;cursor:pointer;font-family:inherit;background:#fff;border-radius:20px;box-shadow:0 12px 30px rgba(4,33,40,.09);padding:16px;margin-bottom:14px;display:flex;gap:13px;align-items:flex-start">'+
@@ -4112,6 +4114,45 @@
       '<div style="width:40px;height:40px;border-radius:12px;background:#eef4f2;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+svg('<rect x="3" y="4" width="18" height="18" rx="2"></rect><path d="M16 2v4M8 2v4M3 10h18"></path>',{c:ERN_GD,w:2,s:19})+'</div>'+
       '<div style="flex:1;min-width:0"><div style="font-size:14.5px;font-weight:900;color:#15171B">Persönliche Trainingsplanung</div><div style="font-size:12px;font-weight:600;color:#6b7780;margin-top:1px">Termin mit einer Trainer:in im Studio buchen.</div></div>'+
       svg('<path d="M9 6l6 6-6 6"></path>',{c:'#b9c4c6',w:2.2,s:16})+'</button>';
+  }
+  // Einstieg in die Übungsdatenbank (Suchen/Nachschlagen).
+  function trainingExerciseCta(d){
+    var n=(d.exercises&&d.exercises.length)||0; if(!n) return '';
+    return '<button data-act="trainExOpen" style="width:100%;text-align:left;border:1.5px solid #d6e2e0;cursor:pointer;font-family:inherit;background:#fff;border-radius:16px;padding:15px 16px;margin-bottom:20px;display:flex;gap:12px;align-items:center">'+
+      '<div style="width:40px;height:40px;border-radius:12px;background:#eef4f2;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+svg('<circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4.3-4.3"></path>',{c:ERN_GD,w:2,s:19})+'</div>'+
+      '<div style="flex:1;min-width:0"><div style="font-size:14.5px;font-weight:900;color:#15171B">Übungsdatenbank</div><div style="font-size:12px;font-weight:600;color:#6b7780;margin-top:1px">'+n+' Übungen an unseren Geräten – suchen &amp; nachschlagen.</div></div>'+
+      svg('<path d="M9 6l6 6-6 6"></path>',{c:'#b9c4c6',w:2.2,s:16})+'</button>';
+  }
+  // Übungen nach Suchtext + Muskelgruppe filtern (lokal aus dem GET-Payload).
+  function trainExNorm(s){ try{ return String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,''); }catch(e){ return String(s||'').toLowerCase(); } }
+  function trainExFilter(list){
+    var g=S.trainExGroup||'', q=trainExNorm(S.trainExQ||'').trim();
+    return (list||[]).filter(function(e){ if(g&&e.group!==g) return false; if(q) return trainExNorm(e.name+' '+e.machine+' '+e.equip+' '+e.groupLabel).indexOf(q)>=0; return true; });
+  }
+  function trainExRows(list){
+    if(!list.length) return '<div style="font-size:13px;color:#a9b1b6;font-weight:600;padding:26px 2px;text-align:center">Keine Übung gefunden.</div>';
+    return list.map(function(e){
+      return '<div style="background:#fff;border-radius:14px;box-shadow:0 6px 18px rgba(4,33,40,.06);padding:13px 14px;margin-bottom:9px">'+
+        '<div style="display:flex;align-items:center;gap:7px"><div style="font-size:14px;font-weight:900;color:#15171B;flex:1;min-width:0">'+esc(e.name)+'</div>'+
+        (e.bio?'<span style="background:rgba(15,122,74,.1);color:'+ERN_GD+';font-size:10px;font-weight:800;border-radius:6px;padding:2px 6px;flex-shrink:0">🤖 KI</span>':'')+
+        '<span style="background:#eef2f3;color:#6b7780;font-size:10px;font-weight:800;border-radius:6px;padding:2px 7px;flex-shrink:0">'+esc(e.groupLabel||'')+'</span></div>'+
+        '<div style="font-size:11.5px;font-weight:700;color:'+ERN_G+';margin-top:4px">🔧 '+esc(e.machine)+' <span style="color:#a9b1b6;font-weight:600">· '+esc(e.equip)+'</span></div>'+
+        '<div style="font-size:12.5px;font-weight:500;color:var(--text-2);line-height:1.45;margin-top:5px">'+esc(e.cue)+'</div></div>';
+    }).join('');
+  }
+  window.__trExFilter=function(v){ S.trainExQ=v||''; var el=$('tr_ex_list'); if(el) el.innerHTML=trainExRows(trainExFilter((DATA.training&&DATA.training.exercises)||[])); };
+  function trainingExercises(){
+    var d=DATA.training||{}; var groups=d.exerciseGroups||[]; var g=S.trainExGroup||'';
+    var back='<button data-act="trainExClose" style="display:inline-flex;align-items:center;gap:6px;background:none;border:none;color:'+ERN_GD+';font-size:13.5px;font-weight:800;margin:2px 0 12px;padding:0;cursor:pointer">'+svg(IC.back,{c:ERN_GD,w:2.2,s:17})+'Zurück</button>';
+    var search='<div style="position:relative;margin-bottom:12px"><span style="position:absolute;left:13px;top:50%;transform:translateY(-50%)">'+svg('<circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4.3-4.3"></path>',{c:'#a9b1b6',w:2,s:17})+'</span><input id="tr_exq" value="'+esc(S.trainExQ||'')+'" placeholder="Übung oder Gerät suchen …" autocomplete="off" style="width:100%;border:1.5px solid #d6dee0;border-radius:12px;padding:12px 12px 12px 40px;font-size:14.5px;font-weight:600;color:#15171B;background:#fff;font-family:inherit;outline:none"></div>';
+    var chips='<div style="display:flex;gap:7px;overflow-x:auto;padding-bottom:6px;margin-bottom:12px;-webkit-overflow-scrolling:touch">'+
+      [['','Alle']].concat(groups).map(function(gr){ var on=(g===gr[0]);
+        return '<button data-act="trainExGroup" data-arg="'+esc(gr[0])+'" style="flex-shrink:0;border:1.5px solid '+(on?ERN_G:'#dde5e6')+';border-radius:20px;background:'+(on?ERN_G:'#fff')+';color:'+(on?'#fff':'#4a565c')+';font-size:12.5px;font-weight:800;padding:8px 14px;cursor:pointer;white-space:nowrap">'+esc(gr[1])+'</button>'; }).join('')+'</div>';
+    var list='<div id="tr_ex_list">'+trainExRows(trainExFilter(d.exercises||[]))+'</div>';
+    return '<div style="padding:0 2px 96px">'+back+
+      '<div style="font-size:20px;font-weight:900;letter-spacing:-.4px;color:var(--text);margin:0 2px 4px">Übungsdatenbank</div>'+
+      '<div style="font-size:12.5px;font-weight:500;color:var(--text-2);line-height:1.5;margin:0 2px 14px">Alle Übungen an unseren Geräten – 🤖 markiert die Biostrength-Geräte, die sich automatisch einstellen.</div>'+
+      search+chips+list+'</div>';
   }
   // Detailansicht eines Plans (kuratiert = aus Bibliothek, FINN = aus DATA.training.myPlan).
   function trainingDetail(){
@@ -5973,7 +6014,7 @@
   var ACT={
     nav:function(a){ nav(a); },
     // ── Coach-Tabs + Training-Tab ──
-    coachTab:function(a){ S.coachTab=(a==='training')?'training':'ernaehrung'; S.trainDetail=null; S.trainDetailFull=null; S.trainGenOpen=false; S.trainGenPlan=null; S.trainMsg=''; S.ernChatOpen=false; setS({}); },
+    coachTab:function(a){ S.coachTab=(a==='training')?'training':'ernaehrung'; S.trainDetail=null; S.trainDetailFull=null; S.trainExOpen=false; S.trainGenOpen=false; S.trainGenPlan=null; S.trainMsg=''; S.ernChatOpen=false; setS({}); },
     trainReload:function(){ DATA.training=null; render(); loadTraining(); },
     trainOpen:function(a){ S.trainDetail=a; S.trainDetailFull=null; S.trainMsg=''; setS({});
       // Bibliotheks-Kacheln kommen schlank (ohne Tage) – volles Detail nachladen (außer aktiver Plan hat sie schon).
@@ -5981,6 +6022,9 @@
       if(!isActive){ api('/api/member/training',{method:'POST',body:JSON.stringify({action:'plan-detail',planId:a})}).then(function(r){ if(r&&r.ok&&r.plan&&S.trainDetail===a){ S.trainDetailFull=r.plan; render(); } }).catch(function(){}); }
     },
     trainBack:function(){ S.trainDetail=null; S.trainDetailFull=null; setS({}); },
+    trainExOpen:function(){ S.trainExOpen=true; S.trainExQ=''; S.trainExGroup=''; setS({}); },
+    trainExClose:function(){ S.trainExOpen=false; setS({}); },
+    trainExGroup:function(a){ S.trainExGroup=a||''; render(); },
     trainStart:function(a){ if(S.trainBusy) return; S.trainBusy=true; S.trainMsg=''; render();
       api('/api/member/training',{method:'POST',body:JSON.stringify({action:'plan-start',planId:a})}).then(function(r){ S.trainBusy=false; if(r&&r.ok){ DATA.training=r; S.trainDetail=null; S.trainDetailFull=null; S.trainMsg='Plan übernommen – viel Erfolg! 💪'; } else { S.trainMsg=(r&&r.message)||'Konnte nicht gespeichert werden.'; } setS({}); }).catch(function(){ S.trainBusy=false; S.trainMsg='Konnte nicht gespeichert werden.'; setS({}); });
     },
@@ -7160,6 +7204,7 @@
     if(t.id==='pf_reply'){ S.pfDraft=t.value; autoGrow(t); }
     if(t.id==='ern_log'||t.id==='ern_ask'){ autoGrow(t); }
     if(t.id==='soc_msg'||t.id==='soc_rmsg'){ autoGrow(t); }
+    if(t.id==='tr_exq'){ if(window.__trExFilter) window.__trExFilter(t.value); }   // Übungssuche live filtern
   });
   // Enter sendet (Shift+Enter = neue Zeile) – im FINN-Chat und im Postfach.
   document.addEventListener('keydown',function(e){

@@ -21,6 +21,7 @@
 
 const M = require('../../lib/members');
 const T = require('../../lib/training');
+const Ex = require('../../lib/exercises');
 const AI = require('../../lib/ai');
 const Ent = require('../../lib/entitlements');
 const Quota = require('../../lib/nutriquota');
@@ -48,6 +49,7 @@ async function readState(id) {
     tip: T.tipOfDay(today),
     inspiration: T.INSPIRATION,
     plans: T.getLibrary().map(T.trimPlan),
+    exercises: Ex.publicList(), exerciseGroups: Ex.GROUPS,
     goals: T.GOALS, levels: T.LEVELS, locations: T.LOCATIONS,
     myPlan: active ? { plan: active.plan, startedAt: active.startedAt, source: active.plan.source } : null,
     premium: !!tier.premium, aiAvailable: !!AI.hasAI,
@@ -74,6 +76,12 @@ module.exports = async function handler(req, res) {
   const action = String((body && body.action) || '');
 
   try {
+    // Übungsdatenbank durchsuchen (Freitext + Muskelgruppe). Server-Fallback –
+    // der Client filtert die Liste ohnehin lokal aus dem GET-Payload.
+    if (action === 'exercise-search') {
+      return j(res, 200, { ok: true, exercises: Ex.search(body.q, { group: body.group, bio: !!body.bio }) });
+    }
+
     // Vollständigen Bibliotheks-Plan liefern (für die Detailansicht).
     if (action === 'plan-detail') {
       const p = T.getById(body.planId);
