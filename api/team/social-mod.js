@@ -22,12 +22,13 @@ module.exports = async function handler(req, res) {
   const j = (o) => { res.statusCode = 200; return res.end(JSON.stringify(o)); };
 
   async function snap() {
-    const [enabled, reports, banned] = await Promise.all([
+    const [enabled, reports, banned, stats] = await Promise.all([
       Social.socialEnabled().catch(() => true),
       Social.listReports(50).catch(() => []),
       Social.listBanned().catch(() => []),
+      Social.communityStats().catch(() => null),
     ]);
-    return { ok: true, enabled: enabled, reports: reports, banned: banned };
+    return { ok: true, enabled: enabled, reports: reports, banned: banned, stats: stats };
   }
 
   if (req.method === 'GET') return j(await snap());

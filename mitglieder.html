@@ -1605,6 +1605,29 @@
     var body='<div style="display:flex;align-items:center;gap:13px">'+ring+'<div style="flex:1;min-width:0;display:flex;gap:8px">'+pill('🔥 '+(n.streak||0),'Tage-Streak')+pill('+'+(n.pointsToday||0),'VP heute',ERN_G)+'</div></div>';
     return wrap(head+body);
   }
+  // Kompakte „Heute im Blick"-Zeile: Ernährung + Trainingspartner als zwei kleine, tippbare
+  // Kacheln statt zweier großer Karten (Startseite ruhiger, #103). Nur je nach Freischaltung.
+  function homeTodayStrip(){
+    var tiles=[];
+    if(ERN_ON){
+      var n=DATA.nutri; var sub='Tagesziel & Tracking';
+      if(n&&n.ok&&n.onboarded){ var t=n.targets||{}, tot=(n.today&&n.today.totals)||{kcal:0}; sub=ernNum(Math.max(0,(t.kcal||0)-(tot.kcal||0)))+' kcal übrig'; }
+      tiles.push({act:'ern',ic:'🥗',label:'Ernährung',sub:sub,badge:false});
+    }
+    if(SOCIAL_ON){
+      var s=DATA.social; var reqs=(s&&s.requests&&s.requests.length)||0; var buds=(s&&s.buddies&&s.buddies.length)||0;
+      var ssub=reqs>0?(reqs+' neue Anfrage'+(reqs===1?'':'n')):(buds>0?(buds+' Trainingspartner'):'Verbinden & chatten');
+      tiles.push({act:'social',ic:'🤝',label:'Partner',sub:ssub,badge:reqs>0});
+    }
+    if(!tiles.length) return '';
+    return '<div style="display:flex;gap:12px;margin-bottom:16px">'+tiles.map(function(t){
+      return '<button data-act="nav" data-arg="'+t.act+'" style="flex:1;min-width:0;text-align:left;border:none;cursor:pointer;font-family:inherit;background:var(--surface);border-radius:18px;box-shadow:0 10px 26px rgba(4,33,40,.08);padding:14px 15px;position:relative">'+
+        (t.badge?'<span style="position:absolute;top:12px;right:12px;width:9px;height:9px;border-radius:50%;background:#F6A964"></span>':'')+
+        '<div style="width:36px;height:36px;border-radius:11px;background:var(--surface-2);display:flex;align-items:center;justify-content:center;font-size:19px">'+t.ic+'</div>'+
+        '<div style="font-size:14.5px;font-weight:900;color:var(--text);margin-top:9px">'+t.label+'</div>'+
+        '<div style="font-size:11.5px;font-weight:600;color:var(--text-soft);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(t.sub)+'</div>'+
+      '</button>'; }).join('')+'</div>';
+  }
   function scrHome(){
     if(isFormer()) return scrRejoin();
     loadFinnTip(); loadInsta(); loadTypical(); loadLive(); loadHours();
@@ -1650,10 +1673,9 @@
     var discover=homeInsta()+homeBlog();
     return ''+
       homeHero()+
-      homeCoachHero()+
-      homeErnCard()+
-      homeBuddyCard()+
       checkinBtn()+
+      homeCoachHero()+
+      homeTodayStrip()+
       wifiBtn()+
       dupBanner+
       hdr('Dein Studio')+
