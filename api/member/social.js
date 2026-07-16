@@ -79,6 +79,7 @@ module.exports = async function handler(req, res) {
     if (action === 'room-leave') { await Social.roomLeave(id, roomId); return j(await Social.snapshot(id)); }
     if (action === 'room-thread') { return j(await Social.getRoom(id, roomId)); }
     if (action === 'room-send') { return j(await Social.roomSend(id, roomId, body.text)); }
+    if (action === 'cheer') { return j(await Social.cheer(id, buddyId)); }
     return j({ ok: false, error: 'unknown_action' });
   } catch (e) {
     return j({ ok: false, error: 'server_error', message: 'Etwas ist schiefgelaufen – bitte erneut.' });

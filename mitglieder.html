@@ -4821,7 +4821,7 @@
       '<div style="height:1px;background:var(--border)"></div>'+
       socSwitch('socShareToggle','nutrition',!!sh.nutrition,'Ernährungs-Fortschritt','Ernährungs-Streak & Tagesziel')+'</div>'+
       '<button data-act="socDisable" style="width:100%;padding:13px;border:1.5px solid var(--border);background:var(--surface);color:var(--err-fg);border-radius:14px;font-weight:800;font-size:13.5px;cursor:pointer">Trainingspartner deaktivieren</button>';
-    return socHeader('Gemeinsam mehr erreichen')+socMsg()+socPlansSection(d.plans)+codeCard+connCard+reqCard+buddyCard+socRoomsSection(d.rooms)+setCard+socPlanSheet()+socRoomCreateSheet();
+    return socHeader('Gemeinsam mehr erreichen')+socMsg()+socChallengeSection()+socPlansSection(d.plans)+codeCard+connCard+reqCard+buddyCard+socRoomsSection(d.rooms)+setCard+socPlanSheet()+socRoomCreateSheet();
   }
   function socAva(b){ return '<div style="width:42px;height:42px;border-radius:50%;background:'+SOCBG+';color:'+SOC+';font-weight:900;font-size:15px;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+esc(b.initials||'··')+'</div>'; }
   function socTime(slot){ var h=Math.floor((slot||0)/60), m=(slot||0)%60; return (h<10?'0':'')+h+':'+(m<10?'0':'')+m; }
@@ -4833,8 +4833,25 @@
     if(det.weekVisits!=null) parts.push(det.weekVisits+'× diese Woche');
     if(det.weekStreak) parts.push('🔥 '+det.weekStreak+' Wo.');
     if(det.points!=null) parts.push(deNum(det.points)+' VP');
+    if(det.nutriStreak) parts.push('🥗 '+det.nutriStreak+' Tage');
     if(!parts.length) return '';
     return '<div style="font-size:11.5px;font-weight:600;color:var(--text-soft);margin-top:3px;line-height:1.35">'+parts.join(' · ')+'</div>';
+  }
+  // Wochen-Challenge: Rangliste aus dir + Buddys (Check-ins diese Woche, VP als Tiebreak).
+  function socChallengeSection(){
+    var d=DATA.social; if(!(d&&Array.isArray(d.buddies)&&d.buddies.length)) return '';
+    var det=DATA.socDetail||{}; var v=vitalsData(); var rows=[{me:true,id:'',name:'Du',initials:'DU',wv:(v.weekVisits||0),vp:(v.points||0)}];
+    d.buddies.forEach(function(b){ var x=det[String(b.id)]; if(x&&x.weekVisits!=null) rows.push({me:false,id:b.id,name:b.name,initials:b.initials,wv:x.weekVisits||0,vp:x.points||0}); });
+    if(rows.length<2) return '';
+    rows.sort(function(a,b){ return (b.wv-a.wv)||(b.vp-a.vp); });
+    var medal=['🥇','🥈','🥉']; var CARD='background:var(--surface);border-radius:20px;box-shadow:0 12px 30px rgba(4,33,40,.09);padding:14px 16px 6px';
+    var body=rows.map(function(r,i){ var rank=medal[i]||('#'+(i+1)); return '<div style="display:flex;align-items:center;gap:11px;padding:9px 0'+(i?';border-top:1px solid var(--border)':'')+'">'+
+      '<div style="width:26px;text-align:center;font-size:'+(i<3?'18px':'13px')+';font-weight:900;color:var(--text-soft)">'+rank+'</div>'+
+      '<div style="width:34px;height:34px;border-radius:50%;background:'+(r.me?SOC:SOCBG)+';color:'+(r.me?'#fff':SOC)+';font-weight:900;font-size:12px;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+esc(r.initials)+'</div>'+
+      '<div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:800;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(r.name)+'</div><div style="font-size:11px;font-weight:600;color:var(--text-soft)">'+r.wv+'× diese Woche · '+deNum(r.vp)+' VP</div></div>'+
+      (!r.me?'<button data-act="socCheer" data-arg="'+esc(r.id)+'" style="padding:7px 11px;border:1.5px solid rgba(45,132,184,.3);background:'+SOCBG+';color:'+SOC+';border-radius:10px;font-weight:800;font-size:12px;cursor:pointer">🔥 Anfeuern</button>':'')+
+    '</div>'; }).join('');
+    return '<div style="font-size:15px;font-weight:900;color:var(--text);margin:4px 2px 10px">🏆 Wochen-Challenge</div><div style="'+CARD+'"><div style="font-size:11.5px;font-weight:600;color:var(--text-soft);margin-bottom:2px">Wer trainiert diese Woche am meisten?</div>'+body+'</div>';
   }
   // Trainingsverabredungen (gemeinsam trainieren) – oben in der Hauptansicht.
   function socPlansSection(plans){
@@ -6630,6 +6647,7 @@
     socRoomInviteOpen:function(a){ S.socRoomInvite=String(a); render(); },
     socRoomInviteClose:function(){ S.socRoomInvite=false; render(); },
     socRoomInviteGo:function(a){ var p=String(a||'').split('|'); if(p.length<2) return; api('/api/member/social',{method:'POST',body:JSON.stringify({action:'room-invite',roomId:p[0],buddyId:p[1]})}).then(function(d){ if(d&&d.ok){ DATA.socRoomThread={roomId:String(p[0]),room:d.room,messages:d.messages||[]}; S.socMsg='Eingeladen.'; S.socErr=false; render(); } }).catch(function(){}); },
+    socCheer:function(a){ if(!a) return; api('/api/member/social',{method:'POST',body:JSON.stringify({action:'cheer',buddyId:a})}).then(function(d){ S.socMsg=(d&&d.already)?'Schon angefeuert – warte kurz. 🔥':'Angefeuert! 🔥'; S.socErr=false; render(); }).catch(function(){ S.socErr=true; S.socMsg='Verbindung gerade nicht möglich.'; render(); }); },
     // checkins
     ciRange:function(a){ S.ciRange=a||'all'; S.dlMsg2=''; setQuiet({}); },
     emailPdf:function(){ emailPdf(); },
