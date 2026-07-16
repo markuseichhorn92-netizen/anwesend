@@ -553,7 +553,13 @@ module.exports = async function handler(req, res) {
     const t = targetsFor(profile || {});
     const fridge = String(body.fridge || '').trim().slice(0, 200);
     const wish = fridge ? ('Nutze möglichst nur diese vorhandenen Zutaten: ' + fridge) : cleanStr(body.wish, 140);
-    const r = await AI.nutritionRecipes({ goal: GOALS[profile && profile.goal] || 'ausgewogen', kcalTarget: t.kcal, protein: t.protein, diet: (profile && profile.diet) || 'omnivor', wish: wish });
+    // Auf die Person zuschneiden: eine Portion ~ Anteil einer Hauptmahlzeit am Tagesziel (Standard 33 %).
+    const share = Math.max(0.15, Math.min(0.6, Number(body.mealShare) || 0.33));
+    const mealKcal = Math.round((t.kcal || 0) * share);
+    const mealProtein = Math.round((t.protein || 0) * share);
+    const count = Math.max(1, Math.min(5, parseInt(body.count, 10) || 3));
+    const avoidTitles = Array.isArray(body.avoidTitles) ? body.avoidTitles.slice(0, 8).map(function (x) { return cleanStr(x, 60); }).filter(Boolean) : [];
+    const r = await AI.nutritionRecipes({ goal: GOALS[profile && profile.goal] || 'ausgewogen', kcalTarget: t.kcal, protein: t.protein, diet: (profile && profile.diet) || 'omnivor', wish: wish, count: count, mealKcal: mealKcal, mealProtein: mealProtein, avoidTitles: avoidTitles });
     if (!r.ok) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'FINN kann gerade keine Rezepte erstellen. Versuch es gleich nochmal.' })); }
     // Jedes generierte Rezept in die gemeinsame Bibliothek übernehmen (dedupliziert) und die
     // kanonischen Rezepte inkl. berechnetem Nutri-Score zurückgeben (wachsende Datenbank).
@@ -751,6 +757,24 @@ module.exports = async function handler(req, res) {
       done: false,
     };
     cook.items.unshift(item);
+    cook.items = cook.items.slice(0, 60);
+    await saveCook(id, cook);
+    res.statusCode = 200; return res.end(JSON.stringify({ ok: true, cookplan: cook.items, shopping: buildShopping(cook) }));
+  }
+  // Ganzen (vom Kunden geprüften/angepassten) Plan-Entwurf auf einmal übernehmen.
+  if (action === 'cookplan-add-many') {
+    const cook = await loadCook(id);
+    const items = Array.isArray(body.items) ? body.items.slice(0, 20) : [];
+    items.forEach(function (raw) {
+      raw = raw || {}; const rec = Recipes.normalizeRecipe(raw.recipe || {}, (raw.recipe && raw.recipe.source));
+      const when = validDate(raw.date, date);
+      const servings = clamp(raw.servings, 1, 12, rec.servings || 1);
+      cook.items.unshift({
+        id: newEntryId(), title: rec.title, date: when, servings: servings, baseServings: rec.servings || 1,
+        minutes: rec.minutes, kcal: rec.kcal, protein: rec.protein, carbs: rec.carbs, fat: rec.fat,
+        nutri: rec.nutri || null, ingredients: rec.ingredients, steps: rec.steps, done: false,
+      });
+    });
     cook.items = cook.items.slice(0, 60);
     await saveCook(id, cook);
     res.statusCode = 200; return res.end(JSON.stringify({ ok: true, cookplan: cook.items, shopping: buildShopping(cook) }));

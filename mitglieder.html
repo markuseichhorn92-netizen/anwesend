@@ -398,6 +398,7 @@
     ernBusy:false, ernMsg:'', ernErr:false, ernAsk:'', ernAnswer:'', ernAskBusy:false, ernRecipes:null, ernRecipesBusy:false, ernCoachBusy:false, ernCoachSent:false, ernPhotoBusy:false, ernRec:false,
     ernTab:'heute', ernPlanTab:'kochplan', ernPlanBusy:false, ernFridge:'', ernRecipeSel:null, ernRecipeSaved:false,
     ernLibQ:'', ernCookPick:false, ernCookDay:'0', ernKoch:null,
+    ernPlanDraft:null, ernPlanDraftBusy:false, ernPlanReplaceIdx:-1,
     ernCapture:false, ernCapTab:'cam', ernObStep:0, ernConsent:false, ernCheckinDismissed:false, ernCapTarget:'',
     ernBuyConsent:false, wdStep:0, wdBusy:false, wdErr:false, wdMsg:'', wdDoneAt:0,
     ernConfirm:null, ernConfirmBusy:false,
@@ -561,7 +562,7 @@
     if(s==='profil'||s==='data'||s==='account'||s==='abo') loadErnBilling();
     if(s==='abo'){ S.ernMsg=''; S.ernErr=false; DATA.ernSub=undefined; DATA.ernInvoices=undefined; loadNutri(); loadSubInfo(); loadErnInvoices(); }
     if(s==='recht'){ S.wdStep=0; S.wdErr=false; S.wdMsg=''; loadErnBilling(); if(TOKEN){ loadNutri(); loadSubInfo(); } }
-    if(s==='ern'){ try{ window.__ernStopScan&&window.__ernStopScan(); }catch(e){} S.ernMsg=''; S.ernErr=false; S.ernAsk=''; S.ernAnswer=''; S.ernRecipes=null; S.ernCoachSent=false; S.ernTab='heute'; S.ernRecipeSel=null; S.ernKoch=null; S.ernCookPick=false; S.ernCapture=false; S.ernConfirm=null; S.ernProd=null; S.ernEntryEdit=null; S.ernViewDate=''; S.ernFavMgr=false; S.ernData=false; S.ernUpgrade=false; S.ernLesson=null; S.ernLessonData=null; S.ernChatOpen=false; S.ernCk=false; S.ernCkResult=null; S.ernObStep=0; S.ernChat=ernChatLoad(); loadNutri(); loadFavs(); loadCoach(); }
+    if(s==='ern'){ try{ window.__ernStopScan&&window.__ernStopScan(); }catch(e){} S.ernMsg=''; S.ernErr=false; S.ernAsk=''; S.ernAnswer=''; S.ernRecipes=null; S.ernCoachSent=false; S.ernTab='heute'; S.ernRecipeSel=null; S.ernKoch=null; S.ernCookPick=false; S.ernPlanDraft=null; S.ernPlanReplaceIdx=-1; S.ernCapture=false; S.ernConfirm=null; S.ernProd=null; S.ernEntryEdit=null; S.ernViewDate=''; S.ernFavMgr=false; S.ernData=false; S.ernUpgrade=false; S.ernLesson=null; S.ernLessonData=null; S.ernChatOpen=false; S.ernCk=false; S.ernCkResult=null; S.ernObStep=0; S.ernChat=ernChatLoad(); loadNutri(); loadFavs(); loadCoach(); }
     if(s==='coach'){ S.ernLesson=null; S.ernVert=null; S.ernLessonData=null; S.ernCk=false; S.ernCkResult=null; S.ernChatOpen=false; S.ernUpgrade=false; S.ernMsg=''; S.ernErr=false; S.coachMapOpen=false; S.coachVertOpen=false; S.ernChat=ernChatLoad(); loadFinnTip(); loadCoach(); if(!DATA.checkins) loadCheckins(); }
     if(s==='appt'){ if(!DATA.appts) loadAppts(); if(DATA.bookable===null) loadBookable(); }
     if(s==='home'||s==='checkin') checkArrival();
@@ -3982,6 +3983,37 @@
   }
   // Datum hübsch (Heute/Morgen/…) fürs Koch-Plan-Label.
   function ernPlanDate(ymd){ try{ var d=new Date(ymd+'T12:00:00'); var to=new Date(isoToday()+'T12:00:00'); var diff=Math.round((d-to)/864e5); if(diff===0) return 'Heute'; if(diff===1) return 'Morgen'; if(diff===-1) return 'Gestern'; var w=['So','Mo','Di','Mi','Do','Fr','Sa'][d.getDay()]; return w+', '+d.getDate()+'.'+(d.getMonth()+1)+'.'; }catch(e){ return ymd; } }
+  // Datum (YYYY-MM-DD) aus einem Tages-Offset ab heute.
+  function ernOffsetDate(off){ var d=new Date(); d.setDate(d.getDate()+(parseInt(off,10)||0)); var p=function(n){return(n<10?'0':'')+n;}; return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate()); }
+  // FINN-Planentwurf: Vorschlag, den der Kunde VOR dem Speichern anpassen/ersetzen kann.
+  function ernPlanDraftView(){
+    var CARD='background:var(--surface);border-radius:18px;box-shadow:0 12px 30px rgba(4,33,40,.09);padding:14px 15px;margin-bottom:10px';
+    var draft=S.ernPlanDraft||[];
+    var sb='width:30px;height:30px;border-radius:9px;border:none;background:var(--surface);color:'+ERN_G+';font-size:17px;font-weight:800;cursor:pointer;flex-shrink:0;box-shadow:0 2px 6px rgba(4,33,40,.08)';
+    var header='<div style="background:linear-gradient(150deg,#0a4958,#0d5d6e);border-radius:18px;padding:15px 16px;margin-bottom:12px;color:#fff"><div style="font-size:15.5px;font-weight:900">Dein FINN-Vorschlag</div><div style="font-size:12px;font-weight:600;color:#9fc7d0;margin-top:3px">Auf dich abgestimmt. Ersetze, entferne oder verschiebe Rezepte – gespeichert wird erst, wenn du auf „Plan speichern" tippst.</div></div>';
+    if(!draft.length) return header+'<div style="'+CARD+';text-align:center;color:var(--text-soft);font-weight:600;font-size:13px">Alle Rezepte entfernt.</div><button data-act="ernPlanDiscard" style="width:100%;padding:13px;border:1.5px solid var(--border);background:var(--surface);color:var(--text-muted);border-radius:14px;font-weight:800;font-size:13.5px;cursor:pointer">Schließen</button>';
+    var slots=draft.map(function(s,idx){ var r=s.recipe; var grade=nutriGrade(r); var serv=Math.max(1,Math.min(12,s.servings||1)); var repl=(S.ernPlanReplaceIdx===idx);
+      return '<div style="'+CARD+(repl?';opacity:.55':'')+'"><div style="display:flex;align-items:center;gap:11px">'+(grade?nutriChip(grade,30):'<span style="width:30px;flex-shrink:0"></span>')+
+        '<div data-act="ernRecipeOpen" data-arg="draft:'+idx+'" style="flex:1;min-width:0;cursor:pointer"><div style="font-size:14.5px;font-weight:900;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(r.title)+'</div>'+
+        '<div style="font-size:11.5px;font-weight:700;color:var(--text-soft);margin-top:2px">≈ '+ernNum(r.kcal)+' kcal/Portion'+(r.minutes?(' · '+r.minutes+' Min'):'')+(r.finnRating&&r.finnRating.stars?(' · <span style="color:#f0a500">'+finnStars(r.finnRating.stars)+'</span>'):'')+'</div></div>'+
+        '<button data-act="ernPlanDrop" data-arg="'+idx+'" aria-label="Aus dem Vorschlag entfernen" style="width:32px;height:32px;border-radius:9px;border:none;background:var(--surface-2);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'+svg('<path d="M18 6L6 18M6 6l12 12"></path>',{c:'var(--text-soft)',w:2.2,s:13})+'</button></div>'+
+        '<div style="display:flex;gap:8px;margin-top:11px">'+
+          '<div style="flex:1;display:flex;align-items:center;justify-content:space-between;background:var(--surface-2);border-radius:12px;padding:5px 6px"><button data-act="ernPlanDay" data-arg="'+idx+':-1" aria-label="Früher" style="'+sb+'">−</button><span style="font-size:12.5px;font-weight:800;color:var(--text)">'+esc(ernPlanDate(ernOffsetDate(s.dayOffset)))+'</span><button data-act="ernPlanDay" data-arg="'+idx+':1" aria-label="Später" style="'+sb+'">+</button></div>'+
+          '<div style="display:flex;align-items:center;gap:9px;background:var(--surface-2);border-radius:12px;padding:5px 10px"><button data-act="ernPlanServ" data-arg="'+idx+':-1" aria-label="Weniger Portionen" style="'+sb+'">−</button><span style="font-size:13px;font-weight:900;color:var(--text);min-width:14px;text-align:center">'+serv+'</span><button data-act="ernPlanServ" data-arg="'+idx+':1" aria-label="Mehr Portionen" style="'+sb+'">+</button></div>'+
+        '</div>'+
+        '<button data-act="ernPlanReplace" data-arg="'+idx+'" '+(S.ernPlanDraftBusy?'disabled ':'')+'style="width:100%;margin-top:9px;padding:9px;border:1.5px solid var(--border);background:var(--surface);color:var(--teal-ink);border-radius:11px;font-weight:800;font-size:12.5px;cursor:pointer">'+(repl?'FINN ersetzt …':'🔄 Anderes Rezept')+'</button></div>';
+    }).join('');
+    var footer='<div style="display:flex;gap:9px;margin-top:6px"><button data-act="ernPlanDiscard" style="flex:1;padding:14px;border:1.5px solid var(--border);background:var(--surface);color:var(--text-muted);border-radius:14px;font-weight:800;font-size:13.5px;cursor:pointer">Verwerfen</button><button data-act="ernPlanSave" '+(S.ernBusy?'disabled ':'')+'style="flex:2;padding:14px;border:none;background:'+ERN_G+';color:#fff;border-radius:14px;font-weight:900;font-size:14px;cursor:pointer">'+(S.ernBusy?'…':('Plan speichern ('+draft.length+')'))+'</button></div>';
+    return header+slots+footer;
+  }
+  // „FINN plant für dich"-Aufruf (oder Entwurf, falls einer offen ist).
+  function ernPlanCTA(){
+    if(S.ernPlanDraft) return ernPlanDraftView();
+    var busy=S.ernPlanDraftBusy;
+    return '<div style="background:linear-gradient(150deg,#0a4958,#0d5d6e);border-radius:18px;padding:16px;margin-bottom:14px;color:#fff">'+
+      '<div style="display:flex;align-items:center;gap:11px"><span style="width:44px;height:44px;border-radius:13px;background:rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0">🗓️</span><div><div style="font-size:15px;font-weight:900">FINN plant für dich</div><div style="font-size:12px;font-weight:600;color:#9fc7d0;margin-top:2px">Mehrere Rezepte auf dich abgestimmt – du passt sie vor dem Speichern an.</div></div></div>'+
+      '<button data-act="ernPlanSuggest" '+(busy?'disabled ':'')+'style="width:100%;margin-top:13px;padding:14px;border:none;border-radius:13px;background:#fff;color:#0a4958;font-weight:900;font-size:14.5px;cursor:pointer">'+(busy?'FINN plant …':'Plan vorschlagen')+'</button></div>';
+  }
   // Koch-Plan-Ansicht: geplante Rezepte (nach Datum) + abgeleitete, abhakbare Einkaufsliste.
   function ernCookPlanView(){
     var CARD='background:var(--surface);border-radius:20px;box-shadow:0 12px 30px rgba(4,33,40,.09);padding:16px;margin-bottom:12px';
@@ -4015,7 +4047,9 @@
       var items=CATS.filter(function(cc){ return groups[cc]&&groups[cc].length; }).map(function(cc){ return '<div style="font-size:11.5px;font-weight:900;color:var(--text-soft);text-transform:uppercase;letter-spacing:.4px;margin:14px 2px 8px">'+esc(cc)+'</div>'+groups[cc].map(row).join(''); }).join('');
       shopBlock=head+items;
     }
-    return pmsg+planBlock+shopBlock;
+    // Bei offenem Entwurf NUR den Entwurf zeigen (Fokus aufs Anpassen); sonst CTA + Plan + Liste.
+    if(S.ernPlanDraft) return pmsg+ernPlanCTA();
+    return pmsg+ernPlanCTA()+planBlock+shopBlock;
   }
   // Bottom-Sheet: „Zum Koch-Plan hinzufügen" – Datum + Portionen wählen.
   function ernCookPickSheet(r){
@@ -4135,7 +4169,7 @@
         '<div style="flex:1;min-width:0"><div style="font-size:15.5px;font-weight:900;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(r.title)+'</div>'+
         '<div style="font-size:12px;font-weight:700;color:'+(ok?'var(--text-soft)':'#c0392b')+';margin-top:3px">'+kc+(ok&&r.protein?(' · '+r.protein+' g EW'):'')+'</div></div>'+
         (r.finnRating&&r.finnRating.stars?'<span style="font-size:12px;color:#f0a500;letter-spacing:1px;flex-shrink:0">'+finnStars(r.finnRating.stars)+'</span>':'')+'</div></div>'; };
-    var genList=(Array.isArray(S.ernRecipes)&&S.ernRecipes.length)?('<div style="font-size:12.5px;font-weight:900;color:var(--text-soft);text-transform:uppercase;letter-spacing:.4px;margin:6px 2px 10px">✨ Neu von FINN</div>'+S.ernRecipes.map(function(r,i){ return card(r,'ernRecipeOpen','gen:'+i); }).join('')):'';
+    var genList=(Array.isArray(S.ernRecipes)&&S.ernRecipes.length)?('<div style="font-size:12.5px;font-weight:900;color:var(--text-soft);text-transform:uppercase;letter-spacing:.4px;margin:6px 2px 10px">✨ Neu von FINN · auf dich abgestimmt</div>'+S.ernRecipes.map(function(r,i){ return card(r,'ernRecipeOpen','gen:'+i); }).join('')):'';
     // Persönliche gespeicherte Rezepte.
     var saved=Array.isArray(DATA.nutriSaved)?DATA.nutriSaved:[];
     var savedList=saved.length?('<div style="font-size:12.5px;font-weight:900;color:var(--text-soft);text-transform:uppercase;letter-spacing:.4px;margin:16px 2px 10px">⭐ Deine gespeicherten</div>'+saved.map(function(r,i){ return '<div style="position:relative">'+card(r,'ernRecipeOpen','saved:'+i)+'<button data-act="ernRecipeDel" data-arg="'+esc(r.id)+'" aria-label="Löschen" style="position:absolute;top:8px;right:10px;width:28px;height:28px;border-radius:8px;border:none;background:var(--surface-2);display:flex;align-items:center;justify-content:center;cursor:pointer">'+svg('<path d="M18 6L6 18M6 6l12 12"></path>',{c:'var(--text-soft)',w:2.2,s:13})+'</button></div>'; }).join('')):'';
@@ -5499,8 +5533,9 @@
       .then(function(d){ S.ernRecipesBusy=false; if(d&&d.ok&&Array.isArray(d.recipes)&&d.recipes.length){ S.ernRecipes=d.recipes; DATA.nutriLib=null; loadLib(); } else { S.ernRecipes=[]; S.ernErr=true; S.ernMsg=(d&&d.message)||'Keine Rezepte gefunden – versuch andere Zutaten.'; } render(); })
       .catch(function(){ S.ernRecipesBusy=false; S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); }); },
     ernRecipeOpen:function(a){ var p=String(a||'').split(':'); var i=parseInt(p[1],10);
-      var list = p[0]==='saved'?(DATA.nutriSaved||[]) : p[0]==='lib'?(DATA.nutriLib||[]) : p[0]==='cook'?((DATA.nutriCook&&DATA.nutriCook.cookplan)||[]) : (S.ernRecipes||[]);
-      var r=list[i]; if(r) setS({ernRecipeSel:r,ernRecipeSaved:(p[0]==='saved'),ernRecipeServ:Math.max(1,Math.min(12,parseInt(r.servings,10)||1)),ernKoch:null,ernCookPick:false,ernMsg:'',ernErr:false}); },
+      var r = p[0]==='draft' ? ((S.ernPlanDraft&&S.ernPlanDraft[i])?S.ernPlanDraft[i].recipe:null)
+        : (p[0]==='saved'?(DATA.nutriSaved||[]) : p[0]==='lib'?(DATA.nutriLib||[]) : p[0]==='cook'?((DATA.nutriCook&&DATA.nutriCook.cookplan)||[]) : (S.ernRecipes||[]))[i];
+      if(r) setS({ernRecipeSel:r,ernRecipeSaved:(p[0]==='saved'),ernRecipeServ:Math.max(1,Math.min(12,parseInt(r.servings,10)||1)),ernKoch:null,ernCookPick:false,ernMsg:'',ernErr:false}); },
     ernRecipeBack:function(){ setS({ernRecipeSel:null,ernKoch:null,ernCookPick:false}); },
     ernRecipeServ:function(a){ var d=parseInt(a,10)||0; S.ernRecipeServ=Math.max(1,Math.min(12,(parseInt(S.ernRecipeServ,10)||1)+d)); render(); },
     ernLibSearch:function(){ var el=$('ern_libq'); var v=el?(el.value||'').trim():''; S.ernLibQ=v; DATA.nutriLib=null; loadLib(v); render(); },
@@ -5523,6 +5558,26 @@
     ernCookDone:function(a){ api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'cookplan-done',id:a})}).then(function(d){ if(d&&d.ok){ DATA.nutriCook={cookplan:d.cookplan||[],shopping:d.shopping||[]}; } render(); }).catch(function(){}); },
     ernCookCheck:function(a){ var key=decodeURIComponent(a||''); api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'cook-check',key:key})}).then(function(d){ if(d&&d.ok){ DATA.nutriCook={cookplan:d.cookplan||[],shopping:d.shopping||[]}; render(); } else { S.ernErr=true; S.ernMsg=(d&&d.message)||'Konnte nicht speichern.'; render(); } }).catch(function(){ S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); }); },
     ernCookClear:function(){ api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'cook-clear-checked'})}).then(function(d){ if(d&&d.ok){ DATA.nutriCook={cookplan:d.cookplan||[],shopping:d.shopping||[]}; } render(); }).catch(function(){}); },
+    // ── FINN-Planentwurf: vorschlagen -> Kunde passt an -> speichern ──
+    ernPlanSuggest:function(){ if(S.ernPlanDraftBusy) return; if(ernNeedPremium()) return; S.ernPlanDraftBusy=true; S.ernMsg=''; S.ernErr=false; render();
+      api('/api/member/nutrition',{method:'POST',timeoutMs:90000,body:JSON.stringify({action:'recipes',count:4})})
+      .then(function(d){ S.ernPlanDraftBusy=false; if(d&&d.ok&&Array.isArray(d.recipes)&&d.recipes.length){ S.ernPlanDraft=d.recipes.map(function(r,i){ return {recipe:r, dayOffset:Math.min(6,i), servings:Math.max(1,Math.min(12,parseInt(r.servings,10)||1))}; }); DATA.nutriLib=null; loadLib(); } else { S.ernErr=true; S.ernMsg=(d&&d.message)||'FINN kann gerade nicht planen. Versuch es gleich nochmal.'; } render(); })
+      .catch(function(){ S.ernPlanDraftBusy=false; S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); }); },
+    ernPlanReplace:function(a){ var idx=parseInt(a,10); if(S.ernPlanDraftBusy||!S.ernPlanDraft||!S.ernPlanDraft[idx]) return; if(ernNeedPremium()) return;
+      var avoid=S.ernPlanDraft.map(function(s){ return s.recipe&&s.recipe.title; }).filter(Boolean);
+      S.ernPlanDraftBusy=true; S.ernPlanReplaceIdx=idx; render();
+      api('/api/member/nutrition',{method:'POST',timeoutMs:60000,body:JSON.stringify({action:'recipes',count:1,avoidTitles:avoid})})
+      .then(function(d){ S.ernPlanDraftBusy=false; S.ernPlanReplaceIdx=-1; if(d&&d.ok&&Array.isArray(d.recipes)&&d.recipes.length&&S.ernPlanDraft&&S.ernPlanDraft[idx]){ var nr=d.recipes[0]; S.ernPlanDraft[idx].recipe=nr; S.ernPlanDraft[idx].servings=Math.max(1,Math.min(12,parseInt(nr.servings,10)||1)); DATA.nutriLib=null; loadLib(); } else { S.ernErr=true; S.ernMsg=(d&&d.message)||'Konnte kein anderes Rezept finden.'; } render(); })
+      .catch(function(){ S.ernPlanDraftBusy=false; S.ernPlanReplaceIdx=-1; S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); }); },
+    ernPlanDrop:function(a){ var idx=parseInt(a,10); if(!S.ernPlanDraft) return; S.ernPlanDraft.splice(idx,1); setQuiet({}); },
+    ernPlanDay:function(a){ var p=String(a||'').split(':'); var idx=parseInt(p[0],10); var d=parseInt(p[1],10)||0; if(!S.ernPlanDraft||!S.ernPlanDraft[idx]) return; S.ernPlanDraft[idx].dayOffset=Math.max(0,Math.min(13,(S.ernPlanDraft[idx].dayOffset||0)+d)); setQuiet({}); },
+    ernPlanServ:function(a){ var p=String(a||'').split(':'); var idx=parseInt(p[0],10); var d=parseInt(p[1],10)||0; if(!S.ernPlanDraft||!S.ernPlanDraft[idx]) return; S.ernPlanDraft[idx].servings=Math.max(1,Math.min(12,(S.ernPlanDraft[idx].servings||1)+d)); setQuiet({}); },
+    ernPlanDiscard:function(){ setQuiet({ernPlanDraft:null,ernPlanReplaceIdx:-1}); },
+    ernPlanSave:function(){ if(S.ernBusy||!S.ernPlanDraft||!S.ernPlanDraft.length) return; S.ernBusy=true; render();
+      var items=S.ernPlanDraft.map(function(s){ return {recipe:s.recipe, servings:s.servings, date:ernOffsetDate(s.dayOffset)}; });
+      api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'cookplan-add-many',items:items})})
+      .then(function(d){ S.ernBusy=false; if(d&&d.ok){ DATA.nutriCook={cookplan:d.cookplan||[],shopping:d.shopping||[]}; S.ernPlanDraft=null; S.ernMsg='Plan gespeichert – deine Einkaufsliste ist bereit.'; S.ernErr=false; } else { S.ernErr=true; S.ernMsg=(d&&d.message)||'Plan konnte nicht gespeichert werden – bitte erneut.'; } render(); try{ window.scrollTo(0,0); }catch(e){} })
+      .catch(function(){ S.ernBusy=false; S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); }); },
     // ── Koch-Modus (Schritt-für-Schritt) ──
     ernKochStart:function(){ if(!(S.ernRecipeSel&&S.ernRecipeSel.steps&&S.ernRecipeSel.steps.length)) return; setQuiet({ernKoch:0}); },
     ernKochStep:function(a){ var r=S.ernRecipeSel; if(!r||!r.steps) return; var n=r.steps.length; var i=(parseInt(S.ernKoch,10)||0)+(parseInt(a,10)||0); setQuiet({ernKoch:Math.max(0,Math.min(n-1,i))}); },
