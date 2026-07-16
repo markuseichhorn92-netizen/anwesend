@@ -92,12 +92,23 @@ module.exports = async function handler(req, res) {
   }
 
   const body = await M.readBody(req);
+
+  // Doppel-Submit-Schutz für verbindliche Erklärungen (Kündigung/Widerruf/Rücknahme):
+  // wenige Versuche pro 5 Minuten je Mitglied – ein legitimer Retry nach Fehler bleibt möglich,
+  // versehentliche Mehrfach-Klicks erzeugen keine doppelten Vorgänge/Mails.
+  if (body.action === 'cancel' || body.action === 'revoke' || body.action === 'withdraw') {
+    if (!(await M.rateLimit('cancelact:' + sess.id + ':' + body.action, 3, 300))) {
+      res.statusCode = 429;
+      return res.end(JSON.stringify({ ok: false, message: 'Deine Anfrage ist bereits bei uns eingegangen und wird bearbeitet.' }));
+    }
+  }
+
   const m = await M.getMember(sess.id);
   if (!m) { res.statusCode = 404; return res.end(JSON.stringify({ error: 'not_found' })); }
 
   let subject, text, okMsg;
   let vorgang = null;     // für die Studio-Benachrichtigung (Antwort -> Postfach)
-  let cancelDbg = null;   // TEMP-Diagnose (PII-frei)
+  let cancelDbg = null;   // interne Diagnose – wird bewusst NIE an den Client ausgeliefert
   if (body.action === 'offer_accepted') {
     var off = OFFERS[body.offer] || body.offer || '—';
     subject = '🎉 Retention: Gegenangebot angenommen – ' + who(m);
@@ -160,7 +171,7 @@ module.exports = async function handler(req, res) {
         }
         await sendMemberCancelMail(m, { direct: true, dateText: cdDE, ct: ct });
         res.statusCode = 200;
-        return res.end(JSON.stringify({ ok: true, via: 'magicline', direct: true, message: 'Deine Kündigung wurde verbindlich eingereicht – zum ' + cdDE + '. Du erhältst eine Bestätigung per E-Mail.', effectiveDate: cdDE, _debug: cancelDbg }));
+        return res.end(JSON.stringify({ ok: true, via: 'magicline', direct: true, message: 'Deine Kündigung wurde verbindlich eingereicht – zum ' + cdDE + '. Du erhältst eine Bestätigung per E-Mail.', effectiveDate: cdDE }));
       }
       if (!oc.forbidden) cancelDbg.openError = String(oc.error || '').slice(0, 240);
     }
@@ -192,7 +203,7 @@ module.exports = async function handler(req, res) {
         }
         await sendMemberCancelMail(m, { direct: true, dateText: cd, ct: ct });
         res.statusCode = 200;
-        return res.end(JSON.stringify({ ok: true, direct: true, message: 'Deine Kündigung wurde verbindlich eingereicht' + (cd ? ' – zum ' + cd : '') + '. Du erhältst eine Bestätigung per E-Mail.', _debug: cancelDbg }));
+        return res.end(JSON.stringify({ ok: true, direct: true, message: 'Deine Kündigung wurde verbindlich eingereicht' + (cd ? ' – zum ' + cd : '') + '. Du erhältst eine Bestätigung per E-Mail.' }));
       }
       // sonst weiter zum E-Mail-Fallback (z. B. reCAPTCHA-Domain noch nicht freigeschaltet)
     }
@@ -268,7 +279,7 @@ module.exports = async function handler(req, res) {
           } catch (e) {}
         }
         res.statusCode = 200;
-        return res.end(JSON.stringify({ ok: true, via: 'magicline', direct: true, message: 'Dein Widerruf wurde verbindlich eingereicht. Du erhältst eine Bestätigung per E-Mail.', _debug: cancelDbg }));
+        return res.end(JSON.stringify({ ok: true, via: 'magicline', direct: true, message: 'Dein Widerruf wurde verbindlich eingereicht. Du erhältst eine Bestätigung per E-Mail.' }));
       }
       if (!ow.forbidden) cancelDbg.openError = String(ow.error || '').slice(0, 240);
     }
@@ -287,9 +298,9 @@ module.exports = async function handler(req, res) {
       cancelDbg.uuidSent = !!(dw && dw.uuidSent);
       cancelDbg.uuidFormat = !!(dw && dw.uuidFormat);
       if (!(dw && dw.ok)) {
+        // Diagnose ohne personenbezogene Daten (keine Kundennummer/Namen im Log).
         console.error('[revoke] Direkter Magicline-Widerruf fehlgeschlagen', {
           status: dw && dw.status, error: cancelDbg.connectError,
-          contractId: ctr.contractId, customerNumber: m.customerNumber,
         });
       }
       if (dw && dw.ok) {
@@ -305,7 +316,7 @@ module.exports = async function handler(req, res) {
           } catch (e) {}
         }
         res.statusCode = 200;
-        return res.end(JSON.stringify({ ok: true, direct: true, message: 'Dein Widerruf wurde verbindlich eingereicht. Du erhältst eine Bestätigung per E-Mail.', _debug: cancelDbg }));
+        return res.end(JSON.stringify({ ok: true, direct: true, message: 'Dein Widerruf wurde verbindlich eingereicht. Du erhältst eine Bestätigung per E-Mail.' }));
       }
       // sonst weiter zum E-Mail-Fallback (z. B. reCAPTCHA-Domain noch nicht freigeschaltet)
     }
@@ -327,7 +338,7 @@ module.exports = async function handler(req, res) {
     res.statusCode = 400; return res.end(JSON.stringify({ error: 'unknown_action' }));
   }
 
-  if (!hasMail) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'E-Mail-Versand noch nicht eingerichtet (RESEND_API_KEY fehlt).', _debug: cancelDbg })); }
+  if (!hasMail) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'E-Mail-Versand noch nicht eingerichtet (RESEND_API_KEY fehlt).' })); }
   const mail = await SR.notifyStudio({ member: m, vorgang: vorgang, subject: subject, text: text });
   // Bestätigung ans Mitglied – nur bei tatsächlicher Kündigung (nicht bei Angebot/Rücknahme)
   if (mail.ok && body.action === 'cancel') {
@@ -338,5 +349,5 @@ module.exports = async function handler(req, res) {
     await sendMemberRevokeMail(m, false);
   }
   res.statusCode = 200;
-  return res.end(JSON.stringify({ ok: mail.ok, direct: false, message: mail.ok ? okMsg : 'Übermittlung fehlgeschlagen – bitte später erneut.', _debug: cancelDbg }));
+  return res.end(JSON.stringify({ ok: mail.ok, direct: false, message: mail.ok ? okMsg : 'Übermittlung fehlgeschlagen – bitte später erneut.' }));
 };

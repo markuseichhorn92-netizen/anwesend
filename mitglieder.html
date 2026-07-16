@@ -388,7 +388,7 @@
   var S = { screen: TOKEN?'home':'login',
     msg:'', // generic success on data screen
     planEdit:false, planRemind:true, planBusy:false,
-    cancelStep:0, cancelReason:'', cancelReasonId:'', pauseWeeks:6, offerDone:'', withdrawConfirm:false, withdrawDone:false, withdrawMsg:'', withdrawErr:'', cancelDone:false, revokeConfirm:false, revokeDone:false, busy:false,
+    cancelStep:0, cancelReason:'', cancelReasonId:'', pauseWeeks:6, offerDone:'', withdrawConfirm:false, withdrawDone:false, withdrawMsg:'', withdrawErr:'', cancelDone:false, revokeConfirm:false, revokeDone:false, revokeErr:'', busy:false,
     pauseStep:0, pauseReason:'', pauseReasonText:'', pauseFrom:'', pausePhoto:'', pausePhotoName:'', pauseDone:false,
     pauseReasonId:'', pauseTerm:1, pauseDoneVia:'', pauseDoneMsg:'',
     pauseAttestUntil:'', pauseAttestKind:'', pauseAttestNote:'', pauseAttestConf:'', pauseAttestScanning:false, pauseAttestDone:false, pauseAttestMissing:[],
@@ -1845,7 +1845,7 @@
       return head+'<div class="card" style="padding:30px 22px;text-align:center"><div style="width:60px;height:60px;border-radius:18px;background:var(--err-bg);display:flex;align-items:center;justify-content:center;margin:0 auto 16px">'+svg(IC.warn,{c:'var(--err-fg)',w:2,s:28})+'</div><div style="font-size:19px;font-weight:900;letter-spacing:-.3px">Vertragsdaten nicht verfügbar</div><div style="font-size:14px;color:var(--text-muted);margin-top:7px;line-height:1.55">Wir konnten keinen laufenden Vertrag automatisch zuordnen. Du kannst trotzdem pausieren oder kündigen – wir melden uns.</div>'+pauseBtn(20)+'<button class="btnDanger" data-act="assistCancel" style="margin-top:12px">Mitgliedschaft kündigen</button><div style="font-size:12px;color:var(--text-soft);margin-top:14px">Oder ruf uns an: <b style="color:'+TEAL+'">0651 308524</b></div></div>'+(S.cancelDone?okBox('Deine Kündigung wurde eingereicht. Du erhältst eine Bestätigung per E-Mail.'):'')+(S.pauseDone?okBox('Deine Pause-Anfrage ist eingegangen.'):'')+modulesCard()+docsCard();
     }
     var cancelled=!!c.cancelled;
-    var msgs=(S.cancelDone?okBox('Deine Kündigung wurde verbindlich eingereicht. Du erhältst eine Bestätigung per E-Mail.'):'')+(S.withdrawDone?okBox(S.withdrawMsg||'Schön, dass du bleibst! Deine Kündigung ist zurückgezogen – deine Mitgliedschaft läuft ganz normal weiter.'):'')+(S.withdrawErr?noteBox(S.withdrawErr):'')+(S.revokeDone?okBox('Dein Widerruf ist eingegangen. Wir wickeln deinen Vertrag rück und bestätigen das per E-Mail.'):'');
+    var msgs=(S.cancelDone?okBox('Deine Kündigung wurde verbindlich eingereicht. Du erhältst eine Bestätigung per E-Mail.'):'')+(S.withdrawDone?okBox(S.withdrawMsg||'Schön, dass du bleibst! Deine Kündigung ist zurückgezogen – deine Mitgliedschaft läuft ganz normal weiter.'):'')+(S.withdrawErr?noteBox(S.withdrawErr):'')+(S.revokeDone?okBox('Dein Widerruf ist eingegangen. Wir wickeln deinen Vertrag rück und bestätigen das per E-Mail.'):'')+(S.revokeErr?noteBox(S.revokeErr):'');
     var badge=cancelled?'<span style="font-size:12px;font-weight:800;color:var(--err-fg);background:var(--err-bg);padding:5px 12px;border-radius:20px">Gekündigt</span>':'<span style="font-size:12px;font-weight:800;color:var(--ok-fg);background:var(--ok-bg);padding:5px 12px;border-radius:20px">Aktiv</span>';
     var box='<div class="card" style="padding:22px"><div style="display:flex;align-items:center;justify-content:space-between;gap:12px"><div style="font-size:20px;font-weight:900;letter-spacing:-.4px">'+esc(c.rateName||'Mitgliedschaft')+'</div>'+badge+'</div>'+
       '<div style="margin-top:14px">'+row('Mitgliedsnummer',p.customerNumber)+row('Vertragsbeginn',c.startDate)+row('Vertragsende',c.endDate)+row('Kündigungsfrist',c.cancellationPeriod)+'</div>'+
@@ -7267,12 +7267,17 @@
           else { setS({busy:false,withdrawConfirm:false,withdrawDone:false,withdrawMsg:'',withdrawErr:(j&&j.message)||'Das lässt sich hier gerade nicht zurücknehmen – bitte kurz im Studio melden.'}); refreshMe(); }
         })
         .catch(function(){ setS({busy:false,withdrawConfirm:false,withdrawDone:false,withdrawMsg:'',withdrawErr:'Das hat gerade nicht geklappt – bitte versuch es später erneut oder melde dich kurz im Studio.'}); }); },
-    askRevoke:function(){ setS({revokeConfirm:true}); },
+    askRevoke:function(){ setS({revokeConfirm:true,revokeErr:''}); },
     cancelRevoke:function(){ setS({revokeConfirm:false}); },
-    confirmRevoke:function(){ setQuiet({busy:true});
-      rcToken().then(function(tok){ return api('/api/member/cancel',{method:'POST',body:JSON.stringify({action:'revoke',recaptchaToken:tok})}); })
-        .then(function(j){ try{ console.log('[widerruf] '+JSON.stringify((j&&j._debug)||j)); }catch(e){} setS({busy:false,revokeConfirm:false,revokeDone:true}); return loadMe(); })
-        .catch(function(e){ try{ console.log('[widerruf] error '+(e&&e.message||e)); }catch(_){} setS({busy:false,revokeConfirm:false,revokeDone:true}); }); },
+    confirmRevoke:function(){ if(S.busy) return; setQuiet({busy:true});
+      // Erfolg NUR anzeigen, wenn der Server ok:true bestätigt. Netzwerk-/Serverfehler
+      // führen zu einem sichtbaren Fehlerzustand – der Widerruf gilt dann NICHT als übermittelt.
+      rcToken().then(function(tok){ return api('/api/member/cancel',{method:'POST',timeoutMs:30000,body:JSON.stringify({action:'revoke',recaptchaToken:tok})}); })
+        .then(function(j){
+          if(j&&j.ok){ setS({busy:false,revokeConfirm:false,revokeDone:true,revokeErr:''}); return loadMe(); }
+          setS({busy:false,revokeConfirm:false,revokeDone:false,revokeErr:(j&&j.message)||'Dein Widerruf konnte nicht übermittelt werden. Bitte versuch es erneut oder erkläre den Widerruf per E-Mail ans Studio.'});
+        })
+        .catch(function(){ setS({busy:false,revokeConfirm:false,revokeDone:false,revokeErr:'Keine Verbindung – dein Widerruf wurde NICHT übermittelt. Bitte versuch es erneut oder erkläre den Widerruf per E-Mail ans Studio.'}); }); },
     closeOffer:function(){ setS({offerDone:'',cancelStep:0}); },
     // appointments
     openMyAppts:function(){ S.screen='appt'; S.apptTab='mine'; S.apptMsg=''; loadAppts(); setS({}); },
