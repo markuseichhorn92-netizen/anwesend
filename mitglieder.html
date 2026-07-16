@@ -476,6 +476,7 @@
   // Beim Tippen: formatieren, prüfen, Bank+BIC aus BLZ holen.
   var __ibanReqId=0;
   var __ernWaterReq=0;   // gegen Out-of-Order-Antworten beim schnellen Wasser-Tippen
+  var __slotReq=0;       // gegen veraltete Slot-Antworten beim Terminart-Wechsel
   function ibanInput(el){
     el.value=fmtIban(el.value);
     var raw=el.value.replace(/[^a-zA-Z0-9]/g,'').toUpperCase();
@@ -561,7 +562,7 @@
 
   // ---- data loading ----
   function loadMe(){
-    return api('/api/member/me').then(function(d){ DATA.profile=d.profile||null; DATA.contract=d.contract||null; DATA.membershipActive=(d.membershipActive!==false); checkDup(); try{ if(window.FitInnNative) FitInnNative.onAuthed(TOKEN); }catch(e){} });
+    return api('/api/member/me').then(function(d){ DATA.profile=d.profile||null; DATA.contract=d.contract||null; DATA.membershipActive=(d.membershipActive!==false); DATA.meLoaded=true; checkDup(); try{ if(window.FitInnNative) FitInnNative.onAuthed(TOKEN); }catch(e){} });
   }
   // Profil + Postfach frisch laden und neu zeichnen (nach Daten-Aktionen).
   function refreshMe(){ return loadMe().then(function(){ render(); }).catch(function(){}); }
@@ -583,7 +584,7 @@
   function checkDup(){
     api('/api/member/duplicates').then(function(d){ if(d&&d.ok){ S.dupNotice={ hasDuplicates:!!d.hasDuplicates, count:d.count||0, requested:!!d.requested }; render(); } }).catch(function(){});
   }
-  function loadCheckins(){ api('/api/member/checkins').then(function(d){ DATA.checkins=d.checkins||[]; ciSyncFromHistory(); render(); }).catch(function(){ DATA.checkins=[]; render(); }); }
+  function loadCheckins(){ S.ciLoadErr=false; api('/api/member/checkins').then(function(d){ DATA.checkins=d.checkins||[]; ciSyncFromHistory(); render(); }).catch(function(){ if(DATA.checkins==null){ S.ciLoadErr=true; } render(); }); }
   function loadAccount(){ api('/api/member/account').then(function(d){ DATA.account=d&&d.ok?d:{ok:false,open:[]}; render(); }).catch(function(){ DATA.account={ok:false,open:[]}; render(); }); }
   // Kündigungsgründe (Magicline Open API) einmal je Sitzung laden. Fehlt der Scope
   // (403) oder ist die API nicht verfügbar, bleibt es bei einer leeren Liste und das
@@ -688,7 +689,7 @@
   // Buchbare Termin-Arten laden (echte Buchung). [] = keine konfiguriert -> E-Mail-Fallback.
   function loadBookable(){ api('/api/member/bookable').then(function(d){ DATA.bookable=(d&&d.types)||[]; render(); }).catch(function(){ DATA.bookable=[]; render(); }); }
   // Freie Slots der gewählten Termin-Art laden.
-  function loadSlots(id){ DATA.slots=null; render(); api('/api/member/appointment-slots?id='+encodeURIComponent(id)+'&days=21').then(function(d){ DATA.slots=(d&&d.slots)||[]; render(); }).catch(function(){ DATA.slots=[]; render(); }); }
+  function loadSlots(id){ DATA.slots=null; render(); var rid=++__slotReq; api('/api/member/appointment-slots?id='+encodeURIComponent(id)+'&days=21').then(function(d){ if(rid!==__slotReq) return; DATA.slots=(d&&d.slots)||[]; render(); }).catch(function(){ if(rid!==__slotReq) return; DATA.slots=[]; render(); }); }
   function loadPlan(){ api('/api/member/plan').then(function(d){ DATA.plan=(d&&d.plan)||null; if(DATA.plan&&typeof DATA.plan.remind==='boolean')S.planRemind=DATA.plan.remind; render(); }).catch(function(){ DATA.plan=null; }); }
   function loadPlanAgg(){
     fetch('/api/plan',{cache:'no-store'}).then(function(r){return r.json();}).then(function(d){ DATA.planAgg=d||null; render(); }).catch(function(){});
@@ -1739,6 +1740,8 @@
     if(S.pauseStep>0) return head+pauseForm();
     if(S.cancelStep>0) return head+funnel();
     // overview
+    // Solange /me noch nicht aufgelöst ist: Ladehinweis statt alarmierender „nicht verfügbar"-Karte.
+    if(!c && !DATA.meLoaded) return head+'<div class="card" style="text-align:center;color:var(--text-soft);font-size:14px">Vertragsdaten werden geladen …</div>';
     if(!c){
       return head+'<div class="card" style="padding:30px 22px;text-align:center"><div style="width:60px;height:60px;border-radius:18px;background:var(--err-bg);display:flex;align-items:center;justify-content:center;margin:0 auto 16px">'+svg(IC.warn,{c:'var(--err-fg)',w:2,s:28})+'</div><div style="font-size:19px;font-weight:900;letter-spacing:-.3px">Vertragsdaten nicht verfügbar</div><div style="font-size:14px;color:var(--text-muted);margin-top:7px;line-height:1.55">Wir konnten keinen laufenden Vertrag automatisch zuordnen. Du kannst trotzdem pausieren oder kündigen – wir melden uns.</div>'+pauseBtn(20)+'<button class="btnDanger" data-act="assistCancel" style="margin-top:12px">Mitgliedschaft kündigen</button><div style="font-size:12px;color:var(--text-soft);margin-top:14px">Oder ruf uns an: <b style="color:'+TEAL+'">0651 308524</b></div></div>'+(S.cancelDone?okBox('Deine Kündigung wurde eingereicht. Du erhältst eine Bestätigung per E-Mail.'):'')+(S.pauseDone?okBox('Deine Pause-Anfrage ist eingegangen.'):'')+modulesCard()+docsCard();
     }
@@ -4208,7 +4211,7 @@
     head+=gradHd+ernAboRow();
     var a=DATA.account;
     if(a===null) return head+'<div style="background:var(--surface);border-radius:20px;box-shadow:0 12px 34px rgba(4,33,40,.10);padding:24px 20px;text-align:center;color:var(--text-soft);font-size:14px;font-weight:600">Lade Beitragskonto …</div>';
-    if(!a.ok) return head+'<div style="background:var(--surface);border-radius:20px;box-shadow:0 12px 34px rgba(4,33,40,.10);padding:26px 22px;text-align:center"><div style="width:56px;height:56px;border-radius:50%;background:var(--surface-2);display:flex;align-items:center;justify-content:center;margin:0 auto 14px">'+svg(IC.warn,{c:'var(--text-soft)',w:2,s:26})+'</div><div style="font-size:16px;font-weight:800">Beitragskonto nicht verfügbar</div><div style="font-size:13.5px;color:var(--text-muted);margin-top:6px;line-height:1.5">Bitte später erneut versuchen oder im Studio nachfragen.</div></div>';
+    if(!a.ok) return head+'<div style="background:var(--surface);border-radius:20px;box-shadow:0 12px 34px rgba(4,33,40,.10);padding:26px 22px;text-align:center"><div style="width:56px;height:56px;border-radius:50%;background:var(--surface-2);display:flex;align-items:center;justify-content:center;margin:0 auto 14px">'+svg(IC.warn,{c:'var(--text-soft)',w:2,s:26})+'</div><div style="font-size:16px;font-weight:800">Beitragskonto nicht verfügbar</div><div style="font-size:13.5px;color:var(--text-muted);margin:6px 0 14px;line-height:1.5">Bitte später erneut versuchen oder im Studio nachfragen.</div><button data-act="accountReload" style="padding:11px 20px;border:none;border-radius:12px;background:'+TEAL+';color:#fff;font-weight:800;font-size:14px;cursor:pointer">Erneut versuchen</button></div>';
     var cur=a.currency||'EUR', sym=(cur==='EUR'?'€':' '+cur);
     var money=function(v){ if(v==null) return '—'; return (Math.round(Math.abs(v)*100)/100).toFixed(2).replace('.',',')+' '+sym; };
     var openTotal=a.openTotal||0;
@@ -4521,7 +4524,10 @@
   function scrCheckins(){
     var all=DATA.checkins;
     var head=subHeader('Check-in-Verlauf','Deine Besuche & PDF');
-    if(all===null) return head+'<div class="card" style="text-align:center;color:var(--text-soft);font-size:14px">Lade Verlauf …</div>';
+    if(all===null){
+      if(S.ciLoadErr) return head+'<div class="card" style="text-align:center"><div style="font-size:15px;font-weight:800">Verlauf konnte nicht geladen werden</div><div style="font-size:13px;color:var(--text-muted);margin:6px 0 14px;line-height:1.5">Bitte prüfe deine Verbindung.</div><button data-act="ciReload" style="padding:11px 20px;border:none;border-radius:12px;background:'+TEAL+';color:#fff;font-weight:800;font-size:14px;cursor:pointer">Erneut versuchen</button></div>';
+      return head+'<div class="card" style="text-align:center;color:var(--text-soft);font-size:14px">Lade Verlauf …</div>';
+    }
     if(!all.length) return head+'<div class="card" style="text-align:center"><div style="font-size:16px;font-weight:800">Noch keine Besuche</div><div style="font-size:13px;color:var(--text-muted);margin-top:6px;line-height:1.5">Sobald du eincheckst, erscheinen deine Besuche hier.</div></div>';
     var sel=ciSelector();
     var list=ciFilter(all);
@@ -5152,8 +5158,8 @@
     ernCapUpgrade:function(){ try{ window.__ernStopCam&&window.__ernStopCam(); }catch(e){} setS({ernCapture:false, ernUpgrade:true, ernCamErr:''}); },
     ernFav:function(a){ var f=ERN_FAVS[parseInt(a,10)]; if(!f) return;
       api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'log-manual',name:f.name,kcal:f.kcal,p:f.p,c:f.c,f:f.f,date:ernActiveDate()})})
-      .then(function(d){ if(d&&d.ok){ DATA.nutri=d; S.ernMsg='Protokolliert: '+f.name; S.ernErr=false; render(); } }).catch(function(){}); },
-    ernDelete:function(a){ api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'delete',id:a,date:ernActiveDate()})}).then(function(d){ if(d&&d.ok){ DATA.nutri=d; render(); } }).catch(function(){}); },
+      .then(function(d){ if(d&&d.ok){ DATA.nutri=d; S.ernMsg='Protokolliert: '+f.name; S.ernErr=false; render(); } else { S.ernErr=true; S.ernMsg=(d&&d.message)||'Konnte nicht protokollieren – bitte erneut.'; render(); } }).catch(function(){ S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); }); },
+    ernDelete:function(a){ api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'delete',id:a,date:ernActiveDate()})}).then(function(d){ if(d&&d.ok){ DATA.nutri=d; render(); } else { S.ernErr=true; S.ernMsg=(d&&d.message)||'Löschen fehlgeschlagen – bitte erneut.'; render(); } }).catch(function(){ S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); }); },
     ernWater:function(a){ a=String(a||''); var body; var nu=DATA.nutri&&DATA.nutri.today;
       // Sofortiges (optimistisches) Feedback – kein Warten auf den Server-Roundtrip.
       if(a.indexOf('to:')===0){ var set=parseInt(a.slice(3),10)||0; body={action:'water',set:set,date:ernActiveDate()}; if(nu) nu.water=Math.max(0,set); }
@@ -5202,10 +5208,10 @@
       api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'fav-save',name:name,portion:(g('ern_favport')||'').trim(),kcal:kcal,p:p,c:c,f:f})})
       .then(function(d){ S.ernFavBusy=false; if(d&&d.ok){ DATA.nutriFavs=d.favorites||DATA.nutriFavs; S.ernFavAddOpen=false; S.ernMsg=d.saved===false?'Ist schon in deinen Favoriten.':'Favorit gespeichert ⭐'; S.ernErr=false; } else { S.ernErr=true; S.ernMsg=(d&&d.message)||'Konnte nicht speichern.'; } render(); })
       .catch(function(){ S.ernFavBusy=false; S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); }); },
-    ernFavDelete:function(a){ api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'fav-delete',id:a})}).then(function(d){ if(d&&d.ok){ DATA.nutriFavs=d.favorites||[]; render(); } }).catch(function(){}); },
+    ernFavDelete:function(a){ api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'fav-delete',id:a})}).then(function(d){ if(d&&d.ok){ DATA.nutriFavs=d.favorites||[]; render(); } else { S.ernErr=true; S.ernMsg=(d&&d.message)||'Löschen fehlgeschlagen – bitte erneut.'; render(); } }).catch(function(){ S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); }); },
     ernFavLog:function(a){ a=String(a||''); var parts=a.split(':'), fid=parts[0], factor=parts[1]?parseFloat(parts[1]):1;
       api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'fav-log',id:fid,factor:factor,date:ernActiveDate()})})
-      .then(function(d){ if(d&&d.ok){ DATA.nutri=d; var nm=(d.added&&d.added[0]&&d.added[0].name)||'Favorit'; S.ernMsg='Protokolliert: '+nm; S.ernErr=false; render(); } }).catch(function(){}); },
+      .then(function(d){ if(d&&d.ok){ DATA.nutri=d; var nm=(d.added&&d.added[0]&&d.added[0].name)||'Favorit'; S.ernMsg='Protokolliert: '+nm; S.ernErr=false; render(); } else { S.ernErr=true; S.ernMsg=(d&&d.message)||'Konnte nicht protokollieren – bitte erneut.'; render(); } }).catch(function(){ S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); }); },
     // ── Premium (Freemium/Stripe) ──
     ernUpgradeOpen:function(){ setS({ernUpgrade:true, ernMsg:'', ernErr:false}); },
     ernUpgradeClose:function(){ setS({ernUpgrade:false, ernMsg:'', ernErr:false}); },
@@ -5347,7 +5353,7 @@
     // ── Ernährung · Sub-Navigation + Zusatz-Screens ──
     ernTab:function(a){ S.ernTab=a; S.ernMsg=''; S.ernErr=false; S.ernRecipeSel=null; S.ernChatOpen=false; S.ernLesson=null; S.ernVert=null; S.ernLessonData=null; S.ernCk=false; S.ernCkResult=null; if(a==='heute'&&S.ernViewDate){ S.ernViewDate=''; loadNutri(); } if(a==='plan'&&DATA.nutriPlan==null) loadNutriPlan(); if(a==='rezepte'&&DATA.nutriSaved==null) loadSaved(); if(a==='coach') loadCoach(); if(a==='verlauf') loadWeek(); setQuiet({}); },
     ernFastPlan:function(a){ api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'fast',do:'plan',plan:a})}).then(function(d){ if(d&&d.ok) DATA.nutri=d; render(); }).catch(function(){}); },
-    ernFastToggle:function(){ var act=ernFastMs().active?'stop':'start'; api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'fast',do:act})}).then(function(d){ if(d&&d.ok) DATA.nutri=d; render(); }).catch(function(){}); },
+    ernFastToggle:function(){ if(S.ernFastBusy) return; var act=ernFastMs().active?'stop':'start'; S.ernFastBusy=true; api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'fast',do:act})}).then(function(d){ S.ernFastBusy=false; if(d&&d.ok){ DATA.nutri=d; } else { S.ernErr=true; S.ernMsg=(d&&d.message)||'Fasten-Timer konnte nicht umgeschaltet werden.'; } render(); }).catch(function(){ S.ernFastBusy=false; S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); }); },
     ernPlanTab:function(a){ setQuiet({ernPlanTab:a}); },
     ernPlanGen:function(){ if(S.ernPlanBusy) return; if(ernNeedPremium()) return; S.ernPlanBusy=true; render();
       api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'plan-generate'})})
@@ -5358,7 +5364,7 @@
       S.ernBusy=true; render();
       api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'log-manual',name:m.title,kcal:m.kcal,meal:(mealMap[m.label]||'snack'),date:ernActiveDate()})})
       .then(function(r){ S.ernBusy=false; if(r&&r.ok){ DATA.nutri=r; S.ernMsg='Ins Protokoll: '+m.title; S.ernErr=false; } render(); }).catch(function(){ S.ernBusy=false; render(); }); },
-    ernShopToggle:function(a){ api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'shopping-toggle',i:parseInt(a,10)})}).then(function(d){ if(d&&d.ok&&DATA.nutriPlan) DATA.nutriPlan.shopping=d.shopping; render(); }).catch(function(){}); },
+    ernShopToggle:function(a){ api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'shopping-toggle',i:parseInt(a,10)})}).then(function(d){ if(d&&d.ok&&DATA.nutriPlan){ DATA.nutriPlan.shopping=d.shopping; render(); } else { S.ernErr=true; S.ernMsg=(d&&d.message)||'Konnte nicht speichern – bitte erneut.'; render(); } }).catch(function(){ S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); }); },
     ernShopClear:function(){ api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'shopping-clear'})}).then(function(d){ if(d&&d.ok&&DATA.nutriPlan) DATA.nutriPlan.shopping=d.shopping; render(); }).catch(function(){}); },
     ernFridgeGo:function(){ if(S.ernRecipesBusy) return; if(ernNeedPremium()) return; var el=$('ern_fridge'); var v=el?(el.value||'').trim():(S.ernFridge||''); S.ernFridge=v;
       if(v.length<2){ S.ernErr=true; S.ernMsg='Sag FINN, was im Kühlschrank ist.'; render(); return; }
@@ -5371,7 +5377,7 @@
       var list=p[0]==='saved'?(DATA.nutriSaved||[]):(S.ernRecipes||[]); var r=list[parseInt(p[1],10)]; if(r) setS({ernRecipeSel:r,ernRecipeSaved:(p[0]==='saved'),ernRecipeServ:1}); },
     ernRecipeBack:function(){ setS({ernRecipeSel:null}); },
     ernRecipeServ:function(a){ var d=parseInt(a,10)||0; S.ernRecipeServ=Math.max(1,Math.min(6,(parseInt(S.ernRecipeServ,10)||1)+d)); render(); },
-    ernRecipeSave:function(){ var r=S.ernRecipeSel; if(!r) return; api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'recipe-save',recipe:r})}).then(function(d){ if(d&&d.ok){ DATA.nutriSaved=d.saved; S.ernRecipeSaved=true; render(); } }).catch(function(){}); },
+    ernRecipeSave:function(){ var r=S.ernRecipeSel; if(!r) return; api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'recipe-save',recipe:r})}).then(function(d){ if(d&&d.ok){ DATA.nutriSaved=d.saved; S.ernRecipeSaved=true; render(); } else { S.ernErr=true; S.ernMsg=(d&&d.message)||'Rezept konnte nicht gespeichert werden.'; render(); } }).catch(function(){ S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); }); },
     ernRecipeDel:function(a){ api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'recipe-delete',id:a})}).then(function(d){ if(d&&d.ok){ DATA.nutriSaved=d.saved; render(); } }).catch(function(){}); },
     ernRecipeLog:function(){ var r=S.ernRecipeSel; if(!r||S.ernBusy) return; var serv=Math.max(1,Math.min(6,parseInt(S.ernRecipeServ,10)||1)); S.ernBusy=true; render();
       api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'recipe-log',recipe:r,servings:serv,date:ernActiveDate()})})
@@ -5456,15 +5462,15 @@
       if(!isFinite(mins)) return;
       setQuiet({planBusy:true});
       api('/api/member/plan',{method:'POST',body:JSON.stringify({action:'set',minutes:mins,remind:S.planRemind,dayOffset:off})})
-        .then(function(r){ if(r&&r.ok&&r.plan){ DATA.plan=r.plan; } setQuiet({planBusy:false,planEdit:false}); })
-        .catch(function(){ setQuiet({planBusy:false}); });
+        .then(function(r){ if(r&&r.ok&&r.plan){ DATA.plan=r.plan; setQuiet({planBusy:false,planEdit:false}); } else { setQuiet({planBusy:false}); alert((r&&r.message)||'Vormerkung gerade nicht möglich – bitte später erneut.'); } })
+        .catch(function(){ setQuiet({planBusy:false}); alert('Verbindung gerade nicht möglich – bitte später erneut.'); });
     },
     planCancel:function(){
       var off=(DATA.plan&&DATA.plan.dayOffset===1)?1:0;
       setQuiet({planBusy:true});
       api('/api/member/plan',{method:'POST',body:JSON.stringify({action:'cancel',dayOffset:off})})
-        .then(function(){ DATA.plan=null; setQuiet({planBusy:false,planEdit:false}); })
-        .catch(function(){ setQuiet({planBusy:false}); });
+        .then(function(r){ if(r&&r.ok!==false){ DATA.plan=null; setQuiet({planBusy:false,planEdit:false}); } else { setQuiet({planBusy:false}); alert((r&&r.message)||'Absage gerade nicht möglich – bitte später erneut.'); } })
+        .catch(function(){ setQuiet({planBusy:false}); alert('Verbindung gerade nicht möglich – bitte später erneut.'); });
     },
     planEdit:function(){ setQuiet({planEdit:true}); },
     planEditCancel:function(){ setQuiet({planEdit:false}); },
@@ -5798,12 +5804,15 @@
           } else { setQuiet({pfErr:(d&&d.message)||'Senden fehlgeschlagen – bitte später erneut.'}); }
         })
         .catch(function(){ S.pfBusy=false; setQuiet({pfErr:'Es ist ein Fehler aufgetreten. Bitte später erneut.'}); }); },
-    pfConfirm:function(a){ setQuiet({pfBusy:true,pfErr:''});
+    pfConfirm:function(a){ if(S.pfBusy) return; setQuiet({pfBusy:true,pfErr:''});
       api('/api/member/inbox',{method:'POST',body:JSON.stringify({action:'reply',id:a,text:'Bestätigt.'})})
         .then(function(d){ if(d&&d.ok&&d.vorgang) updateVorgang(d.vorgang); setQuiet({pfBusy:false}); })
         .catch(function(){ setQuiet({pfBusy:false}); }); },
-    pfResolve:function(a){ api('/api/member/inbox',{method:'POST',body:JSON.stringify({action:'resolve',id:a})})
-        .then(function(d){ if(d&&d.ok&&d.vorgang) updateVorgang(d.vorgang); setS({}); }).catch(function(){}); }
+    pfResolve:function(a){ if(S.pfBusy) return; setQuiet({pfBusy:true});
+      api('/api/member/inbox',{method:'POST',body:JSON.stringify({action:'resolve',id:a})})
+        .then(function(d){ if(d&&d.ok&&d.vorgang) updateVorgang(d.vorgang); setS({pfBusy:false}); }).catch(function(){ setQuiet({pfBusy:false}); }); },
+    ciReload:function(){ S.ciLoadErr=false; render(); loadCheckins(); },
+    accountReload:function(){ DATA.account=null; render(); loadAccount(); }
   };
   // Attest per KI scannen: liest das „sportfrei bis"-Datum und deckelt die Pause darauf.
   function pauseScanAttest(){
@@ -6078,6 +6087,16 @@
   window.addEventListener('pageshow', function(e){ if(e && e.persisted) maybeAutoRefresh(); });
   // Fußzeilen-Link „Widerruf" (außerhalb von #app) -> In-App-Rechtsscreen.
   (function(){ var fw=document.getElementById('footWiderruf'); if(fw) fw.addEventListener('click', function(e){ e.preventDefault(); nav('recht'); }); })();
+  // Offline-Banner: dezenter Hinweis bei Verbindungsverlust; bei Rückkehr sofort frische Daten.
+  (function(){
+    var bn=document.createElement('div'); bn.id='offlineBanner';
+    bn.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:99999;background:#c0392b;color:#fff;font-size:13px;font-weight:700;text-align:center;padding:11px 14px calc(11px + env(safe-area-inset-bottom,0px));transform:translateY(110%);transition:transform .25s;box-shadow:0 -4px 14px rgba(0,0,0,.18)';
+    bn.textContent='Keine Internetverbindung – einige Funktionen sind gerade nicht verfügbar.';
+    document.body.appendChild(bn);
+    var upd=function(){ if(navigator.onLine){ bn.style.transform='translateY(110%)'; __lastRefresh=0; try{ maybeAutoRefresh(); }catch(e){} } else { bn.style.transform='translateY(0)'; } };
+    window.addEventListener('online', upd); window.addEventListener('offline', upd);
+    if(!navigator.onLine) upd();
+  })();
 })();
 </script>
 <script defer src="/_vercel/insights/script.js"></script>
