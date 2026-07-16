@@ -25,8 +25,13 @@ module.exports = async function handler(req, res) {
   if (!sess) { res.statusCode = 401; return res.end(JSON.stringify({ ok: false, error: 'unauthorized' })); }
   const id = sess.id;
   const j = (o) => { res.statusCode = 200; return res.end(JSON.stringify(o)); };
+  // Studio-Notaus (global) oder Sperre dieses Mitglieds -> Feature nicht verfügbar.
+  const gateOk = await Social.socialEnabled().catch(() => true);
+  const banned = await Social.isBanned(id).catch(() => false);
+  const blocked = (!gateOk || banned);
 
   if (req.method === 'GET') {
+    if (blocked) return j({ ok: true, available: false });
     const snap = await Social.snapshot(id).catch(() => ({ ok: true, available: false }));
     return j(snap);
   }
@@ -35,6 +40,8 @@ module.exports = async function handler(req, res) {
   const body = (await M.readBody(req)) || {};
   const action = String(body.action || '');
   const buddyId = body.buddyId != null ? String(body.buddyId) : '';
+  // Bei Notaus/Sperre nur noch das Deaktivieren (Opt-out) erlauben.
+  if (blocked && action !== 'disable') return j({ ok: false, error: 'unavailable', message: 'Trainingspartner sind gerade nicht verfügbar.' });
   // Chat darf häufiger sein als Verbinde-/Verwaltungs-Aktionen.
   const heavy = (action === 'dm-send' || action === 'room-send');
   if (!(await M.rateLimit(heavy ? ('social:dm:' + id) : ('social:' + id), heavy ? 240 : 60, 3600))) {

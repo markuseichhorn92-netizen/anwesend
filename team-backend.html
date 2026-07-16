@@ -291,7 +291,7 @@ function logout(){ try{ if(window.FitInnNative&&FitInnNative.onTeamLogout) FitIn
 // Angestellte (Trainer-Login) sehen nur das Tagesgeschäft. Diese Bereiche
 // bleiben dem Admin (Passwort-Login) vorbehalten. Die eigentliche Sperre
 // sitzt serverseitig – das hier steuert nur, was in der Oberfläche erscheint.
-var ADMIN_ONLY_SCREENS={ stats:1, msg:1, leads:1, assist:1, wb:1 };
+var ADMIN_ONLY_SCREENS={ stats:1, msg:1, leads:1, assist:1, wb:1, community:1 };
 function isAdmin(){ return S.role==='admin'; }
 function canSee(k){ return !ADMIN_ONLY_SCREENS[k] || isAdmin(); }
 function meInitials(){ var n=String(S.meName||'').trim(); if(!n) return 'FI'; var p=n.split(/\s+/).filter(Boolean); var i=((p[0]&&p[0][0])||'')+((p[1]&&p[1][0])||''); return (i||n.slice(0,2)||'FI').toUpperCase(); }
@@ -1364,6 +1364,7 @@ function renderShell(content, title, sub){
       (canSee('wb')?navItem('wb','Rückholung',IC.wb):'')+
       navItem('todo','Aufgaben',IC.todo)+
       navItem('schicht','Schichtplan',IC.shift)+
+      (canSee('community')?navItem('community','Community',IC.members):'')+
     '</nav>'+
     '<div style="border-top:1px solid rgba(255,255,255,.10);margin-top:10px;padding-top:10px">'+
       '<button class="navbtn" data-toapp="1" style="display:flex;align-items:center;gap:13px;padding:11px 13px;border:none;border-radius:11px;font-weight:600;font-size:13.5px;background:transparent;color:#9fc3ca;width:100%;text-align:left;margin-bottom:3px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg><span>Zur Mitglieder-App</span></button>'+
@@ -2629,6 +2630,40 @@ function wireTodos(node){
   node.querySelectorAll('[data-tdel]').forEach(function(b){ b.onclick=function(){ todoDelete(b.getAttribute('data-tdel')); }; });
 }
 
+// ---------- Community-Moderation (Trainingspartner) ----------
+async function loadCommunity(){ S.commLoading=true; render();
+  var r=await tapi('/api/team/social-mod');
+  S.commData=(r&&r.ok)?r:{ok:false}; S.commLoaded=true; S.commLoading=false; render();
+}
+async function communityAct(body){ S.commBusy=true; render();
+  var r=await tapi('/api/team/social-mod',{method:'POST',body:body});
+  if(r&&r.ok) S.commData=r; S.commBusy=false; render();
+}
+function communityNode(){
+  var node=el('<div class="scrl" style="flex:1;min-height:0;overflow-y:auto;padding:24px 28px 44px"></div>');
+  if(S.commLoading && !S.commData){ node.innerHTML='<div style="display:flex;align-items:center;justify-content:center;padding:70px"><span class="spin"></span></div>'; return node; }
+  var d=S.commData||{};
+  if(!d.ok){ node.innerHTML='<div style="padding:60px 22px;text-align:center"><div style="font-size:14px;color:#42454b;font-weight:700;margin-bottom:12px">Konnte nicht geladen werden.</div><button data-commretry="1" style="border:1.5px solid #d6dee0;background:#fff;border-radius:11px;font-size:13px;font-weight:800;padding:9px 16px;color:'+TEAL+';cursor:pointer">Erneut laden</button></div>'; var rt=node.querySelector('[data-commretry]'); if(rt) rt.onclick=function(){ loadCommunity(); }; return node; }
+  var enabled=d.enabled!==false; var reports=d.reports||[]; var banned=d.banned||[];
+  var CARD='background:#fff;border-radius:16px;box-shadow:0 10px 26px rgba(4,33,40,.07);padding:18px;margin-bottom:16px';
+  var toggle='<div style="'+CARD+'"><div style="display:flex;align-items:center;justify-content:space-between;gap:14px"><div style="min-width:0"><div style="font-size:15px;font-weight:900;color:#15171B">Trainingspartner-Feature</div><div style="font-size:12.5px;color:#8a929a;font-weight:600;margin-top:2px">'+(enabled?'Aktiv – Mitglieder können sich verbinden & chatten.':'Ausgeschaltet – für alle Mitglieder nicht verfügbar.')+'</div></div>'+
+    '<button data-commtoggle="'+(enabled?'0':'1')+'"'+(S.commBusy?' disabled':'')+' aria-label="Feature an/aus" style="flex-shrink:0;width:56px;height:32px;border-radius:16px;border:none;cursor:pointer;background:'+(enabled?TEAL:'#c6d0d2')+';position:relative"><span style="position:absolute;top:3px;left:'+(enabled?'27px':'3px')+';width:26px;height:26px;border-radius:50%;background:#fff;box-shadow:0 2px 5px rgba(0,0,0,.25);transition:left .15s"></span></button></div>'+
+    (enabled?'':'<div style="margin-top:12px;font-size:12px;font-weight:700;color:#b5402f;background:#fbeae7;border-radius:11px;padding:10px 12px">Notaus aktiv: Das Community-Feature ist für alle Mitglieder abgeschaltet.</div>')+'</div>';
+  var repHtml;
+  if(reports.length){ repHtml=reports.map(function(r){ var when=r.at?new Date(r.at).toLocaleDateString('de-DE'):''; return '<div style="border-top:1px solid #eef2f3;padding:12px 0;display:flex;align-items:flex-start;gap:12px"><div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:800;color:#15171B">'+esc((r.against&&r.against.name)||'—')+' <span style="font-weight:600;color:#8a929a">gemeldet von</span> '+esc((r.by&&r.by.name)||'—')+'</div>'+(r.reason?'<div style="font-size:12.5px;color:#42454b;font-weight:600;margin-top:2px;word-break:break-word">'+esc(r.reason)+'</div>':'')+'<div style="font-size:11px;color:#a0a8ae;font-weight:600;margin-top:2px">'+when+'</div></div>'+
+    '<button data-commban="'+esc((r.against&&r.against.id)||'')+'" style="flex-shrink:0;border:1.5px solid #e3b8b1;background:#fff;color:#b5402f;border-radius:10px;font-size:12px;font-weight:800;padding:8px 12px;cursor:pointer">Sperren</button></div>'; }).join('')+
+    '<div style="text-align:right;margin-top:8px"><button data-commclear="1" style="border:none;background:none;color:#8a929a;font-size:12.5px;font-weight:700;cursor:pointer;text-decoration:underline">Meldungen leeren</button></div>';
+  } else { repHtml='<div style="font-size:13px;color:#8a929a;font-weight:600;padding:6px 0">Keine offenen Meldungen. 👍</div>'; }
+  var reportsCard='<div style="'+CARD+'"><div style="font-size:15px;font-weight:900;color:#15171B;margin-bottom:2px">Meldungen'+(reports.length?' ('+reports.length+')':'')+'</div>'+repHtml+'</div>';
+  var banHtml=banned.length?banned.map(function(b){ return '<div style="border-top:1px solid #eef2f3;padding:11px 0;display:flex;align-items:center;gap:12px"><div style="flex:1;font-size:13.5px;font-weight:800;color:#15171B">'+esc(b.name||b.id)+'</div><button data-communban="'+esc(b.id)+'" style="border:1.5px solid #d6dee0;background:#fff;color:'+TEAL+';border-radius:10px;font-size:12px;font-weight:800;padding:8px 12px;cursor:pointer">Entsperren</button></div>'; }).join(''):'<div style="font-size:13px;color:#8a929a;font-weight:600;padding:6px 0">Niemand gesperrt.</div>';
+  var banCard='<div style="'+CARD+'"><div style="font-size:15px;font-weight:900;color:#15171B;margin-bottom:2px">Gesperrte Mitglieder'+(banned.length?' ('+banned.length+')':'')+'</div>'+banHtml+'</div>';
+  node.innerHTML=toggle+reportsCard+banCard;
+  var tg=node.querySelector('[data-commtoggle]'); if(tg) tg.onclick=function(){ communityAct({action:'toggle',on:tg.getAttribute('data-commtoggle')==='1'}); };
+  node.querySelectorAll('[data-commban]').forEach(function(b){ b.onclick=function(){ var id=b.getAttribute('data-commban'); if(!id) return; if(confirm('Dieses Mitglied für die Community sperren? Verbindungen & Chats werden entfernt.')) communityAct({action:'ban',memberId:id,on:true}); }; });
+  node.querySelectorAll('[data-communban]').forEach(function(b){ b.onclick=function(){ communityAct({action:'ban',memberId:b.getAttribute('data-communban'),on:false}); }; });
+  var cc=node.querySelector('[data-commclear]'); if(cc) cc.onclick=function(){ if(confirm('Alle Meldungen als erledigt markieren und leeren?')) communityAct({action:'clear-reports'}); };
+  return node;
+}
 // ---------- Schichtplan (Dienstplan, Tausch, Verfügbarkeiten, Team-Chat) ----------
 // Eigener Store (lib/shifts.js, Upstash) – bewusst ohne Magicline-Abhängigkeit.
 // UI 1:1 nach Design-Vorgabe (Phone-Layout, zentrierte Spalte max. 520px).
@@ -4278,8 +4313,8 @@ function wbNode(){
 function render(){
   if(!S.token){ renderLogin(); return; }
   if(!canSee(S.screen)) S.screen='dash';   // kein Admin-Bereich für Angestellte (Sicherheitsnetz)
-  var titles={dash:'Übersicht',inbox:'Posteingang',members:'Mitglieder',appts:'Termine',trial:'Probetraining',help:'Hilfe-Artikel',stats:'Statistiken',msg:'Nachrichten',leads:'Leads',todo:'Aufgaben',schicht:'Schichtplan',assist:'Assistent',wb:'Rückholung'};
-  var subs={dash:'Dein Studio auf einen Blick',inbox:'Alle Vorgänge & Anfragen',members:'Mitgliederverwaltung',appts:'Anfragen & Buchungen',trial:'Schnell ein Probetraining buchen',help:'Wissensdatenbank verwalten',stats:'Auswertungen & Trends',msg:'Rundnachricht & Direktnachricht',leads:'Interessenten-Pipeline',todo:'Interne Aufgaben fürs Team',schicht:'Dienstplan, Tausch & Verfügbarkeiten',assist:'Sag mir, was zu tun ist – ich bereite es vor, du bestätigst',wb:'Angebots-Rahmen für die KI-Rückholung'};
+  var titles={dash:'Übersicht',inbox:'Posteingang',members:'Mitglieder',appts:'Termine',trial:'Probetraining',help:'Hilfe-Artikel',stats:'Statistiken',msg:'Nachrichten',leads:'Leads',todo:'Aufgaben',schicht:'Schichtplan',assist:'Assistent',wb:'Rückholung',community:'Community'};
+  var subs={dash:'Dein Studio auf einen Blick',inbox:'Alle Vorgänge & Anfragen',members:'Mitgliederverwaltung',appts:'Anfragen & Buchungen',trial:'Schnell ein Probetraining buchen',help:'Wissensdatenbank verwalten',stats:'Auswertungen & Trends',msg:'Rundnachricht & Direktnachricht',leads:'Interessenten-Pipeline',todo:'Interne Aufgaben fürs Team',schicht:'Dienstplan, Tausch & Verfügbarkeiten',assist:'Sag mir, was zu tun ist – ich bereite es vor, du bestätigst',wb:'Angebots-Rahmen für die KI-Rückholung',community:'Trainingspartner moderieren'};
   var content;
   if(S.screen==='inbox') content=inboxNode();
   else if(S.screen==='dash') content=dashNode();
@@ -4294,6 +4329,7 @@ function render(){
   else if(S.screen==='schicht') content=schichtNode();
   else if(S.screen==='assist') content=assistNode();
   else if(S.screen==='wb') content=wbNode();
+  else if(S.screen==='community') content=communityNode();
   else content=placeholderNode(titles[S.screen]||'');
   renderShell(content, titles[S.screen]||'', subs[S.screen]||'');
 }
@@ -4311,6 +4347,7 @@ function goScreen(k){
   if(k==='todo'){ if(!S.todosLoaded){ loadTodos(); return; } }
   if(k==='schicht'){ if(!S.shLoaded){ loadShifts(); return; } }
   if(k==='wb'){ if(!S.wbLoaded){ loadWb(); return; } }
+  if(k==='community'){ if(!S.commLoaded){ loadCommunity(); return; } }
   render();
 }
 
