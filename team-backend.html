@@ -310,7 +310,7 @@ async function doLogin(pw){
   S.err=''; S.busy=true; render();
   try{
     var r=await tapi('/api/team/login',{method:'POST',body:{password:pw}});
-    if(r.ok && r.token){ saveToken(r.token); saveRole(r.role||'admin','Admin'); S.busy=false; registerTeamPush(); loadEmployees(); await loadInbox(); return; }
+    if(r.ok && r.token){ saveToken(r.token); saveRole(r.role||'admin','Admin'); S.busy=false; registerTeamPush(); loadEmployees(); goScreen(S.screen); return; }
     S.err=r.message||'Login fehlgeschlagen.'; S.busy=false; render();
   }catch(e){ S.err='Verbindungsfehler.'; S.busy=false; render(); }
 }
@@ -332,7 +332,7 @@ async function doStaffVerify(){
   S.liErr=''; S.liBusy=true; render();
   try{
     var r=await tapi('/api/team/login',{method:'POST',body:{action:'verifyCode',challenge:S.liChallenge,code:code}});
-    if(r && r.ok && r.token){ saveToken(r.token); saveRole(r.role||'trainer', r.name||''); S.liBusy=false; S.liChallenge=''; S.liCode=''; S.liEmail=''; if(!canSee(S.screen)) S.screen='dash'; registerTeamPush(); loadEmployees(); await loadInbox(); return; }
+    if(r && r.ok && r.token){ saveToken(r.token); saveRole(r.role||'trainer', r.name||''); S.liBusy=false; S.liChallenge=''; S.liCode=''; S.liEmail=''; if(!canSee(S.screen)) S.screen='dash'; registerTeamPush(); loadEmployees(); goScreen(S.screen); return; }
     S.liBusy=false; S.liErr=(r&&r.message)||'Code falsch oder abgelaufen.'; render();
   }catch(e){ S.liBusy=false; S.liErr='Verbindungsfehler.'; render(); }
 }
@@ -4527,7 +4527,9 @@ function goScreen(k){
 
 // ---------- boot ----------
 loadToken();
-if(S.token){ render(); loadMe(); loadEmployees(); loadInbox(); } else { render(); }
+// Beim Start die Lader des Landing-Screens (Standard: Übersicht/dash) anstoßen –
+// sonst bleibt z. B. die Auslastungs-Karte hängen, weil loadUtil() nie liefe.
+if(S.token){ render(); loadMe(); loadEmployees(); goScreen(S.screen); } else { render(); }
 // Offenen Chat live nachladen (neue Nachrichten erscheinen automatisch).
 setInterval(pollThread, 6000);
 // Liste/Badges seltener aktualisieren (kein Voll-Render, wenn gerade getippt wird).

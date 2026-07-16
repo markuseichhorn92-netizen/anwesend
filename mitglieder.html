@@ -6448,7 +6448,7 @@
         if(!tok){ setS({busy:false}); return; }   // abgebrochen -> normaler Login bleibt
         TOKEN=tok;
         try{ localStorage.setItem('fi_member_token',TOKEN); localStorage.setItem('fi_remember','1'); }catch(e){}
-        return loadMe().then(function(){ loadAppts(); loadPlan(); loadPlanAgg(); loadInbox(); loadPrefs(); if(DATA.checkins===null) loadCheckins(); S.busy=false; nav('home'); if(NFC){ NFC=null; nfcArrive(); } });
+        return loadMe().then(function(){ loadAppts(); loadPlan(); loadPlanAgg(); loadInbox(); loadPrefs(); if(DATA.checkins===null) loadCheckins(); S.busy=false; nav(magicGo()); if(NFC){ NFC=null; nfcArrive(); } });
       }).catch(function(){
         TOKEN=null; try{ localStorage.removeItem('fi_member_token'); sessionStorage.removeItem('fi_member_token'); }catch(e){}
         if(window.FitInnNative && FitInnNative.onLogout) FitInnNative.onLogout();
@@ -6537,7 +6537,7 @@
         .then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j};});})
         .then(function(x){
           if(x.ok&&x.j.needsCode){ setS({busy:false,challenge:x.j.challenge,loginStep:'verify',otp:'',liEmail:'',loginErr:''}); return; }
-          if(x.ok&&x.j.token){ TOKEN=x.j.token; if(remember){ localStorage.setItem('fi_member_token',TOKEN); localStorage.setItem('fi_remember','1'); sessionStorage.removeItem('fi_member_token'); } else { sessionStorage.setItem('fi_member_token',TOKEN); localStorage.removeItem('fi_member_token'); localStorage.removeItem('fi_remember'); } S.loginStep='request'; return loadMe().then(function(){ loadAppts(); loadPlan(); loadPlanAgg(); loadInbox(); loadPrefs(); if(DATA.checkins===null) loadCheckins(); S.busy=false; nav('home'); }); }
+          if(x.ok&&x.j.token){ TOKEN=x.j.token; if(remember){ localStorage.setItem('fi_member_token',TOKEN); localStorage.setItem('fi_remember','1'); sessionStorage.removeItem('fi_member_token'); } else { sessionStorage.setItem('fi_member_token',TOKEN); localStorage.removeItem('fi_member_token'); localStorage.removeItem('fi_remember'); } S.loginStep='request'; return loadMe().then(function(){ loadAppts(); loadPlan(); loadPlanAgg(); loadInbox(); loadPrefs(); if(DATA.checkins===null) loadCheckins(); S.busy=false; nav(magicGo()); }); }
           S.busy=false; setS({loginErr:(x.j&&x.j.message)||'Daten nicht gefunden.'}); })
         .catch(function(){ setS({busy:false,loginErr:'Es ist ein Fehler aufgetreten.'}); });
     },
@@ -6548,7 +6548,7 @@
       setQuiet({busy:true,loginErr:''});
       fetch('/api/member/login-verify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({challenge:S.challenge,code:code,remember:remember})})
         .then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j};});})
-        .then(function(x){ if(x.ok&&x.j.token){ TOKEN=x.j.token; if(remember){ localStorage.setItem('fi_member_token',TOKEN); localStorage.setItem('fi_remember','1'); sessionStorage.removeItem('fi_member_token'); } else { sessionStorage.setItem('fi_member_token',TOKEN); localStorage.removeItem('fi_member_token'); localStorage.removeItem('fi_remember'); } S.loginStep='request'; S.challenge=''; S.otp=''; return loadMe().then(function(){ loadAppts(); loadPlan(); loadPlanAgg(); loadInbox(); loadPrefs(); if(DATA.checkins===null) loadCheckins(); S.busy=false; nav('home'); }); } S.busy=false; setS({loginErr:(x.j&&x.j.message)||'Code falsch. Bitte erneut versuchen.'}); })
+        .then(function(x){ if(x.ok&&x.j.token){ TOKEN=x.j.token; if(remember){ localStorage.setItem('fi_member_token',TOKEN); localStorage.setItem('fi_remember','1'); sessionStorage.removeItem('fi_member_token'); } else { sessionStorage.setItem('fi_member_token',TOKEN); localStorage.removeItem('fi_member_token'); localStorage.removeItem('fi_remember'); } S.loginStep='request'; S.challenge=''; S.otp=''; return loadMe().then(function(){ loadAppts(); loadPlan(); loadPlanAgg(); loadInbox(); loadPrefs(); if(DATA.checkins===null) loadCheckins(); S.busy=false; nav(magicGo()); }); } S.busy=false; setS({loginErr:(x.j&&x.j.message)||'Code falsch. Bitte erneut versuchen.'}); })
         .catch(function(){ setS({busy:false,loginErr:'Es ist ein Fehler aufgetreten.'}); });
     },
     toggleRemember:function(){ S.remember=!S.remember; if(!S.remember) localStorage.removeItem('fi_remember'); setQuiet({}); },
@@ -7066,7 +7066,13 @@
   }
   // Ziel-Screen aus der URL (Deep-Links aus Push/Magic-Links): ?go=<screen>, oder
   // ?ern=coach (Coaching-Push) → globaler Coach-Tab, ?ern=<x> → Essen-Modul.
-  function magicGo(){ try{ var sp=new URL(window.location.href).searchParams; var e=sp.get('ern'); if(e==='coach') return 'coach'; if(e) return 'ern'; var b=sp.get('buddy'); if(b&&SOCIAL_ON){ try{ window.__socBuddy=String(b).toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,6); }catch(_e){} return 'social'; } var g=sp.get('go'); if(g&&TITLES[g]){ if(g==='social'&&SOCIAL_ON){ try{ var c=sp.get('chat'); var r=sp.get('room'); if(c) window.__socOpenChat=String(c); else if(r) window.__socOpenRoom=String(r); }catch(_e){} } return g; } }catch(e){} return 'home'; }
+  // Teilbare Pfad-Deep-Links: mitglieder.fit-inn-trier.de/vertrag, /termine, /trainingspartner …
+  // (Der Server liefert für jeden Pfad die Mitglieder-Seite; hier wird der Pfad auf den Screen gemappt.)
+  var PATHGO={ 'vertrag':'contract','meine-daten':'data','beitragskonto':'account','termine':'appt','check-in':'checkin','besuche':'checkins','freunde':'referral','freunde-werben':'referral','postfach':'postfach','hilfe':'help','einstellungen':'settings','profil':'profil','mitgliedskarte':'card','fortschritt':'fort','ernaehrung':'ern','coach':'coach','mein-abo':'abo','widerruf':'recht','blog':'blog','trainingspartner':'social' };
+  function magicGo(){ try{ var sp=new URL(window.location.href).searchParams; var e=sp.get('ern'); if(e==='coach') return 'coach'; if(e) return 'ern'; var b=sp.get('buddy'); if(b&&SOCIAL_ON){ try{ window.__socBuddy=String(b).toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,6); }catch(_e){} return 'social'; } var g=sp.get('go'); if(g&&TITLES[g]){ if(g==='social'&&SOCIAL_ON){ try{ var c=sp.get('chat'); var r=sp.get('room'); if(c) window.__socOpenChat=String(c); else if(r) window.__socOpenRoom=String(r); }catch(_e){} } return g; }
+    // Kein Query-Ziel? Dann den Pfad-Slug auswerten (z. B. „/vertrag").
+    var seg=(window.location.pathname||'').replace(/^\/+|\/+$/g,'').toLowerCase(); if(seg==='mitglieder') seg=''; if(seg && PATHGO[seg] && TITLES[PATHGO[seg]]) return PATHGO[seg];
+  }catch(e){} return 'home'; }
   function bootMagic(tok){
     S.screen='login'; render();
     var go=magicGo();
