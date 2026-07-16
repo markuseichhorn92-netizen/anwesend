@@ -516,7 +516,13 @@
 
   function headers(){ return { 'Content-Type':'application/json', 'Authorization':'Bearer '+TOKEN }; }
   function api(path, opt){ opt=opt||{}; opt.headers=Object.assign(headers(), opt.headers||{}); opt.cache='no-store';
-    return fetch(path,opt).then(function(r){ if(r.status===401){ logout(); throw new Error('unauthorized'); } return r.json(); }); }
+    // Hängende Requests dürfen den Spinner nicht ewig stehen lassen. GET ist immer kurz
+    // (nie KI/Upload) -> automatischer Timeout; POST nur mit opt.timeoutMs (KI/Uploads NICHT).
+    var m=(opt.method||'GET').toUpperCase();
+    var tmo=(opt.timeoutMs!=null)?opt.timeoutMs:(m==='GET'?25000:0);
+    var tid=null;
+    if(tmo>0 && typeof AbortController!=='undefined'){ var ctrl=new AbortController(); opt.signal=ctrl.signal; tid=setTimeout(function(){ try{ ctrl.abort(); }catch(e){} }, tmo); }
+    return fetch(path,opt).then(function(r){ if(tid) clearTimeout(tid); if(r.status===401){ logout(); throw new Error('unauthorized'); } return r.json(); }, function(err){ if(tid) clearTimeout(tid); throw err; }); }
 
   function logout(){ closeMenu(); try{ if(window.FitInnNative) FitInnNative.onLogout(); }catch(e){} TOKEN=null; sessionStorage.removeItem('fi_member_token'); localStorage.removeItem('fi_member_token'); try{ localStorage.removeItem('fi_checkin'); }catch(e){} S.checkedInAt=null; S.ciPopup=null; DATA={profile:null,contract:null,checkins:null,appts:null}; S.screen='login'; S.loginStep='request'; S.challenge=''; S.otp=''; render(); }
   function pad2(n){ return (n<10?'0':'')+n; }
@@ -2837,22 +2843,25 @@
     if(window.FitInnNative && FitInnNative.platform==='ios') return false;
     return !!(window.SpeechRecognition||window.webkitSpeechRecognition);
   }catch(e){ return false; } }
+  // Render nur, wenn ein Screen aktiv ist, der diese Daten anzeigt – sonst rendert eine
+  // spät eintretende Antwort den inzwischen sichtbaren Screen neu (Flackern/Fokusverlust).
+  function rIf(list){ if(list.indexOf(S.screen)>=0) render(); }
   function loadNutri(){
     if(DATA.nutri===null) DATA.nutri=false;   // „lädt" anzeigen bis Antwort da ist
     api('/api/member/nutrition').then(function(d){
       DATA.nutri=(d&&d.ok)?d:{ok:false,available:!!(d&&d.available)};
       if(d&&d.ok&&!d.onboarded&&!S.ernFormInit){ ernSeedForm(); S.ernFormInit=true; }
-      render();
-    }).catch(function(){ DATA.nutri={ok:false,available:false}; render(); });
+      rIf(['ern','coach','abo','recht']);
+    }).catch(function(){ DATA.nutri={ok:false,available:false}; rIf(['ern','coach','abo','recht']); });
   }
-  function loadFavs(){ api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'fav-list'})}).then(function(d){ DATA.nutriFavs=(d&&d.ok&&Array.isArray(d.favorites))?d.favorites:[]; render(); }).catch(function(){ DATA.nutriFavs=[]; render(); }); }
+  function loadFavs(){ api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'fav-list'})}).then(function(d){ DATA.nutriFavs=(d&&d.ok&&Array.isArray(d.favorites))?d.favorites:[]; rIf(['ern']); }).catch(function(){ DATA.nutriFavs=[]; rIf(['ern']); }); }
   // WICHTIG: eigener Name (früher hieß das auch loadPlan und überschrieb per Hoisting
   // die Trainings-Vormerkung loadPlan() – dadurch wurde DATA.plan nie geladen).
   function loadNutriPlan(){ api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'plan-get'})}).then(function(d){ DATA.nutriPlan=(d&&d.ok)?{plan:d.plan,shopping:d.shopping}:{plan:null,shopping:[]}; render(); }).catch(function(){ DATA.nutriPlan={plan:null,shopping:[]}; render(); }); }
-  function loadSaved(){ api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'recipes-get'})}).then(function(d){ DATA.nutriSaved=(d&&d.ok&&Array.isArray(d.saved))?d.saved:[]; render(); }).catch(function(){ DATA.nutriSaved=[]; render(); }); }
-  function loadWeek(){ api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'week'})}).then(function(d){ DATA.nutriWeek=(d&&d.ok)?d:{ok:false}; render(); }).catch(function(){ DATA.nutriWeek={ok:false}; render(); }); }
+  function loadSaved(){ api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'recipes-get'})}).then(function(d){ DATA.nutriSaved=(d&&d.ok&&Array.isArray(d.saved))?d.saved:[]; rIf(['ern']); }).catch(function(){ DATA.nutriSaved=[]; rIf(['ern']); }); }
+  function loadWeek(){ api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'week'})}).then(function(d){ DATA.nutriWeek=(d&&d.ok)?d:{ok:false}; rIf(['ern']); }).catch(function(){ DATA.nutriWeek={ok:false}; rIf(['ern']); }); }
   // Coaching-Programm (8-Wochen-Reise) laden – eigener Endpunkt, Snapshot in DATA.coach.
-  function loadCoach(){ api('/api/member/nutrition-coach').then(function(d){ DATA.coach=(d&&d.ok)?d:{ok:false,available:!!(d&&d.available)}; render(); }).catch(function(){ DATA.coach={ok:false,available:false}; render(); }); }
+  function loadCoach(){ api('/api/member/nutrition-coach').then(function(d){ DATA.coach=(d&&d.ok)?d:{ok:false,available:!!(d&&d.available)}; rIf(['ern','coach']); }).catch(function(){ DATA.coach={ok:false,available:false}; rIf(['ern','coach']); }); }
   // Fasten-Countdown live nachführen (nur auf dem Heute-Tab, ohne Voll-Render)
   setInterval(function(){
     try{
@@ -5725,7 +5734,7 @@
       setS({}); },
     bookType:function(a){ setS({bookType:a}); },
     reqAppt:function(){ if(S.busy) return; var pref=val('a_pref'); var t=(APPT_TYPES.filter(function(x){return x[0]===S.bookType;})[0]||[])[1]||''; setQuiet({busy:true});
-      api('/api/member/appointment',{method:'POST',body:JSON.stringify({type:t,preferred:pref})}).then(function(d){ if(d&&d.ok){ setS({busy:false,apptMsg:d.message||'Dein Terminwunsch ist eingegangen.',bookDone:false,bookType:''}); } else { setS({busy:false,apptErr:true,apptMsg:(d&&d.message)||'Terminwunsch konnte nicht gesendet werden – bitte erneut versuchen.'}); } }).catch(function(){ setS({busy:false,apptErr:true,apptMsg:'Terminwunsch konnte nicht gesendet werden – bitte erneut versuchen.'}); }); },
+      api('/api/member/appointment',{method:'POST',timeoutMs:30000,body:JSON.stringify({type:t,preferred:pref})}).then(function(d){ if(d&&d.ok){ setS({busy:false,apptMsg:d.message||'Dein Terminwunsch ist eingegangen.',bookDone:false,bookType:''}); } else { setS({busy:false,apptErr:true,apptMsg:(d&&d.message)||'Terminwunsch konnte nicht gesendet werden – bitte erneut versuchen.'}); } }).catch(function(){ setS({busy:false,apptErr:true,apptMsg:'Terminwunsch konnte nicht gesendet werden – bitte erneut versuchen.'}); }); },
     // ---- echte Buchung ----
     pickBookType:function(a){ var t=(DATA.bookable||[]).filter(function(x){return String(x.id)===String(a);})[0]||{}; S.bookType=a; S.bookTypeTitle=t.title||''; S.fallbackBook=false; S.bookDay=''; S.bookSlot=null; S.bookErr=''; loadSlots(a); },
     // ---- Fallback (Terminwunsch per E-Mail, wenn keine Magicline-Terminarten konfiguriert sind) ----
@@ -5736,12 +5745,12 @@
     bookBack:function(){ if(S.bookSlot) setS({bookSlot:null,bookErr:''}); else if(S.bookDay) setS({bookDay:'',bookErr:''}); else setS({bookType:'',bookTypeTitle:'',bookDay:'',bookSlot:null,fallbackBook:false,bookErr:''}); },
     confirmBook:function(){ var sl=S.bookSlot; if(!sl||S.busy) return;
       if(sl.fallback){ var tt=(APPT_TYPES.filter(function(x){return x[0]===S.bookType;})[0]||[])[1]||S.bookTypeTitle||''; var pref=deDateLong(sl.start)+', '+deTime(sl.start)+' Uhr'; setQuiet({busy:true,bookErr:''});
-        api('/api/member/appointment',{method:'POST',body:JSON.stringify({type:tt,preferred:pref})})
+        api('/api/member/appointment',{method:'POST',timeoutMs:30000,body:JSON.stringify({type:tt,preferred:pref})})
           .then(function(d){ if(d&&d.ok){ DATA.appts=null; loadAppts(); setS({busy:false,apptMsg:(d&&d.message)||('Wir melden uns zur Bestätigung deines Wunschtermins ('+pref+').'),bookDone:false,bookType:'',bookTypeTitle:'',bookSlot:null,fallbackBook:false,bookErr:''}); } else { setS({busy:false,bookErr:(d&&d.message)||'Terminwunsch konnte nicht gesendet werden – bitte erneut versuchen.'}); } })
           .catch(function(){ setS({busy:false,bookErr:'Terminwunsch konnte nicht gesendet werden – bitte erneut versuchen.'}); });
         return; }
       var bid=S.bookType; setQuiet({busy:true,bookErr:''});
-      api('/api/member/appointment-book',{method:'POST',body:JSON.stringify({bookableAppointmentId:bid,startDateTime:sl.start,endDateTime:sl.end,instructorIds:(sl.instructorIds||[]).slice(0,1),title:S.bookTypeTitle})})
+      api('/api/member/appointment-book',{method:'POST',timeoutMs:30000,body:JSON.stringify({bookableAppointmentId:bid,startDateTime:sl.start,endDateTime:sl.end,instructorIds:(sl.instructorIds||[]).slice(0,1),title:S.bookTypeTitle})})
         .then(function(d){ if(d&&d.ok){ DATA.appts=null; loadAppts(); setS({busy:false,apptMsg:d.message||'Dein Termin ist gebucht!',bookDone:true,bookType:'',bookTypeTitle:'',bookSlot:null,bookErr:''}); } else { DATA.slots=null; setS({busy:false,bookSlot:null,bookErr:(d&&d.message)||'Buchung fehlgeschlagen – bitte anderen Termin wählen.'}); loadSlots(bid); } })
         .catch(function(){ setS({busy:false,bookErr:'Buchung fehlgeschlagen – bitte später erneut.'}); }); },
     // referral
