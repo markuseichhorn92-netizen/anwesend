@@ -559,6 +559,7 @@
     if(s==='insta'){ S.instaSel=null; loadInsta(); maybeRefreshInsta(); }
     if(s==='home'){ loadFinnTip(); maybeRefreshInsta(); maybeRefreshLive(); }
     if(s==='account') loadAccount();
+    if(s==='finnusage') loadNutri();   // Nutzungs-/Kontingent-Daten frisch holen
     // Abo-Status für die Konto-Einstiege (Profil/Meine Daten/Beitragskonto) + der Abo-Screen selbst.
     if(s==='profil'||s==='data'||s==='account'||s==='abo') loadErnBilling();
     if(s==='abo'){ S.ernMsg=''; S.ernErr=false; DATA.ernSub=undefined; DATA.ernInvoices=undefined; loadNutri(); loadSubInfo(); loadErnInvoices(); }
@@ -2909,8 +2910,8 @@
     api('/api/member/nutrition').then(function(d){
       DATA.nutri=(d&&d.ok)?d:{ok:false,available:!!(d&&d.available)};
       if(d&&d.ok&&!d.onboarded&&!S.ernFormInit){ ernSeedForm(); S.ernFormInit=true; }
-      rIf(['ern','coach','abo','recht']);
-    }).catch(function(){ DATA.nutri={ok:false,available:false}; rIf(['ern','coach','abo','recht']); });
+      rIf(['ern','coach','abo','recht','finnusage']);
+    }).catch(function(){ DATA.nutri={ok:false,available:false}; rIf(['ern','coach','abo','recht','finnusage']); });
   }
   function loadFavs(){ api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'fav-list'})}).then(function(d){ DATA.nutriFavs=(d&&d.ok&&Array.isArray(d.favorites))?d.favorites:[]; rIf(['ern']); }).catch(function(){ DATA.nutriFavs=[]; rIf(['ern']); }); }
   // WICHTIG: eigener Name (früher hieß das auch loadPlan und überschrieb per Hoisting
@@ -4521,6 +4522,7 @@
       row('appt','Termine','Buchen & verwalten',IC.cal)+
       row('fort','Fortschritt & Vitalität','Rang, Punkte, Fitness-Alter',AWARD,true)+
       (ERN_ON?row('ern','Ernährung','Tagesziel, Tracking & Rezepte','<path d="M11 21A7 7 0 0 1 4 14C4 8.5 8 4 13.5 4c2.7 0 4.6 1 6.5 1.8 0 8.7-4.3 15.2-9 15.2z"></path><path d="M11 21c0-5.5 3.3-10 7.5-12"></path>'):'')+
+      (ERN_ON?row('finnusage','FINN-Nutzung','KI-Kontingent & Verbrauch','<path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.5 8.6 8.6 0 0 1-4-1L3 20l1-5a8.4 8.4 0 0 1-1-4A8.5 8.5 0 0 1 11.5 3 8.5 8.5 0 0 1 21 11.5z"></path>'):'')+
       row('data','Meine Daten','Adresse & Bankverbindung',IC.user)+
       row('contract','Vertrag','Tarif, Kündigung, Pause',IC.doc)+
       row('account','Beitragskonto','Offene Posten & Rechnungen','<rect x="2" y="5" width="20" height="14" rx="2"></rect><path d="M2 9h20M6 15h5"></path>')+
@@ -4532,6 +4534,43 @@
     var head='<div style="background:linear-gradient(165deg,#0e6072,#063540);border-radius:20px;box-shadow:0 12px 34px rgba(4,33,40,.18);padding:18px 20px;color:#fff;margin-bottom:16px"><div style="font-size:22px;font-weight:900;letter-spacing:-.4px">Profil</div><div style="font-size:13px;color:#aed0d6;font-weight:600;margin-top:1px">Mitgliedschaft verwalten</div></div>';
     return head+hero+'<div style="margin-top:16px">'+ernAboRow()+'</div>'+list+
       '<button data-act="logout" style="width:100%;margin-top:14px;border:1.5px solid var(--border);border-radius:14px;background:var(--surface);color:var(--err-fg);font-weight:800;font-size:15px;padding:14px;cursor:pointer">Abmelden</button>';
+  }
+  // FINN-Nutzung: eigener Bereich im Profil – zeigt Basic-Kontingent-Verbrauch bzw. Premium-Verbrauch.
+  function ernUsageMonthLabel(ym){ try{ var p=String(ym||'').split('-'); var M=['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember']; var mi=(parseInt(p[1],10)||1)-1; return (M[mi]||'')+' '+(p[0]||''); }catch(e){ return ''; } }
+  function scrFinnUsage(){
+    var gradHd='<div style="display:flex;align-items:center;gap:13px;background:linear-gradient(165deg,#0e6072,#063540);border-radius:20px;box-shadow:0 12px 34px rgba(4,33,40,.18);padding:16px 18px;color:#fff;margin-bottom:16px">'
+      +'<button data-act="nav" data-arg="profil" aria-label="Zurück" style="width:38px;height:38px;border-radius:12px;border:none;background:rgba(255,255,255,.13);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'+svg(IC.back,{c:'#fff',w:2.2,s:19})+'</button>'
+      +'<div><div style="font-size:19px;font-weight:900;letter-spacing:-.4px;color:#fff">FINN-Nutzung</div><div style="font-size:12.5px;color:#aed0d6;font-weight:600">Deine KI-Aktionen diesen Monat</div></div></div>';
+    var n=DATA.nutri;
+    if(n==null||n===false) return gradHd+'<div style="background:var(--surface);border-radius:20px;box-shadow:0 12px 34px rgba(4,33,40,.10);padding:26px 20px;text-align:center;color:var(--text-soft);font-size:14px;font-weight:600">Lade Nutzung …</div>';
+    var q=(n&&n.quota)||null;
+    if(!q) return gradHd+'<div style="background:var(--surface);border-radius:20px;box-shadow:0 12px 34px rgba(4,33,40,.10);padding:26px 20px;text-align:center;color:var(--text-soft);font-size:14px;font-weight:600">Nutzungsdaten gerade nicht verfügbar.</div>';
+    var used=Math.max(0,parseInt(q.used,10)||0), lim=parseInt(q.limit,10)||5;
+    var month=ernUsageMonthLabel(q.month);
+    var premium=!!(q.unlimited||n.premium);
+    var CARD='background:var(--surface);border-radius:20px;box-shadow:0 12px 30px rgba(4,33,40,.09);padding:20px;margin-bottom:14px';
+    var mainCard;
+    if(premium){
+      mainCard='<div style="background:linear-gradient(150deg,#12a06a,#0a5a37);border-radius:22px;padding:22px;color:#fff;box-shadow:0 14px 36px rgba(15,122,74,.24);margin-bottom:14px">'+
+        '<div style="display:flex;align-items:center;gap:11px"><span style="width:46px;height:46px;border-radius:14px;background:rgba(255,255,255,.16);display:flex;align-items:center;justify-content:center;font-size:23px;flex-shrink:0">⭐</span><div><div style="font-size:16px;font-weight:900">Premium · unbegrenzt</div><div style="font-size:12.5px;color:#d4f0e2;font-weight:600;margin-top:1px">Du kannst FINN ohne Limit nutzen.</div></div></div>'+
+        '<div style="display:flex;align-items:flex-end;gap:8px;margin-top:18px"><span style="font-size:44px;font-weight:900;letter-spacing:-1.5px;line-height:.9">'+used+'</span><span style="font-size:13.5px;font-weight:700;color:#d4f0e2;margin-bottom:6px">FINN-Aktion'+(used===1?'':'en')+' im '+esc(month)+'</span></div></div>';
+    } else {
+      var pct=lim>0?Math.min(100,Math.round(used/lim*100)):0;
+      var left=Math.max(0,lim-used);
+      var barCol=left<=0?'#b5402f':(left===1?'#C77A2E':ERN_G);
+      mainCard='<div style="'+CARD+'">'+
+        '<div style="display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:4px"><div><div style="font-size:12px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.4px">Gratis-Kontingent · '+esc(month)+'</div><div style="font-size:15px;font-weight:900;color:var(--text);margin-top:4px">'+used+' von '+lim+' verbraucht</div></div><div style="font-size:34px;font-weight:900;color:'+barCol+';letter-spacing:-1px;line-height:1">'+left+'<span style="font-size:13px;font-weight:800;color:var(--text-soft)"> übrig</span></div></div>'+
+        '<div style="height:12px;border-radius:7px;background:var(--surface-2);overflow:hidden;margin-top:12px"><div style="height:100%;width:'+pct+'%;background:'+barCol+';border-radius:7px"></div></div>'+
+        '<div style="font-size:11.5px;font-weight:600;color:var(--text-soft);margin-top:10px;line-height:1.5">Dein Gratis-Kontingent setzt sich zum Monatsanfang wieder auf '+lim+' zurück.</div>'+
+        (left<=1?'<button data-act="ernUsageUpgrade" style="width:100%;margin-top:14px;padding:14px;border:none;border-radius:14px;background:'+ERN_G+';color:#fff;font-weight:900;font-size:14.5px;cursor:pointer">Mit Premium unbegrenzt nutzen</button>':'')+
+      '</div>';
+    }
+    // Was als KI-Aktion zählt.
+    var items=[['🍳','Rezepte & Pläne erstellen'],['⭐','Mahlzeit von FINN bewerten lassen'],['📸','Foto- & Text-Schätzung beim Erfassen'],['💬','FINN-Coach im Chat fragen']];
+    var whatCard='<div style="'+CARD+'"><div style="font-size:14px;font-weight:900;color:var(--text);margin-bottom:4px">Das zählt als KI-Aktion</div>'+
+      items.map(function(it,i){ return '<div style="display:flex;align-items:center;gap:11px;padding:11px 0'+(i?';border-top:1px solid var(--border)':'')+'"><span style="width:34px;height:34px;border-radius:10px;background:var(--surface-2);display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0">'+it[0]+'</span><span style="font-size:13.5px;font-weight:700;color:var(--text-2)">'+it[1]+'</span></div>'; }).join('')+
+      '<div style="font-size:11.5px;font-weight:600;color:var(--text-soft);margin-top:8px;line-height:1.5">Manuelles Loggen, Barcode-Scan, Wasser, Favoriten, Kochbuch &amp; Verlauf sind immer gratis und zählen nicht mit.</div></div>';
+    return gradHd+mainCard+whatCard;
   }
   function scrAccount(){
     var head='';
@@ -5237,6 +5276,7 @@
       case 'checkins': html=scrCheckins(); break;
       case 'help': html=scrHelp(); break;
       case 'settings': html=scrSettings(); break;
+      case 'finnusage': html=scrFinnUsage(); break;
       case 'postfach': html=scrPostfach(); break;
       default: html=scrHome();
     }
@@ -5590,6 +5630,8 @@
       .then(function(d){ if(d&&d.ok){ DATA.nutri=d; var nm=(d.added&&d.added[0]&&d.added[0].name)||'Favorit'; S.ernMsg='Protokolliert: '+nm; S.ernErr=false; render(); } else { S.ernErr=true; S.ernMsg=(d&&d.message)||'Konnte nicht protokollieren – bitte erneut.'; render(); } }).catch(function(){ S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); }); },
     // ── Premium (Freemium/Stripe) ──
     ernUpgradeOpen:function(){ setS({ernUpgrade:true, ernMsg:'', ernErr:false}); },
+    // Aus dem Profil-Bereich „FINN-Nutzung": ins Ernährungsmodul wechseln und Upgrade öffnen.
+    ernUsageUpgrade:function(){ nav('ern'); S.ernUpgrade=true; render(); try{ window.scrollTo(0,0); }catch(e){} },
     ernUpgradeClose:function(){ setS({ernUpgrade:false, ernMsg:'', ernErr:false}); },
     ernBuyConsentToggle:function(){ setQuiet({ernBuyConsent:!S.ernBuyConsent, ernErr:false, ernMsg:''}); },
     // Rechts-Screen: Widerruf-Ablauf.

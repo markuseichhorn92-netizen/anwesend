@@ -299,8 +299,9 @@ async function buildState(id, profile, forDate) {
   const fasting = await loadFasting(id);
   const tier = Ent.publicTier(await Ent.getEntitlement(id));   // Premium-Status für die UI (Freemium)
   // Gratis-Kontingent (Basic) für den aktuellen Monat – die UI zeigt „Noch X von 5".
+  // Verbrauch wird für alle gezählt (auch Premium), damit die Nutzungsübersicht stimmt.
   const qMonth = Quota.monthOf(todayYMD);
-  const qUsed = tier.premium ? 0 : await Quota.getUsed(id, qMonth);
+  const qUsed = await Quota.getUsed(id, qMonth);
   // Preis/Trial dynamisch (aus Stripe, gecacht) – die UI zeigt es statt hartcodierter Copy.
   let priceInfo = null; try { priceInfo = await Stripe.getPriceInfo(); } catch (e) {}
   return {
@@ -396,10 +397,11 @@ module.exports = async function handler(req, res) {
     res.statusCode = 200; res.end(JSON.stringify({ ok: false, error: 'premium_required', quota: 'exhausted', message: QUOTA_MSG }));
     return false;
   };
-  // Nach erfolgreicher KI-Aktion 1 vom Gratis-Kontingent abbuchen (Premium: nie). Gibt
-  // die aktuelle, client-sichere Kontingent-Info zurück (für das „Noch X"-Badge).
+  // Nach erfolgreicher KI-Aktion den Monatszähler erhöhen – für ALLE (auch Premium, damit die
+  // Nutzungsübersicht stimmt). Gedeckelt/gesperrt wird aber nur Basic (siehe gateAI). Gibt die
+  // aktuelle, client-sichere Kontingent-Info zurück (für „Noch X"-Badge + Nutzungsübersicht).
   const chargeAI = async function () {
-    const used = premium ? 0 : await Quota.incr(id, monthKey);
+    const used = await Quota.incr(id, monthKey);
     return Quota.publicQuota(used, premium, monthKey);
   };
 
