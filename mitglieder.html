@@ -545,7 +545,7 @@
     if(s==='postfach'){ S.pfSel=null; S.pfThread=false; S.pfErr=''; S.pfDraft=''; S.pfSearch=''; S.pfLimit=12; loadInbox(); }
     if(s==='contract'){ S.cancelStep=0; S.pauseStep=0; S.pauseDone=false; S.offerDone=''; S.docMsg=''; S.docErr=false; S.modMsg=''; S.modErr=false; S.modBusyId=''; loadDocuments(); loadModules(); }
     if(s==='settings'){ S.commMsg=''; S.commErr=false; loadCommPrefs(); }
-    if((s==='checkins'||s==='fort')&&!DATA.checkins) loadCheckins();
+    if(s==='checkins'||s==='fort') loadCheckins();   // immer frisch: Studio-Check-ins vom Band erscheinen sofort
     if(s==='blog'){ S.blogSel=null; S.blogPost=null; loadBlog(); }
     if(s==='insta'){ S.instaSel=null; loadInsta(); maybeRefreshInsta(); }
     if(s==='home'){ loadFinnTip(); maybeRefreshInsta(); maybeRefreshLive(); }
@@ -1678,6 +1678,8 @@
   function scrData(){
     var p=DATA.profile||{};
     var m = S.msg ? '<div class="ok" style="margin-bottom:14px">'+svg(IC.check,{c:'var(--ok-fg)',w:2.1,s:18})+'<span>'+esc(S.msg)+'</span></div>' : '';
+    // Inline-Rückmeldung direkt an der jeweiligen Karte (kein Sprung nach oben).
+    var dm=function(k){ return (S.dataMsgFor===k && S.dataMsg) ? '<div role="'+(S.dataErr?'alert':'status')+'" style="margin-top:12px;font-size:12.5px;font-weight:700;color:'+(S.dataErr?'var(--err-fg)':'var(--ok-fg)')+';line-height:1.45">'+esc(S.dataMsg)+'</div>' : ''; };
     var head='<div style="position:relative;overflow:hidden;background:linear-gradient(165deg,#0e6072 0%,#0a4958 55%,#063540 100%);border-radius:22px;padding:18px 20px;margin-bottom:16px;box-shadow:0 16px 40px rgba(4,33,40,.20)">'+
       '<div style="position:absolute;width:180px;height:180px;right:-60px;top:-70px;border-radius:50%;background:radial-gradient(circle,rgba(246,169,100,.22),transparent 70%)"></div>'+
       '<div style="position:relative;display:flex;align-items:center;gap:13px">'+
@@ -1691,13 +1693,13 @@
       '<div style="font-size:17px;font-weight:900;color:var(--text);letter-spacing:-.3px">Adresse</div>'+
       '<div class="row2" style="grid-template-columns:2fr 1fr;margin-top:16px"><div><label class="lbl">Straße</label><input id="d_street" class="inp" value="'+esc(p.street||'')+'"></div><div><label class="lbl">Nr.</label><input id="d_house" class="inp" value="'+esc(p.houseNumber||'')+'"></div></div>'+
       '<div class="row2" style="grid-template-columns:1fr 2fr;margin-top:12px"><div><label class="lbl">PLZ</label><input id="d_zip" class="inp" value="'+esc(p.zipCode||'')+'"></div><div><label class="lbl">Ort</label><input id="d_city" class="inp" value="'+esc(p.city||'')+'"></div></div>'+
-      '<button class="btn" data-act="saveAddr" style="margin-top:18px">Adressänderung beantragen</button>'+
+      '<button class="btn" data-act="saveAddr" style="margin-top:18px">Adressänderung beantragen</button>'+dm('addr')+
     '</div>'+
     '<div class="card" style="background:var(--surface);border-radius:20px;box-shadow:0 12px 34px rgba(4,33,40,.10);padding:20px 22px">'+
       '<div style="font-size:17px;font-weight:900;color:var(--text);letter-spacing:-.3px">Kontaktdaten</div>'+
       '<div style="margin-top:16px"><label class="lbl">E-Mail</label><input id="d_email" class="inp" type="email" inputmode="email" value="'+esc(p.email||'')+'"></div>'+
       '<div style="margin-top:12px"><label class="lbl">Telefon</label><input id="d_phone" class="inp" type="tel" inputmode="tel" value="'+esc(p.phone||p.phonePrivate||'')+'"></div>'+
-      '<button class="btn" data-act="saveContact" style="margin-top:18px">Kontaktdaten aktualisieren</button>'+
+      '<button class="btn" data-act="saveContact" style="margin-top:18px">Kontaktdaten aktualisieren</button>'+dm('contact')+
     '</div>'+
     '<div class="card" style="background:var(--surface);border-radius:20px;box-shadow:0 12px 34px rgba(4,33,40,.10);padding:20px 22px">'+
       '<div style="font-size:17px;font-weight:900;color:var(--text);letter-spacing:-.3px">Bankverbindung</div>'+
@@ -1706,7 +1708,7 @@
       '<div style="margin-top:12px"><label class="lbl">Neue IBAN</label><input id="d_iban" class="inp" inputmode="latin" placeholder="DE00 0000 0000 0000 0000 00" style="letter-spacing:.5px" oninput="window.__ibanInput(this)"><div id="d_iban_status" style="font-size:12.5px;font-weight:600;margin-top:5px;min-height:16px"></div></div>'+
       '<div class="row2" style="grid-template-columns:2fr 1fr;margin-top:12px"><div><label class="lbl">Bank</label><input id="d_bank" class="inp" placeholder="wird automatisch erkannt"></div><div><label class="lbl">BIC</label><input id="d_bic" class="inp" placeholder="automatisch"></div></div>'+
       '<div style="font-size:12px;color:var(--text-soft);margin-top:6px;line-height:1.45">Bank &amp; BIC werden automatisch aus der IBAN erkannt – du musst sie normalerweise nicht ausfüllen.</div>'+
-      '<button class="btn" data-act="saveIban" style="margin-top:18px">IBAN-Änderung beantragen</button>'+
+      '<button class="btn" data-act="saveIban" style="margin-top:18px">IBAN-Änderung beantragen</button>'+dm('iban')+
       '<div style="font-size:12px;color:var(--text-soft);text-align:center;margin-top:12px;line-height:1.45">Änderungen werden zeitnah geprüft und übernommen. Bei Rückfragen melden wir uns.</div>'+
     '</div>'+
     '</div>';
@@ -4325,6 +4327,8 @@
     }).catch(function(){});
   }
   setInterval(pollPf,12000);
+  // Termine live halten, solange „Meine Termine" offen ist – eine Team-Bestätigung erscheint dann ohne Neuladen.
+  setInterval(function(){ if(!(TOKEN && S.screen==='appt' && S.apptTab==='mine' && !S.busy && document.visibilityState==='visible')) return; var ae=document.activeElement; if(ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName||'')) return; loadAppts(); }, 20000);
 
   function pfIsOpen(v){ return String((v&&v.status)||'')!=='abgeschlossen'; }
   // Sucht in Betreff, letzter Nachricht und Typ-Label.
@@ -5591,22 +5595,23 @@
     toggleRemember:function(){ S.remember=!S.remember; if(!S.remember) localStorage.removeItem('fi_remember'); setQuiet({}); },
     // Speichern in „Meine Daten": Doppel-Submit-Guard + ehrliches Ergebnis (kein „Übermittelt."
     // bei ok:false, kein stiller Fehler im .catch). Server liefert immer explizites ok+message.
+    // Feedback pro Karte (inline, kein Sprung nach oben). dm(): setzt Nachricht + Karte + err.
     saveAddr:function(){ if(S.dataBusy) return; var data={street:val('d_street'),houseNumber:val('d_house'),zipCode:val('d_zip'),city:val('d_city')};
-      S.dataBusy=true; setQuiet({});
-      api('/api/member/update',{method:'POST',body:JSON.stringify({type:'address',data:data})}).then(function(d){ S.dataBusy=false; var okv=!!(d&&d.ok); setS({msg:(d&&d.message)||(okv?'Übermittelt.':'Übermittlung fehlgeschlagen – bitte später erneut.')}); if(okv){ refreshMe(); loadInbox(); } }).catch(function(){ S.dataBusy=false; setS({msg:'Übermittlung fehlgeschlagen – bitte später erneut.'}); }); },
+      S.dataBusy=true; setQuiet({dataMsg:'',dataMsgFor:''});
+      api('/api/member/update',{method:'POST',body:JSON.stringify({type:'address',data:data})}).then(function(d){ S.dataBusy=false; var okv=!!(d&&d.ok); setQuiet({dataMsg:(d&&d.message)||(okv?'Übermittelt.':'Übermittlung fehlgeschlagen – bitte später erneut.'),dataMsgFor:'addr',dataErr:!okv}); if(okv){ refreshMe(); loadInbox(); } }).catch(function(){ S.dataBusy=false; setQuiet({dataMsg:'Übermittlung fehlgeschlagen – bitte später erneut.',dataMsgFor:'addr',dataErr:true}); }); },
     saveContact:function(){ if(S.dataBusy) return; var email=val('d_email'), phone=val('d_phone');
-      if(!email&&!phone){ setS({msg:'Bitte E-Mail oder Telefonnummer angeben.'}); return; }
-      if(email&&!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){ setS({msg:'Bitte eine gültige E-Mail-Adresse eingeben.'}); return; }
-      S.dataBusy=true; setQuiet({});
-      api('/api/member/update',{method:'POST',body:JSON.stringify({type:'contact',data:{email:email,phone:phone}})}).then(function(d){ S.dataBusy=false; var okv=!!(d&&d.ok); setS({msg:(d&&d.message)||(okv?'Übermittelt.':'Übermittlung fehlgeschlagen – bitte später erneut.')}); if(okv){ refreshMe(); loadInbox(); } }).catch(function(){ S.dataBusy=false; setS({msg:'Übermittlung fehlgeschlagen – bitte später erneut.'}); }); },
-    saveIban:function(){ if(S.dataBusy) return; var iban=val('d_iban'); if(!iban){ setS({msg:'Bitte neue IBAN eingeben.'}); return; }
-      if(!ibanValid(iban)){ setS({msg:'Die IBAN ist ungültig – bitte prüfe deine Eingabe.'}); return; }
+      if(!email&&!phone){ setQuiet({dataMsg:'Bitte E-Mail oder Telefonnummer angeben.',dataMsgFor:'contact',dataErr:true}); return; }
+      if(email&&!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){ setQuiet({dataMsg:'Bitte eine gültige E-Mail-Adresse eingeben.',dataMsgFor:'contact',dataErr:true}); return; }
+      S.dataBusy=true; setQuiet({dataMsg:'',dataMsgFor:''});
+      api('/api/member/update',{method:'POST',body:JSON.stringify({type:'contact',data:{email:email,phone:phone}})}).then(function(d){ S.dataBusy=false; var okv=!!(d&&d.ok); setQuiet({dataMsg:(d&&d.message)||(okv?'Übermittelt.':'Übermittlung fehlgeschlagen – bitte später erneut.'),dataMsgFor:'contact',dataErr:!okv}); if(okv){ refreshMe(); loadInbox(); } }).catch(function(){ S.dataBusy=false; setQuiet({dataMsg:'Übermittlung fehlgeschlagen – bitte später erneut.',dataMsgFor:'contact',dataErr:true}); }); },
+    saveIban:function(){ if(S.dataBusy) return; var iban=val('d_iban'); if(!iban){ setQuiet({dataMsg:'Bitte neue IBAN eingeben.',dataMsgFor:'iban',dataErr:true}); return; }
+      if(!ibanValid(iban)){ setQuiet({dataMsg:'Die IBAN ist ungültig – bitte prüfe deine Eingabe.',dataMsgFor:'iban',dataErr:true}); return; }
       var holder=val('d_holder'), bank=val('d_bank'), bic=val('d_bic');
-      if(!holder){ setS({msg:'Bitte Kontoinhaber:in angeben.'}); return; }
-      if(!bank||!bic){ setS({msg:'Bank/BIC konnten nicht automatisch erkannt werden – bitte ergänze sie manuell (Banking-App oder Bankkarte).'}); return; }
+      if(!holder){ setQuiet({dataMsg:'Bitte Kontoinhaber:in angeben.',dataMsgFor:'iban',dataErr:true}); return; }
+      if(!bank||!bic){ setQuiet({dataMsg:'Bank/BIC konnten nicht automatisch erkannt werden – bitte ergänze sie manuell (Banking-App oder Bankkarte).',dataMsgFor:'iban',dataErr:true}); return; }
       var data={accountHolder:holder,iban:iban,bankName:bank,bic:bic};
-      S.dataBusy=true; setQuiet({});
-      api('/api/member/update',{method:'POST',body:JSON.stringify({type:'payment',data:data})}).then(function(d){ S.dataBusy=false; var okv=!!(d&&d.ok); setS({msg:(d&&d.message)||(okv?'Übermittelt.':'Übermittlung fehlgeschlagen – bitte später erneut.')}); if(okv){ refreshMe(); loadInbox(); } }).catch(function(){ S.dataBusy=false; setS({msg:'Übermittlung fehlgeschlagen – bitte später erneut.'}); }); },
+      S.dataBusy=true; setQuiet({dataMsg:'',dataMsgFor:''});
+      api('/api/member/update',{method:'POST',body:JSON.stringify({type:'payment',data:data})}).then(function(d){ S.dataBusy=false; var okv=!!(d&&d.ok); setQuiet({dataMsg:(d&&d.message)||(okv?'Übermittelt.':'Übermittlung fehlgeschlagen – bitte später erneut.'),dataMsgFor:'iban',dataErr:!okv}); if(okv){ refreshMe(); loadInbox(); } }).catch(function(){ S.dataBusy=false; setQuiet({dataMsg:'Übermittlung fehlgeschlagen – bitte später erneut.',dataMsgFor:'iban',dataErr:true}); }); },
     logout:function(){ logout(); },
     // contract
     contractCopy:function(){ if(S.ccBusy) return; setQuiet({ccBusy:true,ccMsg:''});
