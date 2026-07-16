@@ -1574,7 +1574,9 @@
     var v=vitalsData(); var tip=S.finnTip||'';
     var ava='<div style="width:42px;height:42px;border-radius:50%;background:rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;flex-shrink:0">'+svg('<path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.5 8.6 8.6 0 0 1-4-1L3 20l1-5a8.4 8.4 0 0 1-1-4A8.5 8.5 0 0 1 11.5 3 8.5 8.5 0 0 1 21 11.5z"></path>',{c:'#fff',w:2,s:22})+'</div>';
     var pill=function(t){ return '<span style="background:rgba(255,255,255,.16);border-radius:10px;padding:6px 10px;font-size:12px;font-weight:900;white-space:nowrap">'+t+'</span>'; };
-    var pills=pill('🔥 '+v.streak+' Wo.')+pill(deNum(v.points)+' VP')+(v.fitAge!=null?pill('Fit-Alter '+v.fitAge):'');
+    var remain=Math.max(0,(v.goal||0)-(v.weekVisits||0));
+    var goalPill=pill(remain<=0?'🎯 Wochenziel ✅':('🎯 noch '+remain+'×'));
+    var pills=goalPill+pill('🔥 '+v.streak+' Wo.')+pill(deNum(v.points)+' VP')+(v.fitAge!=null?pill('Fit-Alter '+v.fitAge):'');
     return '<button data-act="nav" data-arg="coach" style="width:100%;text-align:left;border:none;cursor:pointer;font-family:inherit;background:linear-gradient(150deg,#12a06a,#0f7a4a 58%,#0a5a37);border-radius:22px;padding:18px 20px;color:#fff;box-shadow:0 16px 40px rgba(15,122,74,.28);margin-bottom:16px">'+
       '<div style="display:flex;align-items:center;gap:12px">'+ava+'<div style="flex:1;min-width:0"><div style="font-size:11px;font-weight:900;color:#c5ecd7;text-transform:uppercase;letter-spacing:.4px">Dein Coach</div><div style="font-size:16.5px;font-weight:900">FINN · Tipp des Tages</div></div>'+svg('<path d="M9 6l6 6-6 6"></path>',{c:'rgba(255,255,255,.8)',w:2.4,s:18})+'</div>'+
       '<div style="font-size:13.5px;font-weight:600;color:#eafff4;line-height:1.5;margin-top:10px">'+(tip?esc(tip):'FINN stellt dir gleich deinen Tagestipp zusammen …')+'</div>'+
@@ -2403,6 +2405,10 @@
     if(ERN_ON && DATA.nutri && DATA.nutri.ok && Array.isArray(DATA.nutri.vitalLedger)){
       DATA.nutri.vitalLedger.forEach(function(d){ if(!d||!(d.pts>0)) return; var t=Date.parse((d.date||'')+'T20:00:00'); entries.push({t:isNaN(t)?Date.now():t,emoji:'🥗',bg:'#E7F6EC',title:'Ernährung getrackt',sub:d.date?deDate(d.date+'T12:00:00'):'',pts:d.pts,color:'#176b37'}); });
     }
+    // ── Trainingspartner ↔ Vitalpunkte: Verbindungen & gemeinsame Sessions zahlen in dieselbe Summe ein. ──
+    if(SOCIAL_ON && DATA.social && DATA.social.enabled && Array.isArray(DATA.social.vitalLedger)){
+      DATA.social.vitalLedger.forEach(function(d){ if(!d||!(d.pts>0)) return; var t=Date.parse((d.date||'')+'T19:00:00'); entries.push({t:isNaN(t)?Date.now():t,emoji:'🤝',bg:'#E7F1F3',title:d.reason||'Trainingspartner',sub:d.date?deDate(d.date+'T12:00:00'):'',pts:d.pts,color:'#176b37'}); });
+    }
     var points=entries.reduce(function(s,e){ return s+e.pts; },0); if(points<0) points=0;
     entries.sort(function(a,b){ return b.t-a.t; });
     return {points:points, ledger:entries};
@@ -2469,7 +2475,39 @@
       '</div>'+
     '</div>';
   }
+  // Meilenstein-Abzeichen – rein aus vorhandenen Daten (Check-ins, Ernährung, Trainingspartner).
+  function badges(){
+    var ci=Array.isArray(DATA.checkins)?DATA.checkins.filter(function(x){ return x&&x.in; }):[];
+    var visits=ci.length;
+    var longest=vitalsData().longestStreak||0;
+    var nStreak=(ERN_ON&&DATA.nutri&&DATA.nutri.ok)?(DATA.nutri.streak||0):0;
+    var buddies=(SOCIAL_ON&&DATA.social&&DATA.social.enabled&&Array.isArray(DATA.social.buddies))?DATA.social.buddies.length:0;
+    var socLed=(SOCIAL_ON&&DATA.social&&Array.isArray(DATA.social.vitalLedger))?DATA.social.vitalLedger:[];
+    var joint=socLed.some(function(e){ return e&&/session|zusammen|gemeinsam|training/i.test(e.reason||''); });
+    var mk=function(icon,label,done,prog){ return {icon:icon,label:label,done:!!done,prog:done?'':(prog||'')}; };
+    var list=[
+      mk('🎉','Erster Check-in',visits>=1),
+      mk('🔟','10 Besuche',visits>=10,visits+'/10'),
+      mk('⭐','50 Besuche',visits>=50,visits+'/50'),
+      mk('💯','100 Besuche',visits>=100,visits+'/100'),
+      mk('🔥','4 Wochen Serie',longest>=4,longest+'/4'),
+      mk('🚀','12 Wochen Serie',longest>=12,longest+'/12')
+    ];
+    if(ERN_ON){ list.push(mk('🥗','7 Tage Ernährung',nStreak>=7,nStreak+'/7')); list.push(mk('🥦','30 Tage Ernährung',nStreak>=30,nStreak+'/30')); }
+    if(SOCIAL_ON){ list.push(mk('🤝','Erster Trainingspartner',buddies>=1)); list.push(mk('👯','Erstes gemeinsames Training',joint)); }
+    return list;
+  }
+  function badgesCard(){
+    var b=badges(); var got=b.filter(function(x){ return x.done; }).length;
+    var cells=b.map(function(x){ return '<div style="text-align:center">'+
+      '<div style="width:52px;height:52px;margin:0 auto;border-radius:16px;background:'+(x.done?'#E7F1F3':'var(--surface-2)')+';display:flex;align-items:center;justify-content:center;font-size:26px;filter:'+(x.done?'none':'grayscale(1)')+';opacity:'+(x.done?'1':'.5')+'">'+x.icon+'</div>'+
+      '<div style="font-size:11px;font-weight:800;color:'+(x.done?'var(--text)':'var(--text-soft)')+';margin-top:6px;line-height:1.2">'+esc(x.label)+'</div>'+
+      (x.done?'':(x.prog?'<div style="font-size:10px;font-weight:700;color:var(--text-soft);margin-top:2px">'+esc(x.prog)+'</div>':''))+'</div>'; }).join('');
+    return '<div style="background:var(--surface);border-radius:20px;box-shadow:0 14px 38px rgba(4,33,40,.10);padding:18px"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px"><div style="font-size:16px;font-weight:900;color:var(--text)">Abzeichen</div><div style="font-size:12.5px;font-weight:800;color:var(--text-soft)">'+got+'/'+b.length+'</div></div><div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px 8px">'+cells+'</div></div>';
+  }
   function scrFort(){
+    if(SOCIAL_ON&&DATA.social==null) loadSocial();
+    if(ERN_ON&&DATA.nutri==null) loadNutri();
     var v=vitalsData();
     var CARD='background:var(--surface);border-radius:20px;box-shadow:0 14px 38px rgba(4,33,40,.10);padding:20px';
     // 1) Vitalpunkte-Ring
@@ -2509,7 +2547,7 @@
     // 7) Ränge
     var ranks='<div style="'+CARD.replace('padding:20px','padding:18px')+'"><div style="font-size:16px;font-weight:900;color:var(--text);margin-bottom:8px">Ränge</div>'+VITAL_TIERS.map(function(t,i){ var cur=(i===v.rankIdx); var passed=(i<=v.rankIdx); return '<div style="display:flex;align-items:center;gap:12px;padding:9px 0"><div style="width:32px;height:32px;border-radius:50%;background:'+(passed?'#0a4958':'var(--surface-2)')+';display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:15px">'+t[2]+'</div><div style="flex:1;font-size:14px;font-weight:'+(cur?'900':'600')+';color:'+(cur?'var(--teal-ink)':'var(--text-2)')+'">'+esc(t[0])+'</div><div style="font-size:12.5px;font-weight:700;color:var(--text-soft)">'+(t[1]===0?'Start':(deNum(t[1])+' VP'))+'</div></div>'; }).join('')+'</div>';
 
-    return subHeader('Fortschritt','Rang · Longevity · Punkte','profil')+'<div style="display:flex;flex-direction:column;gap:14px">'+ring+fa+act+ben+ledger+warn+ranks+'</div>';
+    return subHeader('Fortschritt','Rang · Longevity · Punkte','profil')+'<div style="display:flex;flex-direction:column;gap:14px">'+ring+fa+badgesCard()+act+ben+ledger+warn+ranks+'</div>';
   }
 
   // ── Ernährung (eigenständiges Modul, Tagesziel + KI-Tracking + FINN-Coach) ──
