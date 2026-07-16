@@ -574,7 +574,7 @@
     if(s==='ern'){ try{ window.__ernStopScan&&window.__ernStopScan(); }catch(e){} S.ernMsg=''; S.ernErr=false; S.ernAsk=''; S.ernAnswer=''; S.ernRecipes=null; S.ernCoachSent=false; S.ernTab='heute'; S.ernRecipeSel=null; S.ernKoch=null; S.ernCookPick=false; S.ernPlanDraft=null; S.ernPlanReplaceIdx=-1; S.ernCapture=false; S.ernConfirm=null; S.ernProd=null; S.ernEntryEdit=null; S.ernViewDate=''; S.ernFavMgr=false; S.ernData=false; S.ernUpgrade=false; S.ernLesson=null; S.ernLessonData=null; S.ernChatOpen=false; S.ernCk=false; S.ernCkResult=null; S.ernObStep=0; S.ernChat=ernChatLoad(); loadNutri(); loadFavs(); loadCoach(); loadCook(); }
     if(s==='coach'){ S.ernLesson=null; S.ernVert=null; S.ernLessonData=null; S.ernCk=false; S.ernCkResult=null; S.ernChatOpen=false; S.ernUpgrade=false; S.ernMsg=''; S.ernErr=false; S.coachMapOpen=false; S.coachVertOpen=false; S.ernChat=ernChatLoad(); S.trainDetail=null; S.trainExOpen=false; S.trainRun=false; S.trainRestKey=''; S.trainGenOpen=false; S.trainGenPlan=null; S.trainGenBusy=false; S.trainBusy=false; S.trainMsg=''; loadFinnTip(); loadCoach(); loadTraining(); if(!DATA.checkins) loadCheckins(); }
     if(s==='appt'){ if(!DATA.appts) loadAppts(); if(DATA.bookable===null) loadBookable(); }
-    if(s==='tag'){ S.trainRunDay=0; S.trainRestKey=''; S.trainRestStart=0; if(DATA.training==null) loadTraining(); loadTrainSession(); if(ERN_ON&&DATA.nutri==null) loadNutri(); }
+    if(s==='tag'){ S.trainRunDay=0; S.trainRestKey=''; S.trainRestStart=0; S.trainDetail=null; S.trainDetailFull=null; S.trainExOpen=false; S.trainGenOpen=false; S.tagPlanPick=false; if(DATA.training==null) loadTraining(); loadTrainSession(); if(ERN_ON&&DATA.nutri==null) loadNutri(); }
     if(s==='home'||s==='checkin') checkArrival();
     setS({}); }
 
@@ -4030,30 +4030,85 @@
     if(S.ernUpgrade) return wrap(ernUpgradeScreen());
     if(S.ernLesson||S.ernVert) return wrap(ernLesson());
     if(S.ernCk) return wrap(ernCheckinScreen());
+    if(ERN_ON && DATA.nutri==null) loadNutri();   // Ernährungs-Erkenntnisse im Coach mit Live-Daten füttern
+    if(DATA.training==null) loadTraining();
     var nm=(DATA.profile&&DATA.profile.firstName)||'';
-    var tab=S.coachTab||'ernaehrung';
     var header='<div style="background:linear-gradient(160deg,'+ERN_G2+','+ERN_G+' 60%,'+ERN_GD+');border-radius:0 0 24px 24px;padding:16px 18px 18px;color:#fff;box-shadow:0 12px 30px rgba(14,96,114,.22);margin:-2px -2px 16px">'+
       '<div style="font-size:12px;font-weight:600;color:#bfe0e6">'+(nm?('Hey '+esc(nm)+' 👋'):'Willkommen zurück')+'</div>'+
       '<div style="font-size:22px;font-weight:900;letter-spacing:-.4px">Dein Coach</div>'+
-      '<div style="font-size:12.5px;font-weight:600;color:#cfe8ec;margin-top:2px">Ernährung &amp; Training an einem Ort</div>'+
-      coachTabBar(tab)+'</div>';
+      '<div style="font-size:12.5px;font-weight:600;color:#cfe8ec;margin-top:2px">Deine Erkenntnisse aus Training &amp; Ernährung</div></div>';
     if(S.ernChatOpen) return wrap(header+ernCoach());
-    if(tab==='training') return wrap(header+trainingTab());
-    // ── Tab „Ernährung" (bisheriger Coach-Inhalt) ──
     // Tipp des Tages (allgemeiner FINN-Coach) – ganze Karte öffnet den FINN-Chat.
     var tip=S.finnTip||'';
     var tipHero='<button data-act="openFinn" style="width:100%;text-align:left;border:none;cursor:pointer;font-family:inherit;background:#fff;border-radius:20px;box-shadow:0 12px 30px rgba(4,33,40,.09);padding:16px;margin-bottom:14px;display:flex;gap:13px;align-items:flex-start">'+
       ernFinnAvatar(46)+'<div style="flex:1;min-width:0"><div style="font-size:11px;font-weight:800;color:#8a929a;text-transform:uppercase;letter-spacing:.4px">FINN · Tipp des Tages</div>'+
       '<div style="font-size:14px;font-weight:600;color:#15171B;line-height:1.5;margin-top:4px">'+(tip?esc(tip):'FINN stellt dir gleich deinen Tipp zusammen …')+'</div>'+
       '<div style="font-size:12px;font-weight:800;color:'+ERN_G+';margin-top:8px;display:flex;align-items:center;gap:5px">Frag FINN etwas '+svg('<path d="M9 6l6 6-6 6"></path>',{c:ERN_G,w:2.2,s:14})+'</div></div></button>';
+    // Erkenntnisse (ganzheitlicher Blick + Training + Ernährung), datenbasiert + FINN-Analyse.
+    var insights=coachInsights();
     // Motivation (Vitalpunkte/Rang/Streak/Fitness-Alter) – wiederverwendet.
     var motiv=vitalCard();
-    // Coaching-Programm (gate-aware): nur wenn verfügbar; sonst tragen Tipp + Motivation den Hub.
+    // Coaching-Programm (gate-aware): nur wenn verfügbar; sonst tragen Tipp + Erkenntnisse den Hub.
     var c=DATA.coach, program='';
     if(c&&c.ok&&c.available!==false){
       program='<div style="font-size:17px;font-weight:900;color:var(--text);letter-spacing:-.3px;margin:22px 2px 12px">Dein Coaching-Programm</div>'+ernCoachHome();
     }
-    return wrap(header+tipHero+motiv+program);
+    return wrap(header+tipHero+insights+motiv+program);
+  }
+  // Reine Coaching-Erkenntnisse: ganzheitlicher Blick + Abschnitt Training + Abschnitt Ernährung.
+  // Datenbasiert (sofort, datensparsam) – die FINN-Analyse (KI) ergänzt den ganzheitlichen Blick auf Tipp.
+  function coachSectionCard(title, ic, bullets){
+    return '<div style="background:#fff;border-radius:20px;box-shadow:0 12px 30px rgba(4,33,40,.09);padding:16px 18px;margin-bottom:14px">'+
+      '<div style="display:flex;align-items:center;gap:9px;margin-bottom:6px"><span style="font-size:19px">'+ic+'</span><span style="font-size:15.5px;font-weight:900;color:#15171B">'+esc(title)+'</span></div>'+
+      bullets.map(function(b){ return '<div style="display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-top:1px solid #f4f6f7"><span style="flex-shrink:0;font-size:15px;margin-top:1px">'+(b.ic||'•')+'</span><div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:800;color:#15171B">'+esc(b.t)+'</div>'+(b.s?'<div style="font-size:12px;font-weight:500;color:var(--text-2);line-height:1.45;margin-top:1px">'+esc(b.s)+'</div>':'')+'</div></div>'; }).join('')+'</div>';
+  }
+  function coachHolistic(){
+    var d=DATA.training||{}, mp=d.myPlan&&d.myPlan.plan, n=DATA.nutri;
+    var visits=0; try{ var cutoff=Date.now()-7*864e5; (DATA.checkins||[]).forEach(function(x){ if(x&&x.in&&Date.parse(x.in)>=cutoff) visits++; }); }catch(e){}
+    var goal=(mp&&mp.daysPerWeek)||3;
+    var sess=(DATA.trainSess&&DATA.trainSess.items)||{}; var didToday=Object.keys(sess).some(function(k){ return sess[k]&&sess[k].done; });
+    var lowProt=false; if(ERN_ON&&n&&n.ok&&n.onboarded){ var t=n.targets||{}, tot=(n.today&&n.today.totals)||{p:0}; lowProt=!!(t.protein&&(tot.p||0)<t.protein*0.6); }
+    if(mp && lowProt) return 'Du trainierst fleißig – aber dein Eiweiß liegt heute unter dem Ziel. Nach dem Training zählt Protein: plane eine eiweißreiche Mahlzeit ein.';
+    if(mp && visits>=goal && didToday) return 'Training läuft rund: Plan aktiv, Wochenziel erreicht, heute schon bewegt. Halte das Tempo – Konstanz schlägt alles.';
+    if(mp && visits<goal) return 'Dein Plan steht – jetzt fehlt die Regelmäßigkeit. Blocke dir 2–3 feste Trainingstage, dann kommt der Fortschritt von allein.';
+    if(!mp) return 'Der schnellste Hebel: hol dir einen Trainingsplan in „Mein Tag". Mit Struktur wird aus Training echter Fortschritt.';
+    return 'Solide Basis! Kombiniere dein Training mit genug Eiweiß und Schlaf – so wird aus Aufwand Ergebnis.';
+  }
+  function coachInsights(){
+    var d=DATA.training||{}, mp=d.myPlan&&d.myPlan.plan, n=DATA.nutri;
+    var visits=0; try{ var cutoff=Date.now()-7*864e5; (DATA.checkins||[]).forEach(function(x){ if(x&&x.in&&Date.parse(x.in)>=cutoff) visits++; }); }catch(e){}
+    var goal=(mp&&mp.daysPerWeek)||3;
+    var sess=(DATA.trainSess&&DATA.trainSess.items)||{}; var didToday=Object.keys(sess).some(function(k){ return sess[k]&&sess[k].done; });
+    // Ganzheitlicher Blick: datenbasiert, per „FINN-Analyse" durch KI ersetzbar.
+    var holo=(S.coachFinn&&S.coachFinn.text)?S.coachFinn.text:coachHolistic();
+    var finnBtn=S.coachFinnBusy
+      ? '<div style="margin-top:12px;display:flex;align-items:center;gap:9px;font-size:12.5px;font-weight:800;color:#eafaf1">'+trainSpin(16)+' FINN analysiert …</div>'
+      : '<button data-act="coachFinn" style="margin-top:12px;border:1.5px solid rgba(255,255,255,.45);background:rgba(255,255,255,.12);color:#fff;border-radius:11px;font-size:12.5px;font-weight:800;padding:9px 14px;cursor:pointer">🤖 '+((S.coachFinn&&S.coachFinn.text)?'Neue FINN-Analyse':'Tiefere FINN-Analyse holen')+'</button>';
+    var holoCard='<div style="background:linear-gradient(150deg,#12879c,#0e6072 58%,#0a4958);border-radius:20px;padding:18px 20px;color:#fff;box-shadow:0 14px 34px rgba(14,96,114,.26);margin-bottom:16px">'+
+      '<div style="font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.5px;color:#bfe0e6">FINN · Dein Blick für heute</div>'+
+      '<div style="font-size:15px;font-weight:700;line-height:1.5;margin-top:7px">'+esc(holo)+'</div>'+
+      (S.coachFinnMsg?'<div style="font-size:12px;font-weight:700;color:#ffd9cf;margin-top:8px">'+esc(S.coachFinnMsg)+'</div>':'')+finnBtn+'</div>';
+    // Abschnitt Training
+    var tB=[];
+    if(mp){ tB.push({ic:'📋',t:'Dein Plan: '+mp.title, s:trainMetaLine(mp)+(mp.aiAssist?' · Technogym-KI steuert die Progression':'')}); }
+    else { tB.push({ic:'🎯',t:'Noch kein Trainingsplan', s:'Hol dir in „Mein Tag → Training" einen Plan – dann sieht dein Coach hier deinen Fortschritt.'}); }
+    tB.push({ic:'📅',t:'Diese Woche '+visits+'× im Studio', s: visits>=goal?('Wochenziel erreicht ('+goal+'×) – stark dabei! 💪'):('Noch '+Math.max(0,goal-visits)+'× bis zu deinem Wochenziel ('+goal+'×).')});
+    if(didToday) tB.push({ic:'✅',t:'Heute schon trainiert', s:'Du hast deine heutige Einheit begonnen – dranbleiben lohnt sich.'});
+    var trainingCard=coachSectionCard('Training','🏋️',tB);
+    // Abschnitt Ernährung
+    var eB=[];
+    if(ERN_ON && n && n.ok && n.onboarded){
+      var t=n.targets||{}, tot=(n.today&&n.today.totals)||{kcal:0,p:0};
+      eB.push({ic:'🔥',t:(n.streak||0)+' Tage in Folge protokolliert', s:(n.streak||0)>=3?'Dranbleiben zahlt sich aus.':'Tägliches Tracken macht den Unterschied.'});
+      var pTgt=t.protein||0, pNow=tot.p||0;
+      eB.push({ic:'🍗',t:'Eiweiß heute: '+Math.round(pNow)+' / '+Math.round(pTgt)+' g', s: (pTgt&&pNow<pTgt*0.6)?'Noch Luft nach oben – plane eine proteinreiche Mahlzeit.':'Guter Eiweiß-Stand für den Muskelerhalt.'});
+      var kTgt=t.kcal||0, kNow=tot.kcal||0;
+      eB.push({ic:'⚡',t:'Kalorien heute: '+ernNum(kNow)+' / '+ernNum(kTgt)+' kcal', s: (kTgt&&kNow>kTgt*1.1)?'Über dem Ziel – morgen wieder im Rahmen.':((kTgt&&kNow<kTgt*0.5)?'Noch einiges übrig – iss ausreichend.':'Im grünen Bereich.')});
+    } else if(ERN_ON){
+      eB.push({ic:'🥗',t:'Ernährung noch nicht eingerichtet', s:'Richte in „Mein Tag → Ernährung" dein Tagesziel ein – dann coacht FINN auch hier.'});
+    }
+    var ernCard=(eB.length)?coachSectionCard('Ernährung','🥗',eB):'';
+    return holoCard+trainingCard+ernCard;
   }
   // Tab-Umschalter im Coach-Header: Ernährung | Training.
   function coachTabBar(tab){
@@ -4214,11 +4269,28 @@
     var doneAll=exs.length&&doneN===exs.length;
     var footer=(doneAll?'<div style="background:linear-gradient(150deg,#12879c,#0a4958);border-radius:16px;padding:16px;text-align:center;color:#fff;margin-top:6px"><div style="font-size:28px">🎉</div><div style="font-size:15px;font-weight:900;margin-top:4px">Einheit geschafft – stark!</div></div>':'')+
       '<button data-act="trainRunReset" style="width:100%;margin-top:12px;padding:11px;border:1.5px solid #e2e8ea;border-radius:12px;background:#fff;color:#8a929a;font-weight:700;font-size:12.5px;cursor:pointer">Fortschritt zurücksetzen</button>';
-    var planLine='<div style="font-size:15.5px;font-weight:900;color:var(--text);letter-spacing:-.3px;margin:0 2px 3px">'+esc(mp.title)+'</div><div style="font-size:12px;font-weight:500;color:var(--text-2);margin:0 2px 12px">Hak ab, was du geschafft hast. 🤖 = Biostrength: einfach abhaken, den Rest macht die KI.</div>';
-    return planLine+dayTabs+prog+rows+footer;
+    var badge=(mp.source==='finn')?'FINN-Plan':((mp.source==='team')?'Vom Trainer':'Mein Plan');
+    var planLine='<div style="display:flex;align-items:center;gap:8px;margin:0 2px 3px"><span style="background:rgba(14,96,114,.1);color:'+ERN_GD+';font-size:10px;font-weight:900;border-radius:6px;padding:3px 8px;text-transform:uppercase;letter-spacing:.3px">'+badge+'</span><span style="font-size:15.5px;font-weight:900;color:var(--text);letter-spacing:-.3px">'+esc(mp.title)+'</span></div><div style="font-size:12px;font-weight:500;color:var(--text-2);margin:0 2px 10px">Hak ab, was du geschafft hast. 🤖 = Biostrength: einfach abhaken, den Rest macht die KI.</div>';
+    var sec='border:1.5px solid #dbe4e2;background:#fff;border-radius:11px;font-size:12.5px;font-weight:800;padding:9px 12px;cursor:pointer;color:'+ERN_GD;
+    var actions='<div style="display:flex;gap:8px;margin:0 2px 14px">'+
+      '<button data-act="trainOpen" data-arg="'+esc(mp.id||'')+'" style="flex:1;'+sec+'">Plan ansehen</button>'+
+      '<button data-act="tagPlanOpen" style="flex:1;'+sec+'">Plan wechseln</button>'+
+      '<button data-act="trainStop"'+(S.trainBusy?' disabled':'')+' style="'+sec+';color:#b5402f;border-color:#e3b8b1">Beenden</button>'+
+    '</div>';
+    return planLine+actions+dayTabs+prog+rows+footer;
   }
   function meinTagTrainCta(){
-    return trainCardBox('<div style="text-align:center;padding:6px 4px"><div style="font-size:34px">🏋️</div><div style="font-size:15.5px;font-weight:900;color:#15171B;margin-top:6px">Noch kein Trainingsplan</div><div style="font-size:13px;font-weight:600;color:#6b7780;margin-top:4px;line-height:1.5">Hol dir einen Plan – aus der Bibliothek, von deinem Trainer oder von FINN. Dann kannst du hier jede Einheit abhaken.</div><button data-act="meinTagTrain" style="margin-top:14px;border:none;border-radius:13px;background:'+ERN_G+';color:#fff;font-weight:800;font-size:14px;padding:13px 20px;cursor:pointer">Trainingsplan holen</button></div>');
+    return trainCardBox('<div style="text-align:center;padding:6px 4px"><div style="font-size:34px">🏋️</div><div style="font-size:15.5px;font-weight:900;color:#15171B;margin-top:6px">Noch kein Trainingsplan</div><div style="font-size:13px;font-weight:600;color:#6b7780;margin-top:4px;line-height:1.5">Hol dir einen Plan – aus der Bibliothek, von deinem Trainer oder von FINN. Dann kannst du hier jede Einheit abhaken.</div><button data-act="tagPlanOpen" style="margin-top:14px;border:none;border-radius:13px;background:'+ERN_G+';color:#fff;font-weight:800;font-size:14px;padding:13px 20px;cursor:pointer">Trainingsplan holen</button></div>');
+  }
+  // Plan holen/wechseln: FINN-Generator + kuratierte Bibliothek + Inspiration (aus dem Coach hierher gezogen).
+  function meinTagPlanPicker(){
+    var d=DATA.training||{};
+    var back='<button data-act="tagPlanClose" style="display:inline-flex;align-items:center;gap:6px;background:none;border:none;color:'+ERN_GD+';font-size:13.5px;font-weight:800;margin:2px 0 12px;padding:0;cursor:pointer">'+svg(IC.back,{c:ERN_GD,w:2.2,s:17})+'Zurück</button>';
+    var msg=S.trainMsg?('<div style="background:rgba(14,96,114,.08);border:1px solid rgba(14,96,114,.2);border-radius:12px;padding:11px 14px;margin-bottom:14px;font-size:13px;font-weight:700;color:'+ERN_GD+'">'+esc(S.trainMsg)+'</div>'):'';
+    return '<div style="padding:14px 2px 96px">'+back+
+      '<div style="font-size:20px;font-weight:900;letter-spacing:-.4px;color:var(--text);margin:0 2px 4px">Trainingsplan holen</div>'+
+      '<div style="font-size:12.5px;font-weight:500;color:var(--text-2);line-height:1.5;margin:0 2px 14px">Wähl einen fertigen Plan, lass dir von FINN einen erstellen – oder buch eine persönliche Planung im Studio.</div>'+
+      msg+trainingGenCta(d)+trainingLibrary(d)+trainingInspiration(d)+trainingBookCta()+'</div>';
   }
   // Ernährungs-Teil (nur wenn ERN_ON): Tages-Ring + Makros + Einstieg ins Tagebuch.
   function meinTagErnBody(){
@@ -4274,8 +4346,11 @@
   function scrMeinTag(){
     if(DATA.training==null) loadTraining();
     var wrap=function(inner){ return '<div style="'+ERN_LIGHT+';padding-bottom:calc(96px + env(safe-area-inset-bottom,0px))">'+inner+'</div>'; };
-    // Unteransicht: Übungsdatenbank (aus dem „+" bzw. der Karte im Training-Tab).
+    // Unteransichten des Trainings-Bereichs (Übungsdatenbank, FINN-Generator, Plan-Detail, Plan holen).
     if(S.trainExOpen) return wrap('<div style="padding:14px 2px 0">'+trainingExercises()+'</div>');
+    if(S.trainGenOpen) return wrap('<div style="padding:14px 2px 0">'+trainingGenSheet()+'</div>');
+    if(S.trainDetail) return wrap('<div style="padding:14px 2px 0">'+trainingDetail()+'</div>');
+    if(S.tagPlanPick) return wrap(meinTagPlanPicker());
     var tab=ERN_ON?(S.tagTab||'training'):'training';
     var back='<button data-act="nav" data-arg="home" style="display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,.16);border:none;border-radius:10px;color:#e9f5f7;font-size:12.5px;font-weight:800;padding:7px 12px;margin-bottom:12px;cursor:pointer">'+svg(IC.back,{c:'#e9f5f7',w:2.2,s:15})+'Start</button>';
     var header='<div style="background:linear-gradient(160deg,'+ERN_G2+','+ERN_G+' 60%,'+ERN_GD+');border-radius:0 0 24px 24px;padding:16px 18px 18px;color:#fff;box-shadow:0 12px 30px rgba(14,96,114,.22);margin:-2px -2px 16px">'+
@@ -6209,9 +6284,20 @@
     // ── Coach-Tabs + Training-Tab ──
     coachTab:function(a){ S.coachTab=(a==='training')?'training':'ernaehrung'; S.trainDetail=null; S.trainDetailFull=null; S.trainExOpen=false; S.trainRun=false; S.trainRestKey=''; S.trainGenOpen=false; S.trainGenPlan=null; S.trainMsg=''; S.ernChatOpen=false; setS({}); },
     trainReload:function(){ DATA.training=null; render(); loadTraining(); },
-    meinTagTrain:function(){ S.coachTab='training'; nav('coach'); },
-    tagTab:function(a){ S.tagTab=(a==='ernaehrung')?'ernaehrung':'training'; S.trainExOpen=false; if(S.tagTab==='ernaehrung'&&ERN_ON&&DATA.nutri==null) loadNutri(); setS({}); },
+    tagPlanOpen:function(){ S.tagPlanPick=true; S.trainDetail=null; S.trainDetailFull=null; S.trainGenOpen=false; S.trainMsg=''; setS({}); },
+    tagPlanClose:function(){ S.tagPlanPick=false; S.trainDetail=null; S.trainDetailFull=null; S.trainGenOpen=false; setS({}); },
+    tagTab:function(a){ S.tagTab=(a==='ernaehrung')?'ernaehrung':'training'; S.trainExOpen=false; S.trainDetail=null; S.trainGenOpen=false; S.tagPlanPick=false; if(S.tagTab==='ernaehrung'&&ERN_ON&&DATA.nutri==null) loadNutri(); setS({}); },
     tagErnCapture:function(){ nav('ern'); if(ACT.ernOpenCapture) ACT.ernOpenCapture(); },
+    // Coach: FINN-Analyse (KI) – verbindet Training + Ernährung zu einer Erkenntnis (quota-gated).
+    coachFinn:function(){
+      if(S.coachFinnBusy) return; S.coachFinnBusy=true; S.coachFinnMsg=''; render();
+      var d=DATA.training||{}, mp=d.myPlan&&d.myPlan.plan, n=DATA.nutri;
+      var visits=0; try{ var cutoff=Date.now()-7*864e5; (DATA.checkins||[]).forEach(function(x){ if(x&&x.in&&Date.parse(x.in)>=cutoff) visits++; }); }catch(e){}
+      var sess=(DATA.trainSess&&DATA.trainSess.items)||{}; var didToday=Object.keys(sess).some(function(k){ return sess[k]&&sess[k].done; });
+      var ctx={ plan: mp?{title:mp.title, level:mp.level, daysPerWeek:mp.daysPerWeek, aiAssist:!!mp.aiAssist}:null, visits7:visits, didToday:didToday };
+      if(ERN_ON && n && n.ok && n.onboarded){ var t=n.targets||{}, tot=(n.today&&n.today.totals)||{}; ctx.nutrition={ streak:n.streak||0, goal:(n.profile&&n.profile.goal)||'', kcal:Math.round(tot.kcal||0), kcalTarget:Math.round(t.kcal||0), protein:Math.round(tot.p||0), proteinTarget:Math.round(t.protein||0) }; }
+      api('/api/member/coach-insights',{method:'POST',body:JSON.stringify({ctx:ctx})}).then(function(r){ S.coachFinnBusy=false; if(r&&r.ok&&r.text){ S.coachFinn={text:r.text}; S.coachFinnMsg=''; if(r.quota&&DATA.training) DATA.training.quota=r.quota; } else if(r&&r.error==='premium_required'){ S.coachFinnMsg=(r&&r.message)||'Dein Gratis-Kontingent ist diesen Monat aufgebraucht.'; } else { S.coachFinnMsg=(r&&r.message)||'FINN ist gerade nicht erreichbar – gleich nochmal versuchen.'; } render(); }).catch(function(){ S.coachFinnBusy=false; S.coachFinnMsg='Verbindung gerade nicht möglich.'; render(); });
+    },
     trainOpen:function(a){ S.trainDetail=a; S.trainDetailFull=null; S.trainMsg=''; setS({});
       // Bibliotheks-Kacheln kommen schlank (ohne Tage) – volles Detail nachladen (außer aktiver Plan hat sie schon).
       var d=DATA.training||{}; var isActive=(d.myPlan&&d.myPlan.plan&&String(d.myPlan.plan.id)===String(a)&&Array.isArray(d.myPlan.plan.days));
@@ -6237,7 +6323,7 @@
     trainExClose:function(){ S.trainExOpen=false; setS({}); },
     trainExGroup:function(a){ S.trainExGroup=a||''; render(); },
     trainStart:function(a){ if(S.trainBusy) return; S.trainBusy=true; S.trainMsg=''; render();
-      api('/api/member/training',{method:'POST',body:JSON.stringify({action:'plan-start',planId:a})}).then(function(r){ S.trainBusy=false; if(r&&r.ok){ DATA.training=r; S.trainDetail=null; S.trainDetailFull=null; S.trainMsg='Plan übernommen – viel Erfolg! 💪'; } else { S.trainMsg=(r&&r.message)||'Konnte nicht gespeichert werden.'; } setS({}); }).catch(function(){ S.trainBusy=false; S.trainMsg='Konnte nicht gespeichert werden.'; setS({}); });
+      api('/api/member/training',{method:'POST',body:JSON.stringify({action:'plan-start',planId:a})}).then(function(r){ S.trainBusy=false; if(r&&r.ok){ DATA.training=r; S.trainDetail=null; S.trainDetailFull=null; S.tagPlanPick=false; S.trainMsg='Plan übernommen – viel Erfolg! 💪'; } else { S.trainMsg=(r&&r.message)||'Konnte nicht gespeichert werden.'; } setS({}); }).catch(function(){ S.trainBusy=false; S.trainMsg='Konnte nicht gespeichert werden.'; setS({}); });
     },
     trainStop:function(){ if(S.trainBusy) return; if(!confirm('Deinen aktuellen Trainingsplan beenden?')) return; S.trainBusy=true; render();
       api('/api/member/training',{method:'POST',body:JSON.stringify({action:'plan-stop'})}).then(function(r){ S.trainBusy=false; if(r&&r.ok){ DATA.training=r; S.trainMsg=''; } setS({}); }).catch(function(){ S.trainBusy=false; setS({}); });
@@ -6254,7 +6340,7 @@
         .catch(function(){ S.trainGenBusy=false; S.trainMsg='Das hat nicht geklappt – bitte gleich nochmal.'; setS({}); });
     },
     trainGenSave:function(){ if(S.trainBusy||!S.trainGenPlan) return; S.trainBusy=true; render();
-      api('/api/member/training',{method:'POST',body:JSON.stringify({action:'plan-start-custom',plan:S.trainGenPlan})}).then(function(r){ S.trainBusy=false; if(r&&r.ok){ DATA.training=r; S.trainGenOpen=false; S.trainGenPlan=null; S.trainMsg='Dein FINN-Plan ist gespeichert! 💪'; } else { S.trainMsg=(r&&r.message)||'Konnte nicht gespeichert werden.'; } setS({}); }).catch(function(){ S.trainBusy=false; S.trainMsg='Konnte nicht gespeichert werden.'; setS({}); });
+      api('/api/member/training',{method:'POST',body:JSON.stringify({action:'plan-start-custom',plan:S.trainGenPlan})}).then(function(r){ S.trainBusy=false; if(r&&r.ok){ DATA.training=r; S.trainGenOpen=false; S.trainGenPlan=null; S.tagPlanPick=false; S.trainMsg='Dein FINN-Plan ist gespeichert! 💪'; } else { S.trainMsg=(r&&r.message)||'Konnte nicht gespeichert werden.'; } setS({}); }).catch(function(){ S.trainBusy=false; S.trainMsg='Konnte nicht gespeichert werden.'; setS({}); });
     },
     trainBook:function(){ nav('appt'); },
     // Aktions-Link: Geburtsdatum prüfen -> Session prägen -> zur Aktion springen.
