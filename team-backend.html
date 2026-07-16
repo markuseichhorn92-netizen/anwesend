@@ -486,12 +486,13 @@ async function openProfile(id){
   S.memberCoaching=null; S.memberCoachingLoading=false;
   S.memberMsgs=null; S.memberMsgsLoading=false; S.memberMsgsTotal=0;
   S.memberNutri=null; S.memberNutriLoading=false; S.mnDate=''; S.mnBusy=false; S.mnEditId=null; S.mnAddOpen=false; S.mnGoalOpen=false; S.mnAssign=null; S.mnRecipes=null; S.mnRecipesLoading=false; S.mnAssignServ=1; S.mnAssignMeal='mittag';
+  S.memberTrain=null; S.memberTrainLoading=false; S.mtBusy=false; S.mtBuildOpen=false; S.mtBuild=[]; S.mtBuildTitle=''; S.mtResults=null; S.mtResultsLoading=false;
   S.profTab='ueber'; S.acc={};   // Profil öffnet auf „Übersicht"; alle Sektionen zugeklappt
   S._profId=String(id); mainScrollMap['members:'+id]=0;   // neues Profil beginnt oben
   S.profileLoading=true; S.profile=null; syncUrl(true); render();   // URL -> /team/mitglieder/<id>
   try{ var r=await tapi('/api/team/members?id='+encodeURIComponent(id)); if(r.ok) S.profile=r.profile; }
   catch(e){} S.profileLoading=false; render();
-  if(S.profile){ loadProfileTags(id); loadProfileDocs(id); loadAccessMedia(id); loadMemberCheckins(id); loadMemberCoaching(id); loadMemberPreview(id); loadMemberMessages(id); loadMemberNutrition(id); if(isAdmin()&&!S.rhOffersLoaded) loadRetentionOffers(); }
+  if(S.profile){ loadProfileTags(id); loadProfileDocs(id); loadAccessMedia(id); loadMemberCheckins(id); loadMemberCoaching(id); loadMemberPreview(id); loadMemberMessages(id); loadMemberNutrition(id); loadMemberTraining(id); if(isAdmin()&&!S.rhOffersLoaded) loadRetentionOffers(); }
 }
 // ---------- Mitglieder-Tags ----------
 // Tags des offenen Profils laden (GET ?memberId). Ohne Store -> leere Liste, kein Fehler.
@@ -1018,6 +1019,81 @@ function wireNutrition(wrap, p){
   var xc=q('[data-mnassigncancel]'); if(xc) xc.onclick=function(){ S.mnAssign=null; render(); };
   var xs=q('[data-mnassignconfirm]'); if(xs) xs.onclick=function(){ var b={recipeId:S.mnAssign.id, date:v('#mnas_date'), servings:v('#mnas_serv'), meal:v('#mnas_meal')}; S.mnAssign=null; mnAction('cookplan-add',b); };
   wrap.querySelectorAll('[data-mnplandel]').forEach(function(b){ b.onclick=function(){ mnAction('cookplan-remove',{itemId:b.getAttribute('data-mnplandel')}); }; });
+}
+
+// ====== Team verwaltet den Trainingsplan eines Mitglieds (Profil-Tab „Training") ======
+// Zuweisen aus der Bibliothek, eigenen Plan bauen (Übungskatalog) oder entfernen.
+var TR_LVL={ einsteiger:'Einsteiger', mittel:'Mittel', fortgeschritten:'Fortgeschritten' };
+var TR_LOC={ studio:'Studio', zuhause:'Zuhause', beides:'Studio & zuhause' };
+function trMeta(p){ var b=[]; if(TR_LVL[p.level]) b.push(TR_LVL[p.level]); b.push((p.daysPerWeek||1)+'×/Woche'); if(TR_LOC[p.location]) b.push(TR_LOC[p.location]); return b.join(' · '); }
+async function loadMemberTraining(id){
+  if(S.memberTrain==null) S.memberTrainLoading=true; scheduleRender();
+  try{ var r=await tapi('/api/team/training?id='+encodeURIComponent(id)); S.memberTrain=r||{available:true,error:true}; }
+  catch(e){ S.memberTrain={available:true,error:true}; }
+  S.memberTrainLoading=false; scheduleRender();
+}
+async function mtAction(action, extra){
+  if(S.mtBusy) return; S.mtBusy=true; render();
+  var r=null;
+  try{ r=await tapi('/api/team/training',{method:'POST',body:Object.assign({action:action, id:S._profId}, extra||{})}); }catch(e){}
+  S.mtBusy=false;
+  if(r&&r.ok&&r.myPlan!==undefined){ S.memberTrain=r; S.mtBuildOpen=false; S.mtBuild=[]; S.mtBuildTitle=''; S.mtResults=null; }
+  else if(!(r&&r.ok)){ alert((r&&r.message)||'Aktion nicht möglich.'); }
+  render();
+}
+async function mtSearchExercises(qy){ S.mtResultsLoading=true; render(); try{ var r=await tapi('/api/team/training',{method:'POST',body:{action:'exercise-search', q:qy||''}}); S.mtResults=(r&&r.ok)?(r.exercises||[]):[]; }catch(e){ S.mtResults=[]; } S.mtResultsLoading=false; render(); }
+function mtAddExercise(ex){ S.mtBuild=S.mtBuild||[]; S.mtBuild.push({ name:ex.name, machine:ex.machine, bio:!!ex.bio, sets:3, reps:'10–12' }); render(); }
+function trainingPlanBlock(p){
+  var d=S.memberTrain; var body;
+  if(d==null){ body='<div style="padding:8px 0;text-align:center"><span class="spin"></span></div>'; }
+  else if(d.available===false){ body='<div style="font-size:13px;color:#8a929a;font-weight:600">Trainingsplan-Verwaltung ist gerade nicht verfügbar (kein Datenspeicher).</div>'; }
+  else if(!d.ok){ body='<div style="font-size:13px;color:#b53a2c;font-weight:700">Konnte nicht geladen werden.</div>'; }
+  else {
+    var mp=d.myPlan;
+    var cur = (mp&&mp.plan)
+      ? '<div style="background:#eef7f1;border:1px solid #bfe6cd;border-radius:13px;padding:14px 15px"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span style="background:#0f7a4a;color:#fff;font-size:10px;font-weight:900;border-radius:6px;padding:3px 8px">'+(mp.source==='team'?'VOM TRAINER':(mp.source==='finn'?'FINN':'EIGENER'))+'</span><span style="font-size:15px;font-weight:900;color:#15171B">'+esc(mp.plan.title)+'</span></div><div style="font-size:12.5px;font-weight:600;color:#5a6a63;margin-top:3px">'+esc(trMeta(mp.plan))+'</div><button data-mtunassign="1" style="margin-top:11px;border:1.5px solid #e3b8b1;background:#fff;color:#b5402f;border-radius:10px;font-size:12.5px;font-weight:800;padding:8px 13px;cursor:pointer">Plan entfernen</button></div>'
+      : '<div style="background:#f6f8f8;border-radius:13px;padding:14px 15px;font-size:13.5px;font-weight:600;color:#8a929a">Diesem Mitglied ist noch kein Trainingsplan zugewiesen.</div>';
+    var plans=Array.isArray(d.plans)?d.plans:[];
+    var lib='<div style="font-size:12px;font-weight:900;color:#8a929a;text-transform:uppercase;letter-spacing:.4px;margin:16px 0 6px">Plan aus Bibliothek zuweisen</div>'+plans.map(function(pl){
+      return '<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid #f0f3f4"><span style="font-size:20px;flex-shrink:0">'+esc(pl.emoji||'💪')+'</span><div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:800;color:#15171B;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(pl.title)+(pl.aiAssist?' 🤖':'')+'</div><div style="font-size:11.5px;font-weight:600;color:#8a929a">'+esc(trMeta(pl))+'</div></div><button data-mtassign="'+esc(pl.id)+'" style="border:1.5px solid #bcd7c4;background:#fff;color:#1d7a3e;border-radius:9px;font-size:12px;font-weight:800;padding:6px 12px;cursor:pointer;flex-shrink:0">Zuweisen</button></div>';
+    }).join('');
+    var build='';
+    if(S.mtBuildOpen){
+      var added=(S.mtBuild||[]).map(function(ex,ix){ return '<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-top:1px solid #f4f6f7"><div style="flex:1;min-width:0"><div style="font-size:12.5px;font-weight:800;color:#15171B">'+esc(ex.name)+'</div><div style="font-size:11px;font-weight:600;color:#8a929a">'+esc(ex.machine||'')+(ex.bio?' · 🤖 KI':(' · '+ex.sets+' × '+ex.reps))+'</div></div><button data-mtdel="'+ix+'" style="border:1.5px solid #e3b8b1;background:#fff;color:#b5402f;border-radius:8px;font-size:11px;font-weight:800;padding:4px 9px;cursor:pointer">×</button></div>'; }).join('');
+      var res='';
+      if(S.mtResultsLoading){ res='<div style="padding:8px 0;text-align:center"><span class="spin" style="width:16px;height:16px;border-width:2px"></span></div>'; }
+      else if(S.mtResults){ res=S.mtResults.length? '<div style="margin-top:6px">'+S.mtResults.slice(0,12).map(function(ex){ return '<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-top:1px solid #f4f6f7"><div style="flex:1;min-width:0"><div style="font-size:12.5px;font-weight:800;color:#15171B">'+esc(ex.name)+(ex.bio?' 🤖':'')+'</div><div style="font-size:11px;font-weight:600;color:#8a929a">'+esc(ex.machine)+'</div></div><button data-mtadd="'+esc(ex.id)+'" style="border:1.5px solid #bcd7c4;background:#fff;color:#1d7a3e;border-radius:8px;font-size:11.5px;font-weight:800;padding:5px 11px;cursor:pointer;flex-shrink:0">+ Hinzu</button></div>'; }).join('')+'</div>' : '<div style="font-size:12px;color:#a9b1b6;font-weight:600;padding:8px 0">Keine Übung gefunden.</div>'; }
+      build='<div style="background:#f7fafb;border:1.5px solid #e2e8ea;border-radius:13px;padding:14px;margin-top:16px">'+
+        '<input id="mt_title" value="'+esc(S.mtBuildTitle||'')+'" placeholder="Plan-Name (z. B. Maries Ganzkörper)" style="width:100%;border:1.5px solid #d6dee0;border-radius:9px;padding:9px 11px;font-size:13.5px;font-weight:700;color:#15171B;background:#fff;outline:none;margin-bottom:10px">'+
+        (added?('<div style="margin-bottom:8px">'+added+'</div>'):'<div style="font-size:12px;color:#a9b1b6;font-weight:600;margin-bottom:8px">Noch keine Übung im Plan – unten suchen und hinzufügen.</div>')+
+        '<div style="display:flex;gap:8px"><input id="mt_q" placeholder="Übung oder Gerät suchen …" style="flex:1;min-width:0;border:1.5px solid #d6dee0;border-radius:9px;padding:9px 11px;font-size:13px;font-weight:700;color:#15171B;background:#fff;outline:none"><button data-mtsearch="1" style="border:none;border-radius:9px;background:'+TEAL+';color:#fff;font-size:12.5px;font-weight:800;padding:9px 14px;cursor:pointer">Suchen</button></div>'+res+
+        '<div style="display:flex;gap:8px;margin-top:12px"><button data-mtassigncustom="1"'+(S.mtBusy?' disabled':'')+' style="border:none;border-radius:10px;background:'+TEAL+';color:#fff;font-size:12.5px;font-weight:800;padding:9px 15px;cursor:pointer">Als Plan zuweisen</button><button data-mtbuildcancel="1" style="border:1.5px solid #d6dee0;background:#fff;border-radius:10px;font-size:12.5px;font-weight:800;color:#42454b;padding:9px 15px;cursor:pointer">Abbrechen</button></div></div>';
+    } else {
+      build='<button data-mtbuild="1" style="margin-top:14px;border:1.5px dashed #c2ccce;background:#fff;color:#0a4958;border-radius:10px;font-size:12.5px;font-weight:800;padding:9px 14px;cursor:pointer">+ Eigenen Plan bauen</button>';
+    }
+    body=cur+lib+build;
+  }
+  return accWrap('trainplan','🏋️ Trainingsplan', body, 'Plan aus der Bibliothek zuweisen, eigenen Plan bauen oder entfernen. Biostrength steuert die KI – ohne Wdh./Gewicht.');
+}
+function wireTrainingPlan(wrap, p){
+  if(S.profTab!=='train' || !S.memberTrain || !S.memberTrain.ok) return;
+  var q=function(s){ return wrap.querySelector(s); };
+  var un=q('[data-mtunassign]'); if(un) un.onclick=function(){ if(confirm('Trainingsplan des Mitglieds entfernen?')) mtAction('unassign'); };
+  wrap.querySelectorAll('[data-mtassign]').forEach(function(b){ b.onclick=function(){ mtAction('assign',{planId:b.getAttribute('data-mtassign')}); }; });
+  var bo=q('[data-mtbuild]'); if(bo) bo.onclick=function(){ S.mtBuildOpen=true; S.mtBuild=[]; S.mtBuildTitle=''; S.mtResults=null; render(); };
+  var bc=q('[data-mtbuildcancel]'); if(bc) bc.onclick=function(){ S.mtBuildOpen=false; render(); };
+  var ti=q('#mt_title'); if(ti) ti.oninput=function(){ S.mtBuildTitle=ti.value; };
+  var sb=q('[data-mtsearch]'); if(sb) sb.onclick=function(){ var i=q('#mt_q'); mtSearchExercises(i?i.value:''); };
+  var sq=q('#mt_q'); if(sq) sq.onkeydown=function(e){ if(e.key==='Enter'){ e.preventDefault(); mtSearchExercises(sq.value); } };
+  wrap.querySelectorAll('[data-mtadd]').forEach(function(b){ b.onclick=function(){ var id=b.getAttribute('data-mtadd'); var ex=(S.mtResults||[]).filter(function(x){ return String(x.id)===String(id); })[0]; if(ex) mtAddExercise(ex); }; });
+  wrap.querySelectorAll('[data-mtdel]').forEach(function(b){ b.onclick=function(){ var ix=parseInt(b.getAttribute('data-mtdel'),10); (S.mtBuild||[]).splice(ix,1); render(); }; });
+  var ac=q('[data-mtassigncustom]'); if(ac) ac.onclick=function(){
+    var title=(S.mtBuildTitle||'').trim(); var exs=S.mtBuild||[];
+    if(!title){ alert('Bitte einen Plan-Namen eingeben.'); return; }
+    if(!exs.length){ alert('Bitte mindestens eine Übung hinzufügen.'); return; }
+    var plan={ title:title, level:'mittel', location:'studio', days:[{ name:'Training', exercises: exs.map(function(e){ return e.bio?{name:e.name,machine:e.machine,bio:true}:{name:e.name,machine:e.machine,sets:e.sets,reps:e.reps,rest:'60 s'}; }) }] };
+    mtAction('assign-custom',{plan:plan});
+  };
 }
 // yyyy-mm-dd-Presets für den Zeitraum. ...Silent: nur State setzen (kein render), fürs Öffnen.
 function ci2(n){ return (n<10?'0':'')+n; }
@@ -2496,7 +2572,7 @@ function membersNode(){
     '</div>';
     var tabHtml;
     if(curTab==='train'){
-      tabHtml=checkinsBlock(p)+coachingBlock(p);
+      tabHtml=checkinsBlock(p)+coachingBlock(p)+trainingPlanBlock(p);
     } else if(curTab==='ernaehrung'){
       tabHtml=nutritionBlock(p)+nutritionPreviewBlock(p);
     } else if(curTab==='docs'){
@@ -2538,6 +2614,7 @@ function membersNode(){
       wrap.querySelectorAll('[data-ptab]').forEach(function(x){ x.onclick=function(){ S.profTab=x.getAttribute('data-ptab'); mainScrollMap['members:'+p.id]=0; render(); }; });
       wrap.querySelectorAll('[data-acc]').forEach(function(x){ x.onclick=function(){ var k=x.getAttribute('data-acc'); S.acc=S.acc||{}; S.acc[k]=!S.acc[k]; render(); }; });
       wireNutrition(wrap, p);   // Ernährungs-Tab: Diary/Ziel/Rezepte verdrahten
+      wireTrainingPlan(wrap, p);   // Training-Tab: Plan zuweisen/entfernen/bauen verdrahten
       wrap.querySelectorAll('[data-hist]').forEach(function(x){ x.onclick=function(){ S.screen='inbox'; openConv(x.getAttribute('data-hist')); }; });
       var em=wrap.querySelector('[data-editmember]'); if(em) em.onclick=function(){ S.edStreet=p.street||''; S.edHouse=p.houseNumber||''; S.edZip=p.zipCode||''; S.edCity=p.city||''; S.editMsg=''; S.editMember=true; render(); };
       var ec=wrap.querySelector('[data-edcancel]'); if(ec) ec.onclick=function(){ S.editMember=false; S.editMsg=''; render(); };
