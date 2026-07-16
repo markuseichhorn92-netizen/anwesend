@@ -896,9 +896,9 @@ function dpParse(str){                     // TT.MM.JJJJ / TT.MM.JJ -> ISO yyyy-
   return y+'-'+ci2(mo)+'-'+ci2(d);
 }
 // Klickbares „Feld", das wie ein Input aussieht und beim Antippen das Popover öffnet.
-function dateFieldHTML(id, iso, ph){
+function dateFieldHTML(id, iso, ph, full){
   var txt=dpFmt(iso);
-  return '<button type="button" data-datefield="'+esc(id)+'" style="display:flex;align-items:center;gap:9px;min-width:158px;border:1.5px solid #d6dee0;border-radius:10px;padding:10px 12px;font-size:13.5px;font-weight:700;color:'+(txt?'#15171B':'#9aa6aa')+';background:#fff;cursor:pointer;text-align:left">'+
+  return '<button type="button" data-datefield="'+esc(id)+'" style="display:flex;align-items:center;gap:9px;'+(full?'width:100%;':'min-width:158px;')+'border:1.5px solid #d6dee0;border-radius:10px;padding:10px 12px;font-size:13.5px;font-weight:700;color:'+(txt?'#15171B':'#9aa6aa')+';background:#fbfcfc;cursor:pointer;text-align:left">'+
     '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0a4958" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><rect x="3" y="4" width="18" height="18" rx="2.5"/><path d="M3 10h18M8 2v4M16 2v4"/></svg>'+
     '<span style="flex:1">'+(txt||esc(ph||'Datum wählen'))+'</span></button>';
 }
@@ -2752,7 +2752,7 @@ function todoNode(){
     '<input id="todotext" value="'+esc(S.todoText)+'" maxlength="500" placeholder="Was ist zu tun? z. B. Kursplan aktualisieren" style="width:100%;padding:12px 14px;border:1.5px solid #dce3e4;border-radius:12px;font-size:14.5px;background:#fbfcfc;margin-bottom:10px">'+
     '<div style="display:flex;flex-wrap:wrap;gap:9px;align-items:center">'+
       empSelect+
-      '<input id="tododue" type="date" value="'+esc(S.todoDue)+'" style="padding:11px 12px;border:1.5px solid #dce3e4;border-radius:11px;font-size:13.5px;background:#fbfcfc;color:#15171B;font-weight:600">'+
+      dateFieldHTML('tododue', S.todoDue, 'Fällig am (optional)')+
       '<button data-tadd="1"'+(S.todoAddBusy?' disabled':'')+' style="margin-left:auto;border:none;border-radius:11px;background:'+TEAL+';color:#fff;font-weight:800;font-size:13.5px;padding:11px 20px;cursor:pointer">'+(S.todoAddBusy?'Fügt hinzu …':'Hinzufügen')+'</button>'+
     '</div>'+
   '</div>';
@@ -2780,7 +2780,7 @@ function todoNode(){
 function wireTodos(node){
   var ti=node.querySelector('#todotext'); if(ti) ti.oninput=function(){ S.todoText=ti.value; };
   var ta=node.querySelector('#todoassignee'); if(ta) ta.onchange=function(){ S.todoAssignee=ta.value; };
-  var td=node.querySelector('#tododue'); if(td) td.onchange=function(){ S.todoDue=td.value; };
+  var td=node.querySelector('[data-datefield="tododue"]'); if(td) td.onclick=function(){ openDatePicker(td, { value:S.todoDue, onPick:function(iso){ S.todoDue=iso; render(); } }); };
   var ab=node.querySelector('[data-tadd]'); if(ab) ab.onclick=todoAdd;
   node.querySelectorAll('[data-tfilter]').forEach(function(b){ b.onclick=function(){ setTodoFilter(b.getAttribute('data-tfilter')); }; });
   node.querySelectorAll('[data-ttoggle]').forEach(function(b){ b.onclick=function(){ todoToggle(b.getAttribute('data-ttoggle'), b.getAttribute('data-tdone')==='1'); }; });
@@ -3867,7 +3867,7 @@ function cxModalHTML(p){
   }
   var form = S.cxResult ? '' : (
     '<div style="font-size:12.5px;font-weight:700;color:#6b7780;margin-bottom:6px">Kündigung zum</div>'+
-    '<input type="date" id="cxdate" value="'+esc(S.cxDate)+'" style="width:100%;padding:11px 13px;border:1.5px solid #dce3e4;border-radius:11px;font-size:14px;background:#fbfcfc;margin-bottom:'+(ct.nextCancellationDate?'4px':'12px')+'">'+
+    '<div style="margin-bottom:'+(ct.nextCancellationDate?'4px':'12px')+'">'+dateFieldHTML('cxdate', S.cxDate, 'Kündigungsdatum wählen', true)+'</div>'+
     (ct.nextCancellationDate?'<div style="font-size:11.5px;color:#8a929a;font-weight:600;margin-bottom:12px">Nächstmöglicher Termin: '+esc(ct.nextCancellationDate)+'</div>':'')+
     '<div style="font-size:12.5px;font-weight:700;color:#6b7780;margin-bottom:6px">Grund</div>'+
     reasonBox+
@@ -3892,7 +3892,7 @@ function wireCx(scope, p){
   var card=scope.querySelector('[data-cxcard]'); if(card) card.onclick=function(e){ e.stopPropagation(); };
   var x=scope.querySelector('[data-cxx]'); if(x) x.onclick=function(){ closeCancel(p); };
   var cc=scope.querySelector('[data-cxcancel]'); if(cc) cc.onclick=function(){ closeCancel(p); };
-  var dt=scope.querySelector('#cxdate'); if(dt) dt.onchange=function(){ S.cxDate=dt.value; };
+  var dt=scope.querySelector('[data-datefield="cxdate"]'); if(dt) dt.onclick=function(){ openDatePicker(dt, { value:S.cxDate, min:((p&&p.contract&&p.contract.nextCancellationDateISO)||''), onPick:function(iso){ S.cxDate=iso; render(); } }); };
   var rsel=scope.querySelector('#cxreason'); if(rsel) rsel.onchange=function(){ S.cxReason=rsel.value; };
   var sb=scope.querySelector('[data-cxsubmit]'); if(sb) sb.onclick=function(){ doCancelSubmit(p); };
 }
@@ -3993,7 +3993,7 @@ function pxModalHTML(){
         }).join('')+'</div>';
     }
     inner='<div style="font-size:12.5px;font-weight:700;color:#6b7780;margin-bottom:6px">Startdatum</div>'+
-      '<input type="date" id="pxstart" value="'+esc(S.pxStart||'')+'"'+(cfg.firstPossibleStartDate?(' min="'+esc(cfg.firstPossibleStartDate)+'"'):'')+' style="width:100%;padding:11px 13px;border:1.5px solid #dce3e4;border-radius:11px;font-size:14px;background:#fbfcfc;margin-bottom:'+(cfg.firstPossibleStartDate?'4px':'12px')+'">'+
+      '<div style="margin-bottom:'+(cfg.firstPossibleStartDate?'4px':'12px')+'">'+dateFieldHTML('pxstart', S.pxStart||'', 'Startdatum wählen', true)+'</div>'+
       (cfg.firstPossibleStartDate?'<div style="font-size:11.5px;color:#8a929a;font-weight:600;margin-bottom:12px">Frühestmöglich: '+esc(pxDE(cfg.firstPossibleStartDate))+(cfg.nextPossibleStartDateOnly?' (nur dieses Datum möglich)':'')+'</div>':'')+
       '<div style="display:flex;gap:12px;align-items:flex-end;margin-bottom:2px">'+
         '<div style="flex:1"><div style="font-size:12.5px;font-weight:700;color:#6b7780;margin-bottom:6px">Dauer ('+pxUnitLabel(unit,2)+')</div>'+
@@ -4025,7 +4025,7 @@ function wirePx(scope, p){
   var card=scope.querySelector('[data-pxcard]'); if(card) card.onclick=function(e){ e.stopPropagation(); };
   var x=scope.querySelector('[data-pxx]'); if(x) x.onclick=function(){ closePause(p); };
   var cc=scope.querySelector('[data-pxcancel]'); if(cc) cc.onclick=function(){ closePause(p); };
-  var dt=scope.querySelector('#pxstart'); if(dt) dt.onchange=function(){ S.pxStart=dt.value; render(); };
+  var dt=scope.querySelector('[data-datefield="pxstart"]'); if(dt) dt.onclick=function(){ openDatePicker(dt, { value:S.pxStart||'', min:((S.pxCfg&&S.pxCfg.firstPossibleStartDate)||''), onPick:function(iso){ S.pxStart=iso; render(); } }); };
   var tm=scope.querySelector('#pxterm'); if(tm) tm.oninput=function(){ S.pxTerm=Math.max(1,parseInt(tm.value,10)||1); };
   if(tm) tm.onchange=function(){ S.pxTerm=Math.max(1,parseInt(tm.value,10)||1); render(); };
   var rsel=scope.querySelector('#pxreason'); if(rsel) rsel.onchange=function(){ S.pxReason=rsel.value; render(); };  // Grund-Wechsel -> Nachweis-Block aktualisieren
