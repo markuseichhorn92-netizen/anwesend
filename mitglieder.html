@@ -574,6 +574,7 @@
     if(s==='ern'){ try{ window.__ernStopScan&&window.__ernStopScan(); }catch(e){} S.ernMsg=''; S.ernErr=false; S.ernAsk=''; S.ernAnswer=''; S.ernRecipes=null; S.ernCoachSent=false; S.ernTab='heute'; S.ernRecipeSel=null; S.ernKoch=null; S.ernCookPick=false; S.ernPlanDraft=null; S.ernPlanReplaceIdx=-1; S.ernCapture=false; S.ernConfirm=null; S.ernProd=null; S.ernEntryEdit=null; S.ernViewDate=''; S.ernFavMgr=false; S.ernData=false; S.ernUpgrade=false; S.ernLesson=null; S.ernLessonData=null; S.ernChatOpen=false; S.ernCk=false; S.ernCkResult=null; S.ernObStep=0; S.ernChat=ernChatLoad(); loadNutri(); loadFavs(); loadCoach(); loadCook(); }
     if(s==='coach'){ S.ernLesson=null; S.ernVert=null; S.ernLessonData=null; S.ernCk=false; S.ernCkResult=null; S.ernChatOpen=false; S.ernUpgrade=false; S.ernMsg=''; S.ernErr=false; S.coachMapOpen=false; S.coachVertOpen=false; S.ernChat=ernChatLoad(); S.trainDetail=null; S.trainExOpen=false; S.trainRun=false; S.trainRestKey=''; S.trainGenOpen=false; S.trainGenPlan=null; S.trainGenBusy=false; S.trainBusy=false; S.trainMsg=''; loadFinnTip(); loadCoach(); loadTraining(); if(!DATA.checkins) loadCheckins(); }
     if(s==='appt'){ if(!DATA.appts) loadAppts(); if(DATA.bookable===null) loadBookable(); }
+    if(s==='tag'){ S.trainRunDay=0; S.trainRestKey=''; S.trainRestStart=0; if(DATA.training==null) loadTraining(); loadTrainSession(); if(ERN_ON&&DATA.nutri==null) loadNutri(); }
     if(s==='home'||s==='checkin') checkArrival();
     setS({}); }
 
@@ -593,7 +594,8 @@
     var s=S.screen;
     if(s==='home'||s==='insta') maybeRefreshLive();
     if(s==='home'||s==='account') loadAccount();
-    if(s==='ern'||s==='coach'||s==='abo'||s==='recht') loadNutri();
+    if(s==='ern'||s==='coach'||s==='abo'||s==='recht'||s==='tag') loadNutri();
+    if(s==='tag'){ loadTraining(); loadTrainSession(); }
     if(ERN_ON&&(s==='home'||s==='fort')) loadNutri();
     if(SOCIAL_ON&&(s==='home'||s==='social'||s==='profil')) loadSocial();
     if(s==='coach'){ loadCoach(); loadTraining(); }
@@ -1628,6 +1630,25 @@
         '<div style="font-size:11.5px;font-weight:600;color:var(--text-soft);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(t.sub)+'</div>'+
       '</button>'; }).join('')+'</div>';
   }
+  // „Mein Tag"-Karte auf der Startseite: heutige Einheit (+ kcal, falls freigeschaltet) an einem Ort.
+  // Zentraler Einstieg in den Tages-Hub scrMeinTag – Training-Status live aus DATA.training/trainSess.
+  function homeMeinTagHero(){
+    if(DATA.training==null) loadTraining();
+    var d=DATA.training; var mp=d&&d.ok&&d.myPlan&&d.myPlan.plan;
+    var status;
+    if(mp&&mp.days&&mp.days.length){
+      var day0=mp.days[0]||{}; var exs=day0.exercises||[];
+      var sess=(DATA.trainSess&&DATA.trainSess.items)||{};
+      var doneN=exs.filter(function(e,ix){ var it=sess['d0e'+ix]; return it&&it.done; }).length;
+      status=(doneN>0?('Heutige Einheit · '+doneN+'/'+exs.length+' erledigt'):('Heutige Einheit bereit · '+exs.length+' Übungen'));
+    } else if(d&&d.ok){ status='Trainingsplan holen & loslegen'; }
+    else { status='Training & Ernährung für heute'; }
+    if(ERN_ON){ var n=DATA.nutri; if(n&&n.ok&&n.onboarded){ var t=n.targets||{}, tot=(n.today&&n.today.totals)||{kcal:0}; status+=' · '+ernNum(Math.max(0,(t.kcal||0)-(tot.kcal||0)))+' kcal übrig'; } }
+    return '<button data-act="nav" data-arg="tag" style="width:100%;text-align:left;border:none;cursor:pointer;font-family:inherit;background:linear-gradient(155deg,#0e6072,#083c49);border-radius:20px;box-shadow:0 14px 34px rgba(6,45,55,.28);padding:16px 18px;margin-bottom:16px;display:flex;align-items:center;gap:13px">'+
+      '<div style="width:44px;height:44px;border-radius:14px;background:rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:22px">📋</div>'+
+      '<div style="flex:1;min-width:0"><div style="font-size:10.5px;font-weight:900;color:#8fd4c4;text-transform:uppercase;letter-spacing:.5px">Mein Tag</div><div style="font-size:15.5px;font-weight:900;color:#fff;margin-top:1px">Training &amp; Ernährung</div><div style="font-size:12px;font-weight:600;color:#bfe0e6;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(status)+'</div></div>'+
+      svg('<path d="M9 6l6 6-6 6"></path>',{c:'#bfe0e6',w:2.4,s:18})+'</button>';
+  }
   function scrHome(){
     if(isFormer()) return scrRejoin();
     loadFinnTip(); loadInsta(); loadTypical(); loadLive(); loadHours();
@@ -1675,6 +1696,7 @@
       homeHero()+
       checkinBtn()+
       homeCoachHero()+
+      homeMeinTagHero()+
       homeTodayStrip()+
       wifiBtn()+
       dupBanner+
@@ -3048,9 +3070,9 @@
   // Coaching-Programm (8-Wochen-Reise) laden – eigener Endpunkt, Snapshot in DATA.coach.
   function loadCoach(){ api('/api/member/nutrition-coach').then(function(d){ DATA.coach=(d&&d.ok)?d:{ok:false,available:!!(d&&d.available)}; rIf(['ern','coach']); }).catch(function(){ DATA.coach={ok:false,available:false}; rIf(['ern','coach']); }); }
   // Training-Tab: Tipp, Inspiration, Trainingsplan-Bibliothek + „Mein Plan" (api/member/training).
-  function loadTraining(){ api('/api/member/training').then(function(d){ DATA.training=(d&&d.ok)?d:{ok:false,available:!!(d&&d.available)}; rIf(['coach']); }).catch(function(){ DATA.training={ok:false,available:false}; rIf(['coach']); }); }
+  function loadTraining(){ api('/api/member/training').then(function(d){ DATA.training=(d&&d.ok)?d:{ok:false,available:!!(d&&d.available)}; rIf(['coach','tag','home']); }).catch(function(){ DATA.training={ok:false,available:false}; rIf(['coach','tag','home']); }); }
   // Trainings-Session (heutige Einheit) laden – Abhak-/Satz-Stände.
-  function loadTrainSession(){ api('/api/member/training',{method:'POST',body:JSON.stringify({action:'session-get'})}).then(function(d){ DATA.trainSess=(d&&d.ok)?{items:d.items||{},planId:d.planId}:{items:{},planId:null}; rIf(['coach']); }).catch(function(){ DATA.trainSess={items:{},planId:null}; rIf(['coach']); }); }
+  function loadTrainSession(){ api('/api/member/training',{method:'POST',body:JSON.stringify({action:'session-get'})}).then(function(d){ DATA.trainSess=(d&&d.ok)?{items:d.items||{},planId:d.planId}:{items:{},planId:null}; rIf(['coach','tag','home']); }).catch(function(){ DATA.trainSess={items:{},planId:null}; rIf(['coach','tag','home']); }); }
   // Fasten-Countdown live nachführen (nur auf dem Heute-Tab, ohne Voll-Render)
   setInterval(function(){
     try{
@@ -4169,6 +4191,71 @@
         '<div style="flex:1;text-align:right">'+timer+'</div></div>';
     }
     return '<div style="background:#fff;border-radius:15px;box-shadow:0 6px 18px rgba(4,33,40,.06);padding:14px 15px;margin-bottom:10px'+(done?';opacity:.7':'')+'">'+head+body+'</div>';
+  }
+  // ═══════════════════ „Mein Tag" – Tages-Hub (Training + Ernährung) ═══════════════════
+  // Bündelt das Heute an einem Ort: heutige Trainingseinheit abhaken (identischer Tracker
+  // wie im Coach) und – falls das Ernährungsmodul frei ist – der Tages-Überblick fürs Essen.
+  function meinTagDateStr(){
+    var d=new Date();
+    var wd=['Sonntag','Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag'][d.getDay()];
+    var mo=['Jan.','Feb.','März','Apr.','Mai','Juni','Juli','Aug.','Sep.','Okt.','Nov.','Dez.'][d.getMonth()];
+    return wd+', '+d.getDate()+'. '+mo;
+  }
+  // Trainings-Teil: heutige Einheit (Tag di) mit Fortschritt + Übungszeilen (wiederverwendet).
+  function meinTagTrainBody(mp){
+    var di=S.trainRunDay||0; if(di>=mp.days.length) di=0;
+    var dayTabs='';
+    if(mp.days.length>1){ dayTabs='<div style="display:flex;gap:7px;overflow-x:auto;padding-bottom:6px;margin-bottom:12px">'+mp.days.map(function(dd,ix){ var on=(ix===di); return '<button data-act="trainRunDay" data-arg="'+ix+'" style="flex-shrink:0;border:1.5px solid '+(on?ERN_G:'#dde5e6')+';border-radius:20px;background:'+(on?ERN_G:'#fff')+';color:'+(on?'#fff':'#4a565c')+';font-size:12.5px;font-weight:800;padding:8px 13px;cursor:pointer;white-space:nowrap">'+esc(dd.name||('Tag '+(ix+1)))+'</button>'; }).join('')+'</div>'; }
+    var exs=trainRunItems();
+    var doneN=exs.filter(function(e,ix){ return trainSessItem('d'+di+'e'+ix).done; }).length;
+    var pct=exs.length?Math.round(doneN/exs.length*100):0;
+    var prog='<div style="background:#fff;border-radius:16px;box-shadow:0 8px 22px rgba(4,33,40,.07);padding:14px 16px;margin-bottom:14px"><div style="display:flex;align-items:baseline;justify-content:space-between"><span style="font-size:15px;font-weight:900;color:#15171B">'+esc((mp.days[di]&&mp.days[di].name)||'Training')+'</span><span style="font-size:13px;font-weight:800;color:'+ERN_GD+'">'+doneN+'/'+exs.length+' erledigt</span></div><div style="height:8px;background:#eef2f3;border-radius:6px;overflow:hidden;margin-top:9px"><div style="height:100%;border-radius:6px;background:'+ERN_G+';width:'+pct+'%;transition:width .2s"></div></div></div>';
+    var rows=exs.map(function(e,ix){ return trainRunRow(e,'d'+di+'e'+ix); }).join('');
+    var doneAll=exs.length&&doneN===exs.length;
+    var footer=(doneAll?'<div style="background:linear-gradient(150deg,#12a06a,#0a5a37);border-radius:16px;padding:16px;text-align:center;color:#fff;margin-top:6px"><div style="font-size:28px">🎉</div><div style="font-size:15px;font-weight:900;margin-top:4px">Einheit geschafft – stark!</div></div>':'')+
+      '<button data-act="trainRunReset" style="width:100%;margin-top:12px;padding:11px;border:1.5px solid #e2e8ea;border-radius:12px;background:#fff;color:#8a929a;font-weight:700;font-size:12.5px;cursor:pointer">Fortschritt zurücksetzen</button>';
+    var planLine='<div style="font-size:15.5px;font-weight:900;color:var(--text);letter-spacing:-.3px;margin:0 2px 3px">'+esc(mp.title)+'</div><div style="font-size:12px;font-weight:500;color:var(--text-2);margin:0 2px 12px">Hak ab, was du geschafft hast. 🤖 = Biostrength: einfach abhaken, den Rest macht die KI.</div>';
+    return planLine+dayTabs+prog+rows+footer;
+  }
+  function meinTagTrainCta(){
+    return trainCardBox('<div style="text-align:center;padding:6px 4px"><div style="font-size:34px">🏋️</div><div style="font-size:15.5px;font-weight:900;color:#15171B;margin-top:6px">Noch kein Trainingsplan</div><div style="font-size:13px;font-weight:600;color:#6b7780;margin-top:4px;line-height:1.5">Hol dir einen Plan – aus der Bibliothek, von deinem Trainer oder von FINN. Dann kannst du hier jede Einheit abhaken.</div><button data-act="meinTagTrain" style="margin-top:14px;border:none;border-radius:13px;background:'+ERN_G+';color:#fff;font-weight:800;font-size:14px;padding:13px 20px;cursor:pointer">Trainingsplan holen</button></div>');
+  }
+  // Ernährungs-Teil (nur wenn ERN_ON): Tages-Ring + Makros + Einstieg ins Tagebuch.
+  function meinTagErnBody(){
+    var n=DATA.nutri;
+    if(!(n&&n.ok)){
+      return trainCardBox('<div style="font-size:13.5px;font-weight:600;color:#6b7780;line-height:1.5">Tagesziel, Tracking &amp; Rezepte im Essen-Bereich.</div><button data-act="nav" data-arg="ern" style="margin-top:12px;border:none;border-radius:12px;background:'+ERN_G+';color:#fff;font-weight:800;font-size:13.5px;padding:11px 18px;cursor:pointer">Zum Ernährungstagebuch</button>');
+    }
+    if(!n.onboarded){
+      return trainCardBox('<div style="font-size:13.5px;font-weight:600;color:#6b7780;line-height:1.5">In 1 Minute dein Tagesziel einrichten und Essen tracken.</div><button data-act="nav" data-arg="ern" style="margin-top:12px;border:none;border-radius:12px;background:'+ERN_G+';color:#fff;font-weight:800;font-size:13.5px;padding:11px 18px;cursor:pointer">Jetzt einrichten</button>');
+    }
+    var t=n.targets||{}, td=n.today||{}, tot=td.totals||{kcal:0,p:0,c:0,f:0};
+    var kcalLeft=Math.max(0,(t.kcal||0)-tot.kcal), deg=t.kcal?Math.min(360,Math.round(tot.kcal/t.kcal*360)):0;
+    var ring='<div style="position:relative;width:74px;height:74px;flex-shrink:0"><div style="width:74px;height:74px;border-radius:50%;background:conic-gradient('+ERN_OK+' '+deg+'deg,#eef2f3 0)"></div><div style="position:absolute;inset:7px;border-radius:50%;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center"><span style="font-size:18px;font-weight:900;color:#15171B;letter-spacing:-.5px;line-height:1">'+ernNum(kcalLeft)+'</span><span style="font-size:7.5px;font-weight:800;color:#8a929a;text-transform:uppercase;letter-spacing:.3px;margin-top:1px">kcal übrig</span></div></div>';
+    var mp3=function(v,tg,l){ return '<div style="flex:1;background:#f6f8f8;border-radius:12px;padding:9px 10px;text-align:center"><div style="font-size:14px;font-weight:900;color:#15171B">'+Math.round(v||0)+'<span style="font-size:10px;color:#a9b1b6"> /'+Math.round(tg||0)+'g</span></div><div style="font-size:10px;font-weight:700;color:#8a929a;margin-top:1px">'+l+'</div></div>'; };
+    var macros='<div style="display:flex;gap:8px;margin-top:12px">'+mp3(tot.p,t.protein,'Eiweiß')+mp3(tot.c,t.carbs,'Kohl.')+mp3(tot.f,t.fat,'Fett')+'</div>';
+    var head='<div style="display:flex;align-items:center;gap:14px">'+ring+'<div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:900;color:#15171B">Gegessen: '+ernNum(tot.kcal)+' / '+ernNum(t.kcal||0)+' kcal</div><div style="font-size:12px;font-weight:600;color:#8a929a;margin-top:2px">🔥 '+(n.streak||0)+' Tage-Streak · +'+(n.pointsToday||0)+' VP heute</div></div></div>';
+    return trainCardBox(head+macros+'<button data-act="nav" data-arg="ern" style="width:100%;margin-top:13px;border:1.5px solid '+ERN_G+';border-radius:12px;background:rgba(15,122,74,.05);color:'+ERN_GD+';font-weight:800;font-size:13.5px;padding:12px;cursor:pointer">＋ Essen eintragen</button>');
+  }
+  function scrMeinTag(){
+    if(DATA.training==null) loadTraining();
+    var wrap=function(inner){ return '<div style="'+ERN_LIGHT+';padding-bottom:calc(96px + env(safe-area-inset-bottom,0px))">'+inner+'</div>'; };
+    var back='<button data-act="nav" data-arg="home" style="display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,.16);border:none;border-radius:10px;color:#eafaf1;font-size:12.5px;font-weight:800;padding:7px 12px;margin-bottom:12px;cursor:pointer">'+svg(IC.back,{c:'#eafaf1',w:2.2,s:15})+'Start</button>';
+    var header='<div style="background:linear-gradient(160deg,'+ERN_G2+','+ERN_G+' 60%,'+ERN_GD+');border-radius:0 0 24px 24px;padding:16px 18px 20px;color:#fff;box-shadow:0 12px 30px rgba(15,122,74,.22);margin:-2px -2px 16px">'+
+      back+
+      '<div style="font-size:12px;font-weight:600;color:#c5ecd7">'+esc(meinTagDateStr())+'</div>'+
+      '<div style="font-size:24px;font-weight:900;letter-spacing:-.5px">Mein Tag</div>'+
+      '<div style="font-size:12.5px;font-weight:600;color:#d4f0e2;margin-top:2px">Dein Training &amp; deine Ernährung für heute</div></div>';
+    var sect=function(t){ return '<div style="font-size:17px;font-weight:900;color:var(--text);letter-spacing:-.3px;margin:6px 4px 12px">'+t+'</div>'; };
+    var d=DATA.training; var trainHtml;
+    if(d==null){ trainHtml='<div style="padding:30px 0;text-align:center">'+trainSpin(24)+'</div>'; }
+    else if(!d.ok && d.available===false){ trainHtml=trainCardBox('<div style="font-size:13.5px;font-weight:600;color:#8a929a">Der Training-Bereich ist gerade nicht verfügbar.</div>'); }
+    else if(!d.ok){ trainHtml=trainCardBox('<div style="font-size:13.5px;font-weight:700;color:#b5402f">Training konnte nicht geladen werden.</div><button data-act="trainReload" style="width:100%;margin-top:10px;padding:11px;border:none;border-radius:12px;background:'+ERN_G+';color:#fff;font-weight:800;font-size:13.5px;cursor:pointer">Erneut versuchen</button>'); }
+    else { var mp=d.myPlan&&d.myPlan.plan; trainHtml=(mp&&mp.days&&mp.days.length)?meinTagTrainBody(mp):meinTagTrainCta(); }
+    var body=sect('🏋️ Training heute')+trainHtml;
+    if(ERN_ON){ body+=sect('🥗 Ernährung heute')+meinTagErnBody(); }
+    body+='<button data-act="nav" data-arg="coach" style="width:100%;margin-top:6px;border:1.5px solid #dbe4e2;border-radius:13px;background:#fff;color:'+ERN_GD+';font-weight:800;font-size:13.5px;padding:13px;cursor:pointer">Zu Tipps &amp; Plänen im Coach</button>';
+    return wrap(header+'<div style="padding:0 2px">'+body+'</div>');
   }
   // Einstieg in die Übungsdatenbank (Suchen/Nachschlagen).
   function trainingExerciseCta(d){
@@ -5903,7 +5990,7 @@
   // ---- responsive chrome (Desktop-Sidebar + Topbar) ----
   var DASH_IC='<rect x="3" y="3" width="7" height="9" rx="1.5"></rect><rect x="14" y="3" width="7" height="5" rx="1.5"></rect><rect x="14" y="12" width="7" height="9" rx="1.5"></rect><rect x="3" y="16" width="7" height="5" rx="1.5"></rect>';
   var NAVITEMS=[['home','Übersicht',DASH_IC],['card','Mitgliedskarte','<rect x="3" y="3" width="7" height="7" rx="1.4"></rect><rect x="14" y="3" width="7" height="7" rx="1.4"></rect><rect x="3" y="14" width="7" height="7" rx="1.4"></rect><path d="M14 14h3v3h-3z"></path><path d="M20 14v3M14 20h3M20 20v.01"></path>'],['fort','Fortschritt','<circle cx="12" cy="8" r="6"></circle><path d="M15.5 13.5L17 22l-5-3-5 3 1.5-8.5"></path>'],['ern','Ernährung','<path d="M11 21A7 7 0 0 1 4 14C4 8.5 8 4 13.5 4c2.7 0 4.6 1 6.5 1.8 0 8.7-4.3 15.2-9 15.2z"></path><path d="M11 21c0-5.5 3.3-10 7.5-12"></path>'],['insta','Instagram',IG_ICON],['data','Meine Daten',IC.user],['contract','Vertragsverwaltung',IC.doc],['account','Beitragskonto','<rect x="2" y="5" width="20" height="14" rx="2"></rect><path d="M2 9h20M6 15h5"></path>'],['appt','Termine',IC.cal],['referral','Freunde werben',IC.gift],['checkins','Check-ins',IC.list],['postfach','Postfach',IC.mail],['help','Hilfe',IC.help],['settings','Einstellungen',IC.cog]];
-  var TITLES={home:'Übersicht',data:'Meine Daten',contract:'Vertragsverwaltung',account:'Beitragskonto',appt:'Termine',checkin:'Check-in',referral:'Freunde werben',checkins:'Check-in-Verlauf',postfach:'Postfach',help:'Hilfe & Kontakt',settings:'Einstellungen',profil:'Profil',card:'Mitgliedskarte',fort:'Fortschritt',ern:'Ernährung',coach:'Coach',abo:'Mein Abo',recht:'Widerruf & Recht',blog:'Blog',insta:'Instagram',social:'Trainingspartner'};
+  var TITLES={home:'Übersicht',data:'Meine Daten',contract:'Vertragsverwaltung',account:'Beitragskonto',appt:'Termine',checkin:'Check-in',referral:'Freunde werben',checkins:'Check-in-Verlauf',postfach:'Postfach',help:'Hilfe & Kontakt',settings:'Einstellungen',profil:'Profil',card:'Mitgliedskarte',fort:'Fortschritt',ern:'Ernährung',coach:'Coach',tag:'Mein Tag',abo:'Mein Abo',recht:'Widerruf & Recht',blog:'Blog',insta:'Instagram',social:'Trainingspartner'};
   function initials(p){ p=p||{}; var a=(p.firstName||'').trim(),b=(p.lastName||'').trim(); return (((a?a[0]:'')+(b?b[0]:'')).toUpperCase())||'FT'; }
   // Profil-Kopf für Sidebar/Drawer
   function navProfile(){
@@ -5978,7 +6065,7 @@
       var profCol=profActive?'var(--teal-ink)':'var(--text-soft)';
       var profBtn='<button data-act="nav" data-arg="profil" style="flex:1;background:none;border:none;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;padding:5px 0"><span style="position:relative;display:flex">'+svg(IC.user,{c:profCol,w:1.9,s:23})+(unread?'<span style="position:absolute;top:-3px;right:-5px;width:8px;height:8px;border-radius:50%;background:#F6A964;border:1.5px solid var(--surface)"></span>':'')+'</span><span style="font-size:10.5px;font-weight:'+(profActive?'800':'600')+';color:'+profCol+'">Profil</span></button>';
       var fourth = ERN_ON ? ni('ern','Essen',FOOD_IC,sc==='ern') : ni('appt','Termine',IC.cal,sc==='appt');
-      bn.innerHTML = ni('home','Start',DASH_IC,sc==='home') + ni('coach','Coach',COACH_IC,sc==='coach') + qaCenter + fourth + profBtn;
+      bn.innerHTML = ni('home','Start',DASH_IC,sc==='home'||sc==='tag') + ni('coach','Coach',COACH_IC,sc==='coach') + qaCenter + fourth + profBtn;
     }
   }
   var NARROW={contract:1,referral:1,appt:1,card:1,fort:1,ern:1,blog:1,profil:1,checkin:1,insta:1,social:1};
@@ -5998,6 +6085,7 @@
       case 'fort': html=scrFort(); break;
       case 'ern': html=scrErn(); break;
       case 'coach': html=scrCoach(); break;
+      case 'tag': html=scrMeinTag(); break;
       case 'abo': html=scrAbo(); break;
       case 'recht': html=scrRecht(); break;
       case 'profil': html=scrProfil(); break;
@@ -6073,6 +6161,7 @@
     // ── Coach-Tabs + Training-Tab ──
     coachTab:function(a){ S.coachTab=(a==='training')?'training':'ernaehrung'; S.trainDetail=null; S.trainDetailFull=null; S.trainExOpen=false; S.trainRun=false; S.trainRestKey=''; S.trainGenOpen=false; S.trainGenPlan=null; S.trainMsg=''; S.ernChatOpen=false; setS({}); },
     trainReload:function(){ DATA.training=null; render(); loadTraining(); },
+    meinTagTrain:function(){ S.coachTab='training'; nav('coach'); },
     trainOpen:function(a){ S.trainDetail=a; S.trainDetailFull=null; S.trainMsg=''; setS({});
       // Bibliotheks-Kacheln kommen schlank (ohne Tage) – volles Detail nachladen (außer aktiver Plan hat sie schon).
       var d=DATA.training||{}; var isActive=(d.myPlan&&d.myPlan.plan&&String(d.myPlan.plan.id)===String(a)&&Array.isArray(d.myPlan.plan.days));
@@ -7384,7 +7473,7 @@
   // ?ern=coach (Coaching-Push) → globaler Coach-Tab, ?ern=<x> → Essen-Modul.
   // Teilbare Pfad-Deep-Links: mitglieder.fit-inn-trier.de/vertrag, /termine, /trainingspartner …
   // (Der Server liefert für jeden Pfad die Mitglieder-Seite; hier wird der Pfad auf den Screen gemappt.)
-  var PATHGO={ 'vertrag':'contract','meine-daten':'data','beitragskonto':'account','termine':'appt','check-in':'checkin','besuche':'checkins','freunde':'referral','freunde-werben':'referral','postfach':'postfach','hilfe':'help','einstellungen':'settings','profil':'profil','mitgliedskarte':'card','fortschritt':'fort','ernaehrung':'ern','coach':'coach','mein-abo':'abo','widerruf':'recht','blog':'blog','trainingspartner':'social' };
+  var PATHGO={ 'vertrag':'contract','meine-daten':'data','beitragskonto':'account','termine':'appt','check-in':'checkin','besuche':'checkins','freunde':'referral','freunde-werben':'referral','postfach':'postfach','hilfe':'help','einstellungen':'settings','profil':'profil','mitgliedskarte':'card','fortschritt':'fort','ernaehrung':'ern','coach':'coach','mein-tag':'tag','mein-abo':'abo','widerruf':'recht','blog':'blog','trainingspartner':'social' };
   function magicGo(){ try{ var sp=new URL(window.location.href).searchParams; var e=sp.get('ern'); if(e==='coach') return 'coach'; if(e) return 'ern'; var b=sp.get('buddy'); if(b&&SOCIAL_ON){ try{ window.__socBuddy=String(b).toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,6); }catch(_e){} return 'social'; } var g=sp.get('go'); if(g&&TITLES[g]){ if(g==='social'&&SOCIAL_ON){ try{ var c=sp.get('chat'); var r=sp.get('room'); if(c) window.__socOpenChat=String(c); else if(r) window.__socOpenRoom=String(r); }catch(_e){} } return g; }
     // Kein Query-Ziel? Dann den Pfad-Slug auswerten (z. B. „/vertrag").
     var seg=(window.location.pathname||'').replace(/^\/+|\/+$/g,'').toLowerCase(); if(seg==='mitglieder') seg=''; if(seg && PATHGO[seg] && TITLES[PATHGO[seg]]) return PATHGO[seg];
