@@ -1,0 +1,30 @@
+# CI: Syntaxpruefung, Secret-Scan und Tests bei jedem Push/PR.
+# Bewusst ohne externe Actions ausser checkout/setup-node - der Secret-Scan
+# und der Lint laufen mit Bord-Node (scripts/secret-scan.js, scripts/lint.js).
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # voller Verlauf, damit der Secret-Scan alle Dateien sieht
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Syntax-Lint (alle JS-Dateien + JSON-Konfigurationen)
+        run: npm run lint
+
+      - name: Secret-Scan (versionierte Dateien)
+        run: npm run scan
+
+      - name: Tests (Node-Harnesses, ohne Netz/Secrets)
+        run: npm test
