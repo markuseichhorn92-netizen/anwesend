@@ -12,7 +12,8 @@ module.exports = function handler(req, res) {
   const appId = (process.env.APPLE_APP_ID || '').trim();
   if (!appId) { res.statusCode = 404; res.setHeader('Content-Type', 'application/json'); return res.end('{}'); }
   const body = {
-    applinks: { apps: [], details: [{ appID: appId, paths: ['/mitglieder', '/mitglieder/*'] }] },
+    // Der Mitgliederbereich liegt jetzt auf „/" (früher „/mitglieder"). Beide öffnen die App.
+    applinks: { apps: [], details: [{ appID: appId, paths: ['/', '/?*', '/mitglieder', '/mitglieder/*'] }] },
     webcredentials: { apps: [appId] },
   };
   res.statusCode = 200;
