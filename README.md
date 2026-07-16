@@ -1,205 +1,123 @@
-# Fit-Inn Trier · Live-Auslastung
+# Fit-Inn Trier · Mitglieder-Portal, Team-Backend & Live-Auslastung
 
-Zeigt die aktuelle Personenzahl im Studio als Live-Widget — für Website und Signage.
-Die Zahl kommt aus der Magicline Open API (`GET /v1/studios/utilization`, Feld `count`).
+Digitale Plattform des Fitnessstudios Fit-Inn Trier auf Basis von
+**Vercel Serverless Functions + Upstash Redis + Magicline Open API** –
+bewusst ohne Framework und (bis auf Dev-Tools) ohne npm-Dependencies.
 
-**Architektur:** Ein kleiner Node-Proxy hält den API-Key serverseitig,
-fragt Magicline höchstens alle 45 s ab und liefert eine **anonyme, aggregierte** JSON-Zahl.
-Das Frontend-Widget spricht nur den Proxy an — der Key landet nie im Browser.
+## Was hier drin ist
 
-```
-Browser/Signage ──> widget.html ──> dein Proxy ──x-api-key──> Magicline
-```
-
-Es gibt zwei Deployment-Wege — **Vercel** (Serverless, am einfachsten) oder **VPS/Docker**:
-
-| | Vercel | VPS / Docker |
+| Bereich | Einstieg | Beschreibung |
 |---|---|---|
-| Code | `api/*.js` + `widget.html` | `server.js` |
-| Konfig | Environment Variables im Dashboard | `.env` |
-| URL | `…vercel.app/api/auslastung` | `https://auslastung.fit-inn-trier.de/api/auslastung` |
+| **Mitglieder-App** | `mitglieder.html` (`/`) | Vertrag, Termine, Check-in, Mitgliedskarte, Dokumente, Postfach, FINN-KI-Coach, Fortschritt/Vitalpunkte, Training (Technogym-Inventar), Ernährung*, Community* — läuft im Browser **und** als Capacitor-App (iOS/Android) |
+| **Team-Backend** | `team-backend.html` (`/team`) | Posteingang, Mitgliederverwaltung, Termine, Statistiken, Schichtplan, Leads, Rückholung, Moderation — rollenbasiert (admin/trainer) |
+| **Live-Auslastung** | `widget.html`, `auslastung.html` | Anonyme Personenzahl als einbettbares Widget + „typische Auslastung"-Kurve |
+| **APIs** | `api/**` | ~125 Serverless Functions (Mitglied, Team, Webhooks, interne Crons) |
+| **Fachlogik** | `lib/**` | Sessions/Magicline (`members.js`), Team-Auth + Capabilities, Push (FCM/APNs), Inbox, Stripe-Premium, KI (`ai.js`), Social, Cron-Auth … |
 
----
+\* Ernährung/Community sind über **serverseitige Feature-Flags** geschaltet
+(`FEATURE_ERN`/`FEATURE_SOCIAL`, Produktion standardmäßig aus – siehe unten).
 
-## Variante A: Vercel (empfohlen) ▲
-
-Vercel führt **Serverless Functions** aus — es startet *keinen* langlaufenden
-`server.js`. Deshalb liegen die Endpunkte als Functions unter `api/`:
+## Architektur
 
 ```
-api/auslastung.js   ->  GET /api/auslastung
-api/health.js       ->  GET /api/health
-widget.html         ->  /  (per vercel.json auf die Wurzel gemappt)
+Browser / Capacitor-App
+   │  (Bearer-Token, JSON)
+   ▼
+Vercel Serverless Functions (api/**)          ← Security-Header via vercel.json
+   │            │              │
+   ▼            ▼              ▼
+lib/** ──► Upstash Redis   Magicline Open API   Dritt-Dienste (nur wo nötig):
+(Fach-     (Sessions,      (Mitglieder,          Stripe (Premium-Abo),
+ logik)     Push-Tokens,    Verträge,            Anthropic-KI (FINN),
+            Inbox, Flags,   Check-ins,           Resend (E-Mail), Twilio/WA,
+            Historie)       Termine)             Open Food Facts, FCM/APNs
 ```
 
-1. **Repo mit Vercel verbinden** (Add New → Project → dieses GitHub-Repo importieren).
-   Framework-Preset: *Other*. Build-Command leer lassen — Zero-Config genügt.
-2. **Environment Variable setzen** (Project → Settings → Environment Variables):
+- **Frontend:** je Bereich EINE HTML-Datei (Vanilla-JS-IIFE, Zustands-Objekt
+  `S`, `render()`, delegierte Events, `esc()` gegen XSS). Kein Build-Schritt.
+- **Single-Tenant:** eine Magicline-Instanz (`ML_TENANT`), ein Studio.
+- **Sicherheitsmodell** (Sessions, Rollen-Matrix, Cron-Auth, Check-in,
+  Push-Token-Bindung, Header/CSP): **[docs/SECURITY.md](docs/SECURITY.md)**
+- **Seitengrößen & Modularisierungs-Fahrplan:** [docs/PERFORMANCE.md](docs/PERFORMANCE.md)
+- Weitere Doku: `docs/STRIPE-PREMIUM.md` (Premium-Abo), `docs/EIGENE-APP.md`
+  (Capacitor), `docs/COMMUNITY-RECHT.md`, `docs/NUTRITION-REZEPTE.md`,
+  `docs/OPEN-FOOD-FACTS.md`, `docs/CUSTOM_DOMAIN.md`
 
-   | Name | Wert |
-   |---|---|
-   | `ML_API_KEY` | **dein neuer Magicline-Key** (siehe Schritt 0) |
-   | `MAX_CAPACITY` | `80` *(optional)* |
-   | `YELLOW_AT` / `RED_AT` | `50` / `80` *(optional)* |
-
-   > ⚠️ Ohne `ML_API_KEY` antwortet `/api/auslastung` mit `500 { "error": "missing_api_key" }`.
-   > Nach dem Setzen **neu deployen**, damit die Variable greift.
-3. **Deploy.** Danach prüfen:
-
-   ```bash
-   curl https://<dein-projekt>.vercel.app/api/auslastung
-   # -> {"count":5,"max":80,"percent":6,"status":"low",...}
-   ```
-
-   Das Widget ist direkt unter der Projekt-Wurzel (`https://<dein-projekt>.vercel.app/`)
-   erreichbar und ruft `/api/auslastung` auf derselben Domain ab.
-
----
-
-## Variante B: VPS / Docker
-
-## 0. Zuerst: API-Key rotieren 🔐
-
-Der bisher genutzte Key ist im Klartext durch einen Chat gelaufen — den **vorher neu generieren**:
-Developer Portal → deine Application → API-Key regenerieren. Den neuen Key nur in die `.env` (Schritt 2).
-
----
-
-## 1. Dateien auf den VPS
+## Lokal entwickeln
 
 ```bash
-scp -r fitinn-auslastung/ user@srv1309486:/opt/
-# oder per git clone in ein privates Repo (.env ist via .gitignore ausgeschlossen)
-cd /opt/fitinn-auslastung
+git clone <repo> && cd anwesend
+cp .env.example .env        # Werte eintragen – NIEMALS committen
+npm start                   # Node-Server (server.js) für das Auslastungs-Widget
+# Frontends sind statische Dateien – z. B.:  npx serve .
 ```
 
-## 2. `.env` anlegen
+Die meisten `api/`-Funktionen brauchen echte Zugangsdaten (Magicline, Redis).
+Ohne sie melden die Module sauber „not_configured"/„unavailable" statt zu
+crashen. Für UI-Arbeit genügt es, die HTML-Dateien statisch auszuliefern und
+`/api/**` im Browser/Playwright zu mocken (so arbeiten auch die E2E-Tests).
+
+## Tests & Checks
 
 ```bash
-cp .env.example .env
-nano .env          # ML_API_KEY = neuer Key, MAX_CAPACITY=80
+npm run lint    # Syntax-Check aller JS-Dateien + JSON-Konfigurationen
+npm run scan    # Secret-Scan über alle versionierten Dateien
+npm test        # Node-Harnesses in tests/ (ohne Netz, ohne echte Secrets)
+npm run check   # alles zusammen – läuft auch in GitHub Actions (ci.yml)
 ```
 
-## 3. Container starten
+Abgedeckt u. a.: Widerruf (Erfolg/Fehler/Timeout), Nummern-Login-Härtung,
+Server-Logout + Session-Revoke, Push-Token-Rebinding, Check-in-Prüfungen,
+Team-Capabilities (403-Fälle), Cron-Auth (fehlend/falsch/gültig),
+Security-Header, Feature-Flags/Demo-Opt-in.
 
-```bash
-docker compose up -d --build
-```
+## Deployment (Vercel)
 
-Lokal testen:
+1. Repo mit Vercel verbinden (Preset *Other*, kein Build-Command).
+2. Environment-Variablen setzen — vollständige, kommentierte Liste in
+   **[.env.example](.env.example)**. Minimum für den Mitglieder-Bereich:
+   `ML_TENANT`, `ML_API_KEY`, `KV_REST_API_URL`, `KV_REST_API_TOKEN`;
+   für interne Crons **Pflicht**: `CRON_SECRET` (fail-closed, siehe
+   docs/SECURITY.md §3).
+3. Routing/Sicherheits-Header kommen aus `vercel.json` (`/` → Mitglieder,
+   `/team` → Team-Backend, `/auslastung` + `/widget.html` → Auslastung).
+4. Cron-Jobs (Nudges, Erinnerungen, Historie) rufen die internen Endpunkte
+   mit `Authorization: Bearer $CRON_SECRET` auf.
 
-```bash
-curl http://127.0.0.1:8080/api/auslastung
-# -> {"count":5,"max":80,"percent":6,"status":"low",...}
-```
+### Feature-Flags (Staging → Produktion)
 
-## 4. Öffentlich erreichbar + HTTPS
+`/api/app-info` liefert `features:{ern,social,demo}` aus `FEATURE_ERN`,
+`FEATURE_SOCIAL`, `FEATURE_DEMO` (jeweils `1` = an, alles andere = aus).
+Demo-Daten (`FEATURE_DEMO`, `SOCIAL_DEMO` = Demo-Buddy „TEST99") sind in
+Produktion **standardmäßig deaktiviert** und nur fürs Staging gedacht.
 
-DNS-A-Record anlegen: `auslastung.fit-inn-trier.de` → IP des VPS.
+## Live-Auslastung (ursprünglicher Kern)
 
-**Variante Caddy** (automatisches Let's-Encrypt-Zertifikat) — im `Caddyfile`:
-
-```caddy
-auslastung.fit-inn-trier.de {
-    reverse_proxy 127.0.0.1:8080
-}
-```
-
-**Variante nginx** — Server-Block:
-
-```nginx
-server {
-    server_name auslastung.fit-inn-trier.de;
-    location / {
-        proxy_pass http://127.0.0.1:8080;
-    }
-}
-# danach: certbot --nginx -d auslastung.fit-inn-trier.de
-```
-
-Prüfen:
-
-```bash
-curl https://auslastung.fit-inn-trier.de/api/auslastung
-```
-
-## 5. Widget einbinden
-
-In `widget.html` ganz unten im `CONFIG`-Block die Proxy-URL eintragen:
-
-```js
-endpoint: 'https://auslastung.fit-inn-trier.de/api/auslastung',
-```
-
-Einbetten:
-- **Sanity / Next.js-Seite:** den `.fi-auslastung`-Block + `<style>` übernehmen, oder die ganze Datei als `<iframe src="…/widget.html">`.
-- **Onepage / Signage:** als Custom-HTML-Block bzw. Vollbild-Seite. Für Großbildschirme die Klasse `fi-auslastung--signage` am Element ergänzen.
-
----
-
-## Antwort-Format
+Ein kleiner Proxy hält den Magicline-Key serverseitig, fragt höchstens alle
+45 s ab und liefert eine **anonyme, aggregierte** Zahl:
 
 ```json
-{
-  "count": 5,          // aktuell anwesende Personen
-  "max": 80,           // Maximalwert für die Ampel
-  "percent": 6,        // count / max
-  "status": "low",     // low | medium | high  -> Ampel grün/gelb/rot
-  "rawCapacity": null, // was Magicline selbst meldet
-  "updatedAt": "2026-06-26T…Z",
-  "cached": true       // aus dem 45s-Cache?
-}
+{ "count": 5, "max": 80, "percent": 6, "status": "low", "updatedAt": "…", "cached": true }
 ```
 
-Ampel-Schwellen: grün < 50 % · gelb 50–79 % · rot ≥ 80 %. Anpassbar über `YELLOW_AT` / `RED_AT` in der `.env`.
+- Ampel-Schwellen über `YELLOW_AT`/`RED_AT`; Kapazität über `MAX_CAPACITY`.
+- „Typische Auslastung": `/api/record` (Cron, **Secret Pflicht**) schreibt
+  Slots nach Redis (`typical:sum/cnt:{wd}`), `/api/typical` liefert die
+  Kurve; gleitender Schnitt via `TYPICAL_MAX_SAMPLES`; einmaliger Seed aus
+  `data/baseline.json` über `/api/seed` (Secret Pflicht).
+- Alternativ als Docker/VPS-Variante über `server.js` (`PORT`, Reverse-Proxy
+  mit HTTPS davor).
 
-## Typische Auslastung / „Stoßzeiten"
+## Sicherheit / DSGVO (Kurzfassung)
 
-Die Magicline API liefert **nur den aktuellen Live-Wert** — keine historische
-„so voll ist es normalerweise um diese Zeit"-Kurve. Diese bauen wir selbst auf,
-indem wir den Live-Wert regelmäßig mitschreiben und pro Wochentag + 30-Min-Slot
-mitteln (wie Google Maps' „Stoßzeiten"). Gespeichert werden **nur anonyme,
-aggregierte Durchschnittszahlen**.
-
-**Bausteine:**
-
-1. **Speicher — Upstash Redis** (Vercel → Storage → Upstash → Redis → mit Projekt
-   verbinden). Setzt automatisch `KV_REST_API_URL` + `KV_REST_API_TOKEN`.
-2. **Taktgeber — GitHub Actions** (`.github/workflows/record.yml`): ruft alle
-   15 min `/api/record` auf. Läuft nur auf dem Default-Branch des Repos.
-3. **Endpunkte:**
-   - `GET /api/record` — schreibt den aktuellen Wert in die Historie (vom Cron).
-   - `GET /api/typical` — liefert „normal um diese Zeit" + Tageskurve fürs Widget.
-
-**Datenmodell (Redis):** je Wochentag zwei Hashes `typical:sum:{wd}` und
-`typical:cnt:{wd}` mit Feld = Slot (0–47). Durchschnitt = `sum / cnt`.
-
-**Live-Daten haben Priorität (gleitender Speicher):** Ab `TYPICAL_MAX_SAMPLES`
-Messungen pro Slot (Standard 40 ≈ ~20 Wochen) läuft ein gleitender Schnitt
-(EWMA) — jede neue Live-Messung verdrängt den ältesten Anteil. So spiegelt die
-Kurve immer die jüngere Realität wider und die historische Basis verblässt über
-einige Monate. Niedrigerer Wert = schnellere Anpassung an Veränderungen.
-
-**Optionaler Schutz:** Repo-Secret `RECORD_SECRET` anlegen **und** dieselbe
-Env-Variable in Vercel setzen — dann akzeptiert `/api/record` nur Aufrufe mit
-passendem `Authorization: Bearer …`. Ohne Secret ist der Endpunkt offen
-(für den anonymen Zähl-Zweck unkritisch).
-
-Nach ~1 Woche entsteht eine brauchbare Kurve, nach ~3–4 Wochen eine solide.
-Das Widget zeigt dann „Jetzt: X · Normal um diese Zeit: ~Y" plus ein kleines
-Tagesdiagramm. Zeitzone via `STUDIO_TZ` (Standard `Europe/Berlin`).
-
-**Historische Basis (Seed):** Aus einem Check-in-Export lässt sich eine
-Startkurve vorab eintragen. Die anonymen Aggregate (Ø Anwesende je
-Wochentag+Slot) liegen in `data/baseline.json`; der Endpunkt `/api/seed?confirm=1`
-schreibt sie **einmalig** in den Speicher (idempotent — zweiter Aufruf tut nichts,
-`&force=1` überschreibt). Das Gewicht (`weight` in der JSON) bestimmt, wie schnell
-die Live-Daten die Basis überschreiben — bewusst niedrig gehalten. Im Export
-landen **nur Aggregate**, keine personenbezogenen Daten.
-
-## Sicherheit / DSGVO
-
-- Ausgeliefert wird nur eine **anonyme, aggregierte Zahl** — keine personenbezogenen Daten.
-- `.env` niemals committen (ist in `.gitignore`).
-- Magicline wird durch den Cache geschont (Schutz vor Rate-Limit / 429).
-- Bei kurzem Magicline-Aussetzer liefert der Proxy den letzten bekannten Wert (`stale: true`) statt zu crashen.
+- Alle Zugriffs- und Berechtigungsprüfungen serverseitig; Client trifft
+  keine Sicherheitsentscheidungen ([docs/SECURITY.md](docs/SECURITY.md)).
+- Datenminimierung gegenüber der KI: nur Vorname + fachlich nötige,
+  aggregierte Daten – kein Nachname, keine Mitgliedsnummer, keine
+  Bank-/Adressdaten.
+- Private API-Antworten mit `Cache-Control: private, no-store`; global
+  `nosniff` + Referrer-Policy; CSP zunächst Report-Only (Begründung und
+  Fahrplan in docs/SECURITY.md §6).
+- `.env` ist gitignored; `.env.example` enthält keine echten Werte; CI
+  führt einen Secret-Scan aus.
+- Auslastungs-Widget liefert ausschließlich anonyme Aggregate.
