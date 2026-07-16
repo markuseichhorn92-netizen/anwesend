@@ -41,6 +41,7 @@ const Ent = require('../../lib/entitlements');
 const Coaching = require('../../lib/coaching');
 const Stripe = require('../../lib/stripe');
 const Recipes = require('../../lib/recipes');
+const Quota = require('../../lib/nutriquota');
 
 // Startbestand der studioweiten Rezept-Bibliothek (die 8 kuratierten Rezepte aus der App).
 // weightG = ungefähres Gewicht EINER Portion (für Nutri-Score); fruitVegPct = Anteil Obst/Gemüse/
@@ -78,6 +79,8 @@ function ensureSeed() { if (!_seedPromise) _seedPromise = Recipes.seedOnce(ERN_S
 
 // Freemium: KI-Funktionen sind Premium. Freundliche Meldung fürs Upgrade.
 const PREMIUM_MSG = 'Das ist eine Premium-Funktion (KI). Teste Premium 7 Tage gratis – danach jederzeit kündbar.';
+// Basic-Gratis-Kontingent für diesen Monat ist aufgebraucht.
+const QUOTA_MSG = 'Dein Gratis-Kontingent für FINN ist diesen Monat aufgebraucht. Mit Premium nutzt du FINN unbegrenzt – 7 Tage gratis testen.';
 
 const PKEY = (id) => 'nutri:p:' + String(id);
 const DKEY = (id, d) => 'nutri:d:' + String(id) + ':' + d;
@@ -295,6 +298,9 @@ async function buildState(id, profile, forDate) {
   const streak = await computeStreak(id, todayYMD);
   const fasting = await loadFasting(id);
   const tier = Ent.publicTier(await Ent.getEntitlement(id));   // Premium-Status für die UI (Freemium)
+  // Gratis-Kontingent (Basic) für den aktuellen Monat – die UI zeigt „Noch X von 5".
+  const qMonth = Quota.monthOf(todayYMD);
+  const qUsed = tier.premium ? 0 : await Quota.getUsed(id, qMonth);
   // Preis/Trial dynamisch (aus Stripe, gecacht) – die UI zeigt es statt hartcodierter Copy.
   let priceInfo = null; try { priceInfo = await Stripe.getPriceInfo(); } catch (e) {}
   return {
@@ -309,6 +315,7 @@ async function buildState(id, profile, forDate) {
     premiumCancelAt: tier.cancelAtPeriodEnd || false,
     premiumComp: tier.comp || false, premiumPermanent: tier.permanent || false,
     premiumInfo: { price: priceInfo, trialDays: Stripe.TRIAL_DAYS, pk: Stripe.PUBLISHABLE || '' },
+    quota: Quota.publicQuota(qUsed, tier.premium, qMonth),
   };
 }
 
@@ -376,36 +383,54 @@ module.exports = async function handler(req, res) {
   }
 
   const profile = await loadProfile(id);
-  // Freemium-Gate: KI-Funktionen nur mit Premium. Serverseitig (Client-Gates sind umgehbar).
+  // Freemium-Gate: KI-Funktionen kosten. Basic hat pro Monat ein Gratis-Kontingent
+  // (lib/nutriquota), danach greift Premium. Premium = unbegrenzt. Alles serverseitig.
   const premium = Ent.isPremium(await Ent.getEntitlement(id));
+  const monthKey = Quota.monthOf(date);
   const denyPremium = function () { res.statusCode = 200; res.end(JSON.stringify({ ok: false, error: 'premium_required', message: PREMIUM_MSG })); return true; };
+  // Vor einer KI-Aktion: Premium darf immer; Basic nur, solange Kontingent übrig ist
+  // (verbraucht NICHT – Abbuchung erst nach Erfolg via chargeAI). Sonst 402-artige Meldung.
+  const gateAI = async function () {
+    if (premium) return true;
+    if (await Quota.canUse(id, monthKey)) return true;
+    res.statusCode = 200; res.end(JSON.stringify({ ok: false, error: 'premium_required', quota: 'exhausted', message: QUOTA_MSG }));
+    return false;
+  };
+  // Nach erfolgreicher KI-Aktion 1 vom Gratis-Kontingent abbuchen (Premium: nie). Gibt
+  // die aktuelle, client-sichere Kontingent-Info zurück (für das „Noch X"-Badge).
+  const chargeAI = async function () {
+    const used = premium ? 0 : await Quota.incr(id, monthKey);
+    return Quota.publicQuota(used, premium, monthKey);
+  };
 
   // ── Punkt 1: KI-SCHÄTZUNG per Freitext – wird NICHT gespeichert, nur zur Bestätigung ──
   if (action === 'estimate' || action === 'log') {
-    if (!premium && denyPremium()) return;
+    if (!(await gateAI())) return;
     const text = cleanStr(body.text, 500);
     if (text.length < 2) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'empty', message: 'Bitte beschreibe kurz, was du gegessen hast.' })); }
     if (!AI.hasAI) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'no_ai', message: 'FINN ist gerade nicht verfügbar.' })); }
     if (!(await M.rateLimit('nutri-log:' + id, 40, 3600))) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'rate_limited', message: 'Kurz durchatmen – gleich wieder versuchen.' })); }
     const est = await AI.estimateFood(text);
     if (!est.ok) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'ai_failed', message: 'FINN kann gerade nicht schätzen. Versuch es gleich nochmal.' })); }
+    const quota = await chargeAI();
     const meal = mealForHour(hour);
     const items = (est.items || []).map(function (it) { return sanitizeEntry({ name: it.name, portion: it.portion, kcal: it.kcal, p: it.p, c: it.c, f: it.f, meal: meal, estimated: true }, hour); });
-    res.statusCode = 200; return res.end(JSON.stringify({ ok: true, items: items, meal: meal, estimated: true, message: items.length ? '' : 'Ich konnte kein Lebensmittel erkennen – beschreib es etwas genauer.' }));
+    res.statusCode = 200; return res.end(JSON.stringify({ ok: true, items: items, meal: meal, estimated: true, quota: quota, message: items.length ? '' : 'Ich konnte kein Lebensmittel erkennen – beschreib es etwas genauer.' }));
   }
 
   // ── Punkt 1: KI-SCHÄTZUNG per FOTO – wird NICHT gespeichert, nur zur Bestätigung ──
   if (action === 'estimate-photo' || action === 'log-photo') {
-    if (!premium && denyPremium()) return;
+    if (!(await gateAI())) return;
     if (!AI.hasAI) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'no_ai', message: 'FINN ist gerade nicht verfügbar.' })); }
     if (!(await M.rateLimit('nutri-photo:' + id, 20, 3600))) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'rate_limited', message: 'Kurz durchatmen – gleich wieder versuchen.' })); }
     const b64 = String(body.base64 || '');
     if (b64.length < 100 || b64.length > 8000000) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'bad_photo', message: 'Kein gültiges Foto empfangen.' })); }
     const est = await AI.estimateFoodPhoto(b64, body.mediaType);
     if (!est.ok) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'ai_failed', message: 'FINN kann das Foto gerade nicht auswerten. Versuch es gleich nochmal.' })); }
+    const quota = await chargeAI();
     const meal = mealForHour(hour);
     const items = (est.items || []).map(function (it) { return sanitizeEntry({ name: it.name, portion: it.portion, kcal: it.kcal, p: it.p, c: it.c, f: it.f, meal: meal, estimated: true }, hour); });
-    res.statusCode = 200; return res.end(JSON.stringify({ ok: true, items: items, meal: meal, estimated: true, message: items.length ? '' : 'Auf dem Foto konnte ich kein Lebensmittel erkennen – versuch es mit einer Texteingabe.' }));
+    res.statusCode = 200; return res.end(JSON.stringify({ ok: true, items: items, meal: meal, estimated: true, quota: quota, message: items.length ? '' : 'Auf dem Foto konnte ich kein Lebensmittel erkennen – versuch es mit einer Texteingabe.' }));
   }
 
   // ── Punkt 1: bestätigte Mahlzeit SPEICHERN (jeder Wert serverseitig geprüft & gedeckelt) ──
@@ -546,7 +571,7 @@ module.exports = async function handler(req, res) {
 
   // ── FINN generiert Rezepte -> in die studioweite Bibliothek + Nutri-Score ──
   if (action === 'recipes') {
-    if (!premium && denyPremium()) return;
+    if (!(await gateAI())) return;
     await ensureSeed();   // Startbestand einmalig übernehmen (idempotent)
     if (!AI.hasAI) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'FINN ist gerade nicht verfügbar – schau in der Rezept-Bibliothek vorbei.' })); }
     if (!(await M.rateLimit('nutri-recipes:' + id, 20, 3600))) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'Kurz durchatmen – gleich wieder versuchen.' })); }
@@ -585,7 +610,8 @@ module.exports = async function handler(req, res) {
         rec.meal = labelToKey[rawLabel] || (mealsForAI[i] ? mealsForAI[i].key : null);
       });
     }
-    res.statusCode = 200; return res.end(JSON.stringify({ ok: true, recipes: saved }));
+    const quota = await chargeAI();
+    res.statusCode = 200; return res.end(JSON.stringify({ ok: true, recipes: saved, quota: quota }));
   }
 
   // ── Studioweite Rezept-Bibliothek durchstöbern/suchen (wächst mit jeder Generierung) ──
@@ -606,7 +632,7 @@ module.exports = async function handler(req, res) {
       try { require('../../lib/handled').record('system', id, 'nutri-safety'); } catch (e) {}
       res.statusCode = 200; return res.end(JSON.stringify({ ok: true, answer: safe, safety: true }));
     }
-    if (!premium && denyPremium()) return;   // Sicherheits-Antwort läuft immer, KI-Reply nur mit Premium
+    if (!(await gateAI())) return;   // Sicherheits-Antwort läuft immer, KI-Reply kostet Kontingent/Premium
     if (!AI.hasAI) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'FINN ist gerade nicht verfügbar.' })); }
     if (!(await M.rateLimit('nutri-coach:' + id, 30, 3600))) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'Kurz durchatmen – gleich wieder versuchen.' })); }
     let m = null; try { m = await M.getMember(id); } catch (e) {}
@@ -621,12 +647,13 @@ module.exports = async function handler(req, res) {
       { firstName: (m && m.firstName) || '', goal: GOALS[profile && profile.goal] || 'ausgewogen', kcalTarget: t.kcal, protein: t.protein, eatenKcal: totals.kcal, eatenP: totals.p, under18: !!t.under18 },
       history, question);
     if (r.ok) { try { require('../../lib/handled').record('ai', id, 'nutri-chat'); } catch (e) {} }
-    res.statusCode = 200; return res.end(JSON.stringify(r.ok ? { ok: true, answer: r.answer } : { ok: false, message: 'Da komme ich gerade nicht weiter. Frag mich gleich nochmal.' }));
+    const cq = r.ok ? await chargeAI() : null;
+    res.statusCode = 200; return res.end(JSON.stringify(r.ok ? { ok: true, answer: r.answer, quota: cq } : { ok: false, message: 'Da komme ich gerade nicht weiter. Frag mich gleich nochmal.' }));
   }
 
   // ── FINN bewertet die Mahlzeit, die man gerade eintragen will (Einzel-Items + Gesamt) ──
   if (action === 'evaluate-meal') {
-    if (!premium && denyPremium()) return;
+    if (!(await gateAI())) return;
     if (!AI.hasAI) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'no_ai', message: 'FINN ist gerade nicht verfügbar.' })); }
     const items = (Array.isArray(body.items) ? body.items.slice(0, 12) : []).map(function (it) {
       it = it || {}; return { name: cleanStr(it.name, 80) || 'Eintrag', kcal: clamp(it.kcal, 0, 5000, 0), p: clamp(it.p, 0, 500, 0), c: clamp(it.c, 0, 700, 0), f: clamp(it.f, 0, 500, 0) };
@@ -641,8 +668,9 @@ module.exports = async function handler(req, res) {
       kcalTarget: t.kcal, protein: t.protein, eatenKcal: totals.kcal, eatenP: totals.p, under18: !!t.under18, items: items,
     });
     if (r.ok) { try { require('../../lib/handled').record('ai', id, 'nutri-mealeval'); } catch (e) {} }
+    const eq = r.ok ? await chargeAI() : null;
     res.statusCode = 200; return res.end(JSON.stringify(r.ok
-      ? { ok: true, rating: r.rating, nutriScore: r.nutriScore || null, summary: r.summary, good: r.good || [], items: r.items, tips: r.tips }
+      ? { ok: true, rating: r.rating, nutriScore: r.nutriScore || null, summary: r.summary, good: r.good || [], items: r.items, tips: r.tips, quota: eq }
       : { ok: false, error: r.error || 'ai_failed', message: 'Da komme ich gerade nicht weiter. Versuch es gleich nochmal.' }));
   }
 
@@ -686,7 +714,7 @@ module.exports = async function handler(req, res) {
 
   // ── Wochenplan generieren (FINN) + Einkaufsliste ableiten ──
   if (action === 'plan-generate') {
-    if (!premium && denyPremium()) return;
+    if (!(await gateAI())) return;
     if (!(await M.rateLimit('nutri-plan:' + id, 10, 3600))) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'Kurz durchatmen – gleich wieder versuchen.' })); }
     const t = targetsFor(profile || {});
     const r = await AI.nutritionWeekPlan({ goal: GOALS[profile && profile.goal] || 'ausgewogen', kcalTarget: t.kcal, protein: t.protein, diet: (profile && profile.diet) || 'omnivor' });
@@ -694,7 +722,8 @@ module.exports = async function handler(req, res) {
     const plan = { days: r.days, createdAt: Date.now() };
     const shop = (r.shopping || []).map(function (s, i) { return { i: i, name: s.name, amount: s.amount, category: s.category || 'Sonstiges', checked: false }; });
     try { await redisPipeline([['SET', PLANKEY(id), JSON.stringify(plan)], ['SET', SHOPKEY(id), JSON.stringify(shop)]]); } catch (e) {}
-    res.statusCode = 200; return res.end(JSON.stringify({ ok: true, plan: plan, shopping: shop }));
+    const quota = await chargeAI();
+    res.statusCode = 200; return res.end(JSON.stringify({ ok: true, plan: plan, shopping: shop, quota: quota }));
   }
 
   // ── Plan + Einkaufsliste laden ──
