@@ -23,16 +23,8 @@ const baseline = require('../data/baseline.json');
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json');
 
-  const secret = process.env.SEED_SECRET || process.env.RECORD_SECRET;
-  if (secret) {
-    const auth = req.headers['authorization'] || '';
-    const u = new URL(req.url, 'http://localhost');
-    const provided = auth.replace(/^Bearer\s+/i, '') || u.searchParams.get('secret') || '';
-    if (provided !== secret) {
-      res.statusCode = 401;
-      return res.end(JSON.stringify({ error: 'unauthorized' }));
-    }
-  }
+  // Secret verpflichtend (503 ohne Konfiguration), nur Authorization-Header.
+  if (!require('../lib/cronAuth').requireCronAuth(req, res, { extraEnvs: ['SEED_SECRET'] })) return;
 
   if (!hasStore) {
     res.statusCode = 503;

@@ -11,17 +11,12 @@
  */
 
 const { run } = require('../lib/nudge');
+const { requireCronAuth } = require('../lib/cronAuth');
 
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json');
 
-  const secret = process.env.RECORD_SECRET;
-  if (secret) {
-    const auth = req.headers['authorization'] || '';
-    const url = new URL(req.url, 'http://localhost');
-    const provided = auth.replace(/^Bearer\s+/i, '') || url.searchParams.get('secret') || '';
-    if (provided !== secret) { res.statusCode = 401; return res.end(JSON.stringify({ error: 'unauthorized' })); }
-  }
+  if (!requireCronAuth(req, res)) return;   // Secret verpflichtend, nur Authorization-Header
 
   try {
     const r = await run({ force: true });

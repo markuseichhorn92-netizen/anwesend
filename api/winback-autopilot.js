@@ -7,7 +7,7 @@
  * und kümmert sich – im Rahmen – um die nächste Runde.
  *
  * Sicherheits-Stufen (bewusst konservativ):
- *   1. Zugang nur mit Secret (WINBACK_SECRET oder RECORD_SECRET) bzw. Vercel-Cron.
+ *   1. Zugang nur mit Secret (CRON_SECRET/RECORD_SECRET/WINBACK_SECRET) als Authorization-Header.
  *   2. Läuft nur, wenn der Rahmen AKTIV und Auto-Pilot AN ist (lib/retention).
  *   3. STANDARD = sicherer Modus: die KI antwortet NICHT selbst, sondern legt
  *      dem Team eine Aufgabe „Rückhol-Antwort fällig" an (nichts geht ungeprüft
@@ -17,7 +17,7 @@
  * So kann man den Auto-Piloten erst „trocken" beobachten und dann scharf schalten.
  *
  * Einplanen (z. B. GitHub Action alle 30 Min):
- *   GET /api/winback-autopilot?secret=<WINBACK_SECRET>
+ *   GET /api/winback-autopilot   (Authorization: Bearer <CRON_SECRET>)
  */
 
 const R = require('../lib/retention');
@@ -28,17 +28,12 @@ const AI = require('../lib/ai');
 const MAX_PER_RUN = 8;
 const REPLY_WINDOW_MS = 21 * 86400000;   // nur Angebote der letzten ~3 Wochen
 
-function authorized(req) {
-  const secret = process.env.WINBACK_SECRET || process.env.RECORD_SECRET;
-  if (req.headers['x-vercel-cron']) return true;            // von Vercel-Cron ausgelöst
-  if (!secret) return false;                                 // ohne Secret bewusst gesperrt
-  let provided = '';
-  try {
-    const url = new URL(req.url, 'http://x');
-    provided = (req.headers['authorization'] || '').replace(/^Bearer\s+/i, '') || url.searchParams.get('secret') || '';
-  } catch (e) {}
-  return provided === secret;
-}
+// Auth zentral über lib/cronAuth: Secret verpflichtend (503 ohne Konfiguration),
+// AUSSCHLIESSLICH per Authorization-Header, timing-sicher. Der frei setzbare
+// Header `x-vercel-cron` wird bewusst NICHT mehr als Nachweis akzeptiert –
+// Vercel Cron sendet bei gesetzter Env CRON_SECRET den passenden
+// Authorization-Header automatisch.
+const { requireCronAuth } = require('../lib/cronAuth');
 
 // Letzte Mitglieds-Nachricht in irgendeinem Vorgang, neuer als seit.
 async function memberRepliedSince(memberId, since) {
@@ -77,7 +72,7 @@ async function draftReply(frame, offer, reply) {
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json');
   res.setHeader('Cache-Control', 'no-store');
-  if (!authorized(req)) { res.statusCode = 401; return res.end(JSON.stringify({ ok: false, error: 'unauthorized' })); }
+  if (!requireCronAuth(req, res, { extraEnvs: ['WINBACK_SECRET'] })) return;
 
   const frame = await R.getFrame();
   if (!frame.active || !frame.autopilot) {

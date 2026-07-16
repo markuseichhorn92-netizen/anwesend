@@ -65,11 +65,11 @@ module.exports = async function handler(req, res) {
   const send = function (status, html) { res.statusCode = status; res.setHeader('Content-Type', 'text/html; charset=utf-8'); res.setHeader('Cache-Control', 'no-store'); res.end(html); };
   const sendJson = function (status, obj) { res.statusCode = status; res.setHeader('Content-Type', 'application/json'); res.setHeader('Cache-Control', 'no-store'); res.end(JSON.stringify(obj)); };
 
-  // ── Auth ──
+  // ── Auth ── Secret verpflichtend, AUSSCHLIESSLICH per Authorization-Header
+  // (Query-Parameter landen in Logs/Historie und werden nicht mehr akzeptiert).
   if (!SECRET) { return wantJson ? sendJson(503, { ok: false, error: 'not_configured' }) : send(503, page_('Warmup', '<div class="big">🔒</div><div class="muted">Nicht eingerichtet: bitte <b>OFF_WARMUP_KEY</b> als Environment-Variable setzen.</div>')); }
-  const auth = (req.headers['authorization'] || '').replace(/^Bearer\s+/i, '');
-  const provided = auth || u.searchParams.get('key') || u.searchParams.get('secret') || '';
-  if (provided !== SECRET) { return wantJson ? sendJson(401, { ok: false, error: 'unauthorized' }) : send(401, page_('Warmup', '<div class="big">⛔</div><div class="muted">Falscher oder fehlender Schlüssel.</div>')); }
+  const provided = (req.headers['authorization'] || '').replace(/^Bearer\s+/i, '').trim();
+  if (!provided || !require('../../lib/cronAuth').safeEqual(provided, SECRET)) { return wantJson ? sendJson(401, { ok: false, error: 'unauthorized' }) : send(401, page_('Warmup', '<div class="big">⛔</div><div class="muted">Falscher oder fehlender Schlüssel (Authorization: Bearer &lt;key&gt;).</div>')); }
 
   if (!hasStore) { return wantJson ? sendJson(503, { ok: false, error: 'no_store' }) : send(503, page_('Warmup', '<div class="big">⚠️</div><div class="muted">Kein Speicher (Upstash/KV) verbunden.</div>')); }
   if (!OFF.hasContact) { return wantJson ? sendJson(503, { ok: false, error: 'no_contact' }) : send(503, page_('Warmup', '<div class="big">✉️</div><div class="muted">Bitte <b>OPENFOODFACTS_CONTACT_EMAIL</b> setzen (echte Adresse).</div>')); }
