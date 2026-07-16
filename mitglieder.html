@@ -262,6 +262,10 @@
   @keyframes ernpulse{0%,100%{opacity:1}50%{opacity:.35}}
   @keyframes scanLine{from{transform:translateY(-120px)}to{transform:translateY(120px)}}
   @keyframes micRing{0%{transform:scale(.85);opacity:.6}100%{transform:scale(1.6);opacity:0}}
+  @keyframes ernRing2{0%{transform:scale(.8);opacity:.5}100%{transform:scale(1.9);opacity:0}}
+  @keyframes ernShimmer{0%{transform:translateX(-120%)}100%{transform:translateX(320%)}}
+  @keyframes ernBounce{0%,80%,100%{transform:translateY(0);opacity:.35}40%{transform:translateY(-8px);opacity:1}}
+  @keyframes ernMsg{0%{opacity:0}4%{opacity:1}30%{opacity:1}34%{opacity:0}100%{opacity:0}}
   #ern_log,#ern_ask{transition:height .12s ease}
   .statRow{display:flex;gap:12px;overflow-x:auto;padding-bottom:4px;-webkit-overflow-scrolling:touch}
   .statRow .statCard{flex:0 0 76%;max-width:300px}
@@ -4073,9 +4077,22 @@
   function ernPlanQuizDefaults(){ return { meals:{fruehstueck:false,mittag:true,abend:true,snack:false}, days:1, diet:'egal', focus:{gesund:true,eiweissreich:false,schnell:false}, wish:'' }; }
   var ERN_QDAYS=[[1,'1 Tag'],[3,'3 Tage'],[5,'5 Tage'],[7,'1 Woche']];
   window.__ernQuizWish=function(v){ if(S.ernPlanQuiz) S.ernPlanQuiz.wish=String(v||''); };
+  // Lade-Animation, während FINN plant: pulsierender FINN-Avatar, wechselnde Status-Texte,
+  // hüpfende Punkte und ein Shimmer-Balken. Reines CSS (keine Timer, render-sicher).
+  function ernPlanLoadingView(days){
+    var msgs=['FINN wählt passende Rezepte …','Berechnet Nährwerte & Nutri-Score …',((days||1)>1?'Verteilt die Mahlzeiten auf deine Tage …':'Stimmt Portionen auf dich ab …'),'Stellt deinen Plan zusammen …'];
+    var per=6.6, tot=per*msgs.length/1;   // jede Nachricht ~ein Fenster
+    var msgHtml='<div style="position:relative;height:20px;margin-top:16px">'+msgs.map(function(m,i){ return '<div style="position:absolute;inset:0;text-align:center;font-size:13px;font-weight:700;color:var(--text-2);opacity:0;animation:ernMsg '+(msgs.length*2.0)+'s '+(i*2.0)+'s infinite">'+esc(m)+'</div>'; }).join('')+'</div>';
+    var dots='<div style="display:flex;gap:8px;justify-content:center;margin-top:18px">'+[0,1,2].map(function(i){ return '<span style="width:10px;height:10px;border-radius:50%;background:'+ERN_G+';display:inline-block;animation:ernBounce 1.2s '+(i*0.16)+'s infinite"></span>'; }).join('')+'</div>';
+    var bar='<div style="height:8px;border-radius:6px;background:var(--surface-2);overflow:hidden;margin-top:18px;position:relative"><div style="position:absolute;top:0;left:0;bottom:0;width:42%;border-radius:6px;background:linear-gradient(90deg,transparent,'+ERN_G+',transparent);animation:ernShimmer 1.5s linear infinite"></div></div>';
+    var avatar='<div style="position:relative;width:88px;height:88px;margin:8px auto 0"><div style="position:absolute;inset:0;border-radius:50%;background:'+ERN_G+';opacity:.22;animation:micRing 1.9s ease-out infinite"></div><div style="position:absolute;inset:0;border-radius:50%;background:'+ERN_G+';opacity:.16;animation:ernRing2 1.9s ease-out .5s infinite"></div><div style="position:absolute;inset:14px;animation:ernpulse 1.9s ease-in-out infinite">'+ernFinnAvatar(60)+'</div></div>';
+    return '<div style="padding:16px 6px 12px;text-align:center">'+avatar+'<div style="font-size:16.5px;font-weight:900;color:var(--text);margin-top:16px">FINN plant für dich</div>'+msgHtml+dots+bar+'</div>';
+  }
   function ernPlanQuizSheet(){
     var q=S.ernPlanQuiz; if(!q) return '';
     var busy=S.ernPlanDraftBusy;
+    // Während der Generierung: Lade-Animation statt Formular (kein Abbrechen mitten im Call).
+    if(busy){ return '<div style="position:fixed;inset:0;background:rgba(4,20,24,.5);z-index:120;display:flex;align-items:flex-end;justify-content:center"><div style="width:100%;max-width:520px;background:var(--surface);border-radius:22px 22px 0 0;padding:20px 18px calc(28px + env(safe-area-inset-bottom));box-shadow:0 -12px 40px rgba(0,0,0,.28)"><div style="width:40px;height:4px;border-radius:2px;background:var(--border);margin:0 auto 6px"></div>'+ernPlanLoadingView(q.days)+'</div></div>'; }
     var mealCount=ERN_QMEALS.filter(function(m){ return q.meals[m[0]]; }).length;
     var chip=function(on,emoji,label,act,arg){ return '<button data-act="'+act+'" data-arg="'+arg+'" style="display:flex;align-items:center;gap:7px;border:1.5px solid '+(on?ERN_G:'var(--border)')+';background:'+(on?'rgba(15,122,74,.12)':'var(--surface)')+';color:'+(on?ERN_G:'var(--text)')+';border-radius:12px;padding:10px 13px;font-size:13.5px;font-weight:800;cursor:pointer">'+(emoji?'<span>'+emoji+'</span>':'')+esc(label)+(on?' <span style="color:'+ERN_G+'">✓</span>':'')+'</button>'; };
     var mealsHtml=ERN_QMEALS.map(function(m){ return chip(q.meals[m[0]],m[2],m[1],'ernPlanQuizMeal',m[0]); }).join('');
@@ -4337,7 +4354,7 @@
     var generator='<div style="background:linear-gradient(150deg,#0a4958,#0d5d6e);border-radius:20px;box-shadow:0 14px 34px rgba(4,33,40,.16);padding:18px;margin-bottom:14px;color:#fff">'+
       '<div style="display:flex;align-items:center;gap:11px;margin-bottom:13px"><span style="width:46px;height:46px;border-radius:14px;background:rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0">👨‍🍳</span><div style="flex:1;min-width:0"><div style="font-size:16px;font-weight:900">FINN kocht für dich</div><div style="font-size:12px;font-weight:600;color:#9fc7d0;margin-top:2px">Neue Rezepte passend zu deinem Ziel – mit Nährwerten &amp; Nutri-Score.</div></div></div>'+
       (ernQuotaPill(true)?'<div style="margin-bottom:11px">'+ernQuotaPill(true)+'</div>':'')+
-      '<button data-act="ernRecipes" '+(S.ernRecipesBusy?'disabled ':'')+'style="width:100%;padding:14px;border:none;border-radius:13px;background:#fff;color:#0a4958;font-weight:900;font-size:14.5px;cursor:pointer">'+(S.ernRecipesBusy?'FINN erstellt Rezepte …':'Rezepte vorschlagen lassen')+'</button>'+
+      '<button data-act="ernRecipes" '+(S.ernRecipesBusy?'disabled ':'')+'style="width:100%;padding:14px;border:none;border-radius:13px;background:#fff;color:#0a4958;font-weight:900;font-size:14.5px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:9px">'+(S.ernRecipesBusy?'<span style="width:17px;height:17px;border:2.5px solid rgba(10,73,88,.25);border-top-color:#0a4958;border-radius:50%;display:inline-block;animation:ernspin .7s linear infinite"></span>FINN erstellt Rezepte …':'Rezepte vorschlagen lassen')+'</button>'+
       '<div style="display:flex;gap:8px;margin-top:10px"><input id="ern_fridge" value="'+esc(S.ernFridge||'')+'" placeholder="Kühlschrank: z. B. Eier, Reis, Brokkoli" style="flex:1;border:none;border-radius:12px;padding:12px 14px;font-size:14px;font-weight:600;outline:none;color:#15171B;background:rgba(255,255,255,.92);font-family:inherit"/><button data-act="ernFridgeGo" '+(S.ernRecipesBusy?'disabled ':'')+'style="border:1.5px solid rgba(255,255,255,.5);border-radius:12px;background:transparent;color:#fff;font-weight:900;font-size:13.5px;padding:0 16px;cursor:pointer">'+(S.ernRecipesBusy?'…':'Los')+'</button></div></div>';
     // Rezept-Karte mit Nutri-Score-Chip + FINN-Sternen.
     var card=function(r,act,arg){ var ok=macrosOkR(r); var grade=nutriGrade(r); var kc=ok?(ernNum(r.kcal)+' kcal'+(r.minutes?' · '+r.minutes+'′':'')):'Nährwerte unvollständig';

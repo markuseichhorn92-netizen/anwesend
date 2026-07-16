@@ -142,6 +142,21 @@ function validDate(input, todayYMD) {
   return s < min ? min : s;
 }
 
+// Wie validDate, aber für den KOCH-PLAN: Zukunft ist erlaubt (man plant voraus),
+// gedeckelt auf 7 Tage zurück bis 21 Tage voraus. So landen Mehrtagespläne am
+// richtigen Tag statt alle auf „heute".
+function validPlanDate(input, todayYMD) {
+  const s = String(input || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return todayYMD;
+  const d = new Date(s + 'T12:00:00Z');
+  if (isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== s) return todayYMD;
+  const min = dayKeyMinus(todayYMD, 7);
+  const max = dayKeyMinus(todayYMD, -21);
+  if (s < min) return min;
+  if (s > max) return max;
+  return s;
+}
+
 // Ein Ernährungs-Eintrag aus (ggf. ungeprüften) Clientdaten – auf realistische
 // Grenzen begrenzt. Immer serverseitig verwenden, bevor gespeichert wird.
 function sanitizeEntry(raw, hour, keepId) {
@@ -802,7 +817,7 @@ module.exports = async function handler(req, res) {
   if (action === 'cookplan-add') {
     const cook = await loadCook(id);
     const rec = Recipes.normalizeRecipe(body.recipe || {}, body.recipe && body.recipe.source);
-    const when = validDate(body.date, date);
+    const when = validPlanDate(body.date, date);   // Koch-Plan darf in die Zukunft planen
     const servings = clamp(body.servings, 1, 12, rec.servings || 1);
     const item = {
       id: newEntryId(),
@@ -830,7 +845,7 @@ module.exports = async function handler(req, res) {
     const items = Array.isArray(body.items) ? body.items.slice(0, 20) : [];
     items.forEach(function (raw) {
       raw = raw || {}; const rec = Recipes.normalizeRecipe(raw.recipe || {}, (raw.recipe && raw.recipe.source));
-      const when = validDate(raw.date, date);
+      const when = validPlanDate(raw.date, date);   // Koch-Plan darf in die Zukunft planen
       const servings = clamp(raw.servings, 1, 12, rec.servings || 1);
       const rawMeal = String(raw.meal || (raw.recipe && raw.recipe.meal) || '');
       cook.items.unshift({
