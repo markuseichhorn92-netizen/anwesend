@@ -32,12 +32,14 @@ module.exports = async function handler(req, res) {
   }
   if (req.method !== 'POST') { res.statusCode = 405; return res.end(JSON.stringify({ ok: false, error: 'method_not_allowed' })); }
 
-  if (!(await M.rateLimit('social:' + id, 60, 3600))) {
-    res.statusCode = 429; return res.end(JSON.stringify({ ok: false, error: 'rate_limited', message: 'Zu viele Aktionen – bitte kurz warten.' }));
-  }
   const body = (await M.readBody(req)) || {};
   const action = String(body.action || '');
   const buddyId = body.buddyId != null ? String(body.buddyId) : '';
+  // Chat darf häufiger sein als Verbinde-/Verwaltungs-Aktionen.
+  const heavy = (action === 'dm-send');
+  if (!(await M.rateLimit(heavy ? ('social:dm:' + id) : ('social:' + id), heavy ? 240 : 60, 3600))) {
+    res.statusCode = 429; return res.end(JSON.stringify({ ok: false, error: 'rate_limited', message: 'Zu viele Aktionen – bitte kurz warten.' }));
+  }
 
   try {
     if (action === 'enable') {
@@ -64,6 +66,9 @@ module.exports = async function handler(req, res) {
     if (action === 'remove-buddy') { await Social.removeBuddy(id, buddyId); return j(await Social.snapshot(id)); }
     if (action === 'block') { await Social.block(id, buddyId); return j(await Social.snapshot(id)); }
     if (action === 'unblock') { await Social.unblock(id, buddyId); return j(await Social.snapshot(id)); }
+    if (action === 'dm-thread') { return j(await Social.getDm(id, buddyId)); }
+    if (action === 'dm-send') { return j(await Social.sendDm(id, buddyId, body.text)); }
+    if (action === 'report') { await Social.report(id, buddyId, body.reason); return j(await Social.snapshot(id)); }
     return j({ ok: false, error: 'unknown_action' });
   } catch (e) {
     return j({ ok: false, error: 'server_error', message: 'Etwas ist schiefgelaufen – bitte erneut.' });

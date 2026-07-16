@@ -561,7 +561,7 @@
     if(s==='checkins'||s==='fort') loadCheckins();   // immer frisch: Studio-Check-ins vom Band erscheinen sofort
     if(ERN_ON&&(s==='home'||s==='fort')) loadNutri();   // Ernährungs-Vitalpunkte für Startseite/Fortschritt frisch halten
     if(SOCIAL_ON&&(s==='home'||s==='profil')) loadSocial();   // Trainingspartner-Snapshot für Startseite/Profil
-    if(s==='social'){ S.socMsg=''; S.socErr=false; S.socBusy=false; S.socCopied=false; if(window.__socBuddy){ S.socCode=window.__socBuddy; window.__socBuddy=null; } loadSocial(); }
+    if(s==='social'){ S.socMsg=''; S.socErr=false; S.socBusy=false; S.socCopied=false; S.socChat=null; DATA.socDm=null; if(window.__socBuddy){ S.socCode=window.__socBuddy; window.__socBuddy=null; } loadSocial(); }
     if(s==='blog'){ S.blogSel=null; S.blogPost=null; loadBlog(); }
     if(s==='insta'){ S.instaSel=null; loadInsta(); maybeRefreshInsta(); }
     if(s==='home'){ loadFinnTip(); maybeRefreshInsta(); maybeRefreshLive(); }
@@ -4799,11 +4799,13 @@
     var buddyCard;
     if(buddies.length){
       buddyCard='<div style="font-size:17px;font-weight:900;color:var(--text);letter-spacing:-.3px;margin:22px 2px 12px">Deine Trainingspartner ('+buddies.length+')</div>'+
-        buddies.map(function(b){ return '<div style="'+CARD.replace('padding:18px','padding:14px 16px')+'"><div style="display:flex;align-items:center;gap:12px">'+socAva(b)+
+        buddies.map(function(b){ var un=(d.unread&&d.unread[b.id])?d.unread[b.id]:0; return '<div style="'+CARD.replace('padding:18px','padding:14px 16px')+'"><div style="display:flex;align-items:center;gap:12px">'+socAva(b)+
           '<div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:800;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(b.name)+'</div><div style="font-size:11.5px;font-weight:600;color:'+(b.active?SOC:'var(--text-soft)')+'">'+(b.active?'Verbunden':'Zurzeit inaktiv')+'</div></div>'+
-          '<button data-act="socRemove" data-arg="'+esc(b.id)+'" style="padding:8px 12px;border:1.5px solid var(--border);background:var(--surface);color:var(--text-soft);border-radius:11px;font-weight:700;font-size:12px;cursor:pointer">Entfernen</button>'+
-          '<button data-act="socBlock" data-arg="'+esc(b.id)+'" aria-label="Blockieren" style="width:34px;height:34px;border-radius:11px;border:1.5px solid var(--border);background:var(--surface);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0" title="Blockieren">'+svg('<circle cx="12" cy="12" r="9"></circle><path d="M5.6 5.6l12.8 12.8"></path>',{c:'var(--err-fg)',w:2,s:15})+'</button></div>'+
-          '<div style="font-size:11px;font-weight:600;color:var(--text-soft);margin-top:9px;padding-top:9px;border-top:1px solid var(--border)">💬 Chat, gemeinsam planen &amp; Challenges kommen in Kürze.</div></div>'; }).join('');
+          '<button data-act="socOpenChat" data-arg="'+esc(b.id)+'" style="position:relative;padding:9px 15px;border:none;background:'+SOC+';color:#fff;border-radius:12px;font-weight:800;font-size:13px;cursor:pointer">Chat'+(un>0?'<span style="position:absolute;top:-6px;right:-6px;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:#F6A964;color:#3a230a;font-size:10.5px;font-weight:900;display:flex;align-items:center;justify-content:center">'+un+'</span>':'')+'</button></div>'+
+          '<div style="display:flex;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">'+
+            '<button data-act="socRemove" data-arg="'+esc(b.id)+'" style="flex:1;padding:8px;border:1.5px solid var(--border);background:var(--surface);color:var(--text-soft);border-radius:10px;font-weight:700;font-size:12px;cursor:pointer">Entfernen</button>'+
+            '<button data-act="socBlock" data-arg="'+esc(b.id)+'" style="flex:1;padding:8px;border:1.5px solid var(--border);background:var(--surface);color:var(--err-fg);border-radius:10px;font-weight:700;font-size:12px;cursor:pointer">Blockieren</button>'+
+          '</div></div>'; }).join('');
     } else {
       buddyCard='<div style="'+CARD+';text-align:center"><div style="font-size:30px">🤝</div><div style="font-size:14px;font-weight:800;color:var(--text);margin-top:6px">Noch keine Trainingspartner</div><div style="font-size:12.5px;font-weight:500;color:var(--text-soft);margin:4px 0 0;line-height:1.5">Teile deinen Code oder gib den Code eines Freundes ein, um euch zu verbinden.</div></div>';
     }
@@ -4819,8 +4821,36 @@
     return socHeader('Gemeinsam mehr erreichen')+socMsg()+codeCard+connCard+reqCard+buddyCard+setCard;
   }
   function socAva(b){ return '<div style="width:42px;height:42px;border-radius:50%;background:'+SOCBG+';color:'+SOC+';font-weight:900;font-size:15px;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+esc(b.initials||'··')+'</div>'; }
+  // ── 1:1-Chat ──
+  function socMsgsHtml(msgs){
+    if(!msgs||!msgs.length) return '<div style="text-align:center;color:var(--text-soft);font-size:12.5px;font-weight:600;padding:34px 12px">Noch keine Nachrichten.<br>Schreib die erste! 👋</div>';
+    return msgs.map(function(m){ var mine=!!m.mine; return '<div style="display:flex;margin:6px 0;justify-content:'+(mine?'flex-end':'flex-start')+'"><div style="max-width:78%;padding:10px 13px;border-radius:'+(mine?'16px 16px 4px 16px':'4px 16px 16px 16px')+';background:'+(mine?SOC:'var(--surface)')+';color:'+(mine?'#fff':'var(--text)')+';font-size:14px;font-weight:500;line-height:1.4;box-shadow:0 2px 8px rgba(4,33,40,.06);word-break:break-word;white-space:pre-wrap">'+esc(m.text)+'</div></div>'; }).join('');
+  }
+  function socChatView(bid){
+    var d=DATA.social, dm=DATA.socDm; var loaded=dm&&String(dm.buddyId)===String(bid);
+    var buddy=(d&&Array.isArray(d.buddies))?d.buddies.filter(function(x){return String(x.id)===String(bid);})[0]:null;
+    var name=(buddy&&buddy.name)||(loaded&&dm.buddy&&dm.buddy.name)||'Trainingspartner';
+    var ini=(buddy&&buddy.initials)||(loaded&&dm.buddy&&dm.buddy.initials)||'··';
+    var head='<div style="display:flex;align-items:center;gap:10px;padding:2px 2px 12px">'+
+      '<button data-act="socChatBack" aria-label="Zurück" style="width:38px;height:38px;border-radius:12px;border:none;background:var(--surface);box-shadow:0 4px 12px rgba(4,33,40,.08);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'+svg(IC.back,{c:'#0a4958',w:2.2,s:19})+'</button>'+
+      '<div style="width:40px;height:40px;border-radius:50%;background:'+SOCBG+';color:'+SOC+';font-weight:900;font-size:14px;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+esc(ini)+'</div>'+
+      '<div style="flex:1;min-width:0"><div style="font-size:16px;font-weight:900;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(name)+'</div><div style="font-size:11.5px;font-weight:600;color:var(--text-soft)">Trainingspartner</div></div>'+
+      '<button data-act="socReport" data-arg="'+esc(bid)+'" aria-label="Melden" title="Melden" style="width:36px;height:36px;border-radius:11px;border:1.5px solid var(--border);background:var(--surface);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'+svg('<path d="M4 21V4h13l-2 4 2 4H4"></path>',{c:'var(--text-soft)',w:2,s:16})+'</button>'+
+      '<button data-act="socBlock" data-arg="'+esc(bid)+'" aria-label="Blockieren" title="Blockieren" style="width:36px;height:36px;border-radius:11px;border:1.5px solid var(--border);background:var(--surface);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'+svg('<circle cx="12" cy="12" r="9"></circle><path d="M5.6 5.6l12.8 12.8"></path>',{c:'var(--err-fg)',w:2,s:15})+'</button>'+
+    '</div>';
+    var body='<div id="soc_dm_scroll" style="height:calc(100vh - 250px);min-height:220px;overflow-y:auto;padding:4px 2px">'+(loaded?socMsgsHtml(dm.messages):'<div style="text-align:center;color:var(--text-soft);font-size:13px;font-weight:600;padding:34px">Lädt …</div>')+'</div>';
+    var composer='<div style="display:flex;gap:9px;align-items:flex-end;padding-top:10px">'+
+      '<textarea id="soc_msg" rows="1" enterkeyhint="send" placeholder="Nachricht …" style="flex:1;resize:none;max-height:120px;box-sizing:border-box;padding:12px 14px;border:1.5px solid var(--border);border-radius:16px;font-size:15px;font-family:inherit;color:var(--text);background:var(--surface)"></textarea>'+
+      '<button data-act="socChatSend" '+(S.socChatBusy?'disabled ':'')+'aria-label="Senden" style="width:46px;height:46px;border-radius:50%;border:none;background:'+SOC+';display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'+svg('<path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"></path>',{c:'#fff',w:2,s:19})+'</button>'+
+    '</div>';
+    return head+socMsg()+body+composer;
+  }
+  function socDmScrollBottom(){ try{ var c=document.getElementById('soc_dm_scroll'); if(c) c.scrollTop=c.scrollHeight; }catch(e){} }
+  function loadDm(bid){ api('/api/member/social',{method:'POST',body:JSON.stringify({action:'dm-thread',buddyId:bid})}).then(function(d){ if(d&&d.ok){ DATA.socDm={buddyId:String(bid),messages:d.messages||[],buddy:d.buddy}; } else { DATA.socDm={buddyId:String(bid),messages:[],buddy:null}; if(d&&d.error==='not_buddies'){ S.socChat=null; loadSocial(); } } if(S.screen==='social'){ render(); socDmScrollBottom(); } }).catch(function(){ DATA.socDm={buddyId:String(bid),messages:[]}; if(S.screen==='social') render(); }); }
+  function pollSoc(){ if(S.screen!=='social'||!S.socChat||S.socChatBusy) return; var bid=S.socChat; api('/api/member/social',{method:'POST',body:JSON.stringify({action:'dm-thread',buddyId:bid})}).then(function(d){ if(!d||!d.ok||!Array.isArray(d.messages)) return; if(S.screen!=='social'||String(S.socChat)!==String(bid)) return; var cur=(DATA.socDm&&DATA.socDm.messages)||[]; if(d.messages.length!==cur.length){ DATA.socDm={buddyId:String(bid),messages:d.messages,buddy:d.buddy}; var c=document.getElementById('soc_dm_scroll'); if(c){ c.innerHTML=socMsgsHtml(d.messages); c.scrollTop=c.scrollHeight; } } }).catch(function(){}); }
   function scrSocial(){
     var d=DATA.social;
+    if(SOCIAL_ON&&S.socChat){ return socChatView(S.socChat); }
     if(d==null||d===false){ return socHeader()+'<div style="text-align:center;color:var(--text-soft);font-size:14px;font-weight:600;padding:44px 20px">Lädt …</div>'; }
     if(!d.ok||d.available===false){ return socHeader()+'<div style="background:var(--surface);border-radius:20px;box-shadow:0 12px 30px rgba(4,33,40,.09);padding:24px;text-align:center"><div style="font-size:30px">🤝</div><div style="font-size:14.5px;font-weight:800;color:var(--text);margin-top:8px">Trainingspartner sind gerade nicht verfügbar</div><div style="font-size:12.5px;font-weight:500;color:var(--text-soft);margin-top:4px">Bitte versuch es später erneut.</div></div>'; }
     return d.enabled?socMain(d):socOnboarding();
@@ -4888,6 +4918,7 @@
     }).catch(function(){});
   }
   setInterval(pollPf,12000);
+  setInterval(pollSoc,12000);   // Trainingspartner-Chat live halten
   // Termine live halten, solange „Meine Termine" offen ist – eine Team-Bestätigung erscheint dann ohne Neuladen.
   setInterval(function(){ if(!(TOKEN && S.screen==='appt' && S.apptTab==='mine' && !S.busy && document.visibilityState==='visible')) return; var ae=document.activeElement; if(ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName||'')) return; loadAppts(); }, 20000);
 
@@ -5490,7 +5521,7 @@
     // sonst verschwindet getippter Text und die Tastatur klappt zu, sobald im Hintergrund
     // Daten nachladen (das war der große Chat-Bug).
     var keep={};
-    ['finn_q','pf_reply','ern_log','ern_ask','ern_fridge','ern_capq','ern_prodq','ern_bc','ern_voiceq','ern_cf_swap','ern_cf_refine'].forEach(function(id){ var e=$(id); if(e){ keep[id]={v:e.value,f:document.activeElement===e,ss:e.selectionStart,se:e.selectionEnd,h:e.style.height}; } });
+    ['finn_q','pf_reply','ern_log','ern_ask','ern_fridge','ern_capq','ern_prodq','ern_bc','ern_voiceq','ern_cf_swap','ern_cf_refine','soc_msg','soc_code','soc_name'].forEach(function(id){ var e=$(id); if(e){ keep[id]={v:e.value,f:document.activeElement===e,ss:e.selectionStart,se:e.selectionEnd,h:e.style.height}; } });
     var keepScroll={};
     ['finn_scroll','pf_scroll'].forEach(function(id){ var e=$(id); if(e){ keepScroll[id]=e.scrollTop; } });
     $('app').innerHTML=html;
@@ -6451,9 +6482,19 @@
     socAccept:function(a){ if(S.socBusy) return; S.socBusy=true; render(); api('/api/member/social',{method:'POST',body:JSON.stringify({action:'accept',buddyId:a})}).then(function(d){ S.socBusy=false; if(d&&d.ok){ DATA.social=d; S.socMsg='Verbunden! 🎉'; S.socErr=false; } render(); }).catch(function(){ S.socBusy=false; render(); }); },
     socDecline:function(a){ if(S.socBusy) return; S.socBusy=true; render(); api('/api/member/social',{method:'POST',body:JSON.stringify({action:'decline',buddyId:a})}).then(function(d){ S.socBusy=false; if(d&&d.ok) DATA.social=d; render(); }).catch(function(){ S.socBusy=false; render(); }); },
     socRemove:function(a){ try{ if(!confirm('Diesen Trainingspartner entfernen?')) return; }catch(e){} api('/api/member/social',{method:'POST',body:JSON.stringify({action:'remove-buddy',buddyId:a})}).then(function(d){ if(d&&d.ok){ DATA.social=d; render(); } }).catch(function(){}); },
-    socBlock:function(a){ try{ if(!confirm('Blockieren? Ihr seid dann nicht mehr verbunden und die Person kann dich nicht erneut anfragen.')) return; }catch(e){} api('/api/member/social',{method:'POST',body:JSON.stringify({action:'block',buddyId:a})}).then(function(d){ if(d&&d.ok){ DATA.social=d; S.socMsg='Blockiert.'; S.socErr=false; render(); } }).catch(function(){}); },
+    socBlock:function(a){ try{ if(!confirm('Blockieren? Ihr seid dann nicht mehr verbunden und die Person kann dich nicht erneut anfragen.')) return; }catch(e){} api('/api/member/social',{method:'POST',body:JSON.stringify({action:'block',buddyId:a})}).then(function(d){ if(d&&d.ok){ DATA.social=d; S.socMsg='Blockiert.'; S.socErr=false; if(String(S.socChat)===String(a)){ S.socChat=null; DATA.socDm=null; } render(); } }).catch(function(){}); },
     socCopy:function(a){ copyText(a||''); setS({socCopied:true}); setTimeout(function(){ S.socCopied=false; render(); },1800); },
     socShare:function(a){ var link=a||''; try{ if(navigator.share){ navigator.share({title:'Trainingspartner bei Fit-Inn',text:'Verbinde dich als mein Trainingspartner 💪',url:link}).catch(function(){}); return; } }catch(e){} copyText(link); setS({socCopied:true}); setTimeout(function(){ S.socCopied=false; render(); },1800); },
+    socOpenChat:function(a){ S.socChat=String(a); DATA.socDm=null; S.socChatBusy=false; S.socMsg=''; S.socErr=false; render(); loadDm(String(a)); setTimeout(function(){ var t=$('soc_msg'); if(t) t.focus(); },60); },
+    socChatBack:function(){ S.socChat=null; DATA.socDm=null; S.socMsg=''; S.socErr=false; render(); loadSocial(); },
+    socChatSend:function(){ if(S.socChatBusy||!S.socChat) return; var el=$('soc_msg'); var t=el?(el.value||'').trim():''; if(!t) return; var bid=S.socChat; S.socChatBusy=true; S.socErr=false; S.socMsg='';
+      if(DATA.socDm&&String(DATA.socDm.buddyId)===String(bid)){ DATA.socDm.messages.push({mine:true,text:t,at:Date.now()}); }
+      if(el){ el.value=''; el.style.height='auto'; }
+      render(); socDmScrollBottom();
+      api('/api/member/social',{method:'POST',body:JSON.stringify({action:'dm-send',buddyId:bid,text:t})})
+      .then(function(dd){ S.socChatBusy=false; if(dd&&dd.ok&&Array.isArray(dd.messages)){ if(DATA.socDm&&String(DATA.socDm.buddyId)===String(bid)) DATA.socDm.messages=dd.messages; } else { S.socErr=true; S.socMsg=(dd&&dd.message)||'Nachricht konnte nicht gesendet werden.'; } render(); socDmScrollBottom(); })
+      .catch(function(){ S.socChatBusy=false; S.socErr=true; S.socMsg='Verbindung gerade nicht möglich.'; render(); }); },
+    socReport:function(a){ try{ if(!confirm('Diesen Trainingspartner dem Studio melden? Das Team prüft die Meldung.')) return; }catch(e){} api('/api/member/social',{method:'POST',body:JSON.stringify({action:'report',buddyId:a})}).then(function(d){ if(d&&d.ok) DATA.social=d; S.socMsg='Danke – die Meldung ist beim Studio eingegangen.'; S.socErr=false; render(); }).catch(function(){}); },
     // checkins
     ciRange:function(a){ S.ciRange=a||'all'; S.dlMsg2=''; setQuiet({}); },
     emailPdf:function(){ emailPdf(); },
@@ -6601,12 +6642,14 @@
     if(t.id==='finn_q'){ autoGrow(t); }
     if(t.id==='pf_reply'){ S.pfDraft=t.value; autoGrow(t); }
     if(t.id==='ern_log'||t.id==='ern_ask'){ autoGrow(t); }
+    if(t.id==='soc_msg'){ autoGrow(t); }
   });
   // Enter sendet (Shift+Enter = neue Zeile) – im FINN-Chat und im Postfach.
   document.addEventListener('keydown',function(e){
     var t=e.target; if(!t||!t.id) return;
     if(e.key!=='Enter'||e.shiftKey) return;
     if(t.id==='finn_q'){ e.preventDefault(); ACT.finnSend(); }
+    if(t.id==='soc_msg'){ e.preventDefault(); ACT.socChatSend(); }
     if(t.id==='pf_reply'){ e.preventDefault(); if(S.pfSel) ACT.pfReply(S.pfSel); }
     if(t.id==='ern_log'){ e.preventDefault(); ACT.ernLog(); }
     if(t.id==='ern_ask'){ e.preventDefault(); ACT.ernAskSend(); }
