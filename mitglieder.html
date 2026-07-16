@@ -561,7 +561,7 @@
     if(s==='checkins'||s==='fort') loadCheckins();   // immer frisch: Studio-Check-ins vom Band erscheinen sofort
     if(ERN_ON&&(s==='home'||s==='fort')) loadNutri();   // Ernährungs-Vitalpunkte für Startseite/Fortschritt frisch halten
     if(SOCIAL_ON&&(s==='home'||s==='profil')) loadSocial();   // Trainingspartner-Snapshot für Startseite/Profil
-    if(s==='social'){ S.socMsg=''; S.socErr=false; S.socBusy=false; S.socCopied=false; S.socChat=null; DATA.socDm=null; if(window.__socBuddy){ S.socCode=window.__socBuddy; window.__socBuddy=null; } loadSocial(); }
+    if(s==='social'){ S.socMsg=''; S.socErr=false; S.socBusy=false; S.socCopied=false; S.socChat=null; DATA.socDm=null; S.socRoom=null; DATA.socRoomThread=null; S.socRoomCreate=false; S.socRoomInvite=false; if(window.__socBuddy){ S.socCode=window.__socBuddy; window.__socBuddy=null; } loadSocial(); }
     if(s==='blog'){ S.blogSel=null; S.blogPost=null; loadBlog(); }
     if(s==='insta'){ S.instaSel=null; loadInsta(); maybeRefreshInsta(); }
     if(s==='home'){ loadFinnTip(); maybeRefreshInsta(); maybeRefreshLive(); }
@@ -4821,7 +4821,7 @@
       '<div style="height:1px;background:var(--border)"></div>'+
       socSwitch('socShareToggle','nutrition',!!sh.nutrition,'Ernährungs-Fortschritt','Ernährungs-Streak & Tagesziel')+'</div>'+
       '<button data-act="socDisable" style="width:100%;padding:13px;border:1.5px solid var(--border);background:var(--surface);color:var(--err-fg);border-radius:14px;font-weight:800;font-size:13.5px;cursor:pointer">Trainingspartner deaktivieren</button>';
-    return socHeader('Gemeinsam mehr erreichen')+socMsg()+socPlansSection(d.plans)+codeCard+connCard+reqCard+buddyCard+setCard+socPlanSheet();
+    return socHeader('Gemeinsam mehr erreichen')+socMsg()+socPlansSection(d.plans)+codeCard+connCard+reqCard+buddyCard+socRoomsSection(d.rooms)+setCard+socPlanSheet()+socRoomCreateSheet();
   }
   function socAva(b){ return '<div style="width:42px;height:42px;border-radius:50%;background:'+SOCBG+';color:'+SOC+';font-weight:900;font-size:15px;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+esc(b.initials||'··')+'</div>'; }
   function socTime(slot){ var h=Math.floor((slot||0)/60), m=(slot||0)%60; return (h<10?'0':'')+h+':'+(m<10?'0':'')+m; }
@@ -4891,9 +4891,69 @@
   }
   function socDmScrollBottom(){ try{ var c=document.getElementById('soc_dm_scroll'); if(c) c.scrollTop=c.scrollHeight; }catch(e){} }
   function loadDm(bid){ api('/api/member/social',{method:'POST',body:JSON.stringify({action:'dm-thread',buddyId:bid})}).then(function(d){ if(d&&d.ok){ DATA.socDm={buddyId:String(bid),messages:d.messages||[],buddy:d.buddy}; } else { DATA.socDm={buddyId:String(bid),messages:[],buddy:null}; if(d&&d.error==='not_buddies'){ S.socChat=null; loadSocial(); } } if(S.screen==='social'){ render(); socDmScrollBottom(); } }).catch(function(){ DATA.socDm={buddyId:String(bid),messages:[]}; if(S.screen==='social') render(); }); }
-  function pollSoc(){ if(S.screen!=='social'||!S.socChat||S.socChatBusy) return; var bid=S.socChat; api('/api/member/social',{method:'POST',body:JSON.stringify({action:'dm-thread',buddyId:bid})}).then(function(d){ if(!d||!d.ok||!Array.isArray(d.messages)) return; if(S.screen!=='social'||String(S.socChat)!==String(bid)) return; var cur=(DATA.socDm&&DATA.socDm.messages)||[]; if(d.messages.length!==cur.length){ DATA.socDm={buddyId:String(bid),messages:d.messages,buddy:d.buddy}; var c=document.getElementById('soc_dm_scroll'); if(c){ c.innerHTML=socMsgsHtml(d.messages); c.scrollTop=c.scrollHeight; } } }).catch(function(){}); }
+  function pollSoc(){ if(S.screen!=='social'||S.socChatBusy) return;
+    if(S.socChat){ var bid=S.socChat; api('/api/member/social',{method:'POST',body:JSON.stringify({action:'dm-thread',buddyId:bid})}).then(function(d){ if(!d||!d.ok||!Array.isArray(d.messages)) return; if(S.screen!=='social'||String(S.socChat)!==String(bid)) return; var cur=(DATA.socDm&&DATA.socDm.messages)||[]; if(d.messages.length!==cur.length){ DATA.socDm={buddyId:String(bid),messages:d.messages,buddy:d.buddy}; var c=document.getElementById('soc_dm_scroll'); if(c){ c.innerHTML=socMsgsHtml(d.messages); c.scrollTop=c.scrollHeight; } } }).catch(function(){}); return; }
+    if(S.socRoom){ var rid=S.socRoom; api('/api/member/social',{method:'POST',body:JSON.stringify({action:'room-thread',roomId:rid})}).then(function(d){ if(!d||!d.ok||!Array.isArray(d.messages)) return; if(S.screen!=='social'||String(S.socRoom)!==String(rid)) return; var cur=(DATA.socRoomThread&&DATA.socRoomThread.messages)||[]; if(d.messages.length!==cur.length){ DATA.socRoomThread={roomId:String(rid),room:d.room,messages:d.messages}; var c=document.getElementById('soc_room_scroll'); if(c){ c.innerHTML=socRoomMsgsHtml(d.messages); c.scrollTop=c.scrollHeight; } } }).catch(function(){}); } }
+  // ── Gruppen-Chat (Rooms) ──
+  function socRoomMsgsHtml(msgs){
+    if(!msgs||!msgs.length) return '<div style="text-align:center;color:var(--text-soft);font-size:12.5px;font-weight:600;padding:34px 12px">Noch keine Nachrichten.<br>Schreib die erste! 👋</div>';
+    return msgs.map(function(m){ var mine=!!m.mine; var lbl=(!mine)?'<div style="font-size:10.5px;font-weight:800;color:'+SOC+';margin:2px 0 2px 5px">'+esc(m.name||'Mitglied')+'</div>':'';
+      return '<div style="margin:6px 0">'+lbl+'<div style="display:flex;justify-content:'+(mine?'flex-end':'flex-start')+'"><div style="max-width:78%;padding:10px 13px;border-radius:'+(mine?'16px 16px 4px 16px':'4px 16px 16px 16px')+';background:'+(mine?SOC:'var(--surface)')+';color:'+(mine?'#fff':'var(--text)')+';font-size:14px;font-weight:500;line-height:1.4;box-shadow:0 2px 8px rgba(4,33,40,.06);word-break:break-word;white-space:pre-wrap">'+esc(m.text)+'</div></div></div>'; }).join('');
+  }
+  function socRoomScrollBottom(){ try{ var c=document.getElementById('soc_room_scroll'); if(c) c.scrollTop=c.scrollHeight; }catch(e){} }
+  function loadRoomThread(rid){ api('/api/member/social',{method:'POST',body:JSON.stringify({action:'room-thread',roomId:rid})}).then(function(d){ if(d&&d.ok){ DATA.socRoomThread={roomId:String(rid),room:d.room,messages:d.messages||[]}; } else { DATA.socRoomThread={roomId:String(rid),room:null,messages:[]}; if(d&&d.error==='not_member'){ S.socRoom=null; loadSocial(); } } if(S.screen==='social'){ render(); socRoomScrollBottom(); } }).catch(function(){ DATA.socRoomThread={roomId:String(rid),messages:[]}; if(S.screen==='social') render(); }); }
+  function socRoomView(rid){
+    var t=DATA.socRoomThread; var loaded=t&&String(t.roomId)===String(rid); var room=loaded?t.room:null;
+    var name=(room&&room.name)||'Gruppe'; var sub=room?(room.memberCount+' Mitglieder'):'';
+    var head='<div style="display:flex;align-items:center;gap:10px;padding:2px 2px 12px">'+
+      '<button data-act="socRoomBack" aria-label="Zurück" style="width:38px;height:38px;border-radius:12px;border:none;background:var(--surface);box-shadow:0 4px 12px rgba(4,33,40,.08);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'+svg(IC.back,{c:'#0a4958',w:2.2,s:19})+'</button>'+
+      '<div style="width:40px;height:40px;border-radius:13px;background:'+SOCBG+';display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:19px">👥</div>'+
+      '<div style="flex:1;min-width:0"><div style="font-size:16px;font-weight:900;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(name)+'</div><div style="font-size:11.5px;font-weight:600;color:var(--text-soft)">'+esc(sub)+'</div></div>'+
+      '<button data-act="socRoomInviteOpen" data-arg="'+esc(rid)+'" aria-label="Einladen" title="Einladen" style="width:36px;height:36px;border-radius:11px;border:1.5px solid var(--border);background:var(--surface);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'+svg('<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M19 8v6M22 11h-6"></path>',{c:SOC,w:2,s:16})+'</button>'+
+      '<button data-act="socRoomLeave" data-arg="'+esc(rid)+'" aria-label="Verlassen" title="Gruppe verlassen" style="width:36px;height:36px;border-radius:11px;border:1.5px solid var(--border);background:var(--surface);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'+svg('<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"></path>',{c:'var(--err-fg)',w:2,s:16})+'</button>'+
+    '</div>';
+    var body='<div id="soc_room_scroll" style="height:calc(100vh - 250px);min-height:220px;overflow-y:auto;padding:4px 2px">'+(loaded?socRoomMsgsHtml(t.messages):'<div style="text-align:center;color:var(--text-soft);font-size:13px;font-weight:600;padding:34px">Lädt …</div>')+'</div>';
+    var composer='<div style="display:flex;gap:9px;align-items:flex-end;padding-top:10px">'+
+      '<textarea id="soc_rmsg" rows="1" enterkeyhint="send" placeholder="Nachricht an die Gruppe …" style="flex:1;resize:none;max-height:120px;box-sizing:border-box;padding:12px 14px;border:1.5px solid var(--border);border-radius:16px;font-size:15px;font-family:inherit;color:var(--text);background:var(--surface)"></textarea>'+
+      '<button data-act="socRoomSend" '+(S.socChatBusy?'disabled ':'')+'aria-label="Senden" style="width:46px;height:46px;border-radius:50%;border:none;background:'+SOC+';display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'+svg('<path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"></path>',{c:'#fff',w:2,s:19})+'</button>'+
+    '</div>';
+    return head+socMsg()+body+composer+(S.socRoomInvite?socRoomInviteSheet(rid,room):'');
+  }
+  // Gruppen-Liste + „erstellen" – Abschnitt in der Hauptansicht.
+  function socRoomsSection(rooms){
+    var CARD='background:var(--surface);border-radius:20px;box-shadow:0 12px 30px rgba(4,33,40,.09);padding:14px 16px;margin-bottom:14px';
+    var head='<div style="display:flex;align-items:center;justify-content:space-between;margin:22px 2px 12px"><div style="font-size:17px;font-weight:900;color:var(--text);letter-spacing:-.3px">Gruppen</div><button data-act="socRoomCreateOpen" style="padding:8px 13px;border:1.5px solid rgba(45,132,184,.3);background:'+SOCBG+';color:'+SOC+';border-radius:11px;font-weight:800;font-size:12.5px;cursor:pointer">＋ Neu</button></div>';
+    if(!rooms||!rooms.length) return head+'<div style="'+CARD+';text-align:center;color:var(--text-soft);font-size:12.5px;font-weight:600;padding:18px">Erstelle eine Gruppe, um mit mehreren zusammen zu trainieren.</div>';
+    return head+rooms.map(function(r){ var un=r.unread||0; return '<button data-act="socOpenRoom" data-arg="'+esc(r.id)+'" style="width:100%;text-align:left;border:none;cursor:pointer;font-family:inherit;'+CARD+'"><div style="display:flex;align-items:center;gap:12px"><div style="width:42px;height:42px;border-radius:13px;background:'+SOCBG+';display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:19px">👥</div>'+
+      '<div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:800;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(r.name)+'</div><div style="font-size:11.5px;font-weight:600;color:var(--text-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+r.memberCount+' Mitglieder'+(r.lastText?' · '+esc(r.lastText):'')+'</div></div>'+
+      (un>0?'<span style="min-width:20px;height:20px;padding:0 6px;border-radius:10px;background:#F6A964;color:#3a230a;font-size:11px;font-weight:900;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+un+'</span>':svg('<path d="M9 6l6 6-6 6"></path>',{c:'var(--text-soft)',w:2.4,s:16}))+'</div></button>'; }).join('');
+  }
+  function socRoomCreateSheet(){
+    if(!S.socRoomCreate) return '';
+    var d=DATA.social; var buddies=(d&&Array.isArray(d.buddies))?d.buddies:[]; var pick=S.socRoomPick||{};
+    var list=buddies.length?buddies.map(function(b){ var on=!!pick[b.id]; return '<button data-act="socRoomPick" data-arg="'+esc(b.id)+'" style="width:100%;display:flex;align-items:center;gap:11px;padding:11px 2px;border:none;background:transparent;cursor:pointer;text-align:left">'+socAva(b)+'<div style="flex:1;min-width:0;font-size:14.5px;font-weight:800;color:var(--text)">'+esc(b.name)+'</div>'+
+      '<div style="width:24px;height:24px;border-radius:8px;border:2px solid '+(on?SOC:'var(--text-soft)')+';background:'+(on?SOC:'transparent')+';display:flex;align-items:center;justify-content:center;flex-shrink:0">'+(on?svg('<path d="M20 6L9 17l-5-5"></path>',{c:'#fff',w:3,s:14}):'')+'</div></button>'; }).join('<div style="height:1px;background:var(--border)"></div>'):'<div style="font-size:13px;color:var(--text-soft);font-weight:600;padding:10px 0">Du brauchst zuerst Trainingspartner, um eine Gruppe zu erstellen.</div>';
+    var sheet='<div style="background:var(--surface);border-radius:22px 22px 0 0;padding:20px;box-shadow:0 -12px 40px rgba(4,33,40,.2);max-height:82vh;overflow-y:auto">'+
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px"><div style="font-size:18px;font-weight:900;color:var(--text)">Gruppe erstellen</div><button data-act="socRoomCreateClose" aria-label="Schließen" style="width:34px;height:34px;border-radius:11px;border:none;background:var(--surface-2);display:flex;align-items:center;justify-content:center;cursor:pointer">'+svg('<path d="M18 6L6 18M6 6l12 12"></path>',{c:'var(--text-soft)',w:2.2,s:16})+'</button></div>'+
+      socMsg()+
+      '<input id="soc_roomname" value="'+esc(S.socRoomName||'')+'" maxlength="40" placeholder="Gruppenname (z. B. Morgen-Crew)" style="width:100%;box-sizing:border-box;padding:13px 14px;border:1.5px solid var(--border);border-radius:13px;font-size:15px;font-weight:700;color:var(--text);background:var(--surface-2);margin-bottom:14px">'+
+      '<div style="font-size:12px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">Wen einladen?</div>'+list+
+      '<button data-act="socRoomCreateGo" '+(S.socBusy?'disabled ':'')+'style="width:100%;margin-top:16px;padding:15px;border:none;border-radius:14px;background:'+SOC+';color:#fff;font-weight:900;font-size:15px;cursor:pointer">'+(S.socBusy?'Wird erstellt …':'Gruppe erstellen')+'</button>'+
+    '</div>';
+    return '<div data-act="socRoomCreateClose" style="position:fixed;inset:0;background:rgba(4,20,25,.45);z-index:60;display:flex;align-items:flex-end"><div data-act="noop" style="width:100%;max-width:520px;margin:0 auto">'+sheet+'</div></div>';
+  }
+  function socRoomInviteSheet(rid,room){
+    var d=DATA.social; var buddies=(d&&Array.isArray(d.buddies))?d.buddies:[];
+    var inRoom={}; if(room&&Array.isArray(room.members)) room.members.forEach(function(m){ inRoom[String(m.id)]=1; });
+    var avail=buddies.filter(function(b){ return !inRoom[String(b.id)]; });
+    var list=avail.length?avail.map(function(b){ return '<div style="display:flex;align-items:center;gap:11px;padding:11px 0;border-top:1px solid var(--border)">'+socAva(b)+'<div style="flex:1;min-width:0;font-size:14.5px;font-weight:800;color:var(--text)">'+esc(b.name)+'</div><button data-act="socRoomInviteGo" data-arg="'+esc(rid)+'|'+esc(b.id)+'" style="padding:8px 14px;border:none;background:'+SOC+';color:#fff;border-radius:11px;font-weight:800;font-size:12.5px;cursor:pointer">Einladen</button></div>'; }).join(''):'<div style="font-size:13px;color:var(--text-soft);font-weight:600;padding:12px 0">Alle deine Trainingspartner sind schon in der Gruppe.</div>';
+    var sheet='<div style="background:var(--surface);border-radius:22px 22px 0 0;padding:20px;box-shadow:0 -12px 40px rgba(4,33,40,.2);max-height:82vh;overflow-y:auto">'+
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><div style="font-size:18px;font-weight:900;color:var(--text)">Zur Gruppe einladen</div><button data-act="socRoomInviteClose" aria-label="Schließen" style="width:34px;height:34px;border-radius:11px;border:none;background:var(--surface-2);display:flex;align-items:center;justify-content:center;cursor:pointer">'+svg('<path d="M18 6L6 18M6 6l12 12"></path>',{c:'var(--text-soft)',w:2.2,s:16})+'</button></div>'+socMsg()+list+'</div>';
+    return '<div data-act="socRoomInviteClose" style="position:fixed;inset:0;background:rgba(4,20,25,.45);z-index:61;display:flex;align-items:flex-end"><div data-act="noop" style="width:100%;max-width:520px;margin:0 auto">'+sheet+'</div></div>';
+  }
   function scrSocial(){
     var d=DATA.social;
+    if(SOCIAL_ON&&S.socRoom){ return socRoomView(S.socRoom); }
     if(SOCIAL_ON&&S.socChat){ return socChatView(S.socChat); }
     if(d==null||d===false){ return socHeader()+'<div style="text-align:center;color:var(--text-soft);font-size:14px;font-weight:600;padding:44px 20px">Lädt …</div>'; }
     if(!d.ok||d.available===false){ return socHeader()+'<div style="background:var(--surface);border-radius:20px;box-shadow:0 12px 30px rgba(4,33,40,.09);padding:24px;text-align:center"><div style="font-size:30px">🤝</div><div style="font-size:14.5px;font-weight:800;color:var(--text);margin-top:8px">Trainingspartner sind gerade nicht verfügbar</div><div style="font-size:12.5px;font-weight:500;color:var(--text-soft);margin-top:4px">Bitte versuch es später erneut.</div></div>'; }
@@ -5565,7 +5625,7 @@
     // sonst verschwindet getippter Text und die Tastatur klappt zu, sobald im Hintergrund
     // Daten nachladen (das war der große Chat-Bug).
     var keep={};
-    ['finn_q','pf_reply','ern_log','ern_ask','ern_fridge','ern_capq','ern_prodq','ern_bc','ern_voiceq','ern_cf_swap','ern_cf_refine','soc_msg','soc_code','soc_name'].forEach(function(id){ var e=$(id); if(e){ keep[id]={v:e.value,f:document.activeElement===e,ss:e.selectionStart,se:e.selectionEnd,h:e.style.height}; } });
+    ['finn_q','pf_reply','ern_log','ern_ask','ern_fridge','ern_capq','ern_prodq','ern_bc','ern_voiceq','ern_cf_swap','ern_cf_refine','soc_msg','soc_code','soc_name','soc_rmsg','soc_roomname'].forEach(function(id){ var e=$(id); if(e){ keep[id]={v:e.value,f:document.activeElement===e,ss:e.selectionStart,se:e.selectionEnd,h:e.style.height}; } });
     var keepScroll={};
     ['finn_scroll','pf_scroll'].forEach(function(id){ var e=$(id); if(e){ keepScroll[id]=e.scrollTop; } });
     $('app').innerHTML=html;
@@ -6549,6 +6609,27 @@
       .catch(function(){ S.socBusy=false; S.socErr=true; S.socMsg='Verbindung gerade nicht möglich.'; render(); }); },
     socPlanJoin:function(a){ var p=String(a||'').split('|'); if(p.length<2) return; api('/api/member/social',{method:'POST',body:JSON.stringify({action:'plan-join',buddyId:p[0],date:p[1]})}).then(function(d){ if(d&&d.ok){ DATA.social=d; S.socMsg='Du bist dabei! 💪'; S.socErr=false; render(); } }).catch(function(){}); },
     socPlanCancel:function(a){ var p=String(a||'').split('|'); if(p.length<2) return; try{ if(!confirm('Diese Trainingsverabredung absagen?')) return; }catch(e){} api('/api/member/social',{method:'POST',body:JSON.stringify({action:'plan-cancel',buddyId:p[0],date:p[1]})}).then(function(d){ if(d&&d.ok){ DATA.social=d; render(); } }).catch(function(){}); },
+    // ── Gruppen ──
+    socRoomCreateOpen:function(){ S.socRoomCreate=true; S.socRoomName=''; S.socRoomPick={}; S.socMsg=''; S.socErr=false; render(); },
+    socRoomCreateClose:function(){ S.socRoomCreate=false; render(); },
+    socRoomPick:function(a){ var el=$('soc_roomname'); if(el) S.socRoomName=el.value; if(!S.socRoomPick) S.socRoomPick={}; var k=String(a); S.socRoomPick[k]=!S.socRoomPick[k]; render(); },
+    socRoomCreateGo:function(){ if(S.socBusy) return; var el=$('soc_roomname'); var nm=el?(el.value||'').trim():(S.socRoomName||''); S.socRoomName=nm; var members=Object.keys(S.socRoomPick||{}).filter(function(k){ return S.socRoomPick[k]; }); if(!members.length){ S.socErr=true; S.socMsg='Wähle mindestens einen Trainingspartner.'; render(); return; } S.socBusy=true; render();
+      api('/api/member/social',{method:'POST',body:JSON.stringify({action:'room-create',name:nm,members:members})})
+      .then(function(d){ S.socBusy=false; if(d&&d.ok){ DATA.social=d; S.socRoomCreate=false; S.socMsg=''; S.socErr=false; if(d.roomId){ S.socRoom=String(d.roomId); DATA.socRoomThread=null; render(); loadRoomThread(String(d.roomId)); return; } } else { S.socErr=true; S.socMsg=(d&&d.message)||'Gruppe konnte nicht erstellt werden.'; } render(); })
+      .catch(function(){ S.socBusy=false; S.socErr=true; S.socMsg='Verbindung gerade nicht möglich.'; render(); }); },
+    socOpenRoom:function(a){ S.socRoom=String(a); DATA.socRoomThread=null; S.socChatBusy=false; S.socMsg=''; S.socErr=false; render(); loadRoomThread(String(a)); setTimeout(function(){ var t=$('soc_rmsg'); if(t) t.focus(); },60); },
+    socRoomBack:function(){ S.socRoom=null; DATA.socRoomThread=null; S.socRoomInvite=false; render(); loadSocial(); },
+    socRoomSend:function(){ if(S.socChatBusy||!S.socRoom) return; var el=$('soc_rmsg'); var t=el?(el.value||'').trim():''; if(!t) return; var rid=S.socRoom; S.socChatBusy=true; S.socErr=false; S.socMsg='';
+      if(DATA.socRoomThread&&String(DATA.socRoomThread.roomId)===String(rid)){ DATA.socRoomThread.messages.push({mine:true,name:'',text:t,at:Date.now()}); }
+      if(el){ el.value=''; el.style.height='auto'; }
+      render(); socRoomScrollBottom();
+      api('/api/member/social',{method:'POST',body:JSON.stringify({action:'room-send',roomId:rid,text:t})})
+      .then(function(dd){ S.socChatBusy=false; if(dd&&dd.ok&&Array.isArray(dd.messages)){ if(DATA.socRoomThread&&String(DATA.socRoomThread.roomId)===String(rid)) DATA.socRoomThread.messages=dd.messages; } else { S.socErr=true; S.socMsg=(dd&&dd.message)||'Nachricht konnte nicht gesendet werden.'; } render(); socRoomScrollBottom(); })
+      .catch(function(){ S.socChatBusy=false; S.socErr=true; S.socMsg='Verbindung gerade nicht möglich.'; render(); }); },
+    socRoomLeave:function(a){ try{ if(!confirm('Gruppe verlassen? Du kannst später erneut eingeladen werden.')) return; }catch(e){} api('/api/member/social',{method:'POST',body:JSON.stringify({action:'room-leave',roomId:a})}).then(function(d){ if(d&&d.ok){ DATA.social=d; S.socRoom=null; DATA.socRoomThread=null; render(); } }).catch(function(){}); },
+    socRoomInviteOpen:function(a){ S.socRoomInvite=String(a); render(); },
+    socRoomInviteClose:function(){ S.socRoomInvite=false; render(); },
+    socRoomInviteGo:function(a){ var p=String(a||'').split('|'); if(p.length<2) return; api('/api/member/social',{method:'POST',body:JSON.stringify({action:'room-invite',roomId:p[0],buddyId:p[1]})}).then(function(d){ if(d&&d.ok){ DATA.socRoomThread={roomId:String(p[0]),room:d.room,messages:d.messages||[]}; S.socMsg='Eingeladen.'; S.socErr=false; render(); } }).catch(function(){}); },
     // checkins
     ciRange:function(a){ S.ciRange=a||'all'; S.dlMsg2=''; setQuiet({}); },
     emailPdf:function(){ emailPdf(); },
@@ -6696,7 +6777,7 @@
     if(t.id==='finn_q'){ autoGrow(t); }
     if(t.id==='pf_reply'){ S.pfDraft=t.value; autoGrow(t); }
     if(t.id==='ern_log'||t.id==='ern_ask'){ autoGrow(t); }
-    if(t.id==='soc_msg'){ autoGrow(t); }
+    if(t.id==='soc_msg'||t.id==='soc_rmsg'){ autoGrow(t); }
   });
   // Enter sendet (Shift+Enter = neue Zeile) – im FINN-Chat und im Postfach.
   document.addEventListener('keydown',function(e){
@@ -6704,6 +6785,7 @@
     if(e.key!=='Enter'||e.shiftKey) return;
     if(t.id==='finn_q'){ e.preventDefault(); ACT.finnSend(); }
     if(t.id==='soc_msg'){ e.preventDefault(); ACT.socChatSend(); }
+    if(t.id==='soc_rmsg'){ e.preventDefault(); ACT.socRoomSend(); }
     if(t.id==='pf_reply'){ e.preventDefault(); if(S.pfSel) ACT.pfReply(S.pfSel); }
     if(t.id==='ern_log'){ e.preventDefault(); ACT.ernLog(); }
     if(t.id==='ern_ask'){ e.preventDefault(); ACT.ernAskSend(); }

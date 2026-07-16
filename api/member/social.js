@@ -36,7 +36,7 @@ module.exports = async function handler(req, res) {
   const action = String(body.action || '');
   const buddyId = body.buddyId != null ? String(body.buddyId) : '';
   // Chat darf häufiger sein als Verbinde-/Verwaltungs-Aktionen.
-  const heavy = (action === 'dm-send');
+  const heavy = (action === 'dm-send' || action === 'room-send');
   if (!(await M.rateLimit(heavy ? ('social:dm:' + id) : ('social:' + id), heavy ? 240 : 60, 3600))) {
     res.statusCode = 429; return res.end(JSON.stringify({ ok: false, error: 'rate_limited', message: 'Zu viele Aktionen – bitte kurz warten.' }));
   }
@@ -73,6 +73,12 @@ module.exports = async function handler(req, res) {
     if (action === 'plan-propose') { const r = await Social.proposePlan(id, buddyId, body.date, body.slot); return j(r.ok ? await Social.snapshot(id) : r); }
     if (action === 'plan-join') { await Social.joinPlan(id, buddyId, body.date); return j(await Social.snapshot(id)); }
     if (action === 'plan-cancel') { await Social.cancelPlan(id, buddyId, body.date); return j(await Social.snapshot(id)); }
+    const roomId = body.roomId != null ? String(body.roomId) : '';
+    if (action === 'room-create') { const r = await Social.createRoom(id, body.name, body.members); return j(r.ok ? Object.assign({ roomId: r.roomId }, await Social.snapshot(id)) : r); }
+    if (action === 'room-invite') { const r = await Social.roomInvite(id, roomId, buddyId); return j(r.ok ? await Social.getRoom(id, roomId) : r); }
+    if (action === 'room-leave') { await Social.roomLeave(id, roomId); return j(await Social.snapshot(id)); }
+    if (action === 'room-thread') { return j(await Social.getRoom(id, roomId)); }
+    if (action === 'room-send') { return j(await Social.roomSend(id, roomId, body.text)); }
     return j({ ok: false, error: 'unknown_action' });
   } catch (e) {
     return j({ ok: false, error: 'server_error', message: 'Etwas ist schiefgelaufen – bitte erneut.' });
