@@ -177,6 +177,30 @@ var S={ token:null, role:null, meName:null, screen:'inbox', convs:[], counts:{},
 var root=document.getElementById('root');
 var stickBottom=true;   // Chat klebt am unteren Rand, solange der Nutzer nicht hochscrollt
 var lastThreadScroll=0; // letzte Scroll-Position (über Voll-Renders hinweg erhalten)
+var mainScrollMap={};   // Scroll-Position des Haupt-Inhalts je Screen/Profil (über Voll-Renders erhalten)
+var ctxScrollTop=0;     // Scroll-Position des Kontext-Panels (Vorgang) über Voll-Renders erhalten
+
+// Mehrere render()-Aufrufe im selben Frame zu EINEM Rebuild bündeln. Verhindert das
+// Ruckeln beim Profil-Öffnen (bis zu ~8 Loader rendern sonst nacheinander die ganze Shell).
+// Nur für nachträgliche Loader-Renders benutzen – einleitende Lade-Renders bleiben synchron.
+var _renderScheduled=false;
+function scheduleRender(){
+  if(_renderScheduled) return;
+  _renderScheduled=true;
+  var raf=window.requestAnimationFrame||function(cb){ return setTimeout(cb,16); };
+  raf(function(){ _renderScheduled=false; render(); });
+}
+// Schlüssel für die Scroll-Merkung: pro Screen, beim Mitgliedsprofil zusätzlich pro Mitglied.
+function curMainKey(){ return S.screen+(((S.screen==='members')&&(S.profile||S.profileLoading)&&S._profId)?(':'+S._profId):''); }
+// Screen-Level-Scroller ist der erste direkte .scrl-Nachfahre des Inhaltsbereichs.
+// (Postfach nutzt eigene Scroller – dort matcht nichts und wir lassen es unangetastet.)
+function restoreMainScroll(bodyEl){
+  if(!bodyEl) return; var sc=null, kids=bodyEl.children;
+  for(var i=0;i<kids.length;i++){ if(kids[i].classList&&kids[i].classList.contains('scrl')){ sc=kids[i]; break; } }
+  if(!sc) return; var key=curMainKey(); var saved=mainScrollMap[key]||0;
+  if(saved>0){ try{ sc.scrollTop=saved; }catch(e){} }
+  sc.addEventListener('scroll',function(){ mainScrollMap[key]=sc.scrollTop; },{passive:true});
+}
 
 // ---------- helpers ----------
 function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
@@ -334,7 +358,7 @@ function findConv(key){ for(var i=0;i<S.convs.length;i++) if(S.convs[i].key===ke
 function splitKey(key){ var i=key.indexOf(':'); return [key.slice(0,i), key.slice(i+1)]; }
 
 async function openConv(key){
-  stickBottom=true;   // beim Öffnen immer ans Ende
+  stickBottom=true; ctxScrollTop=0;   // beim Öffnen: Chat ans Ende, Kontext-Panel nach oben
   S.selKey=key; S.draft=''; S.note=''; S.mobileThread=true; S.panelOpen=false; S.convProfile=null; S.convProfileLoading=false; render();
   var p=splitKey(key);
   loadConvProfile(p[0], key);
@@ -453,6 +477,7 @@ async function openProfile(id){
   S.memberCheckins=null; S.memberCheckinsLoading=false; S.ciMsg=''; S.ciMailBusy=false; ciPresetSilent('all');
   S.memberCoaching=null; S.memberCoachingLoading=false;
   S.memberMsgs=null; S.memberMsgsLoading=false; S.memberMsgsTotal=0;
+  S._profId=String(id); mainScrollMap['members:'+id]=0;   // neues Profil beginnt oben
   S.profileLoading=true; S.profile=null; render();
   try{ var r=await tapi('/api/team/members?id='+encodeURIComponent(id)); if(r.ok) S.profile=r.profile; }
   catch(e){} S.profileLoading=false; render();
@@ -465,7 +490,7 @@ async function loadProfileTags(id){
     var r=await tapi('/api/team/tags?memberId='+encodeURIComponent(id));
     if(r&&r.ok){ S.profileTags=r.tags||[]; if(Array.isArray(r.presets)) S.tagPresets=r.presets; S.memberTags[String(id)]=(r.tags||[]).slice(); }
   }catch(e){}
-  render();
+  scheduleRender();
 }
 // Tags setzen (ersetzt); Antwort enthält die gespeicherte Liste. Aktualisiert auch den Listen-Cache.
 async function saveProfileTags(id, tags){
@@ -566,13 +591,13 @@ function backToMembers(){ S.profile=null; render(); }
 // Dokumente des offenen Profils laden (GET ?memberId). Ohne Scope -> available:false,
 // die Karte blendet sich aus. Nie werfen.
 async function loadProfileDocs(id){
-  S.profileDocsLoading=true; render();
+  S.profileDocsLoading=true; scheduleRender();
   try{
     var r=await tapi('/api/team/documents?memberId='+encodeURIComponent(id));
     if(r&&r.ok&&r.available){ S.profileDocsAvailable=true; S.profileDocs=r.items||[]; }
     else { S.profileDocsAvailable=false; S.profileDocs=null; }
   }catch(e){ S.profileDocsAvailable=false; S.profileDocs=null; }
-  S.profileDocsLoading=false; render();
+  S.profileDocsLoading=false; scheduleRender();
 }
 // Datum (yyyy-mm-dd) hübsch (dd.mm.yyyy). Leer/ungültig -> ''.
 function docDate(s){ if(!s) return ''; var d=new Date(String(s).slice(0,10)+'T00:00:00Z'); if(isNaN(d)) return String(s); var p=function(n){ return (n<10?'0':'')+n; }; return p(d.getUTCDate())+'.'+p(d.getUTCMonth()+1)+'.'+d.getUTCFullYear(); }
@@ -648,13 +673,13 @@ function docsCard(p){
 // Zugangsmedien des offenen Profils laden (GET ?memberId). Ohne Scope/Endpunkt ->
 // available:false, die Karte blendet sich aus. Nie werfen.
 async function loadAccessMedia(id){
-  S.accessMediaLoading=true; render();
+  S.accessMediaLoading=true; scheduleRender();
   try{
     var r=await tapi('/api/team/access-medium?memberId='+encodeURIComponent(id));
     if(r&&r.ok&&r.available){ S.accessMediaAvailable=true; S.accessMedia=r.items||[]; }
     else { S.accessMediaAvailable=false; S.accessMedia=null; }
   }catch(e){ S.accessMediaAvailable=false; S.accessMedia=null; }
-  S.accessMediaLoading=false; render();
+  S.accessMediaLoading=false; scheduleRender();
 }
 // Aktion sperren/entsperren/ausgeben. write-first serverseitig; via:'fallback'
 // bedeutet, der Wunsch ging (statt direkt) ans Studio – kurze Rückmeldung + neu laden.
@@ -714,20 +739,20 @@ function accessMediumCard(p){
 // ---------- Check-ins / Anwesenheitsbestätigung ----------
 // Vollständigen Check-in-Verlauf des offenen Profils laden. Ohne Scope -> [] (Karte zeigt 0). Nie werfen.
 async function loadMemberCheckins(id){
-  S.memberCheckinsLoading=true; render();
+  S.memberCheckinsLoading=true; scheduleRender();
   try{
     var r=await tapi('/api/team/checkins?id='+encodeURIComponent(id));
     S.memberCheckins=(r&&r.ok&&Array.isArray(r.checkins))?r.checkins:[];
   }catch(e){ S.memberCheckins=[]; }
-  S.memberCheckinsLoading=false; render();
+  S.memberCheckinsLoading=false; scheduleRender();
 }
 // ---------- Ernährungs-Coaching (read-only) ----------
 // Coaching-Status des offenen Profils laden. Nicht eingeschrieben/kein Store -> Karte entfällt. Nie werfen.
 async function loadMemberCoaching(id){
-  S.memberCoachingLoading=true; render();
+  S.memberCoachingLoading=true; scheduleRender();
   try{ var r=await tapi('/api/team/coaching?id='+encodeURIComponent(id)); S.memberCoaching=(r&&r.ok)?r:{enrolled:false}; }
   catch(e){ S.memberCoaching={enrolled:false}; }
-  S.memberCoachingLoading=false; render();
+  S.memberCoachingLoading=false; scheduleRender();
 }
 // Coaching-Karte im Profil (nur wenn eingeschrieben): Kurswoche, Lektionen, Streak, letzter Check-in.
 function coachingBlock(p){
@@ -753,10 +778,10 @@ function coachingBlock(p){
 // Preview-Entitlement (source:'team_preview'); ein echtes Abo wird nie angetastet.
 async function loadMemberPreview(id){
   if(!isAdmin()) return;
-  S.memberPreview=null; S.memberPreviewMsg=''; S.memberPreviewLoading=true; render();
+  S.memberPreview=null; S.memberPreviewMsg=''; S.memberPreviewLoading=true; scheduleRender();
   try{ var r=await tapi('/api/team/nutrition-preview?id='+encodeURIComponent(id)); S.memberPreview=(r&&r.ok)?r:null; }
   catch(e){ S.memberPreview=null; }
-  S.memberPreviewLoading=false; render();
+  S.memberPreviewLoading=false; scheduleRender();
 }
 async function nutritionPreviewAction(id, action, extra){
   if(S.memberPreviewBusy) return;
@@ -909,13 +934,13 @@ function emailCheckinPdf(p){
 // ---------- Nachrichtenverlauf mit dem Mitglied ----------
 // Alle Nachrichten über alle Vorgänge des Mitglieds, chronologisch. Nie werfen.
 async function loadMemberMessages(id){
-  S.memberMsgsLoading=true; render();
+  S.memberMsgsLoading=true; scheduleRender();
   try{
     var r=await tapi('/api/team/messages?id='+encodeURIComponent(id));
     S.memberMsgs=(r&&r.ok&&Array.isArray(r.messages))?r.messages:[];
     S.memberMsgsTotal=(r&&r.total)||S.memberMsgs.length;
   }catch(e){ S.memberMsgs=[]; S.memberMsgsTotal=0; }
-  S.memberMsgsLoading=false; render();
+  S.memberMsgsLoading=false; scheduleRender();
 }
 function msgTime(ts){ if(!ts) return ''; var d=new Date(Number(ts)); if(isNaN(d)) return '';
   return d.toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'2-digit'})+' · '+d.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'})+' Uhr'; }
@@ -1388,6 +1413,9 @@ function renderShell(content, title, sub){
   var bg=head.querySelector('[data-burger]'); if(bg) bg.onclick=function(){ S.navOpen=true; render(); };
   head.querySelector('[data-refresh]').onclick=function(){ if(S.screen==='members') loadMembers(); else if(S.screen==='inbox'||S.screen==='appts') loadInbox(); else if(S.screen==='help') loadArticles(); else if(S.screen==='stats') loadStats(); else if(S.screen==='msg') loadBroadcastCount(); else if(S.screen==='leads') loadLeads(); else if(S.screen==='todo') loadTodos(); else if(S.screen==='schicht'){ loadShifts(); if(S.shTab==='tausch') loadShSwaps(); } else render(); };
   var bell=head.querySelector('[data-bell]'); if(bell) bell.onclick=function(){ goScreen('inbox'); };
+  // Haupt-Inhalt-Scroll über Voll-Renders hinweg erhalten (sonst springt z. B. das
+  // Mitgliedsprofil bei jeder Aktion/jedem Loader nach oben).
+  restoreMainScroll(body);
 }
 
 // ---------- render: inbox ----------
@@ -1744,6 +1772,12 @@ function wireInbox(node){
   if(tmsg){
     tmsg.scrollTop = stickBottom ? tmsg.scrollHeight : lastThreadScroll;
     tmsg.onscroll=function(){ lastThreadScroll=tmsg.scrollTop; stickBottom = (tmsg.scrollHeight - tmsg.scrollTop - tmsg.clientHeight) < 80; };
+  }
+  // Kontext-Panel-Scroll erhalten (Status-/Prio-/Notiz-Aktionen sprangen sonst nach oben).
+  var cpan=node.querySelector('.ctx-panel');
+  if(cpan){
+    if(ctxScrollTop>0){ try{ cpan.scrollTop=ctxScrollTop; }catch(e){} }
+    cpan.addEventListener('scroll',function(){ ctxScrollTop=cpan.scrollTop; },{passive:true});
   }
 }
 function sendReply(){ var v=(S.draft||'').trim(); if(v && !S.busy){ stickBottom=true; act('reply',{text:v, channel:S.replyChannel}); } }
@@ -3788,11 +3822,11 @@ function rtLabel(min){ if(min==null||isNaN(min)) return '—'; var m=Number(min)
 async function loadArticles(){ S.articlesLoading=true; render(); try{ var r=await tapi('/api/team/articles'); if(r.ok) S.articles=r.articles||[]; S.articlesLoaded=true; }catch(e){} S.articlesLoading=false; render(); }
 async function loadStats(){ S.statsLoading=true; render(); try{ var r=await tapi('/api/team/stats'); if(r.ok) S.stats=r; }catch(e){} S.statsLoading=false; render(); }
 // Live-Auslastung (öffentlicher Endpunkt, echte Magicline-Daten).
-async function loadUtil(){ try{ var r=await fetch('/api/auslastung').then(function(x){return x.json();}); if(r && (r.count!=null||r.percent!=null)){ S.util=r; render(); } }catch(e){} }
+async function loadUtil(){ try{ var r=await fetch('/api/auslastung').then(function(x){return x.json();}); if(r && (r.count!=null||r.percent!=null)){ S.util=r; scheduleRender(); } }catch(e){} }
 // Churn-Radar: Risiko-Mitglieder (degradiert still – Karte bleibt bei Fehler/leer aus).
-async function loadChurn(){ try{ var r=await tapi('/api/team/churn'); if(r && r.ok){ S.churn=r.members||[]; render(); } }catch(e){} }
+async function loadChurn(){ try{ var r=await tapi('/api/team/churn'); if(r && r.ok){ S.churn=r.members||[]; scheduleRender(); } }catch(e){} }
 // Offene Beiträge / Mahn-Liste (degradiert still – Karte bleibt bei Fehler/leer aus).
-async function loadDues(){ try{ var r=await tapi('/api/team/dues'); if(r && r.ok){ S.dues=r.members||[]; render(); } }catch(e){} }
+async function loadDues(){ try{ var r=await tapi('/api/team/dues'); if(r && r.ok){ S.dues=r.members||[]; scheduleRender(); } }catch(e){} }
 
 function helpNew(){ S.editor={id:null,title:'',cat:'mitglied',body:'',status:'entwurf',views:0,helpfulYes:0,helpfulNo:0}; S.helpView='edit'; render(); }
 function helpEdit(id){ var a=null; for(var i=0;i<S.articles.length;i++) if(S.articles[i].id===id) a=S.articles[i]; if(a){ S.editor=Object.assign({},a); S.helpView='edit'; render(); } }
@@ -4122,7 +4156,7 @@ function loadWb(){
 // Angebote leicht nachladen (für Dashboard-Karte & Profil-Nachweis).
 function loadRetentionOffers(){
   if(!isAdmin()){ S.rhOffersLoaded=true; return; }
-  tapi('/api/team/retention').then(function(r){ if(r&&r.ok){ S.wbFrame=r.frame; S.wbOffers=r.offers||[]; S.wbStored=(r.stored!==false); } S.rhOffersLoaded=true; render(); }).catch(function(){ S.rhOffersLoaded=true; });
+  tapi('/api/team/retention').then(function(r){ if(r&&r.ok){ S.wbFrame=r.frame; S.wbOffers=r.offers||[]; S.wbStored=(r.stored!==false); } S.rhOffersLoaded=true; scheduleRender(); }).catch(function(){ S.rhOffersLoaded=true; });
 }
 // Prominente Dashboard-Karte: angenommene Rückhol-Angebote.
 function dashRetentionCard(){
