@@ -484,6 +484,7 @@ async function openProfile(id){
   S.memberCheckins=null; S.memberCheckinsLoading=false; S.ciMsg=''; S.ciMailBusy=false; ciPresetSilent('all');
   S.memberCoaching=null; S.memberCoachingLoading=false;
   S.memberMsgs=null; S.memberMsgsLoading=false; S.memberMsgsTotal=0;
+  S.profTab='ueber'; S.acc={};   // Profil öffnet auf „Übersicht"; alle Sektionen zugeklappt
   S._profId=String(id); mainScrollMap['members:'+id]=0;   // neues Profil beginnt oben
   S.profileLoading=true; S.profile=null; render();
   try{ var r=await tapi('/api/team/members?id='+encodeURIComponent(id)); if(r.ok) S.profile=r.profile; }
@@ -645,6 +646,20 @@ function uploadDocFile(memberId, file){
   reader.readAsDataURL(file);
 }
 // Dokumente-Karte im Profil. Bei available:false -> '' (Karte ausgeblendet).
+// ---- Aufklappbare Profil-Abschnitte (Akkordeon) ----
+// Schwere Blöcke werden standardmäßig zugeklappt (Zustand in S.acc[key]) und über
+// einen klickbaren Kopf mit Chevron geöffnet. So bleibt das Profil aufgeräumt.
+function accOpen(key){ return !!(S.acc && S.acc[key]); }
+function accWrap(key, title, bodyHtml, sub){
+  var open=accOpen(key);
+  var chev='<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#8a929a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;transition:transform .2s;transform:rotate('+(open?'180':'0')+'deg)"><path d="M6 9l6 6 6-6"/></svg>';
+  return '<div style="margin-top:16px;background:#fff;border-radius:20px;box-shadow:0 14px 38px rgba(4,33,40,.09);overflow:hidden">'+
+    '<button data-acc="'+esc(key)+'" style="width:100%;display:flex;align-items:center;gap:14px;background:none;border:none;padding:'+(open?'20px 24px 6px':'20px 24px')+';cursor:pointer;text-align:left">'+
+      '<div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:900;letter-spacing:-.2px;color:#15171B">'+title+'</div>'+(sub?'<div style="font-size:12.5px;color:#8a929a;font-weight:600;margin-top:2px">'+sub+'</div>':'')+'</div>'+chev+
+    '</button>'+
+    (open?'<div style="padding:'+(sub?'14px':'8px')+' 24px 22px">'+bodyHtml+'</div>':'')+
+  '</div>';
+}
 function docsCard(p){
   if(!S.profileDocsAvailable && !S.profileDocsLoading) return '';
   var body;
@@ -673,7 +688,7 @@ function docsCard(p){
     '</div>';
     body=rows+upload;
   }
-  return '<div style="background:#fff;border-radius:18px;box-shadow:0 12px 32px rgba(4,33,40,.08);padding:20px 22px"><div style="font-size:15px;font-weight:900;margin-bottom:6px">Dokumente</div>'+body+'</div>';
+  return accWrap('docfiles','Dokumente',body,'In Magicline hinterlegte Dateien · hochladen');
 }
 
 // ---------- Zugangsmedium (Scope CUSTOMER_ACCESS_MEDIUM_WRITE) ----------
@@ -740,7 +755,7 @@ function accessMediumCard(p){
     '</div>';
     body=rows+issue;
   }
-  return '<div style="background:#fff;border-radius:18px;box-shadow:0 12px 32px rgba(4,33,40,.08);padding:20px 22px"><div style="font-size:15px;font-weight:900;margin-bottom:6px">Zugangsmedium</div>'+body+'</div>';
+  return accWrap('access','Zugangsmedium',body,'Chip / Karte / Band sperren, entsperren oder ausgeben');
 }
 
 // ---------- Check-ins / Anwesenheitsbestätigung ----------
@@ -777,7 +792,7 @@ function coachingBlock(p){
     chip('Nächster Check-in', due)+
   '</div>';
   var lcBlock=lc?('<div style="margin-top:12px;background:#eef7f1;border:1px solid rgba(15,122,74,.16);border-radius:14px;padding:13px 15px"><div style="font-size:12px;font-weight:800;color:#0f7a4a;text-transform:uppercase;letter-spacing:.3px">Letzter Check-in · '+deDate(lc.date)+'</div><div style="font-size:13.5px;font-weight:700;color:#2c3338;margin-top:5px">'+(lc.weight!=null?(lc.weight+' kg'):'—')+(lc.waist!=null?(' · Taille '+lc.waist+' cm'):'')+' · Umsetzung '+(lc.adherence!=null?lc.adherence+'%':'—')+' · Stimmung '+(moodTxt[lc.mood]||'—')+'</div></div>'):'<div style="margin-top:12px;font-size:12.5px;color:#8a929a;font-weight:600">Noch kein Check-in.</div>';
-  return '<div style="margin-top:18px;background:#fff;border-radius:20px;box-shadow:0 14px 38px rgba(4,33,40,.09);padding:20px 24px"><div style="font-size:15px;font-weight:900;letter-spacing:-.2px;margin-bottom:4px;color:#15171B">🥗 Ernährungs-Coaching</div><div style="font-size:12.5px;color:#8a929a;font-weight:600;margin-bottom:16px">Programm-Status des Mitglieds (nur Ansicht)</div>'+grid+lcBlock+'</div>';
+  return accWrap('coaching','🥗 Ernährungs-Coaching', grid+lcBlock, 'Programm-Status des Mitglieds (nur Ansicht)');
 }
 // ---------- Ernährungs-Premium: Vorschau freischalten (nur Admin) ----------
 // Damit das Team die kostenpflichtigen Coaching-/KI-Inhalte prüfen oder einem Mitglied
@@ -837,7 +852,7 @@ function nutritionPreviewBlock(p){
     var msg=S.memberPreviewMsg?('<div style="margin-top:10px;font-size:12px;font-weight:700;color:#8a929a">'+esc(S.memberPreviewMsg)+'</div>'):'';
     body='<div style="font-size:13.5px;margin-bottom:13px">'+status+'</div>'+controls+msg;
   }
-  return '<div style="margin-top:18px;background:#fff;border-radius:20px;box-shadow:0 14px 38px rgba(4,33,40,.09);padding:20px 24px"><div style="font-size:15px;font-weight:900;letter-spacing:-.2px;margin-bottom:4px;color:#15171B">🔓 Ernährungs-Premium</div><div style="font-size:12.5px;color:#8a929a;font-weight:600;margin-bottom:16px">Gratis-/Test-Zugang vergeben (Zeitraum oder dauerhaft) oder ein echtes Abo verwalten. Ein echtes Stripe-Abo wird nur über „Abo kündigen" angetastet.</div>'+body+'</div>';
+  return accWrap('nutri','🔓 Ernährungs-Premium', body, 'Gratis-/Test-Zugang vergeben (Zeitraum oder dauerhaft) oder ein echtes Abo verwalten. Ein echtes Stripe-Abo wird nur über „Abo kündigen" angetastet.');
 }
 // yyyy-mm-dd-Presets für den Zeitraum. ...Silent: nur State setzen (kein render), fürs Öffnen.
 function ci2(n){ return (n<10?'0':'')+n; }
@@ -903,7 +918,7 @@ function checkinsBlock(p){
       '</div>'+msg;
     body=presets+inputs+summary+rows+actions;
   }
-  return '<div style="margin-top:18px;background:#fff;border-radius:20px;box-shadow:0 14px 38px rgba(4,33,40,.09);padding:20px 24px"><div style="font-size:15px;font-weight:900;letter-spacing:-.2px;margin-bottom:4px;color:#15171B">Anwesenheit &amp; Check-ins</div><div style="font-size:12.5px;color:#8a929a;font-weight:600;margin-bottom:16px">Besuche auf Basis der Magicline-Check-ins · Bestätigung als PDF erstellen</div>'+body+'</div>';
+  return accWrap('checkins','Anwesenheit &amp; Check-ins', body, 'Besuche auf Basis der Magicline-Check-ins · Bestätigung als PDF erstellen');
 }
 // PDF-Bestätigung im Client bauen (jsPDF), spiegelt das Member-Layout.
 function ciLogoTxt(doc,MG){ doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(16); doc.text('FIT-INN TRIER',MG,17); }
@@ -987,7 +1002,7 @@ function membershipBlock(p){
     '<button data-mbdownload="1" style="display:inline-flex;align-items:center;gap:8px;border:none;border-radius:12px;background:'+TEAL+';color:#fff;font-size:13.5px;font-weight:800;padding:11px 16px;cursor:pointer"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v13"/><path d="M7 11l5 5 5-5"/><path d="M5 21h14"/></svg>Herunterladen</button>'+
     '<button data-mbmail="1"'+(S.mbMailBusy?' disabled':'')+' style="display:inline-flex;align-items:center;gap:8px;border:1.5px solid #d6dee0;border-radius:12px;background:#fff;color:#0a4958;font-size:13.5px;font-weight:800;padding:11px 16px;cursor:pointer">'+(S.mbMailBusy?'<span class="spin" style="width:14px;height:14px;border-width:2px"></span>Wird gesendet …':'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0a4958" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg>Per E-Mail an Mitglied')+'</button>'+
     '</div>'+(S.mbMsg?'<div style="font-size:12.5px;font-weight:700;color:#0a4958;margin-top:10px">'+esc(S.mbMsg)+'</div>':'');
-  return '<div style="margin-top:18px;background:#fff;border-radius:20px;box-shadow:0 14px 38px rgba(4,33,40,.09);padding:20px 24px"><div style="font-size:15px;font-weight:900;letter-spacing:-.2px;margin-bottom:4px;color:#15171B">Mitgliedschaftsbestätigung</div><div style="font-size:12.5px;color:#8a929a;font-weight:600;margin-bottom:4px">Nachweis, dass das Mitglied seit '+esc(since)+' im Fit-Inn Trier ist – als PDF mit Logo.</div>'+actions+'</div>';
+  return accWrap('mship','Mitgliedschaftsbestätigung', actions, 'Nachweis, dass das Mitglied seit '+esc(since)+' im Fit-Inn Trier ist – als PDF mit Logo.');
 }
 
 // ---------- Nachrichtenverlauf mit dem Mitglied ----------
@@ -1033,9 +1048,9 @@ function messagesBlock(p){
     var more=(S.memberMsgsTotal>msgs.length)?'<div style="text-align:center;font-size:11.5px;color:#a9b1b6;font-weight:600;margin-bottom:8px">Ältere Nachrichten ausgeblendet ('+(S.memberMsgsTotal-msgs.length)+')</div>':'';
     body='<div id="msgscroll" class="scrl" style="max-height:440px;overflow-y:auto;padding-right:4px">'+more+rows+'</div>';
   }
-  return '<div style="margin-top:18px;background:#fff;border-radius:20px;box-shadow:0 14px 38px rgba(4,33,40,.09);padding:20px 24px"><div style="font-size:15px;font-weight:900;letter-spacing:-.2px;margin-bottom:4px;color:#15171B">Nachrichtenverlauf</div><div style="font-size:12.5px;color:#8a929a;font-weight:600;margin-bottom:14px">Alles, was ihr euch geschrieben habt · tippe eine Nachricht an, um im Vorgang zu antworten</div>'+body+
-    '<div style="margin-top:14px;padding-top:14px;border-top:1px solid #f0f3f4"><button data-msgsend2="1" style="display:inline-flex;align-items:center;gap:8px;border:none;border-radius:12px;background:'+TEAL+';color:#fff;font-size:13.5px;font-weight:800;padding:11px 16px;cursor:pointer">'+IC.send+'Neue Nachricht senden</button></div>'+
-  '</div>';
+  return accWrap('msgs','Nachrichtenverlauf', body+
+    '<div style="margin-top:14px;padding-top:14px;border-top:1px solid #f0f3f4"><button data-msgsend2="1" style="display:inline-flex;align-items:center;gap:8px;border:none;border-radius:12px;background:'+TEAL+';color:#fff;font-size:13.5px;font-weight:800;padding:11px 16px;cursor:pointer">'+IC.send+'Neue Nachricht senden</button></div>',
+    'Alles, was ihr euch geschrieben habt · tippe eine Nachricht an, um im Vorgang zu antworten');
 }
 
 // ---------- Dubletten-Prüfung ----------
@@ -2178,6 +2193,31 @@ function membersNode(){
     var histRows = (p.history&&p.history.length)
       ? p.history.map(function(h){ var t=tm(h.type),st=sm(h.teamStatus); return '<div class="lrow" data-hist="'+esc(h.key)+'" style="display:flex;align-items:center;gap:12px;padding:12px 0;border-top:1px solid #f0f3f4;cursor:pointer"><div style="width:36px;height:36px;border-radius:11px;background:'+t.b+';color:'+t.c+';display:flex;align-items:center;justify-content:center;flex-shrink:0;font-weight:900;font-size:11px">'+esc(t.l.slice(0,2))+'</div><div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:800;color:#15171B">'+esc(t.l)+'</div><div style="font-size:12px;color:#8a929a;font-weight:600">'+esc(h.ref)+' · '+esc(rel(h.updatedAt))+'</div></div><span style="font-size:11px;font-weight:800;color:'+st.c+';background:'+st.b+';border-radius:20px;padding:4px 11px">'+st.l+'</span></div>'; }).join('')
       : '<div style="font-size:12.5px;color:#a9b1b6;font-weight:600;padding:4px 0">Keine Vorgänge.</div>';
+    // Profil in 4 Tabs gegliedert (Übersicht offen · schwere Sektionen als Akkordeon).
+    var TABS=[['ueber','Übersicht'],['train','Training'],['docs','Dokumente & Bestätigungen'],['komm','Nachrichten & Vorgänge']];
+    var curTab=S.profTab||'ueber';
+    var tabBar='<div style="display:flex;gap:4px;margin-top:18px;background:#eef2f3;border-radius:15px;padding:5px;overflow-x:auto">'+
+      TABS.map(function(t){ var on=(t[0]===curTab);
+        return '<button data-ptab="'+t[0]+'" style="flex:1;white-space:nowrap;border:none;border-radius:11px;background:'+(on?'#fff':'transparent')+';color:'+(on?'#0a4958':'#6b7780')+';font-size:13px;font-weight:800;padding:11px 14px;cursor:pointer;box-shadow:'+(on?'0 4px 14px rgba(4,33,40,.10)':'none')+'">'+esc(t[1])+'</button>'; }).join('')+
+    '</div>';
+    var tabHtml;
+    if(curTab==='train'){
+      tabHtml=checkinsBlock(p)+coachingBlock(p)+nutritionPreviewBlock(p);
+    } else if(curTab==='docs'){
+      tabHtml=membershipBlock(p)+docsCard(p)+accessMediumCard(p);
+    } else if(curTab==='komm'){
+      tabHtml=messagesBlock(p)+memberOffersCard(p)+
+        '<div style="margin-top:16px;background:#fff;border-radius:20px;box-shadow:0 14px 38px rgba(4,33,40,.09);padding:20px 24px"><div style="font-size:15px;font-weight:900;letter-spacing:-.2px;margin-bottom:4px;color:#15171B">Vorgangs-Historie</div>'+histRows+'</div>';
+    } else {
+      tabHtml=tagsRowHTML()+handledLineHTML(p)+
+        '<div class="prof-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:18px;align-items:start">'+
+          stammdatenCard(p)+vertragCard(p)+
+          (isAdmin()?profileCard('Bankverbindung', pRow('IBAN',p.ibanMasked)):'')+
+          (isAdmin()?zahlstatusCard(p.account):'')+
+          benefitsCard(p.benefits)+zusatzinfoCard(p.additionalInfo)+
+          koerpermasseCard(p.measurements)+profileCard('Termine', apptRows)+
+        '</div>';
+    }
     wrap.innerHTML='<div style="max-width:1080px">'+
       '<button data-back="1" style="display:inline-flex;align-items:center;gap:6px;background:none;border:none;color:#0a4958;font-size:13.5px;font-weight:800;letter-spacing:-.2px;margin-bottom:14px;padding:0;cursor:pointer">'+IC.back+'Alle Mitglieder</button>'+
       '<div style="background:linear-gradient(165deg,#0e6072,#063540);border-radius:20px;box-shadow:0 14px 38px rgba(4,33,40,.16);padding:24px 26px;display:flex;align-items:center;gap:18px;flex-wrap:wrap">'+
@@ -2190,32 +2230,16 @@ function membersNode(){
         '<button data-actionlink="1" style="display:inline-flex;align-items:center;gap:8px;border:1.5px solid #d6dee0;border-radius:12px;background:#fff;color:#0a4958;font-size:13.5px;font-weight:800;padding:11px 16px;cursor:pointer"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#0a4958" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.5 1.5"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.5-1.5"/></svg>Aktions-Link senden</button>'+
         (isAdmin()?'<button data-rhooffer="1" style="display:inline-flex;align-items:center;gap:8px;border:1.5px solid #d6dee0;border-radius:12px;background:#fff;color:#0a4958;font-size:13.5px;font-weight:800;padding:11px 16px;cursor:pointer">↩ Rückhol-Angebot</button>':'')+
       '</div>'+
-      tagsRowHTML()+
-      handledLineHTML(p)+
-      memberOffersCard(p)+
-      '<div class="prof-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:18px;align-items:start">'+
-        stammdatenCard(p)+
-        vertragCard(p)+
-        (isAdmin()?profileCard('Bankverbindung', pRow('IBAN',p.ibanMasked)):'')+
-        (isAdmin()?zahlstatusCard(p.account):'')+
-        benefitsCard(p.benefits)+
-        zusatzinfoCard(p.additionalInfo)+
-        koerpermasseCard(p.measurements)+
-        profileCard('Termine', apptRows)+
-        docsCard(p)+
-        accessMediumCard(p)+
-      '</div>'+
-      checkinsBlock(p)+
-      membershipBlock(p)+
-      coachingBlock(p)+
-      nutritionPreviewBlock(p)+
-      messagesBlock(p)+
-      '<div style="margin-top:18px;background:#fff;border-radius:20px;box-shadow:0 14px 38px rgba(4,33,40,.09);padding:20px 24px"><div style="font-size:15px;font-weight:900;letter-spacing:-.2px;margin-bottom:4px;color:#15171B">Vorgangs-Historie</div>'+histRows+'</div>'+
+      tabBar+
+      tabHtml+
       // DSGVO-Zone: bewusst dezent, ganz unten – Anonymisieren ist unwiderruflich (nur Admin).
       (isAdmin()?'<div style="margin-top:20px;display:flex;justify-content:flex-end;padding:0 2px"><button data-anon="1" style="display:inline-flex;align-items:center;gap:7px;border:1.5px solid #e3b8b1;background:#fff;color:#b5402f;border-radius:11px;font-size:12.5px;font-weight:800;padding:9px 14px;cursor:pointer"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#b5402f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>DSGVO: Mitglied anonymisieren</button></div>':'')+
     '</div>'+dmModalHTML()+cxModalHTML()+apModalHTML()+wbModalHTML()+rhoModalHTML()+alkModalHTML()+pxModalHTML();
     setTimeout(function(){
       var b=wrap.querySelector('[data-back]'); if(b) b.onclick=backToMembers;
+      // Tabs umschalten (Scroll oben) + aufklappbare Sektionen toggeln.
+      wrap.querySelectorAll('[data-ptab]').forEach(function(x){ x.onclick=function(){ S.profTab=x.getAttribute('data-ptab'); mainScrollMap['members:'+p.id]=0; render(); }; });
+      wrap.querySelectorAll('[data-acc]').forEach(function(x){ x.onclick=function(){ var k=x.getAttribute('data-acc'); S.acc=S.acc||{}; S.acc[k]=!S.acc[k]; render(); }; });
       wrap.querySelectorAll('[data-hist]').forEach(function(x){ x.onclick=function(){ S.screen='inbox'; openConv(x.getAttribute('data-hist')); }; });
       var em=wrap.querySelector('[data-editmember]'); if(em) em.onclick=function(){ S.edStreet=p.street||''; S.edHouse=p.houseNumber||''; S.edZip=p.zipCode||''; S.edCity=p.city||''; S.editMsg=''; S.editMember=true; render(); };
       var ec=wrap.querySelector('[data-edcancel]'); if(ec) ec.onclick=function(){ S.editMember=false; S.editMsg=''; render(); };
