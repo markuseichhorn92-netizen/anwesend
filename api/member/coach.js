@@ -154,7 +154,9 @@ module.exports = async function handler(req, res) {
     // Live-Daten (Vertrag, Termine, Besuche, Beitragskonto) für konkrete Antworten.
     let det = { text: '', rateName: null };
     try { det = await memberDetails(sess.id); } catch (e) {}
-    const member = { firstName: m.firstName, lastName: m.lastName, customerNumber: m.customerNumber, rateName: det.rateName, details: det.text };
+    // Datenminimierung: nur Vorname + Tarif + aggregierte Live-Daten an die KI –
+    // Nachname/Mitgliedsnummer sind für die Antwort nicht erforderlich.
+    const member = { firstName: m.firstName, rateName: det.rateName, details: det.text };
     const r = await AI.coachReply(member, Array.isArray(body.history) ? body.history : [], question, HELP);
     res.statusCode = 200;
     if (r.ok) {

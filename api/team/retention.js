@@ -82,8 +82,9 @@ module.exports = async function handler(req, res) {
       const frame = await R.getFrame();
       if (!frame.active) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'inactive' })); }
       if (!AI.hasAI) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'no_ai' })); }
-      let name = String(body.memberName || ''), rateName = '', status = '';
-      try { const m = await M.getMember(memberId); if (m) { const nm = ((m.firstName || '') + ' ' + (m.lastName || '')).trim(); if (nm) name = nm; } } catch (e) {}
+      // Datenminimierung: Ansprache per „du" – der Vorname genügt der KI.
+      let name = String(body.memberName || '').trim().split(/\s+/)[0] || '', rateName = '', status = '';
+      try { const m = await M.getMember(memberId); if (m && m.firstName) name = String(m.firstName).trim(); } catch (e) {}
       try { const ct = await M.getContract(memberId); if (ct) { rateName = ct.rateName || ''; status = ct.active === false ? 'ehemalig/beendet' : (ct.cancelled ? 'gekündigt' : 'aktiv'); } } catch (e) {}
       const sug = await AI.winbackSuggest({ name: name, rateName: rateName, status: status, frame: frame });
       if (!sug.ok) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'ai_failed' })); }
@@ -97,8 +98,9 @@ module.exports = async function handler(req, res) {
       if (!AI.hasAI) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'no_ai' })); }
       const frame = await R.getFrame();
       const details = clampToFrame(body.details || {}, frame);
-      let name = String(body.memberName || ''), status = '';
-      try { const m = await M.getMember(memberId); if (m) { const nm = ((m.firstName || '') + ' ' + (m.lastName || '')).trim(); if (nm) name = nm; } } catch (e) {}
+      // Datenminimierung: nur der Vorname geht an die KI (siehe suggest-offer).
+      let name = String(body.memberName || '').trim().split(/\s+/)[0] || '', status = '';
+      try { const m = await M.getMember(memberId); if (m && m.firstName) name = String(m.firstName).trim(); } catch (e) {}
       try { const ct = await M.getContract(memberId); if (ct) { status = ct.active === false ? 'ehemalig/beendet' : (ct.cancelled ? 'gekündigt' : 'aktiv'); } } catch (e) {}
       const r = await AI.winbackMessage({ name: name, status: status, details: details });
       if (!r.ok) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'ai_failed' })); }
