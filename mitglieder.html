@@ -560,6 +560,8 @@
     if(s==='settings'){ S.commMsg=''; S.commErr=false; loadCommPrefs(); }
     if(s==='checkins'||s==='fort') loadCheckins();   // immer frisch: Studio-Check-ins vom Band erscheinen sofort
     if(ERN_ON&&(s==='home'||s==='fort')) loadNutri();   // Ernährungs-Vitalpunkte für Startseite/Fortschritt frisch halten
+    if(SOCIAL_ON&&(s==='home'||s==='profil')) loadSocial();   // Trainingspartner-Snapshot für Startseite/Profil
+    if(s==='social'){ S.socMsg=''; S.socErr=false; S.socBusy=false; S.socCopied=false; if(window.__socBuddy){ S.socCode=window.__socBuddy; window.__socBuddy=null; } loadSocial(); }
     if(s==='blog'){ S.blogSel=null; S.blogPost=null; loadBlog(); }
     if(s==='insta'){ S.instaSel=null; loadInsta(); maybeRefreshInsta(); }
     if(s==='home'){ loadFinnTip(); maybeRefreshInsta(); maybeRefreshLive(); }
@@ -593,6 +595,7 @@
     if(s==='home'||s==='account') loadAccount();
     if(s==='ern'||s==='coach'||s==='abo'||s==='recht') loadNutri();
     if(ERN_ON&&(s==='home'||s==='fort')) loadNutri();
+    if(SOCIAL_ON&&(s==='home'||s==='social'||s==='profil')) loadSocial();
     if(s==='coach') loadCoach();
     if(s==='checkins'||s==='fort') loadCheckins();
   }
@@ -1604,6 +1607,7 @@
     if(isFormer()) return scrRejoin();
     loadFinnTip(); loadInsta(); loadTypical(); loadLive(); loadHours();
     if(ERN_ON&&DATA.nutri==null) loadNutri();   // Ernährungs-Karte auf der Startseite mit Live-Daten füttern
+    if(SOCIAL_ON&&DATA.social==null) loadSocial();   // Trainingspartner-Karte auf der Startseite mit Live-Daten füttern
     var p=DATA.profile||{}; var name=p.firstName||'';
     // Schnellzugriff – 4 Kacheln mit Live-Daten (wie im Design). Rest liegt im Profil-Hub + Bottom-Nav.
     if(DATA.account===null) loadAccount();
@@ -1646,6 +1650,7 @@
       homeHero()+
       homeCoachHero()+
       homeErnCard()+
+      homeBuddyCard()+
       checkinBtn()+
       wifiBtn()+
       dupBanner+
@@ -2558,6 +2563,12 @@
   var ERN_LAUNCH=false;
   function ernTestOn(){ try{ return localStorage.getItem('fi_ern_test')==='1'; }catch(e){ return false; } }
   var ERN_ON = ERN_LAUNCH || ernTestOn();
+  // Feature-Schalter: Trainingspartner/Community (Mitglied↔Mitglied). Wie beim Essen-Modul
+  // öffentlich aus (SOCIAL_LAUNCH=false) bis final; Testmodus per localStorage (oder über den
+  // gleichen 7×-Datum-Tipp, der auch das Essen-Modul freischaltet).
+  var SOCIAL_LAUNCH=false;
+  function socialTestOn(){ try{ return localStorage.getItem('fi_soc_test')==='1' || ernTestOn(); }catch(e){ return false; } }
+  var SOCIAL_ON = SOCIAL_LAUNCH || socialTestOn();
   function ernSeedForm(){ var pr=(DATA.nutri&&DATA.nutri.profile)||{};
     S.ernGoal=pr.goal||'abnehmen'; S.ernSex=pr.sex||'w'; S.ernH=pr.height||170; S.ernW=pr.weight||70; S.ernAge=pr.age||30; S.ernAct=pr.activity||'moderat'; S.ernDiet=pr.diet||'omnivor'; }
   // Foto einer Mahlzeit -> herunterskalieren -> KI-Schätzung (action:log-photo).
@@ -2949,6 +2960,12 @@
     }).catch(function(){ DATA.nutri={ok:false,available:false}; rIf(['ern','coach','abo','recht','finnusage','home','fort']); });
   }
   function loadFavs(){ api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'fav-list'})}).then(function(d){ DATA.nutriFavs=(d&&d.ok&&Array.isArray(d.favorites))?d.favorites:[]; rIf(['ern']); }).catch(function(){ DATA.nutriFavs=[]; rIf(['ern']); }); }
+  // Trainingspartner-Snapshot laden (Opt-in/Buddys/Anfragen) – speist Screen, Startseite & Profil.
+  function loadSocial(){
+    if(DATA.social==null) DATA.social=false;   // „lädt" bis Antwort da ist
+    api('/api/member/social').then(function(d){ DATA.social=(d&&d.ok)?d:{ok:false,available:false}; rIf(['social','home','profil']); })
+    .catch(function(){ DATA.social={ok:false,available:false}; rIf(['social','home','profil']); });
+  }
   // WICHTIG: eigener Name (früher hieß das auch loadPlan und überschrieb per Hoisting
   // die Trainings-Vormerkung loadPlan() – dadurch wurde DATA.plan nie geladen).
   function loadNutriPlan(){ api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'plan-get'})}).then(function(d){ DATA.nutriPlan=(d&&d.ok)?{plan:d.plan,shopping:d.shopping}:{plan:null,shopping:[]}; render(); }).catch(function(){ DATA.nutriPlan={plan:null,shopping:[]}; render(); }); }
@@ -4576,6 +4593,7 @@
       row('fort','Fortschritt & Vitalität','Rang, Punkte, Fitness-Alter',AWARD,true)+
       (ERN_ON?row('ern','Ernährung','Tagesziel, Tracking & Rezepte','<path d="M11 21A7 7 0 0 1 4 14C4 8.5 8 4 13.5 4c2.7 0 4.6 1 6.5 1.8 0 8.7-4.3 15.2-9 15.2z"></path><path d="M11 21c0-5.5 3.3-10 7.5-12"></path>'):'')+
       (ERN_ON?row('finnusage','FINN-Nutzung','KI-Kontingent & Verbrauch','<path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.5 8.6 8.6 0 0 1-4-1L3 20l1-5a8.4 8.4 0 0 1-1-4A8.5 8.5 0 0 1 11.5 3 8.5 8.5 0 0 1 21 11.5z"></path>'):'')+
+      (SOCIAL_ON?row('social','Trainingspartner','Verbinden, Chat & Challenges','<circle cx="9" cy="7" r="3"></circle><path d="M2.5 20c0-3.3 2.9-6 6.5-6s6.5 2.7 6.5 6"></path><circle cx="17.5" cy="8.5" r="2.4"></circle><path d="M16 14.2c2.6.4 4.5 2.5 4.5 5.3"></path>',(DATA.social&&DATA.social.requests&&DATA.social.requests.length>0)):'')+
       row('data','Meine Daten','Adresse & Bankverbindung',IC.user)+
       row('contract','Vertrag','Tarif, Kündigung, Pause',IC.doc)+
       row('account','Beitragskonto','Offene Posten & Rechnungen','<rect x="2" y="5" width="20" height="14" rx="2"></rect><path d="M2 9h20M6 15h5"></path>')+
@@ -4703,6 +4721,128 @@
     steps.map(function(r){return '<div style="display:flex;gap:14px;align-items:flex-start"><div style="width:30px;height:30px;border-radius:50%;background:'+TEALBG+';color:#fff;font-weight:800;font-size:14px;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+r[0]+'</div><div><div style="font-size:15px;font-weight:800;color:var(--text)">'+r[1]+'</div><div style="font-size:13px;color:var(--text-muted);line-height:1.4;margin-top:2px">'+r[2]+'</div></div></div>';}).join('')+'</div></div>';
   }
 
+  // ===== Trainingspartner (Community / Buddies) =====
+  var SOC='#2d84b8', SOCBG='#e7f1f8';
+  function socAge(){ var dob=DATA.profile&&DATA.profile.dateOfBirth; if(!dob) return null; var t=Date.parse(dob); if(isNaN(t)) return null; return Math.floor((Date.now()-t)/(365.25*864e5)); }
+  function socInitDefaults(){
+    if(S.socShare==null) S.socShare={streak:true,checkins:true,nutrition:false};
+    if(S.socName==null){ var p=DATA.profile||{}; var ln=(p.lastName||''); S.socName=((p.firstName||'Mitglied')+(ln?(' '+ln.charAt(0).toUpperCase()+'.'):'')).slice(0,40); }
+  }
+  function socHeader(sub){ return '<div style="position:relative;overflow:hidden;background:linear-gradient(165deg,#0e6072 0%,#0a4958 55%,#063540 100%);border-radius:22px;padding:16px 18px;margin-bottom:16px;box-shadow:0 12px 34px rgba(4,33,40,.18)">'+
+    '<div style="position:absolute;width:200px;height:200px;right:-70px;top:-80px;border-radius:50%;background:radial-gradient(circle,rgba(45,132,184,.28),transparent 70%);pointer-events:none"></div>'+
+    '<div style="position:relative;display:flex;align-items:center;gap:12px">'+
+      '<button data-act="nav" data-arg="home" aria-label="Zurück" style="width:40px;height:40px;border-radius:13px;border:none;background:rgba(255,255,255,.13);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'+svg(IC.back,{c:'#fff',w:2,s:20})+'</button>'+
+      '<div><div style="font-size:21px;font-weight:900;color:#fff;letter-spacing:-.4px;line-height:1.1">Trainingspartner</div><div style="font-size:12.5px;color:#aed0d6;font-weight:600;margin-top:1px">'+(sub||'Gemeinsam mehr erreichen')+'</div></div>'+
+    '</div></div>'; }
+  function socSwitch(act,arg,on,label,sub){ return '<button data-act="'+act+'"'+(arg?(' data-arg="'+arg+'"'):'')+' style="width:100%;display:flex;align-items:center;gap:12px;padding:13px 2px;border:none;background:transparent;cursor:pointer;text-align:left">'+
+      '<div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:800;color:var(--text)">'+label+'</div>'+(sub?'<div style="font-size:11.5px;font-weight:600;color:var(--text-soft);margin-top:1px;line-height:1.35">'+sub+'</div>':'')+'</div>'+
+      '<div style="width:46px;height:27px;border-radius:14px;background:'+(on?SOC:'var(--surface-2)')+';position:relative;flex-shrink:0;transition:background .15s"><div style="position:absolute;top:3px;left:'+(on?'22px':'3px')+';width:21px;height:21px;border-radius:50%;background:#fff;box-shadow:0 2px 5px rgba(0,0,0,.2);transition:left .15s"></div></div>'+
+    '</button>'; }
+  function socMsg(){ return S.socMsg?'<div role="'+(S.socErr?'alert':'status')+'" style="font-size:12.5px;font-weight:700;color:'+(S.socErr?'var(--err-fg)':SOC)+';margin:0 2px 12px;line-height:1.4">'+esc(S.socMsg)+'</div>':''; }
+  // Onboarding / Opt-in (mit Consent + Altersgrenze)
+  function socOnboarding(){
+    socInitDefaults();
+    var CARD='background:var(--surface);border-radius:20px;box-shadow:0 12px 30px rgba(4,33,40,.09);padding:18px;margin-bottom:14px';
+    var age=socAge();
+    var tooYoung=(age!=null && age<16);
+    var intro='<div style="'+CARD+'"><div style="display:flex;align-items:center;gap:12px;margin-bottom:10px"><div style="width:46px;height:46px;border-radius:14px;background:'+SOCBG+';display:flex;align-items:center;justify-content:center;flex-shrink:0">'+svg('<circle cx="9" cy="7" r="3"></circle><path d="M2.5 20c0-3.3 2.9-6 6.5-6s6.5 2.7 6.5 6"></path><circle cx="17.5" cy="8.5" r="2.4"></circle><path d="M16 14.2c2.6.4 4.5 2.5 4.5 5.3"></path>',{c:SOC,w:1.9,s:24})+'</div>'+
+      '<div style="flex:1;min-width:0"><div style="font-size:16.5px;font-weight:900;color:var(--text)">Trainingspartner finden</div><div style="font-size:12.5px;font-weight:600;color:var(--text-soft)">Verbinde dich, motiviert euch, trainiert zusammen</div></div></div>'+
+      '<div style="font-size:13.5px;color:var(--text-2);font-weight:500;line-height:1.55">Verbinde dich per persönlichem Code mit Trainingspartnern – dann könnt ihr euch anfeuern, gemeinsame Trainingszeiten planen und euch challengen. <b>Es gibt keine durchsuchbare Mitgliederliste</b> – nur wer deinen Code hat, kann dich anfragen, und du bestätigst jede Verbindung selbst.</div></div>';
+    if(tooYoung){
+      return socHeader('Gemeinsam mehr erreichen')+socMsg()+intro+
+        '<div style="'+CARD+';text-align:center"><div style="font-size:30px">🔒</div><div style="font-size:14px;font-weight:800;color:var(--text);margin-top:6px">Erst ab 16 Jahren</div><div style="font-size:12.5px;font-weight:500;color:var(--text-soft);margin-top:4px;line-height:1.5">Trainingspartner sind aus Datenschutzgründen erst ab 16 Jahren möglich.</div></div>';
+    }
+    var sh=S.socShare||{};
+    var nameCard='<div style="'+CARD+'"><div style="font-size:12px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px">Dein Anzeigename</div>'+
+      '<input id="soc_name" value="'+esc(S.socName||'')+'" maxlength="40" placeholder="z. B. Markus E." style="width:100%;box-sizing:border-box;padding:13px 14px;border:1.5px solid var(--border);border-radius:13px;font-size:15px;font-weight:700;color:var(--text);background:var(--surface-2)">'+
+      '<div style="font-size:11.5px;font-weight:600;color:var(--text-soft);margin-top:8px;line-height:1.4">Nur dieser Name (und deine Initialen) sind für deine Trainingspartner sichtbar – niemals E-Mail, Adresse oder Telefon.</div></div>';
+    var shareCard='<div style="'+CARD+'"><div style="font-size:12px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.4px">Was möchtest du teilen?</div>'+
+      socSwitch('socOnbShare','checkins',sh.checkins!==false,'Trainings-Aktivität','Ob & wann du im Studio warst')+
+      '<div style="height:1px;background:var(--border)"></div>'+
+      socSwitch('socOnbShare','streak',sh.streak!==false,'Streak & Vitalpunkte','Deine Serie und Punkte')+
+      '<div style="height:1px;background:var(--border)"></div>'+
+      socSwitch('socOnbShare','nutrition',!!sh.nutrition,'Ernährungs-Fortschritt','Ernährungs-Streak & Tagesziel (optional)')+'</div>';
+    var consent='<button data-act="socOnbConsent" style="width:100%;display:flex;align-items:flex-start;gap:11px;padding:14px 16px;border:1.5px solid '+(S.socConsent?SOC:'var(--border)')+';border-radius:14px;background:'+(S.socConsent?SOCBG:'var(--surface)')+';cursor:pointer;text-align:left;margin-bottom:14px">'+
+      '<div style="width:22px;height:22px;border-radius:7px;border:2px solid '+(S.socConsent?SOC:'var(--text-soft)')+';background:'+(S.socConsent?SOC:'transparent')+';display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px">'+(S.socConsent?svg('<path d="M20 6L9 17l-5-5"></path>',{c:'#fff',w:3,s:14}):'')+'</div>'+
+      '<div style="flex:1;font-size:12.5px;font-weight:600;color:var(--text-2);line-height:1.5">Ich bin einverstanden, dass mein Anzeigename und die oben gewählten Aktivitäts-Signale für Mitglieder sichtbar sind, mit denen ich mich verbinde. Ich kann das jederzeit widerrufen.</div></button>';
+    var btn='<button data-act="socEnable" '+((!S.socConsent||S.socBusy)?'disabled ':'')+'style="width:100%;padding:15px;border:none;border-radius:14px;background:'+((!S.socConsent||S.socBusy)?'#9fbccc':SOC)+';color:#fff;font-weight:900;font-size:15px;cursor:'+((!S.socConsent||S.socBusy)?'default':'pointer')+'">'+(S.socBusy?'Wird aktiviert …':'Trainingspartner aktivieren')+'</button>';
+    return socHeader('Gemeinsam mehr erreichen')+socMsg()+intro+nameCard+shareCard+consent+btn;
+  }
+  // Hauptansicht (aktiviert): eigener Code, verbinden, Anfragen, Buddy-Liste, Einstellungen
+  function socMain(d){
+    var CARD='background:var(--surface);border-radius:20px;box-shadow:0 12px 30px rgba(4,33,40,.09);padding:18px;margin-bottom:14px';
+    var prof=d.profile||{}; var code=prof.code||'—';
+    var link=window.location.origin+window.location.pathname+'?buddy='+encodeURIComponent(code);
+    var buddies=Array.isArray(d.buddies)?d.buddies:[];
+    var requests=Array.isArray(d.requests)?d.requests:[];
+    // Eigener Code
+    var codeCard='<div style="'+CARD+';text-align:center">'+
+      '<div style="font-size:12px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.4px">Dein Trainingspartner-Code</div>'+
+      '<div style="font-size:40px;font-weight:900;color:'+SOC+';letter-spacing:6px;margin:10px 0 4px">'+esc(code)+'</div>'+
+      '<div style="font-size:12.5px;color:var(--text-soft);font-weight:500;line-height:1.45">Zeig ihn deinem Trainingspartner oder teile den Link – er kann dich damit anfragen.</div>'+
+      '<div style="display:flex;gap:10px;margin-top:16px"><button data-act="socCopy" data-arg="'+esc(link)+'" style="flex:1;padding:13px;border:1.5px solid var(--border);background:var(--surface);color:var(--teal-ink);border-radius:13px;font-weight:800;font-size:13.5px;cursor:pointer">'+(S.socCopied?'Kopiert ✓':'Link kopieren')+'</button>'+
+        '<button data-act="socShare" data-arg="'+esc(link)+'" style="flex:1;padding:13px;border:none;background:'+SOC+';color:#fff;border-radius:13px;font-weight:800;font-size:13.5px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px">'+svg(IC.share,{c:'#fff',w:2,s:16})+'Teilen</button></div></div>';
+    // Verbinden per Code
+    var connCard='<div style="'+CARD+'"><div style="font-size:15px;font-weight:900;color:var(--text);margin-bottom:10px">Trainingspartner hinzufügen</div>'+
+      '<div style="display:flex;gap:9px"><input id="soc_code" value="'+esc(S.socCode||'')+'" maxlength="6" placeholder="Code eingeben" style="flex:1;min-width:0;text-transform:uppercase;letter-spacing:2px;box-sizing:border-box;padding:13px 14px;border:1.5px solid var(--border);border-radius:13px;font-size:16px;font-weight:800;color:var(--text);background:var(--surface-2)">'+
+        '<button data-act="socConnect" '+(S.socBusy?'disabled ':'')+'style="padding:0 18px;border:none;background:'+SOC+';color:#fff;border-radius:13px;font-weight:900;font-size:14px;cursor:pointer;white-space:nowrap">Anfragen</button></div></div>';
+    // Offene Anfragen
+    var reqCard='';
+    if(requests.length){
+      reqCard='<div style="'+CARD+'"><div style="font-size:15px;font-weight:900;color:var(--text);margin-bottom:4px">Anfragen ('+requests.length+')</div>'+
+        requests.map(function(b){ return '<div style="display:flex;align-items:center;gap:11px;padding:11px 0;border-top:1px solid var(--border)">'+socAva(b)+
+          '<div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:800;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(b.name)+'</div><div style="font-size:11.5px;font-weight:600;color:var(--text-soft)">möchte sich verbinden</div></div>'+
+          '<button data-act="socAccept" data-arg="'+esc(b.id)+'" '+(S.socBusy?'disabled ':'')+'style="padding:9px 14px;border:none;background:'+SOC+';color:#fff;border-radius:11px;font-weight:800;font-size:12.5px;cursor:pointer">Annehmen</button>'+
+          '<button data-act="socDecline" data-arg="'+esc(b.id)+'" aria-label="Ablehnen" style="width:34px;height:34px;border-radius:11px;border:1.5px solid var(--border);background:var(--surface);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'+svg('<path d="M18 6L6 18M6 6l12 12"></path>',{c:'var(--text-soft)',w:2.2,s:14})+'</button></div>'; }).join('')+'</div>';
+    }
+    // Buddy-Liste
+    var buddyCard;
+    if(buddies.length){
+      buddyCard='<div style="font-size:17px;font-weight:900;color:var(--text);letter-spacing:-.3px;margin:22px 2px 12px">Deine Trainingspartner ('+buddies.length+')</div>'+
+        buddies.map(function(b){ return '<div style="'+CARD.replace('padding:18px','padding:14px 16px')+'"><div style="display:flex;align-items:center;gap:12px">'+socAva(b)+
+          '<div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:800;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(b.name)+'</div><div style="font-size:11.5px;font-weight:600;color:'+(b.active?SOC:'var(--text-soft)')+'">'+(b.active?'Verbunden':'Zurzeit inaktiv')+'</div></div>'+
+          '<button data-act="socRemove" data-arg="'+esc(b.id)+'" style="padding:8px 12px;border:1.5px solid var(--border);background:var(--surface);color:var(--text-soft);border-radius:11px;font-weight:700;font-size:12px;cursor:pointer">Entfernen</button>'+
+          '<button data-act="socBlock" data-arg="'+esc(b.id)+'" aria-label="Blockieren" style="width:34px;height:34px;border-radius:11px;border:1.5px solid var(--border);background:var(--surface);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0" title="Blockieren">'+svg('<circle cx="12" cy="12" r="9"></circle><path d="M5.6 5.6l12.8 12.8"></path>',{c:'var(--err-fg)',w:2,s:15})+'</button></div>'+
+          '<div style="font-size:11px;font-weight:600;color:var(--text-soft);margin-top:9px;padding-top:9px;border-top:1px solid var(--border)">💬 Chat, gemeinsam planen &amp; Challenges kommen in Kürze.</div></div>'; }).join('');
+    } else {
+      buddyCard='<div style="'+CARD+';text-align:center"><div style="font-size:30px">🤝</div><div style="font-size:14px;font-weight:800;color:var(--text);margin-top:6px">Noch keine Trainingspartner</div><div style="font-size:12.5px;font-weight:500;color:var(--text-soft);margin:4px 0 0;line-height:1.5">Teile deinen Code oder gib den Code eines Freundes ein, um euch zu verbinden.</div></div>';
+    }
+    // Einstellungen (Teilen + Deaktivieren)
+    var sh=prof.share||{};
+    var setCard='<div style="'+CARD+';margin-top:22px"><div style="font-size:12px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.4px">Was du teilst</div>'+
+      socSwitch('socShareToggle','checkins',sh.checkins!==false,'Trainings-Aktivität','Ob & wann du im Studio warst')+
+      '<div style="height:1px;background:var(--border)"></div>'+
+      socSwitch('socShareToggle','streak',sh.streak!==false,'Streak & Vitalpunkte','Deine Serie und Punkte')+
+      '<div style="height:1px;background:var(--border)"></div>'+
+      socSwitch('socShareToggle','nutrition',!!sh.nutrition,'Ernährungs-Fortschritt','Ernährungs-Streak & Tagesziel')+'</div>'+
+      '<button data-act="socDisable" style="width:100%;padding:13px;border:1.5px solid var(--border);background:var(--surface);color:var(--err-fg);border-radius:14px;font-weight:800;font-size:13.5px;cursor:pointer">Trainingspartner deaktivieren</button>';
+    return socHeader('Gemeinsam mehr erreichen')+socMsg()+codeCard+connCard+reqCard+buddyCard+setCard;
+  }
+  function socAva(b){ return '<div style="width:42px;height:42px;border-radius:50%;background:'+SOCBG+';color:'+SOC+';font-weight:900;font-size:15px;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+esc(b.initials||'··')+'</div>'; }
+  function scrSocial(){
+    var d=DATA.social;
+    if(d==null||d===false){ return socHeader()+'<div style="text-align:center;color:var(--text-soft);font-size:14px;font-weight:600;padding:44px 20px">Lädt …</div>'; }
+    if(!d.ok||d.available===false){ return socHeader()+'<div style="background:var(--surface);border-radius:20px;box-shadow:0 12px 30px rgba(4,33,40,.09);padding:24px;text-align:center"><div style="font-size:30px">🤝</div><div style="font-size:14.5px;font-weight:800;color:var(--text);margin-top:8px">Trainingspartner sind gerade nicht verfügbar</div><div style="font-size:12.5px;font-weight:500;color:var(--text-soft);margin-top:4px">Bitte versuch es später erneut.</div></div>'; }
+    return d.enabled?socMain(d):socOnboarding();
+  }
+  // Startseiten-Karte (nur bei SOCIAL_ON): Einstieg in die Trainingspartner.
+  function homeBuddyCard(){
+    if(!SOCIAL_ON) return '';
+    var d=DATA.social;
+    var reqN=(d&&d.enabled&&Array.isArray(d.requests))?d.requests.length:0;
+    var n=(d&&d.enabled&&Array.isArray(d.buddies))?d.buddies.length:0;
+    var sub;
+    if(!(d&&d.ok)) sub='Verbinde dich & motiviert euch gegenseitig';
+    else if(!d.enabled) sub='Verbinde dich & motiviert euch gegenseitig';
+    else if(reqN>0) sub=reqN+' neue Anfrage'+(reqN===1?'':'n')+' · tippen';
+    else if(n>0) sub=n+' Trainingspartner'+(n===1?'':'') ;
+    else sub='Teile deinen Code & finde Partner';
+    return '<button data-act="nav" data-arg="social" style="width:100%;text-align:left;border:none;cursor:pointer;font-family:inherit;background:var(--surface);border-radius:20px;box-shadow:0 12px 30px rgba(4,33,40,.09);padding:16px 18px;margin-bottom:16px">'+
+      '<div style="display:flex;align-items:center;gap:12px"><div style="width:44px;height:44px;border-radius:14px;background:'+SOCBG+';display:flex;align-items:center;justify-content:center;flex-shrink:0">'+svg('<circle cx="9" cy="7" r="3"></circle><path d="M2.5 20c0-3.3 2.9-6 6.5-6s6.5 2.7 6.5 6"></path><circle cx="17.5" cy="8.5" r="2.4"></circle><path d="M16 14.2c2.6.4 4.5 2.5 4.5 5.3"></path>',{c:SOC,w:1.9,s:23})+'</div>'+
+        '<div style="flex:1;min-width:0"><div style="font-size:11px;font-weight:900;color:'+SOC+';text-transform:uppercase;letter-spacing:.4px">Trainingspartner</div><div style="font-size:15.5px;font-weight:900;color:var(--text)">Gemeinsam trainieren</div><div style="font-size:12px;font-weight:600;color:var(--text-soft);margin-top:1px">'+sub+'</div></div>'+
+        (reqN>0?'<div style="min-width:22px;height:22px;padding:0 6px;border-radius:11px;background:'+SOC+';color:#fff;font-size:12px;font-weight:900;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+reqN+'</div>':svg('<path d="M9 6l6 6-6 6"></path>',{c:'var(--text-soft)',w:2.4,s:18}))+
+      '</div></button>';
+  }
   // ===== Postfach (Vorgänge / Nachrichten) =====
   var PF_TYPE={
     kuendigung:{label:'Kündigung',bg:'#fbeae7',col:'var(--err-fg)',icon:'<path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"></path><path d="M14 3v5h5"></path><path d="M9.5 13.5l5 5M14.5 13.5l-5 5"></path>'},
@@ -5222,7 +5362,7 @@
   // ---- responsive chrome (Desktop-Sidebar + Topbar) ----
   var DASH_IC='<rect x="3" y="3" width="7" height="9" rx="1.5"></rect><rect x="14" y="3" width="7" height="5" rx="1.5"></rect><rect x="14" y="12" width="7" height="9" rx="1.5"></rect><rect x="3" y="16" width="7" height="5" rx="1.5"></rect>';
   var NAVITEMS=[['home','Übersicht',DASH_IC],['card','Mitgliedskarte','<rect x="3" y="3" width="7" height="7" rx="1.4"></rect><rect x="14" y="3" width="7" height="7" rx="1.4"></rect><rect x="3" y="14" width="7" height="7" rx="1.4"></rect><path d="M14 14h3v3h-3z"></path><path d="M20 14v3M14 20h3M20 20v.01"></path>'],['fort','Fortschritt','<circle cx="12" cy="8" r="6"></circle><path d="M15.5 13.5L17 22l-5-3-5 3 1.5-8.5"></path>'],['ern','Ernährung','<path d="M11 21A7 7 0 0 1 4 14C4 8.5 8 4 13.5 4c2.7 0 4.6 1 6.5 1.8 0 8.7-4.3 15.2-9 15.2z"></path><path d="M11 21c0-5.5 3.3-10 7.5-12"></path>'],['insta','Instagram',IG_ICON],['data','Meine Daten',IC.user],['contract','Vertragsverwaltung',IC.doc],['account','Beitragskonto','<rect x="2" y="5" width="20" height="14" rx="2"></rect><path d="M2 9h20M6 15h5"></path>'],['appt','Termine',IC.cal],['referral','Freunde werben',IC.gift],['checkins','Check-ins',IC.list],['postfach','Postfach',IC.mail],['help','Hilfe',IC.help],['settings','Einstellungen',IC.cog]];
-  var TITLES={home:'Übersicht',data:'Meine Daten',contract:'Vertragsverwaltung',account:'Beitragskonto',appt:'Termine',checkin:'Check-in',referral:'Freunde werben',checkins:'Check-in-Verlauf',postfach:'Postfach',help:'Hilfe & Kontakt',settings:'Einstellungen',profil:'Profil',card:'Mitgliedskarte',fort:'Fortschritt',ern:'Ernährung',coach:'Coach',abo:'Mein Abo',recht:'Widerruf & Recht',blog:'Blog',insta:'Instagram'};
+  var TITLES={home:'Übersicht',data:'Meine Daten',contract:'Vertragsverwaltung',account:'Beitragskonto',appt:'Termine',checkin:'Check-in',referral:'Freunde werben',checkins:'Check-in-Verlauf',postfach:'Postfach',help:'Hilfe & Kontakt',settings:'Einstellungen',profil:'Profil',card:'Mitgliedskarte',fort:'Fortschritt',ern:'Ernährung',coach:'Coach',abo:'Mein Abo',recht:'Widerruf & Recht',blog:'Blog',insta:'Instagram',social:'Trainingspartner'};
   function initials(p){ p=p||{}; var a=(p.firstName||'').trim(),b=(p.lastName||'').trim(); return (((a?a[0]:'')+(b?b[0]:'')).toUpperCase())||'FT'; }
   // Profil-Kopf für Sidebar/Drawer
   function navProfile(){
@@ -5300,10 +5440,12 @@
       bn.innerHTML = ni('home','Start',DASH_IC,sc==='home') + ni('coach','Coach',COACH_IC,sc==='coach') + qaCenter + fourth + profBtn;
     }
   }
-  var NARROW={contract:1,referral:1,appt:1,card:1,fort:1,ern:1,blog:1,profil:1,checkin:1,insta:1};
+  var NARROW={contract:1,referral:1,appt:1,card:1,fort:1,ern:1,blog:1,profil:1,checkin:1,insta:1,social:1};
   function render(){
     // Ernährungs-Modul ausgeblendet (Feature-Schalter ERN_ON): nie rendern, zur Übersicht
     if(!ERN_ON && S.screen==='ern') S.screen='home';
+    // Trainingspartner ausgeblendet (SOCIAL_ON): nie rendern, zur Übersicht
+    if(!SOCIAL_ON && S.screen==='social') S.screen='home';
     // Ehemalige Mitglieder: gesperrte Screens immer auf die Übersicht (Rejoin) umleiten
     if(isFormer() && S.screen!=='login' && S.screen!=='alogin' && FORMER_OK.indexOf(S.screen)<0) S.screen='home';
     var html;
@@ -5330,6 +5472,7 @@
       case 'help': html=scrHelp(); break;
       case 'settings': html=scrSettings(); break;
       case 'finnusage': html=scrFinnUsage(); break;
+      case 'social': html=scrSocial(); break;
       case 'postfach': html=scrPostfach(); break;
       default: html=scrHome();
     }
@@ -5425,8 +5568,9 @@
       if(window.__et>=7){ window.__et=0; clearTimeout(window.__etT);
         var on=!ernTestOn(); try{ if(on) localStorage.setItem('fi_ern_test','1'); else localStorage.removeItem('fi_ern_test'); }catch(e){}
         ERN_ON = ERN_LAUNCH || on;
+        SOCIAL_ON = SOCIAL_LAUNCH || socialTestOn();   // Testmodus schaltet auch Trainingspartner frei
         if(on){ try{ alert('Ernährungs-Modul: Testmodus AN (nur auf diesem Gerät).'); }catch(e){} nav('ern'); }
-        else { try{ alert('Ernährungs-Modul: Testmodus AUS.'); }catch(e){} if(S.screen==='ern'){ nav('home'); } else { render(); } }
+        else { try{ alert('Ernährungs-Modul: Testmodus AUS.'); }catch(e){} if(S.screen==='ern'||S.screen==='social'){ nav('home'); } else { render(); } }
       }
     },
     openFinn:function(){ setS({finnOpen:true}); setTimeout(function(){ var t=$('finn_q'); if(t) t.focus(); finnScrollBottom(); },60); },
@@ -6288,6 +6432,28 @@
     // referral
     copyRef:function(){ var p=DATA.profile||{}; var code=p.referralCode||''; var link=window.location.origin+'/einladung?ref='+encodeURIComponent(code)+(p.firstName?('&name='+encodeURIComponent(p.firstName)):''); copyText(link); setS({copied:true}); setTimeout(function(){ S.copied=false; render(); },1800); },
     shareRef:function(){ var p=DATA.profile||{}; var code=p.referralCode||''; var link=window.location.origin+'/einladung?ref='+encodeURIComponent(code)+(p.firstName?('&name='+encodeURIComponent(p.firstName)):''); var txt='Trainier mit mir im Fit-Inn Trier! 💪 Mit meinem Code '+code+' bekommst du 2 Wochen gratis: '+link; if(navigator.share){ navigator.share({title:'Fit-Inn Trier',text:txt,url:link}).catch(function(){}); } else { copyText(txt); setS({copied:true}); setTimeout(function(){ S.copied=false; render(); },1800); } },
+    // ── Trainingspartner (Community) ──
+    socOnbConsent:function(){ var el=$('soc_name'); if(el) S.socName=el.value; S.socConsent=!S.socConsent; render(); },
+    socOnbShare:function(a){ var el=$('soc_name'); if(el) S.socName=el.value; if(S.socShare==null) socInitDefaults(); var k=String(a||''); if(k) S.socShare[k]=!S.socShare[k]; render(); },
+    socEnable:function(){ if(S.socBusy||!S.socConsent) return; var el=$('soc_name'); var nm=el?(el.value||'').trim():(S.socName||''); S.socName=nm; if(S.socShare==null) socInitDefaults(); S.socBusy=true; S.socMsg=''; S.socErr=false; render();
+      api('/api/member/social',{method:'POST',body:JSON.stringify({action:'enable',displayName:nm,share:S.socShare})})
+      .then(function(d){ S.socBusy=false; if(d&&d.ok&&d.enabled){ DATA.social=d; S.socMsg='Aktiviert! Teile jetzt deinen Code mit Trainingspartnern.'; S.socErr=false; } else { S.socErr=true; S.socMsg=(d&&d.message)||'Aktivierung nicht möglich – bitte erneut.'; } render(); })
+      .catch(function(){ S.socBusy=false; S.socErr=true; S.socMsg='Verbindung gerade nicht möglich.'; render(); }); },
+    socDisable:function(){ try{ if(!confirm('Trainingspartner deaktivieren? Dein Code wird ungültig und du bist für andere nicht mehr sichtbar.')) return; }catch(e){} S.socBusy=true; render();
+      api('/api/member/social',{method:'POST',body:JSON.stringify({action:'disable'})}).then(function(d){ S.socBusy=false; DATA.social=(d&&d.ok)?d:{ok:true,available:true,enabled:false}; S.socMsg=''; S.socErr=false; render(); }).catch(function(){ S.socBusy=false; render(); }); },
+    socShareToggle:function(a){ var k=String(a||''); if(!k) return; var cur=(DATA.social&&DATA.social.profile&&DATA.social.profile.share)||{}; var next={streak:cur.streak!==false,checkins:cur.checkins!==false,nutrition:!!cur.nutrition}; next[k]=!next[k];
+      if(DATA.social&&DATA.social.profile) DATA.social.profile.share=next; render();
+      api('/api/member/social',{method:'POST',body:JSON.stringify({action:'set-share',share:next})}).then(function(d){ if(d&&d.ok){ DATA.social=d; render(); } }).catch(function(){}); },
+    socConnect:function(){ if(S.socBusy) return; var el=$('soc_code'); var code=el?(el.value||'').trim().toUpperCase():((S.socCode||'').toUpperCase()); if(!code){ S.socErr=true; S.socMsg='Bitte einen Code eingeben.'; render(); return; } S.socCode=code; S.socBusy=true; S.socMsg=''; S.socErr=false; render();
+      api('/api/member/social',{method:'POST',body:JSON.stringify({action:'connect-by-code',code:code})})
+      .then(function(d){ S.socBusy=false; if(d&&d.ok){ DATA.social=d; S.socCode=''; S.socErr=false; S.socMsg=(d.status==='connected')?'Verbunden! 🎉':(d.status==='requested'?'Anfrage gesendet – warte auf Bestätigung.':'Erledigt.'); } else { S.socErr=true; S.socMsg=(d&&d.message)||'Verbinden nicht möglich.'; } render(); })
+      .catch(function(){ S.socBusy=false; S.socErr=true; S.socMsg='Verbindung gerade nicht möglich.'; render(); }); },
+    socAccept:function(a){ if(S.socBusy) return; S.socBusy=true; render(); api('/api/member/social',{method:'POST',body:JSON.stringify({action:'accept',buddyId:a})}).then(function(d){ S.socBusy=false; if(d&&d.ok){ DATA.social=d; S.socMsg='Verbunden! 🎉'; S.socErr=false; } render(); }).catch(function(){ S.socBusy=false; render(); }); },
+    socDecline:function(a){ if(S.socBusy) return; S.socBusy=true; render(); api('/api/member/social',{method:'POST',body:JSON.stringify({action:'decline',buddyId:a})}).then(function(d){ S.socBusy=false; if(d&&d.ok) DATA.social=d; render(); }).catch(function(){ S.socBusy=false; render(); }); },
+    socRemove:function(a){ try{ if(!confirm('Diesen Trainingspartner entfernen?')) return; }catch(e){} api('/api/member/social',{method:'POST',body:JSON.stringify({action:'remove-buddy',buddyId:a})}).then(function(d){ if(d&&d.ok){ DATA.social=d; render(); } }).catch(function(){}); },
+    socBlock:function(a){ try{ if(!confirm('Blockieren? Ihr seid dann nicht mehr verbunden und die Person kann dich nicht erneut anfragen.')) return; }catch(e){} api('/api/member/social',{method:'POST',body:JSON.stringify({action:'block',buddyId:a})}).then(function(d){ if(d&&d.ok){ DATA.social=d; S.socMsg='Blockiert.'; S.socErr=false; render(); } }).catch(function(){}); },
+    socCopy:function(a){ copyText(a||''); setS({socCopied:true}); setTimeout(function(){ S.socCopied=false; render(); },1800); },
+    socShare:function(a){ var link=a||''; try{ if(navigator.share){ navigator.share({title:'Trainingspartner bei Fit-Inn',text:'Verbinde dich als mein Trainingspartner 💪',url:link}).catch(function(){}); return; } }catch(e){} copyText(link); setS({socCopied:true}); setTimeout(function(){ S.socCopied=false; render(); },1800); },
     // checkins
     ciRange:function(a){ S.ciRange=a||'all'; S.dlMsg2=''; setQuiet({}); },
     emailPdf:function(){ emailPdf(); },
@@ -6538,7 +6704,7 @@
   }
   // Ziel-Screen aus der URL (Deep-Links aus Push/Magic-Links): ?go=<screen>, oder
   // ?ern=coach (Coaching-Push) → globaler Coach-Tab, ?ern=<x> → Essen-Modul.
-  function magicGo(){ try{ var sp=new URL(window.location.href).searchParams; var e=sp.get('ern'); if(e==='coach') return 'coach'; if(e) return 'ern'; var g=sp.get('go'); if(g&&TITLES[g]) return g; }catch(e){} return 'home'; }
+  function magicGo(){ try{ var sp=new URL(window.location.href).searchParams; var e=sp.get('ern'); if(e==='coach') return 'coach'; if(e) return 'ern'; var b=sp.get('buddy'); if(b&&SOCIAL_ON){ try{ window.__socBuddy=String(b).toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,6); }catch(_e){} return 'social'; } var g=sp.get('go'); if(g&&TITLES[g]) return g; }catch(e){} return 'home'; }
   function bootMagic(tok){
     S.screen='login'; render();
     var go=magicGo();
