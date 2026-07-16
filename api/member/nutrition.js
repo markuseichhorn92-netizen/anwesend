@@ -40,6 +40,41 @@ const SR = require('../../lib/studioReply');
 const Ent = require('../../lib/entitlements');
 const Coaching = require('../../lib/coaching');
 const Stripe = require('../../lib/stripe');
+const Recipes = require('../../lib/recipes');
+
+// Startbestand der studioweiten Rezept-Bibliothek (die 8 kuratierten Rezepte aus der App).
+// weightG = ungefähres Gewicht EINER Portion (für Nutri-Score); fruitVegPct = Anteil Obst/Gemüse/
+// Hülsenfrüchte/Nüsse. Wird einmalig übernommen (Recipes.seedOnce, idempotent).
+const ERN_SEED = [
+  { title: 'Rührei mit Tomaten', servings: 1, minutes: 15, kcal: 250, protein: 18, carbs: 4, fat: 18, weightG: 290, fruitVegPct: 40,
+    ingredients: [{ name: 'Eier', grams: 165 }, { name: 'Tomate', grams: 120 }, { name: 'Olivenöl', grams: 5 }, { name: 'Salz, Pfeffer, Schnittlauch', grams: 2 }],
+    steps: ['Eier verquirlen und würzen.', 'Tomate würfeln und kurz anbraten.', 'Eier zugeben und sanft stocken lassen.'] },
+  { title: 'Haferbrei mit Beeren', servings: 1, minutes: 10, kcal: 330, protein: 12, carbs: 52, fat: 7, weightG: 315, fruitVegPct: 19,
+    ingredients: [{ name: 'Haferflocken', grams: 50 }, { name: 'Milch', grams: 200 }, { name: 'Beeren', grams: 60 }, { name: 'Honig', grams: 7 }],
+    steps: ['Haferflocken mit Milch aufkochen.', '2–3 Min köcheln, dabei rühren.', 'Mit Beeren und Honig toppen.'] },
+  { title: 'Magerquark mit Beeren', servings: 1, minutes: 5, kcal: 210, protein: 27, carbs: 20, fat: 1, weightG: 340, fruitVegPct: 17,
+    ingredients: [{ name: 'Magerquark', grams: 250 }, { name: 'Milch oder Wasser', grams: 30 }, { name: 'Beeren', grams: 60 }, { name: 'Honig (optional)', grams: 7 }],
+    steps: ['Quark mit etwas Milch cremig rühren.', 'Beeren untermischen.', 'Nach Wunsch leicht süßen.'] },
+  { title: 'Hähnchen mit Reis & Gemüse', servings: 1, minutes: 25, kcal: 520, protein: 45, carbs: 55, fat: 12, weightG: 470, fruitVegPct: 32,
+    ingredients: [{ name: 'Hähnchenbrust', grams: 150 }, { name: 'Reis (roh)', grams: 60 }, { name: 'Gemüse (Brokkoli, Paprika)', grams: 150 }, { name: 'Öl', grams: 5 }],
+    steps: ['Reis nach Packung kochen.', 'Hähnchen würzen und anbraten.', 'Gemüse dünsten, alles anrichten.'] },
+  { title: 'Ofen-Lachs mit Gemüse', servings: 1, minutes: 30, kcal: 470, protein: 38, carbs: 18, fat: 27, weightG: 360, fruitVegPct: 54,
+    ingredients: [{ name: 'Lachsfilet', grams: 150 }, { name: 'Ofengemüse (Zucchini, Paprika)', grams: 200 }, { name: 'Olivenöl', grams: 12 }, { name: 'Zitrone, Kräuter', grams: 5 }],
+    steps: ['Ofen auf 200 °C vorheizen.', 'Gemüse mit Öl auf ein Blech geben.', 'Lachs dazulegen, 18–20 Min backen.'] },
+  { title: 'Rote Linsensuppe', servings: 1, minutes: 30, kcal: 340, protein: 18, carbs: 45, fat: 8, weightG: 450, fruitVegPct: 45,
+    ingredients: [{ name: 'Rote Linsen', grams: 80 }, { name: 'Karotte', grams: 70 }, { name: 'Zwiebel', grams: 50 }, { name: 'Gemüsebrühe', grams: 400 }],
+    steps: ['Zwiebel und Karotte anschwitzen.', 'Linsen und Brühe zugeben.', '15–18 Min köcheln, dann pürieren.'] },
+  { title: 'Thunfisch-Salat mit Mais', servings: 1, minutes: 10, kcal: 300, protein: 28, carbs: 22, fat: 11, weightG: 390, fruitVegPct: 60,
+    ingredients: [{ name: 'Thunfisch (im eigenen Saft)', grams: 120 }, { name: 'Mais', grams: 100 }, { name: 'Salat, Gurke, Tomate', grams: 150 }, { name: 'Joghurt-Dressing', grams: 20 }],
+    steps: ['Thunfisch abtropfen lassen.', 'Gemüse und Mais mischen.', 'Mit Dressing anmachen.'] },
+  { title: 'Protein-Pancakes', servings: 1, minutes: 15, kcal: 340, protein: 26, carbs: 34, fat: 10, weightG: 270, fruitVegPct: 40,
+    ingredients: [{ name: 'Banane', grams: 120 }, { name: 'Eier', grams: 110 }, { name: 'Haferflocken', grams: 40 }, { name: 'Proteinpulver (optional)', grams: 30 }],
+    steps: ['Alle Zutaten pürieren.', 'Kleine Pancakes bei mittlerer Hitze backen.', 'Mit Beeren servieren.'] },
+];
+// Startbestand einmalig übernehmen; pro Cold-Start nur EINE Anfrage (Recipes.seedOnce ist
+// zusätzlich via SETNX-Flag idempotent). Wirft nie.
+let _seedPromise = null;
+function ensureSeed() { if (!_seedPromise) _seedPromise = Recipes.seedOnce(ERN_SEED).catch(function () { return {}; }); return _seedPromise; }
 
 // Freemium: KI-Funktionen sind Premium. Freundliche Meldung fürs Upgrade.
 const PREMIUM_MSG = 'Das ist eine Premium-Funktion (KI). Teste Premium 7 Tage gratis – danach jederzeit kündbar.';
@@ -51,6 +86,7 @@ const PLANKEY = (id) => 'nutri:plan:' + String(id);
 const SHOPKEY = (id) => 'nutri:shop:' + String(id);
 const RECKEY = (id) => 'nutri:rec:' + String(id);
 const FAVKEY = (id) => 'nutri:fav:' + String(id);
+const COOKKEY = (id) => 'nutri:cook:' + String(id);   // Koch-Plan (was wann kochen) + Einkaufsliste
 const DAY_TTL = 400 * 86400;              // ~13 Monate
 
 const FAST_PLANS = { '16:8': 16, '18:6': 18, '14:10': 14 };
@@ -182,6 +218,35 @@ async function loadDay(id, date) {
 }
 async function saveDay(id, date, day) {
   try { await redisPipeline([['SET', DKEY(id, date), JSON.stringify({ entries: day.entries.slice(-60), water: n0(day.water) }), 'EX', String(DAY_TTL)]]); return true; } catch (e) { return false; }
+}
+// ── Koch-Plan (was wann kochen) + abgeleitete Einkaufsliste ──
+async function loadCook(id) {
+  const c = await kvGetJson(COOKKEY(id));
+  return { items: (c && Array.isArray(c.items)) ? c.items : [], checked: (c && c.checked) || {} };
+}
+async function saveCook(id, cook) {
+  try { await redisPipeline([['SET', COOKKEY(id), JSON.stringify({ items: (cook.items || []).slice(0, 60), checked: cook.checked || {} })]]); return true; } catch (e) { return false; }
+}
+// Einkaufsliste aus den noch NICHT gekochten Plan-Einträgen aggregieren: Gramm je Zutat
+// summieren (skaliert auf die geplanten Portionen), abgehakter Zustand bleibt erhalten.
+function buildShopping(cook) {
+  const agg = {};
+  (cook.items || []).forEach(function (it) {
+    if (it.done) return;
+    const factor = (it.servings && it.baseServings) ? (it.servings / it.baseServings) : 1;
+    (it.ingredients || []).forEach(function (ing) {
+      const name = String(ing.text || ing.name || '').replace(/^\d+(?:[.,]\d+)?\s*g\s+/i, '').trim();
+      if (!name) return;
+      const key = name.toLowerCase();
+      if (!agg[key]) agg[key] = { name: name, grams: 0, key: key };
+      agg[key].grams += Math.round((Number(ing.grams) || 0) * factor);
+    });
+  });
+  const checked = cook.checked || {};
+  return Object.keys(agg).map(function (k) {
+    const a = agg[k];
+    return { key: a.key, name: a.name, amount: a.grams > 0 ? (a.grams + ' g') : 'nach Bedarf', checked: !!checked[a.key] };
+  }).sort(function (a, b) { return (a.checked === b.checked) ? a.name.localeCompare(b.name) : (a.checked ? 1 : -1); });
 }
 
 function totalsOf(entries) {
@@ -479,15 +544,30 @@ module.exports = async function handler(req, res) {
     res.statusCode = 200; return res.end(JSON.stringify(Object.assign(await buildState(id, profile, targetDate), { added: [{ name: entry.name, kcal: entry.kcal }] })));
   }
 
-  // ── KI-Rezepte (nicht gespeichert) ──
+  // ── FINN generiert Rezepte -> in die studioweite Bibliothek + Nutri-Score ──
   if (action === 'recipes') {
     if (!premium && denyPremium()) return;
+    await ensureSeed();   // Startbestand einmalig übernehmen (idempotent)
+    if (!AI.hasAI) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'FINN ist gerade nicht verfügbar – schau in der Rezept-Bibliothek vorbei.' })); }
     if (!(await M.rateLimit('nutri-recipes:' + id, 20, 3600))) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'Kurz durchatmen – gleich wieder versuchen.' })); }
     const t = targetsFor(profile || {});
     const fridge = String(body.fridge || '').trim().slice(0, 200);
-    const wish = fridge ? ('Nutze möglichst nur diese vorhandenen Zutaten: ' + fridge) : body.wish;
+    const wish = fridge ? ('Nutze möglichst nur diese vorhandenen Zutaten: ' + fridge) : cleanStr(body.wish, 140);
     const r = await AI.nutritionRecipes({ goal: GOALS[profile && profile.goal] || 'ausgewogen', kcalTarget: t.kcal, protein: t.protein, diet: (profile && profile.diet) || 'omnivor', wish: wish });
-    res.statusCode = 200; return res.end(JSON.stringify(r.ok ? { ok: true, recipes: r.recipes } : { ok: false, message: 'FINN kann gerade keine Rezepte erstellen. Versuch es gleich nochmal.' }));
+    if (!r.ok) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'FINN kann gerade keine Rezepte erstellen. Versuch es gleich nochmal.' })); }
+    // Jedes generierte Rezept in die gemeinsame Bibliothek übernehmen (dedupliziert) und die
+    // kanonischen Rezepte inkl. berechnetem Nutri-Score zurückgeben (wachsende Datenbank).
+    try { require('../../lib/handled').record('ai', id, 'nutri-recipes'); } catch (e) {}
+    const saved = await Recipes.addMany(r.recipes, 'ai');
+    res.statusCode = 200; return res.end(JSON.stringify({ ok: true, recipes: saved }));
+  }
+
+  // ── Studioweite Rezept-Bibliothek durchstöbern/suchen (wächst mit jeder Generierung) ──
+  if (action === 'recipe-library') {
+    await ensureSeed();
+    const q = cleanStr(body.q, 60);
+    const list = q ? await Recipes.searchLibrary(q, 60) : await Recipes.getLibrary(60, parseInt(body.offset, 10) || 0);
+    res.statusCode = 200; return res.end(JSON.stringify({ ok: true, recipes: list }));
   }
 
   // ── FINN Ernährungscoach (Punkt 4: echter Verlauf · Punkt 6: Schutzregeln) ──
@@ -617,19 +697,15 @@ module.exports = async function handler(req, res) {
     res.statusCode = 200; return res.end(JSON.stringify({ ok: true, saved: Array.isArray(saved) ? saved : [] }));
   }
   if (action === 'recipe-save') {
-    const rp = body.recipe || {};
-    // Volle Makros je Portion mitspeichern (Punkt 7: keine still fehlenden Makros).
-    const clean = {
-      id: newEntryId(), title: cleanStr(rp.title, 100) || 'Rezept',
-      servings: clamp(rp.servings, 1, 12, 1),
-      kcal: n0(rp.kcal), protein: n0(rp.protein), carbs: n0(rp.carbs), fat: n0(rp.fat), minutes: n0(rp.minutes),
-      ingredients: (Array.isArray(rp.ingredients) ? rp.ingredients : []).slice(0, 15).map(function (x) { return cleanStr(x, 90); }).filter(Boolean),
-      steps: (Array.isArray(rp.steps) ? rp.steps : []).slice(0, 8).map(function (x) { return cleanStr(x, 200); }).filter(Boolean),
-    };
+    // Rezept in die persönliche Sammlung übernehmen. Kanonische Form (mit Nutri-Score,
+    // Gramm-Zutaten, FINN-Bewertung). Nach Möglichkeit auch in die Studio-Bibliothek spiegeln.
+    const clean = Recipes.normalizeRecipe(body.recipe || {}, 'member');
+    if (!clean.id) clean.id = newEntryId();
     const saved = await kvGetJson(RECKEY(id)); const list = Array.isArray(saved) ? saved : [];
-    if (!list.some(function (x) { return x.title === clean.title; })) list.unshift(clean);
+    if (!list.some(function (x) { return Recipes.normTitle(x.title) === Recipes.normTitle(clean.title); })) list.unshift(clean);
     const trimmed = list.slice(0, 40);
     try { await redisPipeline([['SET', RECKEY(id), JSON.stringify(trimmed)]]); } catch (e) {}
+    try { await Recipes.addToLibrary(clean, 'member'); } catch (e) {}   // wächst die studioweite Bibliothek
     res.statusCode = 200; return res.end(JSON.stringify({ ok: true, saved: trimmed }));
   }
   if (action === 'recipe-delete') {
@@ -649,6 +725,62 @@ module.exports = async function handler(req, res) {
     }, hour);
     const day = await loadDay(id, targetDate); day.entries.push(entry); await saveDay(id, targetDate, day);
     res.statusCode = 200; return res.end(JSON.stringify(Object.assign(await buildState(id, profile, targetDate), { added: [{ name: entry.name, kcal: entry.kcal }] })));
+  }
+
+  // ── Koch-Plan: „wann koche ich was" + daraus abgeleitete, abhakbare Einkaufsliste ──
+  if (action === 'cookplan-get') {
+    const cook = await loadCook(id);
+    res.statusCode = 200; return res.end(JSON.stringify({ ok: true, cookplan: cook.items, shopping: buildShopping(cook) }));
+  }
+  if (action === 'cookplan-add') {
+    const cook = await loadCook(id);
+    const rec = Recipes.normalizeRecipe(body.recipe || {}, body.recipe && body.recipe.source);
+    const when = validDate(body.date, date);
+    const servings = clamp(body.servings, 1, 12, rec.servings || 1);
+    const item = {
+      id: newEntryId(),
+      title: rec.title,
+      date: when,
+      servings: servings,
+      baseServings: rec.servings || 1,
+      minutes: rec.minutes,
+      kcal: rec.kcal, protein: rec.protein, carbs: rec.carbs, fat: rec.fat,
+      nutri: rec.nutri || null,
+      ingredients: rec.ingredients,
+      steps: rec.steps,
+      done: false,
+    };
+    cook.items.unshift(item);
+    cook.items = cook.items.slice(0, 60);
+    await saveCook(id, cook);
+    res.statusCode = 200; return res.end(JSON.stringify({ ok: true, cookplan: cook.items, shopping: buildShopping(cook) }));
+  }
+  if (action === 'cookplan-remove') {
+    const cook = await loadCook(id);
+    cook.items = cook.items.filter(function (x) { return String(x.id) !== String(body.id); });
+    await saveCook(id, cook);
+    res.statusCode = 200; return res.end(JSON.stringify({ ok: true, cookplan: cook.items, shopping: buildShopping(cook) }));
+  }
+  if (action === 'cookplan-done') {
+    const cook = await loadCook(id);
+    const it = cook.items.filter(function (x) { return String(x.id) === String(body.id); })[0];
+    if (it) it.done = !it.done;
+    await saveCook(id, cook);
+    res.statusCode = 200; return res.end(JSON.stringify({ ok: true, cookplan: cook.items, shopping: buildShopping(cook) }));
+  }
+  if (action === 'cook-check') {
+    // Einkaufslisten-Position (nach normalisiertem Namen) abhaken/wieder freigeben.
+    const cook = await loadCook(id);
+    const key = cleanStr(body.key, 90).toLowerCase();
+    if (key) { cook.checked = cook.checked || {}; if (cook.checked[key]) delete cook.checked[key]; else cook.checked[key] = 1; }
+    await saveCook(id, cook);
+    res.statusCode = 200; return res.end(JSON.stringify({ ok: true, cookplan: cook.items, shopping: buildShopping(cook) }));
+  }
+  if (action === 'cook-clear-checked') {
+    const cook = await loadCook(id);
+    cook.checked = {};
+    await saveCook(id, cook);
+    res.statusCode = 200; return res.end(JSON.stringify({ ok: true, cookplan: cook.items, shopping: buildShopping(cook) }));
   }
 
   // ── Verlauf: letzte 7 Tage + FINN-Wochenreview ──
@@ -694,6 +826,7 @@ module.exports = async function handler(req, res) {
       plan: (await kvGetJson(PLANKEY(id))) || null,
       shopping: (await kvGetJson(SHOPKEY(id))) || [],
       recipes: (await kvGetJson(RECKEY(id))) || [],
+      cookplan: (await kvGetJson(COOKKEY(id))) || null,
       fasting: (await kvGetJson(FASTKEY(id))) || null,
       coaching: await Coaching.exportState(id),   // Coaching-Programm, Gewohnheiten, Check-ins (DSGVO)
     } }));
@@ -705,7 +838,7 @@ module.exports = async function handler(req, res) {
   }
   if (action === 'delete-all') {
     if (String(body.confirm || '') !== 'LOESCHEN') { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'confirm_required', message: 'Bitte bestätige das vollständige Löschen.' })); }
-    const keys = [PKEY(id), FAVKEY(id), PLANKEY(id), SHOPKEY(id), RECKEY(id), FASTKEY(id)];
+    const keys = [PKEY(id), FAVKEY(id), PLANKEY(id), SHOPKEY(id), RECKEY(id), COOKKEY(id), FASTKEY(id)];
     Coaching.deleteKeys(id).forEach(function (k) { keys.push(k); });   // Coaching-Keys mitlöschen (nutri:prem bleibt bewusst außen vor)
     for (let i = 0; i < 400; i++) keys.push(DKEY(id, dayKeyMinus(date, i)));
     try { await redisPipeline(keys.map(function (k) { return ['DEL', k]; })); } catch (e) {}

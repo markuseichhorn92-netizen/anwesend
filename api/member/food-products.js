@@ -21,7 +21,27 @@
 const M = require('../../lib/members');
 const OFF = require('../../lib/openFoodFacts');
 const Catalog = require('../../lib/foodCatalog');
+const NS = require('../../lib/nutriscore');
 const { hasStore } = require('../../lib/store');
+
+// Nutri-Score eines Produkts bestimmen: bevorzugt die offizielle OFF-Note; fehlt sie,
+// wird sie aus den Werten je 100 g gerechnet (nur wenn genug Angaben da sind). Sonst null.
+function productNutriScore(p, n) {
+  const off = NS.gradeFromOFF(p.nutriScore);
+  if (off) return { grade: off, source: 'off' };
+  if (n.kcal100g == null) return null;
+  const s = NS.score({
+    kcal100: n.kcal100g,
+    sugars100: n.sugars100g != null ? n.sugars100g : (n.carbs100g != null ? n.carbs100g * 0.3 : 0),
+    satfat100: n.satfat100g != null ? n.satfat100g : (n.fat100g != null ? n.fat100g * 0.4 : 0),
+    salt100: n.salt100g != null ? n.salt100g : 0,
+    fiber100: n.fiber100g != null ? n.fiber100g : 0,
+    protein100: n.protein100g != null ? n.protein100g : 0,
+    fruitVegPct: 0,
+    isBeverage: false,
+  });
+  return { grade: s.grade, source: 'calc' };
+}
 
 // Nur die für den Client nötigen Produktfelder herausgeben (keine internen Zeitstempel/Zähler).
 function publicProduct(p) {
@@ -43,6 +63,7 @@ function publicProduct(p) {
       sugars100g: n.sugars100g != null ? n.sugars100g : null,
       salt100g: n.salt100g != null ? n.salt100g : null,
     },
+    nutriScore: productNutriScore(p, n),
     imageUrl: p.imageUrl || null,
     source: 'openfoodfacts',
     sourceUrl: p.sourceUrl || null,
