@@ -4176,12 +4176,16 @@
     var plans=Array.isArray(d.plans)?d.plans:[];
     if(!plans.length) return '';
     var cards=plans.map(function(p){
-      return '<button data-act="trainOpen" data-arg="'+esc(p.id)+'" style="width:100%;text-align:left;border:none;cursor:pointer;font-family:inherit;background:#fff;border-radius:16px;box-shadow:0 8px 22px rgba(4,33,40,.07);padding:14px;margin-bottom:11px;display:flex;gap:13px;align-items:center">'+
-        '<div style="width:48px;height:48px;border-radius:14px;background:'+(p.accent||ERN_G)+'1a;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:24px">'+esc(p.emoji||'💪')+'</div>'+
-        '<div style="flex:1;min-width:0"><div style="font-size:14.5px;font-weight:900;color:#15171B;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(p.title)+'</div>'+
-        '<div style="font-size:12px;font-weight:600;color:#8a929a;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(trainMetaLine(p))+'</div>'+
-        (p.aiAssist?'<div style="display:inline-block;margin-top:6px;background:rgba(14,96,114,.1);color:'+ERN_GD+';font-size:10px;font-weight:800;border-radius:7px;padding:3px 7px">🤖 Technogym-KI stellt alles automatisch ein</div>':'')+'</div>'+
-        svg('<path d="M9 6l6 6-6 6"></path>',{c:'#b9c4c6',w:2.2,s:16})+'</button>';
+      return '<button data-act="trainOpen" data-arg="'+esc(p.id)+'" style="width:100%;text-align:left;border:none;cursor:pointer;font-family:inherit;background:#fff;border-radius:18px;box-shadow:0 10px 26px rgba(4,33,40,.08);padding:0;margin-bottom:12px;overflow:hidden;display:block">'+
+        '<div style="background:linear-gradient(120deg,'+ERN_G2+','+ERN_GD+');padding:14px 16px;display:flex;align-items:center;gap:12px">'+
+          '<div style="width:44px;height:44px;border-radius:13px;background:rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:24px">'+esc(p.emoji||'💪')+'</div>'+
+          '<div style="flex:1;min-width:0"><div style="font-size:15.5px;font-weight:900;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(p.title)+'</div>'+(p.subtitle?'<div style="font-size:11.5px;font-weight:600;color:rgba(255,255,255,.82);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(p.subtitle)+'</div>':'')+'</div>'+
+          svg('<path d="M9 6l6 6-6 6"></path>',{c:'rgba(255,255,255,.85)',w:2.2,s:16})+'</div>'+
+        '<div style="padding:12px 16px 14px">'+
+          '<div style="font-size:12px;font-weight:700;color:#6b7780">'+esc(trainMetaLine(p))+(p.weeks?(' · '+p.weeks+' Wochen'):'')+'</div>'+
+          (p.summary?'<div style="font-size:12.5px;font-weight:500;color:var(--text-2);line-height:1.45;margin-top:6px">'+esc(p.summary)+'</div>':'')+
+          (p.aiAssist?'<div style="display:inline-flex;align-items:center;gap:5px;margin-top:10px;background:rgba(14,96,114,.1);color:'+ERN_GD+';font-size:10.5px;font-weight:800;border-radius:8px;padding:5px 9px">🤖 Technogym-KI stellt alles automatisch ein</div>':'')+
+        '</div></button>';
     }).join('');
     var hint='<div style="font-size:12.5px;font-weight:600;color:#6b7780;line-height:1.5;margin:0 2px 12px">Neu hier? Starte mit dem <b style="color:'+ERN_GD+'">Biostrength</b>-Plan – du meldest dich am Gerät an, es stellt sich automatisch ein und die Technogym-KI steigert dich Schritt für Schritt.</div>';
     return '<div style="font-size:17px;font-weight:900;color:var(--text);letter-spacing:-.3px;margin:6px 2px 8px">Trainingspläne</div>'+hint+cards;
@@ -4336,6 +4340,56 @@
     var diary='<button data-act="nav" data-arg="ern" style="width:100%;margin-top:4px;border:1.5px solid #dbe4e2;border-radius:13px;background:#fff;color:'+ERN_GD+';font-weight:800;font-size:13.5px;padding:13px;cursor:pointer">Vollständiges Tagebuch, Plan &amp; Rezepte öffnen</button>';
     return overview+water+fasting+mealsHead+meals+diary;
   }
+  // Grobe Dauer-Schätzung einer Einheit (ehrlich mit „ca.").
+  function trainEstMin(day){
+    var mins=0; ((day&&day.exercises)||[]).forEach(function(e){
+      if(e.bio){ mins+=4; return; }
+      var sets=parseInt(e.sets,10)||3; var rs=parseInt(String(e.rest||''),10)||60; if(/min/i.test(String(e.rest||''))) rs=rs*60;
+      mins += sets*0.75 + Math.max(0,sets-1)*(rs/60);
+    });
+    return Math.max(10, Math.round(mins/5)*5);
+  }
+  // Wochen-Ring („Moves" à la Technogym): Studio-Besuche diese Woche vs. Wochenziel.
+  function trainWeekCard(goalDays){
+    var v=vitalsData(); var goal=goalDays||v.goal||3; var wv=v.weekVisits||0;
+    var deg=goal?Math.min(360,Math.round(wv/goal*360)):0; var reached=wv>=goal;
+    var ring='<div style="position:relative;width:60px;height:60px;flex-shrink:0"><div style="width:60px;height:60px;border-radius:50%;background:conic-gradient('+ERN_G2+' '+deg+'deg,#e7eef0 0)"></div><div style="position:absolute;inset:6px;border-radius:50%;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1"><span style="font-size:17px;font-weight:900;color:#15171B">'+wv+'</span><span style="font-size:8px;font-weight:800;color:#8a929a;letter-spacing:.3px">/ '+goal+'</span></div></div>';
+    var sub=reached?'Wochenziel erreicht – stark! 💪':('Noch '+Math.max(0,goal-wv)+'× bis zum Wochenziel.');
+    return trainCardBox('<div style="display:flex;align-items:center;gap:14px">'+ring+'<div style="flex:1;min-width:0"><div style="font-size:14.5px;font-weight:900;color:#15171B">Diese Woche</div><div style="font-size:12.5px;font-weight:600;color:#8a929a;margin-top:2px">'+sub+'</div>'+(v.streak?'<div style="font-size:11.5px;font-weight:800;color:'+ERN_G+';margin-top:6px">🔥 '+v.streak+' Wochen in Folge</div>':'')+'</div></div>');
+  }
+  // „Am Gerät anmelden" – die Technogym/Biostrength-Story (QR-Stil-Icon, rein informativ).
+  function trainMachineCue(){
+    var qr='<div style="width:46px;height:46px;border-radius:12px;background:'+ERN_GD+';display:flex;align-items:center;justify-content:center;flex-shrink:0">'+svg('<rect x="3" y="3" width="7" height="7" rx="1"></rect><rect x="14" y="3" width="7" height="7" rx="1"></rect><rect x="3" y="14" width="7" height="7" rx="1"></rect><path d="M14 14h3v3h-3zM20 14v3M14 20h3M20 20v.01"></path>',{c:'#fff',w:1.8,s:24})+'</div>';
+    return trainCardBox('<div style="display:flex;gap:12px;align-items:flex-start">'+qr+'<div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:900;color:#15171B">Am Gerät anmelden</div><div style="font-size:12.5px;font-weight:500;color:var(--text-2);line-height:1.5;margin-top:3px">Melde dich an jedem <b style="color:'+ERN_GD+'">Biostrength</b>-Gerät mit deinem Profil an – Sitz und Gewicht stellen sich automatisch ein, die Technogym-KI steigert dich Woche für Woche.</div></div></div>');
+  }
+  // Technogym-„Heute": große Session-Karte mit Start, Vorschau, Wochen-Ring & Geräte-Hinweis.
+  function meinTagTodayCard(mp){
+    var di=S.trainRunDay||0; if(di>=mp.days.length) di=0;
+    var day=mp.days[di]||mp.days[0]; var exs=(day&&day.exercises)||[];
+    var doneN=exs.filter(function(e,ix){ return trainSessItem('d'+di+'e'+ix).done; }).length;
+    var started=doneN>0, allDone=exs.length&&doneN===exs.length, est=trainEstMin(day);
+    var badge=(mp.source==='finn')?'FINN-Plan':((mp.source==='team')?'Vom Trainer':'Mein Plan');
+    var planLine='<div style="display:flex;align-items:center;gap:8px;margin:0 2px 12px"><span style="background:rgba(14,96,114,.1);color:'+ERN_GD+';font-size:10px;font-weight:900;border-radius:6px;padding:3px 8px;text-transform:uppercase;letter-spacing:.3px">'+badge+'</span><span style="font-size:15px;font-weight:900;color:var(--text);letter-spacing:-.3px">'+esc(mp.title)+'</span></div>';
+    var dayTabs='';
+    if(mp.days.length>1){ dayTabs='<div style="display:flex;gap:7px;overflow-x:auto;padding-bottom:6px;margin-bottom:14px;-webkit-overflow-scrolling:touch">'+mp.days.map(function(dd,ix){ var on=(ix===di); return '<button data-act="trainRunDay" data-arg="'+ix+'" style="flex-shrink:0;border:1.5px solid '+(on?ERN_G:'#dde5e6')+';border-radius:20px;background:'+(on?ERN_G:'#fff')+';color:'+(on?'#fff':'#4a565c')+';font-size:12.5px;font-weight:800;padding:8px 13px;cursor:pointer;white-space:nowrap">'+esc(dd.name||('Tag '+(ix+1)))+'</button>'; }).join('')+'</div>'; }
+    var pct=exs.length?Math.round(doneN/exs.length*100):0;
+    var progRow=started?'<div style="margin-top:15px"><div style="display:flex;justify-content:space-between;font-size:11.5px;font-weight:800;color:#e9f5f7"><span>'+doneN+' / '+exs.length+' erledigt</span><span>'+pct+'%</span></div><div style="height:7px;background:rgba(255,255,255,.22);border-radius:5px;overflow:hidden;margin-top:6px"><div style="height:100%;border-radius:5px;background:#fff;width:'+pct+'%"></div></div></div>':'';
+    var btnLabel=allDone?'Einheit ansehen':(started?'Weiter trainieren':'Training starten');
+    var hero='<div style="background:linear-gradient(155deg,'+ERN_G2+','+ERN_G+' 55%,'+ERN_GD+');border-radius:22px;padding:20px;color:#fff;box-shadow:0 16px 38px rgba(14,96,114,.28);margin-bottom:14px">'+
+      '<div style="font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.6px;color:#bfe0e6">Heutige Einheit</div>'+
+      '<div style="font-size:23px;font-weight:900;letter-spacing:-.5px;margin-top:3px">'+esc((day&&day.name)||'Training')+'</div>'+
+      '<div style="display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:700;color:#cfe8ec;margin-top:6px"><span>'+exs.length+' Übungen</span><span style="opacity:.5">·</span><span>ca. '+est+' Min</span></div>'+
+      progRow+
+      '<button data-act="trainRun" style="width:100%;margin-top:16px;padding:15px;border:none;border-radius:14px;background:#fff;color:'+ERN_GD+';font-weight:900;font-size:15.5px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px">'+(allDone?'':'<span style="font-size:13px">▶</span>')+btnLabel+'</button></div>';
+    var preview=exs.length?trainCardBox('<div style="font-size:12px;font-weight:900;color:'+ERN_G+';text-transform:uppercase;letter-spacing:.4px;margin-bottom:2px">Das erwartet dich</div>'+exs.map(function(e,ix){ var dn=trainSessItem('d'+di+'e'+ix).done; return '<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid #f2f5f5"><span style="width:22px;height:22px;border-radius:50%;background:'+(dn?ERN_G:'#eef2f3')+';color:'+(dn?'#fff':'#8a929a')+';font-size:11px;font-weight:900;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+(dn?'✓':(ix+1))+'</span><div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:800;color:#15171B;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(e.name)+'</div>'+(e.machine?'<div style="font-size:11px;font-weight:700;color:'+ERN_G+';margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">🔧 '+esc(e.machine)+(e.bio?' · 🤖 KI':'')+'</div>':'')+'</div>'+(e.bio?'':'<span style="font-size:11.5px;font-weight:800;color:#a9b1b6;flex-shrink:0">'+esc(e.sets)+'×'+esc(e.reps)+'</span>')+'</div>'; }).join(''),'16px'):'';
+    var sec='border:1.5px solid #dbe4e2;background:#fff;border-radius:11px;font-size:12.5px;font-weight:800;padding:10px 12px;cursor:pointer;color:'+ERN_GD;
+    var actions='<div style="display:flex;gap:8px;margin:2px 2px 0">'+
+      '<button data-act="trainOpen" data-arg="'+esc(mp.id||'')+'" style="flex:1;'+sec+'">Plan ansehen</button>'+
+      '<button data-act="trainSeg" data-arg="plaene" style="flex:1;'+sec+'">Plan wechseln</button>'+
+      '<button data-act="trainStop"'+(S.trainBusy?' disabled':'')+' style="'+sec+';color:#b5402f;border-color:#e3b8b1">Beenden</button>'+
+    '</div>';
+    return planLine+dayTabs+hero+trainMachineCue()+trainWeekCard(mp.daysPerWeek)+preview+actions;
+  }
   // Segment-Leiste im Training-Bereich: Einheit · Pläne · Übungen.
   function trainSegBar(seg){
     var items=[['einheit','Einheit'],['plaene','Pläne'],['uebungen','Übungen']];
@@ -4353,8 +4407,10 @@
   }
   function scrMeinTag(){
     if(DATA.training==null) loadTraining();
+    if(!DATA.checkins) loadCheckins();   // Wochen-Ring braucht die Studio-Besuche
     var wrap=function(inner){ return '<div style="'+ERN_LIGHT+';padding-bottom:calc(96px + env(safe-area-inset-bottom,0px))">'+inner+'</div>'; };
     // Vollbild-Unteransichten (Zurück führt zurück ins jeweilige Segment).
+    if(S.trainRun) return wrap('<div style="padding:14px 2px 0">'+trainingRun()+'</div>');
     if(S.trainGenOpen) return wrap('<div style="padding:14px 2px 0">'+trainingGenSheet()+'</div>');
     if(S.trainDetail) return wrap('<div style="padding:14px 2px 0">'+trainingDetail()+'</div>');
     var seg=S.trainSeg||'einheit';
@@ -4370,7 +4426,7 @@
     else if(!d.ok){ body=trainCardBox('<div style="font-size:13.5px;font-weight:700;color:#b5402f">Training konnte nicht geladen werden.</div><button data-act="trainReload" style="width:100%;margin-top:10px;padding:11px;border:none;border-radius:12px;background:'+ERN_G+';color:#fff;font-weight:800;font-size:13.5px;cursor:pointer">Erneut versuchen</button>'); }
     else if(seg==='plaene'){ body=trainingGenCta(d)+trainingLibrary(d)+trainingInspiration(d)+trainingBookCta(); }
     else if(seg==='uebungen'){ body=trainExSegment(d); }
-    else { var mp=d.myPlan&&d.myPlan.plan; body=(mp&&mp.days&&mp.days.length)?meinTagTrainBody(mp):meinTagTrainCta(); }
+    else { var mp=d.myPlan&&d.myPlan.plan; body=(mp&&mp.days&&mp.days.length)?meinTagTodayCard(mp):meinTagTrainCta(); }
     return wrap(header+'<div style="padding:0 2px">'+body+'</div>');
   }
   // Einstieg in die Übungsdatenbank (Suchen/Nachschlagen).
@@ -4424,7 +4480,7 @@
     var back='<button data-act="trainBack" style="display:inline-flex;align-items:center;gap:6px;background:none;border:none;color:'+ERN_GD+';font-size:13.5px;font-weight:800;margin:2px 0 12px;padding:0;cursor:pointer">'+svg(IC.back,{c:ERN_GD,w:2.2,s:17})+'Zurück</button>';
     if(!p){ return '<div style="padding:0 2px">'+back+trainCardBox('<div style="font-size:14px;font-weight:600;color:#8a929a">Plan nicht gefunden.</div>')+'</div>'; }
     var isActive=!!(d.myPlan&&d.myPlan.plan&&String(d.myPlan.plan.id)===String(p.id));
-    var head='<div style="background:linear-gradient(150deg,'+(p.accent||ERN_G)+','+ERN_GD+');border-radius:20px;padding:20px;color:#fff;box-shadow:0 14px 34px rgba(14,96,114,.22);margin-bottom:14px">'+
+    var head='<div style="background:linear-gradient(150deg,'+ERN_G2+','+ERN_GD+');border-radius:20px;padding:20px;color:#fff;box-shadow:0 14px 34px rgba(14,96,114,.22);margin-bottom:14px">'+
       '<div style="font-size:30px">'+esc(p.emoji||'💪')+'</div>'+
       '<div style="font-size:21px;font-weight:900;letter-spacing:-.4px;margin-top:8px">'+esc(p.title)+'</div>'+
       (p.subtitle?'<div style="font-size:13px;font-weight:600;color:#e9f5f7;margin-top:3px">'+esc(p.subtitle)+'</div>':'')+
