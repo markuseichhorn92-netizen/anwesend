@@ -51,6 +51,7 @@ async function sendConfirmation(memberId, email, firstName, slot, date, referral
 
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json');
+  res.setHeader('Cache-Control', 'private, no-store');
 
   const sess = await M.getSession(M.bearer(req));
   if (!sess) { res.statusCode = 401; return res.end(JSON.stringify({ error: 'unauthorized' })); }

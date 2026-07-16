@@ -30,6 +30,7 @@ function clientIp(req) {
 
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json');
+  res.setHeader('Cache-Control', 'private, no-store');
 
   if (req.method === 'GET') {
     res.statusCode = 200;

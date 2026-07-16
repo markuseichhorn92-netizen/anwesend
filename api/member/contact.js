@@ -57,6 +57,7 @@ async function sendMemberContactMail(m, question, memberId, vorgangId) {
 
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json');
+  res.setHeader('Cache-Control', 'private, no-store');
   if (req.method !== 'POST') { res.statusCode = 405; return res.end(JSON.stringify({ ok: false, error: 'method_not_allowed' })); }
 
   const sess = await M.getSession(M.bearer(req));

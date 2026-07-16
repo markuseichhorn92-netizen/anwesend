@@ -20,6 +20,7 @@ const WA = require('../../lib/whatsapp');      // Code optional per WhatsApp
 
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json');
+  res.setHeader('Cache-Control', 'private, no-store');
   if (req.method !== 'POST') { res.statusCode = 405; return res.end(JSON.stringify({ ok: false, error: 'method_not_allowed' })); }
 
   const ip = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim() || 'x';
