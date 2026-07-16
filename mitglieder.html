@@ -2794,6 +2794,21 @@
   window.__ernCFDate=function(v){ if(S.ernConfirm&&/^\d{4}-\d{2}-\d{2}$/.test(v)) S.ernConfirm.date=v; };
   var ERN_MEALS=[['fruehstueck','Frühstück'],['mittag','Mittag'],['abend','Abend'],['snack','Snack']];
   function ernMealLabel(m){ for(var i=0;i<ERN_MEALS.length;i++){ if(ERN_MEALS[i][0]===m) return ERN_MEALS[i][1]; } return 'Snack'; }
+  // FINNs Mahlzeit-Bewertung als Karte: Nutri-Score (geschätzt) + Ampel + „was war gut" + „besser machen".
+  function ernEvalCard(ev){
+    if(!ev) return '';
+    if(ev.ok===false) return '<div style="font-size:12.5px;color:var(--text-soft);font-weight:600;text-align:center;margin:12px 0">'+esc(ev.message||'Bewertung gerade nicht möglich.')+'</div>';
+    if(!ev.ok) return '';
+    var rc=({gut:['#0f7a4a','Gut'],ok:['#C77A2E','Okay'],schwer:['#b5402f','Schwer']})[ev.rating]||['#C77A2E','Okay'];
+    var grade=(ev.nutriScore&&/^[ABCDE]$/.test(String(ev.nutriScore).toUpperCase()))?String(ev.nutriScore).toUpperCase():'';
+    var goodBlock=(ev.good&&ev.good.length)?'<div style="margin-top:11px"><div style="font-size:11px;font-weight:900;color:'+ERN_G+';text-transform:uppercase;letter-spacing:.4px;margin-bottom:2px">Das war gut</div>'+ev.good.map(function(g){ return '<div style="display:flex;gap:8px;margin-top:6px"><span style="flex-shrink:0">✅</span><div style="font-size:12.5px;color:var(--text-2);font-weight:600;line-height:1.45">'+esc(g)+'</div></div>'; }).join('')+'</div>':'';
+    var evItems=(ev.items||[]).map(function(i){ return '<div style="display:flex;gap:8px;margin-top:8px"><span style="color:'+ERN_G+';flex-shrink:0;font-weight:900">•</span><div style="font-size:12.5px;color:var(--text-2);font-weight:600;line-height:1.45"><b style="color:var(--text)">'+esc(i.name)+':</b> '+esc(i.note)+'</div></div>'; }).join('');
+    var evTips=(ev.tips&&ev.tips.length)?'<div style="margin-top:12px;padding-top:10px;border-top:1px solid rgba(15,122,74,.15)"><div style="font-size:11px;font-weight:900;color:'+ERN_G+';text-transform:uppercase;letter-spacing:.4px;margin-bottom:2px">Besser machen</div>'+ev.tips.map(function(t){ return '<div style="display:flex;gap:8px;margin-top:6px"><span style="flex-shrink:0">💡</span><div style="font-size:12.5px;color:var(--text-2);font-weight:600;line-height:1.45">'+esc(t)+'</div></div>'; }).join('')+'</div>':'';
+    return '<div style="background:#fff;border-radius:16px;padding:15px;margin-bottom:12px;box-shadow:0 6px 18px rgba(4,33,40,.06);border-left:4px solid '+rc[0]+'">'+
+      '<div style="display:flex;align-items:center;gap:9px;margin-bottom:6px">'+ernFinnAvatar(30)+'<div style="font-size:14px;font-weight:900;color:var(--text)">FINNs Bewertung</div><span style="margin-left:auto;display:flex;align-items:center;gap:7px">'+(grade?nutriChip(grade,26):'')+'<span style="font-size:11px;font-weight:900;color:#fff;background:'+rc[0]+';border-radius:8px;padding:3px 9px">'+rc[1]+'</span></span></div>'+
+      (grade?'<div style="font-size:10.5px;font-weight:700;color:var(--text-soft);margin:-2px 0 6px">Nutri-Score '+grade+' · von FINN geschätzt</div>':'')+
+      (ev.summary?'<div style="font-size:13px;color:var(--text-2);font-weight:600;line-height:1.5">'+esc(ev.summary)+'</div>':'')+goodBlock+evItems+evTips+'</div>';
+  }
   function ernConfirmScreen(){
     var cf=S.ernConfirm; var today=(DATA.nutri&&DATA.nutri.today&&DATA.nutri.today.date)||isoToday();
     var tot=cf.items.reduce(function(t,i){ return {kcal:t.kcal+(+i.kcal||0),p:t.p+(+i.p||0),c:t.c+(+i.c||0),f:t.f+(+i.f||0)}; },{kcal:0,p:0,c:0,f:0});
@@ -2825,15 +2840,7 @@
     var hint='<div style="font-size:11px;color:var(--text-soft);font-weight:600;text-align:center;margin-top:10px;line-height:1.5">Alle Werte sind Schätzungen und editierbar. Gespeichert wird erst mit „Mahlzeit speichern".</div>';
     // FINN-Bewertung dieser Mahlzeit (Premium): Einzel-Items + Gesamt + Optimierung.
     var evalBtn=cf.items.length?'<button data-act="ernEvalMeal" '+(S.ernEvalBusy?'disabled ':'')+'style="width:100%;padding:13px;border:1.5px solid #0f7a4a;border-radius:14px;background:rgba(15,122,74,.06);color:#0f7a4a;font-weight:800;font-size:14px;cursor:pointer;margin-bottom:12px;display:flex;align-items:center;justify-content:center;gap:8px">'+(S.ernEvalBusy?'<span style="width:16px;height:16px;border:2.5px solid rgba(15,122,74,.3);border-top-color:#0f7a4a;border-radius:50%;display:inline-block;animation:ernspin .7s linear infinite"></span>FINN prüft …':'🤖 Von FINN bewerten lassen')+'</button>':'';
-    var ev=S.ernEval, evalCard='';
-    if(ev&&ev.ok){
-      var rc=({gut:['#0f7a4a','Gut'],ok:['#C77A2E','Okay'],schwer:['#b5402f','Schwer']})[ev.rating]||['#C77A2E','Okay'];
-      var evItems=(ev.items||[]).map(function(i){ return '<div style="display:flex;gap:8px;margin-top:8px"><span style="color:'+ERN_G+';flex-shrink:0;font-weight:900">•</span><div style="font-size:12.5px;color:var(--text-2);font-weight:600;line-height:1.45"><b style="color:var(--text)">'+esc(i.name)+':</b> '+esc(i.note)+'</div></div>'; }).join('');
-      var evTips=(ev.tips&&ev.tips.length)?'<div style="margin-top:12px;padding-top:10px;border-top:1px solid rgba(15,122,74,.15)"><div style="font-size:11px;font-weight:900;color:'+ERN_G+';text-transform:uppercase;letter-spacing:.4px;margin-bottom:2px">So machst du sie besser</div>'+ev.tips.map(function(t){ return '<div style="display:flex;gap:8px;margin-top:6px"><span style="flex-shrink:0">💡</span><div style="font-size:12.5px;color:var(--text-2);font-weight:600;line-height:1.45">'+esc(t)+'</div></div>'; }).join('')+'</div>':'';
-      evalCard='<div style="background:#fff;border-radius:16px;padding:15px;margin-bottom:12px;box-shadow:0 6px 18px rgba(4,33,40,.06);border-left:4px solid '+rc[0]+'">'+
-        '<div style="display:flex;align-items:center;gap:9px;margin-bottom:6px">'+ernFinnAvatar(30)+'<div style="font-size:14px;font-weight:900;color:var(--text)">FINNs Bewertung</div><span style="margin-left:auto;font-size:11px;font-weight:900;color:#fff;background:'+rc[0]+';border-radius:8px;padding:3px 9px">'+rc[1]+'</span></div>'+
-        (ev.summary?'<div style="font-size:13px;color:var(--text-2);font-weight:600;line-height:1.5">'+esc(ev.summary)+'</div>':'')+evItems+evTips+'</div>';
-    } else if(ev&&ev.ok===false){ evalCard='<div style="font-size:12.5px;color:var(--text-soft);font-weight:600;text-align:center;margin-bottom:12px">'+esc(ev.message||'Bewertung gerade nicht möglich.')+'</div>'; }
+    var evalCard=ernEvalCard(S.ernEval);
     return '<div style="padding:4px 2px 40px">'+head+dateRow+(rows||'<div style="text-align:center;color:var(--text-soft);font-size:13px;font-weight:600;padding:20px">Keine Einträge – füge einen hinzu.</div>')+addBtn+totCard+evalBtn+evalCard+msg+save+hint+'</div>';
   }
   // Sprache -> Text (Web Speech API) -> ins Log-Feld -> KI-Schätzung. Nicht überall verfügbar.
@@ -3311,7 +3318,7 @@
   // Einzel-Eintrag bearbeiten (Portion/Makros/Mahlzeit ändern, duplizieren, löschen).
   function ernOpenEntry(id){ var td=(DATA.nutri&&DATA.nutri.today)||{}; var e=(td.entries||[]).filter(function(x){ return String(x.id)===String(id); })[0]; if(!e) return;
     S.ernEntryEdit={ id:e.id, date:td.date||isoToday(), name:e.name||'', portion:e.portion||'', meal:e.meal||'snack', kcal:+e.kcal||0, p:+e.p||0, c:+e.c||0, f:+e.f||0, source:e.source||'' };
-    S.ernMsg=''; S.ernErr=false; render(); try{ window.scrollTo(0,0); }catch(e){}
+    S.ernMsg=''; S.ernErr=false; S.ernEval=null; S.ernEvalBusy=false; render(); try{ window.scrollTo(0,0); }catch(e){}
   }
   // Live-Update ohne Re-Render (Fokus bleibt), analog __ernCF.
   window.__ernEE=function(field,value){ var e=S.ernEntryEdit; if(!e) return;
@@ -3332,12 +3339,15 @@
       meal+
       '<div style="display:flex;gap:7px;margin-top:12px">'+numF('kcal','kcal',e.kcal,'#15171B')+numF('p','Eiweiß',e.p,ERN_PROT)+numF('c','KH',e.c,ERN_CARB)+numF('f','Fett',e.f,ERN_FAT)+'</div>'+
     '</div>';
+    // FINN-Bewertung dieses Eintrags: Nutri-Score (geschätzt) + Ampel + „was war gut" + „besser machen".
+    var evalBtn='<button data-act="ernEvalEntry" '+(S.ernEvalBusy?'disabled ':'')+'style="width:100%;margin-top:14px;padding:13px;border:1.5px solid #0f7a4a;border-radius:14px;background:rgba(15,122,74,.06);color:#0f7a4a;font-weight:800;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px">'+(S.ernEvalBusy?'<span style="width:16px;height:16px;border:2.5px solid rgba(15,122,74,.3);border-top-color:#0f7a4a;border-radius:50%;display:inline-block;animation:ernspin .7s linear infinite"></span>FINN prüft …':'🤖 Von FINN bewerten lassen')+'</button>';
+    var evalCard=S.ernEval?'<div style="margin-top:14px">'+ernEvalCard(S.ernEval)+'</div>':'';
     var save='<button data-act="ernEESave" '+(S.ernEntryBusy?'disabled ':'')+'style="width:100%;margin-top:16px;padding:16px;border:none;border-radius:16px;background:#0f7a4a;color:#fff;font-weight:900;font-size:16px;cursor:pointer;opacity:'+(S.ernEntryBusy?'.6':'1')+'">'+(S.ernEntryBusy?'Speichert …':'Änderungen speichern')+'</button>';
     var dup=isToday?'':'<button data-act="ernEEDup" style="width:100%;margin-top:10px;padding:14px;border:1.5px solid rgba(10,73,88,.25);border-radius:14px;background:#fff;color:#0a4958;font-weight:800;font-size:14.5px;cursor:pointer">Auf heute übernehmen</button>';
     var fav='<button data-act="ernEEFav" '+(S.ernFavBusy?'disabled ':'')+'style="width:100%;margin-top:10px;padding:14px;border:1.5px solid rgba(10,73,88,.25);border-radius:14px;background:#fff;color:#0a4958;font-weight:800;font-size:14.5px;cursor:pointer">☆ Als Favorit speichern</button>';
     var del='<button data-act="ernEEDelete" style="width:100%;margin-top:10px;padding:13px;border:none;border-radius:13px;background:transparent;color:var(--err-fg);font-weight:800;font-size:14px;cursor:pointer">Eintrag löschen</button>';
     var msg=S.ernMsg?'<div role="'+(S.ernErr?'alert':'status')+'" style="font-size:12.5px;font-weight:700;color:'+(S.ernErr?'var(--err-fg)':ERN_G)+';text-align:center;margin-top:12px">'+esc(S.ernMsg)+'</div>':'';
-    return '<div style="padding:4px 2px 40px">'+head+card+save+dup+fav+del+msg+'</div>';
+    return '<div style="padding:4px 2px 40px">'+head+card+evalBtn+evalCard+save+dup+fav+del+msg+'</div>';
   }
   // ═══ Etappe 4: Favoriten (eigene, in KV) – Schnell-Log + Verwalten ═══
   // Chip-Reihe im „Mahlzeit loggen"-Block: eigene Favoriten (tippen = loggen),
@@ -5326,6 +5336,13 @@
     // FINN bewertet die aktuell zusammengestellte Mahlzeit (Einzel-Items + Gesamt + Optimierung).
     ernEvalMeal:function(){ var cf=S.ernConfirm; if(!cf||S.ernEvalBusy||!cf.items.length) return;
       var items=cf.items.map(function(i){ return { name:i.name, kcal:i.kcal, p:i.p, c:i.c, f:i.f }; });
+      S.ernEvalBusy=true; S.ernEval=null; render();
+      api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'evaluate-meal',items:items})})
+      .then(function(d){ S.ernEvalBusy=false; if(d&&d.error==='premium_required'){ setS({ernUpgrade:true}); return; } S.ernEval=d||{ok:false}; render(); try{ window.scrollTo(0,document.body.scrollHeight); }catch(e){} })
+      .catch(function(){ S.ernEvalBusy=false; S.ernEval={ok:false,message:'Verbindung gerade nicht möglich.'}; render(); }); },
+    // FINN bewertet den gerade bearbeiteten Einzel-Eintrag (Nutri-Score + gut/besser).
+    ernEvalEntry:function(){ var e=S.ernEntryEdit; if(!e||S.ernEvalBusy) return;
+      var items=[{ name:e.name, kcal:e.kcal, p:e.p, c:e.c, f:e.f }];
       S.ernEvalBusy=true; S.ernEval=null; render();
       api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'evaluate-meal',items:items})})
       .then(function(d){ S.ernEvalBusy=false; if(d&&d.error==='premium_required'){ setS({ernUpgrade:true}); return; } S.ernEval=d||{ok:false}; render(); try{ window.scrollTo(0,document.body.scrollHeight); }catch(e){} })

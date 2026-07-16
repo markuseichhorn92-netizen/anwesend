@@ -622,7 +622,7 @@ module.exports = async function handler(req, res) {
     });
     if (r.ok) { try { require('../../lib/handled').record('ai', id, 'nutri-mealeval'); } catch (e) {} }
     res.statusCode = 200; return res.end(JSON.stringify(r.ok
-      ? { ok: true, rating: r.rating, summary: r.summary, items: r.items, tips: r.tips }
+      ? { ok: true, rating: r.rating, nutriScore: r.nutriScore || null, summary: r.summary, good: r.good || [], items: r.items, tips: r.tips }
       : { ok: false, error: r.error || 'ai_failed', message: 'Da komme ich gerade nicht weiter. Versuch es gleich nochmal.' }));
   }
 
