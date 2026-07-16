@@ -20,6 +20,7 @@
  */
 
 const TA = require('../../lib/teamAuth');
+const Cap = require('../../lib/capabilities');
 const M = require('../../lib/members');
 const Recipes = require('../../lib/recipes');
 const { redisPipeline, hasStore } = require('../../lib/store');
@@ -158,6 +159,7 @@ module.exports = async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
   const sess = await TA.requireTeam(req);
   if (!sess) return j(res, 401, { ok: false, error: 'unauthorized' });
+  if (!Cap.requireCap(sess, 'nutrition.manage', res)) return;
   if (!hasStore) return j(res, 200, { ok: true, available: false });
 
   // ── GET: Überblick ──

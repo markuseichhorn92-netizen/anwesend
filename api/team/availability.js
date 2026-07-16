@@ -12,6 +12,7 @@
  */
 
 const TA = require('../../lib/teamAuth');
+const Cap = require('../../lib/capabilities');
 const SH = require('../../lib/shifts');
 const M = require('../../lib/members');   // readBody
 
@@ -25,6 +26,7 @@ module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json');
   const sess = await TA.requireTeam(req);
   if (!sess) { res.statusCode = 401; return res.end(JSON.stringify({ ok: false, error: 'unauthorized' })); }
+  if (!Cap.requireCap(sess, 'shifts.manage', res)) return;
   const me = ident(sess);
 
   if (req.method === 'GET') {

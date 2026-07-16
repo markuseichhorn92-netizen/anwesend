@@ -24,6 +24,7 @@
  */
 
 const TA = require('../../lib/teamAuth');
+const Cap = require('../../lib/capabilities');
 const Ent = require('../../lib/entitlements');
 const M = require('../../lib/members');            // readBody
 const Stripe = require('../../lib/stripe');        // echtes Abo kündigen/reaktivieren
@@ -40,6 +41,7 @@ module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json');
   const sess = await TA.requireTeam(req);
   if (!sess) { res.statusCode = 401; return res.end(JSON.stringify({ ok: false, error: 'unauthorized' })); }
+  if (!Cap.requireCap(sess, 'nutrition.manage', res)) return;
 
   // ── Status lesen (jede Team-Session) ──
   if (req.method === 'GET') {

@@ -19,6 +19,7 @@
  */
 
 const TA = require('../../lib/teamAuth');
+const Cap = require('../../lib/capabilities');
 const M = require('../../lib/members');
 const Inbox = require('../../lib/inbox');
 
@@ -26,6 +27,7 @@ module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json');
   const sess = await TA.requireTeam(req);
   if (!sess) { res.statusCode = 401; return res.end(JSON.stringify({ ok: false, error: 'unauthorized' })); }
+  if (!Cap.requireCap(sess, 'admin.manage', res)) return;
   if (req.method !== 'POST') { res.statusCode = 405; return res.end(JSON.stringify({ ok: false, error: 'method_not_allowed' })); }
 
   const b = await M.readBody(req);

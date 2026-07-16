@@ -22,6 +22,7 @@
  */
 
 const TA = require('../../lib/teamAuth');
+const Cap = require('../../lib/capabilities');
 const M = require('../../lib/members');          // readBody, rateLimit, getMember
 const AM = require('../../lib/mlAccessMedium');    // 403-feste Wrapper
 const Inbox = require('../../lib/inbox');
@@ -59,6 +60,7 @@ module.exports = async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
   const sess = await TA.requireTeam(req);
   if (!sess) { res.statusCode = 401; return res.end(JSON.stringify({ ok: false, error: 'unauthorized' })); }
+  if (!Cap.requireCap(sess, 'member.write', res)) return;
 
   // ── GET: Zugangsmedien des Mitglieds ──
   if (req.method === 'GET') {

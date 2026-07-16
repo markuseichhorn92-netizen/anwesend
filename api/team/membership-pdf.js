@@ -8,6 +8,7 @@
  */
 
 const TA = require('../../lib/teamAuth');
+const Cap = require('../../lib/capabilities');
 const M = require('../../lib/members');
 const { sendMailRaw, hasMail } = require('../../lib/mail');
 const { renderEmail } = require('../../lib/emailTemplate');
@@ -18,6 +19,7 @@ module.exports = async function handler(req, res) {
   if (req.method !== 'POST') { res.statusCode = 405; return res.end(JSON.stringify({ ok: false, error: 'method_not_allowed' })); }
   const sess = await TA.requireTeam(req);
   if (!sess) { res.statusCode = 401; return res.end(JSON.stringify({ ok: false, error: 'unauthorized' })); }
+  if (!Cap.requireCap(sess, 'documents.read', res)) return;
 
   const body = await M.readBody(req);
   const id = String((body && (body.id || body.memberId)) || '').trim();

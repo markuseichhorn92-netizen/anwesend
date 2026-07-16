@@ -15,6 +15,7 @@
 
 const crypto = require('node:crypto');
 const TA = require('../../lib/teamAuth');
+const Cap = require('../../lib/capabilities');
 const M = require('../../lib/members');
 const { PUBLIC_BASE } = require('../../lib/magic');
 
@@ -27,6 +28,7 @@ module.exports = async function handler(req, res) {
 
   const sess = await TA.requireTeam(req);
   if (!sess) { res.statusCode = 401; return res.end(JSON.stringify({ ok: false, error: 'unauthorized' })); }
+  if (!Cap.requireCap(sess, 'admin.manage', res)) return;
   if (!TA.isAdmin(sess)) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'Nur Admins dürfen sich als Mitglied anmelden.' })); }
   if (!M.hasStore) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'Login als Mitglied ist ohne Datenspeicher nicht möglich.' })); }
 

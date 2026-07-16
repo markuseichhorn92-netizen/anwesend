@@ -13,6 +13,7 @@
  */
 
 const TA = require('../../lib/teamAuth');
+const Cap = require('../../lib/capabilities');
 const Coaching = require('../../lib/coaching');
 const { hasStore } = require('../../lib/store');
 
@@ -20,6 +21,7 @@ module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json');
   const sess = await TA.requireTeam(req);
   if (!sess) { res.statusCode = 401; return res.end(JSON.stringify({ ok: false, error: 'unauthorized' })); }
+  if (!Cap.requireCap(sess, 'nutrition.manage', res)) return;
   if (req.method !== 'GET') { res.statusCode = 405; return res.end(JSON.stringify({ ok: false, error: 'method_not_allowed' })); }
 
   const url = new URL(req.url, 'http://x');

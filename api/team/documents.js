@@ -17,6 +17,7 @@
  */
 
 const TA = require('../../lib/teamAuth');
+const Cap = require('../../lib/capabilities');
 const M = require('../../lib/members');       // readBody, rateLimit
 const D = require('../../lib/mlDocuments');    // 403-feste Wrapper (unverändert wiederverwendet)
 
@@ -43,6 +44,7 @@ module.exports = async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
   const sess = await TA.requireTeam(req);
   if (!sess) { res.statusCode = 401; return res.end(JSON.stringify({ ok: false, error: 'unauthorized' })); }
+  if (!Cap.requireCap(sess, 'documents.write', res)) return;
 
   // -- GET: Liste oder Download --
   if (req.method === 'GET') {

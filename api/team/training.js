@@ -18,6 +18,7 @@
  */
 
 const TA = require('../../lib/teamAuth');
+const Cap = require('../../lib/capabilities');
 const M = require('../../lib/members');
 const T = require('../../lib/training');
 const Ex = require('../../lib/exercises');
@@ -42,6 +43,7 @@ module.exports = async function handler(req, res) {
 
   const sess = await TA.requireTeam(req);
   if (!sess) return j(res, 401, { ok: false, error: 'unauthorized' });
+  if (!Cap.requireCap(sess, 'training.manage', res)) return;
   if (!hasStore) return j(res, 200, { ok: true, available: false });
   const who = (sess && (sess.user || sess.name)) || 'team';
 
