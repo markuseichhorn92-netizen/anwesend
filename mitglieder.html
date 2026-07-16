@@ -1422,9 +1422,14 @@
   }
   function loadAppInfo(){
     if(DATA.appInfo!==undefined) return; DATA.appInfo=null;
-    if(isNativeApp()) return;
-    fetch('/api/app-info',{cache:'force-cache'}).then(function(r){return r.ok?r.json():null;})
-      .then(function(d){ DATA.appInfo=d||null; if(d&&(d.ios||d.android)) render(); }).catch(function(){});
+    // Wird auch in der nativen App geladen: /api/app-info liefert neben den
+    // Store-Links die serverseitigen Feature-Flags (features.*), die lokal
+    // gecacht werden (fi_flags_srv, siehe applySrvFlags).
+    fetch('/api/app-info').then(function(r){return r.ok?r.json():null;})
+      .then(function(d){ if(!d) return;
+        applySrvFlags(d.features);
+        if(isNativeApp()) return;   // Banner nur im Browser
+        DATA.appInfo=d; if(d.ios||d.android) render(); }).catch(function(){});
   }
   function appAdUrl(){
     var d=DATA.appInfo; if(!d||isNativeApp()) return null;
@@ -1573,7 +1578,7 @@
     } else if(step===2){
       var freqBtns=''; for(var n=1;n<=6;n++){ var on=S.obFreq===n; freqBtns+='<button data-act="obFreq" data-arg="'+n+'" style="flex:1;padding:14px 0;border:2px solid '+optBorder(on)+';border-radius:13px;background:'+optBg(on)+';color:#fff;font-weight:800;font-size:16px;cursor:pointer">'+n+'</button>'; }
       inner='<div style="flex:1"><div style="font-size:24px;font-weight:900;letter-spacing:-.4px;line-height:1.15">Wie oft möchtest<br>du trainieren?</div><div style="font-size:14px;color:#aed0d6;font-weight:500;margin-top:8px">Pro Woche – ehrlich, nicht perfekt. Das wird dein Wochenziel für Vitalpunkte.</div><div style="text-align:center;margin:22px 0"><span style="font-size:60px;font-weight:900;letter-spacing:-2px">'+S.obFreq+'</span><span style="font-size:19px;font-weight:700;color:#aed0d6"> ×/Woche</span></div><div style="display:flex;gap:8px">'+freqBtns+'</div>'+
-        '<div style="font-size:20px;font-weight:900;letter-spacing:-.4px;margin-top:28px">Wie alt bist du?</div><div style="font-size:13px;color:#aed0d6;font-weight:500;margin-top:6px">Für dein Fitness-Alter & deinen Longevity-Score.</div><div style="display:flex;align-items:center;gap:14px;margin-top:14px;background:rgba(255,255,255,.1);border-radius:15px;padding:13px 16px"><button data-act="obAge" data-arg="-1" style="width:38px;height:38px;border-radius:11px;border:none;background:rgba(255,255,255,.16);color:#fff;font-size:22px;font-weight:800;cursor:pointer">−</button><div style="flex:1;text-align:center;font-size:26px;font-weight:900">'+S.obAge+' <span style="font-size:14px;color:#aed0d6;font-weight:600">Jahre</span></div><button data-act="obAge" data-arg="1" style="width:38px;height:38px;border-radius:11px;border:none;background:rgba(255,255,255,.16);color:#fff;font-size:22px;font-weight:800;cursor:pointer">+</button></div></div>';
+        '<div style="font-size:20px;font-weight:900;letter-spacing:-.4px;margin-top:28px">Wie alt bist du?</div><div style="font-size:13px;color:#aed0d6;font-weight:500;margin-top:6px">Für dein Aktivitäts-Alter & deinen Longevity-Score.</div><div style="display:flex;align-items:center;gap:14px;margin-top:14px;background:rgba(255,255,255,.1);border-radius:15px;padding:13px 16px"><button data-act="obAge" data-arg="-1" style="width:38px;height:38px;border-radius:11px;border:none;background:rgba(255,255,255,.16);color:#fff;font-size:22px;font-weight:800;cursor:pointer">−</button><div style="flex:1;text-align:center;font-size:26px;font-weight:900">'+S.obAge+' <span style="font-size:14px;color:#aed0d6;font-weight:600">Jahre</span></div><button data-act="obAge" data-arg="1" style="width:38px;height:38px;border-radius:11px;border:none;background:rgba(255,255,255,.16);color:#fff;font-size:22px;font-weight:800;cursor:pointer">+</button></div></div>';
     } else {
       inner='<div style="flex:1"><div style="font-size:24px;font-weight:900;letter-spacing:-.4px;line-height:1.15">Wie viel Erfahrung<br>hast du?</div><div style="font-size:14px;color:#aed0d6;font-weight:500;margin-top:8px">So passt dein Coach die Tipps an.</div><div style="display:flex;flex-direction:column;gap:10px;margin-top:22px">'+
         exps.map(function(e){ var sel=S.obExp===e[0]; return '<button data-act="obExp" data-arg="'+e[0]+'" style="display:flex;align-items:center;gap:13px;width:100%;padding:16px;border:2px solid '+optBorder(sel)+';border-radius:15px;background:'+optBg(sel)+';cursor:pointer;text-align:left"><span style="font-size:23px">'+e[3]+'</span><span style="flex:1"><span style="display:block;font-size:15.5px;font-weight:800;color:#fff">'+esc(e[1])+'</span><span style="display:block;font-size:12.5px;color:#aed0d6;font-weight:500">'+esc(e[2])+'</span></span></button>'; }).join('')+'</div></div>';
@@ -1584,14 +1589,14 @@
     '</div>';
   }
   // Kompakter Coach-Anreißer für die Startseite: FINN-Tipp des Tages + Motivations-Mini
-  // (Streak/VP/Fitness-Alter) → führt in den Coach-Tab. Ersetzt die frühere finnCard + vitalCard.
+  // (Streak/VP/Aktivitäts-Alter) → führt in den Coach-Tab. Ersetzt die frühere finnCard + vitalCard.
   function homeCoachHero(){
     var v=vitalsData(); var tip=S.finnTip||'';
     var ava='<div style="width:42px;height:42px;border-radius:50%;background:rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;flex-shrink:0">'+svg('<path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.5 8.6 8.6 0 0 1-4-1L3 20l1-5a8.4 8.4 0 0 1-1-4A8.5 8.5 0 0 1 11.5 3 8.5 8.5 0 0 1 21 11.5z"></path>',{c:'#fff',w:2,s:22})+'</div>';
     var pill=function(t){ return '<span style="background:rgba(255,255,255,.16);border-radius:10px;padding:6px 10px;font-size:12px;font-weight:900;white-space:nowrap">'+t+'</span>'; };
     var remain=Math.max(0,(v.goal||0)-(v.weekVisits||0));
     var goalPill=pill(remain<=0?'🎯 Wochenziel ✅':('🎯 noch '+remain+'×'));
-    var pills=goalPill+pill('🔥 '+v.streak+' Wo.')+pill(deNum(v.points)+' VP')+(v.fitAge!=null?pill('Fit-Alter '+v.fitAge):'');
+    var pills=goalPill+pill('🔥 '+v.streak+' Wo.')+pill(deNum(v.points)+' VP')+(v.fitAge!=null?pill('Aktivitäts-Alter '+v.fitAge):'');
     return '<button data-act="nav" data-arg="coach" style="width:100%;text-align:left;border:none;cursor:pointer;font-family:inherit;background:linear-gradient(150deg,#12879c,#0e6072 58%,#0a4958);border-radius:22px;padding:18px 20px;color:#fff;box-shadow:0 16px 40px rgba(14,96,114,.28);margin-bottom:16px">'+
       '<div style="display:flex;align-items:center;gap:12px">'+ava+'<div style="flex:1;min-width:0"><div style="font-size:11px;font-weight:900;color:#bfe0e6;text-transform:uppercase;letter-spacing:.4px">Dein Coach</div><div style="font-size:16.5px;font-weight:900">FINN · Tipp des Tages</div></div>'+svg('<path d="M9 6l6 6-6 6"></path>',{c:'rgba(255,255,255,.8)',w:2.4,s:18})+'</div>'+
       '<div style="font-size:13.5px;font-weight:600;color:#eafff4;line-height:1.5;margin-top:10px">'+(tip?esc(tip):'FINN stellt dir gleich deinen Tagestipp zusammen …')+'</div>'+
@@ -2436,7 +2441,9 @@
   // Wöchentliches Trainingsziel – aus dem Onboarding gewählt (1–7×/Woche), Standard 3.
   function weekGoal(){ var o=obData(); var f=o&&parseInt(o.freq,10); return (f>=1&&f<=7)?f:3; }
   // ── Vitalpunkte-Engine: leitet Punkte + „Punkte-Verlauf" deterministisch aus den echten Check-ins ab ──
-  // Check-in +50 · Wochenziel erreicht +150 · Streak-Bonus alle 5 Wochen +75 · Inaktivität (ab 2 leeren Wochen) −40/Woche
+  // Check-in +50 · Wochenziel erreicht +150 · Streak-Bonus alle 5 Wochen +75.
+  // Pausen (ab 2 leeren Wochen) werden nur neutral vermerkt – BEWUSST kein Punktabzug,
+  // damit Krankheit/Urlaub nicht bestraft werden. Belohnt wird nur positives Verhalten.
   function gamify(){
     var ci=(Array.isArray(DATA.checkins)?DATA.checkins:[]).filter(function(x){ return x&&x.in&&!isNaN(Date.parse(x.in)); });
     var goal=weekGoal();
@@ -2450,7 +2457,7 @@
       var firstM=Date.parse(keys[0]);
       var cm=new Date(); cm.setHours(0,0,0,0); cm.setDate(cm.getDate()-((cm.getDay()+6)%7)); var curM=cm.getTime();
       var streak=0, inactive=0, gapStart=null, WK=7*864e5;
-      var closeGap=function(atMs){ if(inactive>=2 && gapStart!=null){ entries.push({t:atMs,emoji:'💤',bg:'#FBF0E8',title:'Inaktivität',sub:inactive+' Wochen im '+MONTHS_DE[new Date(gapStart).getMonth()],pts:-40*(inactive-1),color:'#b5402f'}); } inactive=0; gapStart=null; };
+      var closeGap=function(atMs){ if(inactive>=2 && gapStart!=null){ entries.push({t:atMs,emoji:'💤',bg:'#EDF3F5',title:'Pause',sub:inactive+' Wochen im '+MONTHS_DE[new Date(gapStart).getMonth()]+' – kein Punktabzug',pts:0,color:'var(--text-soft)'}); } inactive=0; gapStart=null; };
       for(var wm=firstM; wm<=curM+1; wm+=WK){
         var arr=byWeek[mondayKey(new Date(wm))]||[];
         var wkDate=new Date(wm);
@@ -2494,7 +2501,9 @@
     // Wochenziel (Besuche in der laufenden Woche)
     var mon=new Date(); mon.setHours(0,0,0,0); var d1=(mon.getDay()+6)%7; mon.setDate(mon.getDate()-d1);
     var weekVisits=done.filter(function(x){ return new Date(x.in)>=mon; }).length;
-    // Fitness-Alter: echtes Alter minus Trainings-Bonus
+    // Aktivitäts-Alter: echtes Alter minus Aktivitäts-Bonus aus den Check-ins
+    // der letzten 8 Wochen (max. 12 Jahre) – bewusst transparent benannt,
+    // keine medizinische Aussage (siehe Karte im Fortschritts-Tab).
     var dob=DATA.profile&&DATA.profile.dateOfBirth; var age=dob?Math.floor((Date.now()-Date.parse(dob))/(365.25*864e5)):null;
     var recent=done.filter(function(x){ return Date.parse(x.in)>=(Date.now()-56*864e5); }).length;
     var bonus=Math.min(12,Math.round((recent/8)*2));
@@ -2534,7 +2543,7 @@
       '<div style="display:flex;gap:9px;margin-top:15px">'+
         '<div style="flex:1;background:#FBEFE2;border-radius:13px;padding:11px 12px"><div style="font-size:17px;font-weight:900;color:#b5631f">🔥 '+v.streak+'</div><div style="font-size:10.5px;font-weight:700;color:#b5631f;margin-top:1px">Wochen-Streak</div></div>'+
         '<div style="flex:1;background:var(--surface-2);border-radius:13px;padding:11px 12px"><div style="font-size:17px;font-weight:900;color:var(--teal-ink)">'+v.weekVisits+'/'+v.goal+'</div><div style="font-size:10.5px;font-weight:700;color:var(--teal-ink);margin-top:1px">Wochenziel</div></div>'+
-        '<div style="flex:1;background:var(--surface-2);border-radius:13px;padding:11px 12px"><div style="font-size:17px;font-weight:900;color:var(--teal-ink)">'+(v.fitAge!=null?v.fitAge:'–')+'</div><div style="font-size:10.5px;font-weight:700;color:var(--teal-ink);margin-top:1px">Fitness-Alter</div></div>'+
+        '<div style="flex:1;background:var(--surface-2);border-radius:13px;padding:11px 12px"><div style="font-size:17px;font-weight:900;color:var(--teal-ink)">'+(v.fitAge!=null?v.fitAge:'–')+'</div><div style="font-size:10.5px;font-weight:700;color:var(--teal-ink);margin-top:1px">Aktivitäts-Alter</div></div>'+
       '</div>'+
     '</div>';
   }
@@ -2580,18 +2589,18 @@
         '<div style="font-size:34px;font-weight:900;letter-spacing:-1px;line-height:1.05">'+deNum(v.points)+' VP</div>'+
         '<div style="font-size:13px;color:#aed0d6;font-weight:600;margin-top:3px">'+(v.maxed?'Höchster Rang erreicht 🏆':('Noch '+deNum(v.toNext)+' VP bis '+esc(v.nextRank)))+'</div></div>'+
     '</div></div>';
-    // 2) Fitness-Alter
+    // 2) Aktivitäts-Alter (ehem. „Fitness-Alter" – transparent umbenannt, Basis + Zeitraum sichtbar)
     var fa;
     if(v.fitAge!=null){
       var deltaLine=v.fitAgeDelta>0
-        ? '<div style="font-size:14px;font-weight:800;color:#176b37">'+v.fitAgeDelta+' '+(v.fitAgeDelta===1?'Jahr':'Jahre')+' jünger als dein echtes Alter</div>'
-        : '<div style="font-size:14px;font-weight:800;color:var(--text)">Dein Fitness-Alter</div>';
+        ? '<div style="font-size:14px;font-weight:800;color:#176b37">Rechnerisch '+v.fitAgeDelta+' '+(v.fitAgeDelta===1?'Jahr':'Jahre')+' unter deinem echten Alter</div>'
+        : '<div style="font-size:14px;font-weight:800;color:var(--text)">Dein Aktivitäts-Alter</div>';
       fa='<div style="'+CARD+'"><div style="display:flex;align-items:center;gap:16px">'+
-        '<div style="text-align:center;flex-shrink:0"><div style="font-size:11px;font-weight:700;color:var(--text-soft);text-transform:uppercase;letter-spacing:.4px">Fitness-Alter</div><div style="font-size:46px;font-weight:900;color:var(--teal-ink);letter-spacing:-1.5px;line-height:1">'+v.fitAge+'</div></div>'+
-        '<div style="flex:1;min-width:0">'+deltaLine+'<div style="font-size:13px;color:var(--text-muted);font-weight:500;line-height:1.5;margin-top:4px">Geschätzt aus deiner Trainingshäufigkeit und Besuchsdauer (Check-ins) – keine medizinische Messung.</div></div>'+
+        '<div style="text-align:center;flex-shrink:0"><div style="font-size:11px;font-weight:700;color:var(--text-soft);text-transform:uppercase;letter-spacing:.4px">Aktivitäts-Alter</div><div style="font-size:46px;font-weight:900;color:var(--teal-ink);letter-spacing:-1.5px;line-height:1">'+v.fitAge+'</div></div>'+
+        '<div style="flex:1;min-width:0">'+deltaLine+'<div style="font-size:13px;color:var(--text-muted);font-weight:500;line-height:1.5;margin-top:4px">So gerechnet: dein Alter minus einen Aktivitäts-Bonus (max. 12) aus deinen Check-ins der letzten 8 Wochen. Ein spielerischer Motivations-Wert – keine medizinische oder biologische Messung.</div></div>'+
       '</div><div style="display:flex;align-items:center;gap:9px;background:#E7F6EC;border-radius:13px;padding:12px 14px;margin-top:16px">'+svg('<path d="M3 12h4l3 8 4-16 3 8h4"></path>',{c:'#176b37',w:1.9,s:18})+'<span style="font-size:13px;font-weight:700;color:#176b37">Bleib dran: Wer regelmäßig trainiert, gewinnt laut Studien gesunde Lebensjahre.</span></div></div>';
     } else {
-      fa='<div style="'+CARD+'"><div style="font-size:16px;font-weight:900;color:var(--text)">Fitness-Alter</div><div style="font-size:13px;color:var(--text-muted);font-weight:500;line-height:1.5;margin-top:6px">Ergänze in „Meine Daten" dein Geburtsdatum – dann berechnen wir dein Fitness-Alter aus deiner Trainingshäufigkeit und Besuchsdauer.</div></div>';
+      fa='<div style="'+CARD+'"><div style="font-size:16px;font-weight:900;color:var(--text)">Aktivitäts-Alter</div><div style="font-size:13px;color:var(--text-muted);font-weight:500;line-height:1.5;margin-top:6px">Ergänze in „Meine Daten" dein Geburtsdatum – dann berechnen wir dein Aktivitäts-Alter aus deinen Check-ins der letzten 8 Wochen (dein Alter minus Aktivitäts-Bonus, keine medizinische Messung).</div></div>';
     }
     // 3) Deine Aktivität
     var stats=[[v.avgPerWeekLabel,'Ø Besuche / Woche'],[String(v.activeWeeks),'Aktive Wochen '+(new Date()).getFullYear()],[String(v.longestStreak),'Längste Streak (Wo.)'],[v.avgDurationLabel,'Ø Dauer / Besuch']];
@@ -2599,14 +2608,14 @@
     // 4) Was regelmäßiges Training bewirkt
     var benefits=[['❤️','Herz & Kreislauf werden gestärkt'],['🧠','Besserer Schlaf & klarer Kopf'],['🦴','Knochen & Muskeln bleiben stabil'],['⏳','Studien verbinden regelmäßige Bewegung mit mehr gesunden Lebensjahren']];
     var ben='<div style="'+CARD+'"><div style="font-size:16px;font-weight:900;color:var(--text);margin-bottom:4px">Was regelmäßiges Training bewirkt</div><div style="font-size:12.5px;color:var(--text-soft);font-weight:500;margin-bottom:14px">Allgemeine Effekte von 2–3 Einheiten pro Woche – keine personenbezogene Messung.</div>'+benefits.map(function(b,i){ return '<div style="display:flex;align-items:center;gap:12px;padding:10px 0'+(i?';border-top:1px solid var(--border)':'')+'"><div style="width:36px;height:36px;border-radius:11px;background:var(--surface-2);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:17px">'+b[0]+'</div><div style="flex:1;font-size:13.5px;font-weight:600;color:var(--text-2);line-height:1.4">'+esc(b[1])+'</div></div>'; }).join('')+'</div>';
-    // 5) Punkte-Verlauf (Check-in +50, Wochenziel +150, Streak-Bonus +75, Inaktivität −40)
+    // 5) Punkte-Verlauf (Check-in +50, Wochenziel +150, Streak-Bonus +75, Pausen neutral mit 0)
     var led=gamify().ledger.slice(0,12);
     var ledger='';
     if(led.length){
-      ledger='<div style="'+CARD.replace('padding:20px','padding:8px 18px 14px')+'"><div style="font-size:12px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.5px;padding:14px 0 4px">Punkte-Verlauf</div>'+led.map(function(e,i){ var sign=(e.pts>=0?'+':'−'); return '<div style="display:flex;align-items:center;gap:12px;padding:12px 0'+(i?';border-top:1px solid var(--border)':'')+'"><div style="width:34px;height:34px;border-radius:10px;background:'+e.bg+';display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:15px">'+e.emoji+'</div><div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:700;color:var(--text)">'+esc(e.title)+'</div><div style="font-size:11.5px;color:var(--text-soft);font-weight:600">'+esc(e.sub)+'</div></div><div style="font-size:14px;font-weight:900;color:'+e.color+'">'+sign+Math.abs(e.pts)+'</div></div>'; }).join('')+'</div>';
+      ledger='<div style="'+CARD.replace('padding:20px','padding:8px 18px 14px')+'"><div style="font-size:12px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.5px;padding:14px 0 4px">Punkte-Verlauf</div>'+led.map(function(e,i){ var ptsLabel=(e.pts===0?'±0':((e.pts>0?'+':'−')+Math.abs(e.pts))); return '<div style="display:flex;align-items:center;gap:12px;padding:12px 0'+(i?';border-top:1px solid var(--border)':'')+'"><div style="width:34px;height:34px;border-radius:10px;background:'+e.bg+';display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:15px">'+e.emoji+'</div><div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:700;color:var(--text)">'+esc(e.title)+'</div><div style="font-size:11.5px;color:var(--text-soft);font-weight:600">'+esc(e.sub)+'</div></div><div style="font-size:14px;font-weight:900;color:'+e.color+'">'+ptsLabel+'</div></div>'; }).join('')+'</div>';
     }
-    // 6) Bleib dran
-    var warn='<div style="display:flex;gap:11px;background:#FBF0E8;border:1px solid #F3D9C4;border-radius:16px;padding:15px">'+svg('<path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"></path>',{c:'#b5631f',w:1.9,s:20})+'<div><div style="font-size:13.5px;font-weight:800;color:#8a4a14">Bleib dran für deine Punkte</div><div style="font-size:12.5px;color:#9a6a3a;font-weight:500;line-height:1.5;margin-top:2px">Wenn du länger als 10 Tage nicht trainierst, verlierst du wöchentlich Vitalpunkte – genau wie dein Körper Fitness verliert. Schon 1 Besuch hält deinen Rang.</div></div></div>';
+    // 6) Pausen sind okay (kein Punktabzug – nur positives Verhalten wird belohnt)
+    var warn='<div style="display:flex;gap:11px;background:#E7F1F3;border:1px solid #CBE2E7;border-radius:16px;padding:15px">'+svg('<path d="M12 8v4l3 3M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z"></path>',{c:'#0a4958',w:1.9,s:20})+'<div><div style="font-size:13.5px;font-weight:800;color:var(--teal-ink)">Pausen sind okay</div><div style="font-size:12.5px;color:var(--text-muted);font-weight:500;line-height:1.5;margin-top:2px">Krankheit oder Urlaub kosten dich keine Vitalpunkte – deine gesammelten Punkte und dein Rang bleiben. Sobald du wieder da bist, geht es mit +50 VP pro Besuch einfach weiter.</div></div></div>';
     // 7) Ränge
     var ranks='<div style="'+CARD.replace('padding:20px','padding:18px')+'"><div style="font-size:16px;font-weight:900;color:var(--text);margin-bottom:8px">Ränge</div>'+VITAL_TIERS.map(function(t,i){ var cur=(i===v.rankIdx); var passed=(i<=v.rankIdx); return '<div style="display:flex;align-items:center;gap:12px;padding:9px 0"><div style="width:32px;height:32px;border-radius:50%;background:'+(passed?'#0a4958':'var(--surface-2)')+';display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:15px">'+t[2]+'</div><div style="flex:1;font-size:14px;font-weight:'+(cur?'900':'600')+';color:'+(cur?'var(--teal-ink)':'var(--text-2)')+'">'+esc(t[0])+'</div><div style="font-size:12.5px;font-weight:700;color:var(--text-soft)">'+(t[1]===0?'Start':(deNum(t[1])+' VP'))+'</div></div>'; }).join('')+'</div>';
 
@@ -2656,20 +2665,31 @@
   // Feature-Schalter: Ernährungs-Modul in der App. Läuft eigenständig (eigene
   // Bedarfsrechnung + KI-Schätzung, kein Fremdanbieter). happyfigur ist bewusst
   // NICHT angebunden. Vor dem Start ist eine DSGVO-Einwilligung (Art. 9) Pflicht.
-  // ERN_LAUNCH = öffentlicher Start für ALLE Mitglieder (bleibt aus, bis final).
-  // Zusätzlich gibt es einen versteckten Test-Modus NUR auf dem eigenen Gerät:
-  // 7× schnell auf das Datum im Startbildschirm-Header tippen (ACT.ernTestTap)
-  // schaltet ihn per localStorage frei/aus – so testet nur der Betreiber, während
-  // normale Mitglieder das Modul nicht sehen.
-  var ERN_LAUNCH=false;
-  function ernTestOn(){ try{ return localStorage.getItem('fi_ern_test')==='1'; }catch(e){ return false; } }
+  // Die Launch-Flags kommen SERVERSEITIG aus /api/app-info (FEATURE_ERN /
+  // FEATURE_SOCIAL, in Produktion standardmäßig AUS) und werden lokal gecacht
+  // (fi_flags_srv), damit der App-Start nicht aufs Netz warten muss.
+  // Der versteckte Test-Modus (7× auf das Datum tippen, ACT.ernTestTap) wirkt
+  // nur, wenn der Server den Demo-Modus erlaubt (FEATURE_DEMO=1) – Demo-/
+  // Testdaten sind in Produktion also standardmäßig deaktiviert.
+  function srvFlags(){ try{ return JSON.parse(localStorage.getItem('fi_flags_srv')||'{}')||{}; }catch(e){ return {}; } }
+  var ERN_LAUNCH=srvFlags().ern===true;
+  function ernTestOn(){ try{ return srvFlags().demo===true && localStorage.getItem('fi_ern_test')==='1'; }catch(e){ return false; } }
   var ERN_ON = ERN_LAUNCH || ernTestOn();
   // Feature-Schalter: Trainingspartner/Community (Mitglied↔Mitglied). Wie beim Essen-Modul
-  // öffentlich aus (SOCIAL_LAUNCH=false) bis final; Testmodus per localStorage (oder über den
-  // gleichen 7×-Datum-Tipp, der auch das Essen-Modul freischaltet).
-  var SOCIAL_LAUNCH=false;
-  function socialTestOn(){ try{ return localStorage.getItem('fi_soc_test')==='1' || ernTestOn(); }catch(e){ return false; } }
+  // serverseitig aus, bis final; Testmodus per localStorage (oder über den gleichen
+  // 7×-Datum-Tipp) – ebenfalls nur bei serverseitig erlaubtem Demo-Modus.
+  var SOCIAL_LAUNCH=srvFlags().social===true;
+  function socialTestOn(){ try{ return (srvFlags().demo===true && localStorage.getItem('fi_soc_test')==='1') || ernTestOn(); }catch(e){ return false; } }
   var SOCIAL_ON = SOCIAL_LAUNCH || socialTestOn();
+  // Frische Server-Flags übernehmen (von loadAppInfo aufgerufen): cachen +
+  // laufende Sitzung aktualisieren, wenn sich die Sichtbarkeit geändert hat.
+  function applySrvFlags(f){
+    if(!f||typeof f!=='object') return;
+    try{ localStorage.setItem('fi_flags_srv',JSON.stringify({ern:f.ern===true,social:f.social===true,demo:f.demo===true})); }catch(e){}
+    ERN_LAUNCH=(f.ern===true); SOCIAL_LAUNCH=(f.social===true);
+    var e2=ERN_LAUNCH||ernTestOn(), s2=SOCIAL_LAUNCH||socialTestOn();
+    if(e2!==ERN_ON||s2!==SOCIAL_ON){ ERN_ON=e2; SOCIAL_ON=s2; render(); }
+  }
   function ernSeedForm(){ var pr=(DATA.nutri&&DATA.nutri.profile)||{};
     S.ernGoal=pr.goal||'abnehmen'; S.ernSex=pr.sex||'w'; S.ernH=pr.height||170; S.ernW=pr.weight||70; S.ernAge=pr.age||30; S.ernAct=pr.activity||'moderat'; S.ernDiet=pr.diet||'omnivor'; }
   // Foto einer Mahlzeit -> herunterskalieren -> KI-Schätzung (action:log-photo).
@@ -3508,7 +3528,7 @@
     var consent = step>=4 ? ('<div style="margin-top:16px">'+
       '<button data-act="ernConsent" style="width:100%;display:flex;align-items:flex-start;gap:11px;padding:14px 15px;background:rgba(255,255,255,.10);border:1.5px solid '+(S.ernConsent?'#fff':'rgba(255,255,255,.30)')+';border-radius:14px;cursor:pointer;text-align:left">'+
         '<span style="width:22px;height:22px;border-radius:7px;border:2px solid #fff;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:'+(S.ernConsent?'#fff':'transparent')+';margin-top:1px">'+(S.ernConsent?svg('<path d="M20 6L9 17l-5-5"></path>',{c:'var(--ern-acc)',w:3.2,s:14}):'')+'</span>'+
-        '<span style="font-size:12.5px;font-weight:600;color:#eafff4;line-height:1.5">Ich willige ein, dass meine Angaben zu <b>Ernährung, Gewicht und Gesundheit</b> für dieses Modul verarbeitet werden. Sie werden <b>nur für mich</b> gespeichert, nicht an Dritte weitergegeben – und ich kann sie jederzeit löschen.</span>'+
+        '<span style="font-size:12.5px;font-weight:600;color:#eafff4;line-height:1.5">Ich willige ein, dass meine Angaben zu <b>Ernährung, Gewicht und Gesundheit</b> für dieses Modul verarbeitet werden. Sie werden <b>nur für mich</b> gespeichert und nicht zu Werbezwecken geteilt. Für KI-Funktionen (z.&nbsp;B. Schätzungen, Coaching) setzen wir vertraglich gebundene Auftragsverarbeiter ein – Details in der Datenschutzerklärung. Ich kann meine Daten jederzeit löschen.</span>'+
       '</button>'+
       '<div style="font-size:11px;color:#bfe0e6;font-weight:600;margin-top:8px;text-align:center">Mehr in der <a href="https://www.fit-inn-trier.de/datenschutz-fit-inn-trier" target="_blank" rel="noopener" style="color:#fff;text-decoration:underline">Datenschutzerklärung</a>. Einwilligung jederzeit widerrufbar.</div></div>') : '';
     var btnLabel=step===0?"Los geht's":(step>=4?(S.ernBusy?'Speichert …':'Coach starten'):'Weiter');
@@ -3757,9 +3777,9 @@
     var infoSec='<div style="'+CARD+'"><div style="font-size:15px;font-weight:900;color:var(--text);display:flex;align-items:center;gap:8px">'+svg('<circle cx="12" cy="12" r="10"></circle><path d="M12 16v-4M12 8h.01"></path>',{c:'#0a4958',w:2,s:19})+'Was wir speichern</div>'+
       '<div style="font-size:12.5px;font-weight:500;color:var(--text-muted);line-height:1.6;margin-top:10px">Im Ernährungsmodul liegen: dein <b>Profil</b> (Ziel, Körperdaten, Aktivität, Ernährungsform), deine <b>protokollierten Mahlzeiten &amp; Wasser</b> pro Tag, deine <b>Favoriten</b>, <b>Wochenpläne</b>, <b>gespeicherte Rezepte</b> und dein <b>Fasten-Status</b>. Alles ist ausschließlich deinem Konto zugeordnet.</div>'+
       '<div style="font-size:12.5px;font-weight:500;color:var(--text-muted);line-height:1.6;margin-top:10px">Wenn du <b>Text, Sprache oder ein Foto</b> zur Schätzung eingibst, wird das zur <b>KI-Auswertung verarbeitet</b> (an unseren KI-Dienstleister übermittelt), um Lebensmittel und Nährwerte zu erkennen. Fotos werden dafür nur verarbeitet, nicht als Bild dauerhaft gespeichert – gespeichert wird nur, was du im Bestätigen-Schritt übernimmst. Der FINN-Chatverlauf bleibt nur lokal auf deinem Gerät.</div>'+
-      '<div style="font-size:11.5px;font-weight:600;color:var(--text-soft);line-height:1.5;margin-top:10px">Deine Daten werden nicht an Dritte weitergegeben und du kannst sie jederzeit exportieren oder löschen. Mehr in der <a href="https://www.fit-inn-trier.de/datenschutz-fit-inn-trier" target="_blank" rel="noopener" style="color:var(--teal-ink);text-decoration:underline">Datenschutzerklärung</a>.</div></div>';
+      '<div style="font-size:11.5px;font-weight:600;color:var(--text-soft);line-height:1.5;margin-top:10px">Deine Daten werden nicht zu Werbezwecken geteilt; für KI-Funktionen setzen wir vertraglich gebundene Auftragsverarbeiter ein. Du kannst deine Daten jederzeit exportieren oder löschen. Mehr in der <a href="https://www.fit-inn-trier.de/datenschutz-fit-inn-trier" target="_blank" rel="noopener" style="color:var(--teal-ink);text-decoration:underline">Datenschutzerklärung</a>.</div></div>';
     var exportSec='<div style="'+CARD+'"><div style="font-size:15px;font-weight:900;color:var(--text);display:flex;align-items:center;gap:8px">'+svg('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"></path>',{c:'#0a4958',w:2,s:19})+'Exportieren</div>'+
-      '<div style="font-size:12.5px;font-weight:500;color:var(--text-muted);line-height:1.55;margin:8px 0 14px">Lade alle deine Ernährungsdaten (Profil, protokollierte Tage, Favoriten, Plan &amp; Rezepte) als JSON-Datei herunter – nur für dich, nichts wird an Dritte gegeben.</div>'+
+      '<div style="font-size:12.5px;font-weight:500;color:var(--text-muted);line-height:1.55;margin:8px 0 14px">Lade alle deine Ernährungsdaten (Profil, protokollierte Tage, Favoriten, Plan &amp; Rezepte) als JSON-Datei herunter – die Datei landet nur bei dir, der Export selbst wird an niemanden übermittelt.</div>'+
       '<button data-act="ernDataExport" '+(busy?'disabled ':'')+'style="width:100%;padding:14px;border:1.5px solid rgba(10,73,88,.25);border-radius:14px;background:var(--surface);color:var(--teal-ink);font-weight:800;font-size:14.5px;cursor:pointer;opacity:'+(busy?'.6':'1')+'">'+(busy?'Bitte warten …':'Als JSON-Datei exportieren')+'</button></div>';
     var delDaySec='<div style="'+CARD+'"><div style="font-size:15px;font-weight:900;color:var(--text)">Einzelnen Tag löschen</div>'+
       '<div style="font-size:12.5px;font-weight:500;color:var(--text-muted);line-height:1.55;margin:8px 0 12px">Entfernt alle Mahlzeiten &amp; das Wasser eines Tages. Profil und andere Tage bleiben.</div>'+
@@ -4031,7 +4051,7 @@
     return head+impCard+habitCard+lessonCard+list+vertCard+ckCard+askBtn+msg+ernHumanCta();
   }
   // ═══ Coach-Hub (Top-Level-Screen) – Coaching als roter Faden: Tipp + Programm + Motivation ═══
-  // Bündelt: FINN-Tipp des Tages (→ FINN-Chat), Motivation (Vitalpunkte/Streak/Fitness-Alter,
+  // Bündelt: FINN-Tipp des Tages (→ FINN-Chat), Motivation (Vitalpunkte/Streak/Aktivitäts-Alter,
   // wiederverwendet aus vitalCard) und – falls verfügbar – das Ernährungs-Coaching-Programm
   // (ernCoachHome). Lektionen/Check-ins/Chat werden per bestehender ern-Renderer angezeigt
   // (dieselbe helle Palette wie das Ernährungs-Modul; die ACT-Handler sind screen-unabhängig).
@@ -4058,7 +4078,7 @@
       '<div style="font-size:12px;font-weight:800;color:var(--ern-acc);margin-top:8px;display:flex;align-items:center;gap:5px">Frag FINN etwas '+svg('<path d="M9 6l6 6-6 6"></path>',{c:'var(--ern-acc)',w:2.2,s:14})+'</div></div></button>';
     // Erkenntnisse (ganzheitlicher Blick + Training + Ernährung), datenbasiert + FINN-Analyse.
     var insights=coachInsights();
-    // Motivation (Vitalpunkte/Rang/Streak/Fitness-Alter) – wiederverwendet.
+    // Motivation (Vitalpunkte/Rang/Streak/Aktivitäts-Alter) – wiederverwendet.
     var motiv=vitalCard();
     // Coaching-Programm (gate-aware): nur wenn verfügbar; sonst tragen Tipp + Erkenntnisse den Hub.
     var c=DATA.coach, program='';
@@ -5197,7 +5217,7 @@
     var list='<div style="background:var(--surface);border-radius:18px;box-shadow:0 12px 32px rgba(4,33,40,.08);overflow:hidden;margin-top:16px">'+
       row('postfach','Postfach',(un>0?(un+' ungelesene Nachricht'+(un===1?'':'en')):'Nachrichten & FINN'),IC.mail,un>0)+
       row('appt','Termine','Buchen & verwalten',IC.cal)+
-      row('fort','Fortschritt & Vitalität','Rang, Punkte, Fitness-Alter',AWARD,true)+
+      row('fort','Fortschritt & Vitalität','Rang, Punkte, Aktivitäts-Alter',AWARD,true)+
       (ERN_ON?row('ern','Ernährung','Tagesziel, Tracking & Rezepte','<path d="M11 21A7 7 0 0 1 4 14C4 8.5 8 4 13.5 4c2.7 0 4.6 1 6.5 1.8 0 8.7-4.3 15.2-9 15.2z"></path><path d="M11 21c0-5.5 3.3-10 7.5-12"></path>'):'')+
       (ERN_ON?row('finnusage','FINN-Nutzung','KI-Kontingent & Verbrauch','<path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.5 8.6 8.6 0 0 1-4-1L3 20l1-5a8.4 8.4 0 0 1-1-4A8.5 8.5 0 0 1 11.5 3 8.5 8.5 0 0 1 21 11.5z"></path>'):'')+
       (SOCIAL_ON?row('social','Trainingspartner','Verbinden, Chat & Challenges','<circle cx="9" cy="7" r="3"></circle><path d="M2.5 20c0-3.3 2.9-6 6.5-6s6.5 2.7 6.5 6"></path><circle cx="17.5" cy="8.5" r="2.4"></circle><path d="M16 14.2c2.6.4 4.5 2.5 4.5 5.3"></path>',(DATA.social&&DATA.social.requests&&DATA.social.requests.length>0)):'')+
@@ -6441,8 +6461,11 @@
     // Versteckter Team-Zugang: 5× schnell auf den Avatar (Startseite) tippen -> /team.
     teamTap:function(){ window.__tt=(window.__tt||0)+1; if(window.__ttT) clearTimeout(window.__ttT); window.__ttT=setTimeout(function(){ window.__tt=0; },1500); if(window.__tt>=5){ window.__tt=0; clearTimeout(window.__ttT); if(confirm('Team-Bereich öffnen?')) location.assign('/team'); } },
     // Versteckter Ernährungs-Testmodus: 7× schnell aufs Datum tippen -> nur dieses Gerät.
+    // Wirkt nur, wenn der Server den Demo-Modus erlaubt (FEATURE_DEMO=1) –
+    // in Produktion bleibt der Tipp-Trick damit folgenlos.
     ernTestTap:function(){ window.__et=(window.__et||0)+1; if(window.__etT) clearTimeout(window.__etT); window.__etT=setTimeout(function(){ window.__et=0; },2000);
       if(window.__et>=7){ window.__et=0; clearTimeout(window.__etT);
+        if(srvFlags().demo!==true){ try{ alert('Der Testmodus ist auf diesem System nicht freigeschaltet.'); }catch(e){} return; }
         var on=!ernTestOn(); try{ if(on) localStorage.setItem('fi_ern_test','1'); else localStorage.removeItem('fi_ern_test'); }catch(e){}
         ERN_ON = ERN_LAUNCH || on;
         SOCIAL_ON = SOCIAL_LAUNCH || socialTestOn();   // Testmodus schaltet auch Trainingspartner frei
@@ -7744,7 +7767,7 @@
   var inApp=!!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
   var bioGate=false; try{ bioGate = inApp && localStorage.getItem('fi_bio')==='1'; }catch(e){}
   ciLoad();
-  loadAppInfo();   // Store-Links fürs App-Banner (nur im Browser relevant)
+  loadAppInfo();   // Store-Links fürs App-Banner + serverseitige Feature-Flags
   if(ALT){ bootActionLogin(ALT); }
   else if(MLT){ bootMagic(MLT); }
   else if(bioGate){ S.screen='login'; render(); }
