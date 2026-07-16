@@ -286,7 +286,11 @@ function aiDraftFor(sel){
 function loadToken(){ try{ S.token=localStorage.getItem('fi_team_token')||null; S.role=localStorage.getItem('fi_team_role')||null; S.meName=localStorage.getItem('fi_team_name')||null; }catch(e){} }
 function saveToken(t){ S.token=t; try{ t?localStorage.setItem('fi_team_token',t):localStorage.removeItem('fi_team_token'); }catch(e){} }
 function saveRole(r,name){ S.role=r||null; if(name!=null) S.meName=name; try{ r?localStorage.setItem('fi_team_role',r):localStorage.removeItem('fi_team_role'); (name!=null&&name)?localStorage.setItem('fi_team_name',name):(name===''?localStorage.removeItem('fi_team_name'):0); }catch(e){} }
-function logout(){ try{ if(window.FitInnNative&&FitInnNative.onTeamLogout) FitInnNative.onTeamLogout(); }catch(e){} saveToken(null); saveRole(null,''); S.convs=[]; S.sel=null; S.selKey=null; render(); }
+function logout(){ try{ if(window.FitInnNative&&FitInnNative.onTeamLogout) FitInnNative.onTeamLogout(); }catch(e){}
+  // Team-Sitzung SERVERSEITIG widerrufen, bevor lokale Daten entfernt werden (idempotent, best effort).
+  try{ if(S.token){ var pt=null; try{ pt=localStorage.getItem('fi_team_push_token')||null; }catch(_e){}
+    fetch('/api/team/logout',{method:'POST',keepalive:true,headers:{'Content-Type':'application/json','Authorization':'Bearer '+S.token},body:JSON.stringify(pt?{pushToken:pt}:{})}).catch(function(){}); } }catch(e){}
+  saveToken(null); saveRole(null,''); S.convs=[]; S.sel=null; S.selKey=null; render(); }
 
 // ── Rollen-Sichtbarkeit ──────────────────────────────────────────────
 // Angestellte (Trainer-Login) sehen nur das Tagesgeschäft. Diese Bereiche

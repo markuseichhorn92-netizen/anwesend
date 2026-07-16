@@ -538,7 +538,13 @@
     if(tmo>0 && typeof AbortController!=='undefined'){ var ctrl=new AbortController(); opt.signal=ctrl.signal; tid=setTimeout(function(){ try{ ctrl.abort(); }catch(e){} }, tmo); }
     return fetch(path,opt).then(function(r){ if(tid) clearTimeout(tid); if(r.status===401){ logout(); throw new Error('unauthorized'); } return r.json(); }, function(err){ if(tid) clearTimeout(tid); throw err; }); }
 
-  function logout(){ closeMenu(); try{ if(window.FitInnNative) FitInnNative.onLogout(); }catch(e){} TOKEN=null; sessionStorage.removeItem('fi_member_token'); localStorage.removeItem('fi_member_token'); try{ localStorage.removeItem('fi_checkin'); }catch(e){} S.checkedInAt=null; S.ciPopup=null; DATA={profile:null,contract:null,checkins:null,appts:null}; S.screen='login'; S.loginStep='request'; S.challenge=''; S.otp=''; render(); }
+  function logout(){ closeMenu(); try{ if(window.FitInnNative) FitInnNative.onLogout(); }catch(e){}
+    // Sitzung SERVERSEITIG widerrufen, bevor lokale Daten entfernt werden (idempotent,
+    // best effort, keepalive überlebt den Screenwechsel). Push-Token dieses Geräts –
+    // falls die native Hülle ihn geteilt hat – wird mit abgemeldet.
+    try{ if(TOKEN){ var pt=null; try{ pt=localStorage.getItem('fi_push_token')||null; }catch(_e){}
+      fetch('/api/member/logout',{method:'POST',keepalive:true,headers:{'Content-Type':'application/json','Authorization':'Bearer '+TOKEN},body:JSON.stringify(pt?{pushToken:pt}:{})}).catch(function(){}); } }catch(e){}
+    TOKEN=null; sessionStorage.removeItem('fi_member_token'); localStorage.removeItem('fi_member_token'); try{ localStorage.removeItem('fi_checkin'); }catch(e){} S.checkedInAt=null; S.ciPopup=null; DATA={profile:null,contract:null,checkins:null,appts:null}; S.screen='login'; S.loginStep='request'; S.challenge=''; S.otp=''; render(); }
   function pad2(n){ return (n<10?'0':'')+n; }
   // Logo: normale Funktion (eingeloggt -> Startseite) + versteckter Team-Zugang
   // (5× schnell tippen -> Sicherheitsabfrage -> Team-Backend unter /team).
