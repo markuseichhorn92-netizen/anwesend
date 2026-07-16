@@ -121,6 +121,7 @@ module.exports = async function handler(req, res) {
         focus: body.focus,
         note: body.note,
         firstName: (sess && sess.firstName) || '',
+        equipmentContext: T.STUDIO_EQUIPMENT,
       });
       if (!r.ok || !r.plan) return j(res, 200, { ok: false, error: 'gen_failed', message: 'Das hat gerade nicht geklappt – bitte versuch es gleich noch einmal.' });
       const plan = T.normalizePlan(r.plan, 'finn');
