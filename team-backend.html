@@ -299,7 +299,7 @@ function meDisplayName(){ return String(S.meName||'').trim() || (isAdmin()?'Admi
 function roleLabel(){ return isAdmin()?'Admin':'Angestellte(r)'; }
 // Identität der aktuellen Sitzung nach Reload holen (Rolle sicher bestimmen).
 async function loadMe(){
-  try{ var r=await tapi('/api/team/me'); if(r&&r.ok){ saveRole(r.role||'admin', r.name||''); if(!canSee(S.screen)) S.screen='dash'; render(); registerTeamPush(); } }catch(e){}
+  try{ var r=await tapi('/api/team/me'); if(r&&r.ok){ saveRole(r.role||'admin', r.name||''); if(!canSee(S.screen)){ S.screen='dash'; syncUrl(false); } render(); registerTeamPush(); } }catch(e){}
 }
 // In der eigenen App (Capacitor): Geräte-Token dem Team-Pool zuordnen, damit
 // angemeldete Team-Mitglieder Push-Benachrichtigungen über neue Postfach-Nachrichten
@@ -310,7 +310,7 @@ async function doLogin(pw){
   S.err=''; S.busy=true; render();
   try{
     var r=await tapi('/api/team/login',{method:'POST',body:{password:pw}});
-    if(r.ok && r.token){ saveToken(r.token); saveRole(r.role||'admin','Admin'); S.busy=false; registerTeamPush(); loadEmployees(); goScreen(S.screen); return; }
+    if(r.ok && r.token){ saveToken(r.token); saveRole(r.role||'admin','Admin'); S.busy=false; registerTeamPush(); loadEmployees(); enterRoute(); return; }
     S.err=r.message||'Login fehlgeschlagen.'; S.busy=false; render();
   }catch(e){ S.err='Verbindungsfehler.'; S.busy=false; render(); }
 }
@@ -332,7 +332,7 @@ async function doStaffVerify(){
   S.liErr=''; S.liBusy=true; render();
   try{
     var r=await tapi('/api/team/login',{method:'POST',body:{action:'verifyCode',challenge:S.liChallenge,code:code}});
-    if(r && r.ok && r.token){ saveToken(r.token); saveRole(r.role||'trainer', r.name||''); S.liBusy=false; S.liChallenge=''; S.liCode=''; S.liEmail=''; if(!canSee(S.screen)) S.screen='dash'; registerTeamPush(); loadEmployees(); goScreen(S.screen); return; }
+    if(r && r.ok && r.token){ saveToken(r.token); saveRole(r.role||'trainer', r.name||''); S.liBusy=false; S.liChallenge=''; S.liCode=''; S.liEmail=''; if(!canSee(S.screen)) S.screen='dash'; registerTeamPush(); loadEmployees(); enterRoute(); return; }
     S.liBusy=false; S.liErr=(r&&r.message)||'Code falsch oder abgelaufen.'; render();
   }catch(e){ S.liBusy=false; S.liErr='Verbindungsfehler.'; render(); }
 }
@@ -486,7 +486,7 @@ async function openProfile(id){
   S.memberMsgs=null; S.memberMsgsLoading=false; S.memberMsgsTotal=0;
   S.profTab='ueber'; S.acc={};   // Profil öffnet auf „Übersicht"; alle Sektionen zugeklappt
   S._profId=String(id); mainScrollMap['members:'+id]=0;   // neues Profil beginnt oben
-  S.profileLoading=true; S.profile=null; render();
+  S.profileLoading=true; S.profile=null; syncUrl(true); render();   // URL -> /team/mitglieder/<id>
   try{ var r=await tapi('/api/team/members?id='+encodeURIComponent(id)); if(r.ok) S.profile=r.profile; }
   catch(e){} S.profileLoading=false; render();
   if(S.profile){ loadProfileTags(id); loadProfileDocs(id); loadAccessMedia(id); loadMemberCheckins(id); loadMemberCoaching(id); loadMemberPreview(id); loadMemberMessages(id); if(isAdmin()&&!S.rhOffersLoaded) loadRetentionOffers(); }
@@ -593,7 +593,7 @@ function filteredMembers(){
   if(S.tagFilter && S.tagFilterIds){ var set=S.tagFilterIds; list=list.filter(function(m){ return set[String(m.memberId)]; }); }
   return list;
 }
-function backToMembers(){ S.profile=null; render(); }
+function backToMembers(){ S.profile=null; syncUrl(true); render(); }
 
 // ---------- Mitglieder-Dokumente (Scope CUSTOMER_DOCUMENT_READ/WRITE) ----------
 // Dokumente des offenen Profils laden (GET ?memberId). Ohne Scope -> available:false,
@@ -4507,9 +4507,53 @@ function render(){
   else content=placeholderNode(titles[S.screen]||'');
   renderShell(content, titles[S.screen]||'', subs[S.screen]||'');
 }
+// ── URL-Routing: die Adresszeile spiegelt Screen + offenes Mitglied wider ──
+// Die Team-SPA liegt unter „/team". Screens werden zu /team/<slug>, ein offenes
+// Profil zu /team/mitglieder/<interne-id>. So sind Ansichten teilbar/bookmarkbar
+// und Reload/Zurück führen wieder dorthin. Greift nur, wenn die Seite wirklich
+// unter /team ausgeliefert wird (Guard) – beim direkten Öffnen der Datei bleibt die URL unberührt.
+var SCREEN2SLUG={ dash:'', inbox:'posteingang', members:'mitglieder', appts:'termine', trial:'probetraining', help:'hilfe', stats:'statistiken', msg:'nachrichten', leads:'leads', todo:'aufgaben', schicht:'schichtplan', assist:'assistent', wb:'rueckholung', community:'community' };
+var SLUG2SCREEN={}; Object.keys(SCREEN2SLUG).forEach(function(k){ if(SCREEN2SLUG[k]) SLUG2SCREEN[SCREEN2SLUG[k]]=k; });
+var urlRestoring=false;   // true während Boot/Popstate/Login-Restore -> replaceState statt pushState
+function underTeam(){ try{ return /^\/team(\/|$)/.test(location.pathname||''); }catch(e){ return false; } }
+function teamPath(){
+  if(S.screen==='members' && S._profId && (S.profile||S.profileLoading)) return '/team/mitglieder/'+encodeURIComponent(S._profId);
+  var slug=SCREEN2SLUG[S.screen]; if(slug===undefined) slug='';
+  return '/team'+(slug?('/'+slug):'');
+}
+function syncUrl(push){
+  if(!underTeam()) return;
+  try{ var p=teamPath(); if(p===location.pathname) return; history[(push&&!urlRestoring)?'pushState':'replaceState']({t:1}, '', p); }catch(e){}
+}
+function parseTeamPath(){
+  var seg=[]; try{ seg=String(location.pathname||'').replace(/^\/+|\/+$/g,'').split('/'); }catch(e){}
+  if(seg[0]!=='team') return null;
+  var a=(seg[1]||'').toLowerCase();
+  if(!a) return { screen:'dash', id:null };
+  if(a==='mitglieder') return { screen:'members', id: seg[2]?decodeURIComponent(seg[2]):null };
+  return { screen: SLUG2SCREEN[a]||'dash', id:null };
+}
+// Aktuelle URL auswerten und die Ansicht herstellen (Boot + nach Login).
+function enterRoute(){
+  var r=parseTeamPath(); urlRestoring=true;
+  try{
+    if(r && r.screen==='members' && r.id){ S.screen='members'; openProfile(r.id); }
+    else { goScreen((r&&r.screen)||S.screen); }
+  } finally { urlRestoring=false; }
+}
+// Browser Zurück/Vor: Ansicht ohne neuen History-Eintrag mitziehen.
+window.addEventListener('popstate', function(){
+  if(!underTeam()) return;
+  var r=parseTeamPath(); if(!r) return;
+  urlRestoring=true;
+  try{
+    if(r.screen==='members' && r.id){ if(String(S._profId||'')!==String(r.id) || !(S.profile||S.profileLoading)){ S.screen='members'; openProfile(r.id); } else { render(); } }
+    else { S.profile=null; goScreen(r.screen); }
+  } finally { urlRestoring=false; }
+});
 function goScreen(k){
   if(!canSee(k)) k='dash';   // Angestellte werden aus Admin-Bereichen sanft umgeleitet
-  S.screen=k; S.navOpen=false;
+  S.screen=k; S.navOpen=false; syncUrl(true);
   if(k==='dash'){ loadUtil(); loadChurn(); if(isAdmin()){ loadDues(); loadRetentionOffers(); } if(!S.convs.length && !S.loading) loadInbox(); }
   if(k==='members'){ S.profile=null; if(!S.membersLoaded){ loadMembers(); return; } }
   if(k==='appts' && !S.convs.length && !S.loading){ loadInbox(); return; }
@@ -4529,7 +4573,7 @@ function goScreen(k){
 loadToken();
 // Beim Start die Lader des Landing-Screens (Standard: Übersicht/dash) anstoßen –
 // sonst bleibt z. B. die Auslastungs-Karte hängen, weil loadUtil() nie liefe.
-if(S.token){ render(); loadMe(); loadEmployees(); goScreen(S.screen); } else { render(); }
+if(S.token){ render(); loadMe(); loadEmployees(); enterRoute(); } else { render(); }
 // Offenen Chat live nachladen (neue Nachrichten erscheinen automatisch).
 setInterval(pollThread, 6000);
 // Liste/Badges seltener aktualisieren (kein Voll-Render, wenn gerade getippt wird).
