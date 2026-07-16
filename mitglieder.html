@@ -4127,17 +4127,38 @@
     if(pd==null){ return seg+'<div style="text-align:center;color:var(--text-soft);font-size:14px;font-weight:600;padding:30px">Lädt …</div>'; }
     var genBtn=function(label){ return '<button data-act="ernPlanGen" '+(busy?'disabled ':'')+'style="margin-top:18px;padding:14px 22px;border:none;border-radius:14px;background:'+ERN_G+';color:#fff;font-weight:900;font-size:14.5px;cursor:pointer">'+(busy?'FINN plant …':label)+'</button>'; };
     if(ptab==='woche'){
+      // Datumsbasierte 7-Tage-Woche: DEINE geplanten Rezepte (Koch-Plan) + FINNs Vorschläge je Tag.
       var plan=pd.plan;
-      if(!plan||!Array.isArray(plan.days)||!plan.days.length){
-        return seg+'<div style="'+CARD+';text-align:center;padding:30px 22px"><div style="width:70px;height:70px;border-radius:22px;background:rgba(15,122,74,.1);display:flex;align-items:center;justify-content:center;font-size:32px;margin:0 auto">🗓️</div><div style="font-size:16px;font-weight:900;color:var(--text);margin-top:16px">Lass FINN deine Woche planen</div><div style="font-size:13px;color:var(--text-muted);font-weight:500;margin-top:8px;line-height:1.5">7 Tage passend zu deinem Ziel – inklusive fertiger Einkaufsliste.</div>'+genBtn('Woche automatisch planen')+'</div>';
-      }
+      var cook=(DATA.nutriCook&&Array.isArray(DATA.nutriCook.cookplan))?DATA.nutriCook.cookplan:[];
       var EMO={'Frühstück':'🌅','Mittag':'☀️','Mittagessen':'☀️','Abend':'🌙','Abendessen':'🌙','Snack':'🍎','Snacks':'🍎'};
-      var daysHtml=plan.days.map(function(d,di){ var total=d.meals.reduce(function(a,m){return a+(m.kcal||0);},0);
-        return '<div style="'+CARD.replace('padding:16px','padding:14px 16px 6px')+'"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2px"><span style="font-size:14.5px;font-weight:900;color:var(--text)">'+esc(d.day)+'</span><span style="font-size:12px;font-weight:800;color:'+ERN_G+'">'+ernNum(total)+' kcal</span></div>'+
-          d.meals.map(function(m,mi){ return '<div style="display:flex;align-items:center;gap:11px;padding:10px 0;border-top:1px solid var(--border)"><span style="width:30px;height:30px;border-radius:9px;background:var(--surface-2);display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0">'+(EMO[m.label]||'🍽️')+'</span><div style="flex:1;min-width:0"><div style="font-size:10.5px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.4px">'+esc(m.label)+'</div><div style="font-size:13.5px;font-weight:700;color:var(--text);margin-top:1px">'+esc(m.title)+'</div></div><span style="font-size:12px;font-weight:800;color:var(--text-soft)">'+ernNum(m.kcal)+'</span><button data-act="ernPlanMealLog" data-arg="'+di+':'+mi+'" aria-label="'+esc(m.title)+' ins Protokoll übernehmen" style="width:30px;height:30px;border-radius:9px;border:1.5px solid rgba(15,122,74,.25);background:#f4faf6;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'+svg('<path d="M12 5v14M5 12h14"></path>',{c:ERN_G,w:2.4,s:15})+'</button></div>'; }).join('')+'</div>';
-      }).join('');
+      var WD=['So','Mo','Di','Mi','Do','Fr','Sa'];
       var pmsg=S.ernMsg?'<div role="'+(S.ernErr?'alert':'status')+'" style="font-size:12.5px;font-weight:700;color:'+(S.ernErr?'var(--err-fg)':ERN_G)+';margin:0 2px 12px;line-height:1.4">'+esc(S.ernMsg)+'</div>':'';
-      return seg+pmsg+daysHtml+'<button data-act="ernPlanGen" '+(busy?'disabled ':'')+'style="width:100%;padding:12px;border:1.5px solid var(--border);background:var(--surface);color:var(--text-muted);border-radius:14px;font-weight:800;font-size:13px;cursor:pointer">'+(busy?'FINN plant …':'Neue Woche planen')+'</button>';
+      var daysOut='';
+      for(var off=0;off<7;off++){
+        var ds=ernOffsetDate(off); var dt=new Date(ds+'T12:00:00'); var wd=WD[dt.getDay()];
+        var label=off===0?'Heute':off===1?'Morgen':(wd+', '+dt.getDate()+'.'+(dt.getMonth()+1)+'.');
+        // Deine geplanten Rezepte für diesen Tag
+        var cookRows='', cookKcal=0;
+        cook.forEach(function(it,ci){ if(it.date!==ds) return; var grade=nutriGrade(it); var serv=it.servings||1; cookKcal+=(it.kcal||0)*serv; var kc=(+it.kcal>0)?(ernNum((it.kcal||0)*serv)+' kcal'):'';
+          cookRows+='<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--border)">'+(grade?nutriChip(grade,26):'<span style="width:26px;flex-shrink:0"></span>')+
+            '<div data-act="ernRecipeOpen" data-arg="cook:'+ci+'" style="flex:1;min-width:0;cursor:pointer"><div style="font-size:13.5px;font-weight:800;color:var(--text)'+(it.done?';text-decoration:line-through;opacity:.6':'')+';white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(it.title)+'</div><div style="font-size:11px;font-weight:700;color:'+ERN_G+';margin-top:1px">Dein Rezept · '+serv+' Portion'+(serv>1?'en':'')+(kc?(' · '+kc):'')+'</div></div>'+
+            ((it.steps&&it.steps.length&&!it.done)?'<button data-act="ernCookCook" data-arg="'+esc(it.id)+'" aria-label="Kochen" style="width:30px;height:30px;border-radius:9px;border:1.5px solid rgba(15,122,74,.25);background:#f4faf6;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;font-size:15px">👨‍🍳</button>':'')+'</div>';
+        });
+        // FINNs Mahlzeiten-Ideen für diesen Wochentag (falls eine Woche generiert wurde)
+        var finnRows='', finnKcal=0;
+        if(plan&&Array.isArray(plan.days)){ var pdIdx=-1, fd=null;
+          for(var pj=0;pj<plan.days.length;pj++){ if(plan.days[pj].day===wd){ fd=plan.days[pj]; pdIdx=pj; break; } }
+          if(fd){ finnRows=fd.meals.map(function(m,mi){ finnKcal+=(m.kcal||0); return '<div style="display:flex;align-items:center;gap:11px;padding:10px 0;border-top:1px solid var(--border)"><span style="width:30px;height:30px;border-radius:9px;background:var(--surface-2);display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0">'+(EMO[m.label]||'🍽️')+'</span><div style="flex:1;min-width:0"><div style="font-size:10.5px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.4px">'+esc(m.label)+' · FINN-Idee</div><div style="font-size:13.5px;font-weight:700;color:var(--text);margin-top:1px">'+esc(m.title)+'</div></div><span style="font-size:12px;font-weight:800;color:var(--text-soft)">'+ernNum(m.kcal)+'</span><button data-act="ernPlanMealLog" data-arg="'+pdIdx+':'+mi+'" aria-label="'+esc(m.title)+' ins Protokoll übernehmen" style="width:30px;height:30px;border-radius:9px;border:1.5px solid rgba(15,122,74,.25);background:#f4faf6;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'+svg('<path d="M12 5v14M5 12h14"></path>',{c:ERN_G,w:2.4,s:15})+'</button></div>'; }).join(''); }
+        }
+        if(!cookRows&&!finnRows) continue;
+        var total=cookKcal+finnKcal;
+        daysOut+='<div style="'+CARD.replace('padding:16px','padding:14px 16px 8px')+'"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2px"><span style="font-size:14.5px;font-weight:900;color:var(--text)">'+esc(label)+'</span>'+(total?'<span style="font-size:12px;font-weight:800;color:'+ERN_G+'">'+ernNum(total)+' kcal</span>':'')+'</div>'+cookRows+finnRows+'</div>';
+      }
+      if(!daysOut){
+        return seg+pmsg+'<div style="'+CARD+';text-align:center;padding:30px 22px"><div style="width:70px;height:70px;border-radius:22px;background:rgba(15,122,74,.1);display:flex;align-items:center;justify-content:center;font-size:32px;margin:0 auto">🗓️</div><div style="font-size:16px;font-weight:900;color:var(--text);margin-top:16px">Deine Woche im Blick</div><div style="font-size:13px;color:var(--text-muted);font-weight:500;margin-top:8px;line-height:1.5">Plane Rezepte im Koch-Plan – sie erscheinen hier am jeweiligen Tag. FINN kann die Woche zusätzlich mit Ideen ergänzen.</div>'+genBtn('FINN-Woche ergänzen')+'</div>';
+      }
+      var intro='<div style="font-size:12px;font-weight:600;color:var(--text-soft);margin:0 2px 12px;line-height:1.4">Deine geplanten Rezepte + FINNs Vorschläge – die nächsten 7 Tage.</div>';
+      return seg+pmsg+intro+daysOut+'<button data-act="ernPlanGen" '+(busy?'disabled ':'')+'style="width:100%;padding:12px;border:1.5px solid var(--border);background:var(--surface);color:var(--text-muted);border-radius:14px;font-weight:800;font-size:13px;cursor:pointer">'+(busy?'FINN plant …':(plan?'FINN-Ideen neu':'FINN-Ideen ergänzen'))+'</button>';
     }
     var shop=Array.isArray(pd.shopping)?pd.shopping:[];
     if(!shop.length){ return seg+'<div style="'+CARD+';text-align:center;padding:34px 22px"><div style="width:70px;height:70px;border-radius:22px;background:rgba(15,122,74,.1);display:flex;align-items:center;justify-content:center;font-size:32px;margin:0 auto">🛒</div><div style="font-size:16px;font-weight:900;color:var(--text);margin-top:16px">Noch keine Einkaufsliste</div><div style="font-size:13px;color:var(--text-muted);font-weight:500;margin-top:8px;line-height:1.5">Erstelle deinen Wochenplan – FINN fasst die Zutaten automatisch zusammen.</div>'+genBtn('Woche & Liste erstellen')+'</div>'; }
