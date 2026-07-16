@@ -25,7 +25,17 @@ const Ex = require('../../lib/exercises');
 const AI = require('../../lib/ai');
 const Ent = require('../../lib/entitlements');
 const Quota = require('../../lib/nutriquota');
-const { hasStore } = require('../../lib/store');
+const { hasStore, redisPipeline } = require('../../lib/store');
+
+// ── Trainings-Session (heutige Einheit abhaken / Sätze protokollieren) ──
+const SKEY = (id, date) => 'train:sess:' + String(id) + ':' + date;
+function cleanStr(v, max) { return String(v == null ? '' : v).replace(/\s+/g, ' ').trim().slice(0, max || 24); }
+async function loadSession(id, date) {
+  try { const [r] = await redisPipeline([['GET', SKEY(id, date)]]); if (!r) return null; const o = JSON.parse(r); return (o && o.items) ? o : null; } catch (e) { return null; }
+}
+async function saveSession(id, date, sess) {
+  try { await redisPipeline([['SET', SKEY(id, date), JSON.stringify({ planId: sess.planId, items: sess.items || {} }), 'EX', String(120 * 86400)]]); return true; } catch (e) { return false; }
+}
 
 const PREMIUM_MSG = 'Mit Premium erstellt dir FINN unbegrenzt persönliche Trainingspläne.';
 const QUOTA_MSG = 'Dein Gratis-Kontingent für FINN ist diesen Monat aufgebraucht. Mit Premium geht’s unbegrenzt weiter – oder du nutzt die fertigen Pläne aus der Bibliothek.';
@@ -80,6 +90,28 @@ module.exports = async function handler(req, res) {
     // der Client filtert die Liste ohnehin lokal aus dem GET-Payload.
     if (action === 'exercise-search') {
       return j(res, 200, { ok: true, exercises: Ex.search(body.q, { group: body.group, bio: !!body.bio }) });
+    }
+
+    // Trainings-Session: heutige Einheit abhaken / Sätze protokollieren.
+    // Biostrength-Übungen werden nur „done" gesetzt, andere zusätzlich mit „sets".
+    if (action === 'session-get' || action === 'session-set' || action === 'session-reset') {
+      const date = berlinDate();
+      const active = await T.resolveActive(id);
+      if (!active) return j(res, 200, { ok: true, available: true, active: false, date: date, items: {} });
+      let sess = await loadSession(id, date);
+      if (!sess || sess.planId !== active.plan.id) sess = { planId: active.plan.id, items: {} };
+      if (action === 'session-set') {
+        const key = cleanStr(body.key, 16);
+        if (key) {
+          const it = sess.items[key] || { done: false, sets: 0 };
+          if (body.done != null) it.done = !!body.done;
+          if (body.sets != null) { let n = parseInt(body.sets, 10); if (isNaN(n) || n < 0) n = 0; if (n > 20) n = 20; it.sets = n; }
+          sess.items[key] = it; await saveSession(id, date, sess);
+        }
+      } else if (action === 'session-reset') {
+        sess = { planId: active.plan.id, items: {} }; await saveSession(id, date, sess);
+      }
+      return j(res, 200, { ok: true, available: true, active: true, date: date, planId: sess.planId, items: sess.items });
     }
 
     // Vollständigen Bibliotheks-Plan liefern (für die Detailansicht).

@@ -572,7 +572,7 @@
     if(s==='abo'){ S.ernMsg=''; S.ernErr=false; DATA.ernSub=undefined; DATA.ernInvoices=undefined; loadNutri(); loadSubInfo(); loadErnInvoices(); }
     if(s==='recht'){ S.wdStep=0; S.wdErr=false; S.wdMsg=''; loadErnBilling(); if(TOKEN){ loadNutri(); loadSubInfo(); } }
     if(s==='ern'){ try{ window.__ernStopScan&&window.__ernStopScan(); }catch(e){} S.ernMsg=''; S.ernErr=false; S.ernAsk=''; S.ernAnswer=''; S.ernRecipes=null; S.ernCoachSent=false; S.ernTab='heute'; S.ernRecipeSel=null; S.ernKoch=null; S.ernCookPick=false; S.ernPlanDraft=null; S.ernPlanReplaceIdx=-1; S.ernCapture=false; S.ernConfirm=null; S.ernProd=null; S.ernEntryEdit=null; S.ernViewDate=''; S.ernFavMgr=false; S.ernData=false; S.ernUpgrade=false; S.ernLesson=null; S.ernLessonData=null; S.ernChatOpen=false; S.ernCk=false; S.ernCkResult=null; S.ernObStep=0; S.ernChat=ernChatLoad(); loadNutri(); loadFavs(); loadCoach(); loadCook(); }
-    if(s==='coach'){ S.ernLesson=null; S.ernVert=null; S.ernLessonData=null; S.ernCk=false; S.ernCkResult=null; S.ernChatOpen=false; S.ernUpgrade=false; S.ernMsg=''; S.ernErr=false; S.coachMapOpen=false; S.coachVertOpen=false; S.ernChat=ernChatLoad(); S.trainDetail=null; S.trainExOpen=false; S.trainGenOpen=false; S.trainGenPlan=null; S.trainGenBusy=false; S.trainBusy=false; S.trainMsg=''; loadFinnTip(); loadCoach(); loadTraining(); if(!DATA.checkins) loadCheckins(); }
+    if(s==='coach'){ S.ernLesson=null; S.ernVert=null; S.ernLessonData=null; S.ernCk=false; S.ernCkResult=null; S.ernChatOpen=false; S.ernUpgrade=false; S.ernMsg=''; S.ernErr=false; S.coachMapOpen=false; S.coachVertOpen=false; S.ernChat=ernChatLoad(); S.trainDetail=null; S.trainExOpen=false; S.trainRun=false; S.trainRestKey=''; S.trainGenOpen=false; S.trainGenPlan=null; S.trainGenBusy=false; S.trainBusy=false; S.trainMsg=''; loadFinnTip(); loadCoach(); loadTraining(); if(!DATA.checkins) loadCheckins(); }
     if(s==='appt'){ if(!DATA.appts) loadAppts(); if(DATA.bookable===null) loadBookable(); }
     if(s==='home'||s==='checkin') checkArrival();
     setS({}); }
@@ -3049,6 +3049,8 @@
   function loadCoach(){ api('/api/member/nutrition-coach').then(function(d){ DATA.coach=(d&&d.ok)?d:{ok:false,available:!!(d&&d.available)}; rIf(['ern','coach']); }).catch(function(){ DATA.coach={ok:false,available:false}; rIf(['ern','coach']); }); }
   // Training-Tab: Tipp, Inspiration, Trainingsplan-Bibliothek + „Mein Plan" (api/member/training).
   function loadTraining(){ api('/api/member/training').then(function(d){ DATA.training=(d&&d.ok)?d:{ok:false,available:!!(d&&d.available)}; rIf(['coach']); }).catch(function(){ DATA.training={ok:false,available:false}; rIf(['coach']); }); }
+  // Trainings-Session (heutige Einheit) laden – Abhak-/Satz-Stände.
+  function loadTrainSession(){ api('/api/member/training',{method:'POST',body:JSON.stringify({action:'session-get'})}).then(function(d){ DATA.trainSess=(d&&d.ok)?{items:d.items||{},planId:d.planId}:{items:{},planId:null}; rIf(['coach']); }).catch(function(){ DATA.trainSess={items:{},planId:null}; rIf(['coach']); }); }
   // Fasten-Countdown live nachführen (nur auf dem Heute-Tab, ohne Voll-Render)
   setInterval(function(){
     try{
@@ -3056,6 +3058,15 @@
       var f=ernFastMs(); if(!f.active) return;
       var el=$('ern_fast_t'); if(el) el.textContent=ernFmtHMS(f.remain);
       var ring=$('ern_fast_ring'); if(ring){ var deg=Math.min(360,Math.round(f.win?f.elapsed/f.win*360:0)); ring.style.background='conic-gradient(#0a4958 '+deg+'deg,var(--surface-2) 0)'; }
+    }catch(e){}
+  },1000);
+  // Trainings-Pausen-Timer live nachführen (im Tracker, ohne Voll-Render)
+  setInterval(function(){
+    try{
+      if(!S.trainRun||!S.trainRestKey||!S.trainRestStart) return;
+      var el=$('tr_rest'); if(!el) return;
+      var s=Math.max(0,Math.floor((Date.now()-S.trainRestStart)/1000));
+      el.textContent='⏱ Pause '+Math.floor(s/60)+':'+((s%60)<10?'0':'')+(s%60);
     }catch(e){}
   },1000);
   // Client-Vorschau der Zielwerte (spiegelt den Server – Mifflin-St-Jeor)
@@ -4040,6 +4051,8 @@
     if(d==null) return '<div style="padding:60px 0;text-align:center">'+trainSpin(26)+'</div>';
     if(!d.ok && d.available===false) return trainCardBox('<div style="font-size:14px;font-weight:600;color:#8a929a">Der Training-Bereich ist gerade nicht verfügbar.</div>');
     if(!d.ok) return trainCardBox('<div style="font-size:14px;font-weight:700;color:#b5402f">Training konnte nicht geladen werden.</div>')+'<button data-act="trainReload" style="width:100%;padding:13px;border:none;border-radius:13px;background:'+ERN_G+';color:#fff;font-weight:800;font-size:14px;cursor:pointer">Erneut versuchen</button>';
+    // Training läuft (heutige Einheit abhaken/protokollieren)?
+    if(S.trainRun){ return trainingRun(); }
     // Detailansicht eines Plans?
     if(S.trainDetail){ return trainingDetail(); }
     // Übungsdatenbank offen?
@@ -4062,15 +4075,16 @@
     if(!mp||!mp.plan){
       return trainCardBox('<div style="display:flex;align-items:center;gap:11px"><div style="width:40px;height:40px;border-radius:12px;background:#eef4f2;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">🎯</div><div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:900;color:#15171B">Noch kein Plan gewählt</div><div style="font-size:12.5px;font-weight:600;color:#8a929a;margin-top:1px">Wähl unten einen Plan aus der Bibliothek oder lass dir von FINN einen erstellen.</div></div></div>');
     }
-    var p=mp.plan; var badge=(p.source==='finn')?'FINN-Plan':'Mein Plan';
+    var p=mp.plan; var badge=(p.source==='finn')?'FINN-Plan':((p.source==='team')?'Vom Trainer':'Mein Plan');
     return '<div style="background:linear-gradient(150deg,#12a06a,#0f7a4a 58%,#0a5a37);border-radius:20px;padding:18px 20px;color:#fff;box-shadow:0 14px 34px rgba(15,122,74,.26);margin-bottom:14px">'+
       '<div style="display:flex;align-items:center;gap:8px"><span style="background:rgba(255,255,255,.18);border-radius:9px;padding:4px 10px;font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.4px">'+badge+'</span><span style="font-size:22px;margin-left:auto">'+esc(p.emoji||'💪')+'</span></div>'+
       '<div style="font-size:19px;font-weight:900;letter-spacing:-.3px;margin-top:10px">'+esc(p.title)+'</div>'+
       '<div style="font-size:12.5px;font-weight:600;color:#d4f0e2;margin-top:2px">'+esc(trainMetaLine(p))+'</div>'+
       (p.aiAssist?'<div style="display:inline-block;margin-top:10px;background:rgba(255,255,255,.16);border-radius:9px;padding:5px 10px;font-size:11px;font-weight:800">🤖 Technogym-KI steuert deine Progression</div>':'')+
-      '<div style="display:flex;gap:9px;margin-top:15px">'+
-        '<button data-act="trainOpen" data-arg="'+esc(p.id)+'" style="flex:1;padding:12px;border:none;border-radius:12px;background:#fff;color:'+ERN_GD+';font-weight:900;font-size:13.5px;cursor:pointer">Plan öffnen</button>'+
-        '<button data-act="trainStop" style="padding:12px 15px;border:1.5px solid rgba(255,255,255,.5);border-radius:12px;background:transparent;color:#fff;font-weight:800;font-size:13.5px;cursor:pointer"'+(S.trainBusy?' disabled':'')+'>Beenden</button>'+
+      '<button data-act="trainRun" style="width:100%;margin-top:15px;padding:13px;border:none;border-radius:12px;background:#fff;color:'+ERN_GD+';font-weight:900;font-size:14.5px;cursor:pointer">▶ Training starten</button>'+
+      '<div style="display:flex;gap:9px;margin-top:9px">'+
+        '<button data-act="trainOpen" data-arg="'+esc(p.id)+'" style="flex:1;padding:11px;border:1.5px solid rgba(255,255,255,.5);border-radius:12px;background:transparent;color:#fff;font-weight:800;font-size:13px;cursor:pointer">Plan ansehen</button>'+
+        '<button data-act="trainStop" style="padding:11px 15px;border:1.5px solid rgba(255,255,255,.5);border-radius:12px;background:transparent;color:#fff;font-weight:800;font-size:13px;cursor:pointer"'+(S.trainBusy?' disabled':'')+'>Beenden</button>'+
       '</div></div>';
   }
   // FINN-Generator-Aufmacher (öffnet das Formular).
@@ -4114,6 +4128,47 @@
       '<div style="width:40px;height:40px;border-radius:12px;background:#eef4f2;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+svg('<rect x="3" y="4" width="18" height="18" rx="2"></rect><path d="M16 2v4M8 2v4M3 10h18"></path>',{c:ERN_GD,w:2,s:19})+'</div>'+
       '<div style="flex:1;min-width:0"><div style="font-size:14.5px;font-weight:900;color:#15171B">Persönliche Trainingsplanung</div><div style="font-size:12px;font-weight:600;color:#6b7780;margin-top:1px">Termin mit einer Trainer:in im Studio buchen.</div></div>'+
       svg('<path d="M9 6l6 6-6 6"></path>',{c:'#b9c4c6',w:2.2,s:16})+'</button>';
+  }
+  // ═══ Trainings-Tracker: heutige Einheit durchführen & abhaken ═══
+  function trainRunItems(){ var d=DATA.training||{}; var mp=d.myPlan&&d.myPlan.plan; if(!mp||!mp.days) return []; var day=mp.days[S.trainRunDay||0]||mp.days[0]; return (day&&day.exercises)||[]; }
+  function trainSessItem(key){ var s=(DATA.trainSess&&DATA.trainSess.items)||{}; return s[key]||{done:false,sets:0}; }
+  function trainSessLocal(key){ DATA.trainSess=DATA.trainSess||{items:{}}; DATA.trainSess.items=DATA.trainSess.items||{}; if(!DATA.trainSess.items[key]) DATA.trainSess.items[key]={done:false,sets:0}; return DATA.trainSess.items[key]; }
+  function trainingRun(){
+    var d=DATA.training||{}; var mp=d.myPlan&&d.myPlan.plan;
+    var back='<button data-act="trainRunClose" style="display:inline-flex;align-items:center;gap:6px;background:none;border:none;color:'+ERN_GD+';font-size:13.5px;font-weight:800;margin:2px 0 12px;padding:0;cursor:pointer">'+svg(IC.back,{c:ERN_GD,w:2.2,s:17})+'Fertig</button>';
+    if(!mp||!mp.days||!mp.days.length){ return '<div style="padding:0 2px">'+back+trainCardBox('<div style="font-size:14px;font-weight:600;color:#8a929a">Kein Plan aktiv – wähl zuerst einen Trainingsplan.</div>')+'</div>'; }
+    var di=S.trainRunDay||0; if(di>=mp.days.length) di=0;
+    var dayTabs='';
+    if(mp.days.length>1){ dayTabs='<div style="display:flex;gap:7px;overflow-x:auto;padding-bottom:6px;margin-bottom:12px">'+mp.days.map(function(dd,ix){ var on=(ix===di); return '<button data-act="trainRunDay" data-arg="'+ix+'" style="flex-shrink:0;border:1.5px solid '+(on?ERN_G:'#dde5e6')+';border-radius:20px;background:'+(on?ERN_G:'#fff')+';color:'+(on?'#fff':'#4a565c')+';font-size:12.5px;font-weight:800;padding:8px 13px;cursor:pointer;white-space:nowrap">'+esc(dd.name||('Tag '+(ix+1)))+'</button>'; }).join('')+'</div>'; }
+    var exs=trainRunItems();
+    var doneN=exs.filter(function(e,ix){ return trainSessItem('d'+di+'e'+ix).done; }).length;
+    var pct=exs.length?Math.round(doneN/exs.length*100):0;
+    var prog='<div style="background:#fff;border-radius:16px;box-shadow:0 8px 22px rgba(4,33,40,.07);padding:14px 16px;margin-bottom:14px"><div style="display:flex;align-items:baseline;justify-content:space-between"><span style="font-size:15px;font-weight:900;color:#15171B">'+esc((mp.days[di]&&mp.days[di].name)||'Training')+'</span><span style="font-size:13px;font-weight:800;color:'+ERN_GD+'">'+doneN+'/'+exs.length+' erledigt</span></div><div style="height:8px;background:#eef2f3;border-radius:6px;overflow:hidden;margin-top:9px"><div style="height:100%;border-radius:6px;background:'+ERN_G+';width:'+pct+'%;transition:width .2s"></div></div></div>';
+    var rows=exs.map(function(e,ix){ return trainRunRow(e,'d'+di+'e'+ix); }).join('');
+    var doneAll=exs.length&&doneN===exs.length;
+    var footer=(doneAll?'<div style="background:linear-gradient(150deg,#12a06a,#0a5a37);border-radius:16px;padding:16px;text-align:center;color:#fff;margin-top:6px"><div style="font-size:28px">🎉</div><div style="font-size:15px;font-weight:900;margin-top:4px">Einheit geschafft – stark!</div></div>':'')+
+      '<button data-act="trainRunReset" style="width:100%;margin-top:12px;padding:11px;border:1.5px solid #e2e8ea;border-radius:12px;background:#fff;color:#8a929a;font-weight:700;font-size:12.5px;cursor:pointer">Fortschritt zurücksetzen</button>';
+    return '<div style="padding:0 2px 96px">'+back+
+      '<div style="font-size:20px;font-weight:900;letter-spacing:-.4px;color:var(--text);margin:0 2px 3px">'+esc(mp.title)+'</div>'+
+      '<div style="font-size:12.5px;font-weight:500;color:var(--text-2);margin:0 2px 14px">Hak jede Übung ab, wenn du sie geschafft hast. 🤖 = Biostrength: einfach abhaken, den Rest macht die KI.</div>'+
+      dayTabs+prog+rows+footer+'</div>';
+  }
+  function trainRunRow(e,key){
+    var it=trainSessItem(key); var done=!!it.done;
+    var head='<div style="display:flex;align-items:flex-start;gap:11px"><div style="flex:1;min-width:0"><div style="font-size:14.5px;font-weight:900;color:'+(done?'#8a929a':'#15171B')+';'+(done?'text-decoration:line-through':'')+'">'+esc(e.name)+'</div>'+(e.machine?'<div style="font-size:11.5px;font-weight:700;color:'+ERN_G+';margin-top:2px">🔧 '+esc(e.machine)+(e.bio?' <span style="color:#8a929a;font-weight:600">· 🤖 KI</span>':'')+'</div>':'')+'</div>'+
+      '<button data-act="trainToggle" data-arg="'+esc(key)+'" aria-label="Erledigt" style="flex-shrink:0;width:34px;height:34px;border-radius:50%;border:2px solid '+(done?ERN_G:'#cfd8db')+';background:'+(done?ERN_G:'#fff')+';display:flex;align-items:center;justify-content:center;cursor:pointer">'+(done?svg('<path d="M20 6L9 17l-5-5"></path>',{c:'#fff',w:3,s:17}):'')+'</button></div>';
+    var body='';
+    if(!e.bio){
+      var target='Ziel: '+esc(e.sets)+' × '+esc(e.reps)+' · Pause '+esc(e.rest);
+      var sets=it.sets||0; var tgt=parseInt(e.sets,10)||0;
+      var timer=(S.trainRestKey===key)?'<span id="tr_rest" style="font-size:12px;font-weight:800;color:'+ERN_G+'">⏱ Pause 0:00</span>':'<span style="font-size:11.5px;font-weight:600;color:#a9b1b6">'+target+'</span>';
+      body='<div style="display:flex;align-items:center;gap:10px;margin-top:11px;padding-top:11px;border-top:1px solid #f0f3f3">'+
+        '<button data-act="trainSetMinus" data-arg="'+esc(key)+'" style="width:32px;height:32px;border-radius:9px;border:1.5px solid #dde5e6;background:#fff;color:#0a4958;font-size:18px;font-weight:900;cursor:pointer;flex-shrink:0">−</button>'+
+        '<div style="text-align:center;min-width:64px"><div style="font-size:16px;font-weight:900;color:#15171B">'+sets+(tgt?(' / '+tgt):'')+'</div><div style="font-size:10px;font-weight:700;color:#a9b1b6;text-transform:uppercase;letter-spacing:.3px">Sätze</div></div>'+
+        '<button data-act="trainSetPlus" data-arg="'+esc(key)+'" style="width:32px;height:32px;border-radius:9px;border:1.5px solid '+ERN_G+';background:rgba(15,122,74,.06);color:'+ERN_GD+';font-size:18px;font-weight:900;cursor:pointer;flex-shrink:0">+</button>'+
+        '<div style="flex:1;text-align:right">'+timer+'</div></div>';
+    }
+    return '<div style="background:#fff;border-radius:15px;box-shadow:0 6px 18px rgba(4,33,40,.06);padding:14px 15px;margin-bottom:10px'+(done?';opacity:.7':'')+'">'+head+body+'</div>';
   }
   // Einstieg in die Übungsdatenbank (Suchen/Nachschlagen).
   function trainingExerciseCta(d){
@@ -4181,7 +4236,9 @@
         var ex=(day.exercises||[]).map(function(e){
           return '<div style="display:flex;gap:10px;padding:10px 0;border-top:1px solid #f0f3f3">'+
             '<div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:800;color:#15171B">'+esc(e.name)+'</div>'+(e.machine?'<div style="font-size:11.5px;font-weight:700;color:'+ERN_G+';margin-top:2px">🔧 '+esc(e.machine)+'</div>':'')+(e.note?'<div style="font-size:11.5px;font-weight:500;color:#8a929a;line-height:1.4;margin-top:2px">'+esc(e.note)+'</div>':'')+'</div>'+
-            '<div style="text-align:right;flex-shrink:0"><div style="font-size:13px;font-weight:900;color:'+ERN_GD+'">'+esc(e.sets)+' × '+esc(e.reps)+'</div><div style="font-size:11px;font-weight:600;color:#a9b1b6">Pause '+esc(e.rest)+'</div></div></div>';
+            (e.bio
+              ? '<div style="text-align:right;flex-shrink:0;max-width:120px"><div style="font-size:10.5px;font-weight:800;color:'+ERN_G+';line-height:1.35">🤖 KI steuert Gewicht &amp; Wdh.</div></div>'
+              : '<div style="text-align:right;flex-shrink:0"><div style="font-size:13px;font-weight:900;color:'+ERN_GD+'">'+esc(e.sets)+' × '+esc(e.reps)+'</div><div style="font-size:11px;font-weight:600;color:#a9b1b6">Pause '+esc(e.rest)+'</div></div>')+'</div>';
         }).join('');
         return trainCardBox('<div style="display:flex;align-items:center;gap:9px;margin-bottom:2px"><div style="width:26px;height:26px;border-radius:8px;background:'+ERN_G+';color:#fff;font-size:12.5px;font-weight:900;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+(di+1)+'</div><div style="font-size:15px;font-weight:900;color:#15171B">'+esc(day.name)+'</div></div>'+(day.subtitle?'<div style="font-size:12px;font-weight:600;color:#8a929a;margin:1px 0 2px 35px">'+esc(day.subtitle)+'</div>':'')+ex);
       }).join('');
@@ -4202,7 +4259,7 @@
     if(S.trainGenPlan){
       var p=S.trainGenPlan;
       var daysHtml=(p.days||[]).map(function(day,di){
-        var ex=(day.exercises||[]).map(function(e){ return '<div style="display:flex;gap:10px;padding:9px 0;border-top:1px solid #f0f3f3"><div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:800;color:#15171B">'+esc(e.name)+'</div></div><div style="font-size:12.5px;font-weight:900;color:'+ERN_GD+';flex-shrink:0">'+esc(e.sets)+' × '+esc(e.reps)+'</div></div>'; }).join('');
+        var ex=(day.exercises||[]).map(function(e){ return '<div style="display:flex;gap:10px;padding:9px 0;border-top:1px solid #f0f3f3"><div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:800;color:#15171B">'+esc(e.name)+'</div>'+(e.machine?'<div style="font-size:11px;font-weight:700;color:'+ERN_G+';margin-top:1px">🔧 '+esc(e.machine)+'</div>':'')+'</div><div style="font-size:12px;font-weight:900;color:'+(e.bio?ERN_G:ERN_GD)+';flex-shrink:0;text-align:right;max-width:100px">'+(e.bio?'🤖 KI':(esc(e.sets)+' × '+esc(e.reps)))+'</div></div>'; }).join('');
         return trainCardBox('<div style="font-size:14.5px;font-weight:900;color:#15171B;margin-bottom:2px">'+(di+1)+'. '+esc(day.name)+'</div>'+ex,'15px');
       }).join('');
       return '<div style="padding:0 2px 96px">'+back+
@@ -6014,7 +6071,7 @@
   var ACT={
     nav:function(a){ nav(a); },
     // ── Coach-Tabs + Training-Tab ──
-    coachTab:function(a){ S.coachTab=(a==='training')?'training':'ernaehrung'; S.trainDetail=null; S.trainDetailFull=null; S.trainExOpen=false; S.trainGenOpen=false; S.trainGenPlan=null; S.trainMsg=''; S.ernChatOpen=false; setS({}); },
+    coachTab:function(a){ S.coachTab=(a==='training')?'training':'ernaehrung'; S.trainDetail=null; S.trainDetailFull=null; S.trainExOpen=false; S.trainRun=false; S.trainRestKey=''; S.trainGenOpen=false; S.trainGenPlan=null; S.trainMsg=''; S.ernChatOpen=false; setS({}); },
     trainReload:function(){ DATA.training=null; render(); loadTraining(); },
     trainOpen:function(a){ S.trainDetail=a; S.trainDetailFull=null; S.trainMsg=''; setS({});
       // Bibliotheks-Kacheln kommen schlank (ohne Tage) – volles Detail nachladen (außer aktiver Plan hat sie schon).
@@ -6022,6 +6079,21 @@
       if(!isActive){ api('/api/member/training',{method:'POST',body:JSON.stringify({action:'plan-detail',planId:a})}).then(function(r){ if(r&&r.ok&&r.plan&&S.trainDetail===a){ S.trainDetailFull=r.plan; render(); } }).catch(function(){}); }
     },
     trainBack:function(){ S.trainDetail=null; S.trainDetailFull=null; setS({}); },
+    trainRun:function(){ S.trainRun=true; S.trainRunDay=0; S.trainRestKey=''; S.trainRestStart=0; loadTrainSession(); setS({}); },
+    trainRunClose:function(){ S.trainRun=false; S.trainRestKey=''; setS({}); },
+    trainRunDay:function(a){ S.trainRunDay=parseInt(a,10)||0; S.trainRestKey=''; render(); },
+    trainToggle:function(key){ var it=trainSessLocal(key); it.done=!it.done; if(it.done) S.trainRestKey=''; render();
+      api('/api/member/training',{method:'POST',body:JSON.stringify({action:'session-set',key:key,done:it.done})}).then(function(r){ if(r&&r.ok){ DATA.trainSess={items:r.items||{},planId:r.planId}; render(); } }).catch(function(){});
+    },
+    trainSetPlus:function(key){ var it=trainSessLocal(key); it.sets=Math.min(20,(it.sets||0)+1); S.trainRestKey=key; S.trainRestStart=Date.now(); render();
+      api('/api/member/training',{method:'POST',body:JSON.stringify({action:'session-set',key:key,sets:it.sets})}).then(function(r){ if(r&&r.ok){ DATA.trainSess={items:r.items||{},planId:r.planId}; render(); } }).catch(function(){});
+    },
+    trainSetMinus:function(key){ var it=trainSessLocal(key); it.sets=Math.max(0,(it.sets||0)-1); render();
+      api('/api/member/training',{method:'POST',body:JSON.stringify({action:'session-set',key:key,sets:it.sets})}).then(function(r){ if(r&&r.ok){ DATA.trainSess={items:r.items||{},planId:r.planId}; render(); } }).catch(function(){});
+    },
+    trainRunReset:function(){ if(!confirm('Fortschritt für heute zurücksetzen?')) return; DATA.trainSess={items:{},planId:(DATA.trainSess&&DATA.trainSess.planId)||null}; S.trainRestKey=''; render();
+      api('/api/member/training',{method:'POST',body:JSON.stringify({action:'session-reset'})}).then(function(r){ if(r&&r.ok){ DATA.trainSess={items:r.items||{},planId:r.planId}; render(); } }).catch(function(){});
+    },
     trainExOpen:function(){ S.trainExOpen=true; S.trainExQ=''; S.trainExGroup=''; setS({}); },
     trainExClose:function(){ S.trainExOpen=false; setS({}); },
     trainExGroup:function(a){ S.trainExGroup=a||''; render(); },
