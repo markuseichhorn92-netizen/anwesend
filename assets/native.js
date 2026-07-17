@@ -61,7 +61,14 @@
     if (!vp) { vp = document.createElement('meta'); vp.setAttribute('name', 'viewport'); document.head.appendChild(vp); }
     vp.setAttribute('content', 'width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, viewport-fit=cover');
     var st = document.createElement('style');
-    st.textContent = 'html,body{max-width:100%;overflow-x:hidden;overscroll-behavior:none;-webkit-text-size-adjust:100%;touch-action:pan-y;scrollbar-width:none;-ms-overflow-style:none;}'
+    // WICHTIG: overflow-x:CLIP (nicht hidden). `hidden` macht auf iOS-WebKit aus
+    // <body> einen echten Scroll-Container – dann verlieren position:fixed-Elemente
+    // (schwebender Initialen-Chip #profChip, Bottom-Nav) ihren Viewport-Bezug und
+    // scrollen mit dem Inhalt mit. `clip` kappt den horizontalen Überlauf genauso,
+    // erzeugt aber KEINEN Scroll-Container → fixed bleibt oben/unten fest verankert.
+    // (Auf iOS < 16 ohne clip-Support fällt die Regel weg = kein H-Clip, aber auch
+    // kein kaputtes fixed – der Inhalt ist ohnehin auf max-width:100% begrenzt.)
+    st.textContent = 'html,body{max-width:100%;overflow-x:clip;overscroll-behavior:none;-webkit-text-size-adjust:100%;touch-action:pan-y;scrollbar-width:none;-ms-overflow-style:none;}'
       + '::-webkit-scrollbar{width:0!important;height:0!important;display:none!important;}';
     document.head.appendChild(st);
     // Doppeltipp-Zoom zusätzlich hart unterbinden (manche WebViews ignorieren user-scalable).
