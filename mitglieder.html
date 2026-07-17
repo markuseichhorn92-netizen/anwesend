@@ -604,6 +604,7 @@
     if(s==='settings'){ S.commMsg=''; S.commErr=false; loadCommPrefs(); }
     if(s==='checkins'||s==='fort') loadCheckins();   // immer frisch: Studio-Check-ins vom Band erscheinen sofort
     if(ERN_ON&&(s==='home'||s==='fort')) loadNutri();   // Ernährungs-Vitalpunkte für Startseite/Fortschritt frisch halten
+    if(s==='figur'){ S.figurAdd=false; S.figurMsg=''; S.figurErr=false; S.figurBusy=false; S.figurReviewBusy=false; loadFigur(); }
     if(SOCIAL_ON&&(s==='home'||s==='profil')) loadSocial();   // Trainingspartner-Snapshot für Startseite/Profil
     if(s==='social'){ S.socMsg=''; S.socErr=false; S.socBusy=false; S.socCopied=false; S.socChat=null; DATA.socDm=null; S.socRoom=null; DATA.socRoomThread=null; S.socRoomCreate=false; S.socRoomInvite=false; S.socRules=false; if(window.__socBuddy){ S.socCode=window.__socBuddy; window.__socBuddy=null; } if(window.__socOpenChat){ S.socChat=String(window.__socOpenChat); window.__socOpenChat=null; DATA.socDm=null; loadDm(S.socChat); } else if(window.__socOpenRoom){ S.socRoom=String(window.__socOpenRoom); window.__socOpenRoom=null; DATA.socRoomThread=null; loadRoomThread(S.socRoom); } loadSocial(); }
     if(s==='blog'){ S.blogSel=null; S.blogPost=null; loadBlog(); }
@@ -5426,6 +5427,138 @@
     return backHd('Blog')+cards;
   }
   // ── Profil-Hub (Bottom-Nav „Profil"): Übersicht + Sprungbrett zu den Unterseiten ──
+  // ══════════════════════════════════════════════════════════════════════
+  //  Figur-Check: die Mess-Journey (Gewicht + Umfänge, Verlauf, Vorher-Nachher).
+  //  Frei für alle; nur die FINN-Auswertung ist Premium/Kontingent. Backend:
+  //  /api/member/figurcheck (lib/figurcheck.js), eigener Store nutri:figur:<id>.
+  // ══════════════════════════════════════════════════════════════════════
+  function loadFigur(){
+    if(DATA.figur==null) DATA.figur=false;   // „lädt" bis Antwort da ist
+    api('/api/member/figurcheck').then(function(d){ DATA.figur=(d&&d.ok)?d:{ok:false,available:!!(d&&d.available)}; rIf(['figur']); })
+    .catch(function(){ DATA.figur={ok:false,available:false}; rIf(['figur']); });
+  }
+  function figurData(){ var d=DATA.figur; return (d&&d.ok)?d:null; }
+  // Kleine Trendkurve (SVG-Polyline, dark-mode-fest über CSS-Variablen).
+  function figMiniChart(series){
+    var n=(series||[]).length; if(n<2) return '';
+    var vals=series.map(function(p){ return p.value; });
+    var min=Math.min.apply(null,vals), max=Math.max.apply(null,vals), rng=(max-min)||1;
+    var W=300,H=68,pad=9;
+    var x=function(i){ return (pad + i*(W-2*pad)/(n-1)); };
+    var y=function(v){ return (H-pad - (v-min)/rng*(H-2*pad)); };
+    var line=series.map(function(p,i){ return (i?'L':'M')+x(i).toFixed(1)+' '+y(p.value).toFixed(1); }).join(' ');
+    var area='M'+x(0).toFixed(1)+' '+(H-pad)+' '+series.map(function(p,i){ return 'L'+x(i).toFixed(1)+' '+y(p.value).toFixed(1); }).join(' ')+' L'+x(n-1).toFixed(1)+' '+(H-pad)+' Z';
+    return '<svg viewBox="0 0 '+W+' '+H+'" width="100%" height="'+H+'" preserveAspectRatio="none" style="display:block;overflow:visible;margin-top:8px">'+
+      '<path d="'+area+'" style="fill:var(--teal);opacity:.12"></path>'+
+      '<path d="'+line+'" fill="none" style="stroke:var(--teal-ink);stroke-width:2.4" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"></path>'+
+      '</svg>';
+  }
+  function figFmt(v,dec){ if(v==null) return '—'; return (dec?Number(v).toFixed(dec).replace(/\.0$/,''):String(v)); }
+  function scrFigur(){
+    var head=subHeader('Figur-Check','Deine Maße & dein Fortschritt','profil');
+    var CARD='background:var(--surface);border-radius:18px;box-shadow:0 10px 28px rgba(4,33,40,.08);padding:18px';
+    var d=DATA.figur;
+    if(d===false||d==null){ return '<div class="narrow">'+head+'<div style="'+CARD+';text-align:center;color:var(--text-soft)">Lädt …</div></div>'; }
+    if(!d.ok){
+      if(d.available===false) return '<div class="narrow">'+head+'<div style="'+CARD+'"><div style="font-weight:800;color:var(--text)">Gerade nicht verfügbar</div><div style="font-size:13px;color:var(--text-soft);margin-top:5px">Der Figur-Check steht dir in Kürze zur Verfügung.</div></div></div>';
+      return '<div class="narrow">'+head+'<div style="'+CARD+';text-align:center"><div style="color:var(--text-soft);margin-bottom:10px">Konnte nicht geladen werden.</div><button data-act="nav" data-arg="figur" style="border:none;background:var(--teal);color:#fff;font-weight:800;border-radius:12px;padding:11px 18px;cursor:pointer">Erneut versuchen</button></div></div>';
+    }
+    var sum=d.summary||{count:0,metrics:[],firstDate:null,spanDays:0};
+    var metrics=d.metrics||[];
+    var count=sum.count||0;
+    var latestOf={}; (sum.metrics||[]).forEach(function(m){ latestOf[m.key]=m; });
+    var msg=S.figurMsg?('<div style="font-size:13px;font-weight:600;margin-top:10px;color:'+(S.figurErr?'var(--err-fg)':'var(--teal-ink)')+'">'+esc(S.figurMsg)+'</div>'):'';
+
+    // Intro
+    var intro='<div style="'+CARD+'"><div style="font-size:15.5px;font-weight:800;color:var(--text)">Miss, was wirklich zählt</div>'+
+      '<div style="font-size:13px;color:var(--text-soft);margin-top:5px;line-height:1.55">Das Gewicht schwankt – dein Fortschritt zeigt sich oft zuerst an den Umfängen. Trag deine Werte ein, wann immer du magst. Deine erste Messung ist dein <b>Startpunkt</b>, alles Weitere dein Weg.</div></div>';
+
+    // Vorher–Nachher (ab 1 Messung)
+    var compare='';
+    if(count>=1 && sum.metrics.length){
+      var rows=sum.metrics.map(function(m){
+        var dv=m.delta, arrow=(dv>0?'▲':(dv<0?'▼':'■'));
+        var deltaTxt=(m.points>1)?('<span style="display:inline-flex;align-items:center;gap:3px;background:var(--surface-2);color:var(--text-soft);font-size:11.5px;font-weight:800;border-radius:20px;padding:3px 9px">'+arrow+' '+(dv>0?'+':'')+figFmt(dv,m.dec)+' '+esc(m.unit)+'</span>'):'<span style="font-size:11.5px;color:var(--text-soft)">Startwert</span>';
+        return '<div style="display:flex;align-items:center;gap:10px;padding:11px 0;border-top:1px solid var(--border)">'+
+          '<div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:700;color:var(--text)">'+esc(m.label)+'</div>'+
+          '<div style="font-size:12px;color:var(--text-soft);margin-top:1px">Start '+figFmt(m.start,m.dec)+' '+esc(m.unit)+(m.points>1?(' → jetzt '+figFmt(m.latest,m.dec)+' '+esc(m.unit)):'')+'</div></div>'+
+          deltaTxt+'</div>';
+      }).join('');
+      compare='<div style="'+CARD+'"><div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px"><div style="font-size:15px;font-weight:800;color:var(--text)">Dein Fortschritt</div>'+(sum.firstDate?('<div style="font-size:11.5px;color:var(--text-soft);font-weight:600">seit '+esc(ernDeDate(sum.firstDate))+'</div>'):'')+'</div>'+rows+'</div>';
+    }
+
+    // Kurven (ab 2 Punkten je Messgröße)
+    var curveMetrics=(sum.metrics||[]).filter(function(m){ return m.points>=2; });
+    var curves='';
+    if(curveMetrics.length){
+      curves='<div style="'+CARD+'"><div style="font-size:15px;font-weight:800;color:var(--text);margin-bottom:4px">Verlauf</div>'+
+        curveMetrics.map(function(m){
+          return '<div style="margin-top:12px"><div style="display:flex;align-items:baseline;justify-content:space-between"><span style="font-size:13px;font-weight:700;color:var(--text)">'+esc(m.label)+'</span><span style="font-size:12.5px;font-weight:800;color:var(--teal-ink)">'+figFmt(m.latest,m.dec)+' '+esc(m.unit)+'</span></div>'+figMiniChart(m.series)+'</div>';
+        }).join('')+'</div>';
+    } else if(count===1){
+      curves='<div style="'+CARD+';color:var(--text-soft);font-size:13px">📈 Ab deiner zweiten Messung siehst du hier deine Verlaufskurven.</div>';
+    }
+
+    // FINN-Auswertung (ab 2 Messungen; Premium/Kontingent)
+    var review='';
+    if(count>=2){
+      var rv=S.figurReview;
+      var rvHtml='';
+      if(rv){
+        rvHtml='<div style="margin-top:12px;background:var(--surface-2);border-radius:14px;padding:14px">'+
+          (rv.summary?('<div style="font-size:13.5px;color:var(--text);line-height:1.5">'+esc(rv.summary)+'</div>'):'')+
+          ((rv.insights||[]).map(function(i){ return '<div style="margin-top:9px"><div style="font-size:12.5px;font-weight:800;color:var(--teal-ink)">'+esc(i.title)+'</div><div style="font-size:12.5px;color:var(--text-soft);margin-top:1px">'+esc(i.text)+'</div></div>'; }).join(''))+
+          (rv.tip?('<div style="margin-top:11px;font-size:12.5px;color:var(--text)"><b>Nächster Schritt:</b> '+esc(rv.tip)+'</div>'):'')+'</div>';
+      }
+      var busy=S.figurReviewBusy;
+      review='<div style="'+CARD+'"><div style="display:flex;align-items:center;gap:9px"><div style="width:34px;height:34px;border-radius:10px;background:var(--surface-2);display:flex;align-items:center;justify-content:center">'+svg(IC.spark,{c:TEAL,w:1.8,s:19})+'</div>'+
+        '<div style="flex:1;min-width:0"><div style="font-size:14.5px;font-weight:800;color:var(--text)">FINN bewertet deinen Fortschritt</div><div style="font-size:12px;color:var(--text-soft)">'+(d.premium?'Teil deiner Premium-Mitgliedschaft':'Premium – oder 1× von deinem Gratis-Kontingent')+'</div></div></div>'+
+        '<button data-act="figurReview" '+(busy?'disabled':'')+' style="width:100%;margin-top:13px;border:none;border-radius:13px;background:'+(busy?'var(--surface-2)':'var(--teal)')+';color:'+(busy?'var(--text-soft)':'#fff')+';font-weight:800;font-size:14.5px;padding:13px;cursor:'+(busy?'default':'pointer')+'">'+(busy?'FINN denkt nach …':(rv?'Neu auswerten':'Fortschritt auswerten'))+'</button>'+rvHtml+'</div>';
+    }
+
+    // Erfassen-Formular (bei 0 Messungen offen, sonst auf Knopfdruck)
+    var formOpen=(count===0)||S.figurAdd;
+    var form='';
+    if(formOpen){
+      var fields=metrics.map(function(m){
+        var last=latestOf[m.key]; var ph=last?('zuletzt '+figFmt(last.latest,m.dec)):('z. B. '+(m.key==='weight'?'82':(m.key==='bodyFat'?'22':'90')));
+        return '<label style="display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--border)">'+
+          '<span style="flex:1;font-size:14px;font-weight:600;color:var(--text)">'+esc(m.label)+'</span>'+
+          '<input id="fig_'+m.key+'" type="number" inputmode="decimal" step="0.1" min="'+m.lo+'" max="'+m.hi+'" placeholder="'+esc(ph)+'" style="width:96px;border:1.5px solid var(--border);border-radius:11px;background:var(--surface-2);color:var(--text);font-size:15px;font-weight:700;padding:9px 10px;text-align:right">'+
+          '<span style="width:26px;font-size:12.5px;color:var(--text-soft)">'+esc(m.unit)+'</span></label>';
+      }).join('');
+      form='<div style="'+CARD+'"><div style="font-size:15px;font-weight:800;color:var(--text)">'+(count===0?'Deine erste Messung':'Neuer Eintrag')+'</div>'+
+        '<div style="font-size:12.5px;color:var(--text-soft);margin-top:3px;margin-bottom:2px">Fülle nur aus, was du gemessen hast – ein Wert genügt.</div>'+
+        fields+
+        '<textarea id="fig_note" rows="2" placeholder="Notiz (optional) – z. B. wie du dich fühlst" style="width:100%;margin-top:11px;border:1.5px solid var(--border);border-radius:12px;background:var(--surface-2);color:var(--text);font-size:13.5px;padding:11px;resize:vertical;box-sizing:border-box"></textarea>'+
+        msg+
+        '<div style="display:flex;gap:9px;margin-top:12px">'+
+          (count>0?'<button data-act="figurAddToggle" style="border:1.5px solid var(--border);border-radius:13px;background:var(--surface);color:var(--text-soft);font-weight:800;font-size:14px;padding:12px 16px;cursor:pointer">Abbrechen</button>':'')+
+          '<button data-act="figurSave" '+(S.figurBusy?'disabled':'')+' style="flex:1;border:none;border-radius:13px;background:'+(S.figurBusy?'var(--surface-2)':'var(--teal)')+';color:'+(S.figurBusy?'var(--text-soft)':'#fff')+';font-weight:800;font-size:15px;padding:13px;cursor:'+(S.figurBusy?'default':'pointer')+'">'+(S.figurBusy?'Speichert …':'Speichern')+'</button>'+
+        '</div></div>';
+    } else {
+      form='<button data-act="figurAddToggle" style="width:100%;border:none;border-radius:14px;background:var(--teal);color:#fff;font-weight:800;font-size:15px;padding:14px;cursor:pointer">➕ Neuen Wert erfassen</button>'+msg;
+    }
+
+    // Verlaufs-Liste (neueste zuerst) mit Löschen
+    var histList='';
+    var hist=(d.history||[]).slice().reverse();
+    if(hist.length){
+      histList='<div style="'+CARD+'"><div style="font-size:15px;font-weight:800;color:var(--text);margin-bottom:2px">Alle Messungen</div>'+
+        hist.map(function(e){
+          var parts=metrics.map(function(m){ var v=e.values&&e.values[m.key]; return (v!=null)?(esc(m.label)+' '+figFmt(v,m.dec)+' '+esc(m.unit)):null; }).filter(Boolean);
+          return '<div style="display:flex;align-items:flex-start;gap:10px;padding:11px 0;border-top:1px solid var(--border)">'+
+            '<div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:700;color:var(--text)">'+esc(ernDeDate(e.date))+'</div>'+
+            '<div style="font-size:12.5px;color:var(--text-soft);margin-top:2px;line-height:1.5">'+esc(parts.join(' · '))+'</div>'+
+            (e.note?('<div style="font-size:12px;color:var(--text-soft);font-style:italic;margin-top:3px">„'+esc(e.note)+'"</div>'):'')+'</div>'+
+            '<button data-act="figurDelete" data-arg="'+esc(e.date)+'" aria-label="Löschen" style="border:none;background:none;cursor:pointer;padding:4px;flex-shrink:0">'+svg('<path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"></path>',{c:'var(--text-soft)',w:1.8,s:17})+'</button>'+
+          '</div>';
+        }).join('')+'</div>';
+    }
+
+    return '<div class="narrow" style="display:flex;flex-direction:column;gap:14px">'+head+intro+compare+curves+review+form+histList+'</div>';
+  }
+
   function scrProfil(){
     var p=DATA.profile||{}; var c=DATA.contract||{};
     var name=((p.firstName||'')+' '+(p.lastName||'')).trim()||'Mitglied';
@@ -5449,6 +5582,7 @@
       row('postfach','Postfach',(un>0?(un+' ungelesene Nachricht'+(un===1?'':'en')):'Nachrichten & FINN'),IC.mail,un>0)+
       row('appt','Termine','Buchen & verwalten',IC.cal)+
       row('fort','Fortschritt & Vitalität','Rang, Punkte, Aktivitäts-Alter',AWARD,true)+
+      row('figur','Figur-Check','Maße, Umfänge & Fortschrittskurven','<path d="M3 3v18h18"></path><path d="M7 14l4-4 3 3 5-6"></path>',true)+
       (ERN_ON?row('ern','Ernährung','Tagesziel, Tracking & Rezepte','<path d="M11 21A7 7 0 0 1 4 14C4 8.5 8 4 13.5 4c2.7 0 4.6 1 6.5 1.8 0 8.7-4.3 15.2-9 15.2z"></path><path d="M11 21c0-5.5 3.3-10 7.5-12"></path>'):'')+
       (ERN_ON?row('finnusage','FINN-Nutzung','KI-Kontingent & Verbrauch','<path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.5 8.6 8.6 0 0 1-4-1L3 20l1-5a8.4 8.4 0 0 1-1-4A8.5 8.5 0 0 1 11.5 3 8.5 8.5 0 0 1 21 11.5z"></path>'):'')+
       (SOCIAL_ON?row('social','Trainingspartner','Verbinden, Chat & Challenges','<circle cx="9" cy="7" r="3"></circle><path d="M2.5 20c0-3.3 2.9-6 6.5-6s6.5 2.7 6.5 6"></path><circle cx="17.5" cy="8.5" r="2.4"></circle><path d="M16 14.2c2.6.4 4.5 2.5 4.5 5.3"></path>',(DATA.social&&DATA.social.requests&&DATA.social.requests.length>0)):'')+
@@ -6425,7 +6559,7 @@
   // ---- responsive chrome (Desktop-Sidebar + Topbar) ----
   var DASH_IC='<rect x="3" y="3" width="7" height="9" rx="1.5"></rect><rect x="14" y="3" width="7" height="5" rx="1.5"></rect><rect x="14" y="12" width="7" height="9" rx="1.5"></rect><rect x="3" y="16" width="7" height="5" rx="1.5"></rect>';
   var NAVITEMS=[['home','Übersicht',DASH_IC],['card','Mitgliedskarte','<rect x="3" y="3" width="7" height="7" rx="1.4"></rect><rect x="14" y="3" width="7" height="7" rx="1.4"></rect><rect x="3" y="14" width="7" height="7" rx="1.4"></rect><path d="M14 14h3v3h-3z"></path><path d="M20 14v3M14 20h3M20 20v.01"></path>'],['fort','Fortschritt','<circle cx="12" cy="8" r="6"></circle><path d="M15.5 13.5L17 22l-5-3-5 3 1.5-8.5"></path>'],['ern','Ernährung','<path d="M11 21A7 7 0 0 1 4 14C4 8.5 8 4 13.5 4c2.7 0 4.6 1 6.5 1.8 0 8.7-4.3 15.2-9 15.2z"></path><path d="M11 21c0-5.5 3.3-10 7.5-12"></path>'],['insta','Instagram',IG_ICON],['data','Meine Daten',IC.user],['contract','Vertragsverwaltung',IC.doc],['account','Beitragskonto','<rect x="2" y="5" width="20" height="14" rx="2"></rect><path d="M2 9h20M6 15h5"></path>'],['appt','Termine',IC.cal],['referral','Freunde werben',IC.gift],['checkins','Check-ins',IC.list],['postfach','Postfach',IC.mail],['help','Hilfe',IC.help],['settings','Einstellungen',IC.cog]];
-  var TITLES={home:'Übersicht',data:'Meine Daten',contract:'Vertragsverwaltung',account:'Beitragskonto',appt:'Termine',checkin:'Check-in',referral:'Freunde werben',checkins:'Check-in-Verlauf',postfach:'Postfach',help:'Hilfe & Kontakt',settings:'Einstellungen',profil:'Profil',card:'Mitgliedskarte',fort:'Fortschritt',ern:'Ernährung',coach:'Coach',tag:'Training',abo:'Mein Abo',recht:'Widerruf & Recht',blog:'Blog',insta:'Instagram',social:'Trainingspartner'};
+  var TITLES={home:'Übersicht',data:'Meine Daten',contract:'Vertragsverwaltung',account:'Beitragskonto',appt:'Termine',checkin:'Check-in',referral:'Freunde werben',checkins:'Check-in-Verlauf',postfach:'Postfach',help:'Hilfe & Kontakt',settings:'Einstellungen',profil:'Profil',card:'Mitgliedskarte',fort:'Fortschritt',ern:'Ernährung',coach:'Coach',tag:'Training',figur:'Figur-Check',abo:'Mein Abo',recht:'Widerruf & Recht',blog:'Blog',insta:'Instagram',social:'Trainingspartner'};
   function initials(p){ p=p||{}; var a=(p.firstName||'').trim(),b=(p.lastName||'').trim(); return (((a?a[0]:'')+(b?b[0]:'')).toUpperCase())||'FT'; }
   // Profil-Kopf für Sidebar/Drawer – klickbar, führt in den Profil-Hub.
   function navProfile(){
@@ -6618,6 +6752,7 @@
       case 'home': html=scrHome(); break;
       case 'card': html=scrCard(); break;
       case 'fort': html=scrFort(); break;
+      case 'figur': html=scrFigur(); break;
       case 'ern': html=scrErn(); break;
       case 'coach': html=scrCoach(); break;
       case 'tag': html=scrMeinTag(); break;
@@ -6654,7 +6789,7 @@
     // sonst verschwindet getippter Text und die Tastatur klappt zu, sobald im Hintergrund
     // Daten nachladen (das war der große Chat-Bug).
     var keep={};
-    ['finn_q','pf_reply','ern_log','ern_ask','ern_fridge','ern_capq','ern_prodq','ern_bc','ern_voiceq','ern_cf_swap','ern_cf_refine','soc_msg','soc_code','soc_name','soc_rmsg','soc_roomname','soc_report'].forEach(function(id){ var e=$(id); if(e){ keep[id]={v:e.value,f:document.activeElement===e,ss:e.selectionStart,se:e.selectionEnd,h:e.style.height}; } });
+    ['finn_q','pf_reply','ern_log','ern_ask','ern_fridge','ern_capq','ern_prodq','ern_bc','ern_voiceq','ern_cf_swap','ern_cf_refine','soc_msg','soc_code','soc_name','soc_rmsg','soc_roomname','soc_report','fig_weight','fig_waist','fig_hips','fig_chest','fig_arm','fig_thigh','fig_bodyFat','fig_note'].forEach(function(id){ var e=$(id); if(e){ keep[id]={v:e.value,f:document.activeElement===e,ss:e.selectionStart,se:e.selectionEnd,h:e.style.height}; } });
     var keepScroll={};
     ['finn_scroll','pf_scroll'].forEach(function(id){ var e=$(id); if(e){ keepScroll[id]=e.scrollTop; } });
     $('app').innerHTML=html;
@@ -6703,6 +6838,37 @@
 
   var ACT={
     nav:function(a){ nav(a); },
+    // ── Figur-Check (Maße erfassen / Verlauf / FINN-Auswertung) ──
+    figurAddToggle:function(){ S.figurAdd=!S.figurAdd; S.figurMsg=''; S.figurErr=false; setS({}); },
+    figurSave:function(){
+      if(S.figurBusy) return;
+      var keys=(figurData()&&figurData().metrics||[]).map(function(m){ return m.key; });
+      if(!keys.length) keys=['weight','waist','hips','chest','arm','thigh','bodyFat'];
+      var body={action:'save'}; var any=false;
+      keys.forEach(function(k){ var el=$('fig_'+k); if(el){ var v=(el.value||'').trim().replace(',','.'); if(v!==''){ var num=parseFloat(v); if(!isNaN(num)){ body[k]=num; any=true; } } } });
+      var noteEl=$('fig_note'); if(noteEl) body.note=(noteEl.value||'').trim();
+      if(!any){ S.figurErr=true; S.figurMsg='Bitte gib mindestens einen Wert ein (z. B. dein Gewicht).'; setS({}); return; }
+      S.figurBusy=true; S.figurMsg=''; S.figurErr=false; render();
+      api('/api/member/figurcheck',{method:'POST',body:JSON.stringify(body)}).then(function(d){
+        S.figurBusy=false;
+        if(d&&d.ok){ DATA.figur=d; S.figurAdd=false; S.figurErr=false; S.figurMsg='Gespeichert – dein Fortschritt ist aktualisiert.'; }
+        else { S.figurErr=true; S.figurMsg=(d&&d.message)||'Das hat nicht geklappt – bitte erneut.'; }
+        setS({});
+      }).catch(function(){ S.figurBusy=false; S.figurErr=true; S.figurMsg='Netzwerkfehler – bitte erneut.'; setS({}); });
+    },
+    figurDelete:function(a){
+      if(!a) return; if(!window.confirm('Diesen Eintrag wirklich löschen?')) return;
+      api('/api/member/figurcheck',{method:'POST',body:JSON.stringify({action:'delete',date:a})}).then(function(d){ if(d&&d.ok){ DATA.figur=d; S.figurMsg=''; S.figurErr=false; } setS({}); }).catch(function(){});
+    },
+    figurReview:function(){
+      if(S.figurReviewBusy) return; S.figurReviewBusy=true; S.figurMsg=''; S.figurErr=false; render();
+      api('/api/member/figurcheck',{method:'POST',body:JSON.stringify({action:'review'})}).then(function(d){
+        S.figurReviewBusy=false;
+        if(d&&d.ok){ S.figurReview=d.review; ernQuotaApply(d); setS({}); return; }
+        if(d&&d.error==='premium_required'){ ernEnsureModulePrice(); nav('ern'); setS({ernUpgrade:true}); return; }
+        S.figurErr=true; S.figurMsg=(d&&d.message)||'Das hat nicht geklappt – bitte erneut.'; setS({});
+      }).catch(function(){ S.figurReviewBusy=false; S.figurErr=true; S.figurMsg='Netzwerkfehler – bitte erneut.'; setS({}); });
+    },
     // ── Coach-Tabs + Training-Tab ──
     coachTab:function(a){ S.coachTab=(a==='training')?'training':'ernaehrung'; S.trainDetail=null; S.trainDetailFull=null; S.trainExOpen=false; S.trainRun=false; S.trainRestKey=''; S.trainGenOpen=false; S.trainGenPlan=null; S.trainMsg=''; S.ernChatOpen=false; setS({}); },
     trainReload:function(){ DATA.training=null; render(); loadTraining(); },

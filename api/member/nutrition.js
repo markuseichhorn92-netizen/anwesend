@@ -44,6 +44,7 @@ const Stripe = require('../../lib/stripe');
 const Recipes = require('../../lib/recipes');
 const Quota = require('../../lib/nutriquota');
 const Social = require('../../lib/social');
+const Figur = require('../../lib/figurcheck');
 
 // Startbestand der studioweiten Rezept-Bibliothek (die 8 kuratierten Rezepte aus der App).
 // weightG = ungefähres Gewicht EINER Portion (für Nutri-Score); fruitVegPct = Anteil Obst/Gemüse/
@@ -976,6 +977,7 @@ module.exports = async function handler(req, res) {
       cookplan: (await kvGetJson(COOKKEY(id))) || null,
       fasting: (await kvGetJson(FASTKEY(id))) || null,
       coaching: await Coaching.exportState(id),   // Coaching-Programm, Gewohnheiten, Check-ins (DSGVO)
+      figur: (await Figur.getRec(id)) || null,   // Figur-Check: Mess-Historie (Gewicht/Umfänge) (DSGVO)
       social: await Social.socialExport(id).catch(function () { return null; }),   // Trainingspartner: Consent, Buddys, Gruppen (DSGVO)
     } }));
   }
