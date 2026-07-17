@@ -618,8 +618,8 @@
     if(s==='ern'){ try{ window.__ernStopScan&&window.__ernStopScan(); }catch(e){} S.ernMsg=''; S.ernErr=false; S.ernAsk=''; S.ernAnswer=''; S.ernRecipes=null; S.ernCoachSent=false; S.ernTab='heute'; S.ernRecipeSel=null; S.ernKoch=null; S.ernCookPick=false; S.ernPlanDraft=null; S.ernPlanReplaceIdx=-1; S.ernCapture=false; S.ernConfirm=null; S.ernProd=null; S.ernEntryEdit=null; S.ernViewDate=''; S.ernFavMgr=false; S.ernData=false; S.ernUpgrade=false; S.ernLesson=null; S.ernLessonData=null; S.ernChatOpen=false; S.ernCk=false; S.ernCkResult=null; S.ernObStep=0; S.ernChat=ernChatLoad(); loadNutri(); loadFavs(); loadCoach(); loadCook(); }
     if(s==='coach'){ S.ernLesson=null; S.ernVert=null; S.ernLessonData=null; S.ernCk=false; S.ernCkResult=null; S.ernChatOpen=false; S.ernUpgrade=false; S.ernMsg=''; S.ernErr=false; S.coachMapOpen=false; S.coachVertOpen=false; S.ernChat=ernChatLoad(); S.trainDetail=null; S.trainExOpen=false; S.trainRun=false; S.trainRestKey=''; S.trainGenOpen=false; S.trainGenPlan=null; S.trainGenBusy=false; S.trainBusy=false; S.trainMsg=''; loadFinnTip(); loadCoach(); loadTraining(); if(!DATA.checkins) loadCheckins(); }
     if(s==='appt'){ if(!DATA.appts) loadAppts(); if(DATA.bookable===null) loadBookable(); }
-    if(s==='tag'){ S.trainRunDay=0; S.trainRestKey=''; S.trainRestStart=0; S.trainSeg='einheit'; S.trainDetail=null; S.trainDetailFull=null; S.trainExOpen=false; S.trainGenOpen=false; if(DATA.training==null) loadTraining(); loadTrainSession(); if(ERN_ON&&DATA.nutri==null) loadNutri(); }
-    if(s==='home'||s==='checkin') checkArrival();
+    if(s==='tag'){ S.trainRunDay=null; S.trainRestKey=''; S.trainRestStart=0; S.trainSeg='einheit'; S.trainDetail=null; S.trainDetailFull=null; S.trainExOpen=false; S.trainGenOpen=false; if(DATA.training==null) loadTraining(); loadTrainSession(); if(ERN_ON&&DATA.nutri==null) loadNutri(); }
+    if(s==='home'||s==='checkin') checkArrival(true);   // frisch prüfen: Button soll sofort da sein, wenn man vor Ort ist
     setS({}); }
 
   // ---- data loading ----
@@ -699,9 +699,12 @@
   // ===== Standort-Ankunft (Vordergrund): erkennt, ob das Mitglied im Studio ist =====
   var STUDIO_LAT=49.7242701, STUDIO_LNG=6.6303178, GEO_RADIUS=160; // Meter (Auf Hirtenberg 8, 54296 Trier)
   function geoDist(la1,lo1,la2,lo2){ var R=6371000,rad=Math.PI/180; var dLa=(la2-la1)*rad,dLo=(lo2-lo1)*rad; var a=Math.sin(dLa/2)*Math.sin(dLa/2)+Math.cos(la1*rad)*Math.cos(la2*rad)*Math.sin(dLo/2)*Math.sin(dLo/2); return 2*R*Math.atan2(Math.sqrt(a),Math.sqrt(1-a)); }
-  function checkArrival(){
+  function checkArrival(force){
     if(!TOKEN || S.checkedInAt) return;                       // nur eingeloggt & noch nicht eingecheckt
-    var now=Date.now(); if(window.__geoLast && (now-window.__geoLast)<300000) return; // max. alle 5 Min
+    // Damit der Check-in-Button SOFORT erscheint, wenn man im Studio ankommt:
+    // beim App-Öffnen/In-den-Vordergrund-Holen (force) immer prüfen, sonst
+    // höchstens alle 2 Minuten.
+    var now=Date.now(); if(!force && window.__geoLast && (now-window.__geoLast)<120000) return;
     window.__geoLast=now;
     var handle=function(lat,lng){ var dist=Math.round(geoDist(lat,lng,STUDIO_LAT,STUDIO_LNG)); var here=(dist<=GEO_RADIUS); var changed=(here!==S.atStudio)||(S.ciDistance!==dist); S.atStudio=here; S.ciDistance=dist; if(changed) render(); };
     // iPhone-App: natives Plugin (WebView-Geolocation fehlt dort); sonst Browser-API.
@@ -1154,7 +1157,7 @@
     var p=DATA.profile||{}; var name=p.firstName||'';
     var benefits=[
       ['<path d="M20 6 9 17l-5-5"></path>','Wieder voller Zugang zu Geräten & Kursen'],
-      ['<path d="M20 6 9 17l-5-5"></path>','Live-Auslastung & Zeit vormerken'],
+      ['<path d="M20 6 9 17l-5-5"></path>','Live-Auslastung immer im Blick'],
       ['<path d="M20 6 9 17l-5-5"></path>','Faire Konditionen – jederzeit online abschließbar']
     ].map(function(b){ return '<div style="display:flex;align-items:center;gap:11px;margin-top:10px"><span style="width:24px;height:24px;border-radius:8px;background:var(--ok-bg);display:flex;align-items:center;justify-content:center;flex-shrink:0">'+svg(b[0],{c:'var(--ok-fg)',w:2.4,s:15})+'</span><span style="font-size:14px;color:var(--text-2);font-weight:600">'+b[1]+'</span></div>'; }).join('');
     return ''+
@@ -1498,10 +1501,9 @@
   function auslastungChart(){
     var t=DATA.typical;
     var live=(DATA.live&&typeof DATA.live.count==='number')?DATA.live:null;
-    // Weder Live- noch Verlaufsdaten -> trotzdem die Wunschzeit-Karte zeigen (Vormerken läuft eigenständig).
-    if((!t||!Array.isArray(t.day)) && !live){
-      return '<div id="vormerken" class="card" style="border-radius:20px;box-shadow:0 12px 34px rgba(4,33,40,.10);padding:20px 20px 18px;margin-bottom:14px">'+planInner().replace('margin:20px 0 10px','margin:0 0 10px')+'</div>';
-    }
+    // Bewusst NUR Diagramm + aktuelle Auslastung – das Wunschzeit-Vormerken
+    // (planInner) ist vorerst deaktiviert und kann später wieder eingehängt werden.
+    if((!t||!Array.isArray(t.day)) && !live) return '';
     var day=(t&&Array.isArray(t.day))?t.day:null;
     var max=(live&&live.max)||(t&&t.max)||40;
     var curSlot=(t&&typeof t.slot==='number')?t.slot:-1;
@@ -1544,7 +1546,6 @@
       '<div style="display:flex;align-items:baseline;gap:7px;margin-top:12px"><span style="font-size:34px;font-weight:900;letter-spacing:-1px;color:'+numCol+';line-height:1">'+num+'</span><span style="font-size:16px;font-weight:800;color:var(--text-soft)">von '+max+'</span><span style="font-size:13px;font-weight:600;color:var(--text-muted);margin-left:2px">'+sub+'</span></div>'+
       '<div style="display:flex;align-items:flex-end;gap:4px;height:74px;margin-top:18px">'+barsHtml+'</div>'+
       '<div style="display:flex;justify-content:space-between;margin-top:10px;font-size:11.5px;color:var(--text-soft);font-weight:600"><span>'+(peakV>0?('Stoßzeit '+peakH+'–'+(peakH+1)+' Uhr'):'gleichmäßig über den Tag')+'</span><span>'+(liveMode?'Live · gerade eben':'Schnitt der letzten Wochen')+'</span></div>'+
-      planInner()+
     '</div>';
   }
   // Öffnungszeiten-Karte (feste Studiozeiten + Live „geöffnet/geschlossen").
@@ -1710,10 +1711,12 @@
     var d=DATA.training; var mp=d&&d.ok&&d.myPlan&&d.myPlan.plan;
     var status;
     if(mp&&mp.days&&mp.days.length){
-      var day0=mp.days[0]||{}; var exs=day0.exercises||[];
+      // Split-Rotation: den heute fälligen Tag anzeigen (A -> B -> C ...).
+      var di=trainTodayDay(mp); var dayN=mp.days[di]||{}; var exs=dayN.exercises||[];
       var sess=(DATA.trainSess&&DATA.trainSess.items)||{};
-      var doneN=exs.filter(function(e,ix){ var it=sess['d0e'+ix]; return it&&it.done; }).length;
-      status=(doneN>0?('Heutige Einheit · '+doneN+'/'+exs.length+' erledigt'):('Heutige Einheit bereit · '+exs.length+' Übungen'));
+      var doneN=exs.filter(function(e,ix){ var it=sess['d'+di+'e'+ix]; return it&&it.done; }).length;
+      var dName=dayN.name||('Tag '+(di+1));
+      status=(doneN>0?(dName+' · '+doneN+'/'+exs.length+' erledigt'):('Heute dran: '+dName+' · '+exs.length+' Übungen'));
     } else if(d&&d.ok){ status='Trainingsplan holen & loslegen'; }
     else { status='Dein Training für heute'; }
     return '<button data-act="nav" data-arg="tag" style="width:100%;text-align:left;border:none;cursor:pointer;font-family:inherit;background:linear-gradient(155deg,#0e6072,#083c49);border-radius:20px;box-shadow:0 14px 34px rgba(6,45,55,.28);padding:16px 18px;margin-bottom:16px;display:flex;align-items:center;gap:13px">'+
@@ -4300,14 +4303,27 @@
       svg('<path d="M9 6l6 6-6 6"></path>',{c:'var(--placeholder)',w:2.2,s:16})+'</button>';
   }
   // ═══ Trainings-Tracker: heutige Einheit durchführen & abhaken ═══
-  function trainRunItems(){ var d=DATA.training||{}; var mp=d.myPlan&&d.myPlan.plan; if(!mp||!mp.days) return []; var day=mp.days[S.trainRunDay||0]||mp.days[0]; return (day&&day.exercises)||[]; }
+  // Split-Rotation: Welcher Plan-Tag ist heute dran (A -> B -> C -> wieder A)?
+  // Manuelle Auswahl über die Tag-Chips (S.trainRunDay) hat Vorrang, sonst die
+  // Server-Vorgabe (myPlan.todayDay: rotiert nach dem zuletzt abgeschlossenen Tag),
+  // sonst der heute bereits angefangene Tag aus der Session, sonst Tag A.
+  function trainTodayDay(mp){
+    var len=(mp&&mp.days&&mp.days.length)||0; if(!len) return 0;
+    if(typeof S.trainRunDay==='number') return (S.trainRunDay<len)?S.trainRunDay:0;
+    var d=DATA.training;
+    if(d&&d.myPlan&&typeof d.myPlan.todayDay==='number') return d.myPlan.todayDay%len;
+    var items=(DATA.trainSess&&DATA.trainSess.items)||{};
+    for(var k in items){ var m=/^d(\d+)e/.exec(k); if(m&&(items[k].done||(items[k].sets|0)>0)) return parseInt(m[1],10)%len; }
+    return 0;
+  }
+  function trainRunItems(){ var d=DATA.training||{}; var mp=d.myPlan&&d.myPlan.plan; if(!mp||!mp.days) return []; var day=mp.days[trainTodayDay(mp)]||mp.days[0]; return (day&&day.exercises)||[]; }
   function trainSessItem(key){ var s=(DATA.trainSess&&DATA.trainSess.items)||{}; return s[key]||{done:false,sets:0}; }
   function trainSessLocal(key){ DATA.trainSess=DATA.trainSess||{items:{}}; DATA.trainSess.items=DATA.trainSess.items||{}; if(!DATA.trainSess.items[key]) DATA.trainSess.items[key]={done:false,sets:0}; return DATA.trainSess.items[key]; }
   function trainingRun(){
     var d=DATA.training||{}; var mp=d.myPlan&&d.myPlan.plan;
     var back='<button data-act="trainRunClose" style="display:inline-flex;align-items:center;gap:6px;background:none;border:none;color:var(--teal-ink);font-size:13.5px;font-weight:800;margin:2px 0 12px;padding:0;cursor:pointer">'+svg(IC.back,{c:'var(--teal-ink)',w:2.2,s:17})+'Fertig</button>';
     if(!mp||!mp.days||!mp.days.length){ return '<div style="padding:0 2px">'+back+trainCardBox('<div style="font-size:14px;font-weight:600;color:var(--text-soft)">Kein Plan aktiv – wähl zuerst einen Trainingsplan.</div>')+'</div>'; }
-    var di=S.trainRunDay||0; if(di>=mp.days.length) di=0;
+    var di=trainTodayDay(mp);
     var dayTabs='';
     if(mp.days.length>1){ dayTabs='<div style="display:flex;gap:7px;overflow-x:auto;padding-bottom:6px;margin-bottom:12px">'+mp.days.map(function(dd,ix){ var on=(ix===di); return '<button data-act="trainRunDay" data-arg="'+ix+'" style="flex-shrink:0;border:1.5px solid '+(on?ERN_G:'var(--border-strong)')+';border-radius:20px;background:'+(on?ERN_G:'var(--surface)')+';color:'+(on?'#fff':'var(--text-2)')+';font-size:12.5px;font-weight:800;padding:8px 13px;cursor:pointer;white-space:nowrap">'+esc(dd.name||('Tag '+(ix+1)))+'</button>'; }).join('')+'</div>'; }
     var exs=trainRunItems();
@@ -4351,7 +4367,7 @@
   }
   // Trainings-Teil: heutige Einheit (Tag di) mit Fortschritt + Übungszeilen (wiederverwendet).
   function meinTagTrainBody(mp){
-    var di=S.trainRunDay||0; if(di>=mp.days.length) di=0;
+    var di=trainTodayDay(mp);
     var dayTabs='';
     if(mp.days.length>1){ dayTabs='<div style="display:flex;gap:7px;overflow-x:auto;padding-bottom:6px;margin-bottom:12px">'+mp.days.map(function(dd,ix){ var on=(ix===di); return '<button data-act="trainRunDay" data-arg="'+ix+'" style="flex-shrink:0;border:1.5px solid '+(on?ERN_G:'var(--border-strong)')+';border-radius:20px;background:'+(on?ERN_G:'var(--surface)')+';color:'+(on?'#fff':'var(--text-2)')+';font-size:12.5px;font-weight:800;padding:8px 13px;cursor:pointer;white-space:nowrap">'+esc(dd.name||('Tag '+(ix+1)))+'</button>'; }).join('')+'</div>'; }
     var exs=trainRunItems();
@@ -4454,7 +4470,7 @@
   }
   // Technogym-„Heute": große Session-Karte mit Start, Vorschau, Wochen-Ring & Geräte-Hinweis.
   function meinTagTodayCard(mp){
-    var di=S.trainRunDay||0; if(di>=mp.days.length) di=0;
+    var di=trainTodayDay(mp);
     var day=mp.days[di]||mp.days[0]; var exs=(day&&day.exercises)||[];
     var doneN=exs.filter(function(e,ix){ return trainSessItem('d'+di+'e'+ix).done; }).length;
     var started=doneN>0, allDone=exs.length&&doneN===exs.length, est=trainEstMin(day);
@@ -6509,7 +6525,8 @@
     // Bei offener Tastatur (iOS) den Chat wieder auf den sichtbaren Bereich pinnen –
     // die Neu-Zeichnung hat die Inline-Maße gerade verworfen.
     if(chatFull) syncChatViewport();
-    // Deep-Link „Zeit vormerken" (aus dem Widget): einmalig zur Reservierung scrollen
+    // Deep-Link „#vormerken" (aus dem Widget): führt jetzt zur Auslastungs-Karte
+    // (das Vormerken selbst ist vorerst deaktiviert).
     if(S.screen==='home' && location.hash==='#vormerken' && !S._vmScrolled){ S._vmScrolled=true; setTimeout(function(){ var el=document.getElementById('vormerken'); if(el) el.scrollIntoView({behavior:'smooth',block:'center'}); },300); }
     // App-Tour: Bereichs-Tour ggf. beim ersten Öffnen starten, dann nach jeder
     // Neu-Zeichnung neu aufs Ziel ausrichten (die Elemente wurden ersetzt).
@@ -8003,7 +8020,7 @@
   if(window.FitInnNative && FitInnNative.isNative) onNativeReady();
 
   // App/Tab wird wieder sichtbar oder erhält Fokus -> Daten automatisch aktualisieren.
-  document.addEventListener('visibilitychange', function(){ if(document.visibilityState==='visible') maybeAutoRefresh(); });
+  document.addEventListener('visibilitychange', function(){ if(document.visibilityState==='visible'){ maybeAutoRefresh(); checkArrival(true); } });
   window.addEventListener('focus', maybeAutoRefresh);
   window.addEventListener('pageshow', function(e){ if(e && e.persisted) maybeAutoRefresh(); });
   // Fußzeilen-Link „Widerruf" (außerhalb von #app) -> In-App-Rechtsscreen.

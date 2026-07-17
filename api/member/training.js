@@ -37,6 +37,35 @@ async function saveSession(id, date, sess) {
   try { await redisPipeline([['SET', SKEY(id, date), JSON.stringify({ planId: sess.planId, items: sess.items || {} }), 'EX', String(120 * 86400)]]); return true; } catch (e) { return false; }
 }
 
+// ── Split-Rotation: A -> B -> C -> wieder A ──
+// Merkt sich den zuletzt ABGESCHLOSSENEN Plan-Tag; der nächste Tag ist dann
+// „heute dran" – egal, wie viele Kalendertage dazwischen liegen.
+const RKEY = (id) => 'train:rot:' + String(id);
+async function loadRot(id) {
+  try { const [r] = await redisPipeline([['GET', RKEY(id)]]); return r ? JSON.parse(r) : null; } catch (e) { return null; }
+}
+async function saveRot(id, rot) {
+  try { await redisPipeline([['SET', RKEY(id), JSON.stringify(rot), 'EX', String(180 * 86400)]]); } catch (e) {}
+}
+// Welcher Plan-Tag ist heute dran? Ein heute bereits angefangener Tag hat
+// Vorrang, ein heute abgeschlossener bleibt stehen (Erfolgsansicht), sonst
+// rotiert es auf den Tag NACH dem zuletzt abgeschlossenen. Planwechsel setzt
+// die Rotation automatisch zurück (planId-Abgleich).
+function todayDayFor(active, sessn, rot, today) {
+  const len = (active && active.plan && active.plan.days && active.plan.days.length) || 0;
+  if (!len) return 0;
+  const items = (sessn && sessn.items) || {};
+  for (const k of Object.keys(items)) {
+    const m = /^d(\d+)e/.exec(k);
+    if (m && (items[k].done || (items[k].sets | 0) > 0)) return parseInt(m[1], 10) % len;
+  }
+  if (rot && rot.planId === active.plan.id && typeof rot.day === 'number') {
+    if (rot.date === today) return rot.day % len;
+    return (rot.day + 1) % len;
+  }
+  return 0;
+}
+
 const PREMIUM_MSG = 'Mit Premium erstellt dir FINN unbegrenzt persönliche Trainingspläne.';
 const QUOTA_MSG = 'Dein Gratis-Kontingent für FINN ist diesen Monat aufgebraucht. Mit Premium geht’s unbegrenzt weiter – oder du nutzt die fertigen Pläne aus der Bibliothek.';
 
@@ -54,6 +83,11 @@ async function readState(id) {
   const qMonth = Quota.monthOf(today);
   const qUsed = await Quota.getUsed(id, qMonth);
   const active = await T.resolveActive(id);
+  let todayDay = 0;
+  if (active) {
+    const [sessn, rot] = await Promise.all([loadSession(id, today), loadRot(id)]);
+    todayDay = todayDayFor(active, (sessn && sessn.planId === active.plan.id) ? sessn : null, rot, today);
+  }
   return {
     ok: true, available: true,
     tip: T.tipOfDay(today),
@@ -61,7 +95,7 @@ async function readState(id) {
     plans: T.getLibrary().map(T.trimPlan),
     exercises: Ex.publicList(), exerciseGroups: Ex.GROUPS,
     goals: T.GOALS, levels: T.LEVELS, locations: T.LOCATIONS,
-    myPlan: active ? { plan: active.plan, startedAt: active.startedAt, source: active.plan.source } : null,
+    myPlan: active ? { plan: active.plan, startedAt: active.startedAt, source: active.plan.source, todayDay: todayDay } : null,
     premium: !!tier.premium, aiAvailable: !!AI.hasAI,
     quota: Quota.publicQuota(qUsed, tier.premium, qMonth),
   };
@@ -107,6 +141,16 @@ module.exports = async function handler(req, res) {
           if (body.done != null) it.done = !!body.done;
           if (body.sets != null) { let n = parseInt(body.sets, 10); if (isNaN(n) || n < 0) n = 0; if (n > 20) n = 20; it.sets = n; }
           sess.items[key] = it; await saveSession(id, date, sess);
+          // Tag komplett abgehakt? -> Rotations-Marker setzen (nächstes Mal ist der Folgetag dran).
+          const dm = /^d(\d+)e/.exec(key);
+          if (dm) {
+            const di = parseInt(dm[1], 10);
+            const dayDef = (active.plan.days || [])[di];
+            const exN = (dayDef && dayDef.exercises && dayDef.exercises.length) || 0;
+            let doneN = 0;
+            for (let i = 0; i < exN; i++) { const d2 = sess.items['d' + di + 'e' + i]; if (d2 && d2.done) doneN++; }
+            if (exN > 0 && doneN === exN) await saveRot(id, { planId: active.plan.id, day: di, date: date });
+          }
         }
       } else if (action === 'session-reset') {
         sess = { planId: active.plan.id, items: {} }; await saveSession(id, date, sess);
