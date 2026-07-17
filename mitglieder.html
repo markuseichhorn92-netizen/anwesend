@@ -4186,18 +4186,20 @@
   // die untere Leiste ist die EINE globale App-Nav (Start·Coach·[+]·Essen·Profil).
   // Kompakter, mitscrollender Streifen unter der App-Leiste (Titel „Ernährung" trägt jetzt die Leiste).
   // Links Datum/Kontext, rechts Streak-Chip + Rezepte-Icon. Helle Optik statt Voll-Verlaufskopf.
-  function ernTopbar(tab){
+  // Schlanke, einheitliche Kontextzeile (wie Training): Datum links, 🔥Streak rechts.
+  // Kein zweiter Titel mehr (die App-Leiste trägt „Ernährung"), kein Rezept-Icon
+  // (Rezepte ist jetzt ein eigener Tab in ernModuleSeg).
+  function ernTopbar(){
     var streak=(DATA.nutri&&DATA.nutri.streak)||0;
     var d=new Date(); var date=['Sonntag','Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag'][d.getDay()]+', '+d.toLocaleDateString('de-DE',{day:'2-digit',month:'long'});
-    var labels={heute:date,plan:'Mein Wochenplan',rezepte:'Rezepte',verlauf:'Verlauf'};
-    var recBtn=(tab==='rezepte')?'':'<button data-act="ernTab" data-arg="rezepte" aria-label="Rezepte" style="width:36px;height:36px;border-radius:11px;border:1.5px solid var(--border);background:var(--surface);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'+svg('<path d="M6 4h9a2 2 0 0 1 2 2v14l-3-2-3 2-3-2V6a2 2 0 0 1 2-2z"></path>',{c:'var(--ern-acc)',w:1.9,s:19})+'</button>';
     var streakChip=streak>0?'<div style="display:flex;align-items:center;gap:5px;background:rgba(224,140,83,.12);color:#c56a2f;border-radius:20px;padding:6px 11px;font-size:13px;font-weight:900;flex-shrink:0">🔥 '+streak+'</div>':'';
-    return '<div style="display:flex;align-items:center;gap:10px;margin:2px 2px 12px"><div style="flex:1;min-width:0;font-size:13.5px;font-weight:700;color:var(--text-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(labels[tab]||date)+'</div>'+streakChip+recBtn+'</div>';
+    return '<div style="display:flex;align-items:center;gap:10px;margin:2px 2px 12px"><div style="flex:1;min-width:0;font-size:13.5px;font-weight:700;color:var(--text-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(date)+'</div>'+streakChip+'</div>';
   }
-  // Oberes Segment im „Essen"-Screen (Heute · Plan · Verlauf) – ersetzt die frühere Modul-Bottom-Nav.
-  // Rezepte bleibt über das Buch-Icon im Kopf erreichbar; der Coach ist jetzt ein globaler Tab.
+  // Oberes Segment im „Essen"-Screen (Heute · Plan · Rezepte · Verlauf) – die Tab-Navigation.
+  // Rezepte ist jetzt ein sichtbarer Tab (früher nur über ein Kopf-Icon erreichbar);
+  // der Coach ist ein globaler Tab.
   function ernModuleSeg(tab){
-    var items=[['heute','Heute'],['plan','Plan'],['verlauf','Verlauf']];
+    var items=[['heute','Heute'],['plan','Plan'],['rezepte','Rezepte'],['verlauf','Verlauf']];
     return '<div style="display:flex;gap:4px;background:var(--surface-2);border-radius:14px;padding:4px;margin:0 2px 14px">'+items.map(function(it){ var sel=tab===it[0]; return '<button data-act="ernTab" data-arg="'+it[0]+'" style="flex:1;border:none;background:'+(sel?ERN_G:'transparent')+';color:'+(sel?'#fff':'var(--text-muted)')+';font-size:13.5px;font-weight:800;padding:11px;border-radius:11px;cursor:pointer">'+it[1]+'</button>'; }).join('')+'</div>';
   }
   // Coach-Tab: FINN-Ernährungschat als eigener Screen (wie im Mockup).
@@ -5056,8 +5058,8 @@
     else { var tab=S.ernTab||'heute'; if(tab==='coach') tab='heute';   // Coach ist jetzt ein globaler Tab
       // Ist ein Rezept geöffnet (auch aus dem Plan-Entwurf), immer die Detailansicht zeigen –
       // egal aus welchem Tab, damit man Zutaten & Zubereitung vor dem Speichern prüfen kann.
-      var seg=(tab==='rezepte'||S.ernRecipeSel)?'':ernModuleSeg(tab);   // Rezepte über das Kopf-Icon, kein Segment
-      inner=ernTopbar(tab)+seg+(S.ernRecipeSel?ernRezepte():(tab==='plan'?ernPlan():(tab==='rezepte'?ernRezepte():(tab==='verlauf'?ernVerlauf():ernDash())))); }
+      var seg=S.ernRecipeSel?'':ernModuleSeg(tab);   // Tab-Leiste sichtbar; nur in der Rezept-Detailansicht ausblenden (eigenes Zurück)
+      inner=ernTopbar()+seg+(S.ernRecipeSel?ernRezepte():(tab==='plan'?ernPlan():(tab==='rezepte'?ernRezepte():(tab==='verlauf'?ernVerlauf():ernDash())))); }
     // Koch-Modus als Vollbild-Overlay über allem (nur wenn aktiv + Rezept offen).
     var koch=(S.ernKoch!=null&&S.ernRecipeSel)?ernKochModus():'';
     // FINN-Fragebogen als Bottom-Sheet-Overlay (vor der Plan-Generierung).
