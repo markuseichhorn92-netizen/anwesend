@@ -81,13 +81,24 @@ module.exports = async function handler(req, res) {
     let r;
     try { r = await Mod.listModules(mid); } catch (e) { r = { available: false }; }
     const available = !!(r && r.available);
-    // Ernährungs-Premium (falls über ein Zusatzmodul, SEPA) für die Vertragsverwaltung –
-    // aus dem Entitlement abgeleitet (zuverlässig, unabhängig vom Listen-Endpunkt).
+    // Ernährungs-Premium (Zusatzmodul, SEPA) für die Vertragsverwaltung. Die Karte
+    // erscheint, sobald das Modul TATSÄCHLICH gebucht ist – auch dann, wenn Premium
+    // gerade dem Stripe-Abo zugeschrieben wird (Stripe hat Vorrang). Sonst bliebe ein
+    // parallel gebuchtes Modul unsichtbar und unkündbar. stripeAlso warnt vor Doppelzahlung.
     let premium = null;
     if (Mod.premiumConfigured()) {
       try {
-        const t = await MlPremium.reconcile(sess.id);
-        if (t && t.viaModule) premium = { active: !!t.premium, until: t.until || null, cancelAtPeriodEnd: !!t.cancelAtPeriodEnd };
+        await MlPremium.reconcile(sess.id);   // Entitlement frisch halten
+        const bp = available ? (r.booked || []).find((x) => Mod.isPremiumModule(x && x.moduleId)) : null;
+        let ent = null; try { ent = await Ent.getEntitlement(sess.id); } catch (e) {}
+        const viaModule = !!(ent && ent.source === 'magicline' && Ent.isPremium(ent));
+        if (bp || viaModule) {
+          let until = null, cancelled = false;
+          if (bp) { cancelled = !!bp.cancelled; if (cancelled && bp.endDate) until = Date.parse(bp.endDate + 'T23:59:59'); }
+          else if (ent) { cancelled = !!ent.cancelAtPeriodEnd; until = ent.until || null; }
+          premium = { active: true, until: (until && !isNaN(until)) ? until : null, cancelAtPeriodEnd: cancelled };
+          if (ent && ent.stripeSubId && Ent.isPremium(ent)) premium.stripeAlso = true;
+        }
       } catch (e) {}
     }
     // Das Premium-Modul selbst wird über die Premium-Karte verwaltet -> aus den
