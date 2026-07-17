@@ -1667,22 +1667,35 @@
     var body='<div style="display:flex;align-items:center;gap:13px">'+ring+'<div style="flex:1;min-width:0;display:flex;gap:8px">'+pill('🔥 '+(n.streak||0),'Tage-Streak')+pill('+'+(n.pointsToday||0),'VP heute',ERN_G)+'</div></div>';
     return wrap(head+body);
   }
-  // Kompakte „Heute im Blick"-Zeile: Ernährung + Trainingspartner als zwei kleine, tippbare
-  // Kacheln statt zweier großer Karten (Startseite ruhiger, #103). Nur je nach Freischaltung.
+  // Ernährungs-Karte auf der Startseite mit Schnellüberblick: kcal-Fortschritt
+  // + Makro-Balken (Eiweiß/KH/Fett) mit Ist/Ziel – ein Blick genügt. Führt ins Modul.
+  function homeErnBars(){
+    var n=DATA.nutri;
+    var wrap=function(inner){ return '<button data-act="nav" data-arg="ern" style="width:100%;text-align:left;border:none;cursor:pointer;font-family:inherit;background:var(--surface);border-radius:18px;box-shadow:0 10px 26px rgba(4,33,40,.08);padding:15px 16px;margin-bottom:16px">'+inner+'</button>'; };
+    var headSub=function(sub){ return '<div style="display:flex;align-items:center;gap:11px"><div style="width:38px;height:38px;border-radius:12px;background:var(--surface-2);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:20px">🥗</div><div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:900;color:var(--text)">Ernährung</div><div style="font-size:12px;font-weight:700;color:var(--text-soft);margin-top:1px">'+sub+'</div></div>'+svg('<path d="M9 6l6 6-6 6"></path>',{c:'var(--text-soft)',w:2.4,s:17})+'</div>'; };
+    if(!(n&&n.ok)) return wrap(headSub((n&&n.available===false)?'Bald in deiner App verfügbar':'Tagesziel, Tracking &amp; Rezepte'));
+    if(!n.onboarded) return wrap(headSub('In 1 Minute dein Tagesziel einrichten'));
+    var t=n.targets||{}, tot=(n.today&&n.today.totals)||{kcal:0,p:0,c:0,f:0};
+    var bar=function(val,goal,col,h){ var pct=goal>0?Math.min(100,Math.round(val/goal*100)):0; var over=goal>0&&val>goal;
+      return '<div style="height:'+(h||7)+'px;border-radius:5px;background:var(--surface-2);overflow:hidden"><div style="width:'+pct+'%;height:100%;border-radius:5px;background:'+(over?'#c0392b':col)+'"></div></div>'; };
+    var kcalLeft=Math.max(0,(t.kcal||0)-(tot.kcal||0));
+    var kcalRow='<div style="display:flex;justify-content:space-between;align-items:baseline;margin:13px 0 6px"><span style="font-size:10.5px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.4px">Kalorien</span><span style="font-size:12.5px;font-weight:800;color:var(--text)">'+ernNum(tot.kcal||0)+' / '+ernNum(t.kcal||0)+' kcal</span></div>'+bar(tot.kcal||0,t.kcal||0,ERN_OK,8);
+    var m=function(lab,val,goal,col){ return '<div style="flex:1;min-width:0"><div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px"><span style="font-size:10px;font-weight:800;color:var(--text-soft)">'+lab+'</span><span style="font-size:10px;font-weight:800;color:var(--text-2)">'+Math.round(val||0)+'/'+Math.round(goal||0)+'&#8202;g</span></div>'+bar(val||0,goal||0,col)+'</div>'; };
+    var macros='<div style="display:flex;gap:10px;margin-top:11px">'+m('Eiweiß',tot.p,t.protein,ERN_PROT)+m('KH',tot.c,t.carbs,ERN_CARB)+m('Fett',tot.f,t.fat,ERN_FAT)+'</div>';
+    return wrap(headSub(ernNum(kcalLeft)+' kcal übrig · 🔥 '+(n.streak||0)+' Tage · +'+(n.pointsToday||0)+' VP')+kcalRow+macros);
+  }
+  // „Heute im Blick": Ernährung als Karte mit kcal-/Makro-Balken, Trainingspartner
+  // als kompakte Kachel darunter (#103). Nur je nach Freischaltung.
   function homeTodayStrip(){
     var tiles=[];
-    if(ERN_ON){
-      var n=DATA.nutri; var sub='Tagesziel & Tracking';
-      if(n&&n.ok&&n.onboarded){ var t=n.targets||{}, tot=(n.today&&n.today.totals)||{kcal:0}; sub=ernNum(Math.max(0,(t.kcal||0)-(tot.kcal||0)))+' kcal übrig'; }
-      tiles.push({act:'ern',ic:'🥗',label:'Ernährung',sub:sub,badge:false});
-    }
     if(SOCIAL_ON){
       var s=DATA.social; var reqs=(s&&s.requests&&s.requests.length)||0; var buds=(s&&s.buddies&&s.buddies.length)||0;
       var ssub=reqs>0?(reqs+' neue Anfrage'+(reqs===1?'':'n')):(buds>0?(buds+' Trainingspartner'):'Verbinden & chatten');
       tiles.push({act:'social',ic:'🤝',label:'Partner',sub:ssub,badge:reqs>0});
     }
-    if(!tiles.length) return '';
-    return '<div style="display:flex;gap:12px;margin-bottom:16px">'+tiles.map(function(t){
+    var ern=ERN_ON?homeErnBars():'';
+    if(!tiles.length) return ern;
+    return ern+'<div style="display:flex;gap:12px;margin-bottom:16px">'+tiles.map(function(t){
       return '<button data-act="nav" data-arg="'+t.act+'" style="flex:1;min-width:0;text-align:left;border:none;cursor:pointer;font-family:inherit;background:var(--surface);border-radius:18px;box-shadow:0 10px 26px rgba(4,33,40,.08);padding:14px 15px;position:relative">'+
         (t.badge?'<span style="position:absolute;top:12px;right:12px;width:9px;height:9px;border-radius:50%;background:#F6A964"></span>':'')+
         '<div style="width:36px;height:36px;border-radius:11px;background:var(--surface-2);display:flex;align-items:center;justify-content:center;font-size:19px">'+t.ic+'</div>'+
@@ -6330,10 +6343,30 @@
   }
   var NARROW={contract:1,referral:1,appt:1,card:1,fort:1,ern:1,blog:1,profil:1,checkin:1,insta:1,social:1};
 
-  // ── App-Tour: führt nach den Onboarding-Fragen Schritt für Schritt durch die App. ──
-  // Läuft komplett auf der Startseite (dort sind alle Ziele sichtbar); fehlt ein Ziel
-  // (z. B. Check-in-Button, weil schon eingecheckt), wird der Schritt übersprungen.
+  // ── App-Tour: führt nach den Onboarding-Fragen Schritt für Schritt durch die App.
+  // Zusätzlich Mini-Touren beim ERSTEN Öffnen von Training, Ernährung und Coach
+  // (S.tourKey wählt die Tour; Flags fi_tour_v1 / fi_tour_tag_v1 / fi_tour_ern_v1 /
+  // fi_tour_coach_v1). Fehlt ein Ziel (z. B. schon eingecheckt), wird der Schritt
+  // übersprungen. ──
   function tourSteps(){
+    var key=S.tourKey||'app';
+    if(key==='tag') return [
+      {sel:'#app [data-act="trainSeg"][data-arg="einheit"]', t:'Deine Einheit', d:'Hier startest du dein heutiges Training aus deinem aktiven Plan – Übung für Übung zum Abhaken.'},
+      {sel:'#app [data-act="trainSeg"][data-arg="plaene"]', t:'Trainingspläne', d:'Fertige Pläne aus der Bibliothek oder ein persönlicher FINN-Plan – hier holst du dir dein Programm.'},
+      {sel:'#app [data-act="trainSeg"][data-arg="uebungen"]', t:'Übungen nachschlagen', d:'Alle Übungen an unseren Geräten mit Anleitung – ideal direkt an der Maschine.'},
+      {sel:'.btmnav [data-act="trainQuickEx"], .btmnav [data-act="trainGenOpen"]', t:'Der Plus-Knopf', d:'Öffnet im Training genau das Passende: eine Übung nachschlagen oder einen FINN-Plan erstellen.'}
+    ];
+    if(key==='ern') return [
+      {sel:'#app [data-act="ernTab"][data-arg="heute"]', t:'Heute', d:'Dein Tagesziel mit Kalorien, Eiweiß und Wasser – alles, was du heute isst, landet hier.'},
+      {sel:'.btmnav [data-act="ernOpenCapture"]', t:'Erfassen mit dem Plus', d:'Mahlzeiten per Foto, Text, Sprache oder Barcode erfassen – FINN schätzt die Nährwerte für dich.'},
+      {sel:'#app [data-act="ernTab"][data-arg="rezepte"]', t:'Rezepte', d:'Rezepte entdecken, speichern und nachkochen – passend zu deinem Ziel.'},
+      {sel:'#app [data-act="ernTab"][data-arg="plan"]', t:'Plan', d:'Wochenplan und Einkaufsliste – so planst du deine Tage im Voraus.'}
+    ];
+    if(key==='coach') return [
+      {sel:'#app [data-act="openFinn"]', t:'Tipp des Tages', d:'FINNs täglicher Impuls für dich – ein Tipp auf die Karte öffnet direkt den Chat mit FINN.'},
+      {sel:'#app [data-act="coachTab"][data-arg="training"]', t:'Training & Ernährung', d:'Wechsle hier zwischen deinen Trainings- und Ernährungs-Erkenntnissen.'},
+      {sel:'#finnFab', t:'FINN überall', d:'Die Blase unten rechts: Frag FINN jederzeit etwas – egal, wo du gerade bist.'}
+    ];
     return [
       {sel:'#app [data-act="nav"][data-arg="coach"]', t:'Dein Coach FINN', d:'FINN begrüßt dich hier jeden Tag mit einem persönlichen Tipp. Ein Tipp auf die Karte bringt dich zur Coach-Seite mit all deinen Erkenntnissen.'},
       {sel:'#app [data-act="doCheckin"]', t:'Einchecken', d:'Im Studio angekommen? Hier checkst du mit einem Tipp ein und sammelst Vitalpunkte für jeden Besuch.'},
@@ -6346,11 +6379,25 @@
       {sel:'#app [data-act="avatarTap"]', t:'Dein Profil', d:'Hinter deinen Initialen steckt alles Persönliche: Profil, Vertrag, Beitragskonto, Postfach, Mitgliedskarte, Einstellungen und mehr. Auf den Unterseiten schwebt der Knopf oben rechts.'}
     ];
   }
+  function tourFlagName(key){ return key==='app'?'fi_tour_v1':('fi_tour_'+key+'_v1'); }
   function tourActive(){ return typeof S.tourStep==='number'; }
   function endTour(){
-    try{ localStorage.setItem('fi_tour_v1','1'); }catch(e){}
-    S.tourStep=null;
+    try{ localStorage.setItem(tourFlagName(S.tourKey||'app'),'1'); }catch(e){}
+    S.tourStep=null; S.tourKey=null;
     ['tourBlock','tourHole','tourCard'].forEach(function(id){ var el=$(id); if(el) el.remove(); });
+  }
+  // Erstes Öffnen von Training/Ernährung/Coach: passende Mini-Tour einmalig starten.
+  // Nur wenn gerade keine Tour läuft und das erste Ziel wirklich im DOM steht
+  // (Ernährung z. B. erst nach abgeschlossenem Modul-Setup, nicht im Setup-Screen).
+  function maybeStartSectionTour(){
+    if(tourActive() || !TOKEN || S.screen==='login' || !obDone() || isFormer()) return;
+    var key=S.screen; if(key!=='tag'&&key!=='ern'&&key!=='coach') return;
+    var seen='1'; try{ seen=localStorage.getItem(tourFlagName(key)); }catch(e){}
+    if(seen) return;
+    S.tourKey=key;
+    var first=tourSteps()[0];
+    if(!first || !document.querySelector(first.sel)){ S.tourKey=null; return; }
+    S.tourStep=0;
   }
   function positionTour(scrollTo){
     if(!tourActive()) return;
@@ -6464,7 +6511,9 @@
     if(chatFull) syncChatViewport();
     // Deep-Link „Zeit vormerken" (aus dem Widget): einmalig zur Reservierung scrollen
     if(S.screen==='home' && location.hash==='#vormerken' && !S._vmScrolled){ S._vmScrolled=true; setTimeout(function(){ var el=document.getElementById('vormerken'); if(el) el.scrollIntoView({behavior:'smooth',block:'center'}); },300); }
-    // App-Tour: nach jeder Neu-Zeichnung neu aufs Ziel ausrichten (Elemente wurden ersetzt).
+    // App-Tour: Bereichs-Tour ggf. beim ersten Öffnen starten, dann nach jeder
+    // Neu-Zeichnung neu aufs Ziel ausrichten (die Elemente wurden ersetzt).
+    if(!tourActive()) maybeStartSectionTour();
     if(tourActive()){ var first=!$('tourHole'); setTimeout(function(){ positionTour(first); },80); }
   }
 
@@ -6599,14 +6648,14 @@
     // ── App-Tour (Schritt für Schritt durch die App) ──
     tourNext:function(){ var n=(S.tourStep||0)+1; if(n>=tourSteps().length){ endTour(); render(); } else { S.tourStep=n; positionTour(true); } },
     tourSkip:function(){ endTour(); render(); },
-    tourRestart:function(){ S.screen='home'; S.tourStep=0; try{ window.scrollTo(0,0); }catch(e){} render(); },
+    tourRestart:function(){ S.screen='home'; S.tourKey='app'; S.tourStep=0; try{ window.scrollTo(0,0); }catch(e){} render(); },
     obFreq:function(a){ setS({obFreq:parseInt(a,10)||3}); },
     obAge:function(a){ var d=parseInt(a,10)||0; setS({obAge:Math.max(14,Math.min(99,(S.obAge||34)+d))}); },
     obExp:function(a){ setS({obExp:a}); },
     obNext:function(){ if((S.obStep||0)>=3){ try{ localStorage.setItem('fi_ob_v1',JSON.stringify({goal:S.obGoal,freq:S.obFreq,age:S.obAge,exp:S.obExp})); }catch(e){} S.finnTipLoaded=false;
         // Direkt nach den Onboarding-Fragen: einmalige App-Tour (Schritt für Schritt).
         var tourSeen='1'; try{ tourSeen=localStorage.getItem('fi_tour_v1'); }catch(e){}
-        if(!tourSeen){ S.screen='home'; S.tourStep=0; try{ window.scrollTo(0,0); }catch(e){} }
+        if(!tourSeen){ S.screen='home'; S.tourKey='app'; S.tourStep=0; try{ window.scrollTo(0,0); }catch(e){} }
         setS({obStep:0}); loadFinnTip(); } else { setS({obStep:(S.obStep||0)+1}); var o=document.querySelector('.obOverlay'); if(o) o.scrollTop=0; } },
     noop:function(){},   // fängt Klicks im Overlay-Inneren ab (Backdrop-Klick schließt)
     // Assistent-Hub öffnen. Beitragskonto nachladen, damit der proaktive Vorschlag greifen kann.
