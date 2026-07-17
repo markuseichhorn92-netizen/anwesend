@@ -4757,12 +4757,12 @@
       '<button data-act="trainSeg" data-arg="plaene" style="flex:1;'+sec+'">Plan wechseln</button>'+
       '<button data-act="trainStop"'+(S.trainBusy?' disabled':'')+' style="'+sec+';color:var(--err-fg);border-color:#e3b8b1">Beenden</button>'+
     '</div>';
-    return planLine+dayTabs+hero+trainMachineCue()+trainWeekCard(mp.daysPerWeek)+preview+actions;
+    // Wochen-Ring lebt jetzt im Verlauf-Tab (trainVerlauf); der Streak steht im Kopf-Chip.
+    return planLine+dayTabs+hero+trainMachineCue()+preview+actions;
   }
-  // Segment-Leiste im Training-Bereich: Einheit · Pläne · Übungen.
-  // Helles Segment (Einheit/Pläne/Übungen) – passend zur neuen hellen Kopfzeile (statt weiß-auf-Teal).
+  // Segment-Leiste im Training-Bereich: Heute · Pläne · Übungen · Verlauf (parallel zu Ernährung).
   function trainSegBar(seg){
-    var items=[['einheit','Einheit'],['plaene','Pläne'],['uebungen','Übungen']];
+    var items=[['einheit','Heute'],['plaene','Pläne'],['uebungen','Übungen'],['verlauf','Verlauf']];
     return '<div style="display:flex;gap:4px;background:var(--surface-2);border-radius:14px;padding:4px;margin:0 2px 14px">'+items.map(function(it){ var on=(seg===it[0]);
       return '<button data-act="trainSeg" data-arg="'+it[0]+'" style="flex:1;border:none;cursor:pointer;font-family:inherit;border-radius:11px;background:'+(on?ERN_G:'transparent')+';color:'+(on?'#fff':'var(--text-muted)')+';font-size:13px;font-weight:800;padding:11px 6px">'+it[1]+'</button>'; }).join('')+'</div>';
   }
@@ -4775,6 +4775,22 @@
         return '<button data-act="trainExGroup" data-arg="'+esc(gr[0])+'" style="flex-shrink:0;border:1.5px solid '+(on?ERN_G:'var(--border-strong)')+';border-radius:20px;background:'+(on?ERN_G:'var(--surface)')+';color:'+(on?'#fff':'var(--text-2)')+';font-size:12.5px;font-weight:800;padding:8px 14px;cursor:pointer;white-space:nowrap">'+esc(gr[1])+'</button>'; }).join('')+'</div>';
     return '<div style="font-size:12.5px;font-weight:500;color:var(--text-2);line-height:1.5;margin:0 2px 12px">🤖 markiert die Biostrength-Geräte, die sich automatisch einstellen.</div>'+search+chips+'<div id="tr_ex_list">'+trainExRows(trainExFilter(d.exercises||[]))+'</div>';
   }
+  // Verlauf-Tab: Wochen-Fortschritt („Diese Woche"-Ring + Streak) + letzte Studio-Besuche.
+  // Parallel zum Ernährung-Verlauf; holt den Fortschritt aus dem „Heute"-Hero an einen festen Platz.
+  function trainVerlauf(){
+    if(!DATA.checkins) loadCheckins();
+    var ci=Array.isArray(DATA.checkins)?DATA.checkins.filter(function(x){return x&&x.in;}):[];
+    ci.sort(function(a,b){return new Date(b.in)-new Date(a.in);});
+    var recent=ci.slice(0,6);
+    var visits;
+    if(!recent.length){
+      visits=trainCardBox('<div style="font-size:13px;font-weight:700;color:var(--text-soft);text-align:center;padding:6px 0;line-height:1.5">Noch keine Studio-Besuche – sobald du eincheckst, erscheinen sie hier.</div>');
+    } else {
+      var rows=recent.map(function(v){ return '<div style="display:flex;align-items:center;gap:11px;padding:11px 0;border-top:1px solid var(--border)"><span style="width:9px;height:9px;border-radius:50%;background:'+ERN_G+';flex-shrink:0"></span><div style="flex:1;min-width:0;font-size:13.5px;font-weight:800;color:var(--text)">'+deDate(v.in)+'</div><div style="font-size:12px;font-weight:600;color:var(--text-soft)">'+deTime(v.in)+' Uhr</div><div style="font-size:12.5px;font-weight:800;color:var(--ern-acc);min-width:44px;text-align:right">'+(dur(v.in,v.out)||'')+'</div></div>'; }).join('');
+      visits=trainCardBox('<div style="font-size:12px;font-weight:900;color:var(--ern-acc);text-transform:uppercase;letter-spacing:.4px;margin-bottom:2px">Letzte Besuche</div>'+rows+'<button data-act="nav" data-arg="checkins" style="width:100%;margin-top:12px;padding:11px;border:1.5px solid var(--border-strong);border-radius:11px;background:var(--surface);color:var(--teal-ink);font-size:12.5px;font-weight:800;cursor:pointer">Ganzer Verlauf</button>','16px');
+    }
+    return trainWeekCard()+visits;
+  }
   function scrMeinTag(){
     if(DATA.training==null) loadTraining();
     if(!DATA.checkins) loadCheckins();   // Wochen-Ring braucht die Studio-Besuche
@@ -4784,16 +4800,18 @@
     if(S.trainGenOpen) return wrap('<div style="padding:14px 2px 0">'+trainingGenSheet()+'</div>');
     if(S.trainDetail) return wrap('<div style="padding:14px 2px 0">'+trainingDetail()+'</div>');
     var seg=S.trainSeg||'einheit';
-    var sub=(seg==='plaene')?'Bibliothek, FINN-Generator & Inspiration':((seg==='uebungen')?'Alle Übungen an unseren Geräten':'Deine heutige Einheit');
-    // Titel „Training" trägt die App-Leiste – hier nur eine schlanke Datumszeile + Segment
-    // (der frühere Untertitel war redundant zur ausgewählten Segment-Kachel).
-    var header='<div style="margin:4px 2px 12px;font-size:13px;font-weight:700;color:var(--text-soft)">'+esc(meinTagDateStr())+'</div>'+trainSegBar(seg);
+    // Kopf einheitlich wie Ernährung: schlanke Zeile (Datum + 🔥Streak), darunter die Tab-Leiste.
+    // Der Titel „Training" trägt die App-Leiste; der Streak (Wochen in Folge) kommt aus vitalsData().
+    var tstreak=(vitalsData().streak)||0;
+    var tstreakChip=tstreak>0?'<div style="display:flex;align-items:center;gap:5px;background:rgba(224,140,83,.12);color:#c56a2f;border-radius:20px;padding:6px 11px;font-size:13px;font-weight:900;flex-shrink:0">🔥 '+tstreak+'</div>':'';
+    var header='<div style="display:flex;align-items:center;gap:10px;margin:2px 2px 12px"><div style="flex:1;min-width:0;font-size:13.5px;font-weight:700;color:var(--text-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(meinTagDateStr())+'</div>'+tstreakChip+'</div>'+trainSegBar(seg);
     var d=DATA.training; var body;
     if(d==null){ body='<div style="padding:30px 0;text-align:center">'+trainSpin(24)+'</div>'; }
     else if(!d.ok && d.available===false){ body=trainCardBox('<div style="font-size:13.5px;font-weight:600;color:var(--text-soft)">Der Training-Bereich ist gerade nicht verfügbar.</div>'); }
     else if(!d.ok){ body=trainCardBox('<div style="font-size:13.5px;font-weight:700;color:var(--err-fg)">Training konnte nicht geladen werden.</div><button data-act="trainReload" style="width:100%;margin-top:10px;padding:11px;border:none;border-radius:12px;background:'+ERN_G+';color:#fff;font-weight:800;font-size:13.5px;cursor:pointer">Erneut versuchen</button>'); }
     else if(seg==='plaene'){ body=trainingGenCta(d)+trainingLibrary(d)+trainingInspiration(d)+trainingBookCta(); }
     else if(seg==='uebungen'){ body=trainExSegment(d); }
+    else if(seg==='verlauf'){ body=trainVerlauf(); }
     else { var mp=d.myPlan&&d.myPlan.plan; body=coachTipStrip()+((mp&&mp.days&&mp.days.length)?meinTagTodayCard(mp):meinTagTrainCta()); }
     return wrap(header+'<div style="padding:0 2px">'+body+'</div>');
   }
@@ -7005,7 +7023,7 @@
     // ── Coach-Tabs + Training-Tab ──
     coachTab:function(a){ S.coachTab=(a==='training')?'training':'ernaehrung'; S.trainDetail=null; S.trainDetailFull=null; S.trainExOpen=false; S.trainRun=false; S.trainRestKey=''; S.trainGenOpen=false; S.trainGenPlan=null; S.trainMsg=''; S.ernChatOpen=false; setS({}); },
     trainReload:function(){ DATA.training=null; render(); loadTraining(); },
-    trainSeg:function(a){ S.trainSeg=(a==='plaene'||a==='uebungen')?a:'einheit'; S.trainDetail=null; S.trainDetailFull=null; S.trainGenOpen=false; S.trainMsg=''; setS({}); },
+    trainSeg:function(a){ S.trainSeg=(a==='plaene'||a==='uebungen'||a==='verlauf')?a:'einheit'; S.trainDetail=null; S.trainDetailFull=null; S.trainGenOpen=false; S.trainMsg=''; setS({}); },
     trainQuickEx:function(){ S.trainSeg='uebungen'; S.trainDetail=null; S.trainGenOpen=false; setS({}); },
     // Coach: FINN-Analyse (KI) – verbindet Training + Ernährung zu einer Erkenntnis (quota-gated).
     coachFinn:function(){
