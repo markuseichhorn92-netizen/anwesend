@@ -26,6 +26,10 @@
     --ok-bg:#E7F6EC; --ok-fg:#1d7a3e; --err-bg:#FCEBEA; --err-fg:#b53a2c;
     --row-sel:rgba(10,73,88,.06);
     --border-strong:#d6dee0; --ern-acc:#0e6072;
+    /* Sichere Zone oben, aber GEDECKELT: manche iOS-WebViews melden den Safe-Inset zu
+       groß / doppelt, was einen riesigen leeren Balken über dem Titel erzeugt. Der
+       Deckel (60px) hält den Titel immer knapp unter der Statusleiste. */
+    --sat: min(env(safe-area-inset-top,0px), 60px);
   }
   html[data-theme="dark"]{
     color-scheme:dark;
@@ -57,13 +61,13 @@
   .shell{width:100%;max-width:480px;margin:0 auto;min-height:100dvh;display:flex;flex-direction:column}
   .brandbar{position:fixed;top:0;left:0;right:0;z-index:50;max-width:480px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:calc(14px + env(safe-area-inset-top,0px)) 20px 14px;background:linear-gradient(160deg,#0e6072,#063540)}
   /* Mobil (eingeloggt): KEINE Logo-Leiste – der Hero ist der Kopf (Full-Bleed, wie im Mockup). */
-  @media(max-width:999px){ .app-in .brandbar{display:none} .app-in .maincol{padding-top:0} .app-in .body{padding-top:calc(56px + env(safe-area-inset-top,0px))} .app-in.noappbar .body{padding-top:env(safe-area-inset-top,0px)} }
+  @media(max-width:999px){ .app-in .brandbar{display:none} .app-in .maincol{padding-top:0} .app-in .body{padding-top:calc(50px + var(--sat))} .app-in.noappbar .body{padding-top:var(--sat)} }
   /* Home-Hero */
   .homeHero{position:relative;overflow:hidden;background:linear-gradient(160deg,#0a4958 0%,#073e4b 55%,#063540 100%);border-radius:24px;padding:22px 20px;margin-bottom:16px;box-shadow:0 16px 40px rgba(4,33,40,.20)}
   @media(max-width:999px){ .app-in .homeHero{margin:0 -16px 16px;border-radius:0 0 28px 28px;padding:18px 22px 22px;box-shadow:none} }
   /* Streifen hinter der Statusleiste (Uhrzeit/Akku) – gleiches dunkles Teal wie die Hero-Oberkante. */
   .sbTop{display:none}
-  @media(max-width:999px){ .app-in .sbTop{display:block;position:fixed;top:0;left:0;right:0;height:env(safe-area-inset-top,0px);background:#0a4958;z-index:60;pointer-events:none} }
+  @media(max-width:999px){ .app-in .sbTop{display:block;position:fixed;top:0;left:0;right:0;height:var(--sat);background:#0a4958;z-index:60;pointer-events:none} }
   /* Overscroll-Schutz oben: teal Fläche über dem Seitenanfang – NUR auf der
      Startseite (dort ist der Hero teal, das Gummiband setzt ihn nahtlos fort).
      Auf allen anderen (hellen) Seiten zeigt das Gummiband die Seitenfarbe
@@ -265,14 +269,14 @@
      Desktop ausgeblendet – dort tragen Sidebar + Topbar die gleiche Funktion. */
   #appbar{position:fixed;top:0;left:0;right:0;z-index:55;max-width:480px;margin:0 auto;
     display:none;align-items:center;gap:10px;box-sizing:border-box;
-    padding:calc(env(safe-area-inset-top,0px) + 9px) 12px 9px 14px;
+    padding:calc(var(--sat) + 6px) 12px 8px 14px;
     background:linear-gradient(160deg,#0e6072,#0a4958);color:#fff;
     box-shadow:0 6px 20px rgba(4,33,40,.20)}
   .app-in #appbar.on{display:flex}
   #appbar .ab-title{flex:1;min-width:0;font-size:18px;font-weight:900;letter-spacing:-.3px;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  #appbar .ab-btn{position:relative;width:38px;height:38px;border-radius:12px;border:none;background:rgba(255,255,255,.16);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;padding:0}
+  #appbar .ab-btn{position:relative;width:36px;height:36px;border-radius:12px;border:none;background:rgba(255,255,255,.16);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;padding:0}
   #appbar .ab-btn:active{background:rgba(255,255,255,.26)}
-  #appbar .ab-ava{width:38px;height:38px;border-radius:50%;border:1px solid rgba(255,255,255,.3);background:#fff;color:#0a4958;font-weight:900;font-size:13px;letter-spacing:.3px;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;padding:0}
+  #appbar .ab-ava{width:36px;height:36px;border-radius:50%;border:1px solid rgba(255,255,255,.3);background:#fff;color:#0a4958;font-weight:900;font-size:13px;letter-spacing:.3px;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;padding:0}
   #appbar .ab-dot{position:absolute;top:7px;right:8px;width:8px;height:8px;border-radius:50%;background:#F6A964;border:2px solid #0a4958;pointer-events:none}
   @media(min-width:1000px){ #appbar{display:none!important} }
   @keyframes fiPulse{0%,100%{opacity:1}50%{opacity:.55}}
@@ -4757,9 +4761,9 @@
     if(S.trainDetail) return wrap('<div style="padding:14px 2px 0">'+trainingDetail()+'</div>');
     var seg=S.trainSeg||'einheit';
     var sub=(seg==='plaene')?'Bibliothek, FINN-Generator & Inspiration':((seg==='uebungen')?'Alle Übungen an unseren Geräten':'Deine heutige Einheit');
-    // Titel „Training" trägt jetzt die App-Leiste – hier nur helle Datums-/Kontextzeile + Segment.
-    var header='<div style="margin:2px 2px 10px"><div style="font-size:12.5px;font-weight:700;color:var(--text-soft)">'+esc(meinTagDateStr())+'</div>'+
-      '<div style="font-size:13px;font-weight:600;color:var(--text-muted);margin-top:1px">'+sub+'</div></div>'+trainSegBar(seg);
+    // Titel „Training" trägt die App-Leiste – hier nur eine schlanke Datumszeile + Segment
+    // (der frühere Untertitel war redundant zur ausgewählten Segment-Kachel).
+    var header='<div style="margin:4px 2px 12px;font-size:13px;font-weight:700;color:var(--text-soft)">'+esc(meinTagDateStr())+'</div>'+trainSegBar(seg);
     var d=DATA.training; var body;
     if(d==null){ body='<div style="padding:30px 0;text-align:center">'+trainSpin(24)+'</div>'; }
     else if(!d.ok && d.available===false){ body=trainCardBox('<div style="font-size:13.5px;font-weight:600;color:var(--text-soft)">Der Training-Bereich ist gerade nicht verfügbar.</div>'); }
