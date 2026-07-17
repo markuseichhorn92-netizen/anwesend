@@ -81,12 +81,25 @@ module.exports = async function handler(req, res) {
     let r;
     try { r = await Mod.listModules(mid); } catch (e) { r = { available: false }; }
     const available = !!(r && r.available);
+    // Ernährungs-Premium (falls über ein Zusatzmodul, SEPA) für die Vertragsverwaltung –
+    // aus dem Entitlement abgeleitet (zuverlässig, unabhängig vom Listen-Endpunkt).
+    let premium = null;
+    if (Mod.premiumConfigured()) {
+      try {
+        const t = await MlPremium.reconcile(sess.id);
+        if (t && t.viaModule) premium = { active: !!t.premium, until: t.until || null, cancelAtPeriodEnd: !!t.cancelAtPeriodEnd };
+      } catch (e) {}
+    }
+    // Das Premium-Modul selbst wird über die Premium-Karte verwaltet -> aus den
+    // generischen Modul-Listen herausfiltern (sonst doppelt).
+    const notPrem = (list, key) => (list || []).filter((x) => !Mod.isPremiumModule(x && x[key]));
     res.statusCode = 200;
     return res.end(JSON.stringify({
       ok: true,
       available: available,
-      booked: available ? (r.booked || []) : [],
-      bookable: available ? (r.bookable || []) : [],
+      booked: available ? notPrem(r.booked, 'moduleId') : [],
+      bookable: available ? notPrem(r.bookable, 'id') : [],
+      premium: premium,
     }));
   }
 
