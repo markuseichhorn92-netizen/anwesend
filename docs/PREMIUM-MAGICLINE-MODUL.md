@@ -1,8 +1,47 @@
-# Ernährungs-Premium über ein Magicline-Zusatzmodul (SEPA)
+# Coach Premium über ein Magicline-Zusatzmodul (SEPA)
 
-Alternative (oder Ergänzung) zum Stripe-Abo: Das Ernährungs-Premium wird als
-**Magicline-Zusatzmodul** verkauft. Die Abrechnung läuft dann über den bestehenden
-**Mitgliedsvertrag per SEPA-Lastschrift** – kein Stripe, keine Kartendaten in der App.
+Alternative (oder Ergänzung) zum Stripe-Abo: **Coach Premium** wird als
+**Magicline-Zusatzmodul** („App Premium") verkauft. Die Abrechnung läuft über den
+bestehenden **Mitgliedsvertrag per SEPA-Lastschrift** – kein Stripe, keine Kartendaten
+in der App.
+
+## Umfang von „Coach Premium"
+
+Ein Premium schaltet die KI-/Coaching-Leistung in **allen drei Bereichen** frei
+(ein und dasselbe Entitlement `nutri:prem:<id>`):
+
+- **Ernährung:** Foto-Analyse, FINN-Chat, Wochenpläne, KI-Rezepte, Wochen-Auswertung.
+- **Coach:** Wochen-Lektionen ab Woche 2, Vertiefungen, tiefe FINN-Analysen.
+- **Training:** KI-Trainingsplan-Generierung **und die automatische Progression**
+  (FINN plant die nächste Steigerung aus den protokollierten Einheiten,
+  `action:'progress'`; Verlauf in `train:hist:<id>`).
+
+Gratis bleiben: 5 FINN-Aktionen/Monat (geteiltes Kontingent über alle Bereiche),
+Tracking, Übungs- & Rezept-Bibliothek, Verlauf — sowie die komplette
+**Studio-Verwaltung** (Vertrag, Beitragskonto, Termine, Dokumente, Zusatzmodule) und
+der allgemeine FINN-Support.
+
+## 7-Tage-Test (Trial)
+
+Hat das Magicline-Modul eine **Testphase** konfiguriert, wird sie in der App
+automatisch mitgebucht (`bookTrialPeriod:true`). Premium ist sofort aktiv
+(`status:'trialing'`, `trialEnd` = letzter Gratis-Tag); danach beginnt die
+SEPA-Abbuchung. Wird **innerhalb der Testphase gekündigt**, wird zum Trial-Ende
+gekündigt → **keine Abbuchung**.
+
+## Rechtskonformer Kauf (deutsches Recht)
+
+Der In-App-Kauf des Moduls erfüllt die Fernabsatz-Pflichten:
+
+- **Button-Lösung (§312j Abs. 3 BGB):** Bestell-Button „Kostenpflichtig kaufen".
+- **Preis sichtbar vor der Bestellung** (Pflicht) – ohne geladenen Preis kein Kauf.
+- **Pflichtangaben unmittelbar davor (§312j Abs. 2):** Preis, Testphase, Laufzeit,
+  Verlängerung, Kündigung, Zahlungsart (SEPA), Widerruf – aus Magicline `termInformation`.
+- **Widerruf (§356 BGB):** ausdrückliche Einwilligung zur sofortigen Ausführung →
+  bei sofortiger Nutzung ausgeschlossen; anteiliger Wertersatz bei Widerruf vor Erfüllung.
+
+> ⚠️ Die konkreten Rechtstexte gehören **vor Go-Live anwaltlich geprüft**
+> (siehe `docs/PREMIUM-RECHT.md`).
 
 ## Warum dieser Weg?
 

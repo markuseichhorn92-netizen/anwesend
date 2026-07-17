@@ -4404,7 +4404,10 @@
       '<div style="display:flex;gap:9px;margin-top:9px">'+
         '<button data-act="trainOpen" data-arg="'+esc(p.id)+'" style="flex:1;padding:11px;border:1.5px solid rgba(255,255,255,.5);border-radius:12px;background:transparent;color:#fff;font-weight:800;font-size:13px;cursor:pointer">Plan ansehen</button>'+
         '<button data-act="trainStop" style="padding:11px 15px;border:1.5px solid rgba(255,255,255,.5);border-radius:12px;background:transparent;color:#fff;font-weight:800;font-size:13px;cursor:pointer"'+(S.trainBusy?' disabled':'')+'>Beenden</button>'+
-      '</div></div>';
+      '</div>'+
+      // Auto-Progression: FINN plant die nächste Steigerung aus den protokollierten Einheiten (Premium).
+      '<button data-act="trainProgress"'+(S.trainGenBusy?' disabled':'')+' style="width:100%;margin-top:9px;padding:12px;border:none;border-radius:12px;background:rgba(255,255,255,.16);color:#fff;font-weight:800;font-size:13.5px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px">'+(S.trainGenBusy?(trainSpin(16)+' FINN plant deine Steigerung …'):'📈 Nächste Steigerung (FINN)')+'</button>'+
+    '</div>';
   }
   // FINN-Generator-Aufmacher (öffnet das Formular).
   function trainingGenCta(d){
@@ -6748,7 +6751,17 @@
       if(g) S.trainGenGoal=g.value; if(l) S.trainGenLevel=l.value; if(dd) S.trainGenDays=parseInt(dd.value,10)||3; if(lo) S.trainGenLoc=lo.value; if(nt) S.trainGenNote=nt.value;
       S.trainGenBusy=true; S.trainMsg=''; render();
       api('/api/member/training',{method:'POST',timeoutMs:45000,body:JSON.stringify({action:'generate',goal:S.trainGenGoal,level:S.trainGenLevel,days:S.trainGenDays,location:S.trainGenLoc,note:S.trainGenNote})})
-        .then(function(r){ S.trainGenBusy=false; if(r&&r.ok&&r.plan){ S.trainGenPlan=r.plan; S.trainMsg=''; if(r.quota&&DATA.training) DATA.training.quota=r.quota; } else if(r&&r.error==='premium_required'){ S.trainMsg=r.message||'Dein Gratis-Kontingent ist aufgebraucht.'; } else { S.trainMsg=(r&&r.message)||'Das hat nicht geklappt – bitte gleich nochmal.'; } setS({}); })
+        .then(function(r){ S.trainGenBusy=false; if(r&&r.ok&&r.plan){ S.trainGenPlan=r.plan; S.trainMsg=''; if(r.quota&&DATA.training) DATA.training.quota=r.quota; } else if(r&&r.error==='premium_required'){ S.trainGenOpen=false; nav('ern'); S.ernUpgrade=true; ernEnsureModulePrice(); try{window.scrollTo(0,0);}catch(e){} } else { S.trainMsg=(r&&r.message)||'Das hat nicht geklappt – bitte gleich nochmal.'; } setS({}); })
+        .catch(function(){ S.trainGenBusy=false; S.trainMsg='Das hat nicht geklappt – bitte gleich nochmal.'; setS({}); });
+    },
+    // FINN plant die nächste Steigerung aus den protokollierten Einheiten (Premium).
+    trainProgress:function(){ if(S.trainGenBusy||S.trainBusy) return; S.trainGenBusy=true; S.trainMsg=''; render();
+      api('/api/member/training',{method:'POST',timeoutMs:45000,body:JSON.stringify({action:'progress'})})
+        .then(function(r){ S.trainGenBusy=false;
+          if(r&&r.ok&&r.plan){ S.trainGenPlan=r.plan; S.trainGenOpen=true; S.trainMsg='FINN hat deine nächste Steigerung geplant – prüfen & übernehmen.'; if(r.quota&&DATA.training) DATA.training.quota=r.quota; }
+          else if(r&&r.error==='premium_required'){ nav('ern'); S.ernUpgrade=true; ernEnsureModulePrice(); try{window.scrollTo(0,0);}catch(e){} }
+          else { S.trainMsg=(r&&r.message)||'Das hat nicht geklappt – bitte gleich nochmal.'; }
+          setS({}); })
         .catch(function(){ S.trainGenBusy=false; S.trainMsg='Das hat nicht geklappt – bitte gleich nochmal.'; setS({}); });
     },
     trainGenSave:function(){ if(S.trainBusy||!S.trainGenPlan) return; S.trainBusy=true; render();

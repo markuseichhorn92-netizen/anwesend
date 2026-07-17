@@ -47,6 +47,44 @@ async function loadRot(id) {
 async function saveRot(id, rot) {
   try { await redisPipeline([['SET', RKEY(id), JSON.stringify(rot), 'EX', String(180 * 86400)]]); } catch (e) {}
 }
+
+// ── Trainings-Verlauf: abgeschlossene Einheiten protokollieren (für die FINN-Progression) ──
+// Kompakte Liste pro Mitglied (neueste zuerst), gedeckelt. Basis, aus der FINN die
+// nächste Steigerung ableitet.
+const HKEY = (id) => 'train:hist:' + String(id);
+async function appendHist(id, plan, di, sessn, date) {
+  try {
+    const dayDef = (plan.days || [])[di] || {};
+    const exs = (dayDef.exercises || []).map(function (e, i) {
+      const it = (sessn.items || {})['d' + di + 'e' + i] || {};
+      return { n: String((e && e.name) || '').slice(0, 40), s: (it.sets | 0), bio: !!(e && e.bio) };
+    });
+    const entry = { t: date, day: di, title: String(dayDef.name || ('Tag ' + (di + 1))).slice(0, 40), ex: exs };
+    await redisPipeline([['LPUSH', HKEY(id), JSON.stringify(entry)], ['LTRIM', HKEY(id), '0', '39'], ['EXPIRE', HKEY(id), String(220 * 86400)]]);
+  } catch (e) {}
+}
+async function loadHist(id, n) {
+  try {
+    const [r] = await redisPipeline([['LRANGE', HKEY(id), '0', String((n || 24) - 1)]]);
+    if (!Array.isArray(r)) return [];
+    return r.map(function (x) { try { return JSON.parse(x); } catch (e) { return null; } }).filter(Boolean);
+  } catch (e) { return []; }
+}
+// Aktuellen Plan + Verlauf als kompakten Text für den FINN-Progressions-Prompt.
+function planSummaryText(p) {
+  const days = (p.days || []).map(function (d) {
+    const ex = (d.exercises || []).map(function (e) { return (e.name || '') + (e.bio ? ' (Biostrength)' : (e.sets ? (' ' + e.sets + '×' + (e.reps || '')) : '')); }).join(', ');
+    return (d.name || 'Tag') + ': ' + ex;
+  }).join(' | ');
+  return (p.title || 'Plan') + ' — ' + days;
+}
+function histSummaryText(hist) {
+  // hist ist neueste→älteste (LPUSH) -> für den Prompt umdrehen.
+  return hist.slice().reverse().map(function (h) {
+    const ex = (h.ex || []).map(function (e) { return e.n + (e.bio ? '✓' : (e.s ? (' ' + e.s + 'S') : '')); }).join(', ');
+    return h.t + ' ' + (h.title || '') + ': ' + ex;
+  }).join(' | ');
+}
 // Welcher Plan-Tag ist heute dran? Ein heute bereits angefangener Tag hat
 // Vorrang, ein heute abgeschlossener bleibt stehen (Erfolgsansicht), sonst
 // rotiert es auf den Tag NACH dem zuletzt abgeschlossenen. Planwechsel setzt
@@ -149,7 +187,7 @@ module.exports = async function handler(req, res) {
             const exN = (dayDef && dayDef.exercises && dayDef.exercises.length) || 0;
             let doneN = 0;
             for (let i = 0; i < exN; i++) { const d2 = sess.items['d' + di + 'e' + i]; if (d2 && d2.done) doneN++; }
-            if (exN > 0 && doneN === exN) await saveRot(id, { planId: active.plan.id, day: di, date: date });
+            if (exN > 0 && doneN === exN) { await saveRot(id, { planId: active.plan.id, day: di, date: date }); await appendHist(id, active.plan, di, sess, date); }
           }
         }
       } else if (action === 'session-reset') {
@@ -214,6 +252,32 @@ module.exports = async function handler(req, res) {
       // (auch Premium, damit die Nutzungsübersicht stimmt); gedeckelt wird nur Basic.
       const used = await Quota.incr(id, month);
       return j(res, 200, { ok: true, plan: plan, quota: Quota.publicQuota(used, premium, month) });
+    }
+
+    // FINN plant die NÄCHSTE Steigerung aus dem Trainingsprotokoll (Premium/Kontingent).
+    if (action === 'progress') {
+      if (!AI.hasAI) return j(res, 200, { ok: false, error: 'no_ai', message: 'FINN ist gerade nicht verfügbar.' });
+      const active = await T.resolveActive(id);
+      if (!active || !active.plan) return j(res, 200, { ok: false, error: 'no_plan', message: 'Du hast noch keinen aktiven Plan – wähle oder erstelle zuerst einen.' });
+      const premium = Ent.isPremium(await Ent.getEntitlement(id));
+      const month = Quota.monthOf(berlinDate());
+      if (!premium && !(await Quota.canUse(id, month))) {
+        return j(res, 200, { ok: false, error: 'premium_required', quota: 'exhausted', message: 'Die automatische Progression ist eine Premium-Funktion. Mit Premium plant FINN deinen Fortschritt aus deinen Einheiten.' });
+      }
+      const hist = await loadHist(id, 24);
+      if (hist.length < 2) return j(res, 200, { ok: false, error: 'no_history', message: 'Protokolliere zuerst ein paar Einheiten – dann plant FINN daraus die nächste Steigerung.' });
+      const r = await AI.trainingPlan({
+        goal: active.plan.goal || 'ganzkoerper', level: active.plan.level || 'mittel',
+        daysPerWeek: (active.plan.days || []).length || 3,
+        location: active.plan.location || 'studio', equipment: active.plan.equipment,
+        firstName: (sess && sess.firstName) || '', equipmentContext: T.STUDIO_EQUIPMENT,
+        progression: { planText: planSummaryText(active.plan), historyText: histSummaryText(hist) },
+      });
+      if (!r.ok || !r.plan) return j(res, 200, { ok: false, error: 'gen_failed', message: 'Das hat gerade nicht geklappt – bitte gleich noch einmal.' });
+      const plan = T.normalizePlan(r.plan, 'finn');
+      if (!plan) return j(res, 200, { ok: false, error: 'gen_failed', message: 'Das hat gerade nicht geklappt – bitte gleich noch einmal.' });
+      const used = await Quota.incr(id, month);
+      return j(res, 200, { ok: true, plan: plan, progression: true, basedOn: hist.length, quota: Quota.publicQuota(used, premium, month) });
     }
 
     return j(res, 200, { ok: false, error: 'unknown_action' });
