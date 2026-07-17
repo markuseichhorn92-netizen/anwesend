@@ -61,7 +61,7 @@
   .shell{width:100%;max-width:480px;margin:0 auto;min-height:100dvh;display:flex;flex-direction:column}
   .brandbar{position:fixed;top:0;left:0;right:0;z-index:50;max-width:480px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:calc(14px + env(safe-area-inset-top,0px)) 20px 14px;background:linear-gradient(160deg,#0e6072,#063540)}
   /* Mobil (eingeloggt): KEINE Logo-Leiste – der Hero ist der Kopf (Full-Bleed, wie im Mockup). */
-  @media(max-width:999px){ .app-in .brandbar{display:none} .app-in .maincol{padding-top:0} .app-in .body{padding-top:calc(50px + var(--sat))} .app-in.noappbar .body{padding-top:var(--sat)} }
+  @media(max-width:999px){ .app-in .brandbar{display:none} .app-in .maincol{padding-top:0} .app-in .body{padding-top:var(--abh, calc(50px + var(--sat)))} .app-in.noappbar .body{padding-top:var(--sat)} }
   /* Home-Hero */
   .homeHero{position:relative;overflow:hidden;background:linear-gradient(160deg,#0a4958 0%,#073e4b 55%,#063540 100%);border-radius:24px;padding:22px 20px;margin-bottom:16px;box-shadow:0 16px 40px rgba(4,33,40,.20)}
   @media(max-width:999px){ .app-in .homeHero{margin:0 -16px 16px;border-radius:0 0 28px 28px;padding:18px 22px 22px;box-shadow:none} }
@@ -269,10 +269,16 @@
      Desktop ausgeblendet – dort tragen Sidebar + Topbar die gleiche Funktion. */
   #appbar{position:fixed;top:0;left:0;right:0;z-index:55;max-width:480px;margin:0 auto;
     display:none;align-items:center;gap:10px;box-sizing:border-box;
-    padding:calc(var(--sat) + 6px) 12px 8px 14px;
+    padding:calc(var(--sat) + 6px) 14px 9px 16px;
     background:linear-gradient(160deg,#0e6072,#0a4958);color:#fff;
-    box-shadow:0 6px 20px rgba(4,33,40,.20)}
+    border-radius:0 0 22px 22px;box-shadow:0 10px 26px rgba(4,33,40,.22)}
   .app-in #appbar.on{display:flex}
+  /* Startseite: EIN einheitlicher Kopf – Datum + Begrüßung links, Postfach + Initialen rechts. */
+  #appbar.ab-home{align-items:center;padding:calc(var(--sat) + 12px) 16px 18px 20px}
+  #appbar .ab-left{flex:1;min-width:0}
+  #appbar .ab-date{font-size:12.5px;font-weight:600;color:#bfe0e6;line-height:1.2}
+  #appbar .ab-greet{font-size:23px;font-weight:900;color:#fff;letter-spacing:-.5px;line-height:1.12;margin-top:3px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+  #appbar .ab-right{display:flex;align-items:center;gap:10px;flex-shrink:0}
   #appbar .ab-title{flex:1;min-width:0;font-size:18px;font-weight:900;letter-spacing:-.3px;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   #appbar .ab-btn{position:relative;width:36px;height:36px;border-radius:12px;border:none;background:rgba(255,255,255,.16);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;padding:0}
   #appbar .ab-btn:active{background:rgba(255,255,255,.26)}
@@ -1825,7 +1831,6 @@
     // Schnellzugriff (Funktionen vor Inhalten) → Entdecken.
     var discover=homeInsta()+homeBlog();
     return ''+
-      homeHero()+
       homeCoachHero()+
       checkinBtn()+
       homeMeinTagHero()+
@@ -6675,13 +6680,24 @@
     var ab=$('appbar');
     if(ab){
       var abSc=S.screen;
-      var abTitle=(abSc==='home')?'Start':(TITLES[abSc]||'');
-      var abIsRoot=!!APPBAR_ROOTS[abSc];
-      var abLeft=abIsRoot?'':'<button class="ab-btn" data-act="nav" data-arg="'+esc(APPBAR_BACK[abSc]||'home')+'" aria-label="Zurück">'+svg(IC.back,{c:'#fff',w:2.2,s:20})+'</button>';
       var abUnread=pfUnread()>0;
       var abBell='<button class="ab-btn" data-act="nav" data-arg="postfach" aria-label="Postfach">'+svg('<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.7 21a2 2 0 0 1-3.4 0"></path>',{c:'#fff',w:1.9,s:20})+(abUnread?'<span class="ab-dot"></span>':'')+'</button>';
       var abAva='<button class="ab-ava" data-act="avatarTap" aria-label="Profil &amp; Menü öffnen">'+esc(initials(DATA.profile))+'</button>';
-      ab.innerHTML=abLeft+'<div class="ab-title">'+esc(abTitle)+'</div>'+abBell+abAva;
+      var abRight='<div class="ab-right">'+abBell+abAva+'</div>';
+      if(abSc==='home'){
+        // Startseite: EIN einheitlicher Kopf – Datum + Begrüßung links, Postfach + Initialen rechts.
+        var nm=(DATA.profile&&DATA.profile.firstName)||'';
+        var d=new Date();
+        var wd=['Sonntag','Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag'][d.getDay()];
+        var mn=['Jan.','Feb.','März','Apr.','Mai','Juni','Juli','Aug.','Sept.','Okt.','Nov.','Dez.'][d.getMonth()];
+        ab.classList.add('ab-home');
+        ab.innerHTML='<div class="ab-left"><div class="ab-date">'+esc(wd+', '+d.getDate()+'. '+mn)+'</div><div class="ab-greet">'+greetLine(nm)+'</div></div>'+abRight;
+      } else {
+        ab.classList.remove('ab-home');
+        var abIsRoot=!!APPBAR_ROOTS[abSc];
+        var abLeft=abIsRoot?'':'<button class="ab-btn" data-act="nav" data-arg="'+esc(APPBAR_BACK[abSc]||'home')+'" aria-label="Zurück">'+svg(IC.back,{c:'#fff',w:2.2,s:20})+'</button>';
+        ab.innerHTML=abLeft+'<div class="ab-title">'+esc(TITLES[abSc]||'')+'</div>'+abRight;
+      }
     }
     if(tb){
       var c=DATA.contract; var badge='';
@@ -6902,8 +6918,10 @@
     var abOn = !!TOKEN && S.screen!=='login' && S.screen!=='alogin' && !chatFull && !S.qaOpen && !abFull && obDone() && !tourActive();
     var abar=$('appbar');
     if(abar) abar.classList.toggle('on', abOn);
-    // Ohne sichtbare Leiste kein 56px-Vorhalt (sonst Lücke oben in Vollbild-Flows).
+    // Ohne sichtbare Leiste kein Vorhalt (sonst Lücke oben in Vollbild-Flows).
     document.body.classList.toggle('noappbar', !abOn);
+    // Inhalts-Vorhalt exakt auf die gemessene Leisten-Höhe setzen (Startseite ist höher).
+    if(abOn && abar && window.innerWidth<1000){ var abh=abar.getBoundingClientRect().height; if(abh>0) document.documentElement.style.setProperty('--abh', Math.round(abh)+'px'); }
     // Overscroll-Farbe oben: teal nur auf der Startseite (passend zum Hero).
     document.body.classList.toggle('onHome', S.screen==='home');
     document.body.classList.toggle('qaOn', !!S.qaOpen);   // FINN-FAB ausblenden, solange das Popup offen ist
