@@ -24,7 +24,6 @@ const M = require('../../lib/members');
 const Mod = require('../../lib/mlModules');
 const MlPremium = require('../../lib/mlPremium');
 const Ent = require('../../lib/entitlements');
-const Connect = require('../../lib/connect');
 const Inbox = require('../../lib/inbox');
 const SR = require('../../lib/studioReply');
 const { sendMailRaw, hasMail } = require('../../lib/mail');
@@ -82,21 +81,19 @@ module.exports = async function handler(req, res) {
     try { r = await Mod.listModules(mid); } catch (e) { r = { available: false }; }
     const available = !!(r && r.available);
     // Ernährungs-Premium (Zusatzmodul, SEPA) für die Vertragsverwaltung. Die Karte
-    // erscheint, sobald das Modul TATSÄCHLICH gebucht ist – auch dann, wenn Premium
-    // gerade dem Stripe-Abo zugeschrieben wird (Stripe hat Vorrang). Sonst bliebe ein
-    // parallel gebuchtes Modul unsichtbar und unkündbar. stripeAlso warnt vor Doppelzahlung.
+    // erscheint, sobald das Modul TATSÄCHLICH gebucht ist (per gemerkter Vertrags-ID
+    // verifiziert) – auch dann, wenn Premium gerade dem Stripe-Abo zugeschrieben wird
+    // (Stripe hat Vorrang). Sonst bliebe ein parallel gebuchtes Modul unsichtbar und
+    // unkündbar. stripeAlso warnt vor Doppelzahlung.
     let premium = null;
     if (Mod.premiumConfigured()) {
       try {
-        await MlPremium.reconcile(sess.id);   // Entitlement frisch halten
-        const bp = available ? (r.booked || []).find((x) => Mod.isPremiumModule(x && x.moduleId)) : null;
-        let ent = null; try { ent = await Ent.getEntitlement(sess.id); } catch (e) {}
-        const viaModule = !!(ent && ent.source === 'magicline' && Ent.isPremium(ent));
-        if (bp || viaModule) {
-          let until = null, cancelled = false;
-          if (bp) { cancelled = !!bp.cancelled; if (cancelled && bp.endDate) until = Date.parse(bp.endDate + 'T23:59:59'); }
-          else if (ent) { cancelled = !!ent.cancelAtPeriodEnd; until = ent.until || null; }
-          premium = { active: true, until: (until && !isNaN(until)) ? until : null, cancelAtPeriodEnd: cancelled };
+        await MlPremium.reconcile(sess.id);   // Premium-Quelle (Stripe-Vorrang) frisch halten
+        const st = await MlPremium.moduleStatus(sess.id);   // Modul gebucht? (id-basiert)
+        if (st && st.booked) {
+          const until = (st.cancelled && st.endDate) ? Date.parse(st.endDate + 'T23:59:59') : null;
+          premium = { active: true, until: (until && !isNaN(until)) ? until : null, cancelAtPeriodEnd: !!st.cancelled };
+          let ent = null; try { ent = await Ent.getEntitlement(sess.id); } catch (e) {}
           if (ent && ent.stripeSubId && Ent.isPremium(ent)) premium.stripeAlso = true;
         }
       } catch (e) {}
@@ -129,24 +126,26 @@ module.exports = async function handler(req, res) {
       }
       const m = await M.getMember(sess.id);
       const mid = await membershipId(sess.id);
-      // Modul-Vertrags-ID: aus dem gespiegelten Entitlement, sonst frisch aus Magicline.
+      // Modul-Vertrags-ID kommt AUS DEM ENTITLEMENT (beim Kauf gemerkt) – die Open API hat
+      // keine Auflistung gebuchter Module, das ist die einzige Quelle.
       let ent = null; try { ent = await Ent.getEntitlement(sess.id); } catch (e) {}
-      let moduleContractId = (ent && ent.source === 'magicline' && ent.moduleContractId != null) ? ent.moduleContractId : null;
-      let bookedInfo = null;
-      if (moduleContractId == null) {
-        try { bookedInfo = await Mod.findBookedPremium(mid); } catch (e) {}
-        if (bookedInfo && bookedInfo.id != null) moduleContractId = bookedInfo.id;
+      let moduleContractId = (ent && ent.moduleContractId != null) ? ent.moduleContractId : null;
+      // Nächstmögliches Kündigungsdatum + Existenz per GET-by-ID prüfen.
+      let cancelationDate = null;
+      if (moduleContractId != null) {
+        try { const mc = await Mod.getModuleContract(mid, moduleContractId); if (mc && mc.ok && mc.contract) cancelationDate = mc.contract.nextCancellationDate || mc.contract.endDate || null; } catch (e) {}
       }
-      // Grund + Datum bestmöglich bestimmen (Connect-Gründe; Datum = nächstmögliche Kündigung).
+      // Kündigungsgrund (Pflichtangabe) aus der Open-API-Gründeliste.
       let reasonId = null;
-      try { const rs = await Connect.getCancelationReasons(); reasonId = Connect.pickReasonId(rs, 'sonstiges'); } catch (e) {}
-      let cancelationDate = (bookedInfo && (bookedInfo.nextCancellationDate || bookedInfo.endDate)) || null;
+      try { reasonId = Mod.pickReasonId(await Mod.getCancelationReasons()); } catch (e) {}
 
       let r = { ok: false, status: 0 };
-      if (moduleContractId != null) {
+      // ordinary-cancelation verlangt cancelationDate UND cancelationReasonId (Pflicht) ->
+      // nur versuchen, wenn beides da ist; sonst gleich den Studio-Fallback nutzen.
+      if (moduleContractId != null && cancelationDate && reasonId != null) {
         try { r = await Mod.cancelModule(mid, moduleContractId, { cancelationDate: cancelationDate, cancelationReasonId: reasonId }); } catch (e) { r = { ok: false, status: 0, error: String((e && e.message) || e).slice(0, 200) }; }
       }
-      if (!(r && r.ok)) { try { console.log('[modules] cancel-premium failed', JSON.stringify({ status: (r && r.status) || 0, hasId: moduleContractId != null })); } catch (e) {} }
+      if (!(r && r.ok)) { try { console.log('[modules] cancel-premium failed', JSON.stringify({ status: (r && r.status) || 0, hasId: moduleContractId != null, hasDate: !!cancelationDate, hasReason: reasonId != null })); } catch (e) {} }
 
       if (r && r.ok) {
         // Frisch abgleichen: setzt until = Modul-Ende, Premium läuft bis dahin weiter.
@@ -226,7 +225,8 @@ module.exports = async function handler(req, res) {
       if (Mod.isPremiumModule(moduleId)) {
         try {
           await MlPremium.invalidate(sess.id);
-          if (isBook) await MlPremium.grantFromBooking(sess.id, null);
+          // Beim Kauf die zurückgegebene Modul-Vertrags-ID merken -> spätere Kündigung möglich.
+          if (isBook) await MlPremium.grantFromBooking(sess.id, (r && r.moduleContractId) || null);
           await MlPremium.reconcile(sess.id);
         } catch (e) {}
       }

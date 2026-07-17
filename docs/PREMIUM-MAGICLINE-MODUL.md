@@ -30,8 +30,22 @@ vom Modulstatus überschrieben (`lib/mlPremium.js`).
 
 Der in `ML_API_KEY` hinterlegte Open‑API‑Key braucht:
 
-- `MEMBERSHIP_SELF_SERVICE_ADDITIONAL_MODULE_*` – buchen & kündigen (Self‑Service).
-- `ADDITIONAL_MODULE_CONTRACT_READ` – gebuchte Module lesen (für Status/Kündigung).
+- `MEMBERSHIP_SELF_SERVICE_ADDITIONAL_MODULE_READ` – buchbare Module lesen.
+- `MEMBERSHIP_SELF_SERVICE_ADDITIONAL_MODULE_WRITE` – buchen & kündigen.
+- `MEMBERSHIP_SELF_SERVICE_ADDITIONAL_MODULE_CONTRACT_READ` – gebuchten Modul‑Vertrag per ID lesen (Status/Kündigungsdatum).
+- `MEMBERSHIP_SELF_SERVICE_READ` – Kündigungsgründe lesen (Pflichtangabe beim Kündigen).
+
+### Wichtig: Die Open API hat KEINE „gebuchte Module auflisten"-Funktion
+
+Die Magicline Open API kann die gebuchten Zusatzmodule eines Mitglieds **nicht
+auflisten** – es gibt nur *buchen* (liefert die Modul‑Vertrags‑ID zurück), *per ID
+lesen* und *per ID kündigen*. Deshalb merkt sich die App die beim Kauf zurückgegebene
+`additionalModuleContractId` (im Entitlement‑Datensatz) und nutzt sie später zum
+Statusabgleich und zur Kündigung.
+
+Konsequenz: **Nur ein Premium, das über die App gebucht wurde, ist auch in der App
+kündbar.** Ein direkt in Magicline (Studio) gebuchtes Modul kennt die App nicht – dessen
+Kündigung läuft dann über Magicline bzw. den automatischen Studio‑Fallback.
 
 ### 3. Umgebungsvariable setzen
 
