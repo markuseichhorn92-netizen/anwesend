@@ -8446,8 +8446,8 @@
   // zuverlässig -> die Leiste wird viel zu hoch. Wir messen den echten Wert per
   // versteckter Sonde und setzen --sat gedeckelt per JS (Math.min wirkt immer).
   // Im Browser ist env korrekt, dort ist die Deckelung ein No-Op.
-  var __satProbe=null;
-  function measureSat(){
+  var __satProbe=null, __satMax=0;
+  function measureSat(reset){
     try{
       if(!__satProbe){
         __satProbe=document.createElement('div');
@@ -8456,12 +8456,20 @@
       }
       var raw=__satProbe.getBoundingClientRect().height||0;
       var sat=Math.max(0, Math.min(Math.round(raw), 60));
-      document.documentElement.style.setProperty('--sat', sat+'px');
+      if(reset) __satMax=0;
+      // WICHTIG: iOS/WKWebView meldet env(safe-area-inset-top) WÄHREND des Scrollens
+      // zeitweise 0. Würden wir das übernehmen, rutscht die Leiste unter Uhr/Akku.
+      // Darum nur nach OBEN nachführen; nach unten nur bewusst bei Orientierungs-
+      // wechsel (reset), wo sich der echte Inset tatsächlich ändern darf.
+      if(sat>__satMax) __satMax=sat;
+      document.documentElement.style.setProperty('--sat', __satMax+'px');
     }catch(e){}
   }
-  measureSat();
-  window.addEventListener('resize', measureSat);
-  window.addEventListener('orientationchange', function(){ setTimeout(function(){ measureSat(); try{ if(TOKEN) render(); }catch(e){} }, 140); });
+  measureSat(true);
+  setTimeout(function(){ measureSat(false); }, 400);
+  setTimeout(function(){ measureSat(false); }, 1200);
+  window.addEventListener('resize', function(){ measureSat(false); });
+  window.addEventListener('orientationchange', function(){ setTimeout(function(){ measureSat(true); try{ if(TOKEN) render(); }catch(e){} }, 160); });
   ciLoad();
   loadAppInfo();   // Store-Links fürs App-Banner + serverseitige Feature-Flags
   if(ALT){ bootActionLogin(ALT); }
