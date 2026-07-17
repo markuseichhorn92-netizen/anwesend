@@ -3080,6 +3080,11 @@
     var headline, ctaLabel, fine, consentText;
     var moduleInfoBox='', buyBlocked=false;
     if(moduleMode){
+      // Selbstheilend: den Modul-Preis IMMER laden, sobald der Kauf-Screen im
+      // Modul-Modus rendert – unabhängig davon, wie er geöffnet wurde. (Früher nur
+      // beim Öffnen via ernEnsureModulePrice; war DATA.nutri da noch nicht geladen,
+      // blieb der Preis für immer bei „wird geladen …".) loadModules ist idempotent.
+      if(!ernModulesLoaded()) loadModules();
       // Preis + Testphase + Pflichtangaben aus der Zusatzmodul-Liste.
       var mb=ernModuleBookable()||{};
       var mp=ernModulePrice();
@@ -4275,7 +4280,7 @@
   function scrCoach(){
     var wrap=function(inner){ return '<div class="ernwrap" style="padding-bottom:40px">'+inner+'</div>'; };
     // Unteransichten (Lektion / Vertiefung / Check-in / Upgrade / Nutrition-Chat) – bestehende Renderer.
-    if(S.ernUpgrade) return wrap(ernUpgradeScreen());
+    if(S.ernUpgrade){ if(ERN_ON && DATA.nutri==null) loadNutri(); return wrap(ernUpgradeScreen()); }
     if(S.ernLesson||S.ernVert) return wrap(ernLesson());
     if(S.ernCk) return wrap(ernCheckinScreen());
     if(ERN_ON && DATA.nutri==null) loadNutri();   // Ernährungs-Erkenntnisse im Coach mit Live-Daten füttern
@@ -4301,7 +4306,15 @@
     if(c&&c.ok&&c.available!==false){
       program='<div style="font-size:17px;font-weight:900;color:var(--text);letter-spacing:-.3px;margin:22px 2px 12px">Dein Coaching-Programm</div>'+ernCoachHome();
     }
-    return wrap(header+tipHero+insights+motiv+program);
+    return wrap(header+tipHero+insights+motiv+coachFigurCard()+program);
+  }
+  // Einstieg in den Figur-Check (Maße & Fortschritt) aus dem Coach-Hub.
+  function coachFigurCard(){
+    return '<button data-act="nav" data-arg="figur" style="width:100%;text-align:left;border:none;cursor:pointer;font-family:inherit;background:var(--surface);border-radius:20px;box-shadow:0 12px 30px rgba(4,33,40,.09);padding:16px;margin-bottom:14px;display:flex;gap:13px;align-items:center">'+
+      '<div style="width:46px;height:46px;border-radius:14px;background:#FBEFE2;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+svg('<path d="M3 3v18h18"></path><path d="M7 14l4-4 3 3 5-6"></path>',{c:'#E08C53',w:1.9,s:22})+'</div>'+
+      '<div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:900;color:var(--text)">Figur-Check</div>'+
+      '<div style="font-size:12.5px;font-weight:600;color:var(--text-soft);line-height:1.45;margin-top:2px">Maße &amp; Umfänge festhalten – sieh deinen Fortschritt in Kurven &amp; Vorher-Nachher.</div></div>'+
+      svg('<path d="M9 6l6 6-6 6"></path>',{c:'var(--text-soft)',w:2.2,s:18})+'</button>';
   }
   // Reine Coaching-Erkenntnisse: ganzheitlicher Blick + Abschnitt Training + Abschnitt Ernährung.
   // Datenbasiert (sofort, datensparsam) – die FINN-Analyse (KI) ergänzt den ganzheitlichen Blick auf Tipp.
@@ -5455,7 +5468,7 @@
   }
   function figFmt(v,dec){ if(v==null) return '—'; return (dec?Number(v).toFixed(dec).replace(/\.0$/,''):String(v)); }
   function scrFigur(){
-    var head=subHeader('Figur-Check','Deine Maße & dein Fortschritt','profil');
+    var head=subHeader('Figur-Check','Deine Maße & dein Fortschritt','coach');
     var CARD='background:var(--surface);border-radius:18px;box-shadow:0 10px 28px rgba(4,33,40,.08);padding:18px';
     var d=DATA.figur;
     if(d===false||d==null){ return '<div class="narrow">'+head+'<div style="'+CARD+';text-align:center;color:var(--text-soft)">Lädt …</div></div>'; }
@@ -5582,7 +5595,6 @@
       row('postfach','Postfach',(un>0?(un+' ungelesene Nachricht'+(un===1?'':'en')):'Nachrichten & FINN'),IC.mail,un>0)+
       row('appt','Termine','Buchen & verwalten',IC.cal)+
       row('fort','Fortschritt & Vitalität','Rang, Punkte, Aktivitäts-Alter',AWARD,true)+
-      row('figur','Figur-Check','Maße, Umfänge & Fortschrittskurven','<path d="M3 3v18h18"></path><path d="M7 14l4-4 3 3 5-6"></path>',true)+
       (ERN_ON?row('ern','Ernährung','Tagesziel, Tracking & Rezepte','<path d="M11 21A7 7 0 0 1 4 14C4 8.5 8 4 13.5 4c2.7 0 4.6 1 6.5 1.8 0 8.7-4.3 15.2-9 15.2z"></path><path d="M11 21c0-5.5 3.3-10 7.5-12"></path>'):'')+
       (ERN_ON?row('finnusage','FINN-Nutzung','KI-Kontingent & Verbrauch','<path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.5 8.6 8.6 0 0 1-4-1L3 20l1-5a8.4 8.4 0 0 1-1-4A8.5 8.5 0 0 1 11.5 3 8.5 8.5 0 0 1 21 11.5z"></path>'):'')+
       (SOCIAL_ON?row('social','Trainingspartner','Verbinden, Chat & Challenges','<circle cx="9" cy="7" r="3"></circle><path d="M2.5 20c0-3.3 2.9-6 6.5-6s6.5 2.7 6.5 6"></path><circle cx="17.5" cy="8.5" r="2.4"></circle><path d="M16 14.2c2.6.4 4.5 2.5 4.5 5.3"></path>',(DATA.social&&DATA.social.requests&&DATA.social.requests.length>0)):'')+

@@ -5,7 +5,7 @@ Das Mitglied erfasst über die Zeit **Gewicht + Umfänge** (Taille, Hüfte, Brus
 Arm, Bein) und optional **Körperfett**, sieht seinen **Verlauf als Kurve** und
 einen **Vorher-Nachher-Vergleich** (Start → aktuell je Messgröße).
 
-Erreichbar über **Profil → Figur-Check** (Deep-Link `?go=figur`).
+Erreichbar über den **Coach-Bereich → Figur-Check** (Deep-Link `?go=figur`).
 
 ## Für wen / was kostet es
 
