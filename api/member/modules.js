@@ -102,9 +102,12 @@ module.exports = async function handler(req, res) {
         }
       } catch (e) {}
     }
-    // Das Premium-Modul selbst wird über die Premium-Karte verwaltet -> aus den
-    // generischen Modul-Listen herausfiltern (sonst doppelt).
+    // Das Premium-Modul selbst wird über die Premium-Karte/den Kauf-Screen verwaltet ->
+    // aus den generischen Modul-Listen herausfiltern (sonst doppelt). Sein buchbares
+    // Angebot (Preis, Testphase, Pflichtangaben) wird separat als premiumOffer geliefert,
+    // damit der Kauf-Screen den Preis anzeigen kann.
     const notPrem = (list, key) => (list || []).filter((x) => !Mod.isPremiumModule(x && x[key]));
+    const premiumOffer = available ? ((r.bookable || []).find((x) => Mod.isPremiumModule(x && x.id)) || null) : null;
     res.statusCode = 200;
     return res.end(JSON.stringify({
       ok: true,
@@ -112,6 +115,7 @@ module.exports = async function handler(req, res) {
       booked: available ? notPrem(r.booked, 'moduleId') : [],
       bookable: available ? notPrem(r.bookable, 'id') : [],
       premium: premium,
+      premiumOffer: premiumOffer,
     }));
   }
 

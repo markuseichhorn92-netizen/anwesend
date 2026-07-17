@@ -680,7 +680,7 @@
   // der bestehende Kontakt-/Beratungsweg bleibt als Fallback erhalten.
   var modulesBusy=false;
   function loadModules(){ if(modulesBusy) return; if(DATA.modules&&typeof DATA.modules==='object') return; modulesBusy=true;
-    api('/api/member/modules').then(function(d){ modulesBusy=false; DATA.modules=(d&&d.ok)?{available:!!d.available,booked:(d.booked||[]),bookable:(d.bookable||[]),premium:(d.premium||null)}:{available:false}; render(); })
+    api('/api/member/modules').then(function(d){ modulesBusy=false; DATA.modules=(d&&d.ok)?{available:!!d.available,booked:(d.booked||[]),bookable:(d.bookable||[]),premium:(d.premium||null),premiumOffer:(d.premiumOffer||null)}:{available:false}; render(); })
       .catch(function(){ modulesBusy=false; DATA.modules={available:false}; render(); }); }
   // Ernährungs-Premium (Magicline-Zusatzmodul, SEPA) in der Vertragsverwaltung kündigen.
   // Kündigt NUR das Modul, nie die Mitgliedschaft; Modul-Vertrags-ID kommt server-seitig.
@@ -2804,12 +2804,16 @@
   function ernModuleMode(){ return !!(DATA.nutri && DATA.nutri.premiumModuleId); }
   function ernModuleId(){ return (DATA.nutri && DATA.nutri.premiumModuleId) || null; }
   function ernViaModule(){ return !!(DATA.nutri && DATA.nutri.premiumViaModule); }
-  // Buchbares Premium-Modul aus der Zusatzmodul-Liste (falls schon geladen) – für Preis + Trial.
+  // Buchbares Premium-Modul (Preis + Trial + Pflichtangaben). Kommt separat als
+  // premiumOffer, weil das Premium-Modul aus der generischen bookable-Liste gefiltert ist.
   function ernModuleBookable(){
-    var d=DATA.modules; if(!d||!Array.isArray(d.bookable)) return null;
-    var mid=String(ernModuleId());
-    return d.bookable.filter(function(x){ return String(x.id)===mid; })[0]||null;
+    var d=DATA.modules; if(!d) return null;
+    if(d.premiumOffer) return d.premiumOffer;
+    if(Array.isArray(d.bookable)){ var mid=String(ernModuleId()); return d.bookable.filter(function(x){ return String(x.id)===mid; })[0]||null; }
+    return null;
   }
+  // Wurde die Modul-Liste schon geladen? (unterscheidet „lädt noch" von „nicht abrufbar")
+  function ernModulesLoaded(){ return !!(DATA.modules&&typeof DATA.modules==='object'); }
   function ernModulePrice(){ var m=ernModuleBookable(); return (m&&m.price)||null; }
   function ernModuleTrialDays(){ var m=ernModuleBookable(); var td=m&&parseInt(m.trialDays,10); return (td>0)?td:0; }
   // Trial-Ende (nur wenn Premium gerade im Test läuft) – Datum 'YYYY-MM-DD'.
@@ -3090,7 +3094,7 @@
       var infoRow=function(k,v){ return '<div style="display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-top:1px solid rgba(255,255,255,.12)"><span style="font-size:12px;font-weight:700;color:#bfe0e6;flex-shrink:0">'+k+'</span><span style="font-size:12.5px;font-weight:800;color:#fff;text-align:right">'+v+'</span></div>'; };
       moduleInfoBox='<div style="background:rgba(255,255,255,.10);border-radius:16px;padding:4px 16px 12px;margin-top:20px">'
         +'<div style="font-size:12px;font-weight:900;color:#fff;text-transform:uppercase;letter-spacing:.4px;padding:13px 0 3px">Das Wichtigste zum Vertrag</div>'
-        +infoRow('Preis', mp?(esc(mp)+' / Monat (inkl. MwSt)'):'wird geladen …')
+        +infoRow('Preis', mp?(esc(mp)+' / Monat (inkl. MwSt)'):(ernModulesLoaded()?'derzeit nicht abrufbar':'wird geladen …'))
         +(td>0?infoRow('Testphase', td+' Tage gratis'):'')
         +infoRow('Laufzeit', esc(mb.laufzeit||'—'))
         +infoRow('Verlängerung', esc(mb.verlaengerung||'—'))
@@ -3123,6 +3127,7 @@
       moduleInfoBox+
       buyConsent+
       '<button data-act="ernUpgradeGo" '+((busy||buyBlocked)?'disabled ':'')+'style="width:100%;margin-top:16px;padding:17px;border:none;border-radius:16px;background:#ffffff;color:#0E6072;font-weight:900;font-size:16.5px;cursor:pointer;opacity:'+((busy||buyBlocked||!S.ernBuyConsent)?'.55':'1')+'">'+ctaLabel+'</button>'+
+      ((moduleMode&&buyBlocked&&ernModulesLoaded())?'<button data-act="ernModulePriceRetry" style="width:100%;margin-top:8px;padding:10px;border:none;background:transparent;color:#eafff4;font-weight:800;font-size:13px;cursor:pointer;text-decoration:underline">Preis erneut laden</button>':'')+
       '<div style="font-size:11.5px;color:#bfe0e6;font-weight:600;text-align:center;line-height:1.5;margin-top:12px">'+fine+'</div>'+
       legalLink+
       err+
@@ -7082,6 +7087,7 @@
       .then(function(d){ if(d&&d.ok){ DATA.nutri=d; var nm=(d.added&&d.added[0]&&d.added[0].name)||'Favorit'; S.ernMsg='Protokolliert: '+nm; S.ernErr=false; render(); } else { S.ernErr=true; S.ernMsg=(d&&d.message)||'Konnte nicht protokollieren – bitte erneut.'; render(); } }).catch(function(){ S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); }); },
     // ── Premium (Freemium/Stripe) ──
     ernUpgradeOpen:function(){ setS({ernUpgrade:true, ernMsg:'', ernErr:false}); ernEnsureModulePrice(); },
+    ernModulePriceRetry:function(){ DATA.modules=null; try{ loadModules(); }catch(e){} render(); },
     // Aus dem Profil-Bereich „FINN-Nutzung": ins Ernährungsmodul wechseln und Upgrade öffnen.
     ernUsageUpgrade:function(){ nav('ern'); S.ernUpgrade=true; ernEnsureModulePrice(); render(); try{ window.scrollTo(0,0); }catch(e){} },
     ernUpgradeClose:function(){ setS({ernUpgrade:false, ernMsg:'', ernErr:false}); },
