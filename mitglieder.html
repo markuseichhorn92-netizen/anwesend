@@ -4582,9 +4582,13 @@
   function trainRunItems(){ var d=DATA.training||{}; var mp=d.myPlan&&d.myPlan.plan; if(!mp||!mp.days) return []; var day=mp.days[trainTodayDay(mp)]||mp.days[0]; return (day&&day.exercises)||[]; }
   function trainSessItem(key){ var s=(DATA.trainSess&&DATA.trainSess.items)||{}; return s[key]||{done:false,sets:0}; }
   function trainSessLocal(key){ DATA.trainSess=DATA.trainSess||{items:{}}; DATA.trainSess.items=DATA.trainSess.items||{}; if(!DATA.trainSess.items[key]) DATA.trainSess.items[key]={done:false,sets:0}; return DATA.trainSess.items[key]; }
+  // Einheitlicher „‹ Zurück"-Kopf für alle Detail-/Unteransichten (Training-Detail,
+  // Plan-Generator, Tracker, Rezept-Detail …). Ersetzt die früher uneinheitlichen
+  // Zurück-Buttons (mal „Fertig", mal „Zurück", mal Chip, mal Text-Link).
+  function subBack(act,label){ return '<button data-act="'+act+'" style="display:inline-flex;align-items:center;gap:6px;background:none;border:none;color:var(--teal-ink);font-size:13.5px;font-weight:800;margin:2px 0 12px;padding:0;cursor:pointer;font-family:inherit">'+svg(IC.back,{c:'var(--teal-ink)',w:2.2,s:17})+esc(label||'Zurück')+'</button>'; }
   function trainingRun(){
     var d=DATA.training||{}; var mp=d.myPlan&&d.myPlan.plan;
-    var back='<button data-act="trainRunClose" style="display:inline-flex;align-items:center;gap:6px;background:none;border:none;color:var(--teal-ink);font-size:13.5px;font-weight:800;margin:2px 0 12px;padding:0;cursor:pointer">'+svg(IC.back,{c:'var(--teal-ink)',w:2.2,s:17})+'Fertig</button>';
+    var back=subBack('trainRunClose');
     if(!mp||!mp.days||!mp.days.length){ return '<div style="padding:0 2px">'+back+trainCardBox('<div style="font-size:14px;font-weight:600;color:var(--text-soft)">Kein Plan aktiv – wähl zuerst einen Trainingsplan.</div>')+'</div>'; }
     var di=trainTodayDay(mp);
     var dayTabs='';
@@ -4863,7 +4867,7 @@
     if(!p){ var lib=Array.isArray(d.plans)?d.plans:[]; for(var i=0;i<lib.length;i++){ if(String(lib[i].id)===String(id)){ p=lib[i]; break; } } }
     // Für Bibliotheks-Kacheln fehlen die Tage (schlanke Form) -> ggf. nachgeladenes Detail nutzen.
     if(p && !p.days && S.trainDetailFull && String(S.trainDetailFull.id)===String(id)) p=S.trainDetailFull;
-    var back='<button data-act="trainBack" style="display:inline-flex;align-items:center;gap:6px;background:none;border:none;color:var(--teal-ink);font-size:13.5px;font-weight:800;margin:2px 0 12px;padding:0;cursor:pointer">'+svg(IC.back,{c:'var(--teal-ink)',w:2.2,s:17})+'Zurück</button>';
+    var back=subBack('trainBack');
     if(!p){ return '<div style="padding:0 2px">'+back+trainCardBox('<div style="font-size:14px;font-weight:600;color:var(--text-soft)">Plan nicht gefunden.</div>')+'</div>'; }
     var isActive=!!(d.myPlan&&d.myPlan.plan&&String(d.myPlan.plan.id)===String(p.id));
     var head='<div style="background:linear-gradient(150deg,'+ERN_G2+','+ERN_GD+');border-radius:20px;padding:20px;color:#fff;box-shadow:0 14px 34px rgba(14,96,114,.22);margin-bottom:14px">'+
@@ -4899,7 +4903,7 @@
   // FINN-Generator-Formular + Vorschau.
   function trainingGenSheet(){
     var d=DATA.training||{}; var g=d.goals||{}; var lv=d.levels||{}; var loc=d.locations||{};
-    var back='<button data-act="trainGenClose" style="display:inline-flex;align-items:center;gap:6px;background:none;border:none;color:var(--teal-ink);font-size:13.5px;font-weight:800;margin:2px 0 12px;padding:0;cursor:pointer">'+svg(IC.back,{c:'var(--teal-ink)',w:2.2,s:17})+'Zurück</button>';
+    var back=subBack('trainGenClose');
     // Vorschau eines generierten Plans?
     if(S.trainGenPlan){
       var p=S.trainGenPlan;
@@ -5367,7 +5371,7 @@
       var stepBlock=(r.steps&&r.steps.length)?'<div style="font-size:15px;font-weight:900;color:var(--text);margin:18px 0 10px">Zubereitung</div>'+r.steps.map(function(x,i){ return '<div style="display:flex;gap:11px;margin-bottom:9px"><span style="width:24px;height:24px;border-radius:50%;background:'+ERN_G+';color:#fff;font-size:12px;font-weight:900;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+(i+1)+'</span><span style="font-size:13.5px;font-weight:600;color:var(--text-2);line-height:1.5">'+esc(x)+'</span></div>'; }).join(''):'';
       var kochBtn=(r.steps&&r.steps.length)?'<button data-act="ernKochStart" style="width:100%;margin-top:12px;padding:14px;border:1.5px solid '+ERN_G+';background:rgba(14,96,114,.10);color:var(--ern-acc);border-radius:14px;font-weight:900;font-size:14px;cursor:pointer">👨‍🍳 Koch-Modus starten</button>':'';
       var planBtn='<button data-act="ernCookPick" style="width:100%;margin-top:9px;padding:13px;border:1.5px solid var(--border);background:var(--surface);color:var(--teal-ink);border-radius:14px;font-weight:900;font-size:13.5px;cursor:pointer">📅 Zum Koch-Plan hinzufügen</button>';
-      return '<button data-act="ernRecipeBack" style="display:flex;align-items:center;gap:6px;border:none;background:var(--surface);border-radius:12px;padding:9px 14px;cursor:pointer;font-size:13px;font-weight:800;color:var(--teal-ink);margin-bottom:14px;box-shadow:0 6px 16px rgba(4,33,40,.06)">'+svg(IC.back,{c:TEAL,w:2.2,s:16})+'Zurück</button>'+
+      return subBack('ernRecipeBack')+
         '<div style="'+CARD+';overflow:hidden">'+hero+
         '<div style="display:flex;align-items:flex-start;gap:11px"><div style="flex:1;min-width:0"><div style="font-size:20px;font-weight:900;color:var(--text);letter-spacing:-.3px;line-height:1.2">'+esc(r.title)+'</div>'+
         '<div style="font-size:11.5px;font-weight:700;color:var(--text-soft);margin-top:4px">Werte je Portion'+(r.minutes?' · '+r.minutes+' Min':'')+(r.source==='seed'?' · Studio-Rezept':'')+'</div></div>'+(grade?nutriChip(grade,34):'')+'</div>'+
