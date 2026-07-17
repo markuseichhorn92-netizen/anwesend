@@ -98,7 +98,8 @@
   .app-in .burger{display:flex}
   .navOverlay{position:fixed;inset:0;background:rgba(4,20,25,.55);opacity:0;visibility:hidden;transition:opacity .25s ease,visibility .25s;z-index:60}
   .navOverlay.open{opacity:1;visibility:visible}
-  .navDrawer{position:fixed;top:0;left:0;bottom:0;width:86%;max-width:300px;background:linear-gradient(170deg,#0c5a6b 0%,#062f39 100%);box-shadow:0 0 60px rgba(0,0,0,.45);transform:translateX(-100%);transition:transform .28s cubic-bezier(.22,1,.36,1);z-index:61;display:flex;flex-direction:column;padding:18px 14px calc(20px + env(safe-area-inset-bottom,0px));overflow-y:auto;-webkit-overflow-scrolling:touch}
+  /* Drawer kommt von RECHTS – passend zum Initialen-Avatar oben rechts (Dropdown-Gefühl). */
+  .navDrawer{position:fixed;top:0;right:0;bottom:0;width:86%;max-width:300px;background:linear-gradient(170deg,#0c5a6b 0%,#062f39 100%);box-shadow:0 0 60px rgba(0,0,0,.45);transform:translateX(100%);transition:transform .28s cubic-bezier(.22,1,.36,1);z-index:61;display:flex;flex-direction:column;padding:18px 14px calc(20px + env(safe-area-inset-bottom,0px));overflow-y:auto;-webkit-overflow-scrolling:touch}
   .navDrawer.open{transform:none}
   body.menu-open{overflow:hidden}
   .sidebtn{display:flex;align-items:center;gap:13px;padding:12px 14px;border:none;border-radius:12px;cursor:pointer;font-weight:700;font-size:15px;background:transparent;color:#bcd7dc;width:100%;text-align:left}
@@ -247,6 +248,18 @@
   html[data-theme="dark"] .skcard::after{background:linear-gradient(100deg,transparent 25%,rgba(255,255,255,.06) 50%,transparent 75%)}
   @keyframes skShimmer{to{transform:translateX(100%)}}
   @media (prefers-reduced-motion:reduce){ .skcard::after{animation:none} .bootsplash .ring{animation-duration:1.6s} }
+  /* ===== App-Tour (Schritt für Schritt nach den Onboarding-Fragen) =====
+     tourBlock fängt Klicks ab, tourHole legt per Riesen-Schatten den Spot aufs Ziel,
+     tourCard ist die Erklärkarte mit Weiter/Überspringen. */
+  .tourBlock{position:fixed;inset:0;z-index:89;background:transparent;touch-action:none}
+  .tourHole{position:fixed;z-index:90;border-radius:16px;box-shadow:0 0 0 9999px rgba(4,20,25,.62);pointer-events:none;border:2px solid rgba(255,255,255,.9);transition:left .3s cubic-bezier(.22,1,.36,1),top .3s cubic-bezier(.22,1,.36,1),width .3s cubic-bezier(.22,1,.36,1),height .3s cubic-bezier(.22,1,.36,1)}
+  .tourCard{position:fixed;z-index:91;left:16px;right:16px;max-width:400px;margin:0 auto;background:var(--surface);border-radius:18px;box-shadow:0 18px 50px rgba(0,0,0,.4);padding:16px;animation:fiRise .25s ease}
+  /* ===== Schwebender Initialen-Avatar (Profil) – auf jedem Screen außer Start sichtbar,
+     dort übernimmt der Avatar im Hero dieselbe Rolle. Öffnet das Funktions-Menü. ===== */
+  #profChip{position:fixed;top:calc(10px + env(safe-area-inset-top,0px));right:14px;z-index:55;width:42px;height:42px;border-radius:50%;background:#ffffff;color:#0a4958;font-weight:900;font-size:14px;letter-spacing:.3px;display:none;align-items:center;justify-content:center;border:1px solid rgba(10,73,88,.18);cursor:pointer;box-shadow:0 8px 24px rgba(4,33,40,.28);padding:0}
+  .app-in #profChip.on{display:flex}
+  html[data-theme="dark"] #profChip{border-color:rgba(255,255,255,.22)}
+  @media(min-width:1000px){ #profChip{display:none!important} }
   @keyframes fiPulse{0%,100%{opacity:1}50%{opacity:.55}}
   /* Check-in / Check-out Popups */
   @keyframes ciBg{from{opacity:0}to{opacity:1}}
@@ -341,6 +354,7 @@
     <div class="topbar" id="topbar"></div>
     <div class="body" id="app"><div class="bootsplash" aria-label="Wird geladen"><div class="ring"></div><div class="lbl">Dein Bereich wird geladen …</div><div class="skcard" style="height:128px"></div><div class="skcard" style="height:86px"></div><div class="skcard" style="height:86px"></div></div></div>
     <button class="finnFab" id="finnFab" data-act="openFinn" aria-label="FINN fragen"><img src="/assets/brand/finn-mark.svg" alt="FINN"></button>
+    <button id="profChip" data-act="avatarTap" aria-label="Profil &amp; Menü öffnen"></button>
     <nav class="btmnav" id="btmnav"></nav>
     <div class="legalfoot">
       <a href="https://www.fit-inn-trier.de/impressum-fit-inn-trier" target="_blank" rel="noopener">Impressum</a><span>·</span>
@@ -1176,7 +1190,7 @@
           '<div style="font-size:25px;font-weight:900;color:#fff;letter-spacing:-.5px;margin-top:3px;line-height:1.1">'+esc(greetLine(name))+'</div></div>'+
         '<div style="display:flex;align-items:center;gap:10px;flex-shrink:0">'+
           '<button data-act="nav" data-arg="postfach" aria-label="Postfach" style="position:relative;width:42px;height:42px;border-radius:14px;border:none;background:rgba(255,255,255,.13);display:flex;align-items:center;justify-content:center;cursor:pointer">'+svg('<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.7 21a2 2 0 0 1-3.4 0"></path>',{c:'#fff',w:1.9,s:20})+(unread?'<span style="position:absolute;top:9px;right:10px;width:8px;height:8px;border-radius:50%;background:#F6A964;border:2px solid #0a4958"></span>':'')+'</button>'+
-          '<div data-act="teamTap" title="Fit-Inn Trier" style="width:42px;height:42px;border-radius:50%;background:#fff;color:#0a4958;font-weight:900;font-size:15px;display:flex;align-items:center;justify-content:center;cursor:pointer;-webkit-user-select:none;user-select:none">'+esc(ini)+'</div>'+
+          '<div data-act="avatarTap" title="Profil &amp; Menü" style="width:42px;height:42px;border-radius:50%;background:#fff;color:#0a4958;font-weight:900;font-size:15px;display:flex;align-items:center;justify-content:center;cursor:pointer;-webkit-user-select:none;user-select:none">'+esc(ini)+'</div>'+
         '</div>'+
       '</div>'+
     '</div>';
@@ -1605,6 +1619,17 @@
       '<button data-act="obNext" style="width:100%;margin-top:20px;border:none;border-radius:15px;background:#fff;color:#0a4958;font-weight:900;font-size:16px;padding:16px;cursor:pointer;flex-shrink:0">'+(step>=3?'Los geht\'s':'Weiter')+'</button>'+
     '</div>';
   }
+  // Schlanker FINN-Anreißer für Unterseiten (Training/Fortschritt): Tipp des Tages
+  // in einer Zeile, Tipp darauf führt zur Coach-Seite. Macht den Coach app-weit präsent.
+  function coachTipStrip(){
+    loadFinnTip();
+    var tip=S.finnTip||'';
+    return '<button data-act="nav" data-arg="coach" style="width:100%;display:flex;align-items:center;gap:11px;text-align:left;border:none;cursor:pointer;font-family:inherit;background:linear-gradient(150deg,#12879c,#0a4958);border-radius:16px;padding:12px 14px;color:#fff;box-shadow:0 10px 26px rgba(14,96,114,.22);margin-bottom:14px">'
+      +'<span style="width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;flex-shrink:0">'+svg('<path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.5 8.6 8.6 0 0 1-4-1L3 20l1-5a8.4 8.4 0 0 1-1-4A8.5 8.5 0 0 1 11.5 3 8.5 8.5 0 0 1 21 11.5z"></path>',{c:'#fff',w:2,s:17})+'</span>'
+      +'<span style="flex:1;min-width:0"><span style="display:block;font-size:10.5px;font-weight:900;color:#bfe0e6;text-transform:uppercase;letter-spacing:.4px">FINN · Tipp des Tages</span>'
+      +'<span style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:13px;font-weight:600;color:#eafff4;line-height:1.4;margin-top:1px">'+(tip?esc(tip):'FINN stellt dir gerade deinen Tipp zusammen …')+'</span></span>'
+      +svg('<path d="M9 6l6 6-6 6"></path>',{c:'rgba(255,255,255,.8)',w:2.4,s:16})+'</button>';
+  }
   // Kompakter Coach-Anreißer für die Startseite: FINN-Tipp des Tages + Motivations-Mini
   // (Streak/VP/Aktivitäts-Alter) → führt in den Coach-Tab. Ersetzt die frühere finnCard + vitalCard.
   function homeCoachHero(){
@@ -1723,13 +1748,14 @@
       }
     }
     var hdr=function(t){ return '<div style="font-size:18px;font-weight:900;color:var(--text);letter-spacing:-.3px;margin:24px 2px 12px">'+t+'</div>'; };
-    // Coaching/Motivation stehen jetzt gebündelt im Coach-Tab; die Startseite gruppiert:
-    // Coach-Anreißer → Studio → Entdecken → Schnellzugriff. Ruhiger und ohne Karten-Wand.
+    // Aufbau der Startseite: FINN (Coach-Anreißer) steht direkt unter dem Hero und
+    // führt in den Coach-Bereich → dann Check-in → Training → Studio →
+    // Schnellzugriff (Funktionen vor Inhalten) → Entdecken.
     var discover=homeInsta()+homeBlog();
     return ''+
       homeHero()+
-      checkinBtn()+
       homeCoachHero()+
+      checkinBtn()+
       homeMeinTagHero()+
       homeTodayStrip()+
       wifiBtn()+
@@ -1737,9 +1763,9 @@
       hdr('Dein Studio')+
       auslastungChart()+
       hoursCard()+
-      (discover?(hdr('Entdecken')+discover):'')+
       hdr('Schnellzugriff')+
-      '<div class="gTiles">'+tiles+'</div>';
+      '<div class="gTiles">'+tiles+'</div>'+
+      (discover?(hdr('Entdecken')+discover):'');
   }
   // ── Ein-Tipp-WLAN-Button (nur in der eigenen App, wenn das Plugin verfügbar ist) ──
   var WIFI_SSID='Fit-Inn Mitglieder'; // SSID des offenen Gäste-WLANs
@@ -2636,7 +2662,7 @@
     // 7) Ränge
     var ranks='<div style="'+CARD.replace('padding:20px','padding:18px')+'"><div style="font-size:16px;font-weight:900;color:var(--text);margin-bottom:8px">Ränge</div>'+VITAL_TIERS.map(function(t,i){ var cur=(i===v.rankIdx); var passed=(i<=v.rankIdx); return '<div style="display:flex;align-items:center;gap:12px;padding:9px 0"><div style="width:32px;height:32px;border-radius:50%;background:'+(passed?'#0a4958':'var(--surface-2)')+';display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:15px">'+t[2]+'</div><div style="flex:1;font-size:14px;font-weight:'+(cur?'900':'600')+';color:'+(cur?'var(--teal-ink)':'var(--text-2)')+'">'+esc(t[0])+'</div><div style="font-size:12.5px;font-weight:700;color:var(--text-soft)">'+(t[1]===0?'Start':(deNum(t[1])+' VP'))+'</div></div>'; }).join('')+'</div>';
 
-    return subHeader('Fortschritt','Rang · Longevity · Punkte','profil')+'<div style="display:flex;flex-direction:column;gap:14px">'+ring+fa+badgesCard()+act+ben+ledger+warn+ranks+'</div>';
+    return subHeader('Fortschritt','Rang · Longevity · Punkte','profil')+coachTipStrip()+'<div style="display:flex;flex-direction:column;gap:14px">'+ring+fa+badgesCard()+act+ben+ledger+warn+ranks+'</div>';
   }
 
   // ── Ernährung (eigenständiges Modul, Tagesziel + KI-Tracking + FINN-Coach) ──
@@ -4476,7 +4502,7 @@
     else if(!d.ok){ body=trainCardBox('<div style="font-size:13.5px;font-weight:700;color:var(--err-fg)">Training konnte nicht geladen werden.</div><button data-act="trainReload" style="width:100%;margin-top:10px;padding:11px;border:none;border-radius:12px;background:'+ERN_G+';color:#fff;font-weight:800;font-size:13.5px;cursor:pointer">Erneut versuchen</button>'); }
     else if(seg==='plaene'){ body=trainingGenCta(d)+trainingLibrary(d)+trainingInspiration(d)+trainingBookCta(); }
     else if(seg==='uebungen'){ body=trainExSegment(d); }
-    else { var mp=d.myPlan&&d.myPlan.plan; body=(mp&&mp.days&&mp.days.length)?meinTagTodayCard(mp):meinTagTrainCta(); }
+    else { var mp=d.myPlan&&d.myPlan.plan; body=coachTipStrip()+((mp&&mp.days&&mp.days.length)?meinTagTodayCard(mp):meinTagTrainCta()); }
     return wrap(header+'<div style="padding:0 2px">'+body+'</div>');
   }
   // Einstieg in die Übungsdatenbank (Suchen/Nachschlagen).
@@ -6203,7 +6229,8 @@
     var gv=weekGoal(); var od=obData()||{};
     var goalSub='Wochenziel '+gv+'×/Woche'+(od.goal?(' · '+esc(od.goal)):'');
     var goalsCard='<div class="card" style="border-radius:20px;box-shadow:0 12px 34px rgba(4,33,40,.10)">'+secHead('<circle cx="12" cy="8" r="6"></circle><path d="M15.5 13.5L17 22l-5-3-5 3 1.5-8.5"></path>','Training & Ziele','Dein Wochenziel & Coaching-Fokus.')+
-      '<div style="margin-top:8px">'+row('<path d="M6 20v-5M12 20V8M18 20v-9"></path><path d="M4 20h16"></path>','Ziele & Onboarding anpassen',goalSub,'replayOnboarding','')+'</div></div>';
+      '<div style="margin-top:8px">'+row('<path d="M6 20v-5M12 20V8M18 20v-9"></path><path d="M4 20h16"></path>','Ziele & Onboarding anpassen',goalSub,'replayOnboarding','')+
+      row('<circle cx="12" cy="12" r="9"></circle><path d="M15.5 8.5l-2 5-5 2 2-5z"></path>','App-Tour erneut ansehen','Die wichtigsten Bereiche Schritt für Schritt','tourRestart','')+'</div></div>';
     return gradHd+appearance+'<div style="height:16px"></div>'+notif+(commCard?('<div style="height:16px"></div>'+commCard):'')+'<div style="height:16px"></div>'+pushCard+'<div style="height:16px"></div>'+goalsCard+'<div style="height:16px"></div>'+privacy;
   }
 
@@ -6212,10 +6239,10 @@
   var NAVITEMS=[['home','Übersicht',DASH_IC],['card','Mitgliedskarte','<rect x="3" y="3" width="7" height="7" rx="1.4"></rect><rect x="14" y="3" width="7" height="7" rx="1.4"></rect><rect x="3" y="14" width="7" height="7" rx="1.4"></rect><path d="M14 14h3v3h-3z"></path><path d="M20 14v3M14 20h3M20 20v.01"></path>'],['fort','Fortschritt','<circle cx="12" cy="8" r="6"></circle><path d="M15.5 13.5L17 22l-5-3-5 3 1.5-8.5"></path>'],['ern','Ernährung','<path d="M11 21A7 7 0 0 1 4 14C4 8.5 8 4 13.5 4c2.7 0 4.6 1 6.5 1.8 0 8.7-4.3 15.2-9 15.2z"></path><path d="M11 21c0-5.5 3.3-10 7.5-12"></path>'],['insta','Instagram',IG_ICON],['data','Meine Daten',IC.user],['contract','Vertragsverwaltung',IC.doc],['account','Beitragskonto','<rect x="2" y="5" width="20" height="14" rx="2"></rect><path d="M2 9h20M6 15h5"></path>'],['appt','Termine',IC.cal],['referral','Freunde werben',IC.gift],['checkins','Check-ins',IC.list],['postfach','Postfach',IC.mail],['help','Hilfe',IC.help],['settings','Einstellungen',IC.cog]];
   var TITLES={home:'Übersicht',data:'Meine Daten',contract:'Vertragsverwaltung',account:'Beitragskonto',appt:'Termine',checkin:'Check-in',referral:'Freunde werben',checkins:'Check-in-Verlauf',postfach:'Postfach',help:'Hilfe & Kontakt',settings:'Einstellungen',profil:'Profil',card:'Mitgliedskarte',fort:'Fortschritt',ern:'Ernährung',coach:'Coach',tag:'Training',abo:'Mein Abo',recht:'Widerruf & Recht',blog:'Blog',insta:'Instagram',social:'Trainingspartner'};
   function initials(p){ p=p||{}; var a=(p.firstName||'').trim(),b=(p.lastName||'').trim(); return (((a?a[0]:'')+(b?b[0]:'')).toUpperCase())||'FT'; }
-  // Profil-Kopf für Sidebar/Drawer
+  // Profil-Kopf für Sidebar/Drawer – klickbar, führt in den Profil-Hub.
   function navProfile(){
     var p=DATA.profile||{};
-    return '<div style="display:flex;align-items:center;gap:12px;background:rgba(255,255,255,.08);border-radius:15px;padding:12px 13px;margin-bottom:20px"><div style="width:42px;height:42px;border-radius:50%;background:var(--surface);color:'+TEAL+';font-weight:900;font-size:15px;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+esc(initials(p))+'</div><div style="min-width:0"><div style="color:#fff;font-weight:800;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(((p.firstName||'')+' '+(p.lastName||'')).trim()||'Mitglied')+'</div><div style="color:#9fc3ca;font-size:12px;font-weight:500">'+(p.customerNumber?('Mitgliedsnr. '+esc(p.customerNumber)):'')+'</div></div></div>';
+    return '<button data-act="nav" data-arg="profil" style="display:flex;align-items:center;gap:12px;width:100%;text-align:left;border:none;cursor:pointer;background:rgba(255,255,255,.08);border-radius:15px;padding:12px 13px;margin-bottom:20px"><div style="width:42px;height:42px;border-radius:50%;background:var(--surface);color:'+TEAL+';font-weight:900;font-size:15px;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+esc(initials(p))+'</div><div style="min-width:0;flex:1"><div style="color:#fff;font-weight:800;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(((p.firstName||'')+' '+(p.lastName||'')).trim()||'Mitglied')+'</div><div style="color:#9fc3ca;font-size:12px;font-weight:500">'+(p.customerNumber?('Mitgliedsnr. '+esc(p.customerNumber)):'Profil öffnen')+'</div></div>'+svg('<path d="M9 18l6-6-6-6"></path>',{c:'#9fc3ca',w:2.2,s:17})+'</button>';
   }
   // Navigations-Liste (für Sidebar & Burger-Drawer identisch)
   function navList(){
@@ -6239,7 +6266,16 @@
         '<button data-act="menuClose" aria-label="Menü schließen" style="width:38px;height:38px;border-radius:10px;background:rgba(255,255,255,.1);border:none;display:flex;align-items:center;justify-content:center;cursor:pointer">'+svg('<path d="M6 6l12 12M18 6L6 18"></path>',{c:'#cfe3e7',w:2.1,s:20})+'</button>'+
       '</div>'+
       navProfile()+navList()+navLogoutBtn();
+    // Initialen-Avatar: im (nur beim Boot sichtbaren) Brandbar-Burger UND als
+    // schwebender Chip oben rechts (#profChip, alle Screens außer Start – dort
+    // übernimmt der Hero-Avatar). Öffnet das Funktions-Menü, trägt den Postfach-Punkt.
+    var iniHtml='<span style="width:34px;height:34px;border-radius:50%;background:#ffffff;color:#0A4958;font-weight:900;font-size:13px;letter-spacing:.3px;display:flex;align-items:center;justify-content:center;pointer-events:none">'+esc(initials(DATA.profile))+'</span>';
+    var dotHtml=function(id){ return '<span id="'+id+'" style="display:none;position:absolute;top:1px;right:1px;width:11px;height:11px;border-radius:50%;background:#E08C53;border:2px solid #fff;pointer-events:none"></span>'; };
+    var bb=$('burgerBtn');
+    if(bb){ bb.innerHTML=iniHtml+dotHtml('burgerDot'); bb.setAttribute('data-act','avatarTap'); bb.setAttribute('aria-label','Profil & Menü öffnen'); bd=$('burgerDot'); }
     if(bd) bd.style.display = pfUnread()>0 ? 'block' : 'none';
+    var pc=$('profChip');
+    if(pc){ pc.innerHTML='<span style="pointer-events:none">'+esc(initials(DATA.profile))+'</span>'+dotHtml('profChipDot'); var pcd=$('profChipDot'); if(pcd) pcd.style.display=pfUnread()>0?'block':'none'; }
     if(tb){
       var c=DATA.contract; var badge='';
       var pill=function(col,txt){ return '<div style="display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--border);border-radius:30px;padding:7px 14px;box-shadow:0 4px 14px rgba(4,33,40,.06)"><span style="width:8px;height:8px;border-radius:50%;background:'+col+'"></span><span style="font-size:13px;font-weight:700;color:var(--text-2)">'+txt+'</span></div>'; };
@@ -6261,14 +6297,10 @@
         if(!(en&&en.ok&&en.available!==false)||!en.onboarded||S.ernCapture||S.ernEdit){ bn.style.display='none'; return; }
       }
       var sc=S.screen;
-      // Neue, einheitliche YAZIO-artige Nav: Start · Coach · (+) · Essen · Profil.
-      // Postfach/Termine leben im Profil-Hub bzw. auf der Startseite; der Postfach-Punkt
-      // wandert auf den Profil-Tab. „Essen" nur wenn ERN_ON, sonst Fallback „Termine".
-      var profScreens=['profil','data','contract','account','referral','fort','card','help','settings','checkins','postfach','abo','recht'];
-      var profActive = (profScreens.indexOf(sc)>=0) || (ERN_ON && sc==='appt');
+      // Einheitliche Nav: Start · Training · (+) · Ernährung/Termine · Coach.
+      // Profil/Postfach/Termine leben im Profil-Hub hinter dem Initialen-Avatar oben.
       var ni=function(key,label,icon,active){ var col=active?'var(--teal-ink)':'var(--text-soft)';
         return '<button data-act="nav" data-arg="'+key+'" style="flex:1;background:none;border:none;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;padding:5px 0">'+svg(icon,{c:col,w:1.9,s:23})+'<span style="font-size:10.5px;font-weight:'+(active?'800':'600')+';color:'+col+'">'+label+'</span></button>'; };
-      var unread=pfUnread()>0;
       var FOOD_IC='<path d="M4 11h16v1a8 8 0 0 1-16 0z"></path><path d="M8.5 4c0 1-1 1.2-1 2.2s1 1.2 1 2.2M12 4c0 1-1 1.2-1 2.2s1 1.2 1 2.2M15.5 4c0 1-1 1.2-1 2.2s1 1.2 1 2.2"></path>';
       var TRAIN_IC='<path d="M4 8v8M8 5.5v13M16 5.5v13M20 8v8M8 12h8"></path>';
       var onErn=(sc==='ern'); var ciIn=!!S.checkedInAt; var qaOpen=!!S.qaOpen;
@@ -6284,16 +6316,72 @@
         : svg('<path d="M12 5v14M5 12h14"></path>',{c:'#fff',w:2.6,s:26});
       var ciDot=(!special&&!qaOpen&&ciIn)?'<span style="position:absolute;top:0;right:2px;width:13px;height:13px;border-radius:50%;background:#1f9a4e;border:2px solid var(--surface)"></span>':'';
       var qaCenter='<button data-act="'+centerAct+'" aria-label="'+esc(centerLabel)+'" style="flex:1;background:none;border:none;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px;padding:0"><span style="position:relative;width:54px;height:54px;border-radius:50%;background:linear-gradient(150deg,#0e6072,#063540);box-shadow:0 10px 24px -4px rgba(10,73,88,.55);display:flex;align-items:center;justify-content:center;margin-top:-26px;border:4px solid var(--surface)">'+centerInner+ciDot+'</span><span style="font-size:10.5px;font-weight:800;color:'+(showClose?'var(--teal-ink)':'var(--text-soft)')+'">'+centerLabel+'</span></button>';
-      // Profil-Tab trägt den Postfach-Ungelesen-Punkt.
-      var profCol=profActive?'var(--teal-ink)':'var(--text-soft)';
-      var profBtn='<button data-act="nav" data-arg="profil" style="flex:1;background:none;border:none;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;padding:5px 0"><span style="position:relative;display:flex">'+svg(IC.user,{c:profCol,w:1.9,s:23})+(unread?'<span style="position:absolute;top:-3px;right:-5px;width:8px;height:8px;border-radius:50%;background:#F6A964;border:1.5px solid var(--surface)"></span>':'')+'</span><span style="font-size:10.5px;font-weight:'+(profActive?'800':'600')+';color:'+profCol+'">Profil</span></button>';
-      // Zwei eigene Bereiche: Training + Ernährung (Essen-Modul direkt). Coach lebt als Karte auf Start.
+      // Coach-Tab statt Profil: FINN ist damit direkt in der Leiste präsent.
+      // Das Profil lebt jetzt hinter dem Initialen-Avatar oben rechts (renderChrome),
+      // der auch den Postfach-Ungelesen-Punkt trägt.
+      var FINN_IC='<path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.5 8.6 8.6 0 0 1-4-1L3 20l1-5a8.4 8.4 0 0 1-1-4A8.5 8.5 0 0 1 11.5 3 8.5 8.5 0 0 1 21 11.5z"></path>';
+      var coachBtn=ni('coach','Coach',FINN_IC,sc==='coach');
+      // Zwei eigene Bereiche: Training + Ernährung (Essen-Modul direkt).
       // Ohne Essen-Modul bleibt der 4. Slot „Termine".
       var fourth = ERN_ON ? ni('ern','Ernährung',FOOD_IC,sc==='ern') : ni('appt','Termine',IC.cal,sc==='appt');
-      bn.innerHTML = ni('home','Start',DASH_IC,sc==='home') + ni('tag','Training',TRAIN_IC,sc==='tag') + qaCenter + fourth + profBtn;
+      bn.innerHTML = ni('home','Start',DASH_IC,sc==='home') + ni('tag','Training',TRAIN_IC,sc==='tag') + qaCenter + fourth + coachBtn;
     }
   }
   var NARROW={contract:1,referral:1,appt:1,card:1,fort:1,ern:1,blog:1,profil:1,checkin:1,insta:1,social:1};
+
+  // ── App-Tour: führt nach den Onboarding-Fragen Schritt für Schritt durch die App. ──
+  // Läuft komplett auf der Startseite (dort sind alle Ziele sichtbar); fehlt ein Ziel
+  // (z. B. Check-in-Button, weil schon eingecheckt), wird der Schritt übersprungen.
+  function tourSteps(){
+    return [
+      {sel:'#app [data-act="nav"][data-arg="coach"]', t:'Dein Coach FINN', d:'FINN begrüßt dich hier jeden Tag mit einem persönlichen Tipp. Ein Tipp auf die Karte bringt dich zur Coach-Seite mit all deinen Erkenntnissen.'},
+      {sel:'#app [data-act="doCheckin"]', t:'Einchecken', d:'Im Studio angekommen? Hier checkst du mit einem Tipp ein und sammelst Vitalpunkte für jeden Besuch.'},
+      {sel:'.btmnav [data-act="nav"][data-arg="tag"]', t:'Training', d:'Deine Trainingspläne, alle Übungen an unseren Geräten und deine heutige Einheit.'},
+      (ERN_ON
+        ? {sel:'.btmnav [data-act="nav"][data-arg="ern"]', t:'Ernährung', d:'Mahlzeiten tracken, Rezepte entdecken und dein Tagesziel im Blick behalten.'}
+        : {sel:'.btmnav [data-act="nav"][data-arg="appt"]', t:'Termine', d:'Kurse und Termine ansehen und direkt aus der App buchen.'}),
+      {sel:'.btmnav [data-act="qaOpen"], .btmnav [data-act="qaClose"]', t:'Schnell hinzufügen', d:'Der Plus-Knopf passt sich an: Auf der Startseite öffnet er Schnellaktionen, im Training und bei der Ernährung genau das Passende.'},
+      {sel:'.btmnav [data-act="nav"][data-arg="coach"]', t:'Coach in der Leiste', d:'FINNs Tipps, deine Fortschritts-Erkenntnisse und Programme findest du jederzeit hier unten.'},
+      {sel:'#app [data-act="avatarTap"]', t:'Dein Profil', d:'Hinter deinen Initialen steckt alles Persönliche: Profil, Vertrag, Beitragskonto, Postfach, Mitgliedskarte, Einstellungen und mehr. Auf den Unterseiten schwebt der Knopf oben rechts.'}
+    ];
+  }
+  function tourActive(){ return typeof S.tourStep==='number'; }
+  function endTour(){
+    try{ localStorage.setItem('fi_tour_v1','1'); }catch(e){}
+    S.tourStep=null;
+    ['tourBlock','tourHole','tourCard'].forEach(function(id){ var el=$(id); if(el) el.remove(); });
+  }
+  function positionTour(scrollTo){
+    if(!tourActive()) return;
+    var steps=tourSteps(); var st=steps[S.tourStep];
+    if(!st){ endTour(); return; }
+    var el=document.querySelector(st.sel);
+    if(!el || !el.offsetParent){   // Ziel fehlt/unsichtbar -> Schritt überspringen
+      if(S.tourStep<steps.length-1){ S.tourStep++; positionTour(scrollTo); } else endTour();
+      return;
+    }
+    if(scrollTo){ try{ el.scrollIntoView({block:'center'}); }catch(e){} }
+    var r=el.getBoundingClientRect(); var pad=6;
+    var block=$('tourBlock'); if(!block){ block=document.createElement('div'); block.id='tourBlock'; block.className='tourBlock'; document.body.appendChild(block); }
+    var hole=$('tourHole'); if(!hole){ hole=document.createElement('div'); hole.id='tourHole'; hole.className='tourHole'; document.body.appendChild(hole); }
+    hole.style.left=(r.left-pad)+'px'; hole.style.top=(r.top-pad)+'px';
+    hole.style.width=(r.width+2*pad)+'px'; hole.style.height=(r.height+2*pad)+'px';
+    var card=$('tourCard'); if(!card){ card=document.createElement('div'); card.id='tourCard'; card.className='tourCard'; document.body.appendChild(card); }
+    var last=S.tourStep>=steps.length-1;
+    card.innerHTML='<div style="font-size:11.5px;font-weight:800;color:var(--text-soft)">Schritt '+(S.tourStep+1)+' von '+steps.length+'</div>'
+      +'<div style="font-size:16.5px;font-weight:900;color:var(--text);margin-top:3px">'+esc(st.t)+'</div>'
+      +'<div style="font-size:13.5px;font-weight:500;color:var(--text-muted);line-height:1.55;margin-top:5px">'+esc(st.d)+'</div>'
+      +'<div style="display:flex;gap:9px;margin-top:13px">'
+      +'<button data-act="tourSkip" style="flex:1;padding:12px;border:1.5px solid var(--border);border-radius:12px;background:var(--surface);color:var(--text-soft);font-weight:800;font-size:13.5px;cursor:pointer">Überspringen</button>'
+      +'<button data-act="tourNext" style="flex:2;padding:12px;border:none;border-radius:12px;background:linear-gradient(150deg,#12879c,#0a4958);color:#fff;font-weight:900;font-size:14px;cursor:pointer">'+(last?'Los geht’s! 🎉':'Weiter')+'</button></div>';
+    // Karte gegenüber vom Ziel platzieren (Ziel unten -> Karte darüber und umgekehrt).
+    var vh=window.innerHeight||800;
+    if(r.top>vh/2){ card.style.top='auto'; card.style.bottom=(vh-r.top+pad+14)+'px'; }
+    else { card.style.bottom='auto'; card.style.top=(r.bottom+pad+14)+'px'; }
+  }
+  window.addEventListener('resize',function(){ if(tourActive()) positionTour(false); });
+  window.addEventListener('scroll',function(){ if(tourActive()) positionTour(false); },{passive:true});
+
   function render(){
     // Ernährungs-Modul ausgeblendet (Feature-Schalter ERN_ON): nie rendern, zur Übersicht
     if(!ERN_ON && S.screen==='ern') S.screen='home';
@@ -6362,6 +6450,11 @@
     // WICHTIG: nach renderChrome(), das body.className komplett neu setzt.
     var chatFull=!!S.finnOpen || !!S.vaOpen || (S.screen==='postfach' && !!S.pfThread && window.innerWidth<1000);
     document.body.classList.toggle('chatLock', chatFull);
+    // Schwebender Initialen-Avatar: überall sichtbar außer auf Start (Hero-Avatar),
+    // im Login/Onboarding, in Vollbild-Chats und im Erfassen-/Edit-Sheet der Ernährung.
+    var pchip=$('profChip');
+    if(pchip){ pchip.classList.toggle('on', !!TOKEN && S.screen!=='login' && S.screen!=='alogin' && S.screen!=='home'
+      && !chatFull && !S.qaOpen && !(S.screen==='ern'&&(S.ernCapture||S.ernEdit)) && obDone() && !tourActive()); }
     // Overscroll-Farbe oben: teal nur auf der Startseite (passend zum Hero).
     document.body.classList.toggle('onHome', S.screen==='home');
     document.body.classList.toggle('qaOn', !!S.qaOpen);   // FINN-FAB ausblenden, solange das Popup offen ist
@@ -6370,6 +6463,8 @@
     if(chatFull) syncChatViewport();
     // Deep-Link „Zeit vormerken" (aus dem Widget): einmalig zur Reservierung scrollen
     if(S.screen==='home' && location.hash==='#vormerken' && !S._vmScrolled){ S._vmScrolled=true; setTimeout(function(){ var el=document.getElementById('vormerken'); if(el) el.scrollIntoView({behavior:'smooth',block:'center'}); },300); }
+    // App-Tour: nach jeder Neu-Zeichnung neu aufs Ziel ausrichten (Elemente wurden ersetzt).
+    if(tourActive()){ var first=!$('tourHole'); setTimeout(function(){ positionTour(first); },80); }
   }
 
   // ---- actions (event delegation) ----
@@ -6477,6 +6572,11 @@
     alToLogin:function(){ try{ cleanMlt(); }catch(e){} S.alToken=''; S.liDob=''; S.alErr=''; S.alState='loading'; setS({screen:'login'}); },
     // Versteckter Team-Zugang: 5× schnell auf den Avatar (Startseite) tippen -> /team.
     teamTap:function(){ window.__tt=(window.__tt||0)+1; if(window.__ttT) clearTimeout(window.__ttT); window.__ttT=setTimeout(function(){ window.__tt=0; },1500); if(window.__tt>=5){ window.__tt=0; clearTimeout(window.__ttT); if(confirm('Team-Bereich öffnen?')) location.assign('/team'); } },
+    // Initialen-Avatar: EIN Tipp öffnet das Funktions-Menü (Dropdown); 5× schnell
+    // tippen behält den versteckten Team-Zugang bei (kurze Sammelpause vor dem Öffnen).
+    avatarTap:function(){ window.__at=(window.__at||0)+1; if(window.__atT) clearTimeout(window.__atT);
+      if(window.__at>=5){ window.__at=0; if(confirm('Team-Bereich öffnen?')) location.assign('/team'); return; }
+      window.__atT=setTimeout(function(){ if(window.__at===1) openMenu(); window.__at=0; },300); },
     // Versteckter Ernährungs-Testmodus: 7× schnell aufs Datum tippen -> nur dieses Gerät.
     // Wirkt nur, wenn der Server den Demo-Modus erlaubt (FEATURE_DEMO=1) –
     // in Produktion bleibt der Tipp-Trick damit folgenlos.
@@ -6495,10 +6595,18 @@
     ciToggle:function(){ if(S.screen!=='home') nav('home'); if(S.checkedInAt){ if(ACT.doCheckout) ACT.doCheckout(); } else { if(ACT.doCheckin) ACT.doCheckin(); } },
     obGoal:function(a){ setS({obGoal:a}); },
     replayOnboarding:function(){ var o=obData()||{}; try{ localStorage.removeItem('fi_ob_v1'); }catch(e){} setS({obStep:0,obGoal:o.goal||S.obGoal,obFreq:o.freq||S.obFreq,obAge:o.age||S.obAge,obExp:o.exp||S.obExp}); try{ window.scrollTo(0,0); }catch(e){} },
+    // ── App-Tour (Schritt für Schritt durch die App) ──
+    tourNext:function(){ var n=(S.tourStep||0)+1; if(n>=tourSteps().length){ endTour(); render(); } else { S.tourStep=n; positionTour(true); } },
+    tourSkip:function(){ endTour(); render(); },
+    tourRestart:function(){ S.screen='home'; S.tourStep=0; try{ window.scrollTo(0,0); }catch(e){} render(); },
     obFreq:function(a){ setS({obFreq:parseInt(a,10)||3}); },
     obAge:function(a){ var d=parseInt(a,10)||0; setS({obAge:Math.max(14,Math.min(99,(S.obAge||34)+d))}); },
     obExp:function(a){ setS({obExp:a}); },
-    obNext:function(){ if((S.obStep||0)>=3){ try{ localStorage.setItem('fi_ob_v1',JSON.stringify({goal:S.obGoal,freq:S.obFreq,age:S.obAge,exp:S.obExp})); }catch(e){} S.finnTipLoaded=false; setS({obStep:0}); loadFinnTip(); } else { setS({obStep:(S.obStep||0)+1}); var o=document.querySelector('.obOverlay'); if(o) o.scrollTop=0; } },
+    obNext:function(){ if((S.obStep||0)>=3){ try{ localStorage.setItem('fi_ob_v1',JSON.stringify({goal:S.obGoal,freq:S.obFreq,age:S.obAge,exp:S.obExp})); }catch(e){} S.finnTipLoaded=false;
+        // Direkt nach den Onboarding-Fragen: einmalige App-Tour (Schritt für Schritt).
+        var tourSeen='1'; try{ tourSeen=localStorage.getItem('fi_tour_v1'); }catch(e){}
+        if(!tourSeen){ S.screen='home'; S.tourStep=0; try{ window.scrollTo(0,0); }catch(e){} }
+        setS({obStep:0}); loadFinnTip(); } else { setS({obStep:(S.obStep||0)+1}); var o=document.querySelector('.obOverlay'); if(o) o.scrollTop=0; } },
     noop:function(){},   // fängt Klicks im Overlay-Inneren ab (Backdrop-Klick schließt)
     // Assistent-Hub öffnen. Beitragskonto nachladen, damit der proaktive Vorschlag greifen kann.
     qaOpen:function(){ if(!DATA.account && typeof loadAccount==='function'){ try{ loadAccount(); }catch(e){} } setQuiet({qaOpen:true}); },
