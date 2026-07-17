@@ -1608,6 +1608,34 @@
   // ── Onboarding (4 Schritte, einmalig) – wie im Mockup ──
   function obDone(){ try{ return !!localStorage.getItem('fi_ob_v1'); }catch(e){ return true; } }
   function obData(){ try{ var v=localStorage.getItem('fi_ob_v1'); return v?JSON.parse(v):null; }catch(e){ return null; } }
+  // ── Coach-Premium-Nudge auf Start: dezent, wegklickbar, höchstens 1×/7 Tage ──
+  // Nur Gratis-Nutzer (nie Premium/Trial), nur onboarded, nie in Chat/Sheet/Overlay.
+  var PREM_NUDGE_CAP=7*864e5;
+  function premNudgeSuppressed(){ try{ var t=parseInt(localStorage.getItem('fi_prem_nudge_seen')||'0',10); return t>0 && (Date.now()-t)<PREM_NUDGE_CAP; }catch(e){ return false; } }
+  function premNudgeMarkDismissed(){ try{ localStorage.setItem('fi_prem_nudge_seen', String(Date.now())); }catch(e){} }
+  function premNudgeEligible(){
+    if(!ERN_ON) return false;
+    var n=DATA.nutri; if(!(n&&n.ok)) return false;          // Status wirklich geladen
+    if(ernPremium()||ernTrialing()) return false;           // nie Zahlende/Tester nerven
+    if(!n.onboarded) return false;                          // erst wenn das Modul bekannt ist
+    if(premNudgeSuppressed()) return false;                 // Frequenz-Cap
+    if(S.finnOpen||S.vaOpen||S.ernUpgrade||S.ernCapture||S.qaOpen||S.dp||S.ciPopup) return false;
+    return true;
+  }
+  function premNudgeHome(){
+    if(!premNudgeEligible()) return '';
+    var cc=ernCtaCopy();
+    return '<div style="display:flex;align-items:flex-start;gap:12px;margin:0 0 16px;padding:14px;border-radius:18px;border:1px solid rgba(14,96,114,.14);background:var(--surface);box-shadow:0 10px 28px rgba(4,33,40,.07)">'+
+      '<div style="width:40px;height:40px;border-radius:12px;background:linear-gradient(150deg,#12879c,#0a4958);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:20px">✨</div>'+
+      '<div style="flex:1;min-width:0">'+
+        '<div style="font-size:10.5px;font-weight:900;letter-spacing:.4px;color:var(--teal-ink);text-transform:uppercase">Coach Premium</div>'+
+        '<div style="font-size:14.5px;font-weight:900;color:var(--text);margin-top:2px">Mehr aus deinem Coach holen</div>'+
+        '<div style="font-size:12.5px;font-weight:500;color:var(--text-soft);line-height:1.45;margin-top:3px">FINN baut dir Trainingspläne, wertet deine Woche aus und beantwortet jede Frage im Chat. '+esc(cc.line)+'</div>'+
+        '<button data-act="ernUpgradeOpen" style="margin-top:10px;border:none;background:var(--teal);color:#fff;font-weight:800;font-size:13px;border-radius:11px;padding:9px 15px;cursor:pointer;font-family:inherit">'+esc(cc.cta)+'</button>'+
+      '</div>'+
+      '<button data-act="premNudgeDismiss" aria-label="Ausblenden" style="flex-shrink:0;width:28px;height:28px;border:none;border-radius:50%;background:var(--surface-2);color:var(--text-soft);font-size:15px;line-height:1;cursor:pointer">×</button>'+
+    '</div>';
+  }
   function obOverlayHtml(){
     var step=S.obStep||0;
     var dots=''; for(var i=0;i<4;i++){ dots+='<span style="flex:1;height:5px;border-radius:4px;background:'+(i<=step?'#F6A964':'rgba(255,255,255,.18)')+'"></span>'; }
@@ -1788,6 +1816,7 @@
       checkinBtn()+
       homeMeinTagHero()+
       homeTodayStrip()+
+      premNudgeHome()+
       wifiBtn()+
       dupBanner+
       hdr('Dein Studio')+
@@ -2836,6 +2865,11 @@
     var left=ernQuotaLeft(), lim=ernQuotaLimit();
     if(left>0){
       var col=dark?'rgba(255,255,255,.16)':'rgba(14,96,114,.10)', fg=dark?'#eafff4':ERN_G;
+      // Sanfte Vorwarnung bei der LETZTEN Gratis-Aktion: tippbar, führt mit dem Nutzen
+      // („unbegrenzt") statt als Wand. Voll nutzbar, kein Block.
+      if(left===1){
+        return '<button data-act="ernUpgradeOpen" style="display:inline-flex;align-items:center;gap:5px;border:none;background:'+col+';color:'+fg+';border-radius:9px;padding:4px 9px;font-size:11px;font-weight:900;cursor:pointer;font-family:inherit">✨ Noch 1 gratis · mit Premium unbegrenzt</button>';
+      }
       return '<span style="display:inline-flex;align-items:center;gap:5px;background:'+col+';color:'+fg+';border-radius:9px;padding:4px 9px;font-size:11px;font-weight:900">✨ Noch '+left+' von '+lim+' gratis</span>';
     }
     var c2=dark?'rgba(255,255,255,.16)':'#FBEEE9', f2=dark?'#ffe4d8':'#b5402f';
@@ -2850,6 +2884,18 @@
     var priceLabel=(p&&p.label)?p.label:'4,99 €';
     var per=(p&&p.intervalLabel)?p.intervalLabel:'Monat';
     return { price:priceLabel, per:per, pricePer:priceLabel+'/'+per, trialDays:td, trialText:(td>0?(td+' Tage gratis'):'') };
+  }
+  // Adaptive Upgrade-Copy je nach Vorgeschichte (Server: premiumEver/trialEligible).
+  // Nie getestet -> „7 Tage gratis"; schon mal Premium gehabt (abgelaufen) -> „Zurück zu Premium"
+  // ohne zweiten Gratis-Test. Fehlen die Felder -> Trial-first (für die meisten korrekt).
+  function ernCtaCopy(){
+    var pc=ernPriceCopy(); var n=DATA.nutri||{};
+    var lapsed=(n.premiumEver===true && n.trialEligible===false);
+    if(lapsed){ return { cta:'Zurück zu Premium', line:'Schalte FINN wieder frei – '+pc.pricePer+', jederzeit kündbar.', trial:false }; }
+    var trialOk=(pc.trialText!=='');
+    return { cta:(trialOk?(pc.trialText+' testen'):'Premium starten'),
+      line:(trialOk?('Probier\'s '+pc.trialText+' – danach '+pc.pricePer+', jederzeit kündbar.'):(pc.pricePer+', jederzeit kündbar.')),
+      trial:trialOk };
   }
   function ernPremiumCard(){
     if(ernPremium()){
@@ -4318,7 +4364,7 @@
     if(c&&c.ok&&c.available!==false){
       program='<div style="font-size:17px;font-weight:900;color:var(--text);letter-spacing:-.3px;margin:22px 2px 12px">Dein Coaching-Programm</div>'+ernCoachHome();
     }
-    return wrap(header+tipHero+insights+motiv+coachFigurCard()+program);
+    return wrap(header+tipHero+insights+motiv+ernPremiumCard()+coachFigurCard()+program);
   }
   // Einstieg in den Figur-Check (Maße & Fortschritt) aus dem Coach-Hub.
   function coachFigurCard(){
@@ -5535,9 +5581,17 @@
           (rv.tip?('<div style="margin-top:11px;font-size:12.5px;color:var(--text)"><b>Nächster Schritt:</b> '+esc(rv.tip)+'</div>'):'')+'</div>';
       }
       var busy=S.figurReviewBusy;
+      // Gratis + Kontingent aufgebraucht + noch keine Auswertung -> gesperrte Wert-Teaser-Karte
+      // (wie Check-in-/Wochen-Review): eigene Daten sichtbar, KI-Auswertung mit Premium.
+      var figLocked=(!d.premium && d.quota && d.quota.remaining===0 && !rv);
+      if(figLocked){
+        var cc=ernCtaCopy();
+        review='<div style="'+CARD+';background:linear-gradient(150deg,#12879c,#0a4958);color:#fff"><div style="font-size:15px;font-weight:900">🔒 FINNs Fortschritts-Auswertung ist Premium</div><div style="font-size:13px;font-weight:600;color:#cfe8ec;line-height:1.5;margin:8px 0 12px">Deine Maße sind gespeichert. Mit Premium wertet FINN jeden Check-in aus – mit Trend, Mustern und deinem nächsten Schritt.</div><button data-act="ernUpgradeOpen" style="width:100%;padding:13px;border:none;border-radius:13px;background:var(--surface);color:var(--teal-ink);font-weight:900;font-size:14px;cursor:pointer">'+esc(cc.cta)+'</button></div>';
+      } else {
       review='<div style="'+CARD+'"><div style="display:flex;align-items:center;gap:9px"><div style="width:34px;height:34px;border-radius:10px;background:var(--surface-2);display:flex;align-items:center;justify-content:center">'+svg(IC.spark,{c:TEAL,w:1.8,s:19})+'</div>'+
         '<div style="flex:1;min-width:0"><div style="font-size:14.5px;font-weight:800;color:var(--text)">FINN bewertet deinen Fortschritt</div><div style="font-size:12px;color:var(--text-soft)">'+(d.premium?'Teil deiner Premium-Mitgliedschaft':'Premium – oder 1× von deinem Gratis-Kontingent')+'</div></div></div>'+
         '<button data-act="figurReview" '+(busy?'disabled':'')+' style="width:100%;margin-top:13px;border:none;border-radius:13px;background:'+(busy?'var(--surface-2)':'var(--teal)')+';color:'+(busy?'var(--text-soft)':'#fff')+';font-weight:800;font-size:14.5px;padding:13px;cursor:'+(busy?'default':'pointer')+'">'+(busy?'FINN denkt nach …':(rv?'Neu auswerten':'Fortschritt auswerten'))+'</button>'+rvHtml+'</div>';
+      }
     }
 
     // Erfassen-Formular (bei 0 Messungen offen, sonst auf Knopfdruck)
@@ -7054,6 +7108,7 @@
       setS({dp:null});
     },
     appAdHide:function(){ try{ sessionStorage.setItem('fi_appad_hide','1'); }catch(e){} render(); },
+    premNudgeDismiss:function(){ premNudgeMarkDismissed(); render(); },
     closeFinn:function(){ setS({finnOpen:false}); },
     // Vertrags-Assistent (KI-Chat) – allgemeiner Einstieg + vorbereitete Anliegen
     vaOpen:function(){ openAssistant(''); },

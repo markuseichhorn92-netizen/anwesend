@@ -351,6 +351,7 @@ async function buildState(id, profile, forDate) {
     vitalPoints: vit.vitalPoints, vitalLedger: vit.ledger,
     fasting: fasting,
     premium: tier.premium, tier: tier.tier, trialing: tier.trialing, premiumUntil: tier.until,
+    premiumEver: tier.everPremium || false, trialEligible: tier.trialEligible !== false && !tier.everPremium,
     premiumTrialEnd: tier.trialEnd || null,
     premiumCancelAt: tier.cancelAtPeriodEnd || false,
     premiumComp: tier.comp || false, premiumPermanent: tier.permanent || false,
