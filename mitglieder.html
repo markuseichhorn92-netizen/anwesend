@@ -2708,14 +2708,15 @@
   // Feature-Schalter: Ernährungs-Modul in der App. Läuft eigenständig (eigene
   // Bedarfsrechnung + KI-Schätzung, kein Fremdanbieter). happyfigur ist bewusst
   // NICHT angebunden. Vor dem Start ist eine DSGVO-Einwilligung (Art. 9) Pflicht.
-  // Die Launch-Flags kommen SERVERSEITIG aus /api/app-info (FEATURE_ERN /
-  // FEATURE_SOCIAL, in Produktion standardmäßig AUS) und werden lokal gecacht
-  // (fi_flags_srv), damit der App-Start nicht aufs Netz warten muss.
-  // Der versteckte Test-Modus (7× auf das Datum tippen, ACT.ernTestTap) wirkt
-  // nur, wenn der Server den Demo-Modus erlaubt (FEATURE_DEMO=1) – Demo-/
-  // Testdaten sind in Produktion also standardmäßig deaktiviert.
+  // Die Launch-Flags kommen SERVERSEITIG aus /api/app-info und werden lokal
+  // gecacht (fi_flags_srv), damit der App-Start nicht aufs Netz warten muss.
+  // Ernährung ist GELAUNCHT (standardmäßig AN für alle; Server-Notausschalter
+  // FEATURE_ERN=0). Community bleibt opt-in (FEATURE_SOCIAL=1). Der versteckte
+  // Test-Modus (7× auf das Datum tippen, ACT.ernTestTap) wirkt nur, wenn der
+  // Server den Demo-Modus erlaubt (FEATURE_DEMO=1) – Demo-/Testdaten sind in
+  // Produktion also standardmäßig deaktiviert.
   function srvFlags(){ try{ return JSON.parse(localStorage.getItem('fi_flags_srv')||'{}')||{}; }catch(e){ return {}; } }
-  var ERN_LAUNCH=srvFlags().ern===true;
+  var ERN_LAUNCH=srvFlags().ern!==false;
   function ernTestOn(){ try{ return srvFlags().demo===true && localStorage.getItem('fi_ern_test')==='1'; }catch(e){ return false; } }
   var ERN_ON = ERN_LAUNCH || ernTestOn();
   // Feature-Schalter: Trainingspartner/Community (Mitglied↔Mitglied). Wie beim Essen-Modul
@@ -2728,8 +2729,8 @@
   // laufende Sitzung aktualisieren, wenn sich die Sichtbarkeit geändert hat.
   function applySrvFlags(f){
     if(!f||typeof f!=='object') return;
-    try{ localStorage.setItem('fi_flags_srv',JSON.stringify({ern:f.ern===true,social:f.social===true,demo:f.demo===true})); }catch(e){}
-    ERN_LAUNCH=(f.ern===true); SOCIAL_LAUNCH=(f.social===true);
+    try{ localStorage.setItem('fi_flags_srv',JSON.stringify({ern:f.ern!==false,social:f.social===true,demo:f.demo===true})); }catch(e){}
+    ERN_LAUNCH=(f.ern!==false); SOCIAL_LAUNCH=(f.social===true);
     var e2=ERN_LAUNCH||ernTestOn(), s2=SOCIAL_LAUNCH||socialTestOn();
     if(e2!==ERN_ON||s2!==SOCIAL_ON){ ERN_ON=e2; SOCIAL_ON=s2; render(); }
   }

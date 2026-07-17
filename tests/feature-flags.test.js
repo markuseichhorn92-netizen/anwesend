@@ -24,17 +24,18 @@ function res0() { return { statusCode: 0, headers: {}, setHeader(k, v) { this.he
 async function run() {
   let pass = true; const ok = (l, c) => { if (!c) pass = false; console.log((c ? 'OK  ' : 'FAIL') + ' ' + l); };
 
-  // ── /api/app-info: Flags opt-in, Standard aus ──
+  // ── /api/app-info: Ernährung gelauncht (Standard AN, FEATURE_ERN=0 = Notaus);
+  //    Community + Demo bleiben opt-in (nur exakt "1") ──
   delete process.env.FEATURE_ERN; delete process.env.FEATURE_SOCIAL; delete process.env.FEATURE_DEMO;
   delete process.env.APP_STORE_URL_IOS; delete process.env.APP_STORE_URL_ANDROID;
   let r = res0(); fresh('api/app-info.js')({}, r);
   let j = JSON.parse(r.body);
-  ok('1. ohne Env: alle Feature-Flags aus', r.statusCode === 200
-    && j.features && j.features.ern === false && j.features.social === false && j.features.demo === false);
+  ok('1. ohne Env: Ernährung AN, Social/Demo AUS', r.statusCode === 200
+    && j.features && j.features.ern === true && j.features.social === false && j.features.demo === false);
 
-  process.env.FEATURE_ERN = '1'; process.env.FEATURE_SOCIAL = 'true'; process.env.FEATURE_DEMO = '0';
+  process.env.FEATURE_ERN = '0'; process.env.FEATURE_SOCIAL = 'true'; process.env.FEATURE_DEMO = '0';
   r = res0(); fresh('api/app-info.js')({}, r); j = JSON.parse(r.body);
-  ok('2. Flags zählen nur bei exakt "1"', j.features.ern === true && j.features.social === false && j.features.demo === false);
+  ok('2. FEATURE_ERN=0 = Notaus; Social/Demo zählen nur bei exakt "1"', j.features.ern === false && j.features.social === false && j.features.demo === false);
   delete process.env.FEATURE_ERN; delete process.env.FEATURE_SOCIAL; delete process.env.FEATURE_DEMO;
 
   process.env.APP_STORE_URL_IOS = 'http://unsicher.example/app';
@@ -68,8 +69,8 @@ async function run() {
 
   // ── Client-Verdrahtung + Produkt-Texte (statische Prüfung) ──
   const html = fs.readFileSync(path.join(ROOT, 'mitglieder.html'), 'utf8');
-  ok('6. Client liest Server-Flags (fi_flags_srv) statt fester Launch-Konstanten',
-    html.indexOf('fi_flags_srv') >= 0 && !/var ERN_LAUNCH\s*=\s*false/.test(html) && !/var SOCIAL_LAUNCH\s*=\s*false/.test(html));
+  ok('6. Client liest Server-Flags (fi_flags_srv), Ernährung standardmäßig AN',
+    html.indexOf('fi_flags_srv') >= 0 && /var ERN_LAUNCH=srvFlags\(\)\.ern!==false/.test(html) && !/var SOCIAL_LAUNCH\s*=\s*false/.test(html));
   ok('7. Testmodus nur bei Server-Demo-Flag', /srvFlags\(\)\.demo===true/.test(html));
   ok('8. keine negativen Vitalpunkte mehr (Pausen neutral)', !/pts:\s*-/.test(html) && html.indexOf('kein Punktabzug') >= 0);
   ok('9. „Aktivitäts-Alter" statt „Fitness-Alter" + Berechnungsbasis sichtbar',

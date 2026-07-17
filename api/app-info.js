@@ -9,11 +9,11 @@
  * der Play-Store-Link später aktivieren, ohne Code anzufassen.
  *
  * Zusätzlich: serverseitige Feature-Flags (statt Launch-Schalter im Client-Code).
- * Alle Flags sind OPT-IN und in Produktion standardmäßig AUS:
- *   FEATURE_ERN=1     Ernährungs-Modul sichtbar schalten
- *   FEATURE_SOCIAL=1  Community/Trainingspartner sichtbar schalten
- *   FEATURE_DEMO=1    Demo-/Testmodus: erlaubt die lokalen Test-Overrides
- *                     (fi_ern_test/fi_soc_test) im Client – NUR für Staging.
+ *   FEATURE_ERN     Ernährungs-Modul. GELAUNCHT: standardmäßig AN für alle;
+ *                   FEATURE_ERN=0 ist der Notausschalter.
+ *   FEATURE_SOCIAL  Community/Trainingspartner – opt-in (=1), Standard AUS.
+ *   FEATURE_DEMO    Demo-/Testmodus: erlaubt die lokalen Test-Overrides
+ *                   (fi_ern_test/fi_soc_test) im Client – opt-in, NUR Staging.
  */
 module.exports = function handler(req, res) {
   res.setHeader('Content-Type', 'application/json');
@@ -24,6 +24,6 @@ module.exports = function handler(req, res) {
   return res.end(JSON.stringify({
     ios: clean(process.env.APP_STORE_URL_IOS),
     android: clean(process.env.APP_STORE_URL_ANDROID),
-    features: { ern: flag('FEATURE_ERN'), social: flag('FEATURE_SOCIAL'), demo: flag('FEATURE_DEMO') },
+    features: { ern: process.env.FEATURE_ERN !== '0', social: flag('FEATURE_SOCIAL'), demo: flag('FEATURE_DEMO') },
   }));
 };

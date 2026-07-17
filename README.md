@@ -14,8 +14,9 @@ bewusst ohne Framework und (bis auf Dev-Tools) ohne npm-Dependencies.
 | **APIs** | `api/**` | ~125 Serverless Functions (Mitglied, Team, Webhooks, interne Crons) |
 | **Fachlogik** | `lib/**` | Sessions/Magicline (`members.js`), Team-Auth + Capabilities, Push (FCM/APNs), Inbox, Stripe-Premium, KI (`ai.js`), Social, Cron-Auth … |
 
-\* Ernährung/Community sind über **serverseitige Feature-Flags** geschaltet
-(`FEATURE_ERN`/`FEATURE_SOCIAL`, Produktion standardmäßig aus – siehe unten).
+\* Ernährung ist **gelauncht** (Standard an, Notaus `FEATURE_ERN=0`);
+Community ist über das serverseitige Flag `FEATURE_SOCIAL` geschaltet
+(opt-in, Standard aus – siehe unten).
 
 ## Architektur
 
@@ -86,10 +87,11 @@ Security-Header, Feature-Flags/Demo-Opt-in.
 
 ### Feature-Flags (Staging → Produktion)
 
-`/api/app-info` liefert `features:{ern,social,demo}` aus `FEATURE_ERN`,
-`FEATURE_SOCIAL`, `FEATURE_DEMO` (jeweils `1` = an, alles andere = aus).
-Demo-Daten (`FEATURE_DEMO`, `SOCIAL_DEMO` = Demo-Buddy „TEST99") sind in
-Produktion **standardmäßig deaktiviert** und nur fürs Staging gedacht.
+`/api/app-info` liefert `features:{ern,social,demo}`. **Ernährung ist
+gelauncht** (standardmäßig an für alle; `FEATURE_ERN=0` ist der
+Notausschalter). Community bleibt opt-in (`FEATURE_SOCIAL=1`). Demo-Daten
+(`FEATURE_DEMO`, `SOCIAL_DEMO` = Demo-Buddy „TEST99") sind in Produktion
+**standardmäßig deaktiviert** und nur fürs Staging gedacht.
 
 ## Live-Auslastung (ursprünglicher Kern)
 
