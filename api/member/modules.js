@@ -24,6 +24,7 @@ const M = require('../../lib/members');
 const Mod = require('../../lib/mlModules');
 const MlPremium = require('../../lib/mlPremium');
 const Ent = require('../../lib/entitlements');
+const Connect = require('../../lib/connect');
 const Inbox = require('../../lib/inbox');
 const SR = require('../../lib/studioReply');
 const { sendMailRaw, hasMail } = require('../../lib/mail');
@@ -135,17 +136,25 @@ module.exports = async function handler(req, res) {
       if (moduleContractId != null) {
         try { const mc = await Mod.getModuleContract(mid, moduleContractId); if (mc && mc.ok && mc.contract) cancelationDate = mc.contract.nextCancellationDate || mc.contract.endDate || null; } catch (e) {}
       }
-      // Kündigungsgrund (Pflichtangabe) aus der Open-API-Gründeliste.
+      // Kündigungsgrund (Pflicht): erst Open API (kanonische IDs), dann die öffentlichen
+      // Connect-Gründe als Fallback (falls der Key MEMBERSHIP_SELF_SERVICE_READ nicht hat).
       let reasonId = null;
       try { reasonId = Mod.pickReasonId(await Mod.getCancelationReasons()); } catch (e) {}
+      if (reasonId == null) { try { reasonId = Connect.pickReasonId(await Connect.getCancelationReasons(), 'sonstiges'); } catch (e) {} }
 
-      let r = { ok: false, status: 0 };
       // ordinary-cancelation verlangt cancelationDate UND cancelationReasonId (Pflicht) ->
-      // nur versuchen, wenn beides da ist; sonst gleich den Studio-Fallback nutzen.
-      if (moduleContractId != null && cancelationDate && reasonId != null) {
-        try { r = await Mod.cancelModule(mid, moduleContractId, { cancelationDate: cancelationDate, cancelationReasonId: reasonId }); } catch (e) { r = { ok: false, status: 0, error: String((e && e.message) || e).slice(0, 200) }; }
+      // nur versuchen, wenn beides da ist; sonst gleich den Studio-Fallback (mit Diagnose).
+      let r = { ok: false, status: 0 };
+      let diag = '';
+      if (moduleContractId == null) diag = 'keine gemerkte Modul-Vertrags-ID';
+      else if (!cancelationDate) diag = 'kein Kündigungsdatum vom Modul-Vertrag (Scope …ADDITIONAL_MODULE_CONTRACT_READ?)';
+      else if (reasonId == null) diag = 'kein Kündigungsgrund verfügbar (Scope MEMBERSHIP_SELF_SERVICE_READ / Connect-Gründe?)';
+      else {
+        try { r = await Mod.cancelModule(mid, moduleContractId, { cancelationDate: cancelationDate, cancelationReasonId: reasonId }); }
+        catch (e) { r = { ok: false, status: 0, error: String((e && e.message) || e).slice(0, 200) }; }
+        if (!(r && r.ok)) diag = 'Magicline lehnte ab (HTTP ' + ((r && r.status) || 0) + (r && r.error ? (' – ' + r.error) : '') + ')';
       }
-      if (!(r && r.ok)) { try { console.log('[modules] cancel-premium failed', JSON.stringify({ status: (r && r.status) || 0, hasId: moduleContractId != null, hasDate: !!cancelationDate, hasReason: reasonId != null })); } catch (e) {} }
+      try { console.log('[modules] cancel-premium', JSON.stringify({ ok: !!(r && r.ok), diag: diag || null, hasId: moduleContractId != null, cancelationDate: cancelationDate || null, hasReason: reasonId != null })); } catch (e) {}
 
       if (r && r.ok) {
         // Frisch abgleichen: setzt until = Modul-Ende, Premium läuft bis dahin weiter.
@@ -179,7 +188,8 @@ module.exports = async function handler(req, res) {
           text: 'Ein Mitglied möchte sein Ernährungs-Premium (Zusatzmodul) kündigen.\n\n'
             + 'Mitglied: ' + who(m) + '\nKundennr.: ' + (m && m.customerNumber || '—') + '\n'
             + 'Modul-Vertrags-ID: ' + (moduleContractId != null ? moduleContractId : 'unbekannt') + '\n'
-            + 'Automatik: fehlgeschlagen (HTTP ' + ((r && r.status) || 0) + ')\n\n'
+            + 'Kündigungsdatum (ermittelt): ' + (cancelationDate || '—') + '\n'
+            + 'Automatik nicht durchgeführt: ' + (diag || 'unbekannt') + '\n\n'
             + 'Bitte das Zusatzmodul in Magicline kündigen und dem Mitglied bestätigen.',
         });
       } catch (e) {}
