@@ -6920,6 +6920,10 @@
     if(abar) abar.classList.toggle('on', abOn);
     // Ohne sichtbare Leiste kein Vorhalt (sonst Lücke oben in Vollbild-Flows).
     document.body.classList.toggle('noappbar', !abOn);
+    // Safe-Area-Deckel bei jedem Render erneut erzwingen (Selbstheilung): falls die
+    // auf iOS unzuverlässige CSS-Deckelung min(env,60px) durchschlägt, kappt das JS
+    // --sat wieder auf max. 60px, BEVOR wir die Leisten-Höhe messen.
+    try{ if(window.__measureSat) window.__measureSat(false); }catch(e){}
     // Inhalts-Vorhalt exakt auf die gemessene Leisten-Höhe setzen (Startseite ist höher).
     if(abOn && abar && window.innerWidth<1000){ var abh=abar.getBoundingClientRect().height; if(abh>0) document.documentElement.style.setProperty('--abh', Math.round(abh)+'px'); }
     // Overscroll-Farbe oben: teal nur auf der Startseite (passend zum Hero).
@@ -8454,6 +8458,7 @@
         __satProbe.style.cssText='position:fixed;top:0;left:0;width:0;height:env(safe-area-inset-top,0px);visibility:hidden;pointer-events:none;z-index:-1';
         document.body.appendChild(__satProbe);
       }
+      if(typeof __satMax!=='number') __satMax=0;   // nie einen ungültigen Wert emittieren
       var raw=__satProbe.getBoundingClientRect().height||0;
       var sat=Math.max(0, Math.min(Math.round(raw), 60));
       if(reset) __satMax=0;
@@ -8465,11 +8470,16 @@
       document.documentElement.style.setProperty('--sat', __satMax+'px');
     }catch(e){}
   }
+  window.__measureSat=measureSat;   // von renderChrome aus als Selbstheilung aufrufbar
   measureSat(true);
   setTimeout(function(){ measureSat(false); }, 400);
   setTimeout(function(){ measureSat(false); }, 1200);
   window.addEventListener('resize', function(){ measureSat(false); });
   window.addEventListener('orientationchange', function(){ setTimeout(function(){ measureSat(true); try{ if(TOKEN) render(); }catch(e){} }, 160); });
+  // App aus dem Hintergrund zurück / bfcache-Restore: --sat erneut deckeln, damit
+  // nie die (auf iOS unzuverlässige) CSS-Deckelung durchschlägt und die Leiste bläht.
+  window.addEventListener('pageshow', function(){ measureSat(false); });
+  document.addEventListener('visibilitychange', function(){ if(document.visibilityState==='visible') measureSat(false); });
   ciLoad();
   loadAppInfo();   // Store-Links fürs App-Banner + serverseitige Feature-Flags
   if(ALT){ bootActionLogin(ALT); }
