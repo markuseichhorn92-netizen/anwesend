@@ -92,8 +92,11 @@ module.exports = async function handler(req, res) {
         await MlPremium.reconcile(sess.id);   // Premium-Quelle (Stripe-Vorrang) frisch halten
         const st = await MlPremium.moduleStatus(sess.id);   // Modul gebucht? (id-basiert)
         if (st && st.booked) {
-          const until = (st.cancelled && st.endDate) ? Date.parse(st.endDate + 'T23:59:59') : null;
-          premium = { active: true, until: (until && !isNaN(until)) ? until : null, cancelAtPeriodEnd: !!st.cancelled };
+          const nowMs = Date.now();
+          const trialEndMs = st.trialEnd ? Date.parse(st.trialEnd + 'T23:59:59') : null;
+          const inTrial = !!(trialEndMs && !isNaN(trialEndMs) && trialEndMs >= nowMs);
+          const cancelUntil = (st.cancelled && st.endDate) ? Date.parse(st.endDate + 'T23:59:59') : null;
+          premium = { active: true, trialing: inTrial, trialEnd: inTrial ? (st.trialEnd || null) : null, until: (st.cancelled && cancelUntil && !isNaN(cancelUntil)) ? cancelUntil : null, cancelAtPeriodEnd: !!st.cancelled };
           let ent = null; try { ent = await Ent.getEntitlement(sess.id); } catch (e) {}
           if (ent && ent.stripeSubId && Ent.isPremium(ent)) premium.stripeAlso = true;
         }
@@ -131,10 +134,19 @@ module.exports = async function handler(req, res) {
       // keine Auflistung gebuchter Module, das ist die einzige Quelle.
       let ent = null; try { ent = await Ent.getEntitlement(sess.id); } catch (e) {}
       let moduleContractId = (ent && ent.moduleContractId != null) ? ent.moduleContractId : null;
-      // Nächstmögliches Kündigungsdatum + Existenz per GET-by-ID prüfen.
+      // Kündigungsdatum + Existenz per GET-by-ID prüfen. Im laufenden Trial zum Trial-Ende
+      // kündigen -> keine Abbuchung.
       let cancelationDate = null;
       if (moduleContractId != null) {
-        try { const mc = await Mod.getModuleContract(mid, moduleContractId); if (mc && mc.ok && mc.contract) cancelationDate = mc.contract.nextCancellationDate || mc.contract.endDate || null; } catch (e) {}
+        try {
+          const mc = await Mod.getModuleContract(mid, moduleContractId);
+          if (mc && mc.ok && mc.contract) {
+            const c = mc.contract;
+            const today = new Date().toISOString().slice(0, 10);
+            if (c.trial && c.trial.endDate && c.trial.endDate >= today) cancelationDate = c.trial.endDate;
+            else cancelationDate = c.nextCancellationDate || c.endDate || null;
+          }
+        } catch (e) {}
       }
       // Kündigungsgrund (Pflicht): erst Open API (kanonische IDs), dann die öffentlichen
       // Connect-Gründe als Fallback (falls der Key MEMBERSHIP_SELF_SERVICE_READ nicht hat).

@@ -40,13 +40,14 @@ async function run() {
 
   // ── Fake Magicline (lib/members.ml) ──
   let moduleContract = null;   // Antwort von GET-by-id (AdditionalModuleContractExtended) oder null=404
+  let purchasable = [];        // Antwort von /purchasable (buchbare Module inkl. Trial-Config)
   const calls = [];
   const ml = async (method, p, body) => {
     calls.push({ method, path: p, body });
     if (method === 'GET' && /additional-module-contracts\/[^/]+$/.test(p)) {
       return moduleContract ? { status: 200, json: moduleContract } : { status: 404, json: null };
     }
-    if (method === 'GET' && /additional-modules\/purchasable$/.test(p)) return { status: 200, json: [] };
+    if (method === 'GET' && /additional-modules\/purchasable$/.test(p)) return { status: 200, json: purchasable };
     if (method === 'POST' && /additional-modules\/purchase$/.test(p)) return { status: 200, json: { id: 5555 } };
     if (method === 'POST' && /ordinary-cancelation$/.test(p)) return { status: 200, json: {} };
     if (method === 'GET' && /contract-cancelation-reasons$/.test(p)) return { status: 200, json: [{ cancelationReasonId: 7, cancelationReasonName: 'Sonstiges' }] };
@@ -120,6 +121,24 @@ async function run() {
   ok('7b. reconcile lässt Stripe unangetastet, Modul bleibt über gemerkte ID sichtbar',
     tD && tD.premium === true && tD.source === 'stripe' && rawD2.stripeSubId === 'sub_1' && rawD2.status === 'active'
     && stD && stD.booked === true && stD.moduleContractId === 7001);
+
+  // 8. Trial: bookModule erkennt die Testphase aus der Modul-Config -> bookTrialPeriod:true
+  purchasable = [{ id: 42, paymentFrequencies: [{ id: 9 }], trialPeriodConfig: { term: { value: 7, unit: 'DAY' }, description: '7 Tage gratis' } }];
+  const bt = await MlMod.bookModule('C1', '42');
+  const purchaseCall = calls.filter(function (c) { return c.method === 'POST' && /additional-modules\/purchase$/.test(c.path); }).pop();
+  ok('8. bookModule bucht Trial (bookTrialPeriod:true) + Frequenz aus Config',
+    bt.ok === true && purchaseCall && purchaseCall.body.bookTrialPeriod === true && purchaseCall.body.paymentFrequencyId === 9);
+
+  // 9. reconcile im laufenden Trial -> status trialing, until null, trialEnd gesetzt, premium an
+  const trialEnd = new Date(Date.now() + 6 * 86400000).toISOString().slice(0, 10);
+  moduleContract = { name: 'App Premium', price: { amount: 4.99 }, startDate: '2026-01-01', contractCancelationCanBeWithdrawn: false, availableCancelationDates: [trialEnd], trialPeriod: { startDate: new Date(Date.now() - 86400000).toISOString().slice(0, 10), endDate: trialEnd } };
+  const mcT = await MlMod.getModuleContract('C1', 8001);
+  ok('9. getModuleContract liest trial.endDate', mcT.ok === true && mcT.contract.trial && mcT.contract.trial.endDate === trialEnd);
+  await Ent.setEntitlement('T', { tier: 'premium', status: 'active', source: 'magicline', moduleContractId: 8001, updatedAt: Date.now() });
+  await MlPremium.invalidate('T');
+  const tT = await MlPremium.reconcile('T');
+  ok('9b. Trial: status trialing, premium an, until null, trialEnd gesetzt',
+    tT && tT.premium === true && tT.trialing === true && tT.until === null && tT.trialEnd === trialEnd);
 
   console.log(pass ? 'ML-PREMIUM PASS' : 'ML-PREMIUM FAIL');
   process.exit(pass ? 0 : 1);

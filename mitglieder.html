@@ -686,7 +686,7 @@
   // Kündigt NUR das Modul, nie die Mitgliedschaft; Modul-Vertrags-ID kommt server-seitig.
   function modCancelPrem(){
     if(S.modBusyId) return;
-    if(!window.confirm('Ernährungs-Premium kündigen? Nur das Zusatzmodul wird gekündigt – deine Mitgliedschaft läuft normal weiter. Dein Zugang bleibt bis zum Ende der Laufzeit aktiv.')) return;
+    if(!window.confirm('Coach Premium kündigen? Nur das Zusatzmodul wird gekündigt – deine Mitgliedschaft läuft normal weiter. Dein Zugang bleibt bis zum Ende der Laufzeit aktiv.')) return;
     setQuiet({modBusyId:'prem',modMsg:'',modErr:false});
     api('/api/member/modules',{method:'POST',body:JSON.stringify({action:'cancel-premium'})})
       .then(function(r){ var ok=!!(r&&r.ok);
@@ -2004,10 +2004,14 @@
     var busy=(S.modBusyId==='prem');
     var end=p.until?new Date(p.until):null;
     var endStr=end?(('0'+end.getDate()).slice(-2)+'.'+('0'+(end.getMonth()+1)).slice(-2)+'.'+end.getFullYear()):'';
-    var line, right;
+    var pTrialEnd=(p.trialing&&p.trialEnd)?p.trialEnd:null;
+    var line, right, badge=p.cancelAtPeriodEnd?' · gekündigt':(pTrialEnd?' · Gratis-Test':' · aktiv');
     if(p.cancelAtPeriodEnd){
       line='Gekündigt – dein Zugang bleibt bis '+esc(endStr)+' aktiv. Danach endet nur das Premium-Modul, deine Mitgliedschaft läuft normal weiter.';
       right='';
+    } else if(pTrialEnd){
+      line='Gratis-Test bis <b>'+esc(ernDeDate(pTrialEnd))+'</b> – danach per SEPA-Lastschrift über deinen Vertrag. Kündigst du bis dahin, wird nichts abgebucht.';
+      right='<button data-act="modCancelPrem" data-arg="prem"'+(busy?' disabled':'')+' style="margin-top:14px;padding:11px 16px;border-radius:12px;border:1.5px solid #e3b8b1;background:var(--surface);color:var(--err-fg);font-weight:700;font-size:13.5px;cursor:pointer">'+(busy?'…':'Test beenden / kündigen')+'</button>';
     } else {
       line='Läuft als Zusatzmodul über deinen Vertrag und wird per SEPA-Lastschrift abgebucht. Kündigst du, wird nur das Modul beendet – nicht deine Mitgliedschaft.';
       right='<button data-act="modCancelPrem" data-arg="prem"'+(busy?' disabled':'')+' style="margin-top:14px;padding:11px 16px;border-radius:12px;border:1.5px solid #e3b8b1;background:var(--surface);color:var(--err-fg);font-weight:700;font-size:13.5px;cursor:pointer">'+(busy?'…':'Premium kündigen')+'</button>';
@@ -2018,7 +2022,7 @@
     var otherMods=!!(DATA.modules&&DATA.modules.available===true&&(((DATA.modules.booked||[]).length)||((DATA.modules.bookable||[]).length)));
     var msg=(S.modMsg&&!otherMods)?'<div style="font-size:13px;font-weight:700;margin-top:12px;color:'+(S.modErr?'var(--err-fg)':'var(--teal-ink)')+'">'+esc(S.modMsg)+'</div>':'';
     return '<div class="card" style="padding:20px;margin-top:14px">'
-      +'<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px"><div style="width:34px;height:34px;border-radius:10px;background:var(--surface-2);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:18px">⭐</div><div style="font-size:17px;font-weight:900;letter-spacing:-.3px">Ernährungs-Premium</div></div>'
+      +'<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px"><div style="width:34px;height:34px;border-radius:10px;background:var(--surface-2);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:18px">⭐</div><div style="font-size:17px;font-weight:900;letter-spacing:-.3px">Coach Premium'+badge+'</div></div>'
       +'<div style="font-size:13px;color:var(--text-muted);line-height:1.55">'+line+'</div>'
       +warn+right+msg
       +'</div>';
@@ -2800,13 +2804,17 @@
   function ernModuleMode(){ return !!(DATA.nutri && DATA.nutri.premiumModuleId); }
   function ernModuleId(){ return (DATA.nutri && DATA.nutri.premiumModuleId) || null; }
   function ernViaModule(){ return !!(DATA.nutri && DATA.nutri.premiumViaModule); }
-  // Preis des Premium-Moduls aus der Zusatzmodul-Liste (falls schon geladen) – nur Anzeige.
-  function ernModulePrice(){
+  // Buchbares Premium-Modul aus der Zusatzmodul-Liste (falls schon geladen) – für Preis + Trial.
+  function ernModuleBookable(){
     var d=DATA.modules; if(!d||!Array.isArray(d.bookable)) return null;
     var mid=String(ernModuleId());
-    var mod=d.bookable.filter(function(x){ return String(x.id)===mid; })[0];
-    return (mod&&mod.price)||null;
+    return d.bookable.filter(function(x){ return String(x.id)===mid; })[0]||null;
   }
+  function ernModulePrice(){ var m=ernModuleBookable(); return (m&&m.price)||null; }
+  function ernModuleTrialDays(){ var m=ernModuleBookable(); var td=m&&parseInt(m.trialDays,10); return (td>0)?td:0; }
+  // Trial-Ende (nur wenn Premium gerade im Test läuft) – Datum 'YYYY-MM-DD'.
+  function ernTrialEnd(){ return (DATA.nutri&&DATA.nutri.premiumTrialEnd)||null; }
+  function ernDeDate(ymd){ if(!ymd) return ''; var t=String(ymd).split('-'); return t.length===3?(t[2]+'.'+t[1]+'.'+t[0]):String(ymd); }
   // Beim Öffnen des Upgrade-Screens im Modul-Modus die Modul-Liste (für den Preis) laden.
   function ernEnsureModulePrice(){ if(ernModuleMode()) { try{ loadModules(); }catch(e){} } }
   // ── Gratis-Kontingent (Basic): monatliches KI-Kontingent, danach Premium-Upgrade ──
@@ -2846,10 +2854,10 @@
     var pc=ernPriceCopy();
     // Freemium konkret: verbleibendes Gratis-Kontingent zeigen (macht den Upgrade-Nutzen greifbar).
     var q=ernQuota(); var left=ernQuotaLeft(), lim=ernQuotaLimit();
-    var qline=q ? (left>0 ? ('Noch <b>'+left+' von '+lim+'</b> FINN-Aktionen diesen Monat gratis – mit Premium unbegrenzt.') : ('Dein Gratis-Kontingent ist diesen Monat aufgebraucht – mit Premium unbegrenzt.')) : 'Foto-Analyse, FINN-Coach, Wochenpläne &amp; KI-Rezepte.';
+    var qline=q ? (left>0 ? ('Noch <b>'+left+' von '+lim+'</b> FINN-Aktionen diesen Monat gratis – mit Premium unbegrenzt.') : ('Dein Gratis-Kontingent ist diesen Monat aufgebraucht – mit Premium unbegrenzt.')) : 'KI-Coach für Ernährung &amp; Training: Pläne, Analysen &amp; Progression.';
     var sub=qline+(pc.trialText?(' '+pc.trialText+'.'):'');
     var pill=(q&&left===0)?'<span style="display:inline-block;margin-top:7px;background:rgba(255,255,255,.18);border-radius:8px;padding:3px 9px;font-size:10.5px;font-weight:900;color:#fff">Kontingent 0/'+lim+'</span>':(q?'<span style="display:inline-block;margin-top:7px;background:rgba(255,255,255,.18);border-radius:8px;padding:3px 9px;font-size:10.5px;font-weight:900;color:#fff">✨ '+left+'/'+lim+' gratis</span>':'');
-    return '<button data-act="ernUpgradeOpen" aria-label="Ernährung Premium'+(pc.trialText?(' – '+pc.trialText+' testen'):'')+'" style="width:100%;text-align:left;border:none;cursor:pointer;background:linear-gradient(150deg,#12879c,#0a4958);border-radius:18px;padding:16px;margin-bottom:14px;box-shadow:0 12px 30px rgba(4,33,40,.18);font-family:inherit;display:flex;align-items:center;gap:13px"><span style="width:46px;height:46px;border-radius:14px;background:rgba(255,255,255,.16);display:flex;align-items:center;justify-content:center;font-size:23px;flex-shrink:0">✨</span><div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:900;color:#fff">Ernährung Premium</div><div style="font-size:12.5px;font-weight:600;color:#cfe8ec;margin-top:2px;line-height:1.35">'+sub+'</div>'+pill+'</div>'+svg('<path d="M9 6l6 6-6 6"></path>',{c:'rgba(255,255,255,.75)',w:2.2,s:20})+'</button>';
+    return '<button data-act="ernUpgradeOpen" aria-label="Coach Premium'+(pc.trialText?(' – '+pc.trialText+' testen'):'')+'" style="width:100%;text-align:left;border:none;cursor:pointer;background:linear-gradient(150deg,#12879c,#0a4958);border-radius:18px;padding:16px;margin-bottom:14px;box-shadow:0 12px 30px rgba(4,33,40,.18);font-family:inherit;display:flex;align-items:center;gap:13px"><span style="width:46px;height:46px;border-radius:14px;background:rgba(255,255,255,.16);display:flex;align-items:center;justify-content:center;font-size:23px;flex-shrink:0">✨</span><div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:900;color:#fff">Coach Premium</div><div style="font-size:12.5px;font-weight:600;color:#cfe8ec;margin-top:2px;line-height:1.35">'+sub+'</div>'+pill+'</div>'+svg('<path d="M9 6l6 6-6 6"></path>',{c:'rgba(255,255,255,.75)',w:2.2,s:20})+'</button>';
   }
   // ═══ Stripe.js (nur bei Bedarf laden) – für Embedded Checkout & Payment Element ═══
   var __stripeJs=null, __stripeInst=null, __ernCheckout=null, __ernPmEl=null, __ernPmStripe=null;
@@ -2912,12 +2920,16 @@
   // ── Premium über das Magicline-Zusatzmodul buchen (SEPA über den Mitgliedsvertrag) ──
   // Kein Stripe/keine Kartendaten: die Abbuchung läuft über den bestehenden Vertrag.
   function ernModuleBook(){
-    if(S.ernUpgradeBusy) return; S.ernUpgradeBusy=true; S.ernErr=false; S.ernMsg=''; render();
+    if(S.ernUpgradeBusy) return;
+    // Der Preis muss vor der verbindlichen Bestellung sichtbar sein (§312j) – sonst erst laden.
+    if(!ernModulePrice()){ try{ loadModules(); }catch(e){} S.ernErr=true; S.ernMsg='Einen Moment – die Vertragsdaten werden geladen.'; render(); return; }
+    var td=ernModuleTrialDays();
+    S.ernUpgradeBusy=true; S.ernErr=false; S.ernMsg=''; render();
     api('/api/member/modules',{method:'POST',body:JSON.stringify({action:'book',moduleId:ernModuleId(),moduleName:'App Premium'})})
     .then(function(d){ S.ernUpgradeBusy=false;
       if(d&&d.ok){
         S.ernUpgrade=false; S.ernErr=false;
-        S.ernMsg=(d.via==='magicline')?'Premium ist aktiviert – viel Erfolg! 🎉':'Alles klar – wir aktivieren dein Premium und melden uns kurz.';
+        S.ernMsg=(d.via==='magicline')?(td>0?('Coach Premium ist aktiv – die ersten '+td+' Tage gratis. 🎉'):'Coach Premium ist aktiviert – viel Erfolg! 🎉'):'Alles klar – wir aktivieren dein Coach Premium und melden uns kurz.';
         loadNutri(); render(); try{ window.scrollTo(0,0); }catch(e){} return;
       }
       S.ernErr=true; S.ernMsg=(d&&d.message)||'Konnte nicht gestartet werden – bitte später erneut.'; render();
@@ -2926,7 +2938,7 @@
   // ── Premium (Zusatzmodul) kündigen – kündigt NUR das Modul, nie die Mitgliedschaft ──
   function ernModuleCancel(){
     if(S.ernDataBusy) return;
-    if(!window.confirm('Ernährungs-Premium kündigen? Nur das Zusatzmodul wird gekündigt – deine Mitgliedschaft läuft normal weiter. Dein Zugang bleibt bis zum Ende der Laufzeit aktiv.')) return;
+    if(!window.confirm('Coach Premium kündigen? Nur das Zusatzmodul wird gekündigt – deine Mitgliedschaft läuft normal weiter. Dein Zugang bleibt bis zum Ende der Laufzeit aktiv.')) return;
     S.ernDataBusy=true; S.ernErr=false; S.ernMsg=''; render();
     api('/api/member/modules',{method:'POST',body:JSON.stringify({action:'cancel-premium'})})
     .then(function(d){ S.ernDataBusy=false;
@@ -2994,15 +3006,17 @@
     // Stripe-UI. Kündigen betrifft NUR das Modul, nie die Mitgliedschaft.
     if(n.premiumViaModule){
       var mCancelAt=!!n.premiumCancelAt, mEnd=n.premiumUntil?ernFmtDate(n.premiumUntil):'';
-      var mLine=mCancelAt
-        ? ('Gekündigt – dein Zugang bleibt bis '+esc(mEnd)+' aktiv. Danach endet nur das Premium-Modul, deine Mitgliedschaft läuft normal weiter.')
-        : 'Dein Ernährungs-Premium läuft als Zusatzmodul über deinen Mitgliedsvertrag und wird per <b>SEPA-Lastschrift</b> abgebucht. Du kannst es jederzeit kündigen – nur das Modul, nicht deine Mitgliedschaft.';
-      var mBadge=mCancelAt?' · gekündigt':' · aktiv';
+      var mTrial=ernTrialing(), mTrialEnd=ernTrialEnd();
+      var mLine;
+      if(mCancelAt){ mLine='Gekündigt – dein Zugang bleibt bis '+esc(mEnd)+' aktiv. Danach endet nur das Premium-Modul, deine Mitgliedschaft läuft normal weiter.'; }
+      else if(mTrial&&mTrialEnd){ mLine='Gratis-Test bis <b>'+esc(ernDeDate(mTrialEnd))+'</b> – danach per <b>SEPA-Lastschrift</b> über deinen Vertrag. Kündigst du bis dahin, wird nichts abgebucht.'; }
+      else { mLine='Dein Coach Premium läuft als Zusatzmodul über deinen Mitgliedsvertrag und wird per <b>SEPA-Lastschrift</b> abgebucht. Du kannst es jederzeit kündigen – nur das Modul, nicht deine Mitgliedschaft.'; }
+      var mBadge=mCancelAt?' · gekündigt':(mTrial?' · Gratis-Test':' · aktiv');
       var mBtn=mCancelAt
         ? '<div style="font-size:12px;font-weight:700;color:var(--text-soft);text-align:center;padding:4px 0">Läuft noch bis '+esc(mEnd)+'.</div>'
-        : '<button data-act="ernModuleCancel" '+(busy?'disabled ':'')+'style="width:100%;padding:12px;border:1.5px solid rgba(192,57,43,.3);border-radius:12px;background:var(--surface);color:var(--err-fg);font-weight:800;font-size:14px;cursor:pointer">Premium kündigen</button>';
+        : '<button data-act="ernModuleCancel" '+(busy?'disabled ':'')+'style="width:100%;padding:12px;border:1.5px solid rgba(192,57,43,.3);border-radius:12px;background:var(--surface);color:var(--err-fg);font-weight:800;font-size:14px;cursor:pointer">'+(mTrial?'Test beenden / kündigen':'Premium kündigen')+'</button>';
       return '<div style="'+CARD+'">'+
-        '<div style="font-size:15px;font-weight:900;color:var(--text);display:flex;align-items:center;gap:8px">⭐ Premium'+mBadge+'</div>'+
+        '<div style="font-size:15px;font-weight:900;color:var(--text);display:flex;align-items:center;gap:8px">⭐ Coach Premium'+mBadge+'</div>'+
         '<div style="font-size:12px;font-weight:800;color:'+ERN_G+';margin-top:3px">Teil deiner Mitgliedschaft</div>'+
         '<div style="font-size:12.5px;font-weight:600;color:var(--text-muted);line-height:1.55;margin:8px 0 12px">'+mLine+'</div>'+
         mBtn+
@@ -3044,12 +3058,12 @@
   // reicht (der Server bucht bei Erfolg ab). Erst wenn 0 übrig ist -> Upgrade-Screen.
   function ernNeedPremium(){ if(ernPremium()) return false; if(ernQuotaLeft()>0) return false; ernEnsureModulePrice(); setS({ernUpgrade:true}); try{ window.scrollTo(0,0); }catch(e){} return true; }
   var ERN_PREMIUM_FEATURES=[
-    ['📸','Teller fotografieren','Die KI erkennt Zutaten, Portion & Kalorien automatisch.'],
-    ['✍️','Einfach eintippen','Schreib, was du gegessen hast – FINN schätzt die Nährwerte.'],
-    ['💬','FINN-Coach im Chat','Dein persönlicher Ernährungscoach, jederzeit fragbar.'],
-    ['🍳','KI-Rezepte','Passend zu deinem Ziel – auch aus dem, was im Kühlschrank ist.'],
-    ['🗓️','Wochenplan','Automatischer Plan + fertige Einkaufsliste.'],
-    ['📈','Wochen-Auswertung','FINN erkennt Muster und gibt dir wöchentlich Tipps.'],
+    ['🍎','Ernährung mit KI','Teller fotografieren oder eintippen – FINN erkennt Kalorien & Makros. Plus Wochenpläne & KI-Rezepte.'],
+    ['🏋️','KI-Trainingspläne','Individuelle Trainingspläne von FINN – passend zu Ziel & Ausrüstung.'],
+    ['📈','Automatische Progression','FINN steigert dein Training automatisch anhand deiner protokollierten Einheiten.'],
+    ['🎓','Coaching-Programm','Alle Wochen-Lektionen & Vertiefungen freigeschaltet.'],
+    ['💬','FINN-Coach im Chat','Dein persönlicher Coach für Ernährung & Training, jederzeit fragbar.'],
+    ['🔎','Tiefe FINN-Analysen','Wochen-Auswertung & datenbasierte Empfehlungen.'],
   ];
   function ernUpgradeScreen(){
     var busy=S.ernUpgradeBusy; var pc=ernPriceCopy();
@@ -3059,13 +3073,33 @@
     // Copy dynamisch: Modul-Modus läuft über den Mitgliedsvertrag (SEPA), sonst über Stripe.
     var moduleMode=ernModuleMode();
     var headline, ctaLabel, fine, consentText;
+    var moduleInfoBox='', buyBlocked=false;
     if(moduleMode){
-      // Preis aus der Zusatzmodul-Liste (Fallback: kein harter Preis, statt eines falschen).
+      // Preis + Testphase + Pflichtangaben aus der Zusatzmodul-Liste.
+      var mb=ernModuleBookable()||{};
       var mp=ernModulePrice();
-      headline='Als Teil deiner Mitgliedschaft'+(mp?(' – nur <b style="color:#fff">'+esc(mp)+'</b> im Monat'):'')+'. Bequem per SEPA über deinen Vertrag, monatlich kündbar.';
-      ctaLabel=busy?'Einen Moment …':'Premium hinzubuchen';
-      fine='Wird als Zusatzmodul zu deiner Mitgliedschaft gebucht und per <b>SEPA-Lastschrift</b> über deinen Vertrag abgebucht'+(mp?(' ('+esc(mp)+' pro Monat, inkl. MwSt)'):'')+'.<br>Monatlich kündbar zum vereinbarten Termin – gekündigt wird nur das Modul, nicht deine Mitgliedschaft.';
-      consentText='Ich möchte das kostenpflichtige Zusatzmodul „App Premium" verbindlich über meinen Mitgliedsvertrag hinzubuchen. Die Abbuchung erfolgt per SEPA-Lastschrift; das Modul ist monatlich kündbar.';
+      var td=ernModuleTrialDays();
+      var priceBit=mp?('<b style="color:#fff">'+esc(mp)+'</b> im Monat'):'ein fester Monatsbeitrag';
+      headline=(td>0?(td+' Tage gratis testen, danach '+priceBit):('Als Teil deiner Mitgliedschaft'+(mp?(' – nur '+priceBit):'')))+'. Bequem per SEPA über deinen Vertrag.';
+      // Button-Lösung (§312j Abs. 3 BGB): eindeutige zahlungspflichtige Beschriftung.
+      ctaLabel=busy?'Einen Moment …':'Kostenpflichtig kaufen';
+      fine='Zahlung per <b>SEPA-Lastschrift</b> über deinen Mitgliedsvertrag. Gekündigt wird nur das Modul, nicht deine Mitgliedschaft.';
+      // §356 BGB: Einwilligung zur sofortigen Ausführung -> Widerruf bei sofortiger Nutzung ausgeschlossen.
+      consentText='Ich verlange ausdrücklich, dass Fit-Inn sofort mit der Bereitstellung von Coach Premium beginnt. Mir ist bekannt, dass mein Widerrufsrecht bei vollständiger Vertragserfüllung erlischt bzw. bei sofortiger Nutzung ausgeschlossen ist; bei einem Widerruf vor vollständiger Erfüllung schulde ich anteiligen Wertersatz für die bereits erbrachte Leistung.';
+      // Pflichtangaben unmittelbar vor der Bestellung (§312j Abs. 2 BGB).
+      var infoRow=function(k,v){ return '<div style="display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-top:1px solid rgba(255,255,255,.12)"><span style="font-size:12px;font-weight:700;color:#bfe0e6;flex-shrink:0">'+k+'</span><span style="font-size:12.5px;font-weight:800;color:#fff;text-align:right">'+v+'</span></div>'; };
+      moduleInfoBox='<div style="background:rgba(255,255,255,.10);border-radius:16px;padding:4px 16px 12px;margin-top:20px">'
+        +'<div style="font-size:12px;font-weight:900;color:#fff;text-transform:uppercase;letter-spacing:.4px;padding:13px 0 3px">Das Wichtigste zum Vertrag</div>'
+        +infoRow('Preis', mp?(esc(mp)+' / Monat (inkl. MwSt)'):'wird geladen …')
+        +(td>0?infoRow('Testphase', td+' Tage gratis'):'')
+        +infoRow('Laufzeit', esc(mb.laufzeit||'—'))
+        +infoRow('Verlängerung', esc(mb.verlaengerung||'—'))
+        +infoRow('Kündigung', esc(mb.kuendigung||'—'))
+        +infoRow('Zahlung', 'SEPA über deinen Vertrag')
+        +infoRow('Widerruf', 'bei sofortiger Nutzung ausgeschlossen')
+        +'</div>';
+      // Der Preis MUSS vor der Bestellung sichtbar sein -> ohne Preis kein Kauf.
+      if(!mp) buyBlocked=true;
     } else {
       headline=pc.trialText?(pc.trialText+' testen – danach nur <b style="color:#fff">'+esc(pc.pricePer)+'</b>. Jederzeit kündbar.'):('Nur <b style="color:#fff">'+esc(pc.pricePer)+'</b>. Jederzeit kündbar.');
       ctaLabel=busy?'Einen Moment …':(pc.trialText?(pc.trialDays+' Tage gratis starten'):'Premium starten');
@@ -3081,17 +3115,18 @@
     // Beim Zusatzmodul läuft der Kauf über den Mitgliedsvertrag – Link hier ausblenden.
     var legalLink=moduleMode?'':'<div style="text-align:center;margin-top:12px"><button data-act="nav" data-arg="recht" style="background:none;border:none;color:#eafff4;font-size:12px;font-weight:800;text-decoration:underline;cursor:pointer">Pflichtinfos &amp; Widerrufsbelehrung</button></div>';
     return '<div style="position:relative;min-height:100%;background:linear-gradient(172deg,#12879c 0%,#0e6072 52%,#0a4958 100%);padding:56px 22px 30px">'+back+
-      '<div style="text-align:center"><div style="display:inline-flex;align-items:center;gap:7px;background:rgba(255,255,255,.16);border-radius:20px;padding:6px 14px;font-size:12px;font-weight:900;color:#fff;letter-spacing:.3px">⭐ ERNÄHRUNG PREMIUM</div>'+
-        '<div style="font-size:27px;font-weight:900;letter-spacing:-.6px;line-height:1.15;color:#fff;margin-top:16px">Hol dir deinen<br>KI-Ernährungscoach</div>'+
+      '<div style="text-align:center"><div style="display:inline-flex;align-items:center;gap:7px;background:rgba(255,255,255,.16);border-radius:20px;padding:6px 14px;font-size:12px;font-weight:900;color:#fff;letter-spacing:.3px">⭐ COACH PREMIUM</div>'+
+        '<div style="font-size:27px;font-weight:900;letter-spacing:-.6px;line-height:1.15;color:#fff;margin-top:16px">Hol dir deinen<br>persönlichen KI-Coach</div>'+
         '<div style="font-size:14.5px;font-weight:600;color:#cfe8ec;line-height:1.5;margin-top:12px">'+headline+'</div>'+
         ((!ernPremium()&&ernQuota())?('<div style="display:inline-block;margin-top:14px;background:rgba(255,255,255,.16);border-radius:12px;padding:8px 14px;font-size:12.5px;font-weight:800;color:#fff">'+(ernQuotaLeft()>0?('✨ Noch '+ernQuotaLeft()+' von '+ernQuotaLimit()+' FINN-Aktionen diesen Monat gratis'):('🔒 Dein Gratis-Kontingent ist diesen Monat aufgebraucht'))+'</div>'):'')+'</div>'+
       '<div style="background:rgba(255,255,255,.08);border-radius:20px;padding:8px 16px;margin-top:22px">'+feats+'</div>'+
+      moduleInfoBox+
       buyConsent+
-      '<button data-act="ernUpgradeGo" '+(busy?'disabled ':'')+'style="width:100%;margin-top:16px;padding:17px;border:none;border-radius:16px;background:#ffffff;color:#0E6072;font-weight:900;font-size:16.5px;cursor:pointer;opacity:'+((busy||!S.ernBuyConsent)?'.55':'1')+'">'+ctaLabel+'</button>'+
+      '<button data-act="ernUpgradeGo" '+((busy||buyBlocked)?'disabled ':'')+'style="width:100%;margin-top:16px;padding:17px;border:none;border-radius:16px;background:#ffffff;color:#0E6072;font-weight:900;font-size:16.5px;cursor:pointer;opacity:'+((busy||buyBlocked||!S.ernBuyConsent)?'.55':'1')+'">'+ctaLabel+'</button>'+
       '<div style="font-size:11.5px;color:#bfe0e6;font-weight:600;text-align:center;line-height:1.5;margin-top:12px">'+fine+'</div>'+
       legalLink+
       err+
-      '<div style="font-size:12px;color:#aed0d6;font-weight:600;text-align:center;margin-top:16px;line-height:1.5">Gratis-Basis: '+ernQuotaLimit()+' FINN-Aktionen/Monat, manuell loggen,<br>Barcode, Wasser, Favoriten, Kochbuch &amp; Verlauf.</div>'+
+      '<div style="font-size:12px;color:#aed0d6;font-weight:600;text-align:center;margin-top:16px;line-height:1.5">Gratis-Basis: '+ernQuotaLimit()+' FINN-Aktionen/Monat · Tracking ·<br>Übungs- &amp; Rezept-Bibliothek · Verlauf.</div>'+
       '<button data-act="ernUpgradeClose" style="width:100%;margin-top:14px;padding:13px;border:none;background:transparent;color:#eafff4;font-weight:800;font-size:14px;cursor:pointer">Vielleicht später</button>'+
     '</div>';
   }
