@@ -148,6 +148,11 @@
   .ernCapGrip{width:40px;height:5px;border-radius:3px;background:#cfd8db;margin:9px auto 2px;flex-shrink:0}
   @keyframes ernCapUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
   .ernCapRow:active{transform:scale(.985)}
+  /* Coach Premium – Upgrade als schönes Bottom-Sheet-Popup (Overlay, kein Vollbild) */
+  .upScrim{position:fixed;inset:0;z-index:64;background:rgba(6,24,29,.62);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);animation:qaFade .2s ease}
+  .upSheet{position:fixed;left:0;right:0;bottom:0;z-index:65;max-width:480px;margin:0 auto;display:flex;flex-direction:column;max-height:94vh;background:linear-gradient(168deg,#159fb6 0%,#0e6072 54%,#083b47 100%);border-radius:28px 28px 0 0;box-shadow:0 -20px 60px rgba(4,33,40,.55);animation:ernCapUp .3s cubic-bezier(.22,.61,.36,1);overflow:hidden}
+  .upScroll{overflow-y:auto;-webkit-overflow-scrolling:touch;padding:2px 20px calc(22px + env(safe-area-inset-bottom,0px))}
+  .upGrip{width:42px;height:5px;border-radius:3px;background:rgba(255,255,255,.4);margin:10px auto 4px;flex-shrink:0}
   .qaRow{width:100%;display:flex;align-items:center;gap:14px;padding:13px 13px;background:none;border:none;cursor:pointer;text-align:left;border-radius:15px}
   .qaRow:active{background:var(--surface-2)}
   .qaIco{width:46px;height:46px;border-radius:50%;background:var(--surface-2);display:flex;align-items:center;justify-content:center;flex-shrink:0}
@@ -3071,9 +3076,11 @@
     ['🔎','Tiefe FINN-Analysen','Wochen-Auswertung & datenbasierte Empfehlungen.'],
   ];
   function ernUpgradeScreen(){
+    // Popup kann über JEDEM Screen liegen -> Ernährungsdaten (mit premiumModuleId
+    // für den Modul-Modus) selbstheilend nachladen, falls noch nicht da.
+    if(ERN_ON && DATA.nutri==null){ try{ loadNutri(); }catch(e){} }
     var busy=S.ernUpgradeBusy; var pc=ernPriceCopy();
     var feats=ERN_PREMIUM_FEATURES.map(function(f){ return '<div style="display:flex;align-items:flex-start;gap:13px;padding:11px 0"><span style="width:40px;height:40px;border-radius:12px;background:rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">'+f[0]+'</span><div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:900;color:#fff">'+f[1]+'</div><div style="font-size:12.5px;font-weight:500;color:#cfe8ec;line-height:1.4;margin-top:1px">'+esc(f[2])+'</div></div></div>'; }).join('');
-    var back='<button data-act="ernUpgradeClose" aria-label="Zurück" style="position:absolute;top:16px;left:16px;width:38px;height:38px;border-radius:12px;border:none;background:rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:2">'+svg(IC.back,{c:'#fff',w:2.2,s:19})+'</button>';
     var err=(S.ernErr&&S.ernMsg)?'<div role="alert" style="font-size:12.5px;font-weight:700;color:#ffd7cf;text-align:center;margin-top:12px">'+esc(S.ernMsg)+'</div>':'';
     // Copy dynamisch: Modul-Modus läuft über den Mitgliedsvertrag (SEPA), sonst über Stripe.
     var moduleMode=ernModuleMode();
@@ -3124,22 +3131,31 @@
     // Widerrufsbelehrung (Fernabsatz/digitale Leistung) betrifft nur den Stripe-Kauf.
     // Beim Zusatzmodul läuft der Kauf über den Mitgliedsvertrag – Link hier ausblenden.
     var legalLink=moduleMode?'':'<div style="text-align:center;margin-top:12px"><button data-act="nav" data-arg="recht" style="background:none;border:none;color:#eafff4;font-size:12px;font-weight:800;text-decoration:underline;cursor:pointer">Pflichtinfos &amp; Widerrufsbelehrung</button></div>';
-    return '<div style="position:relative;min-height:100%;background:linear-gradient(172deg,#12879c 0%,#0e6072 52%,#0a4958 100%);padding:56px 22px 30px">'+back+
-      '<div style="text-align:center"><div style="display:inline-flex;align-items:center;gap:7px;background:rgba(255,255,255,.16);border-radius:20px;padding:6px 14px;font-size:12px;font-weight:900;color:#fff;letter-spacing:.3px">⭐ COACH PREMIUM</div>'+
-        '<div style="font-size:27px;font-weight:900;letter-spacing:-.6px;line-height:1.15;color:#fff;margin-top:16px">Hol dir deinen<br>persönlichen KI-Coach</div>'+
-        '<div style="font-size:14.5px;font-weight:600;color:#cfe8ec;line-height:1.5;margin-top:12px">'+headline+'</div>'+
-        ((!ernPremium()&&ernQuota())?('<div style="display:inline-block;margin-top:14px;background:rgba(255,255,255,.16);border-radius:12px;padding:8px 14px;font-size:12.5px;font-weight:800;color:#fff">'+(ernQuotaLeft()>0?('✨ Noch '+ernQuotaLeft()+' von '+ernQuotaLimit()+' FINN-Aktionen diesen Monat gratis'):('🔒 Dein Gratis-Kontingent ist diesen Monat aufgebraucht'))+'</div>'):'')+'</div>'+
-      '<div style="background:rgba(255,255,255,.08);border-radius:20px;padding:8px 16px;margin-top:22px">'+feats+'</div>'+
-      moduleInfoBox+
-      buyConsent+
-      '<button data-act="ernUpgradeGo" '+((busy||buyBlocked)?'disabled ':'')+'style="width:100%;margin-top:16px;padding:17px;border:none;border-radius:16px;background:#ffffff;color:#0E6072;font-weight:900;font-size:16.5px;cursor:pointer;opacity:'+((busy||buyBlocked||!S.ernBuyConsent)?'.55':'1')+'">'+ctaLabel+'</button>'+
-      ((moduleMode&&buyBlocked&&ernModulesLoaded())?'<button data-act="ernModulePriceRetry" style="width:100%;margin-top:8px;padding:10px;border:none;background:transparent;color:#eafff4;font-weight:800;font-size:13px;cursor:pointer;text-decoration:underline">Preis erneut laden</button>':'')+
-      '<div style="font-size:11.5px;color:#bfe0e6;font-weight:600;text-align:center;line-height:1.5;margin-top:12px">'+fine+'</div>'+
-      legalLink+
-      err+
-      '<div style="font-size:12px;color:#aed0d6;font-weight:600;text-align:center;margin-top:16px;line-height:1.5">Gratis-Basis: '+ernQuotaLimit()+' FINN-Aktionen/Monat · Tracking ·<br>Übungs- &amp; Rezept-Bibliothek · Verlauf.</div>'+
-      '<button data-act="ernUpgradeClose" style="width:100%;margin-top:14px;padding:13px;border:none;background:transparent;color:#eafff4;font-weight:800;font-size:14px;cursor:pointer">Vielleicht später</button>'+
-    '</div>';
+    var quotaBadge=(!ernPremium()&&ernQuota())?('<div style="display:inline-block;margin-top:14px;background:rgba(255,255,255,.16);border-radius:12px;padding:8px 14px;font-size:12.5px;font-weight:800;color:#fff">'+(ernQuotaLeft()>0?('✨ Noch '+ernQuotaLeft()+' von '+ernQuotaLimit()+' FINN-Aktionen diesen Monat gratis'):('🔒 Dein Gratis-Kontingent ist diesen Monat aufgebraucht'))+'</div>'):'';
+    var closeX='<button data-act="ernUpgradeClose" aria-label="Schließen" style="position:absolute;top:12px;right:14px;width:36px;height:36px;border-radius:11px;border:none;background:rgba(255,255,255,.16);display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:3">'+svg('<path d="M18 6L6 18M6 6l12 12"></path>',{c:'#fff',w:2.3,s:18})+'</button>';
+    // Als Bottom-Sheet-Popup (Scrim + Sheet) statt Vollbild – wird in render() über
+    // dem aktuellen Screen eingeblendet. Backdrop-Tap, X und „Vielleicht später" schließen.
+    return '<div class="upScrim" data-act="ernUpgradeClose"></div>'+
+      '<div class="upSheet" role="dialog" aria-modal="true" aria-label="Coach Premium">'+
+        '<div class="upGrip"></div>'+closeX+
+        '<div class="upScroll">'+
+          '<div style="text-align:center;padding-top:4px">'+
+            '<div style="display:inline-flex;align-items:center;gap:7px;background:rgba(255,255,255,.16);border-radius:20px;padding:6px 14px;font-size:12px;font-weight:900;color:#fff;letter-spacing:.3px">⭐ COACH PREMIUM</div>'+
+            '<div style="font-size:25px;font-weight:900;letter-spacing:-.5px;line-height:1.15;color:#fff;margin-top:14px">Hol dir deinen<br>persönlichen KI-Coach</div>'+
+            '<div style="font-size:14px;font-weight:600;color:#cfe8ec;line-height:1.5;margin-top:11px">'+headline+'</div>'+
+            quotaBadge+'</div>'+
+          '<div style="background:rgba(255,255,255,.08);border-radius:20px;padding:8px 16px;margin-top:20px">'+feats+'</div>'+
+          moduleInfoBox+
+          buyConsent+
+          '<button data-act="ernUpgradeGo" '+((busy||buyBlocked)?'disabled ':'')+'style="width:100%;margin-top:16px;padding:17px;border:none;border-radius:16px;background:#ffffff;color:#0E6072;font-weight:900;font-size:16.5px;cursor:pointer;box-shadow:0 10px 26px rgba(0,0,0,.22);opacity:'+((busy||buyBlocked||!S.ernBuyConsent)?'.55':'1')+'">'+ctaLabel+'</button>'+
+          ((moduleMode&&buyBlocked&&ernModulesLoaded())?'<button data-act="ernModulePriceRetry" style="width:100%;margin-top:8px;padding:10px;border:none;background:transparent;color:#eafff4;font-weight:800;font-size:13px;cursor:pointer;text-decoration:underline">Preis erneut laden</button>':'')+
+          '<div style="font-size:11.5px;color:#bfe0e6;font-weight:600;text-align:center;line-height:1.5;margin-top:12px">'+fine+'</div>'+
+          legalLink+
+          err+
+          '<div style="font-size:12px;color:#aed0d6;font-weight:600;text-align:center;margin-top:16px;line-height:1.5">Gratis-Basis: '+ernQuotaLimit()+' FINN-Aktionen/Monat · Tracking ·<br>Übungs- &amp; Rezept-Bibliothek · Verlauf.</div>'+
+          '<button data-act="ernUpgradeClose" style="width:100%;margin-top:12px;padding:13px;border:none;background:transparent;color:#eafff4;font-weight:800;font-size:14px;cursor:pointer">Vielleicht später</button>'+
+        '</div>'+
+      '</div>';
   }
   window.__ernPhoto=function(input){
     if(ernNeedPremium()){ try{ if(input) input.value=''; }catch(e){} return; }
@@ -4280,7 +4296,7 @@
   function scrCoach(){
     var wrap=function(inner){ return '<div class="ernwrap" style="padding-bottom:40px">'+inner+'</div>'; };
     // Unteransichten (Lektion / Vertiefung / Check-in / Upgrade / Nutrition-Chat) – bestehende Renderer.
-    if(S.ernUpgrade){ if(ERN_ON && DATA.nutri==null) loadNutri(); return wrap(ernUpgradeScreen()); }
+    // Coach-Premium-Kauf ist jetzt ein Popup (render() blendet es global über dem Screen ein) – kein Vollbild mehr.
     if(S.ernLesson||S.ernVert) return wrap(ernLesson());
     if(S.ernCk) return wrap(ernCheckinScreen());
     if(ERN_ON && DATA.nutri==null) loadNutri();   // Ernährungs-Erkenntnisse im Coach mit Live-Daten füttern
@@ -4956,7 +4972,6 @@
     // Mockup-Palette liegt als .ernwrap-Klasse im Stylesheet – hell wie gehabt, im Dark Mode dunkel.
     if(n===null||n===false){ inner='<div style="background:var(--surface);border-radius:20px;box-shadow:0 12px 34px rgba(4,33,40,.10);padding:40px 22px;text-align:center;color:var(--text-soft);font-size:14px;font-weight:600">Lade Ernährung …</div>'; }
     else if(!n.ok||n.available===false){ inner='<div style="background:var(--surface);border-radius:20px;box-shadow:0 12px 34px rgba(4,33,40,.10);padding:30px 22px;text-align:center"><div style="font-size:34px">🥗</div><div style="font-size:16px;font-weight:800;color:var(--text);margin-top:10px">Ernährung ist gerade nicht verfügbar</div><div style="font-size:13.5px;color:var(--text-muted);font-weight:500;margin-top:6px;line-height:1.5">Bitte später erneut versuchen.</div></div>'; }
-    else if(S.ernUpgrade){ inner=ernUpgradeScreen(); }
     else if(S.ernProd){ inner=ernProductPicker(); }
     // Erfassen ist jetzt ein Bottom-Sheet-Popup (Overlay über dem aktuellen Screen), kein Vollbild mehr.
     else if(S.ernConfirm){ inner=ernConfirmScreen(); }
@@ -6795,6 +6810,7 @@
     if(S.vaOpen) html+=vaOverlayHtml();
     if(S.dp) html+=wheelOverlay();
     if(S.qaOpen) html+=qaSheet();
+    if(S.ernUpgrade) html+=ernUpgradeScreen();   // Coach-Premium-Kauf als Bottom-Sheet-Popup über dem aktuellen Screen
     if(S.screen==='ern'&&S.ernCapture) html+=ernErfassen();   // Erfassen-Popup (Bottom-Sheet) über dem Ernährungs-Screen
     if(TOKEN && S.screen!=='login' && !isFormer() && !obDone()) html+=obOverlayHtml();
     // Chat-Eingaben über die Neu-Zeichnung retten (Wert, Fokus, Cursor & Scroll-Position) –
@@ -6877,7 +6893,7 @@
       api('/api/member/figurcheck',{method:'POST',body:JSON.stringify({action:'review'})}).then(function(d){
         S.figurReviewBusy=false;
         if(d&&d.ok){ S.figurReview=d.review; ernQuotaApply(d); setS({}); return; }
-        if(d&&d.error==='premium_required'){ ernEnsureModulePrice(); nav('ern'); setS({ernUpgrade:true}); return; }
+        if(d&&d.error==='premium_required'){ ernEnsureModulePrice(); setS({ernUpgrade:true}); return; }
         S.figurErr=true; S.figurMsg=(d&&d.message)||'Das hat nicht geklappt – bitte erneut.'; setS({});
       }).catch(function(){ S.figurReviewBusy=false; S.figurErr=true; S.figurMsg='Netzwerkfehler – bitte erneut.'; setS({}); });
     },
