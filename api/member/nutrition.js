@@ -38,6 +38,7 @@ const { redisPipeline, hasStore } = require('../../lib/store');
 const Inbox = require('../../lib/inbox');
 const SR = require('../../lib/studioReply');
 const Ent = require('../../lib/entitlements');
+const MlPremium = require('../../lib/mlPremium');
 const Coaching = require('../../lib/coaching');
 const Stripe = require('../../lib/stripe');
 const Recipes = require('../../lib/recipes');
@@ -329,6 +330,9 @@ async function buildState(id, profile, forDate) {
   const totals = totalsOf(day.entries);
   const vit = await computeVitals(id, todayYMD, targets);
   const fasting = await loadFasting(id);
+  // Premium über das Magicline-Zusatzmodul (SEPA) mit dem Entitlement abgleichen –
+  // gecacht (30 min), 403-/Fehler-sicher, nur aktiv bei gesetztem ML_PREMIUM_MODULE_ID.
+  try { await MlPremium.reconcile(id); } catch (e) {}
   const tier = Ent.publicTier(await Ent.getEntitlement(id));   // Premium-Status für die UI (Freemium)
   // Gratis-Kontingent (Basic) für den aktuellen Monat – die UI zeigt „Noch X von 5".
   // Verbrauch wird für alle gezählt (auch Premium), damit die Nutzungsübersicht stimmt.
@@ -348,6 +352,8 @@ async function buildState(id, profile, forDate) {
     premium: tier.premium, tier: tier.tier, trialing: tier.trialing, premiumUntil: tier.until,
     premiumCancelAt: tier.cancelAtPeriodEnd || false,
     premiumComp: tier.comp || false, premiumPermanent: tier.permanent || false,
+    premiumSource: tier.source || null, premiumViaModule: !!tier.viaModule,
+    premiumModuleId: MlPremium.configured() ? require('../../lib/mlModules').PREMIUM_MODULE_ID : null,
     premiumInfo: { price: priceInfo, trialDays: Stripe.TRIAL_DAYS, pk: Stripe.PUBLISHABLE || '' },
     quota: Quota.publicQuota(qUsed, tier.premium, qMonth),
   };

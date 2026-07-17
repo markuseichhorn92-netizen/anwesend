@@ -22,6 +22,9 @@
 
 const M = require('../../lib/members');
 const Mod = require('../../lib/mlModules');
+const MlPremium = require('../../lib/mlPremium');
+const Ent = require('../../lib/entitlements');
+const Connect = require('../../lib/connect');
 const Inbox = require('../../lib/inbox');
 const SR = require('../../lib/studioReply');
 const { sendMailRaw, hasMail } = require('../../lib/mail');
@@ -87,9 +90,81 @@ module.exports = async function handler(req, res) {
     }));
   }
 
-  // ── POST: buchen / kündigen ──
+  // ── POST: buchen / kündigen / Premium-Modul kündigen ──
+  // WICHTIG: readBody konsumiert den Request-Stream nur EINMAL -> Body hier oben
+  // genau einmal lesen und dann verzweigen.
   if (req.method === 'POST') {
     const body = await M.readBody(req);
+
+    // ── Premium-Zusatzmodul kündigen (Ernährungs-Premium über die Mitgliedschaft) ──
+    // Die Modul-Vertrags-ID kommt AUS DEM ENTITLEMENT (server-autoritativ), nicht vom
+    // Client. Kündigung mit Grund + nächstmöglichem Datum; bei Ablehnung -> Studio-Fallback.
+    if (body.action === 'cancel-premium') {
+      if (!(await M.rateLimit('modules:' + sess.id, 15, 3600))) {
+        res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'Zu viele Anfragen. Bitte versuche es später erneut.' }));
+      }
+      const m = await M.getMember(sess.id);
+      const mid = await membershipId(sess.id);
+      // Modul-Vertrags-ID: aus dem gespiegelten Entitlement, sonst frisch aus Magicline.
+      let ent = null; try { ent = await Ent.getEntitlement(sess.id); } catch (e) {}
+      let moduleContractId = (ent && ent.source === 'magicline' && ent.moduleContractId != null) ? ent.moduleContractId : null;
+      let bookedInfo = null;
+      if (moduleContractId == null) {
+        try { bookedInfo = await Mod.findBookedPremium(mid); } catch (e) {}
+        if (bookedInfo && bookedInfo.id != null) moduleContractId = bookedInfo.id;
+      }
+      // Grund + Datum bestmöglich bestimmen (Connect-Gründe; Datum = nächstmögliche Kündigung).
+      let reasonId = null;
+      try { const rs = await Connect.getCancelationReasons(); reasonId = Connect.pickReasonId(rs, 'sonstiges'); } catch (e) {}
+      let cancelationDate = (bookedInfo && (bookedInfo.nextCancellationDate || bookedInfo.endDate)) || null;
+
+      let r = { ok: false, status: 0 };
+      if (moduleContractId != null) {
+        try { r = await Mod.cancelModule(mid, moduleContractId, { cancelationDate: cancelationDate, cancelationReasonId: reasonId }); } catch (e) { r = { ok: false, status: 0, error: String((e && e.message) || e).slice(0, 200) }; }
+      }
+      if (!(r && r.ok)) { try { console.log('[modules] cancel-premium failed', JSON.stringify({ status: (r && r.status) || 0, hasId: moduleContractId != null })); } catch (e) {} }
+
+      if (r && r.ok) {
+        // Frisch abgleichen: setzt until = Modul-Ende, Premium läuft bis dahin weiter.
+        let tier = null; try { await MlPremium.invalidate(sess.id); tier = await MlPremium.reconcile(sess.id); } catch (e) {}
+        try { require('../../lib/handled').record('system', sess.id, 'modul'); } catch (e) {}
+        try {
+          await Inbox.addVorgang(sess.id, {
+            type: 'abo', subject: 'Premium (Zusatzmodul) gekündigt', status: 'abgeschlossen',
+            systemText: 'Du hast dein Ernährungs-Premium (Zusatzmodul) gekündigt.'
+              + ((tier && tier.until) ? (' Dein Zugang bleibt bis ' + new Date(tier.until).toLocaleDateString('de-DE') + ' aktiv.') : ''),
+            teamText: 'Hallo' + (m && m.firstName ? (' ' + m.firstName) : '') + ', dein Ernährungs-Premium wurde gekündigt.',
+          });
+        } catch (e) {}
+        res.statusCode = 200;
+        return res.end(JSON.stringify({ ok: true, via: 'magicline', until: (tier && tier.until) || null, message: 'Premium wurde gekündigt. Dein Zugang bleibt bis zum Ende der Laufzeit aktiv.' }));
+      }
+
+      // Fallback: Wunsch als Vorgang + Studio-Mail sichern (geht nie verloren).
+      let vorgang = null;
+      try {
+        vorgang = await Inbox.addVorgang(sess.id, {
+          type: 'kontakt', subject: 'Premium (Zusatzmodul) kündigen',
+          systemText: 'Du möchtest dein Ernährungs-Premium (Zusatzmodul) kündigen. Wir kümmern uns darum.',
+          teamText: 'Hallo' + (m && m.firstName ? (' ' + m.firstName) : '') + ', dein Kündigungswunsch ist eingegangen. Wir kümmern uns darum.',
+        });
+      } catch (e) {}
+      try {
+        await SR.notifyStudio({
+          member: m, vorgang: vorgang,
+          subject: '➖ Ernährungs-Premium (Zusatzmodul) kündigen – ' + who(m),
+          text: 'Ein Mitglied möchte sein Ernährungs-Premium (Zusatzmodul) kündigen.\n\n'
+            + 'Mitglied: ' + who(m) + '\nKundennr.: ' + (m && m.customerNumber || '—') + '\n'
+            + 'Modul-Vertrags-ID: ' + (moduleContractId != null ? moduleContractId : 'unbekannt') + '\n'
+            + 'Automatik: fehlgeschlagen (HTTP ' + ((r && r.status) || 0) + ')\n\n'
+            + 'Bitte das Zusatzmodul in Magicline kündigen und dem Mitglied bestätigen.',
+        });
+      } catch (e) {}
+      res.statusCode = 200;
+      return res.end(JSON.stringify({ ok: true, via: 'fallback', message: 'Wir kümmern uns um deine Kündigung und melden uns.' }));
+    }
+
+    // ── Zusatzmodul buchen / (generisch) kündigen ──
     const action = (body.action === 'cancel') ? 'cancel' : (body.action === 'book' ? 'book' : null);
     const moduleIdRaw = body.moduleId;
     const moduleId = (typeof moduleIdRaw === 'number') ? moduleIdRaw : String(moduleIdRaw == null ? '' : moduleIdRaw).trim();
@@ -122,6 +197,15 @@ module.exports = async function handler(req, res) {
 
     if (r && r.ok) {
       try { require('../../lib/handled').record('system', sess.id, 'modul'); } catch (e) {}
+      // Ist das gebuchte/gekündigte Modul das Premium-Modul? -> Ernährungs-Premium
+      // sofort freischalten (Buchung) bzw. den Modulstatus neu abgleichen (Kündigung).
+      if (Mod.isPremiumModule(moduleId)) {
+        try {
+          await MlPremium.invalidate(sess.id);
+          if (isBook) await MlPremium.grantFromBooking(sess.id, null);
+          await MlPremium.reconcile(sess.id);
+        } catch (e) {}
+      }
       // Erfolg -> abgeschlossenen Vorgang ins Postfach + Bestätigung.
       try {
         await Inbox.addVorgang(sess.id, {
