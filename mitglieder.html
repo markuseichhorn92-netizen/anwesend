@@ -6,9 +6,14 @@
 <title>Fit-Inn Trier · Mitgliederbereich</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+<!-- Font-CSS nicht render-blockierend laden: erst als print, nach dem Laden aktiv.
+     display=swap sorgt dafür, dass Text sofort mit der System-Schrift erscheint. -->
+<link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&display=swap" />
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" media="print" onload="this.media='all'" />
+<noscript><link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" /></noscript>
 <script src="https://www.google.com/recaptcha/api.js?onload=onRcLoad&render=explicit" async defer></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" defer></script>
+<!-- jsPDF wird NICHT mehr beim Start geladen, sondern erst bei Bedarf (loadPdfLib) –
+     spart ~120 KB Transfer + Parsezeit bei jedem Seitenaufruf. -->
 <style>
   /* ===== Farb-System (Hell / Dunkel) ===== */
   :root{
@@ -230,6 +235,18 @@
   /* ---- Hilfe & Kontakt ---- */
   @keyframes fiRise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
   @keyframes fiSpin{to{transform:rotate(360deg)}}
+  /* ===== Boot-Splash + Skeleton-Karten =====
+     Liegt statisch in #app und ist damit ab dem ersten gestreamten Byte sichtbar –
+     während die Seite noch lädt/parst und loadMe() läuft. Das erste render()
+     ersetzt den Inhalt von #app automatisch. */
+  .bootsplash{display:flex;flex-direction:column;align-items:center;gap:14px;padding:76px 4px 30px}
+  .bootsplash .ring{width:34px;height:34px;border-radius:50%;border:3px solid var(--border);border-top-color:var(--teal-ink);animation:fiSpin .8s linear infinite}
+  .bootsplash .lbl{font-size:13px;font-weight:700;color:var(--text-soft);animation:fiPulse 1.6s ease-in-out infinite}
+  .skcard{width:100%;border-radius:22px;background:var(--surface);box-shadow:0 10px 30px rgba(4,33,40,.06);position:relative;overflow:hidden}
+  .skcard::after{content:"";position:absolute;inset:0;background:linear-gradient(100deg,transparent 25%,rgba(255,255,255,.5) 50%,transparent 75%);transform:translateX(-100%);animation:skShimmer 1.4s ease-in-out infinite}
+  html[data-theme="dark"] .skcard::after{background:linear-gradient(100deg,transparent 25%,rgba(255,255,255,.06) 50%,transparent 75%)}
+  @keyframes skShimmer{to{transform:translateX(100%)}}
+  @media (prefers-reduced-motion:reduce){ .skcard::after{animation:none} .bootsplash .ring{animation-duration:1.6s} }
   @keyframes fiPulse{0%,100%{opacity:1}50%{opacity:.55}}
   /* Check-in / Check-out Popups */
   @keyframes ciBg{from{opacity:0}to{opacity:1}}
@@ -322,7 +339,7 @@
       </button>
     </div>
     <div class="topbar" id="topbar"></div>
-    <div class="body" id="app"></div>
+    <div class="body" id="app"><div class="bootsplash" aria-label="Wird geladen"><div class="ring"></div><div class="lbl">Dein Bereich wird geladen …</div><div class="skcard" style="height:128px"></div><div class="skcard" style="height:86px"></div><div class="skcard" style="height:86px"></div></div></div>
     <button class="finnFab" id="finnFab" data-act="openFinn" aria-label="FINN fragen"><img src="/assets/brand/finn-mark.svg" alt="FINN"></button>
     <nav class="btmnav" id="btmnav"></nav>
     <div class="legalfoot">
@@ -7504,6 +7521,22 @@
   function downloadCsv(){ var list=ciCurrent(); var rows=[['Datum','Uhrzeit','Dauer','Studio']].concat(list.map(function(c){return [c.in?c.in.slice(0,10):'',deTime(c.in),dur(c.in,c.out),c.studio||''];}));
     var csv=rows.map(function(r){return r.map(function(x){return '"'+String(x).replace(/"/g,'""')+'"';}).join(';');}).join('\n');
     var a=document.createElement('a'); a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv); a.download='checkin-verlauf.csv'; document.body.appendChild(a); a.click(); a.remove(); }
+  // jsPDF erst bei Bedarf laden (statt bei jedem Seitenaufruf ~120 KB):
+  // liefert ein Promise<boolean>; bei Fehlschlag bleibt pdfLibP null -> Retry möglich.
+  var pdfLibP=null;
+  function loadPdfLib(){
+    if(window.jspdf&&window.jspdf.jsPDF) return Promise.resolve(true);
+    if(pdfLibP) return pdfLibP;
+    pdfLibP=new Promise(function(resolve){
+      var sc=document.createElement('script');
+      sc.src='https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'; sc.async=true;
+      sc.onload=function(){ resolve(!!(window.jspdf&&window.jspdf.jsPDF)); };
+      sc.onerror=function(){ pdfLibP=null; resolve(false); };
+      document.head.appendChild(sc);
+    });
+    return pdfLibP;
+  }
+  var PDF_LOAD_ERR='Das PDF-Modul konnte nicht geladen werden – bitte prüfe deine Verbindung und versuch es erneut.';
   function logoTxt(doc,M){ doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(16); doc.text('FIT-INN TRIER',M,17); }
   function buildPdfDoc(){
     var ns=window.jspdf; if(!ns||!ns.jsPDF){ return null; }
@@ -7527,15 +7560,19 @@
     y+=8; if(y>290){ doc.addPage(); y=20; } doc.setFontSize(8.5); doc.setTextColor(150); doc.text('Ausgestellt am '+todayStr()+'  ·  Fit-Inn Trier  ·  Auf Hirtenberg 8  ·  54296 Trier  ·  '+list.length+' Besuche',M,Math.min(y,293));
     return doc;
   }
-  function downloadPdf(){ var d=buildPdfDoc(); if(d) d.save('anwesenheitsbestaetigung.pdf'); else downloadCsv(); }
+  function downloadPdf(){ loadPdfLib().then(function(ok){ var d=ok?buildPdfDoc():null; if(d) d.save('anwesenheitsbestaetigung.pdf'); else downloadCsv(); }); }
   function emailPdf(){
-    var d=buildPdfDoc(); if(!d){ setS({dlMsg2:'PDF-Bibliothek lädt noch – bitte kurz erneut.'}); return; }
-    var b64=d.output('datauristring'); var ix=b64.indexOf('base64,'); if(ix>=0) b64=b64.slice(ix+7);
-    if(b64.length>6000000){ setS({dlMsg2:'Das PDF ist für den Versand zu groß – bitte wähle oben einen kürzeren Zeitraum.'}); return; }
-    setQuiet({emailing:true, dlMsg2:''});
-    api('/api/member/checkin-pdf',{method:'POST',body:JSON.stringify({pdf:b64})})
-      .then(function(r){ setS({emailing:false, dlMsg2:(r.message||(r.ok?'Gesendet.':'Versand fehlgeschlagen.'))}); })
-      .catch(function(){ setS({emailing:false, dlMsg2:'Versand fehlgeschlagen.'}); });
+    if(S.emailing) return;
+    setQuiet({emailing:true, dlMsg2:''});   // Button zeigt sofort „Wird gesendet …" (auch während die PDF-Bibliothek lädt)
+    loadPdfLib().then(function(ok){
+      var d=ok?buildPdfDoc():null;
+      if(!d){ setS({emailing:false, dlMsg2:PDF_LOAD_ERR}); return; }
+      var b64=d.output('datauristring'); var ix=b64.indexOf('base64,'); if(ix>=0) b64=b64.slice(ix+7);
+      if(b64.length>6000000){ setS({emailing:false, dlMsg2:'Das PDF ist für den Versand zu groß – bitte wähle oben einen kürzeren Zeitraum.'}); return; }
+      api('/api/member/checkin-pdf',{method:'POST',body:JSON.stringify({pdf:b64})})
+        .then(function(r){ setS({emailing:false, dlMsg2:(r.message||(r.ok?'Gesendet.':'Versand fehlgeschlagen.'))}); })
+        .catch(function(){ setS({emailing:false, dlMsg2:'Versand fehlgeschlagen.'}); });
+    });
   }
   // ── Mitgliedschaftsbestätigung (PDF): Nachweis „Mitglied seit … bis heute", mit Logo. ──
   function buildMembershipPdfDoc(){
@@ -7563,15 +7600,26 @@
     doc.setFontSize(8.5); doc.setTextColor(150); var vl=doc.splitTextToSize('Dieses Dokument wurde maschinell erstellt und ist auch ohne Unterschrift gültig. Ausgestellt am '+todayStr()+'.',W-2*M); doc.text(vl,M,286);
     return doc;
   }
-  function downloadMembershipPdf(){ var d=buildMembershipPdfDoc(); if(d){ d.save('mitgliedschaftsbestaetigung.pdf'); setS({mbMsg:'Bestätigung heruntergeladen.'}); } else setS({mbMsg:'PDF-Bibliothek lädt noch – bitte kurz erneut.'}); }
+  function downloadMembershipPdf(){
+    setQuiet({mbMsg:'PDF wird erstellt …'});
+    loadPdfLib().then(function(ok){
+      var d=ok?buildMembershipPdfDoc():null;
+      if(d){ d.save('mitgliedschaftsbestaetigung.pdf'); setS({mbMsg:'Bestätigung heruntergeladen.'}); }
+      else setS({mbMsg:PDF_LOAD_ERR});
+    });
+  }
   function emailMembershipPdf(){
-    var d=buildMembershipPdfDoc(); if(!d){ setS({mbMsg:'PDF-Bibliothek lädt noch – bitte kurz erneut.'}); return; }
-    var b64=d.output('datauristring'); var ix=b64.indexOf('base64,'); if(ix>=0) b64=b64.slice(ix+7);
-    if(b64.length>6000000){ setS({mbMsg:'Das PDF ist gerade zu groß für den Versand – bitte lade es direkt herunter.'}); return; }
+    if(S.mbEmailing) return;
     setQuiet({mbEmailing:true, mbMsg:''});
-    api('/api/member/membership-pdf',{method:'POST',body:JSON.stringify({pdf:b64})})
-      .then(function(r){ setS({mbEmailing:false, mbMsg:(r.message||(r.ok?'Gesendet.':'Versand fehlgeschlagen.'))}); })
-      .catch(function(){ setS({mbEmailing:false, mbMsg:'Versand fehlgeschlagen.'}); });
+    loadPdfLib().then(function(ok){
+      var d=ok?buildMembershipPdfDoc():null;
+      if(!d){ setS({mbEmailing:false, mbMsg:PDF_LOAD_ERR}); return; }
+      var b64=d.output('datauristring'); var ix=b64.indexOf('base64,'); if(ix>=0) b64=b64.slice(ix+7);
+      if(b64.length>6000000){ setS({mbEmailing:false, mbMsg:'Das PDF ist gerade zu groß für den Versand – bitte lade es direkt herunter.'}); return; }
+      api('/api/member/membership-pdf',{method:'POST',body:JSON.stringify({pdf:b64})})
+        .then(function(r){ setS({mbEmailing:false, mbMsg:(r.message||(r.ok?'Gesendet.':'Versand fehlgeschlagen.'))}); })
+        .catch(function(){ setS({mbEmailing:false, mbMsg:'Versand fehlgeschlagen.'}); });
+    });
   }
 
   document.addEventListener('click',function(e){

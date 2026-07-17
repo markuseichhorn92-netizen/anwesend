@@ -7,11 +7,13 @@
 <title>Fit-Inn Trier · Team-Backend</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
-<!-- jsPDF: Anwesenheitsbestätigung (Check-ins) im Client erzeugen -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" defer></script>
+<!-- Font-CSS nicht render-blockierend (display=swap: Text erscheint sofort mit System-Schrift). -->
+<link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&display=swap">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+<noscript><link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&display=swap" rel="stylesheet"></noscript>
+<!-- jsPDF wird erst bei Bedarf geladen (loadPdfLib) – nicht mehr bei jedem Seitenaufruf. -->
 <!-- Native-Brücke (Capacitor): Push-Registrierung fürs Team. No-Op im Browser. -->
-<script src="/assets/native.js"></script>
+<script src="/assets/native.js" defer></script>
 <style>
   *{box-sizing:border-box}
   html,body{margin:0;padding:0}
@@ -36,6 +38,12 @@
   .qtile{transition:transform .15s,box-shadow .15s}
   @keyframes fiSpin{to{transform:rotate(360deg)}}
   .spin{width:18px;height:18px;border-radius:50%;border:2.5px solid #cfe0e3;border-top-color:#0a4958;display:inline-block;animation:fiSpin .8s linear infinite}
+  /* Boot-Splash: statisch in #root, sichtbar während die Seite lädt/parst;
+     das erste render() ersetzt den Inhalt automatisch. */
+  .bootsplash{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:24px}
+  .bootsplash .ring{width:34px;height:34px;border-radius:50%;border:3px solid #d6dee0;border-top-color:#0a4958;animation:fiSpin .8s linear infinite}
+  .bootsplash .lbl{font-size:13px;font-weight:700;color:#8a929a}
+  @media (prefers-reduced-motion:reduce){ .bootsplash .ring{animation-duration:1.6s} }
   /* Schichtplan (Design-Vorgabe): Tap-Feedback, versteckte horizontale Scrollbars, Overlay-/KI-Animationen */
   .hsnap{scrollbar-width:none}.hsnap::-webkit-scrollbar{display:none}
   .tapc{transition:transform .12s ease}.tapc:active{transform:scale(.97)}
@@ -102,7 +110,7 @@
 </script>
 </head>
 <body>
-<div id="root"></div>
+<div id="root"><div class="bootsplash" aria-label="Wird geladen"><div class="ring"></div><div class="lbl">Team-Backend wird geladen …</div></div></div>
 
 <script>
 'use strict';
@@ -1239,6 +1247,21 @@ function checkinsBlock(p){
   return accWrap('checkins','Anwesenheit &amp; Check-ins', body, 'Besuche auf Basis der Magicline-Check-ins · Bestätigung als PDF erstellen');
 }
 // PDF-Bestätigung im Client bauen (jsPDF), spiegelt das Member-Layout.
+// jsPDF wird erst bei Bedarf nachgeladen (spart ~120 KB bei jedem Seitenaufruf).
+var pdfLibP=null;
+function loadPdfLib(){
+  if(window.jspdf&&window.jspdf.jsPDF) return Promise.resolve(true);
+  if(pdfLibP) return pdfLibP;
+  pdfLibP=new Promise(function(resolve){
+    var sc=document.createElement('script');
+    sc.src='https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'; sc.async=true;
+    sc.onload=function(){ resolve(!!(window.jspdf&&window.jspdf.jsPDF)); };
+    sc.onerror=function(){ pdfLibP=null; resolve(false); };
+    document.head.appendChild(sc);
+  });
+  return pdfLibP;
+}
+var PDF_LOAD_ERR='Das PDF-Modul konnte nicht geladen werden – bitte Verbindung prüfen und erneut versuchen.';
 function ciLogoTxt(doc,MG){ doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(16); doc.text('FIT-INN TRIER',MG,17); }
 function buildCheckinPdf(p){
   var ns=window.jspdf; if(!ns||!ns.jsPDF) return null;
@@ -1260,15 +1283,26 @@ function buildCheckinPdf(p){
   y+=8; if(y>290){ doc.addPage(); y=20; } doc.setFontSize(8.5); doc.setTextColor(150); doc.text('Ausgestellt am '+ciToday()+'  ·  Fit-Inn Trier  ·  Auf Hirtenberg 8  ·  54296 Trier  ·  '+list.length+' Besuche',MG,Math.min(y,293));
   return doc;
 }
-function downloadCheckinPdf(p){ var d=buildCheckinPdf(p); if(!d){ S.ciMsg='PDF-Bibliothek lädt noch – bitte kurz erneut.'; render(); return; } d.save('anwesenheitsbestaetigung.pdf'); S.ciMsg='Bestätigung heruntergeladen.'; render(); }
+function downloadCheckinPdf(p){
+  S.ciMsg='PDF wird erstellt …'; render();
+  loadPdfLib().then(function(ok){
+    var d=ok?buildCheckinPdf(p):null;
+    if(!d){ S.ciMsg=PDF_LOAD_ERR; render(); return; }
+    d.save('anwesenheitsbestaetigung.pdf'); S.ciMsg='Bestätigung heruntergeladen.'; render();
+  });
+}
 function emailCheckinPdf(p){
-  var d=buildCheckinPdf(p); if(!d){ S.ciMsg='PDF-Bibliothek lädt noch – bitte kurz erneut.'; render(); return; }
-  var b64=d.output('datauristring'); var ix=b64.indexOf('base64,'); if(ix>=0) b64=b64.slice(ix+7);
-  if(b64.length>6000000){ S.ciMsg='Das PDF ist für den Versand zu groß – bitte einen kürzeren Zeitraum wählen.'; render(); return; }
-  S.ciMailBusy=true; S.ciMsg=''; render();
-  tapi('/api/team/checkin-pdf',{method:'POST',body:{ id:p.id, pdf:b64 }})
-    .then(function(r){ S.ciMailBusy=false; S.ciMsg=(r&&r.message)||(r&&r.ok?'Gesendet.':'Versand fehlgeschlagen.'); render(); })
-    .catch(function(){ S.ciMailBusy=false; S.ciMsg='Versand fehlgeschlagen.'; render(); });
+  if(S.ciMailBusy) return;
+  S.ciMailBusy=true; S.ciMsg=''; render();   // Button zeigt sofort den Sende-Zustand
+  loadPdfLib().then(function(ok){
+    var d=ok?buildCheckinPdf(p):null;
+    if(!d){ S.ciMailBusy=false; S.ciMsg=PDF_LOAD_ERR; render(); return; }
+    var b64=d.output('datauristring'); var ix=b64.indexOf('base64,'); if(ix>=0) b64=b64.slice(ix+7);
+    if(b64.length>6000000){ S.ciMailBusy=false; S.ciMsg='Das PDF ist für den Versand zu groß – bitte einen kürzeren Zeitraum wählen.'; render(); return; }
+    tapi('/api/team/checkin-pdf',{method:'POST',body:{ id:p.id, pdf:b64 }})
+      .then(function(r){ S.ciMailBusy=false; S.ciMsg=(r&&r.message)||(r&&r.ok?'Gesendet.':'Versand fehlgeschlagen.'); render(); })
+      .catch(function(){ S.ciMailBusy=false; S.ciMsg='Versand fehlgeschlagen.'; render(); });
+  });
 }
 // Logo als dataURL vorladen (echtes Logo im PDF-Kopf).
 var TEAM_LOGO_DATAURL=null, TEAM_LOGO_RATIO=3.6;

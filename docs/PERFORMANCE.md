@@ -1,15 +1,40 @@
-# Performance: Startseiten-Größe & Modularisierungs-Plan
+# Performance: Ladezeit, Ladeanimationen & Modularisierungs-Plan
 
 Stand dieser Messung (Branch `improve/security-stability`):
 
 | Seite | roh | gzip (so liefert Vercel aus) |
 | --- | --- | --- |
-| `mitglieder.html` (Startseite/App) | ~999 KB | ~251 KB |
-| `team-backend.html` | ~477 KB | ~114 KB |
+| `mitglieder.html` (Startseite/App) | ~1.005 KB | ~253 KB |
+| `team-backend.html` | ~479 KB | ~115 KB |
 
 Vercel liefert statische HTML-Dateien automatisch komprimiert (gzip/brotli)
 und mit Edge-Cache aus – über die Leitung gehen also ~250 KB, nicht 1 MB.
 Nach dem ersten Besuch greift der Browser-Cache.
+
+## Umgesetzter Ladezeit-Pass (dieser Branch)
+
+Gemessen und behoben wurden die drei echten Bremsen beim Start – geprüft
+durch `tests/perf-loading.test.js` (statisch) und einen Playwright-Live-Check:
+
+1. **jsPDF nur noch bei Bedarf** (vorher: ~356 KB roh / ~118 KB gzip bei
+   JEDEM Aufruf von Mitglieder-App UND Team-Backend, obwohl nur PDF-Exporte
+   es brauchen). Jetzt lädt `loadPdfLib()` die Bibliothek erst beim Klick auf
+   „Bestätigung herunterladen/per E-Mail"; währenddessen zeigen die Buttons
+   einen Lade-Zustand, bei Fehlschlag eine klare Meldung mit Retry.
+2. **Google-Fonts-CSS nicht mehr render-blockierend** (`media="print"` +
+   `onload`, `display=swap`, `<noscript>`-Fallback): Der erste Paint wartet
+   nicht mehr auf fonts.googleapis.com – Text erscheint sofort mit der
+   System-Schrift und wechselt dann auf Archivo. Im Team-Backend lädt
+   `assets/native.js` jetzt mit `defer`.
+3. **Boot-Splash mit Skeleton-Karten** statt weißer Seite: `#app`/`#root`
+   enthalten statisches Splash-Markup (Spinner + Schimmer-Skeletons, hell &
+   dunkel, `prefers-reduced-motion` beachtet). Es ist ab dem ersten
+   gestreamten Byte sichtbar und deckt Download, Parsen UND den ersten
+   `loadMe()`-API-Roundtrip ab (die Mitglieder-App rendert erst nach
+   `loadMe()`); das erste `render()` ersetzt es automatisch.
+
+Die Bereichs-Screens (Training, Ernährung, Community, Termine …) hatten
+bereits eigene „Lädt …"-Zustände je Datenquelle; die bleiben unverändert.
 
 ## Warum kein Code-Splitting in diesem Durchgang
 
