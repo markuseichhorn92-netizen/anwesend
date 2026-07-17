@@ -233,6 +233,8 @@ module.exports = async function handler(req, res) {
       // Ist das gebuchte/gekündigte Modul das Premium-Modul? -> Ernährungs-Premium
       // sofort freischalten (Buchung) bzw. den Modulstatus neu abgleichen (Kündigung).
       if (Mod.isPremiumModule(moduleId)) {
+        // Diagnose: hat der Kauf die Modul-Vertrags-ID zurückgegeben? (Basis fürs Kündigen)
+        try { console.log('[modules] premium ' + action, JSON.stringify({ moduleContractId: (r && r.moduleContractId) != null ? String(r.moduleContractId) : null })); } catch (e) {}
         try {
           await MlPremium.invalidate(sess.id);
           // Beim Kauf die zurückgegebene Modul-Vertrags-ID merken -> spätere Kündigung möglich.

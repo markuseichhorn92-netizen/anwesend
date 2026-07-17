@@ -62,7 +62,7 @@ module.exports = async function handler(req, res) {
   const id = body.id;
   const action = String(body.action || '').toLowerCase();
   if (id == null || String(id).trim() === '') { res.statusCode = 400; return res.end(JSON.stringify({ ok: false, error: 'missing_id' })); }
-  if (['grant', 'revoke', 'sub-cancel', 'sub-reactivate'].indexOf(action) < 0) { res.statusCode = 400; return res.end(JSON.stringify({ ok: false, error: 'bad_action' })); }
+  if (['grant', 'revoke', 'sub-cancel', 'sub-reactivate', 'magicline-clear'].indexOf(action) < 0) { res.statusCode = 400; return res.end(JSON.stringify({ ok: false, error: 'bad_action' })); }
   if (!hasStore) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'no_store', tier: Ent.publicTier(null) })); }
 
   const prev = await Ent.getEntitlement(id);
@@ -97,6 +97,19 @@ module.exports = async function handler(req, res) {
     const ent = Object.assign({}, prev, { cancelAtPeriodEnd: !!r.cancelAtPeriodEnd, updatedAt: Date.now() });
     await Ent.setEntitlement(id, ent);
     res.statusCode = 200; return res.end(JSON.stringify(Object.assign({ id: String(id) }, tierPayload(ent))));
+  }
+
+  // magicline-clear: den App-Premium-Datensatz eines Magicline-Zusatzmoduls zurücksetzen.
+  // Gedacht als Studio-Override, wenn das Modul direkt in Magicline gekündigt wurde ODER
+  // die App die Modul-Vertrags-ID nicht (mehr) kennt. Rührt NIE ein echtes Stripe-Abo an.
+  if (action === 'magicline-clear') {
+    const isMagicline = !!(prev && (prev.source === 'magicline' || (prev.moduleContractId != null && !prev.stripeSubId)));
+    if (!isMagicline) {
+      res.statusCode = 409; return res.end(JSON.stringify({ ok: false, error: 'not_magicline', tier: Ent.publicTier(prev) }));
+    }
+    try { await redisPipeline([['DEL', Ent.PREMKEY(id)]]); } catch (e) {}
+    try { await redisPipeline([['DEL', 'nutri:mlmod:' + String(id)]]); } catch (e) {}   // Modul-Status-Cache leeren
+    res.statusCode = 200; return res.end(JSON.stringify(Object.assign({ id: String(id) }, tierPayload(null))));
   }
 
   // revoke: nur die eigene Vorschau/Gratis-Freischaltung entfernen, nie ein echtes Abo.

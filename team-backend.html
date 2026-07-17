@@ -826,7 +826,8 @@ async function nutritionPreviewAction(id, action, extra){
   try{
     var body=Object.assign({ id:id, action:action }, extra||{});
     var r=await tapi('/api/team/nutrition-preview', { method:'POST', body:body });
-    if(r&&r.ok){ S.memberPreview=r; if(action==='grant') S.memberPreviewMsg=(extra&&extra.permanent)?'Dauerhaft gratis freigeschaltet.':'Gratis-Zugang freigeschaltet.'; else if(action==='sub-cancel') S.memberPreviewMsg='Abo gekündigt (läuft zum Periodenende aus).'; else if(action==='sub-reactivate') S.memberPreviewMsg='Kündigung zurückgenommen.'; }
+    if(r&&r.ok){ S.memberPreview=r; if(action==='grant') S.memberPreviewMsg=(extra&&extra.permanent)?'Dauerhaft gratis freigeschaltet.':'Gratis-Zugang freigeschaltet.'; else if(action==='sub-cancel') S.memberPreviewMsg='Abo gekündigt (läuft zum Periodenende aus).'; else if(action==='sub-reactivate') S.memberPreviewMsg='Kündigung zurückgenommen.'; else if(action==='magicline-clear') S.memberPreviewMsg='Modul-Premium in der App zurückgesetzt. Bitte das Zusatzmodul auch in Magicline kündigen.'; }
+    else if(r&&r.error==='not_magicline'){ S.memberPreviewMsg='Kein Modul-Premium – nichts zurückzusetzen.'; }
     else if(r&&r.error==='has_real_subscription'){ S.memberPreview={ ok:true, tier:r.tier, source:'stripe' }; S.memberPreviewMsg='Mitglied hat ein echtes Abo – Gratis-Zugang nicht nötig.'; }
     else if(r&&r.error==='not_a_preview'){ S.memberPreviewMsg='Echtes Abo – nutze „Abo kündigen".'; }
     else if(r&&r.error==='no_real_subscription'){ S.memberPreviewMsg='Kein echtes Abo vorhanden.'; }
@@ -846,12 +847,17 @@ function nutritionPreviewBlock(p){
     var t=(pv&&pv.tier)||{};
     var isPrem=!!t.premium;
     var isPreview=isPrem&&pv&&pv.source==='team_preview';
-    var isReal=isPrem&&pv&&pv.source!=='team_preview';
+    var isMagicline=isPrem&&pv&&pv.source==='magicline';
+    var isReal=isPrem&&pv&&pv.source!=='team_preview'&&pv.source!=='magicline';
     var btnG='border:none;background:linear-gradient(135deg,#0e6072,#063540);color:#fff;border-radius:11px;font-size:12.5px;font-weight:800;padding:9px 14px;cursor:pointer';
     var btnO='border:1.5px solid #cfd8db;background:#fff;color:#0a4958;border-radius:11px;font-size:12.5px;font-weight:800;padding:9px 14px;cursor:pointer';
     var btnR='border:1.5px solid #e3b8b1;background:#fff;color:#b5402f;border-radius:11px;font-size:12.5px;font-weight:800;padding:9px 15px;cursor:pointer';
     var status, controls;
-    if(isReal){
+    if(isMagicline){
+      status='<span style="color:#0f7a4a;font-weight:800">Premium über Zusatzmodul (SEPA)</span>'+(t.cancelAtPeriodEnd?(' <span style="color:#b5402f;font-weight:700">- gekündigt'+(pv.until?(' zum '+pvDate(pv.until)):'')+'</span>'):'');
+      controls='<button data-nprevmlclear="1" '+(S.memberPreviewBusy?'disabled ':'')+'style="'+btnR+'">Modul-Premium in der App zurücksetzen</button>'
+        +'<div style="margin-top:8px;font-size:11.5px;color:#8a929a;font-weight:600;line-height:1.5">Setzt nur die Premium-Freischaltung in der App zurück. Das Zusatzmodul selbst musst du zusätzlich in Magicline kündigen.</div>';
+    } else if(isReal){
       status='<span style="color:#0f7a4a;font-weight:800">Echtes Premium-Abo aktiv (Stripe)</span>'+(t.cancelAtPeriodEnd?(' <span style="color:#b5402f;font-weight:700">- gekündigt zum '+pvDate(pv.until)+'</span>'):(pv.until?(' <span style="color:#8a929a;font-weight:600">- nächste Abbuchung '+pvDate(pv.until)+'</span>'):''));
       controls=t.cancelAtPeriodEnd
         ? '<button data-nprevsubreact="1" '+(S.memberPreviewBusy?'disabled ':'')+'style="'+btnG+'">Kündigung zurücknehmen</button>'
@@ -2663,6 +2669,7 @@ function membersNode(){
       var npr=wrap.querySelector('[data-nprevrevoke]'); if(npr) npr.onclick=function(){ nutritionPreviewAction(p.id, 'revoke'); };
       var nsc=wrap.querySelector('[data-nprevsubcancel]'); if(nsc) nsc.onclick=function(){ if(confirm('Das echte, zahlende Abo dieses Kunden zum Periodenende kündigen?')) nutritionPreviewAction(p.id,'sub-cancel'); };
       var nsr=wrap.querySelector('[data-nprevsubreact]'); if(nsr) nsr.onclick=function(){ nutritionPreviewAction(p.id,'sub-reactivate'); };
+      var nmc=wrap.querySelector('[data-nprevmlclear]'); if(nmc) nmc.onclick=function(){ if(confirm('Modul-Premium in der App zurücksetzen? Das Zusatzmodul selbst muss zusätzlich in Magicline gekündigt werden.')) nutritionPreviewAction(p.id,'magicline-clear'); };
       var aif=wrap.querySelector('[data-accessinfo]'); if(aif) aif.onclick=function(){ sendAccessInfo(p); };
       // Tags: aufklappen, Preset/Freitext hinzufügen, per Chip entfernen.
       var ta=wrap.querySelector('[data-tagadd]'); if(ta) ta.onclick=function(){ S.tagAddOpen=!S.tagAddOpen; S.tagInput=''; render(); };
