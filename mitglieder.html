@@ -8441,6 +8441,27 @@
   // über den gespeicherten Token einloggen, sondern erst per Biometrie entsperren.
   var inApp=!!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
   var bioGate=false; try{ bioGate = inApp && localStorage.getItem('fi_bio')==='1'; }catch(e){}
+  // Obere Leisten-Höhe: iOS/Capacitor melden env(safe-area-inset-top) im WebView
+  // teils ÜBERZÄHLT (~2x), und die CSS-Deckelung min(env,60px) greift dort nicht
+  // zuverlässig -> die Leiste wird viel zu hoch. Wir messen den echten Wert per
+  // versteckter Sonde und setzen --sat gedeckelt per JS (Math.min wirkt immer).
+  // Im Browser ist env korrekt, dort ist die Deckelung ein No-Op.
+  var __satProbe=null;
+  function measureSat(){
+    try{
+      if(!__satProbe){
+        __satProbe=document.createElement('div');
+        __satProbe.style.cssText='position:fixed;top:0;left:0;width:0;height:env(safe-area-inset-top,0px);visibility:hidden;pointer-events:none;z-index:-1';
+        document.body.appendChild(__satProbe);
+      }
+      var raw=__satProbe.getBoundingClientRect().height||0;
+      var sat=Math.max(0, Math.min(Math.round(raw), 60));
+      document.documentElement.style.setProperty('--sat', sat+'px');
+    }catch(e){}
+  }
+  measureSat();
+  window.addEventListener('resize', measureSat);
+  window.addEventListener('orientationchange', function(){ setTimeout(function(){ measureSat(); try{ if(TOKEN) render(); }catch(e){} }, 140); });
   ciLoad();
   loadAppInfo();   // Store-Links fürs App-Banner + serverseitige Feature-Flags
   if(ALT){ bootActionLogin(ALT); }
