@@ -62,6 +62,17 @@
   .brandbar{position:fixed;top:0;left:0;right:0;z-index:50;max-width:480px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:calc(14px + env(safe-area-inset-top,0px)) 20px 14px;background:linear-gradient(160deg,#0e6072,#063540)}
   /* Mobil (eingeloggt): KEINE Logo-Leiste – der Hero ist der Kopf (Full-Bleed, wie im Mockup). */
   @media(max-width:999px){ .app-in .brandbar{display:none} .app-in .maincol{padding-top:0} .app-in .body{padding-top:var(--abh, calc(50px + var(--sat)))} .app-in.noappbar .body{padding-top:var(--sat)} }
+  /* iOS-Gummiband (Rubber-Band) am oberen/unteren Rand verhindern: In der nativen
+     App scrollt NICHT mehr das Dokument – dessen Bounce steuert WKWebView nativ,
+     unabhängig von CSS – sondern eine INNERE Fläche (.maincol). Auf einem
+     Nicht-Wurzel-Scroller wirkt overscroll-behavior zuverlässig, und da das
+     Dokument selbst nichts mehr zu scrollen hat, kann es nicht über den Rand
+     hinausgezogen werden. Nur mobil + nur in der App; Browser/Desktop unverändert. */
+  @media(max-width:999px){
+    body.app-in{height:100dvh;overflow:hidden}
+    body.app-in .shell{height:100dvh;min-height:0}
+    body.app-in .maincol{height:100dvh;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:none}
+  }
   /* Home-Hero */
   .homeHero{position:relative;overflow:hidden;background:linear-gradient(160deg,#0a4958 0%,#073e4b 55%,#063540 100%);border-radius:24px;padding:22px 20px;margin-bottom:16px;box-shadow:0 16px 40px rgba(4,33,40,.20)}
   @media(max-width:999px){ .app-in .homeHero{margin:0 -16px 16px;border-radius:0 0 28px 28px;padding:18px 22px 22px;box-shadow:none} }
@@ -7259,14 +7270,14 @@
       var items=cf.items.map(function(i){ return { name:i.name, kcal:i.kcal, p:i.p, c:i.c, f:i.f }; });
       S.ernEvalBusy=true; S.ernEval=null; render();
       api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'evaluate-meal',items:items})})
-      .then(function(d){ S.ernEvalBusy=false; if(d&&d.error==='premium_required'){ setS({ernUpgrade:true}); return; } ernQuotaApply(d); S.ernEval=d||{ok:false}; render(); try{ window.scrollTo(0,document.body.scrollHeight); }catch(e){} })
+      .then(function(d){ S.ernEvalBusy=false; if(d&&d.error==='premium_required'){ setS({ernUpgrade:true}); return; } ernQuotaApply(d); S.ernEval=d||{ok:false}; render(); try{ window.__scrollAppBottom&&window.__scrollAppBottom(); }catch(e){} })
       .catch(function(){ S.ernEvalBusy=false; S.ernEval={ok:false,message:'Verbindung gerade nicht möglich.'}; render(); }); },
     // FINN bewertet den gerade bearbeiteten Einzel-Eintrag (Nutri-Score + gut/besser).
     ernEvalEntry:function(){ var e=S.ernEntryEdit; if(!e||S.ernEvalBusy) return;
       var items=[{ name:e.name, kcal:e.kcal, p:e.p, c:e.c, f:e.f }];
       S.ernEvalBusy=true; S.ernEval=null; render();
       api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'evaluate-meal',items:items})})
-      .then(function(d){ S.ernEvalBusy=false; if(d&&d.error==='premium_required'){ setS({ernUpgrade:true}); return; } ernQuotaApply(d); S.ernEval=d||{ok:false}; render(); try{ window.scrollTo(0,document.body.scrollHeight); }catch(e){} })
+      .then(function(d){ S.ernEvalBusy=false; if(d&&d.error==='premium_required'){ setS({ernUpgrade:true}); return; } ernQuotaApply(d); S.ernEval=d||{ok:false}; render(); try{ window.__scrollAppBottom&&window.__scrollAppBottom(); }catch(e){} })
       .catch(function(){ S.ernEvalBusy=false; S.ernEval={ok:false,message:'Verbindung gerade nicht möglich.'}; render(); }); },
     ernCapTab:function(a){ try{ if(a!=='barcode') window.__ernStopScan&&window.__ernStopScan(); if(a!=='cam') window.__ernStopCam&&window.__ernStopCam(); }catch(e){} setS({ernCapTab:a, ernScanErr:'', ernSearchErr:'', ernCamErr:'', ernMsg:''}); },
     // Open Food Facts: Produkt-Picker + Barcode-Scan + Produktsuche (Etappe 2)
@@ -7385,7 +7396,7 @@
       .catch(function(){ S.wdBusy=false; S.wdErr=true; S.wdMsg='Verbindung gerade nicht möglich.'; render(); }); },
     ernUpgradeGo:function(){
       // §312j / Buchungs-Einwilligung: ohne Bestätigung kein Kaufstart.
-      if(!S.ernBuyConsent){ S.ernErr=true; S.ernMsg='Bitte bestätige die Einwilligung, um fortzufahren.'; render(); try{ window.scrollTo(0,document.body.scrollHeight); }catch(e){} return; }
+      if(!S.ernBuyConsent){ S.ernErr=true; S.ernMsg='Bitte bestätige die Einwilligung, um fortzufahren.'; render(); try{ window.__scrollAppBottom&&window.__scrollAppBottom(); }catch(e){} return; }
       // Modul-Modus: Premium läuft über ein Magicline-Zusatzmodul (SEPA über den
       // Mitgliedsvertrag) – kein Stripe/kein Kartenfeld.
       if(ernModuleMode()){ ernModuleBook(); return; }
@@ -8489,6 +8500,24 @@
   // Resume/bfcache: NUR den gesperrten Wert wieder durchsetzen (Höhe bleibt gleich).
   window.addEventListener('pageshow', __satApply);
   document.addEventListener('visibilitychange', function(){ if(document.visibilityState==='visible') __satApply(); });
+
+  // Scroll-Weiche: In der nativen App (mobil) scrollt die innere .maincol statt des
+  // Dokuments (Anti-Rubber-Band, s. CSS). Damit die vielen window.scrollTo(0,0)-
+  // Aufrufe weiter funktionieren, leiten wir sie auf den aktiven Scroller um.
+  (function(){
+    var nativeScrollTo = (window.scrollTo && window.scrollTo.bind(window)) || function(){};
+    function appScroller(){
+      try{ if(document.body && document.body.classList.contains('app-in') && window.innerWidth<1000) return document.querySelector('.maincol'); }catch(e){}
+      return null;
+    }
+    window.__scrollAppBottom=function(){ var s=appScroller(); if(s){ try{ s.scrollTop=s.scrollHeight; }catch(e){} } else { try{ nativeScrollTo(0, (document.documentElement.scrollHeight||document.body.scrollHeight||0)); }catch(e){} } };
+    window.scrollTo=function(x,y){
+      var top=(x && typeof x==='object') ? (x.top||0) : (y||0);
+      var s=appScroller();
+      if(s){ try{ s.scrollTop=top; }catch(e){} return; }
+      try{ return nativeScrollTo(x,y); }catch(e){}
+    };
+  })();
   ciLoad();
   loadAppInfo();   // Store-Links fürs App-Banner + serverseitige Feature-Flags
   if(ALT){ bootActionLogin(ALT); }
