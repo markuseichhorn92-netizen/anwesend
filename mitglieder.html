@@ -6920,10 +6920,10 @@
     if(abar) abar.classList.toggle('on', abOn);
     // Ohne sichtbare Leiste kein Vorhalt (sonst Lücke oben in Vollbild-Flows).
     document.body.classList.toggle('noappbar', !abOn);
-    // Safe-Area-Deckel bei jedem Render erneut erzwingen (Selbstheilung): falls die
-    // auf iOS unzuverlässige CSS-Deckelung min(env,60px) durchschlägt, kappt das JS
-    // --sat wieder auf max. 60px, BEVOR wir die Leisten-Höhe messen.
-    try{ if(window.__measureSat) window.__measureSat(false); }catch(e){}
+    // Safe-Area-Wert bei jedem Render erneut DURCHSETZEN (nur re-assertieren, NICHT
+    // neu messen): falls die auf iOS unzuverlässige CSS-Deckelung min(env,60px)
+    // durchschlägt, setzt das JS den festen --sat wieder – ohne die Höhe zu ändern.
+    try{ if(window.__assertSat) window.__assertSat(); }catch(e){}
     // Inhalts-Vorhalt exakt auf die gemessene Leisten-Höhe setzen (Startseite ist höher).
     if(abOn && abar && window.innerWidth<1000){ var abh=abar.getBoundingClientRect().height; if(abh>0) document.documentElement.style.setProperty('--abh', Math.round(abh)+'px'); }
     // Overscroll-Farbe oben: teal nur auf der Startseite (passend zum Hero).
@@ -8450,36 +8450,45 @@
   // zuverlässig -> die Leiste wird viel zu hoch. Wir messen den echten Wert per
   // versteckter Sonde und setzen --sat gedeckelt per JS (Math.min wirkt immer).
   // Im Browser ist env korrekt, dort ist die Deckelung ein No-Op.
-  var __satProbe=null, __satMax=0;
-  function measureSat(reset){
+  // Obere Leiste = STATISCH. iOS/Capacitor melden env(safe-area-inset-top) im WebView
+  // unzuverlässig: überzählt UND während des Scrollens schwankend – und die CSS-
+  // Deckelung min(env,60px) klemmt dort nicht. Das führte dazu, dass sich die Leiste
+  // beim Scrollen „ausklappt". Lösung: den echten Inset in der Anfangsphase EINMAL
+  // gedeckelt einrasten, danach FESTfrieren. Bei Scroll/Resize wird der Wert nur noch
+  // RE-ASSERTIERT (nie neu gemessen) -> die Leistenhöhe ändert sich nie mehr. Neu
+  // eingerastet wird ausschließlich bei einem echten Orientierungswechsel.
+  var __satProbe=null, __satLocked=null, __satFrozen=false;
+  function __satRead(){
     try{
       if(!__satProbe){
         __satProbe=document.createElement('div');
         __satProbe.style.cssText='position:fixed;top:0;left:0;width:0;height:env(safe-area-inset-top,0px);visibility:hidden;pointer-events:none;z-index:-1';
         document.body.appendChild(__satProbe);
       }
-      if(typeof __satMax!=='number') __satMax=0;   // nie einen ungültigen Wert emittieren
-      var raw=__satProbe.getBoundingClientRect().height||0;
-      var sat=Math.max(0, Math.min(Math.round(raw), 60));
-      if(reset) __satMax=0;
-      // WICHTIG: iOS/WKWebView meldet env(safe-area-inset-top) WÄHREND des Scrollens
-      // zeitweise 0. Würden wir das übernehmen, rutscht die Leiste unter Uhr/Akku.
-      // Darum nur nach OBEN nachführen; nach unten nur bewusst bei Orientierungs-
-      // wechsel (reset), wo sich der echte Inset tatsächlich ändern darf.
-      if(sat>__satMax) __satMax=sat;
-      document.documentElement.style.setProperty('--sat', __satMax+'px');
-    }catch(e){}
+      return Math.max(0, Math.min(Math.round(__satProbe.getBoundingClientRect().height||0), 60));
+    }catch(e){ return null; }
   }
-  window.__measureSat=measureSat;   // von renderChrome aus als Selbstheilung aufrufbar
-  measureSat(true);
-  setTimeout(function(){ measureSat(false); }, 400);
-  setTimeout(function(){ measureSat(false); }, 1200);
-  window.addEventListener('resize', function(){ measureSat(false); });
-  window.addEventListener('orientationchange', function(){ setTimeout(function(){ measureSat(true); try{ if(TOKEN) render(); }catch(e){} }, 160); });
-  // App aus dem Hintergrund zurück / bfcache-Restore: --sat erneut deckeln, damit
-  // nie die (auf iOS unzuverlässige) CSS-Deckelung durchschlägt und die Leiste bläht.
-  window.addEventListener('pageshow', function(){ measureSat(false); });
-  document.addEventListener('visibilitychange', function(){ if(document.visibilityState==='visible') measureSat(false); });
+  function __satApply(){ try{ if(__satLocked!=null) document.documentElement.style.setProperty('--sat', __satLocked+'px'); }catch(e){} }
+  function satLock(){                       // Anfangsphase: höchsten Messwert einrasten, dann anwenden
+    if(__satFrozen){ __satApply(); return; }
+    var v=__satRead(); if(v==null) return;
+    if(__satLocked==null || v>__satLocked) __satLocked=v;
+    __satApply();
+  }
+  window.__assertSat=function(){ __satApply(); };   // renderChrome/Resume: nur festen Wert durchsetzen, NIE messen
+  satLock();
+  setTimeout(satLock, 300);
+  setTimeout(satLock, 900);
+  setTimeout(function(){ __satFrozen=true; __satApply(); }, 1600);   // ab hier endgültig statisch
+  // Echter Orientierungswechsel: kurz auftauen, neu einrasten, wieder einfrieren.
+  window.addEventListener('orientationchange', function(){
+    __satFrozen=false; __satLocked=null; satLock();
+    setTimeout(satLock, 250);
+    setTimeout(function(){ __satFrozen=true; __satApply(); try{ if(TOKEN) render(); }catch(e){} }, 520);
+  });
+  // Resume/bfcache: NUR den gesperrten Wert wieder durchsetzen (Höhe bleibt gleich).
+  window.addEventListener('pageshow', __satApply);
+  document.addEventListener('visibilitychange', function(){ if(document.visibilityState==='visible') __satApply(); });
   ciLoad();
   loadAppInfo();   // Store-Links fürs App-Banner + serverseitige Feature-Flags
   if(ALT){ bootActionLogin(ALT); }
