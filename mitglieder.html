@@ -518,7 +518,7 @@
     ernScanCode:'', ernScanBusy:false, ernScanErr:'', ernScanNotFound:false,
     ernSearchQ:'', ernSearchResults:null, ernSearchBusy:false, ernSearchErr:'',
     ernCamErr:'', ernVoiceText:'', ernCamShot:'', ernMoreOpen:false,
-    coachMapOpen:false, coachVertOpen:false,
+    coachMapOpen:false, coachVertOpen:false, coachTab:'uebersicht',
     ernProd:null, ernGrams:100,
     ernViewDate:'', ernDayBusy:false, ernEntryEdit:null, ernEntryBusy:false,
     ernFavMgr:false, ernFavBusy:false, ernFavAddOpen:false,
@@ -1959,12 +1959,8 @@
   // „Heute im Blick": Ernährung als Karte mit kcal-/Makro-Balken, Trainingspartner
   // als kompakte Kachel darunter (#103). Nur je nach Freischaltung.
   function homeTodayStrip(){
+    // Der Trainingspartner-Einstieg lebt jetzt als eigene Karte (homeBuddyCard) darüber – hier keine Doppel-Kachel mehr.
     var tiles=[];
-    if(SOCIAL_ON){
-      var s=DATA.social; var reqs=(s&&s.requests&&s.requests.length)||0; var buds=(s&&s.buddies&&s.buddies.length)||0;
-      var ssub=reqs>0?(reqs+' neue Anfrage'+(reqs===1?'':'n')):(buds>0?(buds+' Trainingspartner'):'Verbinden & chatten');
-      tiles.push({act:'social',ic:'🤝',label:'Partner',sub:ssub,badge:reqs>0});
-    }
     var ern=ERN_ON?homeErnBars():'';
     if(!tiles.length) return ern;
     return ern+'<div style="display:flex;gap:12px;margin-bottom:16px">'+tiles.map(function(t){
@@ -2047,6 +2043,7 @@
       homeVitalCard()+
       checkinBtn()+
       homeMeinTagHero()+
+      homeBuddyCard()+
       homeTodayStrip()+
       premNudgeHome()+
       wifiBtn()+
@@ -4713,20 +4710,21 @@
     var header='<div style="margin:2px 2px 14px"><div style="font-size:19px;font-weight:900;color:var(--text);letter-spacing:-.3px">'+(nm?('Hey '+esc(nm)+' 👋'):'Willkommen zurück')+'</div>'+
       '<div style="font-size:13px;font-weight:600;color:var(--text-soft);margin-top:2px">Deine Erkenntnisse aus Training &amp; Ernährung</div></div>';
     if(S.ernChatOpen) return wrap(header+ernCoach());
-    // FINN-first: eine dominante FINN-Karte (Blick für heute + Chat-Einstieg + Schnellfragen) trägt den Hub.
-    var insights=coachInsights();
-    // Motivation (Vitalpunkte/Rang/Streak/Aktivitäts-Alter) – wiederverwendet.
-    var motiv=vitalCard();
-    // Coaching-Programm (gate-aware): nur wenn verfügbar – einklappbar, Standard zu (entlastet die Seite).
-    var c=DATA.coach, program='';
-    if(c&&c.ok&&c.available!==false){
-      // Das Coaching-Programm (Wochen-Lern-Einheiten) lebt jetzt hier im Coach – prominent und
-      // standardmäßig aufgeklappt (einklappbar bleibt es). Vorher hing es als Karte im Essen-Tab.
-      var progOpen=S.coachProgOpen!==false;
-      program='<button data-act="coachProgToggle" style="width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;background:none;border:none;cursor:pointer;font-family:inherit;padding:0;margin:22px 2px 12px;text-align:left"><span style="font-size:17px;font-weight:900;color:var(--text);letter-spacing:-.3px">Dein Coaching-Programm</span>'+svg(progOpen?'<path d="M18 15l-6-6-6 6"></path>':'<path d="M6 9l6 6 6-6"></path>',{c:'var(--text-soft)',w:2.4,s:20})+'</button>'+(progOpen?ernCoachHome():'');
-    }
-    // FINN oben & dominant; direkt darunter das Coaching-Programm (Wochen-Lektionen); dann Erkenntnisse/Motivation/Premium/Figur.
-    return wrap(header+coachFinnHub()+program+insights+motiv+ernPremiumCard()+coachFigurCard());
+    // 5 Themen-Tabs entlasten die Coach-Seite: Übersicht · Lernen · Ernährung · Training · Lifestyle.
+    var tab=S.coachTab||'uebersicht';
+    var themeCta=function(label,screen,ic){ return '<button data-act="nav" data-arg="'+screen+'" style="width:100%;text-align:left;border:none;cursor:pointer;font-family:inherit;background:linear-gradient(150deg,'+ERN_G2+','+ERN_GD+');border-radius:18px;padding:16px 18px;color:#fff;box-shadow:0 12px 30px rgba(14,96,114,.2);margin-bottom:14px;display:flex;align-items:center;gap:12px"><span style="font-size:24px">'+ic+'</span><span style="flex:1;font-size:15px;font-weight:900">'+esc(label)+'</span>'+svg('<path d="M9 6l6 6-6 6"></path>',{c:'rgba(255,255,255,.8)',w:2.4,s:18})+'</button>'; };
+    var body;
+    if(tab==='lernen'){ body=ernCoachHome(); }                                       // Wochen-Lern-Einheiten
+    else if(tab==='ern'){ body=coachInsights('ern')+themeCta('Zum Essen-Tagebuch','ern','🥗'); }
+    else if(tab==='training'){ body=coachInsights('training')+themeCta('Zum Trainingsplan','tag','🏋️'); }
+    else if(tab==='lifestyle'){ if(DATA.mprofile==null) loadMemberProfile(); body=vitalCard()+vitalLifestyleForm()+coachFigurCard(); }
+    else { body=coachFinnHub()+ernPremiumCard(); }                                    // Übersicht: FINN-first
+    return wrap(header+coachTabBar(tab)+body);
+  }
+  // Coach-Themen-Tabs (horizontal scrollbare Pills).
+  function coachTabBar(tab){
+    var items=[['uebersicht','🧭','Übersicht'],['lernen','🎓','Lernen'],['ern','🥗','Ernährung'],['training','🏋️','Training'],['lifestyle','🌙','Lifestyle']];
+    return '<div style="display:flex;gap:7px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding:2px 2px 10px;margin:0 -2px 6px">'+items.map(function(it){ var sel=tab===it[0]; return '<button data-act="coachTab" data-arg="'+it[0]+'" style="flex:0 0 auto;border:1.5px solid '+(sel?ERN_G:'var(--border-strong)')+';border-radius:20px;background:'+(sel?ERN_G:'var(--surface)')+';color:'+(sel?'#fff':'var(--text-2)')+';font-size:13px;font-weight:800;padding:9px 14px;cursor:pointer;white-space:nowrap">'+it[1]+' '+it[2]+'</button>'; }).join('')+'</div>';
   }
   // FINN-first Coach-Hub: EINE dominante FINN-Karte – Tages-Blick (datenbasiert bzw. KI-Analyse),
   // direkter Chat-Einstieg und Schnellfragen. Ersetzt den früheren getrennten Tipp-Hero + Blick-Karte.
@@ -4771,7 +4769,8 @@
     if(!mp) return 'Der schnellste Hebel: hol dir einen Trainingsplan im Bereich Training. Mit Struktur wird aus Training echter Fortschritt.';
     return 'Solide Basis! Kombiniere dein Training mit genug Eiweiß und Schlaf – so wird aus Aufwand Ergebnis.';
   }
-  function coachInsights(){
+  // only: 'training' -> nur Trainings-Abschnitt · 'ern' -> nur Ernährungs-Abschnitt · sonst beides (Coach-Tabs).
+  function coachInsights(only){
     var d=DATA.training||{}, mp=d.myPlan&&d.myPlan.plan, n=DATA.nutri;
     var visits=0; try{ var cutoff=Date.now()-7*864e5; (DATA.checkins||[]).forEach(function(x){ if(x&&x.in&&Date.parse(x.in)>=cutoff) visits++; }); }catch(e){}
     var goal=(mp&&mp.daysPerWeek)||3;
@@ -4798,8 +4797,12 @@
     // Eine gemeinsame „Deine Woche"-Karte mit Abschnitten Training + Ernährung (statt zwei getrennter Karten).
     var bulHtml=function(bl){ return bl.map(function(b){ return '<div style="display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-top:1px solid var(--border)"><span style="flex-shrink:0;font-size:15px;margin-top:1px">'+(b.ic||'•')+'</span><div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:800;color:var(--text)">'+esc(b.t)+'</div>'+(b.s?'<div style="font-size:12px;font-weight:500;color:var(--text-2);line-height:1.45;margin-top:1px">'+esc(b.s)+'</div>':'')+'</div></div>'; }).join(''); };
     var subHd=function(ic,title){ return '<div style="display:flex;align-items:center;gap:9px;margin-bottom:2px"><span style="font-size:18px">'+ic+'</span><span style="font-size:14.5px;font-weight:900;color:var(--text)">'+esc(title)+'</span></div>'; };
-    return '<div style="background:var(--surface);border-radius:20px;box-shadow:0 12px 30px rgba(4,33,40,.09);padding:16px 18px;margin-bottom:14px">'+
-      '<div style="font-size:11px;font-weight:900;color:var(--text-soft);text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px">Deine Woche</div>'+
+    var CARD='background:var(--surface);border-radius:20px;box-shadow:0 12px 30px rgba(4,33,40,.09);padding:16px 18px;margin-bottom:14px';
+    var hd=function(t){ return '<div style="font-size:11px;font-weight:900;color:var(--text-soft);text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px">'+esc(t)+'</div>'; };
+    // Themen-Tabs im Coach: nur den passenden Abschnitt zeigen.
+    if(only==='training'){ return '<div style="'+CARD+'">'+hd('Deine Trainingswoche')+subHd('🏋️','Training')+bulHtml(tB)+'</div>'; }
+    if(only==='ern'){ if(!eB.length) return ''; return '<div style="'+CARD+'">'+hd('Deine Ernährungswoche')+subHd('🥗','Ernährung')+bulHtml(eB)+'</div>'; }
+    return '<div style="'+CARD+'">'+hd('Deine Woche')+
       subHd('🏋️','Training')+bulHtml(tB)+
       (eB.length?('<div style="height:1px;background:var(--border);margin:16px 0 12px"></div>'+subHd('🥗','Ernährung')+bulHtml(eB)):'')+
     '</div>';
@@ -7969,6 +7972,7 @@
     trainQuickEx:function(){ S.trainSeg='uebungen'; S.trainDetail=null; S.trainGenOpen=false; setS({}); },
     // Coach: FINN-Analyse (KI) – verbindet Training + Ernährung zu einer Erkenntnis (quota-gated).
     coachProgToggle:function(){ S.coachProgOpen=!S.coachProgOpen; setS({}); },
+    coachTab:function(a){ if(['uebersicht','lernen','ern','training','lifestyle'].indexOf(a)<0) return; S.coachTab=a; if(a==='lifestyle'&&DATA.mprofile==null) loadMemberProfile(); try{ window.scrollTo(0,0); }catch(e){} setS({}); },
     coachFinn:function(){
       if(S.coachFinnBusy) return; S.coachFinnBusy=true; S.coachFinnMsg=''; render();
       var d=DATA.training||{}, mp=d.myPlan&&d.myPlan.plan, n=DATA.nutri;
