@@ -36,6 +36,7 @@
   // bedenkenlos FitInnNative.* aufrufen kann.
   var API = {
     isNative: isNative,
+    __ver: '6',
     platform: isNative && Cap.getPlatform ? Cap.getPlatform() : 'web',
     onAuthed: function () {},
     onTeamAuthed: function () {},

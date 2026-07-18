@@ -395,7 +395,7 @@
   }catch(e){}
 })();
 </script>
-<script src="/assets/native.js?v=6" defer></script>
+<script src="/assets/native.js?v=7" defer></script>
 </head>
 <body>
 <div class="sbTop"></div>
@@ -6594,6 +6594,19 @@
     onError('unsupported'); return function(){};
   }
   function moErrMsg(code){ var s=String(code||'').toLowerCase(); if(s==='cancelled') return 'Verbindung abgebrochen.'; if(s==='unsupported') return 'Bluetooth wird hier nicht unterstützt – bitte in der Fit-Inn-App öffnen.'; if(/implemented|not available|unavailable/.test(s)) return 'Bluetooth ist in dieser App-Version noch nicht aktiv – bitte die App aktualisieren.'; return 'Verbindung zum Gurt fehlgeschlagen – Gurt anlegen, Elektroden anfeuchten und erneut versuchen.'; }
+  // Sichtbare Bluetooth-Diagnose (wenn der Gurt nicht verbunden werden kann) – zeigt,
+  // ob Capacitor/Bridge/Plugin vorhanden sind. Hilft beim Einrichten der nativen App.
+  function moDiag(){
+    var d=[];
+    try{ d.push('Cap:'+(window.Capacitor?1:0)); }catch(e){ d.push('Cap:?'); }
+    try{ d.push('nativ:'+((window.Capacitor&&Capacitor.isNativePlatform&&Capacitor.isNativePlatform())?1:0)); }catch(e){}
+    try{ d.push('Bridge:'+(window.FitInnNative?(FitInnNative.__ver||'alt'):0)); }catch(e){}
+    try{ d.push('hr:'+((window.FitInnNative&&FitInnNative.available&&FitInnNative.available.hr)?1:0)); }catch(e){}
+    try{ d.push('Plugin:'+((window.Capacitor&&Capacitor.isPluginAvailable)?(Capacitor.isPluginAvailable('BluetoothLe')?1:0):'?')); }catch(e){}
+    try{ d.push('WebBT:'+(navigator.bluetooth?1:0)); }catch(e){}
+    try{ d.push('P:'+((window.Capacitor&&Capacitor.Plugins)?(Object.keys(Capacitor.Plugins).join(',')||'-'):'-')); }catch(e){}
+    return '<div style="font-size:10px;color:var(--text-soft);font-weight:700;text-align:center;margin-top:8px;font-family:ui-monospace,monospace;word-break:break-all;opacity:.85">Diagnose · '+esc(d.join(' · '))+'</div>';
+  }
   function moStopMeasure(){ try{ if(moHR.timer) clearInterval(moHR.timer); }catch(e){} moHR.timer=null; try{ if(moHR.stop) moHR.stop(); }catch(e){} moHR.stop=null; }
   function moStartMeasure(){
     var d=morningData(); if(!d) return;
@@ -6666,7 +6679,7 @@
         '</div>';
     }
     var avail=moBleAvail();
-    var hint=avail?'':'<div style="font-size:12px;color:#b4552f;font-weight:700;text-align:center;margin-top:10px">Bluetooth wird auf diesem Gerät/Browser nicht unterstützt – bitte in der Fit-Inn-App öffnen.</div>';
+    var hint=avail?'':('<div style="font-size:12px;color:#b4552f;font-weight:700;text-align:center;margin-top:10px">Bluetooth wird auf diesem Gerät/Browser nicht unterstützt – bitte in der Fit-Inn-App öffnen.</div>'+moDiag());
     var errLine=S.morningMsg?('<div style="font-size:12.5px;font-weight:600;margin-top:10px;text-align:center;color:'+(S.morningErr?'var(--err-fg)':'var(--teal-ink)')+'">'+esc(S.morningMsg)+'</div>'):'';
     var has=!!(d.list&&d.list.length);
     return '<div style="'+MO_CARD+'">'+
