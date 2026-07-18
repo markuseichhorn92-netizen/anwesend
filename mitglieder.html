@@ -517,6 +517,7 @@
     ernConfirm:null, ernConfirmBusy:false,
     ernScanCode:'', ernScanBusy:false, ernScanErr:'', ernScanNotFound:false,
     ernScanPurpose:'log', ernShop:false, ernShopProd:null, ernShopAlt:null, ernShopAltBusy:false, ernShopFinn:null, ernShopFinnBusy:false,
+    sos:false, sosCrave:'', sosTrigger:'', sosFinn:null, sosFinnBusy:false,
     ernSearchQ:'', ernSearchResults:null, ernSearchBusy:false, ernSearchErr:'',
     ernCamErr:'', ernVoiceText:'', ernCamShot:'', ernMoreOpen:false,
     coachMapOpen:false, coachVertOpen:false, coachTab:'uebersicht',
@@ -704,7 +705,7 @@
     if(s==='profil'||s==='data'||s==='account'||s==='abo') loadErnBilling();
     if(s==='abo'){ S.ernMsg=''; S.ernErr=false; DATA.ernSub=undefined; DATA.ernInvoices=undefined; loadNutri(); loadSubInfo(); loadErnInvoices(); }
     if(s==='recht'){ S.wdStep=0; S.wdErr=false; S.wdMsg=''; loadErnBilling(); if(TOKEN){ loadNutri(); loadSubInfo(); } }
-    if(s==='ern'){ try{ window.__ernStopScan&&window.__ernStopScan(); }catch(e){} S.ernMsg=''; S.ernErr=false; S.ernAsk=''; S.ernAnswer=''; S.ernRecipes=null; S.ernCoachSent=false; S.ernTab='heute'; S.ernRecipeSel=null; S.ernKoch=null; S.ernCookPick=false; S.ernPlanDraft=null; S.ernPlanReplaceIdx=-1; S.ernCapture=false; S.ernConfirm=null; S.ernProd=null; S.ernShop=false; S.ernShopProd=null; S.ernShopAlt=null; S.ernShopFinn=null; S.ernScanPurpose='log'; S.ernEntryEdit=null; S.ernViewDate=''; S.ernFavMgr=false; S.ernData=false; S.ernUpgrade=false; S.ernLesson=null; S.ernLessonData=null; S.ernChatOpen=false; S.ernCk=false; S.ernCkResult=null; S.ernObStep=0; S.ernChat=ernChatLoad(); loadNutri(); loadFavs(); loadCoach(); loadCook(); }
+    if(s==='ern'){ try{ window.__ernStopScan&&window.__ernStopScan(); }catch(e){} S.ernMsg=''; S.ernErr=false; S.ernAsk=''; S.ernAnswer=''; S.ernRecipes=null; S.ernCoachSent=false; S.ernTab='heute'; S.ernRecipeSel=null; S.ernKoch=null; S.ernCookPick=false; S.ernPlanDraft=null; S.ernPlanReplaceIdx=-1; S.ernCapture=false; S.ernConfirm=null; S.ernProd=null; S.ernShop=false; S.ernShopProd=null; S.ernShopAlt=null; S.ernShopFinn=null; S.ernScanPurpose='log'; S.sos=false; S.sosCrave=''; S.sosTrigger=''; S.sosFinn=null; S.ernEntryEdit=null; S.ernViewDate=''; S.ernFavMgr=false; S.ernData=false; S.ernUpgrade=false; S.ernLesson=null; S.ernLessonData=null; S.ernChatOpen=false; S.ernCk=false; S.ernCkResult=null; S.ernObStep=0; S.ernChat=ernChatLoad(); loadNutri(); loadFavs(); loadCoach(); loadCook(); }
     if(s==='coach'){ S.ernLesson=null; S.ernVert=null; S.ernLessonData=null; S.ernCk=false; S.ernCkResult=null; S.ernChatOpen=false; S.ernUpgrade=false; S.ernMsg=''; S.ernErr=false; S.coachMapOpen=false; S.coachVertOpen=false; S.ernChat=ernChatLoad(); S.trainDetail=null; S.trainRun=false; S.trainRestKey=''; S.trainGenOpen=false; S.trainGenPlan=null; S.trainGenBusy=false; S.trainBusy=false; S.trainMsg=''; loadFinnTip(); loadCoach(); loadTraining(); if(!DATA.checkins) loadCheckins(); }
     if(s==='appt'){ if(!DATA.appts) loadAppts(); if(DATA.bookable===null) loadBookable(); }
     if(s==='tag'){ S.trainRunDay=null; S.trainRestKey=''; S.trainRestStart=0; S.trainSeg='einheit'; S.trainDetail=null; S.trainDetailFull=null; S.trainGenOpen=false; if(DATA.training==null) loadTraining(); loadTrainSession(); if(ERN_ON&&DATA.nutri==null) loadNutri(); }
@@ -3941,6 +3942,64 @@
         '<div style="font-size:10px;color:var(--text-soft);font-weight:600;text-align:center;margin-top:12px;line-height:1.5">Ampel &amp; Nutri-Score sind Orientierung, keine medizinische Empfehlung. Daten: Open Food Facts.</div>'+
       '</div></div>';
   }
+
+  // ═══════════════ Heißhunger-SOS (interaktive Soforthilfe – Swap + Trick + FINN-Zuspruch) ═══════════════
+  var SOS_CRAVE=[['suess','Süßes','🍫'],['salzig','Salziges','🥨'],['herzhaft','Herzhaft/Fettig','🍟'],['unklar','Einfach was','🤷']];
+  var SOS_TRIG=[['hunger','Echt hungrig','🍽️'],['kopf','Kopf · Stress · Langeweile','🧠']];
+  var SOS_SWAPS={
+    suess:['Obst + 1–2 Stück Zartbitter (>70 %) – bewusst &amp; langsam','Skyr/Magerquark mit Beeren &amp; etwas Honig','1 Dattel mit einem Löffel Nussmus'],
+    salzig:['Handvoll Nüsse oder Edamame','Gemüsesticks mit Hummus oder Skyr-Dip','Ein paar Oliven oder Käsewürfel'],
+    herzhaft:['Vollkorn-Toast mit Avocado &amp; Ei','Rührei mit etwas Gemüse','Griechischer Joghurt-Dip mit Vollkorn-Cracker'],
+    unklar:['Erst ein großes Glas Wasser + 10 Min warten','Eiweiß-Snack: Quark, Skyr oder ein Ei','Handvoll Nüsse + ein Stück Obst']
+  };
+  var SOS_TRICK={
+    hunger:'Trink erst ein großes Glas Wasser und iss dann eine kleine eiweißreiche Sache (Quark, Ei, Nüsse). Eiweiß sättigt am längsten – oft ist der Hunger danach schon weg.',
+    kopf:'Der Impuls ist meist nach 10–15 Minuten vorbei. Überbrücke ihn: Zähne putzen, einen Tee kochen, kurz um den Block gehen oder 4 Minuten ruhig atmen (4 Sek ein, 4 Sek aus).'
+  };
+  function ernSosMotivation(){ var g=ernShopGoalKey(); var base='Heißhunger ist völlig normal und dauert selten länger als 15–20 Minuten – du musst ihn nicht besiegen, nur überbrücken. 💪'; if(g==='abnehmen'||g==='definieren') base+=' Und: eine bewusste kleine Portion ist okay – strikte Verbote triggern erst recht.'; return base; }
+  function ernSosLabel(list,k){ for(var i=0;i<list.length;i++){ if(list[i][0]===k) return list[i][1]; } return ''; }
+  function ernSosFinnFetch(){
+    if(S.sosFinnBusy) return;
+    if(!ernPremium()){ setS({ernUpgrade:true}); return; }
+    S.sosFinnBusy=true; S.sosFinn=null; render();
+    api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'craving-sos',craving:S.sosCrave,trigger:S.sosTrigger})})
+    .then(function(d){ S.sosFinnBusy=false;
+      if(d&&d.ok){ S.sosFinn={pep:d.pep,tip:d.tip}; if(d.quota&&DATA.nutri) DATA.nutri.quota=d.quota; }
+      else if(d&&d.error==='premium_required'){ setS({sosFinnBusy:false,ernUpgrade:true}); return; }
+      else { S.sosFinn={err:(d&&d.message)||'FINN ist gerade nicht erreichbar.'}; }
+      render(); })
+    .catch(function(){ setS({sosFinnBusy:false,sosFinn:{err:'Verbindung gerade nicht möglich.'}}); });
+  }
+  function ernSosSheet(){
+    var body='', title='Worauf hast du Lust?', sub='Ein paar Sekunden – dann kommt Soforthilfe.';
+    if(!S.sosCrave){
+      body='<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px">'+SOS_CRAVE.map(function(c){ return '<button data-act="ernSosCrave" data-arg="'+c[0]+'" style="display:flex;flex-direction:column;align-items:center;gap:6px;background:var(--surface-2);border:1.5px solid var(--border);border-radius:16px;padding:18px 10px;cursor:pointer"><span style="font-size:30px">'+c[2]+'</span><span style="font-size:13.5px;font-weight:800;color:var(--text)">'+c[1]+'</span></button>'; }).join('')+'</div>';
+    } else if(!S.sosTrigger){
+      title='Echter Hunger oder Kopfsache?'; sub='Das entscheidet, was am besten hilft.';
+      body='<div style="display:flex;flex-direction:column;gap:10px;margin-top:16px">'+SOS_TRIG.map(function(c){ return '<button data-act="ernSosTrigger" data-arg="'+c[0]+'" style="display:flex;align-items:center;gap:12px;background:var(--surface-2);border:1.5px solid var(--border);border-radius:15px;padding:15px;cursor:pointer;text-align:left"><span style="font-size:24px">'+c[2]+'</span><span style="font-size:14.5px;font-weight:800;color:var(--text)">'+c[1]+'</span></button>'; }).join('')+'</div>'+
+        '<button data-act="ernSosReset" style="width:100%;margin-top:12px;padding:11px;border:none;background:none;color:var(--text-soft);font-size:12.5px;font-weight:700;cursor:pointer">← Andere Lust wählen</button>';
+    } else {
+      title='Dein Anti-Heißhunger-Plan'; sub=ernSosLabel(SOS_CRAVE,S.sosCrave)+' · '+ernSosLabel(SOS_TRIG,S.sosTrigger);
+      var swaps=(SOS_SWAPS[S.sosCrave]||SOS_SWAPS.unklar).map(function(s){ return '<div style="display:flex;gap:9px;align-items:flex-start;padding:9px 0;border-top:1px solid var(--border)"><span style="color:#038141;font-weight:900;flex-shrink:0">✓</span><span style="font-size:13px;font-weight:600;color:var(--text-2);line-height:1.5">'+s+'</span></div>'; }).join('');
+      var trick=SOS_TRICK[S.sosTrigger]||SOS_TRICK.kopf;
+      var f=S.sosFinn, busy=S.sosFinnBusy, prem=ernPremium();
+      var finnBlock;
+      if(f&&!f.err){ finnBlock='<div style="background:linear-gradient(150deg,#0e6072,#0a4958);border-radius:16px;padding:15px;margin-top:14px;color:#fff"><div style="display:flex;align-items:center;gap:9px;margin-bottom:8px">'+ernFinnAvatar(30)+'<div style="font-size:14px;font-weight:900">FINN spricht dir gut zu</div></div>'+(f.pep?'<div style="font-size:13px;font-weight:600;color:#e6f3f5;line-height:1.55">'+esc(f.pep)+'</div>':'')+(f.tip?'<div style="font-size:12.5px;font-weight:700;color:#cfe8ec;line-height:1.5;margin-top:9px;border-top:1px solid rgba(255,255,255,.15);padding-top:9px">👉 '+esc(f.tip)+'</div>':'')+'</div>'; }
+      else { finnBlock='<button data-act="ernSosFinn" '+(busy?'disabled ':'')+'style="width:100%;margin-top:14px;padding:14px;border:none;border-radius:15px;background:'+(busy?'var(--surface-2)':'linear-gradient(150deg,#0e6072,#0a4958)')+';color:'+(busy?'var(--text-soft)':'#fff')+';font-weight:900;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:9px">'+(busy?'<span style="width:16px;height:16px;border:2.4px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;display:inline-block;animation:ernspin .7s linear infinite"></span>FINN denkt nach …':((prem?'':'🔒 ')+'FINN: sprich mir kurz gut zu'))+'</button>'+(f&&f.err?'<div style="font-size:12px;font-weight:700;color:var(--err-fg);text-align:center;margin-top:8px">'+esc(f.err)+'</div>':'')+(prem?'':'<div style="font-size:11px;color:var(--text-soft);font-weight:600;text-align:center;margin-top:6px">Persönlicher Zuspruch – Teil von Coach Premium</div>'); }
+      body='<div style="background:var(--surface-2);border-radius:14px;padding:13px 15px;margin-top:14px;font-size:13px;font-weight:700;color:var(--text-2);line-height:1.55">💬 '+ernSosMotivation()+'</div>'+
+        '<div style="margin-top:16px"><div style="font-size:12px;font-weight:900;color:var(--text-soft);text-transform:uppercase;letter-spacing:.4px">✅ Clevere Griffe statt Verzicht</div>'+swaps+'</div>'+
+        '<div style="background:#EAF4FB;border-radius:14px;padding:13px 15px;margin-top:14px"><div style="font-size:12.5px;font-weight:900;color:#2d84b8;margin-bottom:4px">⏱️ 5-Minuten-Trick</div><div style="font-size:13px;font-weight:600;color:#2a5872;line-height:1.55">'+trick+'</div></div>'+
+        finnBlock+
+        '<div style="display:flex;flex-direction:column;gap:9px;margin-top:16px"><button data-act="ernSosClose" style="width:100%;padding:14px;border:none;border-radius:14px;background:#0e6072;color:#fff;font-weight:900;font-size:14.5px;cursor:pointer">Geschafft – ich hab’s im Griff 💪</button><button data-act="ernSosReset" style="width:100%;padding:12px;border:1.5px solid var(--border);border-radius:14px;background:var(--surface);color:var(--text-muted);font-weight:800;font-size:13.5px;cursor:pointer">Von vorne</button></div>';
+    }
+    return '<div data-act="ernSosClose" style="position:fixed;inset:0;background:rgba(4,20,24,.55);z-index:119;display:flex;align-items:flex-end;justify-content:center" role="dialog" aria-modal="true" aria-label="Heißhunger-Soforthilfe">'+
+      '<div data-act="noop" style="width:100%;max-width:520px;max-height:92vh;overflow-y:auto;-webkit-overflow-scrolling:touch;background:var(--surface);border-radius:22px 22px 0 0;padding:18px 18px calc(20px + env(safe-area-inset-bottom))">'+
+        '<div style="width:40px;height:4px;border-radius:2px;background:var(--border);margin:0 auto 14px"></div>'+
+        '<div style="display:flex;align-items:flex-start;gap:12px"><div style="width:44px;height:44px;border-radius:13px;background:#FBEAE4;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0">🆘</div><div style="flex:1;min-width:0"><div style="font-size:18px;font-weight:900;color:var(--text);letter-spacing:-.3px">'+esc(title)+'</div><div style="font-size:12.5px;color:var(--text-soft);font-weight:600;margin-top:2px">'+esc(sub)+'</div></div>'+
+        '<button data-act="ernSosClose" aria-label="Schließen" style="width:34px;height:34px;border-radius:11px;border:none;background:var(--surface-2);color:var(--text-soft);cursor:pointer;font-size:20px;line-height:1;flex-shrink:0">×</button></div>'+
+        body+
+      '</div></div>';
+  }
   // Übliche Portionsgröße (aus OFF serving_size) bzw. Packungsgröße in Gramm – oder null.
   function ernServingGrams(p){ var s=String((p&&p.servingSize)||''); var m=s.match(/(\d+(?:[.,]\d+)?)\s*g\b/i); if(m){ var n=Math.round(parseFloat(m[1].replace(',','.'))); if(n>0&&n<3000) return n; } return null; }
   function ernQuantityGrams(p){ var s=String((p&&p.quantity)||''); var m=s.match(/(\d+(?:[.,]\d+)?)\s*g\b/i); if(m){ var n=Math.round(parseFloat(m[1].replace(',','.'))); if(n>0&&n<=5000) return n; } return null; }
@@ -4565,11 +4624,13 @@
     }
     // „Beim Einkaufen"-Produkt-Check: Barcode scannen → Ampel + Empfehlung (kein Log-Zwang).
     var shopEntry='<div data-act="ernShopOpen" style="'+CARD+';display:flex;align-items:center;gap:13px;cursor:pointer;background:linear-gradient(150deg,#0e6072,#0a4958);color:#fff"><div style="width:46px;height:46px;border-radius:14px;background:rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0">🛒</div><div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:900">Beim Einkaufen? Produkt checken</div><div style="font-size:12px;font-weight:600;color:#bfe0e6;margin-top:2px;line-height:1.4">Barcode scannen → Ampel &amp; Empfehlung, ob’s zu deinem Ziel passt</div></div>'+svg('<path d="M9 18l6-6-6-6"></path>',{c:'rgba(255,255,255,.7)',w:2.2,s:20})+'</div>';
+    // Heißhunger-SOS: interaktive Soforthilfe (Swap + 5-Min-Trick + FINN-Zuspruch).
+    var sosEntry='<button data-act="ernSosOpen" style="width:100%;margin-bottom:14px;display:flex;align-items:center;gap:12px;background:var(--surface);border:1.5px solid var(--border);border-radius:20px;padding:14px 16px;cursor:pointer;text-align:left;box-shadow:0 8px 22px rgba(4,33,40,.06)"><div style="width:42px;height:42px;border-radius:13px;background:#FBEAE4;display:flex;align-items:center;justify-content:center;font-size:21px;flex-shrink:0">🆘</div><div style="flex:1;min-width:0"><div style="font-size:14.5px;font-weight:900;color:var(--text)">Heißhunger? Soforthilfe</div><div style="font-size:12px;font-weight:600;color:var(--text-soft);margin-top:1px;line-height:1.4">In 20 Sekunden über den Impuls – cleverer Swap + Trick</div></div>'+svg('<path d="M9 18l6-6-6-6"></path>',{c:'var(--text-soft)',w:2.2,s:18})+'</button>';
     // Vergangene Tage: nur die relevanten Blöcke (Ring, Wasser, Mahlzeiten).
     if(!viewIsToday) return ernDayNav()+ring+msg+water+mealsBlock;
     // Heute: klare Reihenfolge – Überblick, Einkaufen-Check, für heute geplant, Wasser, Mahlzeiten, Schnell-Add, Fasten, Mehr.
     // Das Coaching-Programm (Wochen-Lern-Einheiten) lebt jetzt im Coach-Bereich, nicht mehr hier im Essen-Tab.
-    return ernDayNav()+ring+msg+checkin+shopEntry+planned+water+mealsBlock+quickAdd+fasting+more;
+    return ernDayNav()+ring+msg+checkin+shopEntry+sosEntry+planned+water+mealsBlock+quickAdd+fasting+more;
   }
   // Fasten-Helfer (Client-Countdown; Server hält plan+start)
   function ernFastMs(){
@@ -8435,7 +8496,7 @@
     if(fm){
       var onErnTab=(S.screen==='ern')&&DATA.nutri&&DATA.nutri.ok&&DATA.nutri.onboarded&&
         !S.ernEdit&&!S.ernRecipeSel&&!S.ernCapture&&!S.ernConfirm&&!S.ernProd&&!S.ernData&&
-        !S.ernShop&&!S.ernShopProd&&
+        !S.ernShop&&!S.ernShopProd&&!S.sos&&
         !S.ernFavMgr&&!S.ernEntryEdit&&!S.ernLesson&&!S.ernVert&&!S.ernCk&&!(S.ernKoch!=null);
       var onTagTab=(S.screen==='tag')&&!S.trainRun&&!S.trainDetail&&!S.trainGenOpen;
       var miniBlock=S.finnOpen||S.qaOpen||S.ernChatOpen||S.ernUpgrade||S.dp||S.ciPopup||S.vaOpen;
@@ -8624,6 +8685,7 @@
     if(S.screen==='ern'&&S.ernCapture) html+=ernErfassen();   // Erfassen-Popup (Bottom-Sheet) über dem Ernährungs-Screen
     if(S.screen==='ern'&&S.ernShop) html+=ernShopSheet();   // Produkt-Check: Scan-Sheet (Einkaufen-Modus)
     if(S.screen==='ern'&&S.ernShopProd) html+=ernShopVerdictSheet();   // Produkt-Check: Ampel-Ergebnis
+    if(S.screen==='ern'&&S.sos) html+=ernSosSheet();   // Heißhunger-SOS (Soforthilfe-Bottom-Sheet)
     if(TOKEN && S.screen!=='login' && !isFormer() && !obDone()){ if(S.obServerChecked!==true) obServerCheck(); else { obPrefillOnce(); html+=obOverlayHtml(); } }
     if(TOKEN && S.screen!=='login' && !isFormer() && obDone() && S.welcomeGift) html+=welcomeGiftHtml();
     if(S.trainFinish) html+=trainFinishOverlay();
@@ -8653,7 +8715,7 @@
     // Login/Onboarding, in Vollbild-Chats, im Schnell-Popup und in Ernährungs-/Trainings-
     // Vollbild-Flows (die tragen ihren eigenen Kopf mit Zurück).
     var abFull=!!(S.ernLesson||S.ernVert||S.ernCk)
-      || (S.screen==='ern' && (S.ernCapture||S.ernEdit||S.ernProd||S.ernShop||S.ernShopProd||S.ernConfirm||S.ernData||S.ernFavMgr||S.ernEntryEdit||!(DATA.nutri&&DATA.nutri.ok&&DATA.nutri.available!==false&&DATA.nutri.onboarded)))
+      || (S.screen==='ern' && (S.ernCapture||S.ernEdit||S.ernProd||S.ernShop||S.ernShopProd||S.sos||S.ernConfirm||S.ernData||S.ernFavMgr||S.ernEntryEdit||!(DATA.nutri&&DATA.nutri.ok&&DATA.nutri.available!==false&&DATA.nutri.onboarded)))
       || (S.screen==='tag' && (S.trainRun||S.trainGenOpen||S.trainDetail));
     var abOn = !!TOKEN && S.screen!=='login' && S.screen!=='alogin' && !chatFull && !S.qaOpen && !abFull && obDone() && !tourActive();
     var abar=$('appbar');
@@ -9118,6 +9180,13 @@
     ernShopAlt:function(){ ernShopAltFetch(); },
     ernShopAltCheck:function(){ var a=S.ernShopAlt; if(a&&!a.none) ernOpenShopVerdict(a); },
     ernShopFinn:function(){ ernShopFinnFetch(); },
+    // Heißhunger-SOS
+    ernSosOpen:function(){ setS({sos:true,sosCrave:'',sosTrigger:'',sosFinn:null,sosFinnBusy:false}); },
+    ernSosClose:function(){ setS({sos:false,sosCrave:'',sosTrigger:'',sosFinn:null}); },
+    ernSosCrave:function(a){ setS({sosCrave:a||'',sosFinn:null}); },
+    ernSosTrigger:function(a){ setS({sosTrigger:a||'',sosFinn:null}); },
+    ernSosReset:function(){ setS({sosCrave:'',sosTrigger:'',sosFinn:null}); },
+    ernSosFinn:function(){ ernSosFinnFetch(); },
     ernCapMenu:function(){ try{ window.__ernStopScan&&window.__ernStopScan(); window.__ernStopCam&&window.__ernStopCam(); }catch(e){} setS({ernCapTab:'menu', ernScanErr:'', ernSearchErr:'', ernCamErr:'', ernMsg:''}); },
     ernCloseCapture:function(){ try{ window.__ernStopScan&&window.__ernStopScan(); window.__ernStopCam&&window.__ernStopCam(); }catch(e){} S.ernAddToConfirm=false; setS({ernCapture:false}); try{ window.scrollTo(0,0); }catch(e){} },
     // Bestätigen-Screen (Punkt 1)
@@ -10234,12 +10303,13 @@
     function backTrig(){ return Math.min(window.innerWidth*0.28, 110); }
     function menuOpen(){ return document.body.classList.contains('menu-open'); }
     function overlayOpen(){
-      return !!(S.finnOpen||S.vaOpen||S.ciPopup||S.dp||S.qaOpen||S.ernUpgrade||S.ernCapture||S.ernConfirm||S.ernProd||S.ernShop||S.ernShopProd||S.ernData||S.ernEdit||S.ernRecipeSel||S.ernFavMgr||S.ernEntryEdit||S.ernLesson||S.ernVert||S.ernCk||S.ernChatOpen||S.ernPlanQuiz||(S.ernKoch!=null)||S.welcomeGift||S.trainFinish||S.trainRun||S.trainDetail||S.trainGenOpen||S.morningBreathe||S.moGuide||(S.morningPhase&&S.morningPhase!=='idle')||S.socChat||S.socRoom||document.querySelector('.obOverlay'));
+      return !!(S.finnOpen||S.vaOpen||S.ciPopup||S.dp||S.qaOpen||S.ernUpgrade||S.ernCapture||S.ernConfirm||S.ernProd||S.ernShop||S.ernShopProd||S.sos||S.ernData||S.ernEdit||S.ernRecipeSel||S.ernFavMgr||S.ernEntryEdit||S.ernLesson||S.ernVert||S.ernCk||S.ernChatOpen||S.ernPlanQuiz||(S.ernKoch!=null)||S.welcomeGift||S.trainFinish||S.trainRun||S.trainDetail||S.trainGenOpen||S.morningBreathe||S.moGuide||(S.morningPhase&&S.morningPhase!=='idle')||S.socChat||S.socRoom||document.querySelector('.obOverlay'));
     }
     function closeKnownOverlay(){
       if(S.moGuide){ S.moGuide=false; render(); return true; }
       if(S.ernShopProd){ S.ernShopProd=null; S.ernShopAlt=null; S.ernShopFinn=null; render(); return true; }
       if(S.ernShop){ try{ window.__ernStopScan&&window.__ernStopScan(); }catch(e){} S.ernShop=false; S.ernScanPurpose='log'; render(); return true; }
+      if(S.sos){ if(S.sosTrigger){ S.sosTrigger=''; S.sosFinn=null; } else if(S.sosCrave){ S.sosCrave=''; } else { S.sos=false; } render(); return true; }
       var boolO=['finnOpen','qaOpen','vaOpen','ciPopup','ernUpgrade','ernChatOpen','morningBreathe'];
       for(var i=0;i<boolO.length;i++){ if(S[boolO[i]]){ S[boolO[i]]=false; render(); return true; } }
       if(S.ernProd){ S.ernProd=null; render(); return true; }

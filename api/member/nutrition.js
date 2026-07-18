@@ -758,6 +758,25 @@ module.exports = async function handler(req, res) {
       : { ok: false, error: r.error || 'ai_failed', message: 'Da komme ich gerade nicht weiter. Versuch es gleich nochmal.' }));
   }
 
+  // ── Heißhunger-SOS: FINN spricht kurz gut zu (Soforthilfe, aufs Ziel/Auslöser zugeschnitten) ──
+  if (action === 'craving-sos') {
+    if (!(await gateAI())) return;
+    if (!AI.hasAI) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'no_ai', message: 'FINN ist gerade nicht verfügbar.' })); }
+    if (!(await M.rateLimit('nutri-sos:' + id, 30, 3600))) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'rate_limited', message: 'Kurz durchatmen – gleich wieder versuchen.' })); }
+    const crave = ['suess', 'salzig', 'herzhaft', 'unklar'].indexOf(String(body.craving)) >= 0 ? String(body.craving) : 'unklar';
+    const trigger = ['hunger', 'kopf'].indexOf(String(body.trigger)) >= 0 ? String(body.trigger) : 'kopf';
+    let m = null; try { m = await M.getMember(id); } catch (e) {}
+    const r = await AI.nutritionCravingSOS({
+      firstName: (m && m.firstName) || '', goal: GOALS[profile && profile.goal] || 'ausgewogen',
+      under18: !!targetsFor(profile || {}).under18, craving: crave, trigger: trigger,
+    });
+    if (r.ok) { try { require('../../lib/handled').record('ai', id, 'nutri-sos'); } catch (e) {} }
+    const eq = r.ok ? await chargeAI() : null;
+    res.statusCode = 200; return res.end(JSON.stringify(r.ok
+      ? { ok: true, pep: r.pep, tip: r.tip, quota: eq }
+      : { ok: false, error: r.error || 'ai_failed', message: 'Da komme ich gerade nicht weiter. Versuch es gleich nochmal.' }));
+  }
+
   // ── Stoffwechsel-Coaching anfragen (Inbox-Vorgang + Studio-Mail) ──
   if (action === 'coaching-request') {
     if (!(await M.rateLimit('nutri-coaching:' + id, 5, 86400))) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'Deine Anfrage liegt uns schon vor – wir melden uns.' })); }
