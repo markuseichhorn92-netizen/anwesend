@@ -41,6 +41,8 @@ async function readState(id) {
   const base = MO.baseline(list);
   const latest = list[0] || null;
   const readiness = latest ? MO.readiness(latest, base) : null;
+  const trList = await MO.trList(id);
+  const trLatest = trList[0] || null;
   return {
     ok: true, available: true,
     premium: !!tier.premium, tier: tier.tier, trialing: tier.trialing,
@@ -57,6 +59,13 @@ async function readState(id) {
     trend: MO.trend(list),
     minCalib: MO.MIN_CALIB,
     vitalLedger: MO.vpLedger(list),
+    // Trainings-Check-in (kurzer Puls-Check vorm Workout) – gegen die Morgen-Baseline.
+    training: {
+      list: trList,
+      latest: trLatest,
+      readiness: trLatest ? MO.trainReadiness(trLatest, base) : null,
+      hasBaseline: base.rhr != null || base.hrv != null,
+    },
   };
 }
 
@@ -90,18 +99,23 @@ module.exports = async function handler(req, res) {
       return j(res, 200, Object.assign({ ok: true }, await readState(id)));
     }
 
-    // Messung speichern (Premium + Einwilligung nötig).
+    // Messung speichern (Premium + Einwilligung nötig). Morgen-Check-in ODER
+    // kurzer Trainings-Check-in (measurement.kind === 'training').
     if (action === 'save') {
       if (!premium) return j(res, 200, { ok: false, error: 'premium_required', message: PREMIUM_MSG });
       if (!(await MO.getConsent(id))) return j(res, 200, { ok: false, error: 'consent_required', message: 'Bitte stimme zuerst der Verarbeitung deiner Herzdaten zu.' });
-      const r = await MO.add(id, body.measurement || {}, Date.now());
-      if (!r.ok) return j(res, 200, { ok: false, error: r.error || 'save_failed', message: 'Es kam kein verwertbarer Messwert an. Miss bitte 2–3 Minuten ruhig und versuch es erneut.' });
+      const meas = body.measurement || {};
+      const isTrain = meas.kind === 'training';
+      const r = isTrain ? await MO.trAdd(id, meas, Date.now()) : await MO.add(id, meas, Date.now());
+      if (!r.ok) return j(res, 200, { ok: false, error: r.error || 'save_failed', message: 'Es kam kein verwertbarer Messwert an. Miss bitte ruhig und versuch es erneut.' });
       return j(res, 200, Object.assign({ ok: true }, await readState(id)));
     }
 
-    // Messung löschen (immer erlaubt – eigene Daten).
+    // Messung löschen (immer erlaubt – eigene Daten). scope:'training' -> Trainings-Check-in.
     if (action === 'delete') {
-      await MO.remove(id, body.sel != null ? body.sel : body.date);
+      const sel = body.sel != null ? body.sel : body.date;
+      if (body.scope === 'training') await MO.trRemove(id, sel);
+      else await MO.remove(id, sel);
       return j(res, 200, Object.assign({ ok: true }, await readState(id)));
     }
 

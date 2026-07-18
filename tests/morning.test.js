@@ -111,6 +111,13 @@ function run() {
   ok('17. insights liefert Muster (>=1)', Array.isArray(ins) && ins.length >= 1 && /gutem Schlaf/.test(ins.join(' ')));
   ok('17b. insights leer bei <8 Messungen', MO.insights(big.slice(0, 5)).length === 0);
 
+  // 18. Trainings-Bereitschaft (Trainings-Check-in) gegen die Morgen-Baseline
+  var trGood = MO.trainReadiness(mk('2026-07-18', 54, 62), base);
+  ok('18. trainReadiness grün + trainingsbezogene Worte', trGood.level === 'gruen' && /Bereit fürs Training/.test(trGood.headline) && typeof trGood.advice === 'string' && trGood.advice.length > 0);
+  ok('18b. trainReadiness rot bei hohem Puls/niedriger HRV', MO.trainReadiness(mk('2026-07-18', 72, 40), base).level === 'rot');
+  ok('18c. trainReadiness ohne Baseline -> kalibrierung', MO.trainReadiness(mk('2026-07-18', 55), MO.baseline(few)).level === 'kalibrierung' && MO.trainReadiness(mk('2026-07-18', 55), MO.baseline(few)).hasBaseline === false);
+  ok('18d. sanitize kind training/morgen', MO.sanitize({ rhr: 55, kind: 'training' }).kind === 'training' && MO.sanitize({ rhr: 55 }).kind === 'morgen');
+
   console.log(pass ? 'MORNING PASS' : 'MORNING FAIL');
   process.exit(pass ? 0 : 1);
 }

@@ -689,7 +689,7 @@
     if(ERN_ON&&(s==='home'||s==='fort')) loadNutri();   // Ernährungs-Vitalpunkte für Startseite/Fortschritt frisch halten
     if(s==='figur'){ S.figurAdd=false; S.figurMsg=''; S.figurErr=false; S.figurBusy=false; S.figurReviewBusy=false; loadFigur(); }
     if(s==='inbody'){ S.inbodyReview=null; S.inbodyMsg=''; S.inbodyErr=false; S.inbodyBusy=false; S.inbodyAssess=''; S.inbodyAssessBusy=false; S.ibMetric=null; S.ibAmpel=false; loadInbody(); }
-    if(s==='morning'){ moStopMeasure(); S.morningPhase='idle'; S.morningMsg=''; S.morningErr=false; S.morningBusy=false; S.morningLiveBpm=null; S.morningElapsed=0; S.morningAssess=null; S.morningAssessBusy=false; S.morningConsentBusy=false; S.morningBreathe=false; S.morningJournal={}; loadMorning(); }
+    if(s==='morning'){ moStopMeasure(); S.morningPhase='idle'; S.morningMsg=''; S.morningErr=false; S.morningBusy=false; S.morningLiveBpm=null; S.morningElapsed=0; S.morningAssess=null; S.morningAssessBusy=false; S.morningConsentBusy=false; S.morningBreathe=false; S.morningJournal={}; S.vitalMode='morgen'; S.morningMeasureKind='morgen'; loadMorning(); }
     if(SOCIAL_ON&&(s==='home'||s==='profil')) loadSocial();   // Trainingspartner-Snapshot für Startseite/Profil
     if(s==='social'){ S.socMsg=''; S.socErr=false; S.socBusy=false; S.socCopied=false; S.socChat=null; DATA.socDm=null; S.socRoom=null; DATA.socRoomThread=null; S.socRoomCreate=false; S.socRoomInvite=false; S.socRules=false; if(window.__socBuddy){ S.socCode=window.__socBuddy; window.__socBuddy=null; } if(window.__socOpenChat){ S.socChat=String(window.__socOpenChat); window.__socOpenChat=null; DATA.socDm=null; loadDm(S.socChat); } else if(window.__socOpenRoom){ S.socRoom=String(window.__socOpenRoom); window.__socOpenRoom=null; DATA.socRoomThread=null; loadRoomThread(S.socRoom); } loadSocial(); }
     if(s==='blog'){ S.blogSel=null; S.blogPost=null; loadBlog(); }
@@ -6560,7 +6560,9 @@
   // (@capacitor-community/bluetooth-le), sonst Web Bluetooth. Komplett Premium;
   // Herzdaten nur mit Einwilligung (DSGVO Art. 9). Kein Medizinprodukt, keine Diagnose.
   var MO_CARD=IB_CARD;
-  var MO_SECS=150;                                  // Messdauer in Sekunden
+  var MO_SECS=150;                                  // Morgen-Check-in: Messdauer in Sekunden
+  var MO_SECS_TRAIN=60;                             // Trainings-Check-in: kurzer Puls-Check
+  function moSecs(k){ return k==='training'?MO_SECS_TRAIN:MO_SECS; }
   var moHR={ samples:[], rr:[], timer:null, stop:null, startTs:0 };
   function loadMorning(){
     if(DATA.morning==null) DATA.morning=false;
@@ -6611,10 +6613,13 @@
     return '<div style="font-size:10px;color:var(--text-soft);font-weight:700;text-align:center;margin-top:8px;font-family:ui-monospace,monospace;word-break:break-all;opacity:.85">Diagnose · '+esc(d.join(' · '))+'</div>';
   }
   function moStopMeasure(){ try{ if(moHR.timer) clearInterval(moHR.timer); }catch(e){} moHR.timer=null; try{ if(moHR.stop) moHR.stop(); }catch(e){} moHR.stop=null; }
-  function moStartMeasure(){
+  function moStartMeasure(kind){
     var d=morningData(); if(!d) return;
     if(!d.premium){ ernEnsureModulePrice(); setS({ernUpgrade:true}); return; }
     if(!d.consent){ S.morningPhase='consent'; setS({}); return; }
+    kind=(kind==='training')?'training':'morgen';
+    S.morningMeasureKind=kind;
+    var secs=moSecs(kind);
     moHR={ samples:[], rr:[], timer:null, stop:null, startTs:0 };
     S.morningPhase='connecting'; S.morningErr=false; S.morningMsg=''; S.morningLiveBpm=null; S.morningElapsed=0; render();
     moHR.stop=moBleStart(function(bpm,rr){
@@ -6624,24 +6629,27 @@
       S.morningLiveBpm=bpm;
       render();
     },function(code){ moStopMeasure(); S.morningPhase='idle'; S.morningErr=true; S.morningMsg=moErrMsg(code); setS({}); });
-    moHR.timer=setInterval(function(){ if(!moHR.startTs) return; S.morningElapsed=Math.round((Date.now()-moHR.startTs)/1000); if(S.morningElapsed>=MO_SECS){ moFinishMeasure(); } else { render(); } },1000);
+    moHR.timer=setInterval(function(){ if(!moHR.startTs) return; S.morningElapsed=Math.round((Date.now()-moHR.startTs)/1000); if(S.morningElapsed>=secs){ moFinishMeasure(); } else { render(); } },1000);
   }
   function moFinishMeasure(){
     moStopMeasure();
+    var kind=S.morningMeasureKind||'morgen';
     var samples=moHR.samples||[], rr=moHR.rr||[];
-    if(samples.length<5){ S.morningPhase='idle'; S.morningErr=true; S.morningMsg='Es kamen zu wenige Messwerte an. Bleib ruhig liegen/sitzen und versuch es erneut.'; setS({}); return; }
+    if(samples.length<5){ S.morningPhase='idle'; S.morningErr=true; S.morningMsg='Es kamen zu wenige Messwerte an. Bleib ruhig und versuch es erneut.'; setS({}); return; }
     var half=samples.slice(Math.floor(samples.length/2)).map(function(s){return s.bpm;});
     var meas={ date:moToday(), rhr:moMedian(half), hrMin:Math.min.apply(null,samples.map(function(s){return s.bpm;})) };
     var hrv=moRmssd(rr); if(hrv!=null&&rr.length>=20) meas.hrvRmssd=hrv;
     var sdnn=moSdnn(rr); if(sdnn!=null&&rr.length>=20) meas.hrvSdnn=sdnn;
-    var j=S.morningJournal||{}; ['sleepSelf','moodSelf','stressSelf','soreness','sick'].forEach(function(f){ if(j[f]!=null&&j[f]!=='') meas[f]=j[f]; });
+    if(kind==='training'){ meas.kind='training'; }
+    else { var j=S.morningJournal||{}; ['sleepSelf','moodSelf','stressSelf','soreness','sick'].forEach(function(f){ if(j[f]!=null&&j[f]!=='') meas[f]=j[f]; }); }
     moSave(meas);
   }
   function moSave(meas){
     S.morningPhase='saving'; S.morningBusy=true; render();
     api('/api/member/morning',{method:'POST',timeoutMs:30000,body:JSON.stringify({action:'save',measurement:meas})}).then(function(r){
       S.morningBusy=false; S.morningPhase='idle';
-      if(r&&r.ok&&r.list){ DATA.morning=r; S.morningAssess=null; S.morningErr=false; S.morningMsg='Gespeichert – deine Bereitschaft für heute steht.'; }
+      var wasTrain=(S.morningMeasureKind==='training');
+      if(r&&r.ok&&r.list){ DATA.morning=r; S.morningAssess=null; S.morningErr=false; S.morningJournal={}; S.morningMsg=wasTrain?'Check-in gespeichert – deine Trainings-Bereitschaft steht.':'Gespeichert – deine Bereitschaft für heute steht.'; }
       else if(r&&r.error==='premium_required'){ ernEnsureModulePrice(); setS({ernUpgrade:true}); return; }
       else if(r&&r.error==='consent_required'){ S.morningPhase='consent'; }
       else { S.morningErr=true; S.morningMsg=(r&&r.message)||'Speichern fehlgeschlagen – bitte erneut.'; }
@@ -6661,7 +6669,7 @@
     if(r.level==='kalibrierung'||!MO_LV[r.level]){
       var rem=base.remaining||0;
       return '<div style="background:linear-gradient(150deg,#0e6072,#063540);border-radius:22px;padding:22px;color:#fff;box-shadow:0 16px 40px rgba(4,33,40,.2)">'+
-        '<div style="font-size:12px;font-weight:800;color:#aed0d6;text-transform:uppercase;letter-spacing:.5px">Morgen-Check'+dateLab+'</div>'+
+        '<div style="font-size:12px;font-weight:800;color:#aed0d6;text-transform:uppercase;letter-spacing:.5px">Morgen-Check-in'+dateLab+'</div>'+
         '<div style="display:flex;align-items:center;gap:13px;margin-top:8px"><div style="font-size:40px">📈</div><div><div style="font-size:20px;font-weight:900">Kalibrierung läuft</div><div style="font-size:12.5px;color:#cfe8ec;font-weight:600">'+(rem>0?('Noch '+rem+' Messung'+(rem===1?'':'en')+' bis zu deiner persönlichen Baseline'):'Deine Baseline entsteht gerade')+'</div></div></div>'+chips+'</div>';
     }
     var L=MO_LV[r.level];
@@ -6762,30 +6770,71 @@
     var d=morningData(); var ins=(d&&d.insights)||[]; if(!ins.length) return '';
     return '<div style="'+MO_CARD+'"><div style="font-size:15px;font-weight:900;color:var(--text);margin-bottom:2px">Deine Muster</div><div style="font-size:12px;color:var(--text-soft);font-weight:500;margin-bottom:8px">Aus deinen bisherigen Check-ins.</div>'+ins.map(function(s,i){ return '<div style="display:flex;gap:9px;padding:9px 0'+(i?';border-top:1px solid var(--border)':'')+'"><span style="font-size:15px">💡</span><div style="font-size:13px;color:var(--text-2);font-weight:600;line-height:1.45">'+esc(s)+'</div></div>'; }).join('')+'</div>';
   }
-  function moMeasureCard(){
+  function moClock(ts){ try{ var dt=new Date(Number(ts)); return ('0'+dt.getHours()).slice(-2)+':'+('0'+dt.getMinutes()).slice(-2); }catch(e){ return ''; } }
+  // Segment-Umschalter Morgen-Check-in ↔ Trainings-Check-in (Vital-Check-Oberbegriff).
+  function vitalSegment(){
+    var mode=S.vitalMode==='training'?'training':'morgen';
+    var btn=function(k,emo,lab){ var on=mode===k; return '<button data-act="vitalMode" data-arg="'+k+'" style="flex:1;border:none;border-radius:12px;background:'+(on?'var(--teal)':'transparent')+';color:'+(on?'#fff':'var(--text-2)')+';font-weight:800;font-size:13px;padding:11px 6px;cursor:pointer;white-space:nowrap">'+emo+' '+lab+'</button>'; };
+    return '<div style="display:flex;gap:5px;background:var(--surface-2);border-radius:15px;padding:5px">'+btn('morgen','🌅','Morgen')+btn('training','🏋️','Training')+'</div>';
+  }
+  // Trainings-Bereitschaft JETZT (Ergebnis des kurzen Puls-Checks vorm Workout).
+  function moTrainVerdictCard(){
+    var d=morningData(); if(!d) return ''; var tr=d.training||{}; var r=tr.readiness; var m=tr.latest;
+    if(!m||!r) return '';
+    var base=d.baseline||{};
+    if(r.level==='kalibrierung'){
+      return '<div style="'+MO_CARD+'"><div style="font-size:15px;font-weight:900;color:var(--text)">Noch keine Baseline</div><div style="font-size:12.5px;color:var(--text-soft);font-weight:500;margin-top:6px;line-height:1.5">'+esc(r.advice||'')+'</div></div>';
+    }
+    var L=MO_LV[r.level]||MO_LV.gelb; var when=m.ts?moClock(m.ts):'';
+    var chip=function(lab,val,sub){ return '<div style="flex:1;background:rgba(255,255,255,.14);border-radius:13px;padding:11px 12px"><div style="font-size:10.5px;font-weight:800;color:rgba(255,255,255,.75);text-transform:uppercase;letter-spacing:.4px">'+lab+'</div><div style="font-size:20px;font-weight:900;color:#fff;margin-top:2px">'+val+'</div>'+(sub?'<div style="font-size:10.5px;color:rgba(255,255,255,.7);font-weight:600">'+sub+'</div>':'')+'</div>'; };
+    return '<div style="background:'+L.bg+';border-radius:22px;padding:22px;color:#fff;box-shadow:0 16px 40px rgba(4,33,40,.2)">'+
+      '<div style="font-size:12px;font-weight:800;color:rgba(255,255,255,.8);text-transform:uppercase;letter-spacing:.5px">Trainings-Bereitschaft'+(when?(' · '+esc(when)):'')+'</div>'+
+      '<div style="display:flex;align-items:center;gap:14px;margin-top:8px"><div style="font-size:46px;line-height:1">'+L.emo+'</div><div style="min-width:0"><div style="font-size:22px;font-weight:900;letter-spacing:-.3px;line-height:1.1">'+esc(r.headline)+'</div><div style="font-size:13px;color:rgba(255,255,255,.85);font-weight:700;margin-top:2px">Score '+(r.score!=null?r.score:'—')+'/100</div></div></div>'+
+      '<div style="font-size:13px;color:rgba(255,255,255,.9);font-weight:600;line-height:1.5;margin-top:12px">'+esc(r.advice||'')+'</div>'+
+      '<div style="display:flex;gap:10px;margin-top:14px">'+chip('Puls jetzt',moNum(m.rhr)+' bpm',base.rhr!=null?('Baseline '+moNum(base.rhr)):'')+(m.hrvRmssd!=null?chip('HRV',moNum(m.hrvRmssd)+' ms',base.hrv!=null?('Ø '+moNum(base.hrv)):''):'')+'</div>'+
+    '</div>';
+  }
+  function moTrainHistoryCard(){
+    var d=morningData(); if(!d) return ''; var list=(d.training&&d.training.list)||[]; if(!list.length) return '';
+    var rows=list.slice(0,8).map(function(m){ var when=(m.date?ernDeDate(m.date):'')+(m.ts?(' · '+moClock(m.ts)):''); var bits=[]; if(m.rhr!=null) bits.push('Puls '+moNum(m.rhr)+' bpm'); if(m.hrvRmssd!=null) bits.push('HRV '+moNum(m.hrvRmssd)+' ms'); var sel=String(m.ts||m.date||'');
+      return '<div style="display:flex;align-items:flex-start;gap:10px;padding:11px 0;border-top:1px solid var(--border)"><div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:700;color:var(--text)">'+esc(when||'Check-in')+'</div><div style="font-size:12.5px;color:var(--text-soft);margin-top:2px">'+esc(bits.join(' · ')||'—')+'</div></div><button data-act="morningDeleteTrain" data-arg="'+esc(sel)+'" aria-label="Löschen" style="border:none;background:none;cursor:pointer;padding:4px;flex-shrink:0">'+svg('<path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"></path>',{c:'var(--text-soft)',w:1.8,s:17})+'</button></div>';
+    }).join('');
+    return '<div style="'+MO_CARD+'"><div style="font-size:15px;font-weight:900;color:var(--text);margin-bottom:2px">Deine Trainings-Check-ins</div>'+rows+'</div>';
+  }
+  function moMeasureCard(kind){
     var d=morningData(); if(!d) return '';
+    kind=(kind==='training')?'training':'morgen';
     var phase=S.morningPhase||'idle';
     if(phase==='connecting'||phase==='measuring'||phase==='saving'){
-      var el=S.morningElapsed||0; var pct=Math.min(100,Math.round(el/MO_SECS*100));
-      var bpm=S.morningLiveBpm; var lab=(phase==='saving')?'Speichert …':(phase==='connecting'?'Verbinde mit Gurt …':'Messung läuft – ruhig liegen bleiben');
-      var left=Math.max(0,MO_SECS-el); var mm=Math.floor(left/60), ss=('0'+(left%60)).slice(-2);
+      var ak=S.morningMeasureKind||'morgen'; var secs=moSecs(ak);
+      var el=S.morningElapsed||0; var pct=Math.min(100,Math.round(el/secs*100));
+      var bpm=S.morningLiveBpm; var lab=(phase==='saving')?'Speichert …':(phase==='connecting'?'Verbinde mit Gurt …':(ak==='training'?'Kurz-Check läuft – ruhig atmen':'Messung läuft – ruhig liegen bleiben'));
+      var left=Math.max(0,secs-el); var mm=Math.floor(left/60), ss=('0'+(left%60)).slice(-2);
+      var early=ak==='training'?25:45;
       return '<div style="'+MO_CARD+';text-align:center">'+
         '<div style="font-size:15px;font-weight:900;color:var(--text)">'+esc(lab)+'</div>'+
         '<div style="font-size:56px;font-weight:900;color:var(--teal-ink);letter-spacing:-2px;margin:10px 0 2px;line-height:1">'+(bpm!=null?bpm:'❤️')+'<span style="font-size:16px;font-weight:800;color:var(--text-soft);letter-spacing:0"> bpm</span></div>'+
         (moHR.samples&&moHR.samples.length>=2?('<div style="margin:6px 0 2px">'+moSpark(moHR.samples.map(function(s){return s.bpm;}).slice(-90),300,44,'var(--teal)')+'</div>'):'')+
         '<div style="height:9px;border-radius:6px;background:var(--surface-2);overflow:hidden;margin:12px 0 6px"><div style="height:100%;width:'+pct+'%;background:var(--teal);border-radius:6px;transition:width .5s"></div></div>'+
         '<div style="font-size:12px;color:var(--text-soft);font-weight:700">noch '+mm+':'+ss+' min</div>'+
-        (phase!=='saving'?('<div style="display:flex;gap:9px;justify-content:center;margin-top:14px"><button data-act="morningCancel" style="border:1.5px solid var(--border);border-radius:12px;background:var(--surface);color:var(--text-soft);font-weight:800;font-size:13.5px;padding:10px 18px;cursor:pointer">Abbrechen</button>'+(el>=45?'<button data-act="morningFinish" style="border:none;border-radius:12px;background:var(--teal);color:#fff;font-weight:800;font-size:13.5px;padding:10px 18px;cursor:pointer">Jetzt auswerten</button>':'')+'</div>'):'')+
+        (phase!=='saving'?('<div style="display:flex;gap:9px;justify-content:center;margin-top:14px"><button data-act="morningCancel" style="border:1.5px solid var(--border);border-radius:12px;background:var(--surface);color:var(--text-soft);font-weight:800;font-size:13.5px;padding:10px 18px;cursor:pointer">Abbrechen</button>'+(el>=early?'<button data-act="morningFinish" style="border:none;border-radius:12px;background:var(--teal);color:#fff;font-weight:800;font-size:13.5px;padding:10px 18px;cursor:pointer">Jetzt auswerten</button>':'')+'</div>'):'')+
         '</div>';
     }
     var avail=moBleAvail();
     var hint=avail?'':('<div style="font-size:12px;color:#b4552f;font-weight:700;text-align:center;margin-top:10px">Bluetooth wird auf diesem Gerät/Browser nicht unterstützt – bitte in der Fit-Inn-App öffnen.</div>'+moDiag());
     var errLine=S.morningMsg?('<div style="font-size:12.5px;font-weight:600;margin-top:10px;text-align:center;color:'+(S.morningErr?'var(--err-fg)':'var(--teal-ink)')+'">'+esc(S.morningMsg)+'</div>'):'';
+    if(kind==='training'){
+      return '<div style="'+MO_CARD+'">'+
+        '<div style="font-size:16px;font-weight:900;color:var(--text)">Trainings-Check-in</div>'+
+        '<div style="font-size:12.5px;color:var(--text-soft);font-weight:500;margin-top:4px;line-height:1.5">Kurzer ~1-Minuten-Puls-Check direkt vorm Workout: Leg den Gurt an, atme kurz ruhig – der Check vergleicht deinen Puls mit deiner Morgen-Baseline und sagt dir, ob du bereit bist.</div>'+
+        '<button data-act="morningMeasure" data-arg="training" '+(avail?'':'disabled ')+'style="width:100%;margin-top:14px;padding:15px;border:none;border-radius:15px;background:'+(avail?'var(--teal)':'var(--surface-2)')+';color:'+(avail?'#fff':'var(--text-soft)')+';font-weight:800;font-size:15px;cursor:'+(avail?'pointer':'default')+'">🏋️ Jetzt kurz messen</button>'+
+        hint+errLine+'</div>';
+    }
     var has=!!(d.list&&d.list.length);
     return '<div style="'+MO_CARD+'">'+
-      '<div style="font-size:16px;font-weight:900;color:var(--text)">'+(has?'Neue Morgen-Messung':'Morgen-Check starten')+'</div>'+
+      '<div style="font-size:16px;font-weight:900;color:var(--text)">'+(has?'Neuer Morgen-Check-in':'Morgen-Check-in starten')+'</div>'+
       '<div style="font-size:12.5px;color:var(--text-soft);font-weight:500;margin-top:4px;line-height:1.5">Leg den Polar H9 an (Elektroden anfeuchten), bleib 2–3 Minuten ruhig liegen oder sitzen – FINN misst Ruhepuls &amp; Herzratenvariabilität.</div>'+
-      '<button data-act="morningMeasure" '+(avail?'':'disabled ')+'style="width:100%;margin-top:14px;padding:15px;border:none;border-radius:15px;background:'+(avail?'var(--teal)':'var(--surface-2)')+';color:'+(avail?'#fff':'var(--text-soft)')+';font-weight:800;font-size:15px;cursor:'+(avail?'pointer':'default')+'">❤️ Gurt verbinden &amp; messen</button>'+
+      '<button data-act="morningMeasure" data-arg="morgen" '+(avail?'':'disabled ')+'style="width:100%;margin-top:14px;padding:15px;border:none;border-radius:15px;background:'+(avail?'var(--teal)':'var(--surface-2)')+';color:'+(avail?'#fff':'var(--text-soft)')+';font-weight:800;font-size:15px;cursor:'+(avail?'pointer':'default')+'">❤️ Gurt verbinden &amp; messen</button>'+
       hint+errLine+'</div>';
   }
   function moConsentCard(){
@@ -6845,7 +6894,7 @@
   }
   function moPremiumTeaser(){
     var cc=ernCtaCopy();
-    return '<div style="'+MO_CARD+';background:linear-gradient(150deg,#12879c,#0a4958);color:#fff"><div style="font-size:17px;font-weight:900">🔒 Morgen-Check ist Coach Premium</div><div style="font-size:13.5px;font-weight:600;color:#cfe8ec;line-height:1.55;margin:10px 0 14px">Verbinde deinen Polar H9 per Bluetooth und miss morgens 2–3 Minuten deinen Ruhepuls. FINN erkennt an deiner persönlichen Baseline, wie bereit du für Training bist – grün, gelb oder rot – und passt deine Empfehlung an: Vollgas, moderat oder Erholung.</div><button data-act="ernUpgradeOpen" style="width:100%;padding:14px;border:none;border-radius:14px;background:var(--surface);color:var(--teal-ink);font-weight:900;font-size:14.5px;cursor:pointer">'+esc(cc.cta)+'</button></div>';
+    return '<div style="'+MO_CARD+';background:linear-gradient(150deg,#12879c,#0a4958);color:#fff"><div style="font-size:17px;font-weight:900">🔒 Vital-Check ist Coach Premium</div><div style="font-size:13.5px;font-weight:600;color:#cfe8ec;line-height:1.55;margin:10px 0 14px">Verbinde deinen Herzgurt per Bluetooth: Der <b>Morgen-Check-in</b> misst 2–3 Minuten Ruhepuls &amp; HRV, der <b>Trainings-Check-in</b> prüft kurz vorm Workout deine Bereitschaft. FINN erkennt an deiner persönlichen Baseline, wie bereit du bist – grün, gelb oder rot – und passt deine Empfehlung an: Vollgas, moderat oder Erholung.</div><button data-act="ernUpgradeOpen" style="width:100%;padding:14px;border:none;border-radius:14px;background:var(--surface);color:var(--teal-ink);font-weight:900;font-size:14.5px;cursor:pointer">'+esc(cc.cta)+'</button></div>';
   }
   function moWrap(head,blocks){
     var out=blocks.filter(Boolean).join('');
@@ -6854,22 +6903,32 @@
     return '<div class="narrow" style="display:flex;flex-direction:column;gap:14px">'+head+out+'</div>';
   }
   function scrMorning(){
-    var head=subHeader('Morgen-Check','Trainingsbereitschaft mit dem H9','coach');
+    var head=subHeader('Vital-Check','Herz & Erholung im Blick','coach');
     var d=DATA.morning;
     if(d===false||d==null){ return '<div class="narrow">'+head+'<div style="'+MO_CARD+';text-align:center;color:var(--text-soft)">Lädt …</div></div>'; }
-    if(!d.ok && d.available===false){ return '<div class="narrow">'+head+'<div style="'+MO_CARD+'"><div style="font-weight:800;color:var(--text)">Gerade nicht verfügbar</div><div style="font-size:13px;color:var(--text-soft);margin-top:5px">Der Morgen-Check steht dir in Kürze zur Verfügung.</div></div></div>'; }
+    if(!d.ok && d.available===false){ return '<div class="narrow">'+head+'<div style="'+MO_CARD+'"><div style="font-weight:800;color:var(--text)">Gerade nicht verfügbar</div><div style="font-size:13px;color:var(--text-soft);margin-top:5px">Der Vital-Check steht dir in Kürze zur Verfügung.</div></div></div>'; }
     if(!d.ok){ return '<div class="narrow">'+head+'<div style="'+MO_CARD+';text-align:center"><div style="color:var(--text-soft);margin-bottom:10px">Konnte nicht geladen werden.</div><button data-act="morningReload" style="border:none;background:var(--teal);color:#fff;font-weight:800;border-radius:12px;padding:11px 18px;cursor:pointer">Erneut versuchen</button></div></div>'; }
     var blocks=[];
-    var intro='<div style="'+MO_CARD+'"><div style="font-size:15.5px;font-weight:800;color:var(--text)">Wie bereit bist du heute?</div><div style="font-size:13px;color:var(--text-soft);margin-top:5px;line-height:1.55">Dein Ruhepuls und deine HRV verraten morgens, wie gut du erholt bist. FINN vergleicht sie mit deiner persönlichen Baseline und gibt dir eine klare Ampel für heute.</div></div>';
+    var intro='<div style="'+MO_CARD+'"><div style="font-size:15.5px;font-weight:800;color:var(--text)">Wie bereit bist du heute?</div><div style="font-size:13px;color:var(--text-soft);margin-top:5px;line-height:1.55">Dein Ruhepuls und deine HRV verraten, wie gut du erholt bist. FINN vergleicht sie mit deiner persönlichen Baseline und gibt dir eine klare Ampel – morgens für den Tag, vorm Workout für die passende Intensität.</div></div>';
     if(!d.premium){ blocks.push(moPremiumTeaser()); blocks.push(intro); return moWrap(head,blocks); }
     if(S.morningPhase==='consent' || !d.consent){ blocks.push(moConsentCard()); if(!d.latest) blocks.push(intro); return moWrap(head,blocks); }
     if(S.morningBreathe) return moBreatheCard();
     if(S.morningPhase==='journal') return moJournalCard();
-    blocks.push(moMeasureCard());
-    if(d.latest){
-      blocks.push(moReadinessHero()); blocks.push(moLoadCard()); blocks.push(moBalanceCard()); blocks.push(moBioAgeCard());
-      blocks.push(moEvalCard()); blocks.push(moCheckinCard()); blocks.push(moBreatheEntry()); blocks.push(moTrendCard()); blocks.push(moInsightsCard()); blocks.push(moCurvesCard()); blocks.push(moFinnCard()); blocks.push(moHistoryCard());
-    } else { blocks.push(intro); blocks.push(moBreatheEntry()); }
+    var mode=S.vitalMode==='training'?'training':'morgen';
+    blocks.push(vitalSegment());
+    if(mode==='training'){
+      blocks.push(moMeasureCard('training'));
+      var tr=d.training||{};
+      if(tr.latest){ blocks.push(moTrainVerdictCard()); }
+      else if(!tr.hasBaseline){ blocks.push('<div style="'+MO_CARD+'"><div style="font-size:13px;color:var(--text-soft);font-weight:600;line-height:1.55">Der Trainings-Check-in vergleicht deinen Puls mit deiner <b>Morgen-Baseline</b>. Mach zuerst ein paar Morgen-Check-ins – dann wird der Trainings-Check aussagekräftig.</div></div>'); }
+      blocks.push(moTrainHistoryCard());
+    } else {
+      blocks.push(moMeasureCard('morgen'));
+      if(d.latest){
+        blocks.push(moReadinessHero()); blocks.push(moLoadCard()); blocks.push(moBalanceCard()); blocks.push(moBioAgeCard());
+        blocks.push(moEvalCard()); blocks.push(moCheckinCard()); blocks.push(moBreatheEntry()); blocks.push(moTrendCard()); blocks.push(moInsightsCard()); blocks.push(moCurvesCard()); blocks.push(moFinnCard()); blocks.push(moHistoryCard());
+      } else { blocks.push(intro); blocks.push(moBreatheEntry()); }
+    }
     return moWrap(head,blocks);
   }
   // Kompakte Einstiegskarte (Coach-Lifestyle-Tab, Fortschritt).
@@ -6878,8 +6937,8 @@
     var CARD='background:var(--surface);border-radius:20px;box-shadow:0 14px 38px rgba(4,33,40,.10);padding:18px';
     var sub;
     if(latest){ var r=(d.readiness)||{}; var lv=r.level; var emo=(lv==='gruen')?'🟢':(lv==='gelb')?'🟡':(lv==='rot')?'🔴':'📈'; var txt=(lv&&MO_LV[lv])?(r.headline||MO_LV[lv].lab):'Kalibrierung läuft'; sub='<div style="font-size:12.5px;color:var(--text-soft);font-weight:700;margin-top:3px">'+emo+' '+esc(txt)+(latest.rhr!=null?(' · Ruhepuls '+moNum(latest.rhr)+' bpm'):'')+'</div>'; }
-    else { sub='<div style="font-size:12.5px;color:var(--text-soft);font-weight:600;margin-top:3px">'+(prem?'Miss deine Trainingsbereitschaft mit dem H9':'Coach Premium · Bereitschaft per H9 messen')+'</div>'; }
-    return '<div data-act="nav" data-arg="morning" style="'+CARD+';cursor:pointer;display:flex;align-items:center;gap:14px"><div style="width:44px;height:44px;border-radius:13px;background:var(--surface-2);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:22px">❤️</div><div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:900;color:var(--text)">Morgen-Check</div>'+sub+'</div>'+svg('<path d="M9 18l6-6-6-6"></path>',{c:'var(--text-soft)',w:2.2,s:20})+'</div>';
+    else { sub='<div style="font-size:12.5px;color:var(--text-soft);font-weight:600;margin-top:3px">'+(prem?'Miss deine Bereitschaft – Morgen- &amp; Trainings-Check-in':'Coach Premium · Herz &amp; Bereitschaft messen')+'</div>'; }
+    return '<div data-act="nav" data-arg="morning" style="'+CARD+';cursor:pointer;display:flex;align-items:center;gap:14px"><div style="width:44px;height:44px;border-radius:13px;background:var(--surface-2);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:22px">❤️</div><div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:900;color:var(--text)">Vital-Check</div>'+sub+'</div>'+svg('<path d="M9 18l6-6-6-6"></path>',{c:'var(--text-soft)',w:2.2,s:20})+'</div>';
   }
   // Startseite: nur für Premium (sonst bleibt die Startseite schlank). Lädt bei Bedarf nach.
   function morningHomeCard(){ if(DATA.morning==null) loadMorning(); var d=DATA.morning; if(!(d&&d.ok&&d.premium)) return ''; return morningEntryCard(); }
@@ -7898,7 +7957,7 @@
   // ---- responsive chrome (Desktop-Sidebar + Topbar) ----
   var DASH_IC='<rect x="3" y="3" width="7" height="9" rx="1.5"></rect><rect x="14" y="3" width="7" height="5" rx="1.5"></rect><rect x="14" y="12" width="7" height="9" rx="1.5"></rect><rect x="3" y="16" width="7" height="5" rx="1.5"></rect>';
   var NAVITEMS=[['home','Übersicht',DASH_IC],['card','Mitgliedskarte','<rect x="3" y="3" width="7" height="7" rx="1.4"></rect><rect x="14" y="3" width="7" height="7" rx="1.4"></rect><rect x="3" y="14" width="7" height="7" rx="1.4"></rect><path d="M14 14h3v3h-3z"></path><path d="M20 14v3M14 20h3M20 20v.01"></path>'],['fort','Fortschritt','<circle cx="12" cy="8" r="6"></circle><path d="M15.5 13.5L17 22l-5-3-5 3 1.5-8.5"></path>'],['ern','Ernährung','<path d="M11 21A7 7 0 0 1 4 14C4 8.5 8 4 13.5 4c2.7 0 4.6 1 6.5 1.8 0 8.7-4.3 15.2-9 15.2z"></path><path d="M11 21c0-5.5 3.3-10 7.5-12"></path>'],['insta','Instagram',IG_ICON],['data','Meine Daten',IC.user],['contract','Vertragsverwaltung',IC.doc],['account','Beitragskonto','<rect x="2" y="5" width="20" height="14" rx="2"></rect><path d="M2 9h20M6 15h5"></path>'],['appt','Termine',IC.cal],['referral','Freunde werben',IC.gift],['checkins','Check-ins',IC.list],['postfach','Postfach',IC.mail],['help','Hilfe',IC.help],['settings','Einstellungen',IC.cog]];
-  var TITLES={home:'Übersicht',data:'Meine Daten',contract:'Vertragsverwaltung',account:'Beitragskonto',appt:'Termine',checkin:'Check-in',referral:'Freunde werben',checkins:'Check-in-Verlauf',postfach:'Postfach',help:'Hilfe & Kontakt',settings:'Einstellungen',profil:'Profil',card:'Mitgliedskarte',fort:'Fortschritt',ern:'Ernährung',coach:'Coach',tag:'Training',figur:'Figur-Check',inbody:'InBody-Analyse',morning:'Morgen-Check',abo:'Mein Abo',recht:'Widerruf & Recht',blog:'Blog',insta:'Instagram',social:'Trainingspartner',finnusage:'FINN-Nutzung'};
+  var TITLES={home:'Übersicht',data:'Meine Daten',contract:'Vertragsverwaltung',account:'Beitragskonto',appt:'Termine',checkin:'Check-in',referral:'Freunde werben',checkins:'Check-in-Verlauf',postfach:'Postfach',help:'Hilfe & Kontakt',settings:'Einstellungen',profil:'Profil',card:'Mitgliedskarte',fort:'Fortschritt',ern:'Ernährung',coach:'Coach',tag:'Training',figur:'Figur-Check',inbody:'InBody-Analyse',morning:'Vital-Check',abo:'Mein Abo',recht:'Widerruf & Recht',blog:'Blog',insta:'Instagram',social:'Trainingspartner',finnusage:'FINN-Nutzung'};
   // App-Leiste: Zurück-Ziel je Unterseite (Standard: Start). Aus dem Profil-Hub geöffnete
   // Seiten kehren zum Profil-Hub zurück; der Figur-Check lebt im Coach-Bereich.
   var APPBAR_BACK={figur:'coach',inbody:'fort',morning:'coach',fort:'profil',data:'profil',contract:'profil',account:'profil',card:'profil',checkins:'profil',referral:'profil',help:'profil',settings:'profil',abo:'profil',recht:'profil',postfach:'profil',finnusage:'profil',blog:'profil',social:'home',insta:'home'};
@@ -8296,10 +8355,11 @@
     },
     // ── Morgen-Check (Polar H9) ──
     morningReload:function(){ DATA.morning=null; render(); loadMorning(); },
-    morningMeasure:function(){ var d=morningData(); if(!d) return; if(!d.premium){ ernEnsureModulePrice(); setS({ernUpgrade:true}); return; } if(!d.consent){ S.morningPhase='consent'; setS({}); return; } S.morningPhase='journal'; try{ window.scrollTo(0,0); }catch(e){} setS({}); },
+    vitalMode:function(a){ var m=(a==='training')?'training':'morgen'; if(S.vitalMode===m) return; S.vitalMode=m; S.morningMsg=''; S.morningErr=false; try{ window.scrollTo(0,0); }catch(e){} setS({}); },
+    morningMeasure:function(a){ var d=morningData(); if(!d) return; if(!d.premium){ ernEnsureModulePrice(); setS({ernUpgrade:true}); return; } if(!d.consent){ S.morningPhase='consent'; setS({}); return; } var kind=(a==='training')?'training':'morgen'; if(kind==='training'){ moStartMeasure('training'); return; } S.morningMeasureKind='morgen'; S.morningPhase='journal'; try{ window.scrollTo(0,0); }catch(e){} setS({}); },
     morningJournalSet:function(a){ if(!a) return; var i=a.indexOf(':'); if(i<0) return; var f=a.slice(0,i), v=a.slice(i+1); S.morningJournal=S.morningJournal||{}; if(S.morningJournal[f]===v) delete S.morningJournal[f]; else S.morningJournal[f]=v; setS({}); },
-    morningJournalNext:function(){ moStartMeasure(); },
-    morningJournalSkip:function(){ moStartMeasure(); },
+    morningJournalNext:function(){ moStartMeasure('morgen'); },
+    morningJournalSkip:function(){ moStartMeasure('morgen'); },
     morningCancel:function(){ moStopMeasure(); S.morningPhase='idle'; S.morningLiveBpm=null; S.morningElapsed=0; setS({}); },
     morningFinish:function(){ moFinishMeasure(); },
     morningConsentCancel:function(){ S.morningPhase='idle'; setS({}); },
@@ -8313,10 +8373,12 @@
         else { S.morningErr=true; S.morningMsg=(r&&r.message)||'Das hat nicht geklappt.'; }
         setS({});
       }).catch(function(){ S.morningConsentBusy=false; setS({}); }); },
-    morningRevoke:function(){ if(!window.confirm('Einwilligung widerrufen? Dabei werden alle deine Morgen-Check-Daten gelöscht.')) return;
+    morningRevoke:function(){ if(!window.confirm('Einwilligung widerrufen? Dabei werden alle deine Vital-Check-Daten (Morgen- und Trainings-Check-ins) gelöscht.')) return;
       api('/api/member/morning',{method:'POST',body:JSON.stringify({action:'consent',value:false})}).then(function(r){ if(r&&r.ok){ DATA.morning=r; S.morningAssess=null; S.morningErr=false; S.morningMsg='Einwilligung widerrufen – deine Daten wurden gelöscht.'; } rIf(['morning','fort','coach','home']); setS({}); }).catch(function(){}); },
     morningDelete:function(a){ if(!a) return; if(!window.confirm('Diese Messung wirklich löschen?')) return;
       api('/api/member/morning',{method:'POST',body:JSON.stringify({action:'delete',sel:a})}).then(function(r){ if(r&&r.ok){ DATA.morning=r; S.morningMsg=''; S.morningErr=false; } rIf(['morning','fort','coach','home']); setS({}); }).catch(function(){}); },
+    morningDeleteTrain:function(a){ if(!a) return; if(!window.confirm('Diesen Trainings-Check-in wirklich löschen?')) return;
+      api('/api/member/morning',{method:'POST',body:JSON.stringify({action:'delete',scope:'training',sel:a})}).then(function(r){ if(r&&r.ok){ DATA.morning=r; S.morningMsg=''; S.morningErr=false; } rIf(['morning','fort','coach','home']); setS({}); }).catch(function(){}); },
     morningAssess:function(){ if(S.morningAssessBusy) return; S.morningAssessBusy=true; render();
       api('/api/member/morning',{method:'POST',timeoutMs:45000,body:JSON.stringify({action:'assess'})}).then(function(r){
         S.morningAssessBusy=false;
