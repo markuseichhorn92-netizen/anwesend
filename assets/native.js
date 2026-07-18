@@ -130,7 +130,15 @@
   var HR_SERVICE = '0000180d-0000-1000-8000-00805f9b34fb';
   var HR_MEAS = '00002a37-0000-1000-8000-00805f9b34fb';
   var Ble = getPlugin('BluetoothLe');
-  API.available.hr = !!Ble;
+  // Nur „verfügbar", wenn das native Plugin WIRKLICH einkompiliert ist. registerPlugin
+  // liefert sonst nur einen Proxy (truthy), dessen Aufrufe „not implemented" werfen –
+  // dann wäre der Button fälschlich aktiv. isPluginAvailable prüft die echte native
+  // Registrierung; fehlt die Methode (ältere Capacitor-Version), fällt es auf !!Ble zurück.
+  try {
+    API.available.hr = (Cap && typeof Cap.isPluginAvailable === 'function')
+      ? !!Cap.isPluginAvailable('BluetoothLe')
+      : !!Ble;
+  } catch (e) { API.available.hr = !!Ble; }
   var hrState = { deviceId: null, listener: null };
   function b64ToBytes(b64) {
     try { var bin = atob(String(b64 || '')); var a = new Uint8Array(bin.length); for (var i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i); return a; } catch (e) { return new Uint8Array(0); }
