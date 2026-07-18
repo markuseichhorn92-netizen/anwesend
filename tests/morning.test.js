@@ -52,9 +52,11 @@ function run() {
 
   // 7. VP-Ledger: +30 je Tag, Dedup nach Datum
   const led = MO.vpLedger(list);
-  ok('7. VP-Ledger: 5 Einträge à 30 Punkte', led.length === 5 && led[0].pts === 30 && led[0].reason === 'Morgen-Check');
+  ok('7. VP-Ledger: 5 Einträge à 30 Punkte', led.length === 5 && led[0].pts === 30 && led[0].reason === 'Morgen-Check-in');
   const dup = MO.vpLedger([mk('2026-07-18', 55), mk('2026-07-18', 56)]);
   ok('7b. VP-Ledger dedupliziert gleichen Tag', dup.length === 1);
+  const ledT = MO.vpLedgerTraining([mk('2026-07-18', 55), mk('2026-07-18', 56), mk('2026-07-17', 57)]);
+  ok('7c. Trainings-VP-Ledger: +15/Tag, Dedup nach Datum', ledT.length === 2 && ledT[0].pts === 15 && ledT[0].reason === 'Trainings-Check-in');
 
   // 8. Prompt-Text enthält Baseline + Ampel + Disclaimer
   const txt = MO.toPromptText(list);

@@ -60,7 +60,7 @@ async function readState(id) {
     insights: MO.insights(list),
     trend: MO.trend(list),
     minCalib: MO.MIN_CALIB,
-    vitalLedger: MO.vpLedger(list),
+    vitalLedger: MO.vpLedger(list).concat(MO.vpLedgerTraining(trList)),
     // Trainings-Check-in (kurzer Puls-Check vorm Workout) – gegen die Morgen-Baseline.
     training: {
       list: trList,

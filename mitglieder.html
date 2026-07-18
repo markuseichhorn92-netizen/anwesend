@@ -2922,6 +2922,9 @@
       if(ib.vfl!=null){ add('ibvfl','Viszeralfett (InBody)', ib.vfl<10? -1 : (ib.vfl<=14? 1 : 2.5), 'Level '+ib.vfl); }
       if(ib.score!=null){ var sv=(ib.score>=85)?-2:(ib.score>=75)?-1:(ib.score>=65)?0.5:1.5; add('ibscore','InBody-Score', sv, ib.score+'/100'); }
     }
+    // Vital-Check: das HRV-Fitnessalter fließt als physiologischer Baustein ins Vitalalter ein.
+    var moBa=(DATA.morning&&DATA.morning.ok&&DATA.morning.bioAge)||null;
+    if(moBa && moBa.age!=null){ add('hrv','Herz-Fitness (Vital-Check)', Math.max(-3,Math.min(3,(moBa.age-real)*0.4)), 'HRV-Fitnessalter '+moBa.age+' J.'); }
     var ls=vaLifestyle();
     if(ls){
       var sl={wenig:1.5,mittel:0,gut:-1}[ls.sleep]; if(sl!=null) add('sleep', sl<0?'Guter Schlaf':'Wenig Schlaf', sl, '');
@@ -2979,6 +2982,39 @@
         '<div style="flex:1;background:#FBEFE2;border-radius:13px;padding:11px 12px"><div style="font-size:17px;font-weight:900;color:#b5631f">🔥 '+v.streak+'</div><div style="font-size:10.5px;font-weight:700;color:#b5631f;margin-top:1px">Wochen-Streak</div></div>'+
         '<div style="flex:1;background:var(--surface-2);border-radius:13px;padding:11px 12px"><div style="font-size:17px;font-weight:900;color:var(--teal-ink)">'+v.weekVisits+'/'+v.goal+'</div><div style="font-size:10.5px;font-weight:700;color:var(--teal-ink);margin-top:1px">Wochenziel</div></div>'+
         '<div style="flex:1;background:var(--surface-2);border-radius:13px;padding:11px 12px"><div style="font-size:17px;font-weight:900;color:var(--teal-ink)">'+(function(){ var a=vitalAge().age; return a!=null?a:'–'; })()+'</div><div style="font-size:10.5px;font-weight:700;color:var(--teal-ink);margin-top:1px">Vitalalter</div></div>'+
+      '</div>'+
+    '</div>';
+  }
+  // Bereitschafts-Status aus dem letzten Vital-Check (für Coach/Start prominent).
+  function moReadyStatus(){
+    var d=(DATA.morning&&DATA.morning.ok)?DATA.morning:null; if(!d) return null;
+    var r=d.readiness, m=d.latest; if(!m||!r||!r.level) return null;
+    var map={gruen:{emo:'🟢',col:'#1c9b5e',bg:'#E7F6EC'},gelb:{emo:'🟡',col:'#9a5a18',bg:'#FBF0E3'},rot:{emo:'🔴',col:'#b4552f',bg:'#FBECE8'}};
+    var s=map[r.level]; if(!s) return {emo:'📈',lab:'Kalibrierung läuft',col:'var(--text-soft)',bg:'var(--surface-2)',score:null};
+    return {emo:s.emo,lab:r.headline||'Bereitschaft',col:s.col,bg:s.bg,score:r.score};
+  }
+  // Coach-Übersicht-Hero: Vitalalter im Fokus + Bereitschafts-Status; Vitalpunkte sekundär.
+  function coachVitalHero(){
+    var va=vitalAge(); var v=vitalsData();
+    var ageBig=(va.age!=null)?va.age:((v.age!=null)?v.age:'–');
+    var deltaTxt;
+    if(va.age!=null){ deltaTxt=(va.delta>0)?(va.delta+' '+(va.delta===1?'Jahr':'Jahre')+' jünger als dein Alter'):((va.delta<0)?'etwas über deinem Alter – da geht was 💪':'genau dein Alter'); }
+    else deltaTxt='Geburtsdatum in „Meine Daten" ergänzen';
+    var st=moReadyStatus();
+    var pill='<div data-act="nav" data-arg="morning" style="display:inline-flex;align-items:center;gap:7px;background:'+(st?st.bg:'var(--surface-2)')+';border-radius:20px;padding:8px 13px;margin-top:13px;cursor:pointer">'+
+      (st?('<span style="font-size:14px">'+st.emo+'</span><span style="font-size:12.5px;font-weight:800;color:'+st.col+'">'+esc(st.lab)+(st.score!=null?(' · '+st.score+'/100'):'')+'</span>')
+         :('<span style="font-size:14px">❤️</span><span style="font-size:12.5px;font-weight:800;color:var(--teal-ink)">Vital-Check machen – bist du heute ready?</span>'))+
+      svg('<path d="M9 18l6-6-6-6"></path>',{c:(st?st.col:'var(--teal-ink)'),w:2.2,s:15})+'</div>';
+    return '<div style="background:var(--surface);border-radius:22px;box-shadow:0 12px 34px rgba(4,33,40,.12);padding:18px;margin-bottom:14px">'+
+      '<div data-act="nav" data-arg="fort" style="display:flex;align-items:center;gap:16px;cursor:pointer">'+
+        '<div style="width:78px;height:78px;border-radius:50%;background:linear-gradient(150deg,#0e6072,#063540);display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;flex-shrink:0"><span style="font-size:28px;font-weight:900;letter-spacing:-1px;line-height:1">'+ageBig+'</span><span style="font-size:8.5px;font-weight:800;color:#aed0d6;text-transform:uppercase;letter-spacing:.3px">Jahre</span></div>'+
+        '<div style="flex:1;min-width:0"><div style="font-size:16px;font-weight:900;color:var(--text)">Dein Vitalalter</div><div style="font-size:12.5px;color:var(--text-soft);font-weight:600;line-height:1.4;margin-top:2px">'+esc(deltaTxt)+'</div></div>'+
+        svg('<path d="M9 18l6-6-6-6"></path>',{c:'var(--text-soft)',w:2.2,s:20})+
+      '</div>'+pill+
+      '<div style="display:flex;gap:9px;margin-top:14px">'+
+        '<div style="flex:1;background:var(--surface-2);border-radius:12px;padding:9px 11px"><div style="font-size:15px;font-weight:900;color:var(--teal-ink)">'+deNum(v.points)+'</div><div style="font-size:10px;font-weight:700;color:var(--text-soft);margin-top:1px">Vitalpunkte</div></div>'+
+        '<div style="flex:1;background:var(--surface-2);border-radius:12px;padding:9px 11px"><div style="font-size:15px;font-weight:900;color:var(--teal-ink)">'+esc(v.rankName)+'</div><div style="font-size:10px;font-weight:700;color:var(--text-soft);margin-top:1px">Rang</div></div>'+
+        '<div style="flex:1;background:var(--surface-2);border-radius:12px;padding:9px 11px"><div style="font-size:15px;font-weight:900;color:#b5631f">🔥 '+v.streak+'</div><div style="font-size:10px;font-weight:700;color:var(--text-soft);margin-top:1px">Wochen</div></div>'+
       '</div>'+
     '</div>';
   }
@@ -4715,7 +4751,7 @@
     else if(tab==='ern'){ body=coachInsights('ern')+themeCta('Zum Essen-Tagebuch','ern','🥗'); }
     else if(tab==='training'){ body=coachInsights('training')+themeCta('Zum Trainingsplan','tag','🏋️'); }
     else if(tab==='lifestyle'){ if(DATA.mprofile==null) loadMemberProfile(); if(DATA.morning==null) loadMorning(); body=vitalCard()+morningEntryCard()+vitalLifestyleForm()+coachFigurCard(); }
-    else { if(DATA.checkins==null) loadCheckins(); if(DATA.mprofile==null) loadMemberProfile(); if(DATA.morning==null) loadMorning(); body=coachFinnHub()+vitalCard()+morningEntryCard()+ernPremiumCard(); }  // Übersicht: FINN-first + Vitalpunkte/Vitalalter + Vital-Check
+    else { if(DATA.checkins==null) loadCheckins(); if(DATA.mprofile==null) loadMemberProfile(); if(DATA.morning==null) loadMorning(); body=coachFinnHub()+coachVitalHero()+morningEntryCard()+ernPremiumCard(); }  // Übersicht: FINN-first + Vitalalter/Status-Fokus + Vital-Check
     return wrap(header+coachTabBar(tab)+body);
   }
   // Coach-Themen-Tabs (horizontal scrollbare Pills).
@@ -6735,6 +6771,35 @@
       :('<div style="font-size:15px;font-weight:900;color:var(--text)">Deine Trainingszonen</div><div style="font-size:12px;color:var(--text-soft);font-weight:600;margin-top:2px">Sobald deine Baseline steht, hebt FINN dir die passende Zone für heute hervor.</div>');
     return '<div style="'+MO_CARD+'">'+head+'<div style="margin-top:9px">'+rows+'</div><div style="font-size:10.5px;color:var(--text-soft);font-weight:600;margin-top:10px;opacity:.85">Zonen aus deiner geschätzten max. Herzfrequenz ~'+z.hrMax+' bpm (208 − 0,7 × Alter).</div></div>';
   }
+  // Kraft-Empfehlung für heute: Last aus der Ampel + konkrete Ziel-Gewichte aus geloggten Sätzen.
+  var MO_SREC={
+    gruen:{pct:0.9,title:'Kraft heute: schwer möglich',rpe:'RPE 8–9 · 3–6 Wdh · 85–95 % 1RM',note:'Erholt – schwere Sätze oder ein neuer Bestwert sind heute drin.'},
+    gelb:{pct:0.75,title:'Kraft heute: moderat',rpe:'RPE 6–7 · 8–12 Wdh · 70–80 % 1RM',note:'Technik & Volumen, kein Maximalversuch.'},
+    rot:{pct:0.55,title:'Kraft heute: leicht / Deload',rpe:'RPE ≤5 · ≤60 % 1RM · Technik',note:'Leichte Sätze, Technik & Mobilität – oder ein Ruhetag.'}
+  };
+  function moRound25(x){ return Math.round(x/2.5)*2.5; }
+  // Bestes geschätztes 1RM je Übung aus den geloggten Sätzen (Epley: w × (1 + Wdh/30)).
+  function moLiftBests(){
+    var units=(DATA.training&&Array.isArray(DATA.training.units))?DATA.training.units:[];
+    var best={};
+    units.forEach(function(u){ (u.ex||[]).forEach(function(x){ var nm=x.n||x.name; if(!nm) return; (x.entries||[]).forEach(function(en){ var w=en.w||0, r=(en.reps>0?en.reps:1); if(w>0){ var e1=w*(1+Math.min(12,r)/30); if(!best[nm]){ best[nm]={e1:e1,w:w,reps:r,n:1}; } else { best[nm].n++; if(e1>best[nm].e1){ best[nm].e1=e1; best[nm].w=w; best[nm].reps=r; } } } }); }); });
+    return best;
+  }
+  function moStrengthTargets(level){
+    var rec=MO_SREC[level]; if(!rec) return [];
+    var best=moLiftBests(); var keys=Object.keys(best);
+    keys.sort(function(a,b){ return best[b].n-best[a].n || best[b].e1-best[a].e1; });
+    return keys.slice(0,4).map(function(k){ var b=best[k]; return {name:k,target:moRound25(b.e1*rec.pct),e1:Math.round(b.e1)}; });
+  }
+  function moStrengthCard(level){
+    var rec=MO_SREC[level]; if(!rec) return '';
+    var tg=moStrengthTargets(level);
+    var rows=tg.map(function(t){ return '<div style="display:flex;align-items:center;gap:11px;padding:9px 0;border-top:1px solid var(--border)"><span style="flex:1;font-size:13px;font-weight:800;color:var(--text);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(t.name)+'</span><span style="font-size:13px;font-weight:900;color:var(--teal-ink);white-space:nowrap">~'+String(t.target).replace('.',',')+' kg</span></div>'; }).join('');
+    var foot=tg.length
+      ?'<div style="font-size:10.5px;color:var(--text-soft);font-weight:600;margin-top:9px;opacity:.85">Ziel-Arbeitsgewichte aus deinen geloggten Sätzen (geschätztes 1RM × '+Math.round(rec.pct*100)+' %). Aufwärmen &amp; nach Gefühl anpassen.</div>'
+      :'<div style="font-size:11.5px;color:var(--text-soft);font-weight:600;margin-top:8px">Logge ein paar Sätze im Training – dann zeigt FINN dir hier konkrete Ziel-Gewichte für heute.</div>';
+    return '<div style="'+MO_CARD+'"><div style="display:flex;align-items:center;gap:9px"><span style="font-size:20px">🏋️</span><div><div style="font-size:15.5px;font-weight:900;color:var(--teal-ink)">'+esc(rec.title)+'</div><div style="font-size:12px;color:var(--text-soft);font-weight:700;margin-top:1px">'+esc(rec.rpe)+'</div></div></div><div style="font-size:12px;color:var(--text-2);font-weight:600;line-height:1.45;margin-top:8px">'+esc(rec.note)+'</div>'+(rows?('<div style="margin-top:8px">'+rows+'</div>'):'')+foot+'</div>';
+  }
   // Einstiegs-Karte zur Atem-Übung.
   function moBreatheEntry(){
     return '<div data-act="morningBreatheOpen" role="button" style="'+MO_CARD+';cursor:pointer;display:flex;align-items:center;gap:14px"><div style="width:46px;height:46px;border-radius:50%;background:radial-gradient(circle at 50% 40%,#1aa0b8,#0e6072);flex-shrink:0;box-shadow:0 6px 16px rgba(14,96,114,.3)"></div><div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:900;color:var(--text)">Atem-Übung · Regeneration</div><div style="font-size:12.5px;color:var(--text-soft);font-weight:600;margin-top:2px;line-height:1.4">Geführtes ruhiges Atmen (~6/min) – senkt Stress, aktiviert den Ruhenerv.</div></div>'+svg('<path d="M9 18l6-6-6-6"></path>',{c:'var(--text-soft)',w:2.2,s:20})+'</div>';
@@ -6932,6 +6997,7 @@
     if(d===false||d==null){ return '<div class="narrow">'+head+'<div style="'+MO_CARD+';text-align:center;color:var(--text-soft)">Lädt …</div></div>'; }
     if(!d.ok && d.available===false){ return '<div class="narrow">'+head+'<div style="'+MO_CARD+'"><div style="font-weight:800;color:var(--text)">Gerade nicht verfügbar</div><div style="font-size:13px;color:var(--text-soft);margin-top:5px">Der Vital-Check steht dir in Kürze zur Verfügung.</div></div></div>'; }
     if(!d.ok){ return '<div class="narrow">'+head+'<div style="'+MO_CARD+';text-align:center"><div style="color:var(--text-soft);margin-bottom:10px">Konnte nicht geladen werden.</div><button data-act="morningReload" style="border:none;background:var(--teal);color:#fff;font-weight:800;border-radius:12px;padding:11px 18px;cursor:pointer">Erneut versuchen</button></div></div>'; }
+    if(DATA.training==null) loadTraining();   // Kraft-Empfehlung braucht die geloggten Sätze
     var blocks=[];
     var intro='<div style="'+MO_CARD+'"><div style="font-size:15.5px;font-weight:800;color:var(--text)">Wie bereit bist du heute?</div><div style="font-size:13px;color:var(--text-soft);margin-top:5px;line-height:1.55">Dein Ruhepuls und deine HRV verraten, wie gut du erholt bist. FINN vergleicht sie mit deiner persönlichen Baseline und gibt dir eine klare Ampel – morgens für den Tag, vorm Workout für die passende Intensität.</div></div>';
     if(!d.premium){ blocks.push(moPremiumTeaser()); blocks.push(intro); return moWrap(head,blocks); }
@@ -6943,13 +7009,13 @@
     if(mode==='training'){
       blocks.push(moMeasureCard('training'));
       var tr=d.training||{};
-      if(tr.latest){ blocks.push(moTrainVerdictCard()); blocks.push(moZonesCard(tr.readiness&&tr.readiness.level)); }
+      if(tr.latest){ blocks.push(moTrainVerdictCard()); blocks.push(moZonesCard(tr.readiness&&tr.readiness.level)); blocks.push(moStrengthCard(tr.readiness&&tr.readiness.level)); }
       else if(!tr.hasBaseline){ blocks.push('<div style="'+MO_CARD+'"><div style="font-size:13px;color:var(--text-soft);font-weight:600;line-height:1.55">Der Trainings-Check-in vergleicht deinen Puls mit deiner <b>Morgen-Baseline</b>. Mach zuerst ein paar Morgen-Check-ins – dann wird der Trainings-Check aussagekräftig.</div></div>'); }
       blocks.push(moTrainHistoryCard());
     } else {
       blocks.push(moMeasureCard('morgen'));
       if(d.latest){
-        blocks.push(moReadinessHero()); blocks.push(moLoadCard()); blocks.push(moZonesCard(d.readiness&&d.readiness.level)); blocks.push(moBalanceCard()); blocks.push(moBioAgeCard());
+        blocks.push(moReadinessHero()); blocks.push(moLoadCard()); blocks.push(moZonesCard(d.readiness&&d.readiness.level)); blocks.push(moStrengthCard(d.readiness&&d.readiness.level)); blocks.push(moBalanceCard()); blocks.push(moBioAgeCard());
         blocks.push(moEvalCard()); blocks.push(moCheckinCard()); blocks.push(moBreatheEntry()); blocks.push(moTrendCard()); blocks.push(moInsightsCard()); blocks.push(moCurvesCard()); blocks.push(moFinnCard()); blocks.push(moHistoryCard());
       } else { blocks.push(intro); blocks.push(moBreatheEntry()); }
     }
