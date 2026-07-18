@@ -154,9 +154,17 @@ module.exports = async function handler(req, res) {
     // Live-Daten (Vertrag, Termine, Besuche, Beitragskonto) für konkrete Antworten.
     let det = { text: '', rateName: null };
     try { det = await memberDetails(sess.id); } catch (e) {}
+    // Themen-Kontext aus der App (Ernährungs-/Trainings-Bereich): schärft FINNs Fokus,
+    // ohne die eigentliche Frage zu verändern. Fließt über die Live-Daten in den System-Prompt.
+    const topic = String(body.topic || '').trim();
+    const topicHint = topic === 'ernaehrung'
+      ? 'App-Kontext: Das Mitglied stellt diese Frage gerade im Ernährungs-Bereich der App (Tagesziel, Kalorien, Makros, Eiweiß, Rezepte, Essen tracken). Beziehe dich – wenn es passt – auf diesen Kontext und die Live-Daten.'
+      : topic === 'training'
+      ? 'App-Kontext: Das Mitglied stellt diese Frage gerade im Trainings-Bereich der App (Trainingsplan, Übungen an unseren Geräten, richtige Technik, wie oft trainieren, Einheiten). Beziehe dich – wenn es passt – auf diesen Kontext.'
+      : '';
     // Datenminimierung: nur Vorname + Tarif + aggregierte Live-Daten an die KI –
     // Nachname/Mitgliedsnummer sind für die Antwort nicht erforderlich.
-    const member = { firstName: m.firstName, rateName: det.rateName, details: det.text };
+    const member = { firstName: m.firstName, rateName: det.rateName, details: det.text + (topicHint ? ('\n\n' + topicHint) : '') };
     const r = await AI.coachReply(member, Array.isArray(body.history) ? body.history : [], question, HELP);
     res.statusCode = 200;
     if (r.ok) {

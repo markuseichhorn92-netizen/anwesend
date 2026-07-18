@@ -112,6 +112,13 @@
     .app-in .finnFab{display:none}
   }
   .app-guest .finnFab{display:none!important}
+  /* FINN-Mini-Blase: kleiner, immer erreichbarer „Frag FINN"-Knopf über der Bottom-Nav
+     in Ernährung & Training (App-tauglicher Ersatz für den ausgeblendeten .finnFab).
+     Sichtbarkeit (display:flex) + data-arg setzt renderChrome je Screen. */
+  .finnMini{display:none;position:fixed;right:16px;bottom:calc(96px + env(safe-area-inset-bottom,0px));z-index:47;width:52px;height:52px;border-radius:50%;border:2px solid var(--surface);cursor:pointer;background:linear-gradient(150deg,#0e6072,#063540);box-shadow:0 10px 26px rgba(10,73,88,.5);padding:0;align-items:center;justify-content:center}
+  .finnMini img{width:30px;height:30px;display:block}
+  body.qaOn .finnMini{display:none!important}
+  @media(min-width:1000px){ .finnMini{display:none!important} }
   .logout{background:rgba(255,255,255,.12);border:none;color:#cfe3e7;font-weight:600;font-size:13px;padding:8px 13px;border-radius:9px;cursor:pointer}
   /* ---------- mobile burger menu ---------- */
   .burger{display:none;align-items:center;justify-content:center;width:42px;height:42px;border-radius:11px;background:rgba(255,255,255,.12);border:none;cursor:pointer;flex-shrink:0;padding:0;position:relative}
@@ -400,6 +407,7 @@
     <header id="appbar"></header>
     <div class="body" id="app"><div class="bootsplash" aria-label="Wird geladen"><div class="ring"></div><div class="lbl">Dein Bereich wird geladen …</div><div class="skcard" style="height:128px"></div><div class="skcard" style="height:86px"></div><div class="skcard" style="height:86px"></div></div></div>
     <button class="finnFab" id="finnFab" data-act="openFinn" aria-label="FINN fragen"><img src="/assets/brand/finn-mark.svg" alt="FINN"></button>
+    <button class="finnMini" id="finnMini" data-act="openFinn" aria-label="FINN fragen"><img src="/assets/brand/finn-mark.svg" alt="FINN"></button>
     <nav class="btmnav" id="btmnav"></nav>
     <div class="legalfoot">
       <a href="https://www.fit-inn-trier.de/impressum-fit-inn-trier" target="_blank" rel="noopener">Impressum</a><span>·</span>
@@ -476,7 +484,7 @@
     apptTab:'book', bookType:'', bookTypeTitle:'', bookDay:'', bookSlot:null, bookDone:false, bookErr:'', apptMsg:'', fallbackBook:false,
     helpSel:null, helpCat:'all', helpQ:'', helpShowAll:false,
     aiQuery:'', aiPhase:'idle', aiAsked:'', aiAnswer:'', aiFeedback:null,
-    finnOpen:false, finnMsgs:[], finnBusy:false, finnTip:'', finnTipLoaded:false,
+    finnOpen:false, finnTopic:'', finnMsgs:[], finnBusy:false, finnTip:'', finnTipLoaded:false,
     vaOpen:false, vaMsgs:[], vaBusy:false, vaInput:'', vaIntent:'',
     qaOpen:false, dp:null,
     blogSel:null, blogPost:null, instaSel:null,
@@ -1464,11 +1472,25 @@
   function finnThinkingHtml(){
     return '<div id="finn_think" style="display:flex;gap:9px;align-items:center">'+FINN_AVA+'<div style="background:var(--surface-2);border-radius:14px;padding:11px 14px;font-size:13px;color:var(--text-soft);font-weight:600"><span class="finnDots">FINN denkt nach …</span></div></div>';
   }
+  // Schlanke „Frag FINN"-Zeile für Ernährung/Training – öffnet den FINN-Chat mit Themen-Kontext.
+  function finnAskRow(topic){
+    var label=(topic==='training')?'Frag FINN zum Training':'Frag FINN zur Ernährung';
+    return '<button data-act="openFinn" data-arg="'+topic+'" style="width:100%;display:flex;align-items:center;gap:11px;text-align:left;border:none;cursor:pointer;font-family:inherit;background:linear-gradient(150deg,#12879c,#0a4958);border-radius:14px;padding:11px 13px;color:#fff;box-shadow:0 8px 20px rgba(14,96,114,.2);margin-bottom:14px">'+
+      '<span style="width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,.16);display:flex;align-items:center;justify-content:center;flex-shrink:0;overflow:hidden"><img src="/assets/brand/finn-mark.svg" alt="" style="width:22px;height:22px"></span>'+
+      '<span style="flex:1;min-width:0"><span style="display:block;font-size:13.5px;font-weight:900">'+label+'</span><span style="display:block;font-size:11.5px;font-weight:600;color:#cfe8ec;margin-top:1px">Frag einfach – FINN antwortet sofort.</span></span>'+
+      svg('<path d="M9 6l6 6-6 6"></path>',{c:'rgba(255,255,255,.85)',w:2.2,s:16})+'</button>';
+  }
   function finnOverlayHtml(){
     var msgs=S.finnMsgs||[];
     var bubbles=msgs.map(finnBubbleHtml).join('');
     var thinking=S.finnBusy?finnThinkingHtml():'';
-    var sugg=['Wie oft sollte ich trainieren?','Wann ist es am leersten?','Wie buche ich einen Termin?'];
+    var topic=S.finnTopic||'';
+    var sugg=(topic==='ernaehrung')?['Wie viel Eiweiß brauche ich?','Passt das zu meinem Ziel?','Iss ich heute genug?']
+      :(topic==='training')?['Wie oft diese Übung?','Wie ist die richtige Technik?','Was tun bei Muskelkater?']
+      :['Wie oft sollte ich trainieren?','Wann ist es am leersten?','Wie buche ich einen Termin?'];
+    var helloTxt=(topic==='ernaehrung')?'Hi! 👋 Ich bin FINN, dein Fit-Inn Coach. Frag mich alles rund um deine Ernährung – Kalorien, Eiweiß, Rezepte, dein Tagesziel. Ich kenne deine Werte und helfe dir konkret weiter.'
+      :(topic==='training')?'Hi! 👋 Ich bin FINN, dein Fit-Inn Coach. Frag mich alles rund um dein Training – Übungen an unseren Geräten, wie oft, richtige Technik, dein Plan. Ich helfe dir konkret weiter.'
+      :'Hi! 👋 Ich bin FINN, dein Fit-Inn Coach – deine erste Anlaufstelle. Sag mir einfach, was du brauchst: Termin, Adresse ändern, Beitrag, Vertrag, Öffnungszeiten … Ich bringe dich direkt hin oder beantworte deine Frage. Komme ich nicht weiter, hole ich dir einen Mitarbeiter dazu.';
     return '<div class="ciOverlay" data-act="closeFinn" style="align-items:stretch;justify-content:center;padding:0">'+
       '<div class="finnPanel" data-act="noop">'+
         '<div style="display:flex;align-items:center;gap:12px;padding:calc(14px + env(safe-area-inset-top,0px)) 18px 14px;background:linear-gradient(160deg,#0e6072,#063540);color:#fff">'+
@@ -1477,11 +1499,12 @@
           '<button data-act="closeFinn" aria-label="Schließen" style="width:36px;height:36px;border-radius:11px;border:none;background:rgba(255,255,255,.14);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer">'+svg('<path d="M18 6L6 18M6 6l12 12"></path>',{c:'#fff',w:2.2,s:18})+'</button>'+
         '</div>'+
         '<div id="finn_scroll" style="flex:1;overflow-y:auto;padding:16px 16px 8px;display:flex;flex-direction:column;gap:12px">'+
-          (msgs.length?'':'<div id="finn_hello" style="display:flex;gap:9px;align-items:flex-start;padding:6px 4px 4px">'+FINN_AVA+'<div style="background:var(--surface-2);border-radius:4px 16px 16px 16px;padding:12px 15px;font-size:14px;line-height:1.55;color:var(--text)">Hi! 👋 Ich bin FINN, dein Fit-Inn Coach – deine erste Anlaufstelle. Sag mir einfach, was du brauchst: Termin, Adresse ändern, Beitrag, Vertrag, Öffnungszeiten … Ich bringe dich direkt hin oder beantworte deine Frage. Komme ich nicht weiter, hole ich dir einen Mitarbeiter dazu.</div></div>')+
+          (msgs.length?'':'<div id="finn_hello" style="display:flex;gap:9px;align-items:flex-start;padding:6px 4px 4px">'+FINN_AVA+'<div style="background:var(--surface-2);border-radius:4px 16px 16px 16px;padding:12px 15px;font-size:14px;line-height:1.55;color:var(--text)">'+esc(helloTxt)+'</div></div>')+
           bubbles+thinking+
         '</div>'+
         // Direkt erledigen: Schnell-Links in alle Self-Service-Bereiche (ein Tipp bringt dich hin).
-        (msgs.length?'':'<div style="display:flex;gap:8px;overflow-x:auto;padding:0 16px 8px">'+[['appt','Termin buchen'],['data','Adresse & Daten'],['account','Beitrag'],['contract','Vertrag & Kündigung'],['referral','Freund werben']].map(function(q){return '<button data-act="finnGo" data-arg="'+q[0]+'" style="flex:0 0 auto;border:none;background:linear-gradient(150deg,#0e6072,#063540);color:#fff;border-radius:20px;font-size:12.5px;font-weight:800;padding:9px 14px;cursor:pointer;white-space:nowrap">'+esc(q[1])+'</button>';}).join('')+'</div>')+
+        // Nur im allgemeinen FINN (ohne Themen-Kontext) – in Ernährung/Training lenken Self-Service-Links ab.
+        ((msgs.length||topic)?'':'<div style="display:flex;gap:8px;overflow-x:auto;padding:0 16px 8px">'+[['appt','Termin buchen'],['data','Adresse & Daten'],['account','Beitrag'],['contract','Vertrag & Kündigung'],['referral','Freund werben']].map(function(q){return '<button data-act="finnGo" data-arg="'+q[0]+'" style="flex:0 0 auto;border:none;background:linear-gradient(150deg,#0e6072,#063540);color:#fff;border-radius:20px;font-size:12.5px;font-weight:800;padding:9px 14px;cursor:pointer;white-space:nowrap">'+esc(q[1])+'</button>';}).join('')+'</div>')+
         (msgs.length?'':'<div id="finn_chips" style="display:flex;gap:8px;overflow-x:auto;padding:0 16px 10px">'+sugg.map(function(s){return '<button data-act="finnSuggest" data-arg="'+esc(s)+'" style="flex:0 0 auto;border:1.5px solid var(--border);background:var(--surface);color:var(--teal-ink);border-radius:20px;font-size:12.5px;font-weight:700;padding:8px 13px;cursor:pointer;white-space:nowrap">'+esc(s)+'</button>';}).join('')+'</div>')+
         '<div style="padding:0 16px 8px"><button data-act="finnToTeam" style="width:100%;display:flex;align-items:center;justify-content:center;gap:8px;border:none;border-radius:11px;background:var(--surface-2);color:var(--teal-ink);font-weight:800;font-size:13px;padding:11px;cursor:pointer">'+svg('<path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8z"></path><path d="M4 21c0-3.3 3.6-6 8-6s8 2.7 8 6"></path>',{c:'var(--teal-ink)',w:1.9,s:16})+'Hat das nicht geholfen? An Mitarbeiter übergeben</button></div>'+
         '<div style="display:flex;gap:9px;align-items:flex-end;padding:10px 14px calc(12px + env(safe-area-inset-bottom,0px));border-top:1px solid var(--border);background:var(--surface)">'+
@@ -4766,7 +4789,7 @@
     else if(seg==='uebungen'){ body=trainExSegment(d); }
     else if(seg==='verlauf'){ body=trainVerlauf(); }
     else { var mp=d.myPlan&&d.myPlan.plan; body=coachTipStrip()+((mp&&mp.days&&mp.days.length)?meinTagTodayCard(mp):meinTagTrainCta()); }
-    return wrap(header+'<div style="padding:0 2px">'+body+'</div>');
+    return wrap(header+'<div style="padding:0 2px">'+finnAskRow('training')+body+'</div>');
   }
   // Übungen nach Suchtext + Muskelgruppe filtern (lokal aus dem GET-Payload).
   function trainExNorm(s){ try{ return String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,''); }catch(e){ return String(s||'').toLowerCase(); } }
@@ -5009,7 +5032,7 @@
       // Ist ein Rezept geöffnet (auch aus dem Plan-Entwurf), immer die Detailansicht zeigen –
       // egal aus welchem Tab, damit man Zutaten & Zubereitung vor dem Speichern prüfen kann.
       var seg=S.ernRecipeSel?'':ernModuleSeg(tab);   // Tab-Leiste sichtbar; nur in der Rezept-Detailansicht ausblenden (eigenes Zurück)
-      inner=ernTopbar()+seg+(S.ernRecipeSel?ernRezepte():(tab==='plan'?ernPlan():(tab==='rezepte'?ernRezepte():(tab==='verlauf'?ernVerlauf():ernDash())))); }
+      inner=ernTopbar()+seg+(S.ernRecipeSel?'':finnAskRow('ernaehrung'))+(S.ernRecipeSel?ernRezepte():(tab==='plan'?ernPlan():(tab==='rezepte'?ernRezepte():(tab==='verlauf'?ernVerlauf():ernDash())))); }
     // Koch-Modus als Vollbild-Overlay über allem (nur wenn aktiv + Rezept offen).
     var koch=(S.ernKoch!=null&&S.ernRecipeSel)?ernKochModus():'';
     // FINN-Fragebogen als Bottom-Sheet-Overlay (vor der Plan-Generierung).
@@ -6680,6 +6703,19 @@
     // Globaler FINN-FAB im Ernährungsmodul ausblenden – das Modul hat einen
     // eigenen, ernährungsspezifischen Coach-Tab.
     var ff=$('finnFab'); if(ff) ff.style.display=(S.screen==='ern')?'none':'';
+    // FINN-Mini-Blase: nur in Ernährung/Training auf den normalen Tabs sichtbar –
+    // in Vollbild-Flows (Rezept-Detail, Erfassen, Tracker, Plan-Detail) und Overlays aus.
+    var fm=$('finnMini');
+    if(fm){
+      var onErnTab=(S.screen==='ern')&&DATA.nutri&&DATA.nutri.ok&&DATA.nutri.onboarded&&
+        !S.ernEdit&&!S.ernRecipeSel&&!S.ernCapture&&!S.ernConfirm&&!S.ernProd&&!S.ernData&&
+        !S.ernFavMgr&&!S.ernEntryEdit&&!S.ernLesson&&!S.ernVert&&!S.ernCk&&!(S.ernKoch!=null);
+      var onTagTab=(S.screen==='tag')&&!S.trainRun&&!S.trainDetail&&!S.trainGenOpen;
+      var miniBlock=S.finnOpen||S.qaOpen||S.ernChatOpen||S.ernUpgrade||S.dp||S.ciPopup||S.vaOpen;
+      var showMini=(onErnTab||onTagTab)&&!miniBlock;
+      fm.style.display=showMini?'flex':'none';
+      if(showMini) fm.setAttribute('data-arg', S.screen==='ern'?'ernaehrung':'training');
+    }
     var bn=$('btmnav');
     if(bn){
       bn.style.display=''; bn.style.background='';
@@ -7073,7 +7109,7 @@
         else { try{ alert('Ernährungs-Modul: Testmodus AUS.'); }catch(e){} if(S.screen==='ern'||S.screen==='social'){ nav('home'); } else { render(); } }
       }
     },
-    openFinn:function(){ setS({finnOpen:true}); setTimeout(function(){ var t=$('finn_q'); if(t) t.focus(); finnScrollBottom(); },60); },
+    openFinn:function(topic){ S.finnTopic=(topic==='ernaehrung'||topic==='training')?topic:''; setS({finnOpen:true}); setTimeout(function(){ var t=$('finn_q'); if(t) t.focus(); finnScrollBottom(); },60); },
     finnRefresh:function(){ S.finnTip=''; S.finnTipLoaded=false; loadFinnTip(); render(); },
     ciToggle:function(){ if(S.screen!=='home') nav('home'); if(S.checkedInAt){ if(ACT.doCheckout) ACT.doCheckout(); } else { if(ACT.doCheckin) ACT.doCheckin(); } },
     obGoal:function(a){ setS({obGoal:a}); },
@@ -7112,7 +7148,7 @@
     },
     appAdHide:function(){ try{ sessionStorage.setItem('fi_appad_hide','1'); }catch(e){} render(); },
     premNudgeDismiss:function(){ premNudgeMarkDismissed(); render(); },
-    closeFinn:function(){ setS({finnOpen:false}); },
+    closeFinn:function(){ S.finnTopic=''; setS({finnOpen:false}); },
     // Vertrags-Assistent (KI-Chat) – allgemeiner Einstieg + vorbereitete Anliegen
     vaOpen:function(){ openAssistant(''); },
     assistPause:function(){ openAssistant('pause'); },
@@ -7141,7 +7177,7 @@
         else if(S.finnOpen){ render(); finnScrollBottom(); }
       }
       var hist=S.finnMsgs.slice(0,-1).map(function(m){ return {role:m.role,text:m.text}; });
-      api('/api/member/coach',{method:'POST',body:JSON.stringify({question:q,history:hist})}).then(function(d){
+      api('/api/member/coach',{method:'POST',body:JSON.stringify({question:q,history:hist,topic:S.finnTopic||''})}).then(function(d){
         if(d&&d.ok&&d.answer) receive(d.answer, d.link);
         else receive((d&&d.message)||'Da komme ich gerade nicht weiter. Magst du es unserem Team schreiben?');
       }).catch(function(){ receive('Verbindung gerade nicht möglich. Versuch es gleich nochmal.'); }); },
