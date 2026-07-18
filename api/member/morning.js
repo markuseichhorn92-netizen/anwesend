@@ -27,7 +27,14 @@ const AI = require('../../lib/ai');
 const Ent = require('../../lib/entitlements');
 const Coaching = require('../../lib/coaching');
 const Training = require('../../lib/training');
+const Inbox = require('../../lib/inbox');
+const SR = require('../../lib/studioReply');
 const { hasStore } = require('../../lib/store');
+
+// Herzgurt-Angebot (muss zu den Frontend-Konstanten MO_H9_PRICE/MO_H9_DISC passen).
+const STRAP_PRICE = 59.95;      // offizieller Polar-H9-Preis (€)
+const STRAP_DISCOUNT = 0.20;    // Coach-Premium-Rabatt
+function euro(n) { return (Math.round(n * 100) / 100).toFixed(2).replace('.', ',') + ' €'; }
 
 function j(res, code, obj) { res.statusCode = code; return res.end(JSON.stringify(obj)); }
 
@@ -123,6 +130,46 @@ module.exports = async function handler(req, res) {
       if (on && !(await MO.getConsent(id))) return j(res, 200, { ok: false, error: 'consent_required', message: 'Aktiviere zuerst den Vital-Check.' });
       await MO.setTeamShare(id, on);
       return j(res, 200, Object.assign({ ok: true }, await readState(id)));
+    }
+
+    // Herzgurt (Polar H9) unverbindlich an der Rezeption reservieren.
+    // KEIN Online-Kauf, KEINE Zahlung: Bezahlung & Übergabe an der Theke
+    // -> kein Fernabsatz, kein Widerruf. Für alle Mitglieder (nicht premium-gated).
+    if (action === 'strapReserve') {
+      if (!(await M.rateLimit('strap-reserve:' + id, 4, 86400))) {
+        return j(res, 200, { ok: false, error: 'rate_limited', message: 'Du hast den Herzgurt schon reserviert – wir legen ihn dir an der Rezeption bereit.' });
+      }
+      let mem = null; try { mem = await M.getMember(id); } catch (e) {}
+      const disc = STRAP_PRICE * (1 - STRAP_DISCOUNT);
+      const preis = premium ? (euro(disc) + ' (Coach Premium −20 %, regulär ' + euro(STRAP_PRICE) + ')') : euro(STRAP_PRICE);
+      const nm = mem ? (((mem.firstName || '') + ' ' + (mem.lastName || '')).trim()) : '';
+      let ok = false, vorgang = null;
+      try {
+        vorgang = await Inbox.addVorgang(id, {
+          type: 'kontakt',
+          subject: 'Herzgurt reservieren · Polar H9',
+          systemText: 'Du hast den Polar H9 unverbindlich reserviert. Bezahlung (' + preis + ') und Abholung erfolgen direkt an der Rezeption – die Reservierung ist kostenlos und unverbindlich.',
+          teamText: 'Hallo' + (mem && mem.firstName ? (' ' + mem.firstName) : '') + ', wir legen dir einen Polar H9 an der Rezeption bereit. Bezahlung & Abholung an der Theke – deine Reservierung ist unverbindlich.',
+          needsAction: true,
+        });
+        if (vorgang) ok = true;
+      } catch (e) {}
+      try {
+        const who = (nm || '—')
+          + (mem && mem.customerNumber ? (' (' + mem.customerNumber + ')') : '')
+          + (mem && mem.email ? (' · ' + mem.email) : '');
+        const text = 'Herzgurt-Reservierung über den Vital-Check (unverbindlich)\n\n'
+          + 'Mitglied: ' + who + '\n'
+          + 'Produkt: Polar H9 Herzfrequenz-Brustgurt\n'
+          + 'Preis: ' + preis + '\n'
+          + 'Coach Premium: ' + (premium ? 'ja (−20 %)' : 'nein') + '\n\n'
+          + 'Bitte einen Polar H9 an der Rezeption bereitlegen. Bezahlung & Übergabe an der Theke '
+          + '(kein Online-Kauf, kein Versand -> kein Widerruf). Die Reservierung ist unverbindlich.';
+        const r = await SR.notifyStudio({ member: mem, vorgang: vorgang, subject: '❤️ Herzgurt-Reservierung – ' + (nm || 'Mitglied'), text: text });
+        if (r && r.ok) ok = true;
+      } catch (e) {}
+      if (!ok) return j(res, 200, { ok: false, message: 'Reservierung konnte gerade nicht gespeichert werden – bitte später erneut oder frag an der Rezeption.' });
+      return j(res, 200, { ok: true, reserved: true, message: 'Reserviert! Wir legen dir den Polar H9 an der Rezeption bereit – bezahlen und mitnehmen kannst du ihn direkt an der Theke.' });
     }
 
     // Messung löschen (immer erlaubt – eigene Daten). scope:'training' -> Trainings-Check-in.

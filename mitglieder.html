@@ -689,7 +689,7 @@
     if(ERN_ON&&(s==='home'||s==='fort')) loadNutri();   // Ernährungs-Vitalpunkte für Startseite/Fortschritt frisch halten
     if(s==='figur'){ S.figurAdd=false; S.figurMsg=''; S.figurErr=false; S.figurBusy=false; S.figurReviewBusy=false; loadFigur(); }
     if(s==='inbody'){ S.inbodyReview=null; S.inbodyMsg=''; S.inbodyErr=false; S.inbodyBusy=false; S.inbodyAssess=''; S.inbodyAssessBusy=false; S.ibMetric=null; S.ibAmpel=false; loadInbody(); }
-    if(s==='morning'){ moStopMeasure(); S.morningPhase='idle'; S.morningMsg=''; S.morningErr=false; S.morningBusy=false; S.morningLiveBpm=null; S.morningElapsed=0; S.morningAssess=null; S.morningAssessBusy=false; S.morningConsentBusy=false; S.morningBreathe=false; S.morningJournal={}; S.vitalMode='morgen'; S.morningMeasureKind='morgen'; S.morningShareBusy=false; loadMorning(); }
+    if(s==='morning'){ moStopMeasure(); S.morningPhase='idle'; S.morningMsg=''; S.morningErr=false; S.morningBusy=false; S.morningLiveBpm=null; S.morningElapsed=0; S.morningAssess=null; S.morningAssessBusy=false; S.morningConsentBusy=false; S.morningBreathe=false; S.morningJournal={}; S.vitalMode='morgen'; S.morningMeasureKind='morgen'; S.morningShareBusy=false; S.morningStrapBusy=false; S.morningStrapReserved=false; S.morningStrapErr=''; loadMorning(); }
     if(SOCIAL_ON&&(s==='home'||s==='profil')) loadSocial();   // Trainingspartner-Snapshot für Startseite/Profil
     if(s==='social'){ S.socMsg=''; S.socErr=false; S.socBusy=false; S.socCopied=false; S.socChat=null; DATA.socDm=null; S.socRoom=null; DATA.socRoomThread=null; S.socRoomCreate=false; S.socRoomInvite=false; S.socRules=false; if(window.__socBuddy){ S.socCode=window.__socBuddy; window.__socBuddy=null; } if(window.__socOpenChat){ S.socChat=String(window.__socOpenChat); window.__socOpenChat=null; DATA.socDm=null; loadDm(S.socChat); } else if(window.__socOpenRoom){ S.socRoom=String(window.__socOpenRoom); window.__socOpenRoom=null; DATA.socRoomThread=null; loadRoomThread(S.socRoom); } loadSocial(); }
     if(s==='blog'){ S.blogSel=null; S.blogPost=null; loadBlog(); }
@@ -6836,7 +6836,16 @@
     var priceHtml=prem
       ? '<span style="text-decoration:line-through;color:var(--text-soft);font-weight:700;font-size:12.5px">'+moEuro(full)+'</span> <span style="font-size:17px;font-weight:900;color:var(--teal-ink)">'+moEuro(disc)+'</span> <span style="font-size:10.5px;font-weight:800;color:#176b37;background:#E7F6EC;border-radius:8px;padding:2px 7px;white-space:nowrap">−20 % Premium</span>'
       : '<span style="font-size:17px;font-weight:900;color:var(--text)">'+moEuro(full)+'</span> <span style="font-size:11.5px;font-weight:800;color:var(--teal-ink)">· mit Coach Premium −20 %</span>';
-    return '<div style="'+MO_CARD+'"><div style="display:flex;align-items:center;gap:13px"><span style="font-size:26px">❤️</span><div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:900;color:var(--text)">Noch kein Herzgurt?</div><div style="font-size:12px;color:var(--text-soft);font-weight:600;line-height:1.45;margin-top:2px">Den Polar H9 gibt es an der Studio-Theke – misst Puls &amp; HRV zuverlässig.</div><div style="margin-top:8px">'+priceHtml+'</div></div></div><div style="font-size:11px;color:var(--text-soft);font-weight:600;margin-top:10px;opacity:.85">Erhältst du an der Rezeption. Es funktioniert auch jeder andere Bluetooth-Brustgurt mit Standard-Herzfrequenz.</div></div>';
+    var cta;
+    if(S.morningStrapReserved){
+      cta='<div style="margin-top:12px;padding:11px 13px;border-radius:12px;background:#E7F6EC;color:#176b37;font-size:12.5px;font-weight:800;line-height:1.4">✓ Reserviert – wir legen dir den Gurt an der Rezeption bereit. Bezahlen &amp; mitnehmen direkt an der Theke.</div>';
+    } else {
+      var busy=!!S.morningStrapBusy;
+      cta='<button data-act="morningStrapReserve" '+(busy?'disabled ':'')+'style="margin-top:12px;width:100%;padding:12px;border:none;border-radius:12px;background:var(--teal);color:#fff;font-weight:900;font-size:13.5px;cursor:pointer'+(busy?';opacity:.6':'')+'">'+(busy?'Wird reserviert …':'Gurt reservieren')+'</button>'
+        +'<div style="font-size:10.5px;color:var(--text-soft);font-weight:600;margin-top:7px;text-align:center;opacity:.85">Unverbindlich · keine Zahlung online · Abholung &amp; Bezahlung an der Theke</div>'
+        +(S.morningStrapErr?('<div style="font-size:11.5px;font-weight:700;margin-top:7px;text-align:center;color:var(--err-fg)">'+esc(S.morningStrapErr)+'</div>'):'');
+    }
+    return '<div style="'+MO_CARD+'"><div style="display:flex;align-items:center;gap:13px"><span style="font-size:26px">❤️</span><div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:900;color:var(--text)">Noch kein Herzgurt?</div><div style="font-size:12px;color:var(--text-soft);font-weight:600;line-height:1.45;margin-top:2px">Den Polar H9 gibt es an der Studio-Theke – misst Puls &amp; HRV zuverlässig.</div><div style="margin-top:8px">'+priceHtml+'</div></div></div>'+cta+'<div style="font-size:11px;color:var(--text-soft);font-weight:600;margin-top:10px;opacity:.85">Erhältst du an der Rezeption. Es funktioniert auch jeder andere Bluetooth-Brustgurt mit Standard-Herzfrequenz.</div></div>';
   }
   // Einstiegs-Karte zur Atem-Übung.
   function moBreatheEntry(){
@@ -8528,6 +8537,14 @@
       api('/api/member/morning',{method:'POST',body:JSON.stringify({action:'delete',sel:a})}).then(function(r){ if(r&&r.ok){ DATA.morning=r; S.morningMsg=''; S.morningErr=false; } rIf(['morning','fort','coach','home']); setS({}); }).catch(function(){}); },
     morningTeamShare:function(a){ if(S.morningShareBusy) return; S.morningShareBusy=true; render();
       api('/api/member/morning',{method:'POST',body:JSON.stringify({action:'teamshare',value:(a==='1'||a===1||a===true)})}).then(function(r){ S.morningShareBusy=false; if(r&&r.ok&&r.list!=null){ DATA.morning=r; } setS({}); }).catch(function(){ S.morningShareBusy=false; setS({}); }); },
+    // Herzgurt (Polar H9) unverbindlich an der Theke reservieren – Notiz ans Team, keine Zahlung.
+    morningStrapReserve:function(){ if(S.morningStrapBusy||S.morningStrapReserved) return; S.morningStrapBusy=true; S.morningStrapErr=''; render();
+      api('/api/member/morning',{method:'POST',body:JSON.stringify({action:'strapReserve'})}).then(function(r){
+        S.morningStrapBusy=false;
+        if(r&&r.ok){ S.morningStrapReserved=true; S.morningStrapErr=''; }
+        else { S.morningStrapErr=(r&&r.message)||'Reservierung hat gerade nicht geklappt – bitte erneut.'; }
+        setS({});
+      }).catch(function(){ S.morningStrapBusy=false; S.morningStrapErr='Netzwerkfehler – bitte erneut.'; setS({}); }); },
     morningDeleteTrain:function(a){ if(!a) return; if(!window.confirm('Diesen Trainings-Check-in wirklich löschen?')) return;
       api('/api/member/morning',{method:'POST',body:JSON.stringify({action:'delete',scope:'training',sel:a})}).then(function(r){ if(r&&r.ok){ DATA.morning=r; S.morningMsg=''; S.morningErr=false; } rIf(['morning','fort','coach','home']); setS({}); }).catch(function(){}); },
     morningAssess:function(){ if(S.morningAssessBusy) return; S.morningAssessBusy=true; render();
