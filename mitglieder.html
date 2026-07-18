@@ -491,6 +491,7 @@
     obStep:0, obGoal:'Gesundheit & Longevity', obFreq:3, obAge:34, obExp:'gelegentlich', obMemConsent:false,
     obPrefilled:false, obSex:'', obHeightCm:null, obWeightKg:null, obTrainTime:'', obLikes:[], obDislikes:[],
     obDiet:'', obAllergies:[], obHealthConsent:false, obHealth:[], obHealthNote:'',
+    welcomeGift:false, welcomeTrainBusy:false, welcomeTrainDone:false, welcomeTrainErr:'', welcomeErnBusy:false, welcomeErnDone:false, welcomeErnErr:'',
     ernFormInit:false, ernEdit:false, ernGoal:'abnehmen', ernSex:'w', ernH:170, ernW:70, ernAge:30, ernAct:'moderat', ernDiet:'omnivor',
     ernBusy:false, ernMsg:'', ernErr:false, ernAsk:'', ernAnswer:'', ernAskBusy:false, ernRecipes:null, ernRecipesBusy:false, ernCoachBusy:false, ernCoachSent:false, ernPhotoBusy:false, ernRec:false,
     ernTab:'heute', ernPlanTab:'woche', ernPlanBusy:false, ernFridge:'', ernRecipeSel:null, ernRecipeSaved:false,
@@ -1713,6 +1714,27 @@
         '<button data-act="ernUpgradeOpen" style="margin-top:10px;border:none;background:var(--teal);color:#fff;font-weight:800;font-size:13px;border-radius:11px;padding:9px 15px;cursor:pointer;font-family:inherit">'+esc(cc.cta)+'</button>'+
       '</div>'+
       '<button data-act="premNudgeDismiss" aria-label="Ausblenden" style="flex-shrink:0;width:28px;height:28px;border:none;border-radius:50%;background:var(--surface-2);color:var(--text-soft);font-size:15px;line-height:1;cursor:pointer">×</button>'+
+    '</div>';
+  }
+  // Willkommensgeschenk direkt nach dem Onboarding: der erste Trainings- UND Ernährungsplan
+  // geht aufs Haus (einmalig gratis, ohne Kontingent). FINN erstellt sie aus den Angaben.
+  function welcomeGiftHtml(){
+    var giftCard=function(icon,title,desc,busy,done,err,act,doneLabel){
+      var btn;
+      if(done){ btn='<div style="display:flex;align-items:center;justify-content:center;gap:8px;width:100%;margin-top:12px;padding:13px;border-radius:13px;background:rgba(127,227,168,.16);color:#7fd8e0;font-weight:900;font-size:14px">'+svg('<path d="M20 6L9 17l-5-5"></path>',{c:'#7fd8e0',w:3,s:18})+esc(doneLabel)+'</div>'; }
+      else { btn='<button data-act="'+act+'" '+(busy?'disabled ':'')+'style="width:100%;margin-top:12px;padding:14px;border:none;border-radius:13px;background:#fff;color:#0a4958;font-weight:900;font-size:14.5px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px">'+(busy?('<span style="width:16px;height:16px;border:2.5px solid rgba(10,73,88,.3);border-top-color:#0a4958;border-radius:50%;display:inline-block;animation:ernspin .7s linear infinite"></span>FINN stellt zusammen …'):'Jetzt gratis erstellen')+'</button>'; }
+      return '<div style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);border-radius:18px;padding:16px 17px;margin-top:14px"><div style="display:flex;align-items:center;gap:11px"><span style="font-size:26px">'+icon+'</span><div style="flex:1;min-width:0"><div style="font-size:16px;font-weight:900;color:#fff">'+esc(title)+'</div><div style="font-size:12.5px;color:#aed0d6;font-weight:500;line-height:1.45;margin-top:2px">'+desc+'</div></div></div>'+btn+(err?'<div style="font-size:11.5px;font-weight:700;color:#ffd7cf;text-align:center;margin-top:8px">'+esc(err)+'</div>':'')+'</div>';
+    };
+    var both=S.welcomeTrainDone&&S.welcomeErnDone;
+    var closeLbl=both?'Los geht\'s':((S.welcomeTrainDone||S.welcomeErnDone)?'Fertig':'Vielleicht später');
+    return '<div style="position:fixed;inset:0;z-index:80;background:linear-gradient(170deg,#0e6072 0%,#0a4958 50%,#063540 100%);display:flex;flex-direction:column;padding:calc(40px + env(safe-area-inset-top,0px)) 24px calc(24px + env(safe-area-inset-bottom,0px));color:#fff;overflow-y:auto;max-width:480px;margin:0 auto">'+
+      '<div style="flex:1"><div style="font-size:52px;text-align:center">🎁</div>'+
+      '<div style="font-size:26px;font-weight:900;letter-spacing:-.5px;line-height:1.14;text-align:center;margin-top:10px">Dein erster Plan<br>geht aufs Haus</div>'+
+      '<div style="font-size:14px;color:#aed0d6;font-weight:500;line-height:1.5;text-align:center;margin:10px auto 0;max-width:330px">Als Willkommensgeschenk stellt dir FINN deinen ersten Trainings- und Ernährungsplan für die erste Woche gratis zusammen – passend zu deinen Angaben.</div>'+
+      giftCard('🏋️','Trainingsplan','Für deine erste Woche, passend zu Ziel &amp; Trainingstagen.',S.welcomeTrainBusy,S.welcomeTrainDone,S.welcomeTrainErr,'welcomeTrain','Trainingsplan erstellt')+
+      giftCard('🥗','Ernährungs-Wochenplan','Rezepte für die Woche + Einkaufsliste, passend zu deiner Ernährung.',S.welcomeErnBusy,S.welcomeErnDone,S.welcomeErnErr,'welcomeErn','Wochenplan erstellt')+
+      '</div>'+
+      '<button data-act="welcomeDone" style="width:100%;margin-top:20px;border:none;border-radius:15px;background:'+(both?'#fff':'rgba(255,255,255,.14)')+';color:'+(both?'#0a4958':'#fff')+';font-weight:900;font-size:16px;padding:16px;cursor:pointer;flex-shrink:0">'+esc(closeLbl)+'</button>'+
     '</div>';
   }
   function obOverlayHtml(){
@@ -7031,6 +7053,7 @@
     if(S.ernUpgrade) html+=ernUpgradeScreen();   // Coach-Premium-Kauf als Bottom-Sheet-Popup über dem aktuellen Screen
     if(S.screen==='ern'&&S.ernCapture) html+=ernErfassen();   // Erfassen-Popup (Bottom-Sheet) über dem Ernährungs-Screen
     if(TOKEN && S.screen!=='login' && !isFormer() && !obDone()){ obPrefillOnce(); html+=obOverlayHtml(); }
+    if(TOKEN && S.screen!=='login' && !isFormer() && obDone() && S.welcomeGift) html+=welcomeGiftHtml();
     // Chat-Eingaben über die Neu-Zeichnung retten (Wert, Fokus, Cursor & Scroll-Position) –
     // sonst verschwindet getippter Text und die Tastatur klappt zu, sobald im Hintergrund
     // Daten nachladen (das war der große Chat-Bug).
@@ -7281,10 +7304,35 @@
         S.finnTipLoaded=false;
         // FINN-Gedächtnis-Einwilligung aus dem Onboarding übernehmen (Ja ODER Nein = Entscheidung getroffen).
         try{ api('/api/member/coach',{method:'POST',body:JSON.stringify({action:'memory-optin',on:!!S.obMemConsent})}).then(function(d){ finnMemApply(d); }).catch(function(){}); }catch(e){}
+        // Willkommensgeschenk: der erste Plan geht aufs Haus (einmalig, sonst App-Tour).
+        var welcomeSeen='1'; try{ welcomeSeen=localStorage.getItem('fi_welcome_seen'); }catch(e){}
+        if(!welcomeSeen){ setS({obStep:0,screen:'home',welcomeGift:true,welcomeTrainDone:false,welcomeErnDone:false,welcomeTrainErr:'',welcomeErnErr:'',welcomeTrainBusy:false,welcomeErnBusy:false}); loadFinnTip(); try{ window.scrollTo(0,0); }catch(e){} return; }
         // Direkt nach den Onboarding-Fragen: einmalige App-Tour (Schritt für Schritt).
         var tourSeen='1'; try{ tourSeen=localStorage.getItem('fi_tour_v1'); }catch(e){}
         if(!tourSeen){ S.screen='home'; S.tourKey='app'; S.tourStep=0; try{ window.scrollTo(0,0); }catch(e){} }
         setS({obStep:0}); loadFinnTip(); } else { setS({obStep:(S.obStep||0)+1}); var o=document.querySelector('.obOverlay'); if(o) o.scrollTop=0; } },
+    // ── Willkommensgeschenk: erster Plan aufs Haus (einmalig gratis, ohne Kontingent) ──
+    welcomeTrain:function(){ if(S.welcomeTrainBusy||S.welcomeTrainDone) return;
+      var o=obData()||{}; var lvlMap={einsteiger:'einsteiger',gelegentlich:'mittel',erfahren:'fortgeschritten'};
+      var lvl=lvlMap[o.exp||S.obExp]||'mittel'; var days=Math.max(2,Math.min(6,parseInt(o.freq||S.obFreq,10)||3));
+      var nb=[]; if(o.goal) nb.push('Ziel '+o.goal); var dl=(o.dislikes||[]); if(dl.length) nb.push('nicht so gern: '+dl.join(', ')); var hh=(o.health&&o.health.consent&&Array.isArray(o.health.items))?o.health.items:[]; if(hh.length) nb.push('bitte schonen: '+hh.join(', '));
+      setS({welcomeTrainBusy:true,welcomeTrainErr:''});
+      api('/api/member/training',{method:'POST',timeoutMs:60000,body:JSON.stringify({action:'generate',welcome:true,level:lvl,days:days,note:nb.join(' · ').slice(0,140)})})
+      .then(function(r){ if(r&&r.ok&&r.plan){ api('/api/member/training',{method:'POST',body:JSON.stringify({action:'plan-start-custom',plan:r.plan})}).then(function(s){ if(s&&s.ok) DATA.training=s; setS({welcomeTrainBusy:false,welcomeTrainDone:true}); }).catch(function(){ setS({welcomeTrainBusy:false,welcomeTrainDone:true}); }); }
+        else { setS({welcomeTrainBusy:false,welcomeTrainErr:(r&&r.message)||'Hat gerade nicht geklappt – bitte nochmal.'}); } })
+      .catch(function(){ setS({welcomeTrainBusy:false,welcomeTrainErr:'Verbindung gerade nicht möglich.'}); });
+    },
+    welcomeErn:function(){ if(S.welcomeErnBusy||S.welcomeErnDone) return;
+      var o=obData()||{};
+      var goalMap={'Abnehmen':'abnehmen','Muskelaufbau':'aufbau','Ausdauer & Fitness':'gesundheit','Gesundheit & Longevity':'longevity','Stressabbau & Kopf frei':'gesundheit'};
+      var dietMap={'alles':'omnivor','vegetarisch':'vegetarisch','vegan':'vegan','pescetarisch':'omnivor','low-carb':'lowcarb','high-protein':'highprotein'};
+      setS({welcomeErnBusy:true,welcomeErnErr:''});
+      api('/api/member/nutrition',{method:'POST',timeoutMs:120000,body:JSON.stringify({action:'plan-generate',welcome:true,goal:goalMap[o.goal||S.obGoal]||'',diet:dietMap[o.diet||S.obDiet]||''})})
+      .then(function(d){ if(d&&d.ok){ DATA.nutriPlan={plan:d.plan,shopping:d.shopping}; setS({welcomeErnBusy:false,welcomeErnDone:true}); }
+        else { setS({welcomeErnBusy:false,welcomeErnErr:(d&&d.message)||'Hat gerade nicht geklappt – bitte nochmal.'}); } })
+      .catch(function(){ setS({welcomeErnBusy:false,welcomeErnErr:'Verbindung gerade nicht möglich.'}); });
+    },
+    welcomeDone:function(){ try{ localStorage.setItem('fi_welcome_seen','1'); }catch(e){} setS({welcomeGift:false}); try{ window.scrollTo(0,0); }catch(e){} },
     noop:function(){},   // fängt Klicks im Overlay-Inneren ab (Backdrop-Klick schließt)
     // Assistent-Hub öffnen. Beitragskonto nachladen, damit der proaktive Vorschlag greifen kann.
     qaOpen:function(){ if(!DATA.account && typeof loadAccount==='function'){ try{ loadAccount(); }catch(e){} } setQuiet({qaOpen:true}); },

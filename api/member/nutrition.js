@@ -43,6 +43,7 @@ const Coaching = require('../../lib/coaching');
 const Stripe = require('../../lib/stripe');
 const Recipes = require('../../lib/recipes');
 const Quota = require('../../lib/nutriquota');
+const Welcome = require('../../lib/welcomeGift');
 const Social = require('../../lib/social');
 const Figur = require('../../lib/figurcheck');
 
@@ -615,7 +616,9 @@ module.exports = async function handler(req, res) {
 
   // ── FINN generiert Rezepte -> in die studioweite Bibliothek + Nutri-Score ──
   if (action === 'recipes') {
-    if (!(await gateAI())) return;
+    // „Erster Plan aufs Haus": der erste FINN-Wochenplan ist gratis (ohne Kontingent-Verbrauch).
+    const welcomeFree = !!body.welcome && (await Welcome.tryClaim(id, 'ern'));
+    if (!welcomeFree) { if (!(await gateAI())) return; }
     await ensureSeed();   // Startbestand einmalig übernehmen (idempotent)
     if (!AI.hasAI) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'FINN ist gerade nicht verfügbar – schau in der Rezept-Bibliothek vorbei.' })); }
     if (!(await M.rateLimit('nutri-recipes:' + id, 20, 3600))) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'Kurz durchatmen – gleich wieder versuchen.' })); }
@@ -664,8 +667,8 @@ module.exports = async function handler(req, res) {
         rec.dayOffset = mealsForAI[i] ? mealsForAI[i].dayOffset : 0;
       });
     }
-    const quota = await chargeAI();
-    res.statusCode = 200; return res.end(JSON.stringify({ ok: true, recipes: saved, quota: quota, days: daysReq }));
+    const quota = welcomeFree ? Quota.publicQuota(await Quota.getUsed(id, monthKey), premium, monthKey) : await chargeAI();
+    res.statusCode = 200; return res.end(JSON.stringify({ ok: true, recipes: saved, quota: quota, days: daysReq, welcome: welcomeFree }));
   }
 
   // ── Studioweite Rezept-Bibliothek durchstöbern/suchen (wächst mit jeder Generierung) ──
@@ -768,16 +771,21 @@ module.exports = async function handler(req, res) {
 
   // ── Wochenplan generieren (FINN) + Einkaufsliste ableiten ──
   if (action === 'plan-generate') {
-    if (!(await gateAI())) return;
+    // „Erster Plan aufs Haus": einmalig gratis, ohne Premium und ohne Kontingent-Verbrauch.
+    const welcomeFree = !!body.welcome && (await Welcome.tryClaim(id, 'ern'));
+    if (!welcomeFree) { if (!(await gateAI())) return; }
     if (!(await M.rateLimit('nutri-plan:' + id, 10, 3600))) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'Kurz durchatmen – gleich wieder versuchen.' })); }
     const t = targetsFor(profile || {});
-    const r = await AI.nutritionWeekPlan({ goal: GOALS[profile && profile.goal] || 'ausgewogen', kcalTarget: t.kcal, protein: t.protein, diet: (profile && profile.diet) || 'omnivor' });
+    // Ziel/Ernährungsweise dürfen aus dem Onboarding kommen (auch ohne Ernährungs-Setup).
+    const planGoalKey = GOALS[body.goal] ? body.goal : (profile && profile.goal);
+    const planDiet = String(body.diet || (profile && profile.diet) || 'omnivor').slice(0, 30);
+    const r = await AI.nutritionWeekPlan({ goal: GOALS[planGoalKey] || 'ausgewogen', kcalTarget: t.kcal, protein: t.protein, diet: planDiet });
     if (!r.ok) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'FINN kann gerade keinen Plan erstellen. Versuch es gleich nochmal.' })); }
     const plan = { days: r.days, createdAt: Date.now() };
     const shop = (r.shopping || []).map(function (s, i) { return { i: i, name: s.name, amount: s.amount, category: s.category || 'Sonstiges', checked: false }; });
     try { await redisPipeline([['SET', PLANKEY(id), JSON.stringify(plan)], ['SET', SHOPKEY(id), JSON.stringify(shop)]]); } catch (e) {}
-    const quota = await chargeAI();
-    res.statusCode = 200; return res.end(JSON.stringify({ ok: true, plan: plan, shopping: shop, quota: quota }));
+    const quota = welcomeFree ? Quota.publicQuota(await Quota.getUsed(id, monthKey), premium, monthKey) : await chargeAI();
+    res.statusCode = 200; return res.end(JSON.stringify({ ok: true, plan: plan, shopping: shop, quota: quota, welcome: welcomeFree }));
   }
 
   // ── Plan + Einkaufsliste laden ──
@@ -993,6 +1001,7 @@ module.exports = async function handler(req, res) {
     Coaching.deleteKeys(id).forEach(function (k) { keys.push(k); });   // Coaching-Keys mitlöschen (nutri:prem bleibt bewusst außen vor)
     try { keys.push(require('../../lib/finnMemory').MKEY(id)); } catch (e) {}   // FINN-Gedächtnis (DSGVO) mitlöschen
     try { keys.push(require('../../lib/memberProfile').MKEY(id)); } catch (e) {}   // Onboarding-Profil inkl. Gesundheit (DSGVO) mitlöschen
+    try { keys.push(require('../../lib/welcomeGift').MKEY(id)); } catch (e) {}   // Willkommensgeschenk-Status mitlöschen
     for (let i = 0; i < 400; i++) keys.push(DKEY(id, dayKeyMinus(date, i)));
     try { await redisPipeline(keys.map(function (k) { return ['DEL', k]; })); } catch (e) {}
     res.statusCode = 200; return res.end(JSON.stringify({ ok: true, deleted: true }));

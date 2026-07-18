@@ -25,6 +25,7 @@ const Ex = require('../../lib/exercises');
 const AI = require('../../lib/ai');
 const Ent = require('../../lib/entitlements');
 const Quota = require('../../lib/nutriquota');
+const Welcome = require('../../lib/welcomeGift');
 const { hasStore, redisPipeline } = require('../../lib/store');
 
 // ── Trainings-Session (heutige Einheit abhaken / Sätze protokollieren) ──
@@ -231,7 +232,9 @@ module.exports = async function handler(req, res) {
       if (!AI.hasAI) return j(res, 200, { ok: false, error: 'no_ai', message: 'FINN ist gerade nicht verfügbar – schau in der Bibliothek vorbei.' });
       const premium = Ent.isPremium(await Ent.getEntitlement(id));
       const month = Quota.monthOf(berlinDate());
-      if (!premium && !(await Quota.canUse(id, month))) {
+      // „Erster Plan aufs Haus": einmalig gratis, ohne Premium und ohne Kontingent-Verbrauch.
+      const welcomeFree = !!body.welcome && (await Welcome.tryClaim(id, 'train'));
+      if (!welcomeFree && !premium && !(await Quota.canUse(id, month))) {
         return j(res, 200, { ok: false, error: 'premium_required', quota: 'exhausted', message: QUOTA_MSG });
       }
       const r = await AI.trainingPlan({
@@ -250,8 +253,9 @@ module.exports = async function handler(req, res) {
       if (!plan) return j(res, 200, { ok: false, error: 'gen_failed', message: 'Das hat gerade nicht geklappt – bitte versuch es gleich noch einmal.' });
       // KI-Aktion erst nach Erfolg abbuchen. Der Monatszähler zählt für ALLE hoch
       // (auch Premium, damit die Nutzungsübersicht stimmt); gedeckelt wird nur Basic.
-      const used = await Quota.incr(id, month);
-      return j(res, 200, { ok: true, plan: plan, quota: Quota.publicQuota(used, premium, month) });
+      // Der Willkommens-Plan („aufs Haus") verbraucht NICHTS vom Kontingent.
+      const used = welcomeFree ? await Quota.getUsed(id, month) : await Quota.incr(id, month);
+      return j(res, 200, { ok: true, plan: plan, quota: Quota.publicQuota(used, premium, month), welcome: welcomeFree });
     }
 
     // FINN plant die NÄCHSTE Steigerung aus dem Trainingsprotokoll (Premium/Kontingent).
