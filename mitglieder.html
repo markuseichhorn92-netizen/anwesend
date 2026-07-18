@@ -6825,6 +6825,19 @@
       :'<div style="font-size:11.5px;color:var(--text-soft);font-weight:600;margin-top:8px">Logge ein paar Sätze im Training – dann zeigt FINN dir hier konkrete Ziel-Gewichte für heute.</div>';
     return '<div style="'+MO_CARD+'"><div style="display:flex;align-items:center;gap:9px"><span style="font-size:20px">🏋️</span><div><div style="font-size:15.5px;font-weight:900;color:var(--teal-ink)">'+esc(rec.title)+'</div><div style="font-size:12px;color:var(--text-soft);font-weight:700;margin-top:1px">'+esc(rec.rpe)+'</div></div></div><div style="font-size:12px;color:var(--text-2);font-weight:600;line-height:1.45;margin-top:8px">'+esc(rec.note)+'</div>'+(rows?('<div style="margin-top:8px">'+rows+'</div>'):'')+foot+'</div>';
   }
+  // Herzgurt-Angebot: Polar H9 zum offiziellen Preis, für Coach-Premium-Mitglieder −20 %.
+  // Verkauf läuft an der Studio-Theke (Ware -> kein Apple-IAP). Preis bei Bedarf anpassen.
+  var MO_H9_PRICE=59.95;          // offizieller Polar-H9-Preis (€)
+  var MO_H9_DISC=0.20;            // Coach-Premium-Rabatt
+  function moEuro(n){ return (Math.round(n*100)/100).toFixed(2).replace('.',',')+' €'; }
+  function moStrapOfferCard(){
+    var d=morningData(); var prem=!!(d&&d.premium);
+    var full=MO_H9_PRICE, disc=full*(1-MO_H9_DISC);
+    var priceHtml=prem
+      ? '<span style="text-decoration:line-through;color:var(--text-soft);font-weight:700;font-size:12.5px">'+moEuro(full)+'</span> <span style="font-size:17px;font-weight:900;color:var(--teal-ink)">'+moEuro(disc)+'</span> <span style="font-size:10.5px;font-weight:800;color:#176b37;background:#E7F6EC;border-radius:8px;padding:2px 7px;white-space:nowrap">−20 % Premium</span>'
+      : '<span style="font-size:17px;font-weight:900;color:var(--text)">'+moEuro(full)+'</span> <span style="font-size:11.5px;font-weight:800;color:var(--teal-ink)">· mit Coach Premium −20 %</span>';
+    return '<div style="'+MO_CARD+'"><div style="display:flex;align-items:center;gap:13px"><span style="font-size:26px">❤️</span><div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:900;color:var(--text)">Noch kein Herzgurt?</div><div style="font-size:12px;color:var(--text-soft);font-weight:600;line-height:1.45;margin-top:2px">Den Polar H9 gibt es an der Studio-Theke – misst Puls &amp; HRV zuverlässig.</div><div style="margin-top:8px">'+priceHtml+'</div></div></div><div style="font-size:11px;color:var(--text-soft);font-weight:600;margin-top:10px;opacity:.85">Erhältst du an der Rezeption. Es funktioniert auch jeder andere Bluetooth-Brustgurt mit Standard-Herzfrequenz.</div></div>';
+  }
   // Einstiegs-Karte zur Atem-Übung.
   function moBreatheEntry(){
     return '<div data-act="morningBreatheOpen" role="button" style="'+MO_CARD+';cursor:pointer;display:flex;align-items:center;gap:14px"><div style="width:46px;height:46px;border-radius:50%;background:radial-gradient(circle at 50% 40%,#1aa0b8,#0e6072);flex-shrink:0;box-shadow:0 6px 16px rgba(14,96,114,.3)"></div><div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:900;color:var(--text)">Atem-Übung · Regeneration</div><div style="font-size:12.5px;color:var(--text-soft);font-weight:600;margin-top:2px;line-height:1.4">Geführtes ruhiges Atmen (~6/min) – senkt Stress, aktiviert den Ruhenerv.</div></div>'+svg('<path d="M9 18l6-6-6-6"></path>',{c:'var(--text-soft)',w:2.2,s:20})+'</div>';
@@ -7046,7 +7059,7 @@
     if(DATA.training==null) loadTraining();   // Kraft-Empfehlung braucht die geloggten Sätze
     var blocks=[];
     var intro='<div style="'+MO_CARD+'"><div style="font-size:15.5px;font-weight:800;color:var(--text)">Wie bereit bist du heute?</div><div style="font-size:13px;color:var(--text-soft);margin-top:5px;line-height:1.55">Dein Ruhepuls und deine HRV verraten, wie gut du erholt bist. FINN vergleicht sie mit deiner persönlichen Baseline und gibt dir eine klare Ampel – morgens für den Tag, vorm Workout für die passende Intensität.</div></div>';
-    if(!d.premium){ blocks.push(moPremiumTeaser()); blocks.push(intro); return moWrap(head,blocks); }
+    if(!d.premium){ blocks.push(moPremiumTeaser()); blocks.push(moStrapOfferCard()); blocks.push(intro); return moWrap(head,blocks); }
     if(S.morningPhase==='consent' || !d.consent){ blocks.push(moConsentCard()); if(!d.latest) blocks.push(intro); return moWrap(head,blocks); }
     if(S.morningBreathe) return moBreatheCard();
     if(S.morningPhase==='journal') return moJournalCard();
@@ -7063,7 +7076,7 @@
       if(d.latest){
         blocks.push(moReadinessHero()); blocks.push(moOvertrainingCard()); blocks.push(moLoadCard()); blocks.push(moZonesCard(d.readiness&&d.readiness.level)); blocks.push(moStrengthCard(d.readiness&&d.readiness.level)); blocks.push(moBalanceCard()); blocks.push(moBioAgeCard());
         blocks.push(moEvalCard()); blocks.push(moCheckinCard()); blocks.push(moBreatheEntry()); blocks.push(moWeeklyCard()); blocks.push(moTrendCard()); blocks.push(moInsightsCard()); blocks.push(moCurvesCard()); blocks.push(moFinnCard()); blocks.push(moHistoryCard()); blocks.push(moTeamShareCard());
-      } else { blocks.push(intro); blocks.push(moBreatheEntry()); }
+      } else { blocks.push(intro); blocks.push(moStrapOfferCard()); blocks.push(moBreatheEntry()); }
     }
     return moWrap(head,blocks);
   }
