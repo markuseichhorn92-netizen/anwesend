@@ -691,7 +691,7 @@
     if(ERN_ON&&(s==='home'||s==='fort')) loadNutri();   // Ernährungs-Vitalpunkte für Startseite/Fortschritt frisch halten
     if(s==='figur'){ S.figurAdd=false; S.figurMsg=''; S.figurErr=false; S.figurBusy=false; S.figurReviewBusy=false; loadFigur(); }
     if(s==='inbody'){ S.inbodyReview=null; S.inbodyMsg=''; S.inbodyErr=false; S.inbodyBusy=false; S.inbodyAssess=''; S.inbodyAssessBusy=false; S.ibMetric=null; S.ibAmpel=false; loadInbody(); }
-    if(s==='morning'){ moStopMeasure(); S.morningPhase='idle'; S.morningMsg=''; S.morningErr=false; S.morningBusy=false; S.morningLiveBpm=null; S.morningElapsed=0; S.morningAssess=null; S.morningAssessBusy=false; S.morningConsentBusy=false; S.morningBreathe=false; S.morningJournal={}; S.vitalMode='morgen'; S.morningMeasureKind='morgen'; S.morningShareBusy=false; S.morningStrapBusy=false; S.morningStrapReserved=false; S.morningStrapErr=''; loadMorning(); }
+    if(s==='morning'){ moStopMeasure(); S.morningPhase='idle'; S.morningMsg=''; S.morningErr=false; S.morningBusy=false; S.morningLiveBpm=null; S.morningElapsed=0; S.morningAssess=null; S.morningAssessBusy=false; S.morningConsentBusy=false; S.morningBreathe=false; S.morningJournal={}; S.vitalMode='morgen'; S.morningMeasureKind='morgen'; S.morningShareBusy=false; S.morningStrapBusy=false; S.morningStrapReserved=false; S.morningStrapErr=''; S.moGuide=false; loadMorning(); }
     if(SOCIAL_ON&&(s==='home'||s==='profil')) loadSocial();   // Trainingspartner-Snapshot für Startseite/Profil
     if(s==='social'){ S.socMsg=''; S.socErr=false; S.socBusy=false; S.socCopied=false; S.socChat=null; DATA.socDm=null; S.socRoom=null; DATA.socRoomThread=null; S.socRoomCreate=false; S.socRoomInvite=false; S.socRules=false; if(window.__socBuddy){ S.socCode=window.__socBuddy; window.__socBuddy=null; } if(window.__socOpenChat){ S.socChat=String(window.__socOpenChat); window.__socOpenChat=null; DATA.socDm=null; loadDm(S.socChat); } else if(window.__socOpenRoom){ S.socRoom=String(window.__socOpenRoom); window.__socOpenRoom=null; DATA.socRoomThread=null; loadRoomThread(S.socRoom); } loadSocial(); }
     if(s==='blog'){ S.blogSel=null; S.blogPost=null; loadBlog(); }
@@ -6967,6 +6967,36 @@
     }).join('');
     return '<div style="'+MO_CARD+'"><div style="font-size:15px;font-weight:900;color:var(--text);margin-bottom:2px">Deine Trainings-Check-ins</div>'+rows+'</div>';
   }
+  // Anleitung schon einmal gesehen (dann nicht mehr automatisch zeigen)?
+  function moGuideSeen(){ try{ return !!localStorage.getItem('fi_vital_guide_v1'); }catch(e){ return false; } }
+  // Nach der Anleitung die eigentliche Messung starten (Morgen -> Fragebogen, Training -> direkt).
+  function moBeginMeasure(kind){ kind=(kind==='training')?'training':'morgen'; if(kind==='training'){ moStartMeasure('training'); return; } S.morningMeasureKind='morgen'; S.morningPhase='journal'; try{ window.scrollTo(0,0); }catch(e){} setS({}); }
+  // Kurz-Erinnerung an die wichtigsten Punkte – erscheint IMMER vor dem Messen (auch nach „nicht mehr anzeigen").
+  function moReminderStrip(){
+    return '<div style="display:flex;gap:9px;background:var(--surface-2);border-radius:12px;padding:10px 12px;margin-top:12px"><span style="font-size:15px;line-height:1.3">💡</span><div style="flex:1;min-width:0"><div style="font-size:11.5px;color:var(--text-2);font-weight:700;line-height:1.55">Elektroden <b>anfeuchten</b> · Gurt <b>eng</b> auf die Haut · <b>1–2 Min ruhig</b> bleiben, nicht direkt nach Bewegung.</div><button data-act="morningGuideOpen" style="border:none;background:none;color:var(--teal-ink);font-size:11.5px;font-weight:800;cursor:pointer;padding:3px 0 0;text-decoration:underline">Ganze Anleitung ansehen</button></div></div>';
+  }
+  // Schritt-für-Schritt-Anleitung als Pop-up (beim ersten Start automatisch, sonst über den Link).
+  function moGuideOverlay(){
+    var startMode=(S.moGuide==='start');
+    var steps=[
+      ['🕐','Ruhig ankommen','Setz oder leg dich 1–2 Minuten ruhig hin und atme normal. Am besten gleich nach dem Aufwachen messen – nicht direkt nach Bewegung, Treppe, Kaffee oder Dusche.'],
+      ['💧','Elektroden anfeuchten','Feuchte die beiden Kontaktflächen an der Innenseite des Gurts mit Wasser an. Trockene Elektroden liefern kein sauberes Signal.'],
+      ['❤️','Gurt anlegen','Leg den Gurt direkt auf die Haut, knapp unter der Brust. Eng genug, dass er nicht verrutscht, aber angenehm – das Sensor-Modul sitzt mittig vorne.'],
+      ['📡','Verbinden &amp; still halten','Starte die Messung, verbinde den Gurt per Bluetooth und bleib die 2–3 Minuten ruhig sitzen oder liegen – nicht sprechen, nicht bewegen.']
+    ];
+    var rows=steps.map(function(s,i){ return '<div style="display:flex;gap:13px;padding:13px 0'+(i?';border-top:1px solid var(--border)':'')+'"><div style="width:38px;height:38px;border-radius:11px;background:var(--surface-2);display:flex;align-items:center;justify-content:center;font-size:19px;flex-shrink:0">'+s[0]+'</div><div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:900;color:var(--text)"><span style="color:var(--teal-ink)">'+(i+1)+'.</span> '+s[1]+'</div><div style="font-size:12.5px;color:var(--text-soft);font-weight:600;line-height:1.5;margin-top:2px">'+s[2]+'</div></div></div>'; }).join('');
+    var tip='<div style="font-size:11.5px;color:var(--text-soft);font-weight:600;line-height:1.5;margin-top:14px;text-align:center;opacity:.9">Tipp: Miss möglichst immer zur gleichen Zeit (morgens direkt nach dem Aufwachen) – so wird deine Baseline aussagekräftig.</div>';
+    var chk=startMode?('<label style="display:flex;align-items:center;gap:11px;margin-top:16px;cursor:pointer;user-select:none"><button data-act="morningGuideToggleDont" role="checkbox" aria-checked="'+(S.moGuideDont?'true':'false')+'" style="width:24px;height:24px;border-radius:7px;border:2px solid '+(S.moGuideDont?'var(--teal)':'var(--border-strong)')+';background:'+(S.moGuideDont?'var(--teal)':'transparent')+';flex-shrink:0;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0">'+(S.moGuideDont?svg('<path d="M5 13l4 4L19 7"></path>',{c:'#fff',w:3,s:15}):'')+'</button><span style="font-size:13px;color:var(--text-2);font-weight:700">Diese Anleitung nicht mehr anzeigen</span></label>'):'';
+    var btn=startMode
+      ? '<button data-act="morningGuideStart" style="width:100%;margin-top:16px;padding:15px;border:none;border-radius:14px;background:var(--teal);color:#fff;font-weight:900;font-size:15px;cursor:pointer">Verstanden – Messung starten</button>'
+      : '<button data-act="morningGuideClose" style="width:100%;margin-top:16px;padding:15px;border:none;border-radius:14px;background:var(--teal);color:#fff;font-weight:900;font-size:15px;cursor:pointer">Alles klar</button>';
+    return '<div data-act="morningGuideClose" style="position:fixed;inset:0;z-index:85;background:rgba(4,20,24,.55);display:flex;align-items:flex-end;justify-content:center" role="dialog" aria-modal="true" aria-label="Anleitung Vital-Check">'+
+      '<div data-act="noop" style="width:100%;max-width:480px;max-height:92vh;overflow-y:auto;-webkit-overflow-scrolling:touch;background:var(--surface);border-radius:22px 22px 0 0;padding:20px 20px calc(20px + env(safe-area-inset-bottom))">'+
+        '<div style="display:flex;align-items:flex-start;gap:12px"><div style="flex:1;min-width:0"><div style="font-size:19px;font-weight:900;color:var(--text);letter-spacing:-.3px">So machst du deinen Vital-Check</div><div style="font-size:12.5px;color:var(--text-soft);font-weight:600;margin-top:3px">In vier Schritten zu einer sauberen Messung.</div></div>'+
+        '<button data-act="morningGuideClose" aria-label="Schließen" style="width:34px;height:34px;border-radius:11px;border:none;background:var(--surface-2);color:var(--text-soft);cursor:pointer;font-size:20px;line-height:1;flex-shrink:0">×</button></div>'+
+        '<div style="margin-top:12px">'+rows+'</div>'+tip+chk+btn+
+      '</div></div>';
+  }
   function moMeasureCard(kind){
     var d=morningData(); if(!d) return '';
     kind=(kind==='training')?'training':'morgen';
@@ -6993,13 +7023,15 @@
       return '<div style="'+MO_CARD+'">'+
         '<div style="font-size:16px;font-weight:900;color:var(--text)">Trainings-Check-in</div>'+
         '<div style="font-size:12.5px;color:var(--text-soft);font-weight:500;margin-top:4px;line-height:1.5">Kurzer ~1-Minuten-Puls-Check direkt vorm Workout: Leg den Gurt an, atme kurz ruhig – der Check vergleicht deinen Puls mit deiner Morgen-Baseline und sagt dir, ob du bereit bist.</div>'+
+        moReminderStrip()+
         '<button data-act="morningMeasure" data-arg="training" '+(avail?'':'disabled ')+'style="width:100%;margin-top:14px;padding:15px;border:none;border-radius:15px;background:'+(avail?'var(--teal)':'var(--surface-2)')+';color:'+(avail?'#fff':'var(--text-soft)')+';font-weight:800;font-size:15px;cursor:'+(avail?'pointer':'default')+'">🏋️ Jetzt kurz messen</button>'+
         hint+errLine+'</div>';
     }
     var has=!!(d.list&&d.list.length);
     return '<div style="'+MO_CARD+'">'+
       '<div style="font-size:16px;font-weight:900;color:var(--text)">'+(has?'Neuer Morgen-Check-in':'Morgen-Check-in starten')+'</div>'+
-      '<div style="font-size:12.5px;color:var(--text-soft);font-weight:500;margin-top:4px;line-height:1.5">Leg den Polar H9 an (Elektroden anfeuchten), bleib 2–3 Minuten ruhig liegen oder sitzen – FINN misst Ruhepuls &amp; Herzratenvariabilität.</div>'+
+      '<div style="font-size:12.5px;color:var(--text-soft);font-weight:500;margin-top:4px;line-height:1.5">Leg deinen Herzfrequenz-Gurt an, bleib 2–3 Minuten ruhig liegen oder sitzen – FINN misst Ruhepuls &amp; Herzratenvariabilität.</div>'+
+      moReminderStrip()+
       '<button data-act="morningMeasure" data-arg="morgen" '+(avail?'':'disabled ')+'style="width:100%;margin-top:14px;padding:15px;border:none;border-radius:15px;background:'+(avail?'var(--teal)':'var(--surface-2)')+';color:'+(avail?'#fff':'var(--text-soft)')+';font-weight:800;font-size:15px;cursor:'+(avail?'pointer':'default')+'">❤️ Gurt verbinden &amp; messen</button>'+
       hint+errLine+'</div>';
   }
@@ -8397,6 +8429,7 @@
     if(S.dp) html+=wheelOverlay();
     if(S.qaOpen) html+=qaSheet();
     if(S.ernUpgrade) html+=ernUpgradeScreen();   // Coach-Premium-Kauf als Bottom-Sheet-Popup über dem aktuellen Screen
+    if(S.moGuide && S.screen==='morning') html+=moGuideOverlay();   // Vital-Check Schritt-für-Schritt-Anleitung (Pop-up)
     if(S.screen==='ern'&&S.ernCapture) html+=ernErfassen();   // Erfassen-Popup (Bottom-Sheet) über dem Ernährungs-Screen
     if(TOKEN && S.screen!=='login' && !isFormer() && !obDone()){ if(S.obServerChecked!==true) obServerCheck(); else { obPrefillOnce(); html+=obOverlayHtml(); } }
     if(TOKEN && S.screen!=='login' && !isFormer() && obDone() && S.welcomeGift) html+=welcomeGiftHtml();
@@ -8530,7 +8563,13 @@
     // ── Morgen-Check (Polar H9) ──
     morningReload:function(){ DATA.morning=null; render(); loadMorning(); },
     vitalMode:function(a){ var m=(a==='training')?'training':'morgen'; if(S.vitalMode===m) return; S.vitalMode=m; S.morningMsg=''; S.morningErr=false; try{ window.scrollTo(0,0); }catch(e){} setS({}); },
-    morningMeasure:function(a){ var d=morningData(); if(!d) return; if(!d.premium){ ernEnsureModulePrice(); setS({ernUpgrade:true}); return; } if(!d.consent){ S.morningPhase='consent'; setS({}); return; } var kind=(a==='training')?'training':'morgen'; if(kind==='training'){ moStartMeasure('training'); return; } S.morningMeasureKind='morgen'; S.morningPhase='journal'; try{ window.scrollTo(0,0); }catch(e){} setS({}); },
+    morningMeasure:function(a){ var d=morningData(); if(!d) return; if(!d.premium){ ernEnsureModulePrice(); setS({ernUpgrade:true}); return; } if(!d.consent){ S.morningPhase='consent'; setS({}); return; } var kind=(a==='training')?'training':'morgen';
+      if(!moGuideSeen()){ S.moGuide='start'; S.moGuideKind=kind; S.moGuideDont=false; try{ window.scrollTo(0,0); }catch(e){} setS({}); return; }
+      moBeginMeasure(kind); },
+    morningGuideOpen:function(){ S.moGuide='info'; S.moGuideDont=false; try{ window.scrollTo(0,0); }catch(e){} setS({}); },
+    morningGuideClose:function(){ S.moGuide=false; setS({}); },
+    morningGuideToggleDont:function(){ S.moGuideDont=!S.moGuideDont; setS({}); },
+    morningGuideStart:function(){ if(S.moGuideDont){ try{ localStorage.setItem('fi_vital_guide_v1','1'); }catch(e){} } var k=S.moGuideKind||'morgen'; S.moGuide=false; render(); moBeginMeasure(k); },
     morningJournalSet:function(a){ if(!a) return; var i=a.indexOf(':'); if(i<0) return; var f=a.slice(0,i), v=a.slice(i+1); S.morningJournal=S.morningJournal||{}; if(S.morningJournal[f]===v) delete S.morningJournal[f]; else S.morningJournal[f]=v; setS({}); },
     morningJournalNext:function(){ moStartMeasure('morgen'); },
     morningJournalSkip:function(){ moStartMeasure('morgen'); },
@@ -9991,9 +10030,10 @@
     function backTrig(){ return Math.min(window.innerWidth*0.28, 110); }
     function menuOpen(){ return document.body.classList.contains('menu-open'); }
     function overlayOpen(){
-      return !!(S.finnOpen||S.vaOpen||S.ciPopup||S.dp||S.qaOpen||S.ernUpgrade||S.ernCapture||S.ernConfirm||S.ernProd||S.ernData||S.ernEdit||S.ernRecipeSel||S.ernFavMgr||S.ernEntryEdit||S.ernLesson||S.ernVert||S.ernCk||S.ernChatOpen||S.ernPlanQuiz||(S.ernKoch!=null)||S.welcomeGift||S.trainFinish||S.trainRun||S.trainDetail||S.trainGenOpen||S.morningBreathe||(S.morningPhase&&S.morningPhase!=='idle')||S.socChat||S.socRoom||document.querySelector('.obOverlay'));
+      return !!(S.finnOpen||S.vaOpen||S.ciPopup||S.dp||S.qaOpen||S.ernUpgrade||S.ernCapture||S.ernConfirm||S.ernProd||S.ernData||S.ernEdit||S.ernRecipeSel||S.ernFavMgr||S.ernEntryEdit||S.ernLesson||S.ernVert||S.ernCk||S.ernChatOpen||S.ernPlanQuiz||(S.ernKoch!=null)||S.welcomeGift||S.trainFinish||S.trainRun||S.trainDetail||S.trainGenOpen||S.morningBreathe||S.moGuide||(S.morningPhase&&S.morningPhase!=='idle')||S.socChat||S.socRoom||document.querySelector('.obOverlay'));
     }
     function closeKnownOverlay(){
+      if(S.moGuide){ S.moGuide=false; render(); return true; }
       var boolO=['finnOpen','qaOpen','vaOpen','ciPopup','ernUpgrade','ernChatOpen','morningBreathe'];
       for(var i=0;i<boolO.length;i++){ if(S[boolO[i]]){ S[boolO[i]]=false; render(); return true; } }
       if(S.ernProd){ S.ernProd=null; render(); return true; }
