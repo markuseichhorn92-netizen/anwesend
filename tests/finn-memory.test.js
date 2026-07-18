@@ -57,9 +57,9 @@ async function run() {
 
   // ── Opt-in-Gate gegen den KV-Mock ──
   const ID = 'M1';
-  // 6. Standard: aus, leer
+  // 6. Standard: aus, leer, noch nicht entschieden
   const g0 = await Mem.get(ID);
-  ok('6. Standard: Opt-in aus, keine Fakten', g0.on === false && g0.items.length === 0);
+  ok('6. Standard: Opt-in aus, keine Fakten, noch nicht entschieden', g0.on === false && g0.items.length === 0 && g0.decided === false);
 
   // 7. Ohne Opt-in wird NICHTS gespeichert
   await Mem.remember(ID, ['heimlicher Fakt']);
@@ -70,7 +70,7 @@ async function run() {
   await Mem.setOptIn(ID, true);
   await Mem.remember(ID, ['Ziel ist Muskelaufbau']);
   const g2 = await Mem.get(ID);
-  ok('8. mit Opt-in wird gemerkt', g2.on === true && g2.items.some((x) => /Muskelaufbau/.test(x.t)));
+  ok('8. mit Opt-in wird gemerkt + gilt als entschieden', g2.on === true && g2.decided === true && g2.items.some((x) => /Muskelaufbau/.test(x.t)));
 
   // 9. Einzeln vergessen
   await Mem.forget(ID, 'Ziel ist Muskelaufbau');
@@ -81,7 +81,13 @@ async function run() {
   await Mem.remember(ID, ['mag frühes Training']);
   await Mem.setOptIn(ID, false);
   const g4 = await Mem.get(ID);
-  ok('10. Opt-in aus = Fakten gelöscht („aus = vergessen")', g4.on === false && g4.items.length === 0);
+  ok('10. Opt-in aus = Fakten gelöscht („aus = vergessen"), Entscheidung bleibt', g4.on === false && g4.items.length === 0 && g4.decided === true);
+
+  // 11. Frischer Nutzer, der „Nein" sagt: nichts an, aber entschieden (fragt nicht erneut).
+  const NO = 'M2';
+  await Mem.setOptIn(NO, false);
+  const gn = await Mem.get(NO);
+  ok('11. „Nein" zählt als Entscheidung (on=false, decided=true)', gn.on === false && gn.decided === true);
 
   console.log(pass ? 'FINN-MEMORY PASS' : 'FINN-MEMORY FAIL');
   process.exit(pass ? 0 : 1);

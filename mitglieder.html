@@ -488,7 +488,7 @@
     vaOpen:false, vaMsgs:[], vaBusy:false, vaInput:'', vaIntent:'',
     qaOpen:false, dp:null,
     blogSel:null, blogPost:null, instaSel:null,
-    obStep:0, obGoal:'Gesundheit & Longevity', obFreq:3, obAge:34, obExp:'gelegentlich',
+    obStep:0, obGoal:'Gesundheit & Longevity', obFreq:3, obAge:34, obExp:'gelegentlich', obMemConsent:false,
     ernFormInit:false, ernEdit:false, ernGoal:'abnehmen', ernSex:'w', ernH:170, ernW:70, ernAge:30, ernAct:'moderat', ernDiet:'omnivor',
     ernBusy:false, ernMsg:'', ernErr:false, ernAsk:'', ernAnswer:'', ernAskBusy:false, ernRecipes:null, ernRecipesBusy:false, ernCoachBusy:false, ernCoachSent:false, ernPhotoBusy:false, ernRec:false,
     ernTab:'heute', ernPlanTab:'woche', ernPlanBusy:false, ernFridge:'', ernRecipeSel:null, ernRecipeSaved:false,
@@ -1491,6 +1491,11 @@
     var helloTxt=(topic==='ernaehrung')?'Hi! 👋 Ich bin FINN, dein Fit-Inn Coach. Frag mich alles rund um deine Ernährung – Kalorien, Eiweiß, Rezepte, dein Tagesziel. Ich kenne deine Werte und helfe dir konkret weiter.'
       :(topic==='training')?'Hi! 👋 Ich bin FINN, dein Fit-Inn Coach. Frag mich alles rund um dein Training – Übungen an unseren Geräten, wie oft, richtige Technik, dein Plan. Ich helfe dir konkret weiter.'
       :'Hi! 👋 Ich bin FINN, dein Fit-Inn Coach – deine erste Anlaufstelle. Sag mir einfach, was du brauchst: Termin, Adresse ändern, Beitrag, Vertrag, Öffnungszeiten … Ich bringe dich direkt hin oder beantworte deine Frage. Komme ich nicht weiter, hole ich dir einen Mitarbeiter dazu.';
+    // Einmalige Einwilligungs-Frage zu Beginn: Darf FINN sich Dinge merken? (nur bis das Mitglied entschieden hat)
+    var memAsk=(DATA.finnMem && !DATA.finnMem.decided)?'<div style="background:var(--surface-2);border:1.5px solid var(--border);border-radius:16px;padding:14px 15px;margin:2px 4px 4px"><div style="font-size:13.5px;font-weight:900;color:var(--text)">Darf ich mir Dinge über dich merken?</div><div style="font-size:12.5px;font-weight:500;color:var(--text-2);line-height:1.5;margin-top:5px">Dann berücksichtige ich dein Ziel, deine Vorlieben und Einschränkungen über Gespräche hinweg – nur für dich, jederzeit in den Einstellungen löschbar. Keine sensiblen Gesundheitsdiagnosen.</div><div style="display:flex;gap:8px;margin-top:12px">'+
+      '<button data-act="finnMemDecide" data-arg="yes"'+(S.finnMemBusy?' disabled':'')+' style="flex:1;border:none;border-radius:11px;background:'+TEALBG+';color:#fff;font-weight:800;font-size:13px;padding:11px;cursor:pointer">Ja, gern merken</button>'+
+      '<button data-act="finnMemDecide" data-arg="no"'+(S.finnMemBusy?' disabled':'')+' style="flex:1;border:1.5px solid var(--border);border-radius:11px;background:var(--surface);color:var(--text-muted);font-weight:800;font-size:13px;padding:11px;cursor:pointer">Nein danke</button>'+
+      '</div></div>':'';
     return '<div class="ciOverlay" data-act="closeFinn" style="align-items:stretch;justify-content:center;padding:0">'+
       '<div class="finnPanel" data-act="noop">'+
         '<div style="display:flex;align-items:center;gap:12px;padding:calc(14px + env(safe-area-inset-top,0px)) 18px 14px;background:linear-gradient(160deg,#0e6072,#063540);color:#fff">'+
@@ -1499,7 +1504,7 @@
           '<button data-act="closeFinn" aria-label="Schließen" style="width:36px;height:36px;border-radius:11px;border:none;background:rgba(255,255,255,.14);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer">'+svg('<path d="M18 6L6 18M6 6l12 12"></path>',{c:'#fff',w:2.2,s:18})+'</button>'+
         '</div>'+
         '<div id="finn_scroll" style="flex:1;overflow-y:auto;padding:16px 16px 8px;display:flex;flex-direction:column;gap:12px">'+
-          (msgs.length?'':'<div id="finn_hello" style="display:flex;gap:9px;align-items:flex-start;padding:6px 4px 4px">'+FINN_AVA+'<div style="background:var(--surface-2);border-radius:4px 16px 16px 16px;padding:12px 15px;font-size:14px;line-height:1.55;color:var(--text)">'+esc(helloTxt)+'</div></div>')+
+          (msgs.length?'':'<div id="finn_hello" style="display:flex;gap:9px;align-items:flex-start;padding:6px 4px 4px">'+FINN_AVA+'<div style="background:var(--surface-2);border-radius:4px 16px 16px 16px;padding:12px 15px;font-size:14px;line-height:1.55;color:var(--text)">'+esc(helloTxt)+'</div></div>'+memAsk)+
           bubbles+thinking+
         '</div>'+
         // Direkt erledigen: Schnell-Links in alle Self-Service-Bereiche (ein Tipp bringt dich hin).
@@ -1698,7 +1703,7 @@
   }
   function obOverlayHtml(){
     var step=S.obStep||0;
-    var dots=''; for(var i=0;i<4;i++){ dots+='<span style="flex:1;height:5px;border-radius:4px;background:'+(i<=step?'#F6A964':'rgba(255,255,255,.18)')+'"></span>'; }
+    var dots=''; for(var i=0;i<5;i++){ dots+='<span style="flex:1;height:5px;border-radius:4px;background:'+(i<=step?'#F6A964':'rgba(255,255,255,.18)')+'"></span>'; }
     var goals=[['Abnehmen','🔥'],['Muskelaufbau','💪'],['Ausdauer & Fitness','🏃'],['Gesundheit & Longevity','❤️'],['Stressabbau & Kopf frei','🧘']];
     var exps=[['einsteiger','Einsteiger:in','Neu im Studio oder Wiedereinstieg','🌱'],['gelegentlich','Gelegentlich','Ich trainiere ab und zu','⚡'],['erfahren','Erfahren','Training gehört zu meinem Alltag','🏅']];
     var optBorder=function(sel){ return sel?'#7fd8e0':'rgba(255,255,255,.18)'; };
@@ -1713,13 +1718,19 @@
       var freqBtns=''; for(var n=1;n<=6;n++){ var on=S.obFreq===n; freqBtns+='<button data-act="obFreq" data-arg="'+n+'" style="flex:1;padding:14px 0;border:2px solid '+optBorder(on)+';border-radius:13px;background:'+optBg(on)+';color:#fff;font-weight:800;font-size:16px;cursor:pointer">'+n+'</button>'; }
       inner='<div style="flex:1"><div style="font-size:24px;font-weight:900;letter-spacing:-.4px;line-height:1.15">Wie oft möchtest<br>du trainieren?</div><div style="font-size:14px;color:#aed0d6;font-weight:500;margin-top:8px">Pro Woche – ehrlich, nicht perfekt. Das wird dein Wochenziel für Vitalpunkte.</div><div style="text-align:center;margin:22px 0"><span style="font-size:60px;font-weight:900;letter-spacing:-2px">'+S.obFreq+'</span><span style="font-size:19px;font-weight:700;color:#aed0d6"> ×/Woche</span></div><div style="display:flex;gap:8px">'+freqBtns+'</div>'+
         '<div style="font-size:20px;font-weight:900;letter-spacing:-.4px;margin-top:28px">Wie alt bist du?</div><div style="font-size:13px;color:#aed0d6;font-weight:500;margin-top:6px">Für dein Aktivitäts-Alter & deinen Longevity-Score.</div><div style="display:flex;align-items:center;gap:14px;margin-top:14px;background:rgba(255,255,255,.1);border-radius:15px;padding:13px 16px"><button data-act="obAge" data-arg="-1" style="width:38px;height:38px;border-radius:11px;border:none;background:rgba(255,255,255,.16);color:#fff;font-size:22px;font-weight:800;cursor:pointer">−</button><div style="flex:1;text-align:center;font-size:26px;font-weight:900">'+S.obAge+' <span style="font-size:14px;color:#aed0d6;font-weight:600">Jahre</span></div><button data-act="obAge" data-arg="1" style="width:38px;height:38px;border-radius:11px;border:none;background:rgba(255,255,255,.16);color:#fff;font-size:22px;font-weight:800;cursor:pointer">+</button></div></div>';
-    } else {
+    } else if(step===3){
       inner='<div style="flex:1"><div style="font-size:24px;font-weight:900;letter-spacing:-.4px;line-height:1.15">Wie viel Erfahrung<br>hast du?</div><div style="font-size:14px;color:#aed0d6;font-weight:500;margin-top:8px">So passt dein Coach die Tipps an.</div><div style="display:flex;flex-direction:column;gap:10px;margin-top:22px">'+
         exps.map(function(e){ var sel=S.obExp===e[0]; return '<button data-act="obExp" data-arg="'+e[0]+'" style="display:flex;align-items:center;gap:13px;width:100%;padding:16px;border:2px solid '+optBorder(sel)+';border-radius:15px;background:'+optBg(sel)+';cursor:pointer;text-align:left"><span style="font-size:23px">'+e[3]+'</span><span style="flex:1"><span style="display:block;font-size:15.5px;font-weight:800;color:#fff">'+esc(e[1])+'</span><span style="display:block;font-size:12.5px;color:#aed0d6;font-weight:500">'+esc(e[2])+'</span></span></button>'; }).join('')+'</div></div>';
+    } else {
+      // Schritt 5: Einwilligung fürs FINN-Gedächtnis (freiwillig, Standard aus).
+      var memSw='<button data-act="obMemToggle" role="switch" aria-checked="'+(S.obMemConsent?'true':'false')+'" style="position:relative;width:52px;height:31px;border-radius:30px;border:none;cursor:pointer;background:'+(S.obMemConsent?'#7fd8e0':'rgba(255,255,255,.22)')+';flex-shrink:0;transition:background .2s"><span style="position:absolute;top:3px;left:'+(S.obMemConsent?'24px':'3px')+';width:25px;height:25px;border-radius:50%;background:#fff;transition:left .2s;box-shadow:0 1px 3px rgba(0,0,0,.35)"></span></button>';
+      inner='<div style="flex:1"><div style="font-size:24px;font-weight:900;letter-spacing:-.4px;line-height:1.15">Darf FINN sich<br>Dinge merken?</div><div style="font-size:14px;color:#aed0d6;font-weight:500;margin-top:8px;line-height:1.5">Dein Coach FINN kann sich dein Ziel, deine Vorlieben und Einschränkungen über Gespräche hinweg merken – so wird er persönlicher. Nur für dich, jederzeit in den Einstellungen löschbar. Keine sensiblen Gesundheitsdiagnosen.</div>'+
+        '<div style="display:flex;align-items:center;gap:14px;margin-top:24px;background:rgba(255,255,255,.1);border-radius:16px;padding:16px 18px"><div style="flex:1;min-width:0"><div style="font-size:15.5px;font-weight:800;color:#fff">FINN darf sich Dinge merken</div><div style="font-size:12.5px;color:#aed0d6;font-weight:500;margin-top:2px">Empfohlen für persönlicheres Coaching.</div></div>'+memSw+'</div>'+
+        '<div style="font-size:12px;color:#8fb3ba;font-weight:500;margin-top:14px;line-height:1.5">Du kannst das jederzeit in den Einstellungen ändern.</div></div>';
     }
     return '<div class="obOverlay" style="position:fixed;inset:0;z-index:80;background:linear-gradient(170deg,#0e6072 0%,#0a4958 50%,#063540 100%);display:flex;flex-direction:column;padding:calc(40px + env(safe-area-inset-top,0px)) 24px calc(24px + env(safe-area-inset-bottom,0px));color:#fff;overflow-y:auto;max-width:480px;margin:0 auto">'+
       '<div style="display:flex;gap:6px;margin-bottom:28px;flex-shrink:0">'+dots+'</div>'+inner+
-      '<button data-act="obNext" style="width:100%;margin-top:20px;border:none;border-radius:15px;background:#fff;color:#0a4958;font-weight:900;font-size:16px;padding:16px;cursor:pointer;flex-shrink:0">'+(step>=3?'Los geht\'s':'Weiter')+'</button>'+
+      '<button data-act="obNext" style="width:100%;margin-top:20px;border:none;border-radius:15px;background:#fff;color:#0a4958;font-weight:900;font-size:16px;padding:16px;cursor:pointer;flex-shrink:0">'+(step>=4?'Los geht\'s':'Weiter')+'</button>'+
     '</div>';
   }
   // Schlanker FINN-Anreißer für Unterseiten (Training/Fortschritt): Tipp des Tages
@@ -3429,7 +3440,9 @@
   function loadCook(){ api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'cookplan-get'})}).then(function(d){ DATA.nutriCook=(d&&d.ok)?{cookplan:d.cookplan||[],shopping:d.shopping||[]}:{cookplan:[],shopping:[]}; rIf(['ern']); }).catch(function(){ DATA.nutriCook={cookplan:[],shopping:[]}; rIf(['ern']); }); }
   function loadWeek(){ api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'week'})}).then(function(d){ DATA.nutriWeek=(d&&d.ok)?d:{ok:false}; rIf(['ern']); }).catch(function(){ DATA.nutriWeek={ok:false}; rIf(['ern']); }); }
   // FINN-Langzeitgedächtnis (Opt-in) – Zustand + gemerkte Fakten für die Einstellungen laden.
-  function loadFinnMem(){ api('/api/member/coach',{method:'POST',body:JSON.stringify({action:'memory-get'})}).then(function(d){ DATA.finnMem=(d&&d.ok)?{on:!!d.on,items:Array.isArray(d.items)?d.items:[]}:{on:false,items:[]}; rIf(['settings']); }).catch(function(){ DATA.finnMem={on:false,items:[]}; rIf(['settings']); }); }
+  function loadFinnMem(){ var apply=function(o){ DATA.finnMem=o; if(S.screen==='settings'||S.finnOpen) render(); }; api('/api/member/coach',{method:'POST',body:JSON.stringify({action:'memory-get'})}).then(function(d){ apply((d&&d.ok)?{on:!!d.on,decided:!!d.decided,items:Array.isArray(d.items)?d.items:[]}:{on:false,decided:false,items:[]}); }).catch(function(){ apply({on:false,decided:false,items:[]}); }); }
+  // Server-Antwort einer Gedächtnis-Aktion in DATA.finnMem übernehmen (on/decided/items).
+  function finnMemApply(d){ if(d&&d.ok) DATA.finnMem={on:!!d.on,decided:!!d.decided,items:Array.isArray(d.items)?d.items:[]}; }
   // Coaching-Programm (8-Wochen-Reise) laden – eigener Endpunkt, Snapshot in DATA.coach.
   function loadCoach(){ api('/api/member/nutrition-coach').then(function(d){ DATA.coach=(d&&d.ok)?d:{ok:false,available:!!(d&&d.available)}; rIf(['ern','coach']); }).catch(function(){ DATA.coach={ok:false,available:false}; rIf(['ern','coach']); }); }
   // Training-Tab: Tipp, Inspiration, Trainingsplan-Bibliothek + „Mein Plan" (api/member/training).
@@ -7136,7 +7149,7 @@
         else { try{ alert('Ernährungs-Modul: Testmodus AUS.'); }catch(e){} if(S.screen==='ern'||S.screen==='social'){ nav('home'); } else { render(); } }
       }
     },
-    openFinn:function(topic){ S.finnTopic=(topic==='ernaehrung'||topic==='training')?topic:''; setS({finnOpen:true}); setTimeout(function(){ var t=$('finn_q'); if(t) t.focus(); finnScrollBottom(); },60); },
+    openFinn:function(topic){ S.finnTopic=(topic==='ernaehrung'||topic==='training')?topic:''; if(DATA.finnMem==null) loadFinnMem(); setS({finnOpen:true}); setTimeout(function(){ var t=$('finn_q'); if(t) t.focus(); finnScrollBottom(); },60); },
     // Schnellfrage aus dem Coach-Hub: FINN-Chat öffnen und die Frage direkt senden.
     finnQuick:function(q){ S.finnTopic=''; setS({finnOpen:true}); setTimeout(function(){ var t=$('finn_q'); if(t){ t.value=q||''; } ACT.finnSend(); },140); },
     finnRefresh:function(){ S.finnTip=''; S.finnTipLoaded=false; loadFinnTip(); render(); },
@@ -7150,7 +7163,10 @@
     obFreq:function(a){ setS({obFreq:parseInt(a,10)||3}); },
     obAge:function(a){ var d=parseInt(a,10)||0; setS({obAge:Math.max(14,Math.min(99,(S.obAge||34)+d))}); },
     obExp:function(a){ setS({obExp:a}); },
-    obNext:function(){ if((S.obStep||0)>=3){ try{ localStorage.setItem('fi_ob_v1',JSON.stringify({goal:S.obGoal,freq:S.obFreq,age:S.obAge,exp:S.obExp})); }catch(e){} S.finnTipLoaded=false;
+    obMemToggle:function(){ setS({obMemConsent:!S.obMemConsent}); },
+    obNext:function(){ if((S.obStep||0)>=4){ try{ localStorage.setItem('fi_ob_v1',JSON.stringify({goal:S.obGoal,freq:S.obFreq,age:S.obAge,exp:S.obExp})); }catch(e){} S.finnTipLoaded=false;
+        // FINN-Gedächtnis-Einwilligung aus dem Onboarding übernehmen (Ja ODER Nein = Entscheidung getroffen).
+        try{ api('/api/member/coach',{method:'POST',body:JSON.stringify({action:'memory-optin',on:!!S.obMemConsent})}).then(function(d){ finnMemApply(d); }).catch(function(){}); }catch(e){}
         // Direkt nach den Onboarding-Fragen: einmalige App-Tour (Schritt für Schritt).
         var tourSeen='1'; try{ tourSeen=localStorage.getItem('fi_tour_v1'); }catch(e){}
         if(!tourSeen){ S.screen='home'; S.tourKey='app'; S.tourStep=0; try{ window.scrollTo(0,0); }catch(e){} }
@@ -7708,11 +7724,14 @@
     },
     // FINN-Gedächtnis (Opt-in) verwalten: aktivieren/deaktivieren, einzeln vergessen, alles löschen.
     finnMemToggle:function(){ if(S.finnMemBusy) return; var cur=!!(DATA.finnMem&&DATA.finnMem.on); S.finnMemBusy=true; render();
-      api('/api/member/coach',{method:'POST',body:JSON.stringify({action:'memory-optin',on:!cur})}).then(function(d){ S.finnMemBusy=false; if(d&&d.ok) DATA.finnMem={on:!!d.on,items:Array.isArray(d.items)?d.items:[]}; render(); }).catch(function(){ S.finnMemBusy=false; render(); }); },
+      api('/api/member/coach',{method:'POST',body:JSON.stringify({action:'memory-optin',on:!cur})}).then(function(d){ S.finnMemBusy=false; finnMemApply(d); render(); }).catch(function(){ S.finnMemBusy=false; render(); }); },
+    // Einwilligungs-Frage zu Beginn des FINN-Chats: Ja/Nein zählt beides als Entscheidung.
+    finnMemDecide:function(a){ if(S.finnMemBusy) return; var yes=(a==='yes'); S.finnMemBusy=true; render();
+      api('/api/member/coach',{method:'POST',body:JSON.stringify({action:'memory-optin',on:yes})}).then(function(d){ S.finnMemBusy=false; finnMemApply(d); render(); }).catch(function(){ S.finnMemBusy=false; render(); }); },
     finnMemForget:function(a){ var text=decodeURIComponent(a||''); if(!text) return;
-      api('/api/member/coach',{method:'POST',body:JSON.stringify({action:'memory-forget',text:text})}).then(function(d){ if(d&&d.ok) DATA.finnMem={on:!!d.on,items:Array.isArray(d.items)?d.items:[]}; render(); }).catch(function(){}); },
+      api('/api/member/coach',{method:'POST',body:JSON.stringify({action:'memory-forget',text:text})}).then(function(d){ finnMemApply(d); render(); }).catch(function(){}); },
     finnMemClear:function(){ if(!confirm('Alles löschen, was FINN sich gemerkt hat?')) return;
-      api('/api/member/coach',{method:'POST',body:JSON.stringify({action:'memory-clear'})}).then(function(d){ if(d&&d.ok) DATA.finnMem={on:!!d.on,items:Array.isArray(d.items)?d.items:[]}; render(); }).catch(function(){}); },
+      api('/api/member/coach',{method:'POST',body:JSON.stringify({action:'memory-clear'})}).then(function(d){ finnMemApply(d); render(); }).catch(function(){}); },
     togglePush:function(){ var prev=!(DATA.prefs&&DATA.prefs.push===false); var val=!prev; DATA.prefs=DATA.prefs||{}; DATA.prefs.push=val; setS({});
       var revert=function(){ DATA.prefs.push=prev; render(); };
       api('/api/member/prefs',{method:'POST',body:JSON.stringify({push:val})}).then(function(r){ if(r&&r.prefs){ DATA.prefs=r.prefs; render(); } else { revert(); } }).catch(revert); },

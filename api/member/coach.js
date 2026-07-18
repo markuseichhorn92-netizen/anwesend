@@ -159,7 +159,7 @@ module.exports = async function handler(req, res) {
       else if (action === 'memory-clear') mem = await FinnMemory.clear(sess.id);
       else mem = await FinnMemory.get(sess.id);   // memory-get
       res.statusCode = 200;
-      return res.end(JSON.stringify({ ok: true, on: mem.on, items: mem.items.map((x) => x.t) }));
+      return res.end(JSON.stringify({ ok: true, on: mem.on, decided: !!mem.decided, items: mem.items.map((x) => x.t) }));
     }
 
     if (!(await M.rateLimit('coach-chat:' + sess.id, 40, 3600))) {
