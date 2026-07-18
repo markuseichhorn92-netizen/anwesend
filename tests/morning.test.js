@@ -133,6 +133,19 @@ function run() {
   ok('20b. höhere HRV -> jüngeres HRV-Alter im Verlauf', hs[2].age < hs[0].age);
   ok('20c. hrvAgeSeries ignoriert Messungen ohne HRV', MO.hrvAgeSeries([MO.sanitize({ date: '2026-07-18', rhr: 55 })]).length === 0);
 
+  // 21. Übertrainings-/Erholungs-Frühwarnung
+  const otBase = ['2026-07-13', '2026-07-12', '2026-07-11', '2026-07-10'].map((dt) => MO.sanitize({ date: dt, rhr: 55, hrvRmssd: 60 }));
+  const otAlert = [MO.sanitize({ date: '2026-07-18', rhr: 63, hrvRmssd: 48 }), MO.sanitize({ date: '2026-07-17', rhr: 62, hrvRmssd: 49 }), MO.sanitize({ date: '2026-07-16', rhr: 61, hrvRmssd: 50 })].concat(otBase);
+  ok('21. overtraining alert bei 3 belasteten Messungen', MO.overtraining(otAlert).level === 'alert' && MO.overtraining(otAlert).days === 3);
+  ok('21b. overtraining ok bei erholtem jüngsten Tag', MO.overtraining([MO.sanitize({ date: '2026-07-18', rhr: 54, hrvRmssd: 61 })].concat(otBase)).level === 'ok');
+  ok('21c. overtraining ok bei <3 Messungen', MO.overtraining([MO.sanitize({ rhr: 55 })]).level === 'ok');
+
+  // 22. FINN-Vollkontext (toPromptText) mit Kraft/Zonen, Trainings-Check-in, HRV-Alter, Übertraining
+  const ctx = MO.toPromptText(otAlert, { trList: [MO.sanitize({ rhr: 60, hrvRmssd: 50 })], age: 41 });
+  ok('22. FINN-Kontext nennt Belastungsempfehlung (Cardio & Kraft)', /Belastungsempfehlung/.test(ctx) && /Kraft/.test(ctx));
+  ok('22b. FINN-Kontext nennt Übertrainings-Signal', /Übertrainings-Signal/.test(ctx));
+  ok('22c. FINN-Kontext nennt HRV-Fitnessalter + Trainings-Check-in', /HRV-Fitnessalter/.test(ctx) && /Trainings-Check-in/.test(ctx));
+
   console.log(pass ? 'MORNING PASS' : 'MORNING FAIL');
   process.exit(pass ? 0 : 1);
 }

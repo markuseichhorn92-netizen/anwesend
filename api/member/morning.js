@@ -58,6 +58,7 @@ async function readState(id) {
     zones: MO.trainingZones(age),
     trainingLoad: readiness ? MO.trainingLoad(readiness, latest) : null,
     insights: MO.insights(list),
+    overtraining: MO.overtraining(list),
     trend: MO.trend(list),
     minCalib: MO.MIN_CALIB,
     vitalLedger: MO.vpLedger(list).concat(MO.vpLedgerTraining(trList)),

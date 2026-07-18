@@ -191,9 +191,13 @@ module.exports = async function handler(req, res) {
     try { profileText = MemberProfile.toPromptText(await MemberProfile.get(sess.id)); } catch (e) {}
     // InBody-Körperanalyse (falls eingescannt): Werte + Trend als Kontext für fundierte Tipps.
     let inbodyText = '';
-    try { const IB = require('../../lib/inbody'); const p = await MemberProfile.get(sess.id); inbodyText = IB.toPromptText(await IB.list(sess.id), p && p.sex); } catch (e) {}
+    let mprof = null;
+    try { mprof = await MemberProfile.get(sess.id); } catch (e) {}
+    try { const IB = require('../../lib/inbody'); inbodyText = IB.toPromptText(await IB.list(sess.id), mprof && mprof.sex); } catch (e) {}
+    // Vital-Check: FINN bekommt das ganze Bild – Ampel, Balance, HRV-Alter, Cardio-/Kraft-Empfehlung,
+    // Trainings-Check-in, Übertrainings-Signal und erkannte Muster (nur bei Einwilligung).
     let morningText = '';
-    try { const MO = require('../../lib/morning'); if (await MO.getConsent(sess.id)) morningText = MO.toPromptText(await MO.list(sess.id)); } catch (e) {}
+    try { const MO = require('../../lib/morning'); if (await MO.getConsent(sess.id)) morningText = MO.toPromptText(await MO.list(sess.id), { trList: await MO.trList(sess.id), age: (mprof && mprof.age) || 0 }); } catch (e) {}
     // Datenminimierung: nur Vorname + Tarif + aggregierte Live-Daten (+ ggf. Profil/Gemerktes) an die KI –
     // Nachname/Mitgliedsnummer sind für die Antwort nicht erforderlich.
     const member = {

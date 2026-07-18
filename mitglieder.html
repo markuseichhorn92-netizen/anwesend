@@ -4791,6 +4791,15 @@
   // Reine Coaching-Erkenntnisse: ganzheitlicher Blick + Abschnitt Training + Abschnitt Ernährung.
   // Datenbasiert (sofort, datensparsam) – die FINN-Analyse (KI) ergänzt den ganzheitlichen Blick auf Tipp.
   function coachHolistic(){
+    // Vital-Check steuert den Tages-Blick: Übertraining/Rot/Grün haben Vorrang vor allem anderen.
+    var mo=(DATA.morning&&DATA.morning.ok)?DATA.morning:null;
+    if(mo){
+      var ot=mo.overtraining;
+      if(ot&&ot.level==='alert') return 'Dein Vital-Check schlägt Alarm: die Erholung ist seit Tagen unter deiner Baseline. Heute bewusst regenerieren – leichte Bewegung, guter Schlaf – und morgen neu bewerten.';
+      var rd=mo.readiness, mlat=mo.latest;
+      if(rd&&mlat&&rd.level==='rot') return 'Dein Vital-Check steht heute auf Rot – dein Körper ist noch nicht erholt. Nimm die Intensität raus: leichtes Cardio (Zone 1–2) oder ein Ruhetag bringen dich heute weiter als ein harter Reiz.';
+      if(rd&&mlat&&rd.level==='gruen') return 'Grünes Licht vom Vital-Check: du bist top erholt. Heute darf es ein intensiver Reiz sein – schwere Sätze oder ein forderndes Cardio nutzen dein Erholungsfenster.';
+    }
     var d=DATA.training||{}, mp=d.myPlan&&d.myPlan.plan, n=DATA.nutri;
     var visits=0; try{ var cutoff=Date.now()-7*864e5; (DATA.checkins||[]).forEach(function(x){ if(x&&x.in&&Date.parse(x.in)>=cutoff) visits++; }); }catch(e){}
     var goal=(mp&&mp.daysPerWeek)||3;
@@ -5351,9 +5360,18 @@
     }
     return trainWeekCard()+visits+unitsCard;
   }
+  // Bereitschafts-Banner fürs Training: Vital-Check-Ampel + heutige Cardio-/Kraft-Intensität.
+  function meinTagReadyBanner(){
+    var d=(DATA.morning&&DATA.morning.ok)?DATA.morning:null; if(!d) return '';
+    var r=d.readiness, m=d.latest; if(!m||!r||!r.level) return '';
+    var map={gruen:{emo:'🟢',col:'#176b37',bg:'#E7F6EC',t:'Bereit für Vollgas',s:'Cardio Zone 3–5 · Kraft schwer (85–95 %) möglich'},gelb:{emo:'🟡',col:'#9a5a18',bg:'#FBF0E3',t:'Moderat starten',s:'Cardio Zone 2–3 · Kraft moderat (70–80 %)'},rot:{emo:'🔴',col:'#b4552f',bg:'#FBECE8',t:'Heute erholen',s:'Cardio Zone 1–2 · Kraft leicht (≤60 %) oder Ruhetag'}};
+    var s=map[r.level]; if(!s) return '';
+    return '<div data-act="nav" data-arg="morning" style="display:flex;align-items:center;gap:11px;background:'+s.bg+';border-radius:15px;padding:12px 14px;margin-bottom:12px;cursor:pointer"><span style="font-size:20px">'+s.emo+'</span><div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:900;color:'+s.col+'">Vital-Check: '+esc(s.t)+'</div><div style="font-size:11.5px;font-weight:600;color:var(--text-2);margin-top:1px">'+esc(s.s)+'</div></div>'+svg('<path d="M9 18l6-6-6-6"></path>',{c:s.col,w:2.2,s:16})+'</div>';
+  }
   function scrMeinTag(){
     if(DATA.training==null) loadTraining();
     if(!DATA.checkins) loadCheckins();   // Wochen-Ring braucht die Studio-Besuche
+    if(DATA.morning==null) loadMorning(); // Bereitschafts-Banner (Vital-Check)
     var wrap=function(inner){ return '<div class="ernwrap" style="padding-bottom:calc(96px + env(safe-area-inset-bottom,0px))">'+inner+'</div>'; };
     // Vollbild-Unteransichten (Zurück führt zurück ins jeweilige Segment).
     if(S.trainExDetail) return wrap('<div style="padding:14px 2px 0">'+trainExDetailSheet()+'</div>');
@@ -5373,7 +5391,7 @@
     else if(seg==='plaene'){ body=trainingGenCta(d)+trainingLibrary(d)+trainingInspiration(d)+trainingBookCta(); }
     else if(seg==='uebungen'){ body=trainExSegment(d); }
     else if(seg==='verlauf'){ body=trainVerlauf(); }
-    else { var mp=d.myPlan&&d.myPlan.plan; body=coachTipStrip()+((mp&&mp.days&&mp.days.length)?meinTagTodayCard(mp):meinTagTrainCta()); }
+    else { var mp=d.myPlan&&d.myPlan.plan; body=meinTagReadyBanner()+coachTipStrip()+((mp&&mp.days&&mp.days.length)?meinTagTodayCard(mp):meinTagTrainCta()); }
     return wrap(header+'<div style="padding:0 2px">'+finnAskRow('training')+body+'</div>');
   }
   // Übungen nach Suchtext + Muskelgruppe filtern (lokal aus dem GET-Payload).
@@ -6713,6 +6731,12 @@
       '<div style="font-size:12px;font-weight:800;color:rgba(255,255,255,.8);text-transform:uppercase;letter-spacing:.5px">Bereitschaft'+dateLab+'</div>'+
       '<div style="display:flex;align-items:center;gap:14px;margin-top:8px"><div style="font-size:46px;line-height:1">'+L.emo+'</div><div style="min-width:0"><div style="font-size:23px;font-weight:900;letter-spacing:-.3px;line-height:1.1">'+esc(r.headline||L.lab)+'</div><div style="font-size:13px;color:rgba(255,255,255,.85);font-weight:700;margin-top:2px">Score '+(r.score!=null?r.score:'—')+'/100</div></div></div>'+chips+'</div>';
   }
+  // Übertrainings-/Erholungs-Frühwarnung (nur bei warn/alert).
+  function moOvertrainingCard(){
+    var d=morningData(); if(!d) return ''; var ot=d.overtraining; if(!ot||ot.level==='ok') return '';
+    var alert=ot.level==='alert'; var col=alert?'#b4552f':'#9a5a18'; var bg=alert?'#FBECE8':'#FBF0E3'; var bd=alert?'#f0cabb':'#efd9b8'; var ic=alert?'🚨':'⚠️';
+    return '<div style="'+MO_CARD+';background:'+bg+';border:1px solid '+bd+'"><div style="display:flex;align-items:flex-start;gap:12px"><span style="font-size:22px;line-height:1">'+ic+'</span><div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:900;color:'+col+'">'+(alert?'Erholung dringend nötig':'Achtung: Erholung sinkt')+'</div><div style="font-size:12.5px;color:var(--text-2);font-weight:600;line-height:1.5;margin-top:3px">'+esc(ot.note)+'</div></div></div></div>';
+  }
   // Belastungssteuerung (konkrete Trainings-Empfehlung aus der Ampel).
   function moLoadCard(){
     var d=morningData(); if(!d) return ''; var tl=d.trainingLoad; if(!tl||tl.key==='kalibrierung') return '';
@@ -7015,7 +7039,7 @@
     } else {
       blocks.push(moMeasureCard('morgen'));
       if(d.latest){
-        blocks.push(moReadinessHero()); blocks.push(moLoadCard()); blocks.push(moZonesCard(d.readiness&&d.readiness.level)); blocks.push(moStrengthCard(d.readiness&&d.readiness.level)); blocks.push(moBalanceCard()); blocks.push(moBioAgeCard());
+        blocks.push(moReadinessHero()); blocks.push(moOvertrainingCard()); blocks.push(moLoadCard()); blocks.push(moZonesCard(d.readiness&&d.readiness.level)); blocks.push(moStrengthCard(d.readiness&&d.readiness.level)); blocks.push(moBalanceCard()); blocks.push(moBioAgeCard());
         blocks.push(moEvalCard()); blocks.push(moCheckinCard()); blocks.push(moBreatheEntry()); blocks.push(moTrendCard()); blocks.push(moInsightsCard()); blocks.push(moCurvesCard()); blocks.push(moFinnCard()); blocks.push(moHistoryCard());
       } else { blocks.push(intro); blocks.push(moBreatheEntry()); }
     }
