@@ -36,7 +36,7 @@
   // bedenkenlos FitInnNative.* aufrufen kann.
   var API = {
     isNative: isNative,
-    __ver: '6',
+    __ver: '7',
     platform: isNative && Cap.getPlatform ? Cap.getPlatform() : 'web',
     onAuthed: function () {},
     onTeamAuthed: function () {},
@@ -141,8 +141,13 @@
       : !!Ble;
   } catch (e) { API.available.hr = !!Ble; }
   var hrState = { deviceId: null, listener: null };
-  function b64ToBytes(b64) {
-    try { var bin = atob(String(b64 || '')); var a = new Uint8Array(bin.length); for (var i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i); return a; } catch (e) { return new Uint8Array(0); }
+  // Das Roh-Plugin liefert Characteristic-Werte als HEX-String (nicht base64) und
+  // sendet Notifications unter dem Event-Namen `notification|<deviceId>|<service>|<char>`.
+  function hexToBytes(hex) {
+    hex = String(hex == null ? '' : hex).replace(/[^0-9a-fA-F]/g, '');
+    var a = new Uint8Array(hex.length >> 1);
+    for (var i = 0; i < a.length; i++) a[i] = parseInt(hex.substr(i * 2, 2), 16);
+    return a;
   }
   // Heart-Rate-Measurement (0x2A37) parsen: Flags-Byte, dann 8- oder 16-Bit-BPM,
   // optional Energie + R-R-Intervalle (1/1024 s -> ms).
@@ -162,7 +167,10 @@
       .then(function () { return Ble.requestDevice ? Ble.requestDevice({ services: [HR_SERVICE] }) : null; })
       .then(function (dev) { hrState.deviceId = dev && (dev.deviceId || (dev.device && dev.device.deviceId)); if (!hrState.deviceId) throw new Error('no_device'); return Ble.connect({ deviceId: hrState.deviceId }); })
       .then(function () {
-        if (Ble.addListener) hrState.listener = Ble.addListener('notification', function (ev) { var hr = parseHR(b64ToBytes(ev && (ev.value || ev.data))); if (hr) cb(hr); });
+        if (Ble.addListener) {
+          var evKey = 'notification|' + hrState.deviceId + '|' + HR_SERVICE + '|' + HR_MEAS;
+          hrState.listener = Ble.addListener(evKey, function (ev) { var hr = parseHR(hexToBytes(ev && ev.value)); if (hr) cb(hr); });
+        }
         return Ble.startNotifications ? Ble.startNotifications({ deviceId: hrState.deviceId, service: HR_SERVICE, characteristic: HR_MEAS }) : null;
       })
       .then(function () { return { ok: true }; })

@@ -395,7 +395,7 @@
   }catch(e){}
 })();
 </script>
-<script src="/assets/native.js?v=7" defer></script>
+<script src="/assets/native.js?v=8" defer></script>
 </head>
 <body>
 <div class="sbTop"></div>
@@ -6612,13 +6612,14 @@
     var d=morningData(); if(!d) return;
     if(!d.premium){ ernEnsureModulePrice(); setS({ernUpgrade:true}); return; }
     if(!d.consent){ S.morningPhase='consent'; setS({}); return; }
-    moHR={ samples:[], rr:[], timer:null, stop:null, startTs:Date.now() };
+    moHR={ samples:[], rr:[], timer:null, stop:null, startTs:0 };
     S.morningPhase='connecting'; S.morningErr=false; S.morningMsg=''; S.morningLiveBpm=null; S.morningElapsed=0; render();
     moHR.stop=moBleStart(function(bpm,rr){
-      if(S.morningPhase==='connecting') S.morningPhase='measuring';
+      if(S.morningPhase==='connecting'){ S.morningPhase='measuring'; moHR.startTs=Date.now(); }  // Countdown erst ab dem ersten echten Puls
       moHR.samples.push({t:Date.now(),bpm:bpm});
       if(rr&&rr.length) rr.forEach(function(x){ if(x>=300&&x<=2000) moHR.rr.push(x); });
       S.morningLiveBpm=bpm;
+      render();
     },function(code){ moStopMeasure(); S.morningPhase='idle'; S.morningErr=true; S.morningMsg=moErrMsg(code); setS({}); });
     moHR.timer=setInterval(function(){ if(!moHR.startTs) return; S.morningElapsed=Math.round((Date.now()-moHR.startTs)/1000); if(S.morningElapsed>=MO_SECS){ moFinishMeasure(); } else { render(); } },1000);
   }
