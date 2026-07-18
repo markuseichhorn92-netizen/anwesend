@@ -7412,9 +7412,14 @@
     if(S.morningBreathe) return moBreatheCard();
     if(S.morningPhase==='journal') return moJournalCard();
     var mode=S.vitalMode==='training'?'training':'morgen';
+    // Herzgurt-Werbung (kaufen/reservieren) in BEIDEN Tabs – aber nur für Mitglieder ohne
+    // funktionierenden Gurt (noch keine Messung); wer schon misst, hat einen. Reserviert = Erinnerung.
+    var hasMeasured=!!(d.latest || (d.training&&d.training.latest));
+    var strapAd=(!hasMeasured || S.morningStrapReserved || d.strapReserved) ? moStrapOfferCard() : '';
     blocks.push(vitalSegment());
     if(mode==='training'){
       blocks.push(moMeasureCard('training'));
+      if(strapAd) blocks.push(strapAd);
       var tr=d.training||{};
       if(tr.latest){ blocks.push(moTrainVerdictCard()); blocks.push(moZonesCard(tr.readiness&&tr.readiness.level)); blocks.push(moStrengthCard(tr.readiness&&tr.readiness.level)); }
       else if(!tr.hasBaseline){ blocks.push('<div style="'+MO_CARD+'"><div style="font-size:13px;color:var(--text-soft);font-weight:600;line-height:1.55">Der Trainings-Check-in vergleicht deinen Puls mit deiner <b>Morgen-Baseline</b>. Mach zuerst ein paar Morgen-Check-ins – dann wird der Trainings-Check aussagekräftig.</div></div>'); }
@@ -7424,7 +7429,8 @@
       if(d.latest){
         blocks.push(moReadinessHero()); blocks.push(moOvertrainingCard()); blocks.push(moLoadCard()); blocks.push(moZonesCard(d.readiness&&d.readiness.level)); blocks.push(moStrengthCard(d.readiness&&d.readiness.level)); blocks.push(moBalanceCard()); blocks.push(moBioAgeCard());
         blocks.push(moEvalCard()); blocks.push(moCheckinCard()); blocks.push(moBreatheEntry()); blocks.push(moWeeklyCard()); blocks.push(moTrendCard()); blocks.push(moInsightsCard()); blocks.push(moCurvesCard()); blocks.push(moFinnCard()); blocks.push(moHistoryCard()); blocks.push(moTeamShareCard());
-      } else { blocks.push(intro); blocks.push(moStrapOfferCard()); blocks.push(moBreatheEntry()); }
+        if(strapAd) blocks.push(strapAd);
+      } else { blocks.push(intro); if(strapAd) blocks.push(strapAd); blocks.push(moBreatheEntry()); }
     }
     return moWrap(head,blocks);
   }
