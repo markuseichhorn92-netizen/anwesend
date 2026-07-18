@@ -4773,6 +4773,20 @@
   function trMuscleInfo(group){ var m=(DATA.training&&DATA.training.exerciseMuscles)||{}; return m[group]||m.ganzkoerper||{primary:'',regions:['fullbody'],desc:''}; }
   // Kurzbeschreibung/Cue aus der Übungs-DB (sonst plan-eigene Notiz).
   function trExCueOf(e){ if(!e) return ''; var list=(DATA.training&&DATA.training.exercises)||[]; var nn=trainExNorm(e.name), mm=trainExNorm(e.machine||''); for(var i=0;i<list.length;i++){ if(trainExNorm(list[i].name)===nn && (!mm||trainExNorm(list[i].machine)===mm)) return list[i].cue||''; } for(var j=0;j<list.length;j++){ if(trainExNorm(list[j].name)===nn) return list[j].cue||''; } return e.note||''; }
+  // Übungs-Detail aus verschiedenen Quellen auflösen: Tracker-Key / DB-Id (x:) / Plan (p:) / Name (n:).
+  function trFindPlan(pid){ var d=DATA.training||{}; if(d.myPlan&&d.myPlan.plan&&String(d.myPlan.plan.id)===String(pid)) return d.myPlan.plan; if(S.trainDetailFull&&String(S.trainDetailFull.id)===String(pid)) return S.trainDetailFull; var lib=Array.isArray(d.plans)?d.plans:[]; for(var i=0;i<lib.length;i++){ if(String(lib[i].id)===String(pid)) return lib[i]; } return null; }
+  function trExByName(nm){ var list=(DATA.training&&DATA.training.exercises)||[]; var nn=trainExNorm(nm); for(var i=0;i<list.length;i++){ if(trainExNorm(list[i].name)===nn) return list[i]; } return null; }
+  function trResolveExDetail(tok){ tok=String(tok||'');
+    if(/^d\d+e\d+$/.test(tok)) return trainExByKey(tok);
+    if(tok.indexOf('x:')===0){ var id=tok.slice(2); var list=(DATA.training&&DATA.training.exercises)||[]; for(var i=0;i<list.length;i++){ if(String(list[i].id)===id) return list[i]; } return null; }
+    if(tok.indexOf('p:')===0){ var pp=tok.slice(2).split(':'); var p=trFindPlan(pp[0]); if(!p||!p.days) return null; var day=p.days[parseInt(pp[1],10)||0]; return (day&&day.exercises&&day.exercises[parseInt(pp[2],10)||0])||null; }
+    if(tok.indexOf('n:')===0){ var nm=tok.slice(2); return trExByName(nm)||{name:nm}; }
+    return null;
+  }
+  // Sätze kompakt darstellen: "60 kg × 10 · 62,5 kg × 8".
+  function trSetSummary(entries){ if(!Array.isArray(entries)||!entries.length) return ''; return entries.map(function(en){ var w=(en.w!=null&&en.w>0)?(String(en.w).replace('.',',')+' kg'):''; var r=(en.reps>0)?en.reps:0; if(w&&r) return w+' × '+r; if(w) return w; if(r) return r+' Wdh'; return '–'; }).join(' · '); }
+  // Verlauf einer bestimmten Übung aus den absolvierten Einheiten (neueste zuerst).
+  function trExHistory(exName){ var units=(DATA.training&&Array.isArray(DATA.training.units))?DATA.training.units:[]; var nn=trainExNorm(exName); var out=[]; for(var i=0;i<units.length && out.length<10;i++){ var u=units[i]; (u.ex||[]).forEach(function(x){ if(trainExNorm(x.n)===nn) out.push({date:u.t, x:x}); }); } return out; }
   // Schematisches Körperdiagramm (Vorder-/Rückseite) – trainierte Muskeln farbig hervorgehoben.
   function muscleBodySvg(regions){
     var set={}; (regions||[]).forEach(function(r){ set[r]=1; });
@@ -4873,8 +4887,8 @@
   }
   // Übungs-Detail (Vollbild): Beschreibung + Muskeldiagramm; KI-Geräte mit App-Link.
   function trainExDetailSheet(){
-    var key=S.trainExDetail; var e=trainExByKey(key);
-    var back=subBack('trExDetailClose','Zur Einheit');
+    var e=trResolveExDetail(S.trainExDetail);
+    var back=subBack('trExDetailClose','Zurück');
     if(!e){ return '<div style="padding:0 2px">'+back+trainCardBox('<div style="font-size:14px;font-weight:600;color:var(--text-soft)">Übung nicht gefunden.</div>')+'</div>'; }
     var tg=trIsTg(e); var grp=trExGroupOf(e); var mi=trMuscleInfo(grp); var cue=trExCueOf(e);
     var glabel=((DATA.training&&DATA.training.exerciseGroups)||[]).reduce(function(m,g){ m[g[0]]=g[1]; return m; },{})[grp]||'';
@@ -4886,7 +4900,10 @@
     var diagram=trainCardBox('<div style="font-size:12px;font-weight:900;color:var(--ern-acc);text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px">Trainierte Muskeln</div>'+muscleBodySvg(mi.regions)+(mi.primary?'<div style="font-size:13px;font-weight:800;color:var(--text);text-align:center;margin-top:10px">'+esc(mi.primary)+'</div>':'')+(mi.desc?'<div style="font-size:12.5px;font-weight:500;color:var(--text-2);line-height:1.5;margin-top:6px;text-align:center">'+esc(mi.desc)+'</div>':''),'16px');
     var howto=cue?trainCardBox('<div style="font-size:12px;font-weight:900;color:var(--ern-acc);text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">So führst du sie aus</div><div style="font-size:14px;font-weight:600;color:var(--text);line-height:1.55">'+esc(cue)+'</div>','16px'):'';
     var tgBox=tg?trainCardBox('<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px"><span style="width:34px;height:34px;border-radius:10px;background:'+ERN_GD+';display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:17px">🤖</span><div style="font-size:14.5px;font-weight:900;color:var(--text)">Am Gerät anmelden</div></div><div style="font-size:13px;font-weight:500;color:var(--text-2);line-height:1.55;margin-bottom:12px">Melde dich per <b style="color:var(--teal-ink)">Technogym-App</b> oder deinem <b style="color:var(--teal-ink)">Band</b> am Gerät an – Sitz, Gewicht und Progression stellt die KI automatisch ein.</div><a href="'+TG_APP_URL+'" target="_blank" rel="noopener" style="display:flex;align-items:center;justify-content:center;gap:8px;text-decoration:none;background:'+ERN_G+';color:#fff;border-radius:13px;padding:13px;font-weight:900;font-size:14px">📲 Technogym-App öffnen'+svg('<path d="M7 17L17 7M9 7h8v8"></path>',{c:'#fff',w:2.2,s:16})+'</a>','16px'):'';
-    return '<div style="padding:0 2px 96px">'+back+hero+diagram+howto+tgBox+'</div>';
+    var histList=trExHistory(e.name);
+    var histRows=histList.map(function(h){ var sets=trSetSummary(h.x.entries); var val=sets?sets:(h.x.bio?'🤖 KI-Gerät':((h.x.sets||0)+' Satz'+((h.x.sets===1)?'':'ätze'))); return '<div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:9px 0;border-top:1px solid var(--border)"><span style="font-size:12.5px;font-weight:800;color:var(--text);flex-shrink:0">'+deDate(h.date+'T12:00:00')+'</span><span style="font-size:12.5px;font-weight:600;color:var(--text-2);text-align:right">'+esc(val)+'</span></div>'; }).join('');
+    var hist=histList.length?trainCardBox('<div style="font-size:12px;font-weight:900;color:var(--ern-acc);text-transform:uppercase;letter-spacing:.4px;margin-bottom:2px">Dein Verlauf</div>'+histRows,'16px'):'';
+    return '<div style="padding:0 2px 96px">'+back+hero+diagram+howto+hist+tgBox+'</div>';
   }
   // Abschluss-Zusammenfassung nach „Einheit abschließen": VP, kcal, (Premium) FINN.
   function trainFinishOverlay(){
@@ -5033,7 +5050,7 @@
       '<div style="display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:700;color:#cfe8ec;margin-top:6px"><span>'+exs.length+' Übungen</span><span style="opacity:.5">·</span><span>ca. '+est+' Min</span></div>'+
       progRow+
       '<button data-act="trainRun" style="width:100%;margin-top:16px;padding:15px;border:none;border-radius:14px;background:#ffffff;color:#0A4958;font-weight:900;font-size:15.5px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px">'+(allDone?'':'<span style="font-size:13px">▶</span>')+btnLabel+'</button></div>';
-    var preview=exs.length?trainCardBox('<div style="font-size:12px;font-weight:900;color:var(--ern-acc);text-transform:uppercase;letter-spacing:.4px;margin-bottom:2px">Das erwartet dich</div>'+exs.map(function(e,ix){ var dn=trainSessItem('d'+di+'e'+ix).done; return '<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--border)"><span style="width:22px;height:22px;border-radius:50%;background:'+(dn?ERN_G:'var(--surface-2)')+';color:'+(dn?'#fff':'var(--text-soft)')+';font-size:11px;font-weight:900;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+(dn?'✓':(ix+1))+'</span><div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:800;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(e.name)+'</div>'+(e.machine?'<div style="font-size:11px;font-weight:700;color:var(--ern-acc);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">🔧 '+esc(e.machine)+(e.bio?' · 🤖 KI':'')+'</div>':'')+'</div>'+(e.bio?'':'<span style="font-size:11.5px;font-weight:800;color:var(--placeholder);flex-shrink:0">'+esc(e.sets)+'×'+esc(e.reps)+'</span>')+'</div>'; }).join(''),'16px'):'';
+    var preview=exs.length?trainCardBox('<div style="font-size:12px;font-weight:900;color:var(--ern-acc);text-transform:uppercase;letter-spacing:.4px;margin-bottom:2px">Das erwartet dich <span style="color:var(--placeholder);font-weight:700;text-transform:none;letter-spacing:0">· antippen für Details</span></div>'+exs.map(function(e,ix){ var dn=trainSessItem('d'+di+'e'+ix).done; return '<button data-act="trExDetail" data-arg="d'+di+'e'+ix+'" style="display:flex;width:100%;text-align:left;align-items:center;gap:10px;padding:9px 0;border:none;border-top:1px solid var(--border);background:none;cursor:pointer;font-family:inherit"><span style="width:22px;height:22px;border-radius:50%;background:'+(dn?ERN_G:'var(--surface-2)')+';color:'+(dn?'#fff':'var(--text-soft)')+';font-size:11px;font-weight:900;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+(dn?'✓':(ix+1))+'</span><div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:800;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(e.name)+'</div>'+(e.machine?'<div style="font-size:11px;font-weight:700;color:var(--ern-acc);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">🔧 '+esc(e.machine)+(e.bio?' · 🤖 KI':'')+'</div>':'')+'</div>'+(e.bio?'':'<span style="font-size:11.5px;font-weight:800;color:var(--placeholder);flex-shrink:0">'+esc(e.sets)+'×'+esc(e.reps)+'</span>')+svg('<path d="M9 6l6 6-6 6"></path>',{c:'var(--placeholder)',w:2,s:13})+'</button>'; }).join(''),'16px'):'';
     var sec='border:1.5px solid var(--border-strong);background:var(--surface);border-radius:11px;font-size:12.5px;font-weight:800;padding:10px 12px;cursor:pointer;color:var(--teal-ink)';
     var actions='<div style="display:flex;gap:8px;margin:2px 2px 0">'+
       '<button data-act="trainOpen" data-arg="'+esc(mp.id||'')+'" style="flex:1;'+sec+'">Plan ansehen</button>'+
@@ -5072,7 +5089,18 @@
       var rows=recent.map(function(v){ return '<div style="display:flex;align-items:center;gap:11px;padding:11px 0;border-top:1px solid var(--border)"><span style="width:9px;height:9px;border-radius:50%;background:'+ERN_G+';flex-shrink:0"></span><div style="flex:1;min-width:0;font-size:13.5px;font-weight:800;color:var(--text)">'+deDate(v.in)+'</div><div style="font-size:12px;font-weight:600;color:var(--text-soft)">'+deTime(v.in)+' Uhr</div><div style="font-size:12.5px;font-weight:800;color:var(--ern-acc);min-width:44px;text-align:right">'+(dur(v.in,v.out)||'')+'</div></div>'; }).join('');
       visits=trainCardBox('<div style="font-size:12px;font-weight:900;color:var(--ern-acc);text-transform:uppercase;letter-spacing:.4px;margin-bottom:2px">Letzte Besuche</div>'+rows+'<button data-act="nav" data-arg="checkins" style="width:100%;margin-top:12px;padding:11px;border:1.5px solid var(--border-strong);border-radius:11px;background:var(--surface);color:var(--teal-ink);font-size:12.5px;font-weight:800;cursor:pointer">Ganzer Verlauf</button>','16px');
     }
-    return trainWeekCard()+visits;
+    // Absolvierte Einheiten: welche Übung wann + WIE (Sätze/Gewicht) – alles im Detail abrufbar.
+    var units=(DATA.training&&Array.isArray(DATA.training.units))?DATA.training.units:[];
+    var unitsCard='';
+    if(units.length){
+      var uRows=units.slice(0,12).map(function(u){
+        var exH=(u.ex||[]).map(function(x){ var sets=trSetSummary(x.entries); var val=sets?sets:(x.bio?'🤖 KI':((x.sets||0)+'×')); return '<button data-act="trExDetail" data-arg="n:'+esc(x.n)+'" style="display:flex;width:100%;text-align:left;align-items:baseline;justify-content:space-between;gap:10px;padding:7px 0;border:none;border-top:1px solid var(--border);background:none;cursor:pointer;font-family:inherit"><span style="font-size:12.5px;font-weight:700;color:var(--text);min-width:0;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(x.n)+'</span><span style="font-size:12px;font-weight:700;color:var(--text-2);flex-shrink:0">'+esc(val)+'</span></button>'; }).join('');
+        var meta=[]; if(u.durMin) meta.push(u.durMin+' Min'); if(u.vp) meta.push('+'+u.vp+' VP'); if(u.kcal) meta.push('~'+u.kcal+' kcal');
+        return trainCardBox('<div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px"><span style="font-size:14px;font-weight:900;color:var(--text)">'+esc(u.title||'Einheit')+'</span><span style="font-size:12px;font-weight:700;color:var(--text-soft);flex-shrink:0">'+deDate(u.t+'T12:00:00')+'</span></div>'+(meta.length?'<div style="font-size:11.5px;font-weight:700;color:var(--ern-acc);margin-top:2px">'+esc(meta.join(' · '))+'</div>':'')+exH,'15px');
+      }).join('');
+      unitsCard='<div style="font-size:12px;font-weight:900;color:var(--ern-acc);text-transform:uppercase;letter-spacing:.4px;margin:18px 4px 10px">Absolvierte Einheiten</div>'+uRows;
+    }
+    return trainWeekCard()+visits+unitsCard;
   }
   function scrMeinTag(){
     if(DATA.training==null) loadTraining();
@@ -5108,12 +5136,12 @@
   function trainExRows(list){
     if(!list.length) return '<div style="font-size:13px;color:var(--placeholder);font-weight:600;padding:26px 2px;text-align:center">Keine Übung gefunden.</div>';
     return list.map(function(e){
-      return '<div style="background:var(--surface);border-radius:14px;box-shadow:0 6px 18px rgba(4,33,40,.06);padding:13px 14px;margin-bottom:9px">'+
+      return '<button data-act="trExDetail" data-arg="x:'+esc(e.id)+'" style="display:block;width:100%;text-align:left;background:var(--surface);border:none;border-radius:14px;box-shadow:0 6px 18px rgba(4,33,40,.06);padding:13px 14px;margin-bottom:9px;cursor:pointer;font-family:inherit">'+
         '<div style="display:flex;align-items:center;gap:7px"><div style="font-size:14px;font-weight:900;color:var(--text);flex:1;min-width:0">'+esc(e.name)+'</div>'+
         (e.bio?'<span style="background:rgba(14,96,114,.1);color:var(--teal-ink);font-size:10px;font-weight:800;border-radius:6px;padding:2px 6px;flex-shrink:0">🤖 KI</span>':'')+
-        '<span style="background:var(--surface-2);color:var(--text-muted);font-size:10px;font-weight:800;border-radius:6px;padding:2px 7px;flex-shrink:0">'+esc(e.groupLabel||'')+'</span></div>'+
+        '<span style="background:var(--surface-2);color:var(--text-muted);font-size:10px;font-weight:800;border-radius:6px;padding:2px 7px;flex-shrink:0">'+esc(e.groupLabel||'')+'</span>'+svg('<path d="M9 6l6 6-6 6"></path>',{c:'var(--placeholder)',w:2.2,s:15})+'</div>'+
         '<div style="font-size:11.5px;font-weight:700;color:var(--ern-acc);margin-top:4px">🔧 '+esc(e.machine)+' <span style="color:var(--placeholder);font-weight:600">· '+esc(e.equip)+'</span></div>'+
-        '<div style="font-size:12.5px;font-weight:500;color:var(--text-2);line-height:1.45;margin-top:5px">'+esc(e.cue)+'</div></div>';
+        '<div style="font-size:12.5px;font-weight:500;color:var(--text-2);line-height:1.45;margin-top:5px">'+esc(e.cue)+'</div></button>';
     }).join('');
   }
   window.__trExFilter=function(v){ S.trainExQ=v||''; var el=$('tr_ex_list'); if(el) el.innerHTML=trainExRows(trainExFilter((DATA.training&&DATA.training.exercises)||[])); };
@@ -5141,12 +5169,13 @@
     var days='';
     if(Array.isArray(p.days)&&p.days.length){
       days=p.days.map(function(day,di){
-        var ex=(day.exercises||[]).map(function(e){
-          return '<div style="display:flex;gap:10px;padding:10px 0;border-top:1px solid var(--border)">'+
+        var ex=(day.exercises||[]).map(function(e,exIdx){
+          return '<button data-act="trExDetail" data-arg="p:'+esc(p.id)+':'+di+':'+exIdx+'" style="display:flex;width:100%;text-align:left;gap:10px;padding:10px 0;border:none;border-top:1px solid var(--border);background:none;cursor:pointer;font-family:inherit;align-items:center">'+
             '<div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:800;color:var(--text)">'+esc(e.name)+'</div>'+(e.machine?'<div style="font-size:11.5px;font-weight:700;color:var(--ern-acc);margin-top:2px">🔧 '+esc(e.machine)+'</div>':'')+(e.note?'<div style="font-size:11.5px;font-weight:500;color:var(--text-soft);line-height:1.4;margin-top:2px">'+esc(e.note)+'</div>':'')+'</div>'+
             (e.bio
               ? '<div style="text-align:right;flex-shrink:0;max-width:120px"><div style="font-size:10.5px;font-weight:800;color:var(--ern-acc);line-height:1.35">🤖 KI steuert Gewicht &amp; Wdh.</div></div>'
-              : '<div style="text-align:right;flex-shrink:0"><div style="font-size:13px;font-weight:900;color:var(--teal-ink)">'+esc(e.sets)+' × '+esc(e.reps)+'</div><div style="font-size:11px;font-weight:600;color:var(--placeholder)">Pause '+esc(e.rest)+'</div></div>')+'</div>';
+              : '<div style="text-align:right;flex-shrink:0"><div style="font-size:13px;font-weight:900;color:var(--teal-ink)">'+esc(e.sets)+' × '+esc(e.reps)+'</div><div style="font-size:11px;font-weight:600;color:var(--placeholder)">Pause '+esc(e.rest)+'</div></div>')+
+            svg('<path d="M9 6l6 6-6 6"></path>',{c:'var(--placeholder)',w:2,s:14})+'</button>';
         }).join('');
         return trainCardBox('<div style="display:flex;align-items:center;gap:9px;margin-bottom:2px"><div style="width:26px;height:26px;border-radius:8px;background:'+ERN_G+';color:#fff;font-size:12.5px;font-weight:900;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+(di+1)+'</div><div style="font-size:15px;font-weight:900;color:var(--text)">'+esc(day.name)+'</div></div>'+(day.subtitle?'<div style="font-size:12px;font-weight:600;color:var(--text-soft);margin:1px 0 2px 35px">'+esc(day.subtitle)+'</div>':'')+ex);
       }).join('');

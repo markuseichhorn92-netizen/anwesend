@@ -101,6 +101,35 @@ async function loadHist(id, n) {
     return r.map(function (x) { try { return JSON.parse(x); } catch (e) { return null; } }).filter(Boolean);
   } catch (e) { return []; }
 }
+
+// ── Detaillierter Trainings-Verlauf (fürs Mitglied): welche Übung wann + WIE (Sätze/Gewicht).
+// JSON-Liste je Mitglied (neueste zuerst), dedupliziert nach Tag+Plan-Tag, gedeckelt.
+const UKEY = (id) => 'train:units:' + String(id);
+async function loadUnits(id) {
+  try { const [r] = await redisPipeline([['GET', UKEY(id)]]); const a = r ? JSON.parse(r) : []; return Array.isArray(a) ? a : []; } catch (e) { return []; }
+}
+// Übungsliste einer Einheit aus Plan-Tag + Session (nur tatsächlich Gemachtes).
+function unitExList(plan, di, sessn) {
+  const dayDef = (plan.days || [])[di] || {};
+  return (dayDef.exercises || []).map(function (e, i) {
+    const it = ((sessn && sessn.items) || {})['d' + di + 'e' + i] || {};
+    const entries = Array.isArray(it.entries) ? it.entries.map(function (en) { return { w: Number(en.w) || 0, reps: parseInt(en.reps, 10) || 0, rest: parseInt(en.rest, 10) || 0 }; }) : [];
+    const touched = !!(it.done || (it.sets | 0) > 0 || entries.length);
+    return { n: String((e && e.name) || '').slice(0, 50), machine: String((e && e.machine) || '').slice(0, 50), bio: !!(e && e.bio), sets: (it.sets | 0) || entries.length, entries: entries, touched: touched };
+  }).filter(function (x) { return x.n && x.touched; }).map(function (x) { delete x.touched; return x; });
+}
+async function saveUnit(id, rec) {
+  try {
+    if (!rec || !(rec.ex && rec.ex.length)) return;   // leere Einheiten nicht speichern
+    const arr = await loadUnits(id);
+    const key = rec.t + '#' + rec.day;
+    const prev = arr.find(function (u) { return (u.t + '#' + u.day) === key; }) || null;
+    if (prev) { rec = Object.assign({}, prev, rec); }   // vorhandenen Tag anreichern (z. B. vp/kcal beim Abschluss)
+    const filtered = arr.filter(function (u) { return (u.t + '#' + u.day) !== key; });
+    filtered.unshift(rec);
+    await redisPipeline([['SET', UKEY(id), JSON.stringify(filtered.slice(0, 40)), 'EX', String(220 * 86400)]]);
+  } catch (e) {}
+}
 // Aktuellen Plan + Verlauf als kompakten Text für den FINN-Progressions-Prompt.
 function planSummaryText(p) {
   const days = (p.days || []).map(function (d) {
@@ -158,6 +187,7 @@ async function readState(id) {
     todayDay = todayDayFor(active, (sessn && sessn.planId === active.plan.id) ? sessn : null, rot, today);
   }
   const vpMap = await loadVpMap(id);
+  const units = await loadUnits(id);
   return {
     ok: true, available: true,
     tip: T.tipOfDay(today),
@@ -169,6 +199,7 @@ async function readState(id) {
     premium: !!tier.premium, aiAvailable: !!AI.hasAI,
     quota: Quota.publicQuota(qUsed, tier.premium, qMonth),
     vitalLedger: vpLedgerFrom(vpMap),
+    units: units,
   };
 }
 
@@ -231,7 +262,11 @@ module.exports = async function handler(req, res) {
             const exN = (dayDef && dayDef.exercises && dayDef.exercises.length) || 0;
             let doneN = 0;
             for (let i = 0; i < exN; i++) { const d2 = sess.items['d' + di + 'e' + i]; if (d2 && d2.done) doneN++; }
-            if (exN > 0 && doneN === exN) { await saveRot(id, { planId: active.plan.id, day: di, date: date }); await appendHist(id, active.plan, di, sess, date); }
+            if (exN > 0 && doneN === exN) {
+              await saveRot(id, { planId: active.plan.id, day: di, date: date });
+              await appendHist(id, active.plan, di, sess, date);
+              try { await saveUnit(id, { t: date, day: di, title: String((dayDef && dayDef.name) || ('Tag ' + (di + 1))).slice(0, 50), ex: unitExList(active.plan, di, sess) }); } catch (e) {}
+            }
           }
         }
       } else if (action === 'session-reset') {
@@ -261,6 +296,7 @@ module.exports = async function handler(req, res) {
       const vp = trainVpFor(doneCount, true);
       const vpAwarded = await saveVpDay(id, date, vp);
       try { await saveRot(id, { planId: active.plan.id, day: di, date: date }); await appendHist(id, active.plan, di, sn, date); } catch (e) {}
+      try { await saveUnit(id, { t: date, day: di, title: String(dayDef.name || ('Tag ' + (di + 1))).slice(0, 50), ex: unitExList(active.plan, di, sn), vp: vp, kcal: kcal, durMin: Math.round(durSec / 60) }); } catch (e) {}
       // FINN-Einschätzung nur für Premium (kostenfreies Extra, kein Kontingent-Verbrauch).
       let finn = '';
       const premium = Ent.isPremium(await Ent.getEntitlement(id));
