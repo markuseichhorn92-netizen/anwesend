@@ -31,7 +31,7 @@ const { hasStore } = require('../../lib/store');
 
 function j(res, code, obj) { res.statusCode = code; return res.end(JSON.stringify(obj)); }
 
-const PREMIUM_MSG = 'Der Morgen-Check mit dem Polar H9 ist ein Coach-Premium-Feature.';
+const PREMIUM_MSG = 'Der Vital-Check (Bereitschaft, HRV & Trainingssteuerung) ist ein Coach-Premium-Feature.';
 
 async function readState(id) {
   const list = await MO.list(id);
