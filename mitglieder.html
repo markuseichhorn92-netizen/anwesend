@@ -2882,8 +2882,18 @@
     // InBody-Körperanalyse: reale Körperzusammensetzung (Fett/Viszeralfett/Score) fließt direkt ein.
     var ib=(DATA.inbody&&DATA.inbody.ok&&DATA.inbody.latest)||null;
     if(ib){
-      var sexIb=ib.sex||(DATA.profile&&DATA.profile.sex)||'w';
-      if(ib.pbf!=null){ var hiF=(sexIb==='m')?20:28; add('ibfat','Körperfett (InBody)', ib.pbf<=hiF? -1 : Math.min(3,(ib.pbf-hiF)*0.25), ib.pbf+' %'); }
+      var sexIb=(ib.sex==='m')?'m':((ib.sex==='w')?'w':((DATA.profile&&DATA.profile.sex)||'w'));
+      var ageIb=ib.age||null;
+      // Körperfett alters- + geschlechtsabhängig (Gallagher-Ideal-Obergrenze).
+      if(ib.pbf!=null){
+        var idealHi=(sexIb==='m')?((ageIb!=null&&ageIb>=60)?24:(ageIb!=null&&ageIb>=40)?21:19):((ageIb!=null&&ageIb>=60)?35:(ageIb!=null&&ageIb>=40)?34:33);
+        if(ageIb==null) idealHi=(sexIb==='m')?20:28;
+        add('ibfat','Körperfett (InBody)', ib.pbf<=idealHi? -1 : Math.min(3,(ib.pbf-idealHi)*0.25), ib.pbf+' % · Ideal ≤'+idealHi+' %');
+      }
+      // Skelettmuskel-Index: mehr Muskel = jünger (EWGSOP2-Untergrenze + „gut"-Schwelle).
+      var ibSmi=ib.smi;
+      if(ibSmi==null && ib.heightCm){ var lb=[ib.leanRAkg,ib.leanLAkg,ib.leanRLkg,ib.leanLLkg]; if(lb.every(function(v){return v!=null;})){ var hmi=ib.heightCm/100; ibSmi=Math.round(lb.reduce(function(a,b){return a+b;},0)/(hmi*hmi)*100)/100; } }
+      if(ibSmi!=null){ var lowS=(sexIb==='m')?7.0:5.5, goodS=(sexIb==='m')?8.0:6.1; add('ibsmi','Muskel-Index (InBody)', ibSmi<lowS?2:(ibSmi>=goodS?-1.5:0), 'SMI '+ibSmi+' kg/m²'); }
       if(ib.vfl!=null){ add('ibvfl','Viszeralfett (InBody)', ib.vfl<10? -1 : (ib.vfl<=14? 1 : 2.5), 'Level '+ib.vfl); }
       if(ib.score!=null){ var sv=(ib.score>=85)?-2:(ib.score>=75)?-1:(ib.score>=65)?0.5:1.5; add('ibscore','InBody-Score', sv, ib.score+'/100'); }
     }
@@ -6129,22 +6139,47 @@
     if(cat==='bad')  return {dot:'#d9603a',fg:'#b4552f',bg:'#FBECE8'};
     return {dot:'var(--teal-ink)',fg:'var(--teal-ink)',bg:'var(--surface-2)'};
   }
-  function ibNum(v){ if(v==null) return '—'; var n=Math.round(v*10)/10; return String(n).replace('.',','); }
+  // Zahl mit passender Nachkommastelle. dec optional; sonst nach Größenordnung
+  // (kleine Werte wie WHR/ECW-TBW brauchen mehr Stellen als BMI/Gewicht).
+  function ibNum(v,dec){ if(v==null) return '—'; var n=Number(v); if(dec==null){ var a=Math.abs(n); dec=a<1?2:(a<20?1:0); } return n.toFixed(dec).replace('.',','); }
+  var IB_DEC={score:0,pbf:1,smi:2,smm:1,vfl:0,whr:2,bmi:1,ecwtbw:3,bmr:0};
   function ibMetricRow(m,first){
     var c=ibCat(m.cat);
     return '<div style="display:flex;align-items:flex-start;gap:12px;padding:13px 0'+(first?'':';border-top:1px solid var(--border)')+'">'+
       '<span style="width:11px;height:11px;border-radius:50%;background:'+c.dot+';flex-shrink:0;margin-top:5px"></span>'+
-      '<div style="flex:1;min-width:0"><div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px"><span style="font-size:14px;font-weight:800;color:var(--text)">'+esc(m.label)+'</span><span style="font-size:15.5px;font-weight:900;color:'+c.fg+';white-space:nowrap">'+ibNum(m.value)+esc(m.unit||'')+'</span></div>'+
-      (m.note?'<div style="font-size:12px;color:var(--text-soft);font-weight:500;line-height:1.45;margin-top:3px">'+esc(m.note)+'</div>':'')+'</div></div>';
+      '<div style="flex:1;min-width:0"><div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px"><span style="font-size:14px;font-weight:800;color:var(--text)">'+esc(m.label)+'</span><span style="font-size:15.5px;font-weight:900;color:'+c.fg+';white-space:nowrap">'+ibNum(m.value,IB_DEC[m.key])+esc(m.unit||'')+'</span></div>'+
+      (m.note?'<div style="font-size:12px;color:var(--text-soft);font-weight:500;line-height:1.45;margin-top:3px">'+esc(m.note)+'</div>':'')+
+      (m.ref?'<div style="font-size:10.5px;color:var(--text-soft);font-weight:700;margin-top:3px;opacity:.8">'+esc(m.ref)+'</div>':'')+'</div></div>';
+  }
+  // Segmentale Mageranalyse: 5-Segment-Balken (wie InBody) + Symmetrie-Hinweis.
+  function ibSegmentCard(){
+    var d=inbodyData(); if(!d) return ''; var segs=d.segments||[]; if(!segs.length) return '';
+    var maxKg=Math.max.apply(null,segs.map(function(s){ return s.kg||0; }).concat([1]));
+    var rows=segs.map(function(s){
+      var c=ibCat(s.cat);
+      var pctW=(s.pct!=null)?Math.max(6,Math.min(100,Math.round(s.pct/1.5))):Math.max(6,Math.round((s.kg||0)/maxKg*100));
+      var right=(s.pct!=null)?('<span style="font-size:12px;font-weight:900;color:'+c.fg+'">'+(s.band?esc(s.band)+' · ':'')+ibNum(s.pct,0)+' %</span>'):((s.kg!=null)?('<span style="font-size:12px;font-weight:900;color:var(--teal-ink)">'+ibNum(s.kg,1)+' kg</span>'):'');
+      var kgHint=(s.pct!=null&&s.kg!=null)?('<span style="font-size:10.5px;color:var(--text-soft);font-weight:700;margin-left:6px">'+ibNum(s.kg,1)+' kg</span>'):'';
+      return '<div style="padding:9px 0'+'">'+
+        '<div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:5px"><span style="font-size:13px;font-weight:800;color:var(--text)">'+esc(s.label)+kgHint+'</span>'+right+'</div>'+
+        '<div style="height:9px;border-radius:6px;background:var(--surface-2);overflow:hidden"><div style="height:100%;width:'+pctW+'%;background:'+c.dot+';border-radius:6px"></div></div></div>';
+    }).join('');
+    var sym=d.symmetry; var symNote='';
+    if(sym){
+      var parts=[]; if(sym.arms!=null) parts.push('Arme '+ibNum(sym.arms)+' %'); if(sym.legs!=null) parts.push('Beine '+ibNum(sym.legs)+' %');
+      symNote='<div style="display:flex;gap:9px;margin-top:10px;padding:11px 12px;border-radius:12px;background:'+(sym.flag?'#FBF0E3':'var(--surface-2)')+'"><span style="font-size:15px">'+(sym.flag?'⚖️':'✅')+'</span><div style="font-size:12px;font-weight:600;color:'+(sym.flag?'#9a5a18':'var(--text-soft)')+';line-height:1.45">'+(sym.flag?('Links-Rechts-Unterschied auffällig ('+parts.join(', ')+') – gezielt ausgleichend trainieren.'):('Gut symmetrisch ('+parts.join(', ')+').'))+'</div></div>';
+    }
+    return '<div style="'+IB_CARD+'"><div style="font-size:15px;font-weight:900;color:var(--text);margin-bottom:2px">Segmentale Mageranalyse</div><div style="font-size:12px;color:var(--text-soft);font-weight:500;margin-bottom:8px">Magermasse je Körperteil – Unter/Normal/Über bezogen auf deinen Körper.</div>'+rows+symNote+'</div>';
   }
   // Trend-Konfiguration: ist „runter" gut? (Fett/VFL runter = gut; Muskel/Score hoch = gut; Gewicht neutral.)
   var IB_TREND=[
-    {k:'smmKg',label:'Skelettmuskelmasse',unit:' kg',downGood:false},
-    {k:'bfmKg',label:'Körperfettmasse',unit:' kg',downGood:true},
-    {k:'pbf',label:'Körperfettanteil',unit:' %',downGood:true},
-    {k:'weightKg',label:'Gewicht',unit:' kg',downGood:null},
-    {k:'vfl',label:'Viszerales Fett',unit:'',downGood:true},
-    {k:'score',label:'InBody-Score',unit:'',downGood:false}
+    {k:'smmKg',label:'Skelettmuskelmasse',unit:' kg',downGood:false,dec:1},
+    {k:'smi',label:'Muskel-Index (SMI)',unit:' kg/m²',downGood:false,dec:2},
+    {k:'bfmKg',label:'Körperfettmasse',unit:' kg',downGood:true,dec:1},
+    {k:'pbf',label:'Körperfettanteil',unit:' %',downGood:true,dec:1},
+    {k:'weightKg',label:'Gewicht',unit:' kg',downGood:null,dec:1},
+    {k:'vfl',label:'Viszerales Fett',unit:'',downGood:true,dec:0},
+    {k:'score',label:'InBody-Score',unit:'',downGood:false,dec:0}
   ];
   function ibTrendCard(){
     var d=inbodyData(); if(!d) return ''; var t=d.trend; if(!t||!t.sincePrev) return '';
@@ -6154,7 +6189,7 @@
       var up=dv>0;
       var good=(it.downGood===null)?null:(it.downGood?!up:up);
       var col=(good===null)?'var(--text-soft)':(good?'#176b37':'#b4552f');
-      return '<div style="display:flex;align-items:center;gap:10px;padding:11px 0;border-top:1px solid var(--border)"><div style="flex:1;font-size:13.5px;font-weight:700;color:var(--text)">'+esc(it.label)+'</div><div style="font-size:13.5px;font-weight:900;color:'+col+'">'+(up?'▲':'▼')+' '+(up?'+':'')+ibNum(dv)+esc(it.unit)+'</div></div>';
+      return '<div style="display:flex;align-items:center;gap:10px;padding:11px 0;border-top:1px solid var(--border)"><div style="flex:1;font-size:13.5px;font-weight:700;color:var(--text)">'+esc(it.label)+'</div><div style="font-size:13.5px;font-weight:900;color:'+col+'">'+(up?'▲':'▼')+' '+(up?'+':'')+ibNum(dv,it.dec)+esc(it.unit)+'</div></div>';
     }).filter(Boolean).join('');
     if(!rows) return '';
     var since=t.prevDate?('seit '+ernDeDate(t.prevDate)):'seit der letzten Messung';
@@ -6213,7 +6248,14 @@
       ibReviewField('mineralKg','Mineralien','kg')+
       ibReviewField('heightCm','Größe','cm')+
       ibReviewField('age','Alter','J.')+
-      ibReviewField('targetWeightKg','Zielgewicht','kg');
+      ibReviewField('targetWeightKg','Zielgewicht','kg')+
+      ibReviewField('smi','SMI (Skelettmuskel-Index)','kg/m²')+
+      ibReviewField('ecwtbw','ECW/TBW','')+
+      ibReviewField('leanRAkg','Magermasse re. Arm','kg')+
+      ibReviewField('leanLAkg','Magermasse li. Arm','kg')+
+      ibReviewField('leanTRkg','Magermasse Rumpf','kg')+
+      ibReviewField('leanRLkg','Magermasse re. Bein','kg')+
+      ibReviewField('leanLLkg','Magermasse li. Bein','kg');
     return '<div style="'+IB_CARD+'">'+
       '<div style="font-size:16px;font-weight:900;color:var(--text)">Werte prüfen &amp; speichern</div>'+
       '<div style="font-size:12.5px;color:var(--text-soft);font-weight:500;margin-top:3px;line-height:1.5">FINN hat deinen Bogen ausgelesen. Bitte kurz prüfen und bei Bedarf korrigieren – dann speichern.</div>'+
@@ -6275,7 +6317,7 @@
         hero='<div style="font-size:12.5px;color:var(--text-soft);font-weight:700;padding:0 4px">Neueste Messung: '+esc(ernDeDate(latest.date))+'</div>';
       }
       var metricsCard=rest.length?('<div style="'+IB_CARD+'"><div style="font-size:15px;font-weight:900;color:var(--text);margin-bottom:2px">Deine Werte im Detail</div><div style="font-size:12px;color:var(--text-soft);font-weight:500;margin-bottom:6px">Mit gesunden Richtwerten – kein medizinischer Befund.</div>'+rest.map(function(m,i){ return ibMetricRow(m,i===0); }).join('')+'</div>'):'';
-      blocks.push(hero); blocks.push(metricsCard);
+      blocks.push(hero); blocks.push(metricsCard); blocks.push(ibSegmentCard());
       blocks.push(ibTrendCard()); blocks.push(ibCurvesCard()); blocks.push(ibFinnCard()); blocks.push(ibHistoryCard());
     } else {
       blocks.push('<div style="'+IB_CARD+'"><div style="font-size:15.5px;font-weight:800;color:var(--text)">Was die InBody-Analyse zeigt</div><div style="font-size:13px;color:var(--text-soft);margin-top:5px;line-height:1.55">Der InBody 270 misst deine <b>Muskel-</b> und <b>Fettverteilung</b>, dein <b>Körperwasser</b> und den <b>InBody-Score</b>. So siehst du echten Fortschritt – auch wenn die Waage mal stehen bleibt. Scanne deinen ersten Bogen; jede weitere Messung zeigt dir den Verlauf.</div></div>');

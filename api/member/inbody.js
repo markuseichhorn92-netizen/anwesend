@@ -46,6 +46,8 @@ async function readState(id) {
     list: list,
     latest: latest,
     eval: latest ? IB.evaluate(latest, sex) : [],
+    segments: latest ? IB.segments(latest) : [],
+    symmetry: latest ? IB.symmetry(latest) : null,
     trend: IB.trend(list),
     premium: !!tier.premium,
     quota: Quota.publicQuota(qUsed, tier.premium, qMonth),
