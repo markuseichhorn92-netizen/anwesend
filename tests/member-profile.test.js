@@ -35,8 +35,15 @@ async function run() {
   ok('1c. heightCm auf max 250 geklemmt', s.heightCm === 250);
   ok('1d. gültige Auswahlen übernommen', s.sex === 'm' && s.trainTime === 'abends' && s.exp === 'erfahren' && s.diet === 'vegan' && s.goal === 'Abnehmen');
 
+  // 1e. Wunschgewicht + onboarded-Flag (geräteübergreifendes Onboarding)
+  const sw = P.sanitize({ goal: 'Abnehmen', weightKg: 90, targetWeight: 75, onboarded: true });
+  ok('1e. targetWeight übernommen + geklemmt', sw.targetWeight === 75 && sw.onboarded === true);
+  const sw2 = P.sanitize({ targetWeight: 5 });
+  ok('1f. targetWeight unter Minimum verworfen', sw2.targetWeight === 30 && sw2.onboarded === false);
+  ok('1g. toPromptText nennt Wunschgewicht', /Wunschgewicht 75/.test(P.toPromptText(sw)));
+
   // 2. Listen: Dedup + Cap + Mindestlänge
-  const s2 = P.sanitize({ likes: ['Kurse', 'kurse', 'Cardio', 'x', 'Kurse'] });
+  const s2 = P.sanitize({ likes: ['Cardio', 'cardio', 'Freihanteln', 'x', 'Cardio'] });
   ok('2. likes dedupliziert + zu Kurzes verworfen', s2.likes.length === 2 && s2.likes.indexOf('Cardio') >= 0);
 
   // 3. Gesundheits-Gate: ohne Einwilligung nichts übernehmen

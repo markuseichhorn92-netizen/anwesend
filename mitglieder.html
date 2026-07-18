@@ -489,7 +489,7 @@
     qaOpen:false, dp:null,
     blogSel:null, blogPost:null, instaSel:null,
     obStep:0, obGoal:'Gesundheit & Longevity', obFreq:3, obAge:34, obExp:'gelegentlich', obMemConsent:false,
-    obPrefilled:false, obSex:'', obHeightCm:null, obWeightKg:null, obTrainTime:'', obLikes:[], obDislikes:[],
+    obPrefilled:false, obServerChecked:false, obSex:'', obHeightCm:null, obWeightKg:null, obTargetWeight:null, obTrainTime:'', obLikes:[], obDislikes:[],
     obDiet:'', obAllergies:[], obHealthConsent:false, obHealth:[], obHealthNote:'',
     welcomeGift:false, welcomeTrainBusy:false, welcomeTrainDone:false, welcomeTrainErr:'', welcomeErnBusy:false, welcomeErnDone:false, welcomeErnErr:'',
     ernFormInit:false, ernEdit:false, ernGoal:'abnehmen', ernSex:'w', ernH:170, ernW:70, ernAge:30, ernAct:'moderat', ernDiet:'omnivor',
@@ -1004,7 +1004,7 @@
       svg('<path d="M9 18l6-6-6-6"></path>',{c:'#bfe0e6',w:2,s:16})+'</button>';
     // Schnellaktionen – bewusst OHNE „Termin"/„Postfach" (die sind eigene Leisten-Tabs → keine Doppelung).
     var rows=
-      qaRow('assist','<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6M9 13h6M9 17h4"></path>','Beitragspause / Kündigung','Geführt regeln – mit Rückgewinnung')+
+      qaRow('assist','<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6M9 13h6M9 17h4"></path>','Mitgliedschaft & Vertrag','Verwalten, Optionen &amp; Fragen klären')+
       qaRow('checkin','<path d="M9 11l3 3L20 5"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>', ci?'Auschecken':'Check-in', ci?'Du bist gerade eingecheckt':'Im Studio einchecken', ci)+
       qaRow('referral','<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"></path>','Freund werben','Empfehlen & Prämie sichern');
     return '<div class="qaScrim" data-act="qaClose"></div><div class="qaSheet" role="menu" aria-label="Assistent">'+head+banner+chat+rows+'</div>';
@@ -1225,7 +1225,7 @@
   function scrRejoin(){
     var p=DATA.profile||{}; var name=p.firstName||'';
     var benefits=[
-      ['<path d="M20 6 9 17l-5-5"></path>','Wieder voller Zugang zu Geräten & Kursen'],
+      ['<path d="M20 6 9 17l-5-5"></path>','Wieder voller Zugang zu allen Geräten'],
       ['<path d="M20 6 9 17l-5-5"></path>','Live-Auslastung immer im Blick'],
       ['<path d="M20 6 9 17l-5-5"></path>','Faire Konditionen – jederzeit online abschließbar']
     ].map(function(b){ return '<div style="display:flex;align-items:center;gap:11px;margin-top:10px"><span style="width:24px;height:24px;border-radius:8px;background:var(--ok-bg);display:flex;align-items:center;justify-content:center;flex-shrink:0">'+svg(b[0],{c:'var(--ok-fg)',w:2.4,s:15})+'</span><span style="font-size:14px;color:var(--text-2);font-weight:600">'+b[1]+'</span></div>'; }).join('');
@@ -1682,12 +1682,30 @@
   function obApplyPrefill(o){ o=o||{};
     if(o.goal) S.obGoal=o.goal; if(o.freq) S.obFreq=o.freq; if(o.age) S.obAge=o.age; if(o.exp) S.obExp=o.exp;
     if(o.sex) S.obSex=o.sex; if(o.heightCm) S.obHeightCm=o.heightCm; if(o.weightKg) S.obWeightKg=o.weightKg;
+    if(o.targetWeight) S.obTargetWeight=o.targetWeight;
     if(o.trainTime) S.obTrainTime=o.trainTime; if(Array.isArray(o.likes)) S.obLikes=o.likes.slice(); if(Array.isArray(o.dislikes)) S.obDislikes=o.dislikes.slice();
     if(o.diet) S.obDiet=o.diet; if(Array.isArray(o.allergies)) S.obAllergies=o.allergies.slice();
     if(o.health&&typeof o.health==='object'){ S.obHealthConsent=!!o.health.consent; if(Array.isArray(o.health.items)) S.obHealth=o.health.items.slice(); if(o.health.note) S.obHealthNote=o.health.note; }
     if(o.memConsent!=null) S.obMemConsent=!!o.memConsent;
   }
   function obPrefillOnce(){ if(S.obPrefilled) return; S.obPrefilled=true; obApplyPrefill(obData()||{}); }
+  // Server-Profil -> lokale Onboarding-Struktur (fi_ob_v2), damit obDone()/Vorbelegung greifen.
+  function obProfileToLocal(pr){ pr=pr||{}; var h=pr.health&&typeof pr.health==='object'?pr.health:{};
+    return { goal:pr.goal||'', freq:pr.freq||null, age:pr.age||null, sex:pr.sex||'', heightCm:pr.heightCm||null,
+      weightKg:pr.weightKg||null, targetWeight:pr.targetWeight||null, trainTime:pr.trainTime||'', exp:pr.exp||'',
+      likes:Array.isArray(pr.likes)?pr.likes:[], dislikes:Array.isArray(pr.dislikes)?pr.dislikes:[],
+      diet:pr.diet||'', allergies:Array.isArray(pr.allergies)?pr.allergies:[],
+      health:{consent:!!(h&&h.consent), items:(h&&Array.isArray(h.items))?h.items:[], note:(h&&h.note)||''},
+      memConsent:!!S.obMemConsent, onboarded:true }; }
+  // Geräteübergreifend: einmal je Sitzung serverseitig prüfen, ob das Onboarding schon (auf
+  // einem anderen Gerät) ausgefüllt wurde. Falls ja -> lokal spiegeln, sonst Overlay zeigen.
+  var obServerBusy=false;
+  function obServerCheck(){ if(S.obServerChecked||obServerBusy) return; obServerBusy=true;
+    api('/api/member/profile',{method:'GET'}).then(function(d){
+      var pr=d&&d.profile; if(pr&&pr.onboarded){ try{ localStorage.setItem('fi_ob_v2',JSON.stringify(obProfileToLocal(pr))); }catch(e){} obApplyPrefill(obProfileToLocal(pr)); S.obPrefilled=true; }
+      S.obServerChecked=true; obServerBusy=false; render();
+    }).catch(function(){ S.obServerChecked=true; obServerBusy=false; render(); });
+  }
   // ── Coach-Premium-Nudge auf Start: dezent, wegklickbar, höchstens 1×/7 Tage ──
   // Nur Gratis-Nutzer (nie Premium/Trial), nur onboarded, nie in Chat/Sheet/Overlay.
   var PREM_NUDGE_CAP=7*864e5;
@@ -1739,7 +1757,17 @@
   }
   function obOverlayHtml(){
     var step=S.obStep||0;
-    var dots=''; for(var i=0;i<9;i++){ dots+='<span style="flex:1;height:5px;border-radius:4px;background:'+(i<=step?'#F6A964':'rgba(255,255,255,.18)')+'"></span>'; }
+    var dots=''; for(var i=0;i<10;i++){ dots+='<span style="flex:1;height:5px;border-radius:4px;background:'+(i<=step?'#F6A964':'rgba(255,255,255,.18)')+'"></span>'; }
+    // FINN-Einschätzung zum Ziel (computed, wird als FINNs Take präsentiert) – reagiert auf Ziel/Werte.
+    var obGoalEst=function(){
+      var g=S.obGoal||'', w=parseInt(S.obWeightKg,10)||0, t=parseInt(S.obTargetWeight,10)||0, f=parseInt(S.obFreq,10)||3;
+      if(g==='Abnehmen'){
+        if(w&&t&&t<w){ var d=w-t; var wk=Math.max(2,Math.round(d/0.5)); return {big:'≈ '+wk+' Wochen', sub:'bis '+t+' kg – bei gesundem Tempo (~0,5 kg pro Woche).', motiv:'Das ist gut machbar! Mit '+f+'× Training pro Woche und passender Ernährung begleite ich dich Schritt für Schritt dahin. 💪'}; }
+        return {big:'Schritt für Schritt', sub:'Trag dein Wunschgewicht ein – dann schätze ich dir den Weg.', motiv:'Kleine, konstante Schritte bringen dich sicher ans Ziel. 🎯'};
+      }
+      if(g==='Muskelaufbau'){ return {big:'Erste Erfolge in '+(f>=3?'6–8':'8–12')+' Wochen', sub:'sichtbarer Aufbau mit genug Eiweiß und Regeneration.', motiv:'Mit '+f+'× pro Woche und der richtigen Belastung wächst du kontinuierlich – ich plane deine Progression. 💪'}; }
+      return {big:'Erste Fortschritte in 4–6 Wochen', sub:'mehr Energie, bessere Kondition, klarer Kopf.', motiv:'Dranbleiben lohnt sich – mit '+f+'× pro Woche spürst du schon bald den Unterschied. 🌱'};
+    };
     var goals=[['Abnehmen','🔥'],['Muskelaufbau','💪'],['Ausdauer & Fitness','🏃'],['Gesundheit & Longevity','❤️'],['Stressabbau & Kopf frei','🧘']];
     var exps=[['einsteiger','Einsteiger:in','Neu im Studio oder Wiedereinstieg','🌱'],['gelegentlich','Gelegentlich','Ich trainiere ab und zu','⚡'],['erfahren','Erfahren','Training gehört zu meinem Alltag','🏅']];
     var optBorder=function(sel){ return sel?'#7fd8e0':'rgba(255,255,255,.18)'; };
@@ -1770,16 +1798,23 @@
         '<div style="text-align:center;margin:16px 0 4px"><span style="font-size:54px;font-weight:900;letter-spacing:-2px">'+S.obFreq+'</span><span style="font-size:18px;font-weight:700;color:#aed0d6"> ×/Woche</span></div><div style="display:flex;gap:8px">'+freqBtns+'</div>'+
         subLbl('Zu welcher Tageszeit am liebsten?')+chipsWrap(timeChips)+'</div>';
     } else if(step===4){
+      var gg=S.obGoal||''; var needW=(gg==='Abnehmen'||gg==='Muskelaufbau');
+      var curW=parseInt(S.obWeightKg,10)||75; var phW=(gg==='Abnehmen')?Math.max(40,curW-6):(curW+4);
+      var wField=needW?('<div style="font-size:13px;color:#aed0d6;font-weight:700;margin-top:20px;margin-bottom:8px">Dein Wunschgewicht</div><div style="background:rgba(255,255,255,.1);border-radius:14px;padding:11px 14px;max-width:220px"><div style="display:flex;align-items:baseline;gap:5px"><input inputmode="numeric" enterkeyhint="done" value="'+esc(S.obTargetWeight==null?'':String(S.obTargetWeight))+'" placeholder="'+phW+'" oninput="window.__obNum&&window.__obNum(\'obTargetWeight\',this)" onchange="window.__obEstRefresh&&window.__obEstRefresh()" style="width:100%;min-width:0;border:none;background:transparent;color:#fff;font-size:23px;font-weight:900;outline:none;font-family:inherit"><span style="font-size:13px;color:#aed0d6;font-weight:700;flex-shrink:0">kg</span></div></div>'):'';
+      var est=obGoalEst();
+      var estCard='<div style="margin-top:22px;background:rgba(127,227,168,.1);border:1px solid rgba(127,227,168,.28);border-radius:18px;padding:17px 18px"><div style="display:flex;align-items:center;gap:9px"><span style="width:30px;height:30px;border-radius:50%;background:#7fd8e0;display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0">✨</span><span style="font-size:12px;font-weight:900;color:#7fd8e0;text-transform:uppercase;letter-spacing:.4px">FINNs Einschätzung</span></div><div style="font-size:22px;font-weight:900;color:#fff;margin-top:11px;letter-spacing:-.3px">'+esc(est.big)+'</div><div style="font-size:13px;color:#cfe8ec;font-weight:600;margin-top:2px;line-height:1.4">'+esc(est.sub)+'</div><div style="font-size:13.5px;color:#eafff4;font-weight:600;margin-top:12px;line-height:1.5">'+esc(est.motiv)+'</div></div>';
+      inner='<div style="flex:1">'+hTitle('Lass uns dein Ziel schärfen','Je genauer, desto besser kann FINN dich begleiten und motivieren.')+wField+estCard+'</div>';
+    } else if(step===5){
       inner='<div style="flex:1">'+hTitle('Wie viel Erfahrung<br>hast du?','So passt dein Coach die Tipps an.')+'<div style="display:flex;flex-direction:column;gap:10px;margin-top:22px">'+
         exps.map(function(e){ var sel=S.obExp===e[0]; return '<button data-act="obExp" data-arg="'+e[0]+'" style="display:flex;align-items:center;gap:13px;width:100%;padding:16px;border:2px solid '+optBorder(sel)+';border-radius:15px;background:'+optBg(sel)+';cursor:pointer;text-align:left"><span style="font-size:23px">'+e[3]+'</span><span style="flex:1"><span style="display:block;font-size:15.5px;font-weight:800;color:#fff">'+esc(e[1])+'</span><span style="display:block;font-size:12.5px;color:#aed0d6;font-weight:500">'+esc(e[2])+'</span></span></button>'; }).join('')+'</div></div>';
-    } else if(step===5){
-      var likeOpts=['Geräte/Maschinen','Freihanteln','Kurse','Cardio','Functional','Zuhause','Draußen','Schwimmen'];
+    } else if(step===6){
+      var likeOpts=['Geräte/Maschinen','Freihanteln','Cardio','Functional','Zuhause','Draußen','Schwimmen'];
       var likeChips=likeOpts.map(function(x){ return chip((S.obLikes||[]).indexOf(x)>=0,x,'obToggle','likes|'+x); }).join('');
       var disOpts=['Laufen','Beintraining','Frühsport','Gruppen','Lange Einheiten'];
       var disChips=disOpts.map(function(x){ return chip((S.obDislikes||[]).indexOf(x)>=0,x,'obToggle','dislikes|'+x); }).join('');
-      inner='<div style="flex:1">'+hTitle('Was trainierst du gern?','FINN schlägt dir passende Übungen &amp; Kurse vor. Mehrfachauswahl – oder überspringen.')+chipsWrap(likeChips)+
+      inner='<div style="flex:1">'+hTitle('Was trainierst du gern?','FINN schlägt dir passende Übungen vor. Mehrfachauswahl – oder überspringen.')+chipsWrap(likeChips)+
         subLbl('Worauf hast du eher keine Lust?')+chipsWrap(chip((S.obDislikes||[]).length===0,'Nichts davon','obNone','dislikes')+disChips)+'</div>';
-    } else if(step===6){
+    } else if(step===7){
       var hc=!!S.obHealthConsent;
       var hSw='<button data-act="obHealthToggle" role="switch" aria-checked="'+(hc?'true':'false')+'" style="position:relative;width:52px;height:31px;border-radius:30px;border:none;cursor:pointer;background:'+(hc?'#7fd8e0':'rgba(255,255,255,.22)')+';flex-shrink:0;transition:background .2s"><span style="position:absolute;top:3px;left:'+(hc?'24px':'3px')+';width:25px;height:25px;border-radius:50%;background:#fff;transition:left .2s;box-shadow:0 1px 3px rgba(0,0,0,.35)"></span></button>';
       var consentCard='<div style="display:flex;align-items:center;gap:14px;margin-top:18px;background:rgba(255,255,255,.1);border-radius:16px;padding:15px 18px"><div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:800;color:#fff">FINN darf meine Gesundheitsangaben nutzen</div><div style="font-size:12px;color:#aed0d6;font-weight:500;margin-top:2px;line-height:1.45">Damit dein Coach sicher berät (z.&nbsp;B. Rücken/Knie schonen).</div></div>'+hSw+'</div>';
@@ -1792,7 +1827,7 @@
         healthBody='<div style="margin-top:16px;background:rgba(255,255,255,.06);border-radius:14px;padding:14px 16px;font-size:12.5px;color:#aed0d6;font-weight:500;line-height:1.5">Ohne Einwilligung speichern wir keine Gesundheitsdaten. Du kannst den Schritt einfach mit „Weiter" überspringen.</div>';
       }
       inner='<div style="flex:1">'+hTitle('Gesundheit &amp; Beschwerden','Worauf soll dein Coach Rücksicht nehmen? Besonders geschützt (DSGVO Art. 9) und freiwillig – FINN stellt keine Diagnosen und verweist bei Bedarf auf ärztlichen Rat &amp; die Trainer:innen vor Ort.')+consentCard+healthBody+'</div>';
-    } else if(step===7){
+    } else if(step===8){
       var diets=[['alles','🍽️ Alles'],['vegetarisch','🥗 Vegetarisch'],['vegan','🌱 Vegan'],['pescetarisch','🐟 Pescetarisch'],['low-carb','🥑 Low-Carb'],['high-protein','💪 High-Protein']];
       var dietChips=diets.map(function(x){ return chip(S.obDiet===x[0],x[1],'obDiet',x[0]); }).join('');
       var alOpts=['Gluten','Laktose','Nüsse','Erdnüsse','Eier','Soja','Fisch','Meeresfrüchte'];
@@ -1807,8 +1842,8 @@
         '<div style="font-size:12px;color:#8fb3ba;font-weight:500;margin-top:14px;line-height:1.5">Du kannst das jederzeit in den Einstellungen ändern.</div></div>';
     }
     return '<div class="obOverlay" style="position:fixed;inset:0;z-index:80;background:linear-gradient(170deg,#0e6072 0%,#0a4958 50%,#063540 100%);display:flex;flex-direction:column;padding:calc(40px + env(safe-area-inset-top,0px)) 24px calc(24px + env(safe-area-inset-bottom,0px));color:#fff;overflow-y:auto;max-width:480px;margin:0 auto">'+
-      '<div style="display:flex;gap:6px;margin-bottom:24px;flex-shrink:0">'+dots+'</div>'+inner+
-      '<button data-act="obNext" style="width:100%;margin-top:20px;border:none;border-radius:15px;background:#fff;color:#0a4958;font-weight:900;font-size:16px;padding:16px;cursor:pointer;flex-shrink:0">'+(step>=8?'Los geht\'s':'Weiter')+'</button>'+
+      '<div style="display:flex;align-items:center;gap:12px;margin-bottom:24px;flex-shrink:0">'+(step>=1?'<button data-act="obBack" aria-label="Zurück" style="width:36px;height:36px;border-radius:11px;border:none;background:rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'+svg(IC.back,{c:'#fff',w:2.2,s:19})+'</button>':'')+'<div style="display:flex;gap:6px;flex:1">'+dots+'</div></div>'+inner+
+      '<button data-act="obNext" style="width:100%;margin-top:20px;border:none;border-radius:15px;background:#fff;color:#0a4958;font-weight:900;font-size:16px;padding:16px;cursor:pointer;flex-shrink:0">'+(step>=9?'Los geht\'s':'Weiter')+'</button>'+
     '</div>';
   }
   // Schlanker FINN-Anreißer für Unterseiten (Training/Fortschritt): Tipp des Tages
@@ -3808,7 +3843,10 @@
   // damit der Fokus im Feld bleibt); übernommen wird beim „Weiter".
   window.__obNum=function(field,el){ var v=parseInt(String((el&&el.value)||'').replace(/[^\d]/g,''),10);
     if(field==='obHeightCm') S.obHeightCm=isFinite(v)?Math.max(0,Math.min(250,v)):null;
-    else if(field==='obWeightKg') S.obWeightKg=isFinite(v)?Math.max(0,Math.min(400,v)):null; };
+    else if(field==='obWeightKg') S.obWeightKg=isFinite(v)?Math.max(0,Math.min(400,v)):null;
+    else if(field==='obTargetWeight') S.obTargetWeight=isFinite(v)?Math.max(0,Math.min(400,v)):null; };
+  // Wunschgewicht bestätigt (Blur/Enter) -> FINNs Einschätzung neu berechnen.
+  window.__obEstRefresh=function(){ render(); };
   window.__obHealthNote=function(el){ S.obHealthNote=el?el.value:''; };
   window.__ernVoiceSend=function(){ var el=document.getElementById('ern_voiceq'); var t=el?(el.value||''):(S.ernVoiceText||''); S.ernVoiceText=t; ernLogText(t); };
   // Produkt-Detail: Portion wählen -> Nährwerte -> Übernehmen (Licht-Screen)
@@ -6664,7 +6702,7 @@
         '<div style="font-size:14.5px;color:var(--text-muted);margin:8px auto 0;line-height:1.6;max-width:440px">'+esc(S.ctMsgServer||('Danke'+(p.firstName?(', '+p.firstName):'')+'! Unser Team meldet sich so schnell wie möglich per E-Mail bei dir.'))+'</div></div>';
     }
     var err=S.ctErr?'<div class="err" style="margin-top:14px">'+svg(IC.warn,{c:'var(--err-fg)',w:2,s:17})+'<span>'+esc(S.ctErr)+'</span></div>':'';
-    var topics=['Mitgliedschaft & Vertrag','Training & Kurse','Studio & Check-in','Abrechnung','Sonstiges'];
+    var topics=['Mitgliedschaft & Vertrag','Training','Studio & Check-in','Abrechnung','Sonstiges'];
     return '<div style="margin-top:18px;background:var(--surface);border-radius:18px;box-shadow:0 14px 38px rgba(4,33,40,.10);padding:24px;animation:fiRise .3s ease both">'+
       '<div style="display:flex;align-items:flex-start;gap:13px"><div style="width:42px;height:42px;border-radius:13px;background:var(--surface-2);display:flex;align-items:center;justify-content:center;flex-shrink:0">'+svg(IC.mail,{c:TEAL,w:1.9,s:21})+'</div><div><div style="font-size:18px;font-weight:900;color:var(--text);letter-spacing:-.4px">Anliegen an unser Team senden</div><div style="font-size:13.5px;color:var(--text-muted);margin-top:3px;line-height:1.5">Konnte der Assistent nicht weiterhelfen? Schreib uns – wir kümmern uns persönlich darum.</div></div></div>'+
       '<div class="ctGrid" style="margin-top:18px;gap:14px">'+
@@ -6963,7 +7001,7 @@
       {sel:'.btmnav [data-act="nav"][data-arg="tag"]', t:'Training', d:'Deine Trainingspläne, alle Übungen an unseren Geräten und deine heutige Einheit.'},
       (ERN_ON
         ? {sel:'.btmnav [data-act="nav"][data-arg="ern"]', t:'Ernährung', d:'Mahlzeiten tracken, Rezepte entdecken und dein Tagesziel im Blick behalten.'}
-        : {sel:'.btmnav [data-act="nav"][data-arg="appt"]', t:'Termine', d:'Kurse und Termine ansehen und direkt aus der App buchen.'}),
+        : {sel:'.btmnav [data-act="nav"][data-arg="appt"]', t:'Termine', d:'Termine ansehen und direkt aus der App buchen.'}),
       {sel:'.btmnav [data-act="qaOpen"], .btmnav [data-act="qaClose"]', t:'Schnell hinzufügen', d:'Der Plus-Knopf passt sich an: Auf der Startseite öffnet er Schnellaktionen, im Training und bei der Ernährung genau das Passende.'},
       {sel:'.btmnav [data-act="nav"][data-arg="coach"]', t:'Coach in der Leiste', d:'FINNs Tipps, deine Fortschritts-Erkenntnisse und Programme findest du jederzeit hier unten.'},
       {sel:'[data-act="avatarTap"]', t:'Dein Profil', d:'Hinter deinen Initialen oben rechts steckt alles Persönliche: Profil, Vertrag, Beitragskonto, Postfach, Mitgliedskarte, Einstellungen und mehr.'}
@@ -7067,7 +7105,7 @@
     if(S.qaOpen) html+=qaSheet();
     if(S.ernUpgrade) html+=ernUpgradeScreen();   // Coach-Premium-Kauf als Bottom-Sheet-Popup über dem aktuellen Screen
     if(S.screen==='ern'&&S.ernCapture) html+=ernErfassen();   // Erfassen-Popup (Bottom-Sheet) über dem Ernährungs-Screen
-    if(TOKEN && S.screen!=='login' && !isFormer() && !obDone()){ obPrefillOnce(); html+=obOverlayHtml(); }
+    if(TOKEN && S.screen!=='login' && !isFormer() && !obDone()){ if(S.obServerChecked!==true) obServerCheck(); else { obPrefillOnce(); html+=obOverlayHtml(); } }
     if(TOKEN && S.screen!=='login' && !isFormer() && obDone() && S.welcomeGift) html+=welcomeGiftHtml();
     // Chat-Eingaben über die Neu-Zeichnung retten (Wert, Fokus, Cursor & Scroll-Position) –
     // sonst verschwindet getippter Text und die Tastatur klappt zu, sobald im Hintergrund
@@ -7313,9 +7351,11 @@
     obAge:function(a){ var d=parseInt(a,10)||0; setS({obAge:Math.max(14,Math.min(99,(S.obAge||34)+d))}); },
     obExp:function(a){ setS({obExp:a}); },
     obMemToggle:function(){ setS({obMemConsent:!S.obMemConsent}); },
-    obNext:function(){ if((S.obStep||0)>=8){
+    // Zurück im Onboarding: einen Schritt zurück, Overlay nach oben scrollen.
+    obBack:function(){ if((S.obStep||0)>0){ setS({obStep:S.obStep-1}); var o=document.querySelector('.obOverlay'); if(o) o.scrollTop=0; } },
+    obNext:function(){ if((S.obStep||0)>=9){
         // Volles Profil zusammenstellen (Gesundheit nur bei Einwilligung).
-        var prof={goal:S.obGoal,freq:S.obFreq,age:S.obAge,sex:S.obSex||'',heightCm:S.obHeightCm||null,weightKg:S.obWeightKg||null,trainTime:S.obTrainTime||'',exp:S.obExp,likes:(S.obLikes||[]),dislikes:(S.obDislikes||[]),diet:S.obDiet||'',allergies:(S.obAllergies||[]),health:{consent:!!S.obHealthConsent,items:(S.obHealthConsent?(S.obHealth||[]):[]),note:(S.obHealthConsent?(S.obHealthNote||''):'')}};
+        var prof={goal:S.obGoal,freq:S.obFreq,age:S.obAge,sex:S.obSex||'',heightCm:S.obHeightCm||null,weightKg:S.obWeightKg||null,targetWeight:S.obTargetWeight||null,trainTime:S.obTrainTime||'',exp:S.obExp,likes:(S.obLikes||[]),dislikes:(S.obDislikes||[]),diet:S.obDiet||'',allergies:(S.obAllergies||[]),onboarded:true,health:{consent:!!S.obHealthConsent,items:(S.obHealthConsent?(S.obHealth||[]):[]),note:(S.obHealthConsent?(S.obHealthNote||''):'')}};
         try{ localStorage.setItem('fi_ob_v2',JSON.stringify(Object.assign({memConsent:!!S.obMemConsent},prof))); }catch(e){}
         // Onboarding-Profil serverseitig sichern (FINN nutzt es als Kontext).
         try{ api('/api/member/profile',{method:'POST',body:JSON.stringify({profile:prof})}).catch(function(){}); }catch(e){}
