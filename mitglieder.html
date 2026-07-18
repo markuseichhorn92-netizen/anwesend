@@ -4608,7 +4608,7 @@
     if(cur){
       lessonCard='<button data-act="ernLessonOpen" data-arg="'+cur.week+'" style="width:100%;text-align:left;'+CARD+';border:none;cursor:pointer;display:flex;align-items:center;gap:14px">'+
         '<div style="width:52px;height:52px;border-radius:15px;background:linear-gradient(150deg,'+ERN_G2+','+ERN_GD+');display:flex;align-items:center;justify-content:center;color:#fff;font-size:20px;font-weight:900;flex-shrink:0">'+cur.week+'</div>'+
-        '<div style="flex:1;min-width:0"><div style="font-size:11.5px;font-weight:800;color:var(--ern-acc);text-transform:uppercase;letter-spacing:.3px">'+(cur.completed?'Wiederholen':'Diese Woche')+' · '+cur.minutes+' Min'+((!c.premium&&cur.week>=2)?' · ⭐ Premium':'')+'</div><div style="font-size:16px;font-weight:900;color:var(--text);margin-top:1px">'+esc(cur.title)+'</div><div style="font-size:12.5px;font-weight:600;color:var(--text-muted);line-height:1.4;margin-top:3px">'+esc(cur.teaser)+'</div></div>'+chev+'</button>';
+        '<div style="flex:1;min-width:0"><div style="font-size:11.5px;font-weight:800;color:var(--ern-acc);text-transform:uppercase;letter-spacing:.3px">'+(cur.completed?'Wiederholen':'Diese Woche')+' · '+cur.minutes+' Min'+((!c.premium&&cur.week>=2)?' · ⭐ Premium':'')+'</div><div style="font-size:16px;font-weight:900;color:var(--text);margin-top:1px">'+esc(cur.title)+'</div><div style="font-size:12.5px;font-weight:600;color:var(--text-muted);line-height:1.4;margin-top:3px">'+esc(cur.teaser)+'</div>'+(c.combined?'<div style="display:inline-flex;align-items:center;gap:5px;margin-top:7px;background:rgba(14,96,114,.08);border-radius:8px;padding:3px 9px;font-size:10.5px;font-weight:900;color:var(--ern-acc)">🥗 Ernährung + 🏋️ Training</div>':'')+'</div>'+chev+'</button>';
     } else {
       lessonCard='<div style="'+CARD+';text-align:center"><div style="font-size:30px">🎉</div><div style="font-size:16px;font-weight:900;color:var(--text);margin-top:8px">Alle '+(c.totalWeeks||'')+' Wochen geschafft!</div><div style="font-size:13px;color:var(--text-muted);font-weight:600;margin-top:5px;line-height:1.5">Stark. Bleib dran – du kannst jede Lektion jederzeit wiederholen.</div></div>';
     }
@@ -5505,9 +5505,13 @@
     var pages=Array.isArray(l.pages)?l.pages:[];
     var quiz=Array.isArray(l.quiz)?l.quiz:[];
     var hasQuiz=quiz.length>0;
-    var nSteps=pages.length+(hasQuiz?1:0)+1;               // +Quiz +Abschluss
+    // FINN-Trainings-Fokus als eigene Seite zwischen Inhalt und Quiz (nur Wochen-Lektionen, nicht Vertiefung).
+    var tf=(!isVert)?(ld.trainingFocus||null):null;
+    var hasTf=!!tf && (tf.teaser===true || !!tf.headline || (Array.isArray(tf.todos)&&tf.todos.length>0));
+    var nSteps=pages.length+(hasTf?1:0)+(hasQuiz?1:0)+1;   // +Fokus +Quiz +Abschluss
     var step=Math.max(0,Math.min(S.ernLessonStep||0,nSteps-1));
-    var quizStep=hasQuiz?pages.length:-1;
+    var tfStep=hasTf?pages.length:-1;
+    var quizStep=hasQuiz?(pages.length+(hasTf?1:0)):-1;
     var doneStep=nSteps-1;
     // Kopf mit Fortschrittsleiste
     var pct=Math.round(((step+1)/nSteps)*100);
@@ -5524,6 +5528,23 @@
           : '<button data-act="ernCoachReq" '+(S.ernCoachBusy?'disabled ':'')+'style="width:100%;margin-top:16px;padding:13px;border:none;border-radius:13px;background:linear-gradient(150deg,#0e6072,#063540);color:#fff;font-weight:900;font-size:13.5px;cursor:pointer">'+(S.ernCoachBusy?'Wird gesendet …':'🧬 '+esc(p.cta))+'</button>'):'';
       var head='<div style="display:flex;align-items:center;gap:11px">'+(p.icon?'<span style="font-size:26px">'+p.icon+'</span>':'')+'<div style="font-size:18px;font-weight:900;color:var(--text);letter-spacing:-.3px">'+esc(p.title||'')+'</div></div>';
       inner=(step===0?pers:'')+'<div style="'+CARD+'">'+head+paras+note+metaCta+'</div>';
+    } else if(step===tfStep){
+      // FINN-Trainings-Fokus dieser Woche (Training passend zum Ernährungs-Thema + Ziel + Plan).
+      var tfHead='<div style="display:flex;align-items:center;gap:11px;margin-bottom:4px"><span style="font-size:26px">🏋️</span><div><div style="font-size:18px;font-weight:900;color:var(--text);letter-spacing:-.3px">Trainings-Fokus dieser Woche</div><div style="font-size:11.5px;font-weight:700;color:var(--text-soft)">Von FINN – passend zu deinem Ziel</div></div></div>';
+      if(tf.teaser){
+        inner='<div style="'+CARD+'">'+tfHead+'<div style="font-size:14px;color:var(--text-2);font-weight:500;line-height:1.62;margin-top:8px">Zu diesem Wochen-Thema stellt dir FINN einen passenden Trainings-Fokus zusammen – konkrete Übungen und Schwerpunkte, die deine Ernährung diese Woche ergänzen. So ziehen Essen und Training am selben Strang.</div><button data-act="ernUpgradeOpen" style="width:100%;margin-top:16px;padding:14px;border:none;border-radius:14px;background:linear-gradient(150deg,#12879c,#0a4958);color:#fff;font-weight:900;font-size:14px;cursor:pointer">✨ Mit Coach Premium freischalten</button></div>';
+      } else {
+        var tfTodos=(Array.isArray(tf.todos)?tf.todos:[]).map(function(t,i){ return '<div style="display:flex;gap:11px;align-items:flex-start;padding:8px 0'+(i?';border-top:1px solid var(--border)':'')+'"><span style="flex-shrink:0;width:24px;height:24px;border-radius:50%;background:'+ERN_G+';color:#fff;font-size:12.5px;font-weight:900;display:flex;align-items:center;justify-content:center;line-height:1">'+(i+1)+'</span><span style="font-size:13.5px;font-weight:600;color:var(--text);line-height:1.5">'+esc(t)+'</span></div>'; }).join('');
+        var tfSess=tf.sessionType?'<div style="display:inline-flex;align-items:center;gap:6px;margin-top:12px;background:rgba(14,96,114,.10);color:var(--ern-acc);border-radius:9px;padding:6px 11px;font-size:12.5px;font-weight:800">🎯 '+esc(tf.sessionType)+'</div>':'';
+        var tfEx=(tf.exercise&&tf.exercise.name)?'<button data-act="coachTrainEx" data-arg="'+esc(tf.exercise.name)+'" style="width:100%;margin-top:12px;padding:12px;border:1.5px solid '+ERN_G+';border-radius:13px;background:rgba(14,96,114,.05);color:var(--teal-ink);font-weight:800;font-size:13.5px;cursor:pointer">🔎 Fokus-Übung ansehen: '+esc(tf.exercise.name)+'</button>':'';
+        var tfPlan='<button data-act="nav" data-arg="tag" style="width:100%;margin-top:10px;padding:13px;border:none;border-radius:13px;background:'+ERN_G+';color:#fff;font-weight:900;font-size:14px;cursor:pointer">Zum Trainingsplan →</button>';
+        inner='<div style="'+CARD+'">'+tfHead
+          +(tf.headline?'<div style="font-size:15.5px;font-weight:900;color:var(--ern-acc);margin-top:6px;letter-spacing:-.2px">'+esc(tf.headline)+'</div>':'')
+          +(tf.why?'<div style="font-size:14px;color:var(--text-2);font-weight:500;line-height:1.62;margin-top:8px">'+esc(tf.why)+'</div>':'')
+          +tfSess
+          +(tfTodos?'<div style="margin-top:12px">'+tfTodos+'</div>':'')
+          +tfEx+tfPlan+'</div>';
+      }
     } else if(step===quizStep){
       var correct=0; var answered=0;
       var qHtml=quiz.map(function(q,qi){
@@ -5555,7 +5576,9 @@
     }
     // Navigation
     var prevBtn=step>0?'<button data-act="ernLessonPrev" style="flex:1;padding:14px;border:1.5px solid var(--border);background:var(--surface);color:var(--text-muted);border-radius:14px;font-weight:800;font-size:14px;cursor:pointer">Zurück</button>':'';
-    var nextLabel=(step===pages.length-1&&hasQuiz)?'Zum Wissens-Check':'Weiter';
+    var nextLabel='Weiter';
+    if(step===pages.length-1&&hasTf) nextLabel='Zum Trainings-Fokus';
+    else if(hasQuiz&&(step===tfStep||(step===pages.length-1&&!hasTf))) nextLabel='Zum Wissens-Check';
     var nextBtn=step<doneStep?'<button data-act="ernLessonNext" style="flex:'+(step>0?'2':'1')+';padding:14px;border:none;background:'+ERN_G+';color:#fff;border-radius:14px;font-weight:900;font-size:14.5px;cursor:pointer">'+nextLabel+' →</button>':'';
     var nav=(prevBtn||nextBtn)?'<div style="display:flex;gap:10px;margin-top:16px">'+prevBtn+nextBtn+'</div>':'';
     return green2+'<div style="padding:0 2px 40px">'+inner+nav+'</div>';
@@ -7706,7 +7729,7 @@
         ? {sel:'.btmnav [data-act="nav"][data-arg="ern"]', t:'Ernährung', d:'Mahlzeiten tracken, Rezepte entdecken und dein Tagesziel im Blick behalten.'}
         : {sel:'.btmnav [data-act="nav"][data-arg="appt"]', t:'Termine', d:'Termine ansehen und direkt aus der App buchen.'}),
       {sel:'.btmnav [data-act="qaOpen"], .btmnav [data-act="qaClose"]', t:'Schnell hinzufügen', d:'Der Plus-Knopf passt sich an: Auf der Startseite öffnet er Schnellaktionen, im Training und bei der Ernährung genau das Passende.'},
-      {sel:'.btmnav [data-act="nav"][data-arg="coach"]', t:'Coach in der Leiste', d:'FINNs Tipps, deine Fortschritts-Erkenntnisse und Programme findest du jederzeit hier unten.'},
+      {sel:'.btmnav [data-act="nav"][data-arg="coach"]', t:'Coach in der Leiste', d:'FINNs Tipps und dein Wochen-Coaching – jederzeit hier unten. Neu: jede Woche behandelt EIN Thema für Ernährung UND passendes Training, abgestimmt auf dein Ziel.'},
       {sel:'[data-act="avatarTap"]', t:'Dein Profil', d:'Hinter deinen Initialen oben rechts steckt alles Persönliche: Profil, Vertrag, Beitragskonto, Postfach, Mitgliedskarte, Einstellungen und mehr.'}
     ];
   }
@@ -8462,6 +8485,8 @@
         S.ernLessonBusy=false; S.ernLessonData=(d&&d.ok)?d:{ok:false}; try{ window.scrollTo(0,0); }catch(e){} render(); })
       .catch(function(){ S.ernLessonBusy=false; S.ernLessonData={ok:false}; render(); }); },
     ernLessonClose:function(){ S.ernLesson=null; S.ernVert=null; S.ernLessonData=null; S.ernLessonBusy=false; S.ernLessonStep=0; S.ernQuizAns={}; render(); },
+    // Aus dem Coach-Trainings-Fokus in die Übungs-Detailansicht springen (öffnet den Trainings-Hub mit der Übung).
+    coachTrainEx:function(a){ if(!a) return; S.trainExDetail='n:'+String(a); nav('tag'); },
     ernLessonComplete:function(a){ if(S.ernLessonBusy) return; var week=parseInt(a,10)||1; S.ernLessonBusy=true; render();
       api('/api/member/nutrition-coach',{method:'POST',body:JSON.stringify({action:'lesson-complete',week:week})})
       .then(function(d){ if(d&&d.error==='premium_required'){ S.ernLessonBusy=false; S.ernLesson=null; S.ernLessonData=null; setS({ernUpgrade:true}); return; }

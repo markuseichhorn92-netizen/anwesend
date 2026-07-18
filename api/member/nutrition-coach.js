@@ -21,6 +21,7 @@ const M = require('../../lib/members');
 const AI = require('../../lib/ai');
 const Ent = require('../../lib/entitlements');
 const Coaching = require('../../lib/coaching');
+const Training = require('../../lib/training');
 const Inbox = require('../../lib/inbox');
 const SR = require('../../lib/studioReply');
 const { hasStore } = require('../../lib/store');
@@ -49,7 +50,8 @@ async function snapshot(id, st) {
   }
   let nextCheckin = null;
   if (st && st.enrolled) nextCheckin = Coaching.nextCheckinInfo(await Coaching.getCheckins(id), today);
-  return Object.assign({ ok: true, available: true }, snap, hab, { impulse: impulse, nextCheckin: nextCheckin }, tf);
+  // combined: jede Woche behandelt Ernährung UND Training (FINN-Trainings-Fokus in der Lektion).
+  return Object.assign({ ok: true, available: true, combined: true }, snap, hab, { impulse: impulse, nextCheckin: nextCheckin }, tf);
 }
 
 // Heutigen Tagesimpuls sicherstellen (lazy, gecacht pro Berlin-Tag). KI nur Premium
@@ -181,8 +183,40 @@ module.exports = async function handler(req, res) {
         ls = st.lessons[String(week)];
       }
     }
+    // FINN-Trainings-Fokus: macht die Woche zu EINEM Thema für Ernährung UND Training (passend zu Ziel + Plan).
+    // Nur Premium (KI): einmalig erzeugt und im State gecacht. Nicht-Premium -> Teaser (kein KI-Call, keine Kosten).
+    let trainingFocus = (ls && ls.trainingFocus) || null;
+    if (!trainingFocus) {
+      if (!premium) {
+        trainingFocus = { teaser: true };
+      } else if (AI.hasAI && (await M.rateLimit('nutri-trainfocus:' + id, 20, 3600))) {
+        const prof = (await Coaching.kvGetJson('nutri:p:' + id)) || {};
+        let firstName = ''; try { const m = await M.getMember(id); firstName = (m && m.firstName) || ''; } catch (e) {}
+        let planTitle = '', planText = '', daysPerWeek;
+        try {
+          const act = await Training.resolveActive(id);
+          if (act && act.plan) {
+            planTitle = act.plan.title || '';
+            daysPerWeek = act.plan.daysPerWeek;
+            planText = (Array.isArray(act.plan.days) ? act.plan.days : []).slice(0, 6).map(function (d) {
+              const ex = (Array.isArray(d.exercises) ? d.exercises : []).slice(0, 6).map(function (x) { return x.name; }).filter(Boolean).join(', ');
+              return (d.name || 'Tag') + ': ' + ex;
+            }).join(' | ').slice(0, 700);
+          }
+        } catch (e) {}
+        const r = await AI.coachTrainingFocus({ firstName: firstName, goal: prof.goal || track, week: week, lessonTitle: meta.title, lessonTheme: meta.theme, level: prof.level, daysPerWeek: daysPerWeek, planTitle: planTitle, planText: planText, under18: (Number(prof.age) || 99) < 18 });
+        if (r && r.ok && r.focus) {
+          trainingFocus = r.focus;
+          st.lessons = st.lessons || {};
+          st.lessons[String(week)] = st.lessons[String(week)] || { unlockedAt: Date.now(), completedAt: null, personalized: null };
+          st.lessons[String(week)].trainingFocus = trainingFocus;
+          await Coaching.saveState(id, st);
+          ls = st.lessons[String(week)];
+        }
+      }
+    }
     res.statusCode = 200;
-    return res.end(JSON.stringify({ ok: true, locked: false, lesson: Coaching.fullLesson(track, week), completed: !!(ls && ls.completedAt), personalized: personalized }));
+    return res.end(JSON.stringify({ ok: true, locked: false, lesson: Coaching.fullLesson(track, week), completed: !!(ls && ls.completedAt), personalized: personalized, trainingFocus: trainingFocus }));
   }
 
   if (action === 'habit-toggle') {

@@ -42,6 +42,10 @@ async function run() {
   await AI.nutritionWeekReview({ inGoal: 5, avgKcal: 1900, proteinDays: 4, tracked: 6 });
   ok('7. nutritionWeekReview nutzt Analyse-Modell', lastModel === 'model-analysis');
 
+  // Coach-Wochen-Trainings-Fokus -> PLAN (Plan-Qualität zählt)
+  await AI.coachTrainingFocus({ goal: 'abnehmen', week: 3, lessonTitle: 'Eiweiß zuerst', lessonTheme: 'Makros' });
+  ok('8. coachTrainingFocus nutzt Plan-Modell', lastModel === 'model-plan');
+
   console.log(pass ? 'AI-MODEL PASS' : 'AI-MODEL FAIL');
   process.exit(pass ? 0 : 1);
 }
