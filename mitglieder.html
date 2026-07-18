@@ -9978,8 +9978,9 @@
   // Caches des aktuellen Screens und lässt die Loader frisch ziehen. Nur eingeloggt (app-in).
   (function(){
     var st=document.createElement('style'); st.textContent='@keyframes gsSpin{to{transform:rotate(360deg)}} #gsPullIco.gsSpin{animation:gsSpin .7s linear infinite;transform-origin:center}'; document.head.appendChild(st);
-    var X0=0,Y0=0,mode=null,active=false,scEl=null,dxLast=0,dyLast=0,pullEl=null,backEl=null,refreshing=false;
-    var EDGE=26, DECIDE=10, BACK_TRIG=0.34, PULL_TRIG=72;
+    var X0=0,Y0=0,mode=null,active=false,scEl=null,dx=0,dy=0,pullEl=null,backEl=null,refreshing=false,hscroll=false;
+    var DECIDE=8, PULL_TRIG=72;
+    function backTrig(){ return Math.min(window.innerWidth*0.28, 110); }
     function menuOpen(){ return document.body.classList.contains('menu-open'); }
     function overlayOpen(){
       return !!(S.finnOpen||S.vaOpen||S.ciPopup||S.dp||S.qaOpen||S.ernUpgrade||S.ernCapture||S.ernConfirm||S.ernProd||S.ernData||S.ernEdit||S.ernRecipeSel||S.ernFavMgr||S.ernEntryEdit||S.ernLesson||S.ernVert||S.ernCk||S.ernChatOpen||S.ernPlanQuiz||(S.ernKoch!=null)||S.welcomeGift||S.trainFinish||S.trainRun||S.trainDetail||S.trainGenOpen||S.morningBreathe||(S.morningPhase&&S.morningPhase!=='idle')||S.socChat||S.socRoom||document.querySelector('.obOverlay'));
@@ -9992,13 +9993,17 @@
       if(S.dp){ S.dp=null; render(); return true; }
       return false;   // sonst: Overlay hat eigenen Schließen-Button
     }
-    function canBack(){ return menuOpen()||overlayOpen()||!APPBAR_ROOTS[S.screen]; }
+    function canBack(){ return menuOpen()||overlayOpen()||S.screen!=='home'; }
     function doBack(){
       if(menuOpen()){ closeMenu(); return; }
       if(overlayOpen()){ closeKnownOverlay(); return; }
-      if(!APPBAR_ROOTS[S.screen]){ try{ navigator.vibrate&&navigator.vibrate(8); }catch(e){} nav(APPBAR_BACK[S.screen]||'home'); }
+      if(S.screen==='home') return;
+      var t=APPBAR_ROOTS[S.screen]?'home':(APPBAR_BACK[S.screen]||'home');
+      try{ navigator.vibrate&&navigator.vibrate(8); }catch(e){} nav(t);
     }
     function scroller(){ var m=document.querySelector('.maincol'); if(document.body.classList.contains('app-in')&&m) return m; return document.scrollingElement||document.documentElement; }
+    // Startet der Wisch auf einem horizontal scrollbaren Element (oder Eingabefeld)? Dann kein Zurück.
+    function inHScroll(node){ for(var el=node; el&&el!==document.body&&el.nodeType===1; el=el.parentElement){ try{ var cs=getComputedStyle(el); if((cs.overflowX==='auto'||cs.overflowX==='scroll')&&el.scrollWidth>el.clientWidth+2) return true; var tn=el.tagName; if(tn==='INPUT'||tn==='TEXTAREA'||tn==='SELECT') return true; }catch(e){} } return false; }
     function ensureEls(){
       if(!backEl){ backEl=document.createElement('div'); backEl.id='gsBack'; backEl.style.cssText='position:fixed;top:50%;left:0;z-index:70;transform:translate(-60px,-50%);width:46px;height:46px;border-radius:50%;background:rgba(14,96,114,.94);display:flex;align-items:center;justify-content:center;box-shadow:0 6px 20px rgba(0,0,0,.3);opacity:0;pointer-events:none;transition:opacity .12s'; backEl.innerHTML='<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>'; document.body.appendChild(backEl); }
       if(!pullEl){ pullEl=document.createElement('div'); pullEl.id='gsPull'; pullEl.style.cssText='position:fixed;top:calc(6px + env(safe-area-inset-top,0px));left:50%;z-index:70;transform:translate(-50%,-46px);width:38px;height:38px;border-radius:50%;background:var(--surface,#fff);border:1px solid var(--border,#e3e8e8);display:flex;align-items:center;justify-content:center;box-shadow:0 6px 18px rgba(0,0,0,.22);opacity:0;pointer-events:none'; pullEl.innerHTML='<svg id="gsPullIco" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0e6072" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M6 12l6 6 6-6"/></svg>'; document.body.appendChild(pullEl); }
@@ -10035,22 +10040,22 @@
     document.addEventListener('touchstart',function(e){
       if(refreshing) return; if(!document.body.classList.contains('app-in')) return;
       if(!e.touches||e.touches.length!==1){ active=false; return; }
-      var t=e.touches[0]; X0=t.clientX; Y0=t.clientY; dxLast=0; dyLast=0; mode=null; active=true; scEl=scroller(); ensureEls();
+      var t=e.touches[0]; X0=t.clientX; Y0=t.clientY; dx=0; dy=0; mode=null; active=true; scEl=scroller(); hscroll=inHScroll(e.target); ensureEls();
     },{passive:true});
     document.addEventListener('touchmove',function(e){
       if(!active||refreshing) return; if(!e.touches||e.touches.length!==1){ active=false; return; }
-      var t=e.touches[0]; var dx=t.clientX-X0, dy=t.clientY-Y0; dxLast=dx; dyLast=dy;
+      var t=e.touches[0]; dx=t.clientX-X0; dy=t.clientY-Y0;
       if(mode===null){
         if(Math.abs(dx)<DECIDE && Math.abs(dy)<DECIDE) return;
-        if(dx>0 && Math.abs(dx)>Math.abs(dy) && X0<=EDGE && canBack()) mode='back';
+        if(dx>0 && Math.abs(dx)>Math.abs(dy)*1.6 && X0<window.innerWidth*0.66 && !hscroll && canBack()) mode='back';
         else if(dy>0 && Math.abs(dy)>Math.abs(dx) && (scEl?scEl.scrollTop:0)<=0 && !overlayOpen() && !menuOpen()) mode='pull';
         else mode='none';
       }
       if(mode==='back'){
         e.preventDefault();
-        var p=Math.max(0,Math.min(1,dx/(window.innerWidth*BACK_TRIG)));
-        backEl.style.opacity=String(0.35+0.65*p);
-        backEl.style.transform='translate('+(-60+Math.min(72,dx*0.6))+'px,-50%)';
+        var p=Math.max(0,Math.min(1,dx/backTrig()));
+        backEl.style.opacity=String(0.3+0.7*p);
+        backEl.style.transform='translate('+(-64+Math.min(80,dx*0.62))+'px,-50%)';
       } else if(mode==='pull'){
         e.preventDefault();
         var pull=Math.min(96,Math.max(0,dy)*0.55);
@@ -10058,20 +10063,22 @@
         pullEl.style.transform='translate(-50%,'+(pull-46)+'px) rotate('+(pull*3)+'deg)';
       }
     },{passive:false});
-    document.addEventListener('touchend',function(){
+    function endGesture(){
       if(!active) return; active=false;
       if(mode==='back'){
-        var trig=dxLast>(window.innerWidth*BACK_TRIG);
-        backEl.style.transition='opacity .15s, transform .15s'; backEl.style.opacity='0'; backEl.style.transform='translate(-60px,-50%)';
+        var trig=dx>backTrig();
+        backEl.style.transition='opacity .15s, transform .15s'; backEl.style.opacity='0'; backEl.style.transform='translate(-64px,-50%)';
         setTimeout(function(){ if(backEl) backEl.style.transition='opacity .12s'; },180);
         if(trig) doBack();
       } else if(mode==='pull'){
-        if((dyLast*0.55)>=PULL_TRIG){ startRefresh(); }
+        if((dy*0.55)>=PULL_TRIG){ startRefresh(); }
         else if(pullEl){ pullEl.style.transition='opacity .2s, transform .2s'; pullEl.style.opacity='0'; pullEl.style.transform='translate(-50%,-46px)'; setTimeout(function(){ if(pullEl) pullEl.style.transition=''; },220); }
       }
       mode=null;
-    },{passive:true});
-    document.addEventListener('touchcancel',function(){ active=false; mode=null; if(backEl) backEl.style.opacity='0'; if(pullEl&&!refreshing){ pullEl.style.opacity='0'; pullEl.style.transform='translate(-50%,-46px)'; } },{passive:true});
+    }
+    // Auch touchcancel abschließen: iOS bricht Wische am Rand gern ab – trotzdem auslösen, wenn die Schwelle erreicht war.
+    document.addEventListener('touchend',endGesture,{passive:true});
+    document.addEventListener('touchcancel',endGesture,{passive:true});
   })();
   // ── iOS-Tastatur-Fix (VisualViewport) ─────────────────────────────
   // iOS staucht das Layout NICHT, wenn die Tastatur aufgeht (interactive-widget
