@@ -10,9 +10,9 @@ const ROOT = path.resolve(__dirname, '..');
 async function run() {
   let pass = true; const ok = (l, c) => { if (!c) pass = false; console.log((c ? 'OK  ' : 'FAIL') + ' ' + l); };
 
-  let lastBody = null;
+  let lastBody = null; let lastOpts = null;
   global.fetch = async (url, opts) => {
-    lastBody = JSON.parse(opts.body);
+    lastOpts = opts; lastBody = JSON.parse(opts.body);
     return { ok: true, status: 200, text: async () => JSON.stringify({ content: [{ type: 'text', text: 'ok' }], stop_reason: 'end_turn' }) };
   };
   const AI = require(path.resolve(ROOT, 'lib/ai.js'));
@@ -26,6 +26,8 @@ async function run() {
   const sys = lastBody.system;
   ok('1. coachReply: system ist Block-Array', Array.isArray(sys) && sys.length >= 1);
   ok('2. erster Block gecacht (cache_control:ephemeral)', !!(sys[0] && sys[0].cache_control && sys[0].cache_control.type === 'ephemeral'));
+  ok('2b. gecachter Block nutzt die 1-Stunden-TTL', sys[0].cache_control.ttl === '1h');
+  ok('2c. Request trägt das Extended-Cache-Beta-Flag', !!(lastOpts && lastOpts.headers && /extended-cache-ttl/.test(lastOpts.headers['anthropic-beta'] || '')));
   ok('3. Wissensbasis steht im gecachten Block', /Öffnungszeiten/.test(sys[0].text) && /Kündigungsfrist/.test(sys[0].text));
   ok('4. Vorname/Live-Daten NICHT im gecachten Block', !/Max/.test(sys[0].text) && !/2027/.test(sys[0].text));
   ok('5. Vorname/Live-Daten stehen im dynamischen Block', !!(sys[1] && /Max/.test(sys[1].text) && /2027/.test(sys[1].text)));
