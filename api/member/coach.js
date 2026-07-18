@@ -189,12 +189,15 @@ module.exports = async function handler(req, res) {
     // und, NUR bei Einwilligung, Gesundheit/Beschwerden): macht FINN persönlicher & sicherer.
     let profileText = '';
     try { profileText = MemberProfile.toPromptText(await MemberProfile.get(sess.id)); } catch (e) {}
+    // InBody-Körperanalyse (falls eingescannt): Werte + Trend als Kontext für fundierte Tipps.
+    let inbodyText = '';
+    try { const IB = require('../../lib/inbody'); const p = await MemberProfile.get(sess.id); inbodyText = IB.toPromptText(await IB.list(sess.id), p && p.sex); } catch (e) {}
     // Datenminimierung: nur Vorname + Tarif + aggregierte Live-Daten (+ ggf. Profil/Gemerktes) an die KI –
     // Nachname/Mitgliedsnummer sind für die Antwort nicht erforderlich.
     const member = {
       firstName: m.firstName,
       rateName: det.rateName,
-      details: det.text + (topicHint ? ('\n\n' + topicHint) : '') + (profileText ? ('\n\n' + profileText) : '') + (memoryText ? ('\n\n' + memoryText) : ''),
+      details: det.text + (topicHint ? ('\n\n' + topicHint) : '') + (profileText ? ('\n\n' + profileText) : '') + (inbodyText ? ('\n\n' + inbodyText) : '') + (memoryText ? ('\n\n' + memoryText) : ''),
       memoDirective: mem.on ? FinnMemory.MEMO_DIRECTIVE : '',
     };
     const r = await AI.coachReply(member, Array.isArray(body.history) ? body.history : [], question, HELP);

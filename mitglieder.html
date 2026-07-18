@@ -493,6 +493,7 @@
     obDiet:'', obAllergies:[], obHealthConsent:false, obHealth:[], obHealthNote:'',
     welcomeGift:false, welcomeTrainBusy:false, welcomeTrainDone:false, welcomeTrainErr:'', welcomeErnBusy:false, welcomeErnDone:false, welcomeErnErr:'',
     trainRunStart:0, trainExDetail:null, trainFinish:null, trainFinishBusy:false,
+    inbodyBusy:false, inbodyReview:null, inbodyMsg:'', inbodyErr:false, inbodyAssess:'', inbodyAssessBusy:false,
     ernFormInit:false, ernEdit:false, ernGoal:'abnehmen', ernSex:'w', ernH:170, ernW:70, ernAge:30, ernAct:'moderat', ernDiet:'omnivor',
     ernBusy:false, ernMsg:'', ernErr:false, ernAsk:'', ernAnswer:'', ernAskBusy:false, ernRecipes:null, ernRecipesBusy:false, ernCoachBusy:false, ernCoachSent:false, ernPhotoBusy:false, ernRec:false,
     ernTab:'heute', ernPlanTab:'woche', ernPlanBusy:false, ernFridge:'', ernRecipeSel:null, ernRecipeSaved:false,
@@ -544,6 +545,19 @@
     };
     rd.readAsDataURL(f);
   };
+  // InBody-Bogen fotografieren -> skalieren -> KI-Auslese anstoßen.
+  window.__inbodyPhoto=function(input){
+    var f=input&&input.files&&input.files[0]; if(!f) return;
+    var rd=new FileReader();
+    rd.onload=function(e){ var src=e.target.result; var img=new Image();
+      img.onload=function(){ var durl=src; try{ var max=1800,w=img.naturalWidth||1,h=img.naturalHeight||1,sc=Math.min(1,max/Math.max(w,h)); var cw=Math.max(1,Math.round(w*sc)),ch=Math.max(1,Math.round(h*sc)); var cv=document.createElement('canvas'); cv.width=cw; cv.height=ch; cv.getContext('2d').drawImage(img,0,0,cw,ch); durl=cv.toDataURL('image/jpeg',0.85); }catch(err){} inbodyScan(durl); };
+      img.onerror=function(){ inbodyScan(src); }; img.src=src; };
+    rd.readAsDataURL(f);
+  };
+  // Review-Formular: Zahl/Datum still ins Review-Objekt setzen (kein Re-Render, Fokus bleibt).
+  window.__ibSet=function(field,el){ if(!S.inbodyReview) return; var v=el?el.value:'';
+    if(field==='date'){ S.inbodyReview.date=/^\d{4}-\d{2}-\d{2}$/.test(v)?v:''; return; }
+    var n=parseFloat(String(v).replace(',','.').replace(/[^\d.\-]/g,'')); S.inbodyReview[field]=isFinite(n)?n:null; };
   // Dokument-Upload: Datei -> base64 -> POST /api/member/documents. Größenlimit 8 MB.
   window.__docUpload=function(input){
     var f=input&&input.files&&input.files[0]; try{ if(input) input.value=''; }catch(e){}
@@ -662,6 +676,7 @@
     if(s==='checkins'||s==='fort') loadCheckins();   // immer frisch: Studio-Check-ins vom Band erscheinen sofort
     if(ERN_ON&&(s==='home'||s==='fort')) loadNutri();   // Ernährungs-Vitalpunkte für Startseite/Fortschritt frisch halten
     if(s==='figur'){ S.figurAdd=false; S.figurMsg=''; S.figurErr=false; S.figurBusy=false; S.figurReviewBusy=false; loadFigur(); }
+    if(s==='inbody'){ S.inbodyReview=null; S.inbodyMsg=''; S.inbodyErr=false; S.inbodyBusy=false; S.inbodyAssess=''; S.inbodyAssessBusy=false; loadInbody(); }
     if(SOCIAL_ON&&(s==='home'||s==='profil')) loadSocial();   // Trainingspartner-Snapshot für Startseite/Profil
     if(s==='social'){ S.socMsg=''; S.socErr=false; S.socBusy=false; S.socCopied=false; S.socChat=null; DATA.socDm=null; S.socRoom=null; DATA.socRoomThread=null; S.socRoomCreate=false; S.socRoomInvite=false; S.socRules=false; if(window.__socBuddy){ S.socCode=window.__socBuddy; window.__socBuddy=null; } if(window.__socOpenChat){ S.socChat=String(window.__socOpenChat); window.__socOpenChat=null; DATA.socDm=null; loadDm(S.socChat); } else if(window.__socOpenRoom){ S.socRoom=String(window.__socOpenRoom); window.__socOpenRoom=null; DATA.socRoomThread=null; loadRoomThread(S.socRoom); } loadSocial(); }
     if(s==='blog'){ S.blogSel=null; S.blogPost=null; loadBlog(); }
@@ -2864,6 +2879,14 @@
     var gN=Object.keys(grp).length; add('balance','Ausgewogenes Training', -(gN>=4?1:(gN>=2?0.5:0)), gN?(gN+' Muskelgruppen'):'');
     if(ERN_ON && DATA.nutri && DATA.nutri.ok){ var ns=DATA.nutri.streak||0; add('nutri','Bewusste Ernährung', -Math.min(2,ns*0.2), ns?(ns+' Tage getrackt'):''); }
     if(DATA.figur && DATA.figur.ok && Array.isArray(DATA.figur.points) && DATA.figur.points.length){ add('figur','Körperwerte im Blick', -Math.min(1,DATA.figur.points.length*0.3), DATA.figur.points.length+' Messungen'); }
+    // InBody-Körperanalyse: reale Körperzusammensetzung (Fett/Viszeralfett/Score) fließt direkt ein.
+    var ib=(DATA.inbody&&DATA.inbody.ok&&DATA.inbody.latest)||null;
+    if(ib){
+      var sexIb=ib.sex||(DATA.profile&&DATA.profile.sex)||'w';
+      if(ib.pbf!=null){ var hiF=(sexIb==='m')?20:28; add('ibfat','Körperfett (InBody)', ib.pbf<=hiF? -1 : Math.min(3,(ib.pbf-hiF)*0.25), ib.pbf+' %'); }
+      if(ib.vfl!=null){ add('ibvfl','Viszeralfett (InBody)', ib.vfl<10? -1 : (ib.vfl<=14? 1 : 2.5), 'Level '+ib.vfl); }
+      if(ib.score!=null){ var sv=(ib.score>=85)?-2:(ib.score>=75)?-1:(ib.score>=65)?0.5:1.5; add('ibscore','InBody-Score', sv, ib.score+'/100'); }
+    }
     var ls=vaLifestyle();
     if(ls){
       var sl={wenig:1.5,mittel:0,gut:-1}[ls.sleep]; if(sl!=null) add('sleep', sl<0?'Guter Schlaf':'Wenig Schlaf', sl, '');
@@ -2960,6 +2983,7 @@
     if(DATA.checkins==null) loadCheckins();
     if(DATA.training==null) loadTraining();      // Einheiten-Verlauf fürs Vitalalter
     if(DATA.figur==null) loadFigur();            // Körperwerte fürs Vitalalter
+    if(DATA.inbody==null) loadInbody();          // InBody-Analyse fürs Vitalalter + Einstiegskarte
     if(DATA.mprofile==null) loadMemberProfile(); // Lebensstil-Selbstauskunft
     var v=vitalsData();
     var CARD='background:var(--surface);border-radius:20px;box-shadow:0 14px 38px rgba(4,33,40,.10);padding:20px';
@@ -2989,7 +3013,7 @@
     // 7) Ränge
     var ranks='<div style="'+CARD.replace('padding:20px','padding:18px')+'"><div style="font-size:16px;font-weight:900;color:var(--text);margin-bottom:8px">Ränge</div>'+VITAL_TIERS.map(function(t,i){ var cur=(i===v.rankIdx); var passed=(i<=v.rankIdx); return '<div style="display:flex;align-items:center;gap:12px;padding:9px 0"><div style="width:32px;height:32px;border-radius:50%;background:'+(passed?'#0a4958':'var(--surface-2)')+';display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:15px">'+t[2]+'</div><div style="flex:1;font-size:14px;font-weight:'+(cur?'900':'600')+';color:'+(cur?'var(--teal-ink)':'var(--text-2)')+'">'+esc(t[0])+'</div><div style="font-size:12.5px;font-weight:700;color:var(--text-soft)">'+(t[1]===0?'Start':(deNum(t[1])+' VP'))+'</div></div>'; }).join('')+'</div>';
 
-    return subHeader('Fortschritt','Vitalalter · Rang · Punkte','profil')+coachTipStrip()+'<div style="display:flex;flex-direction:column;gap:14px">'+fa+ring+badgesCard()+act+ben+ledger+warn+ranks+'</div>';
+    return subHeader('Fortschritt','Vitalalter · Rang · Punkte','profil')+coachTipStrip()+'<div style="display:flex;flex-direction:column;gap:14px">'+fa+ring+badgesCard()+act+inbodyFortCard()+ben+ledger+warn+ranks+'</div>';
   }
 
   // ── Ernährung (eigenständiges Modul, Tagesziel + KI-Tracking + FINN-Coach) ──
@@ -6073,6 +6097,194 @@
     return '<div class="narrow" style="display:flex;flex-direction:column;gap:14px">'+head+intro+compare+curves+review+form+histList+'</div>';
   }
 
+  // ══════════════════════════════════════════════════════════════════
+  // InBody-Körperanalyse (Gerät InBody 270): Bogen scannen → prüfen → Verlauf + FINN.
+  // Erfolgskontrolle mit gesunden Richtwerten; fließt in FINN & Vitalalter ein.
+  // ══════════════════════════════════════════════════════════════════
+  var IB_CARD='background:var(--surface);border-radius:20px;box-shadow:0 14px 38px rgba(4,33,40,.10);padding:20px';
+  function loadInbody(){
+    if(DATA.inbody==null) DATA.inbody=false;
+    api('/api/member/inbody',{method:'GET'}).then(function(d){ DATA.inbody=(d&&typeof d==='object'&&(d.ok||d.available===false))?d:{ok:false,available:!!(d&&d.available)}; rIf(['inbody','fort']); })
+    .catch(function(){ DATA.inbody={ok:false,available:false}; rIf(['inbody','fort']); });
+  }
+  function inbodyData(){ var d=DATA.inbody; return (d&&d.ok)?d:null; }
+  function inbodyQuotaLeft(){ var d=DATA.inbody; if(!d||d.premium) return 999; var q=d.quota; if(!q||q.unlimited) return 999; return Math.max(0,parseInt(q.remaining,10)||0); }
+  // Bogen-Foto (schon skaliert) → base64 → KI-Auslese; Ergebnis wird zum prüfbaren Review-Objekt.
+  function inbodyScan(dataUrl){
+    var b64=String(dataUrl||'').replace(/^data:[^,]+,/,''); if(b64.length<100){ return; }
+    S.inbodyBusy=true; S.inbodyMsg=''; S.inbodyErr=false; render();
+    api('/api/member/inbody',{method:'POST',timeoutMs:60000,body:JSON.stringify({action:'scan',photo:b64,mediaType:'image/jpeg'})}).then(function(r){
+      S.inbodyBusy=false;
+      if(r&&r.quota&&DATA.inbody&&typeof DATA.inbody==='object') DATA.inbody.quota=r.quota;
+      if(r&&r.ok&&r.parsed){ S.inbodyReview=r.parsed; S.inbodyErr=false; S.inbodyMsg=''; }
+      else if(r&&r.error==='premium_required'){ S.inbodyErr=true; S.inbodyMsg=(r&&r.message)||'Dein Gratis-Kontingent für die KI-Auslese ist diesen Monat aufgebraucht. Trag die Werte solange von Hand ein.'; }
+      else { S.inbodyErr=true; S.inbodyMsg=(r&&r.message)||'Der Bogen konnte nicht sicher gelesen werden – versuch ein schärferes, gerades Foto oder trag die Werte von Hand ein.'; }
+      setS({});
+    }).catch(function(){ S.inbodyBusy=false; S.inbodyErr=true; S.inbodyMsg='Netzwerkfehler – bitte erneut.'; setS({}); });
+  }
+  // Kategorie-Farben für eine bewertete Kennzahl (good/warn/bad/info).
+  function ibCat(cat){
+    if(cat==='good') return {dot:'#22a866',fg:'#176b37',bg:'#E7F6EC'};
+    if(cat==='warn') return {dot:'#C77A2E',fg:'#9a5a18',bg:'#FBF0E3'};
+    if(cat==='bad')  return {dot:'#d9603a',fg:'#b4552f',bg:'#FBECE8'};
+    return {dot:'var(--teal-ink)',fg:'var(--teal-ink)',bg:'var(--surface-2)'};
+  }
+  function ibNum(v){ if(v==null) return '—'; var n=Math.round(v*10)/10; return String(n).replace('.',','); }
+  function ibMetricRow(m,first){
+    var c=ibCat(m.cat);
+    return '<div style="display:flex;align-items:flex-start;gap:12px;padding:13px 0'+(first?'':';border-top:1px solid var(--border)')+'">'+
+      '<span style="width:11px;height:11px;border-radius:50%;background:'+c.dot+';flex-shrink:0;margin-top:5px"></span>'+
+      '<div style="flex:1;min-width:0"><div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px"><span style="font-size:14px;font-weight:800;color:var(--text)">'+esc(m.label)+'</span><span style="font-size:15.5px;font-weight:900;color:'+c.fg+';white-space:nowrap">'+ibNum(m.value)+esc(m.unit||'')+'</span></div>'+
+      (m.note?'<div style="font-size:12px;color:var(--text-soft);font-weight:500;line-height:1.45;margin-top:3px">'+esc(m.note)+'</div>':'')+'</div></div>';
+  }
+  // Trend-Konfiguration: ist „runter" gut? (Fett/VFL runter = gut; Muskel/Score hoch = gut; Gewicht neutral.)
+  var IB_TREND=[
+    {k:'smmKg',label:'Skelettmuskelmasse',unit:' kg',downGood:false},
+    {k:'bfmKg',label:'Körperfettmasse',unit:' kg',downGood:true},
+    {k:'pbf',label:'Körperfettanteil',unit:' %',downGood:true},
+    {k:'weightKg',label:'Gewicht',unit:' kg',downGood:null},
+    {k:'vfl',label:'Viszerales Fett',unit:'',downGood:true},
+    {k:'score',label:'InBody-Score',unit:'',downGood:false}
+  ];
+  function ibTrendCard(){
+    var d=inbodyData(); if(!d) return ''; var t=d.trend; if(!t||!t.sincePrev) return '';
+    var s=t.sincePrev;
+    var rows=IB_TREND.map(function(it){
+      var dv=s[it.k]; if(dv==null||dv===0) return '';
+      var up=dv>0;
+      var good=(it.downGood===null)?null:(it.downGood?!up:up);
+      var col=(good===null)?'var(--text-soft)':(good?'#176b37':'#b4552f');
+      return '<div style="display:flex;align-items:center;gap:10px;padding:11px 0;border-top:1px solid var(--border)"><div style="flex:1;font-size:13.5px;font-weight:700;color:var(--text)">'+esc(it.label)+'</div><div style="font-size:13.5px;font-weight:900;color:'+col+'">'+(up?'▲':'▼')+' '+(up?'+':'')+ibNum(dv)+esc(it.unit)+'</div></div>';
+    }).filter(Boolean).join('');
+    if(!rows) return '';
+    var since=t.prevDate?('seit '+ernDeDate(t.prevDate)):'seit der letzten Messung';
+    return '<div style="'+IB_CARD+'"><div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px"><div style="font-size:15px;font-weight:900;color:var(--text)">Veränderung</div><div style="font-size:11.5px;color:var(--text-soft);font-weight:600">'+esc(since)+'</div></div>'+rows+'</div>';
+  }
+  function ibSeries(list,key){ return (list||[]).slice().reverse().filter(function(m){ return m[key]!=null; }).map(function(m){ return {value:m[key]}; }); }
+  function ibCurvesCard(){
+    var d=inbodyData(); if(!d) return ''; var list=d.list||[]; if(list.length<2) return '';
+    var METS=[{k:'weightKg',label:'Gewicht',unit:'kg'},{k:'pbf',label:'Körperfett',unit:'%'},{k:'smmKg',label:'Muskelmasse',unit:'kg'},{k:'vfl',label:'Viszerales Fett',unit:''},{k:'score',label:'InBody-Score',unit:''}];
+    var blocks=METS.map(function(mm){ var srs=ibSeries(list,mm.k); if(srs.length<2) return ''; var latest=srs[srs.length-1].value; return '<div style="margin-top:12px"><div style="display:flex;align-items:baseline;justify-content:space-between"><span style="font-size:13px;font-weight:700;color:var(--text)">'+esc(mm.label)+'</span><span style="font-size:12.5px;font-weight:800;color:var(--teal-ink)">'+ibNum(latest)+(mm.unit?(' '+mm.unit):'')+'</span></div>'+figMiniChart(srs)+'</div>'; }).filter(Boolean).join('');
+    if(!blocks) return '';
+    return '<div style="'+IB_CARD+'"><div style="font-size:15px;font-weight:900;color:var(--text);margin-bottom:2px">Verlauf</div>'+blocks+'</div>';
+  }
+  function ibFinnCard(){
+    var d=inbodyData(); if(!d||!(d.list&&d.list.length)) return '';
+    var txt=S.inbodyAssess, busy=S.inbodyAssessBusy;
+    if(!d.premium){
+      var cc=ernCtaCopy();
+      return '<div style="'+IB_CARD+';background:linear-gradient(150deg,#12879c,#0a4958);color:#fff"><div style="font-size:15px;font-weight:900">🔒 FINNs InBody-Einschätzung ist Premium</div><div style="font-size:13px;font-weight:600;color:#cfe8ec;line-height:1.5;margin:8px 0 12px">Deine Werte sind gespeichert und fließen in FINN ein. Mit Premium erklärt FINN deine Analyse verständlich, ordnet den Trend ein und gibt dir den nächsten Schritt.</div><button data-act="ernUpgradeOpen" style="width:100%;padding:13px;border:none;border-radius:13px;background:var(--surface);color:var(--teal-ink);font-weight:900;font-size:14px;cursor:pointer">'+esc(cc.cta)+'</button></div>';
+    }
+    var body=txt?('<div style="margin-top:12px;background:var(--surface-2);border-radius:14px;padding:14px;font-size:13.5px;color:var(--text);line-height:1.55">'+esc(txt)+'</div>'):'';
+    return '<div style="'+IB_CARD+'"><div style="display:flex;align-items:center;gap:9px"><div style="width:34px;height:34px;border-radius:10px;background:var(--surface-2);display:flex;align-items:center;justify-content:center">'+svg(IC.spark,{c:TEAL,w:1.8,s:19})+'</div><div style="flex:1;min-width:0"><div style="font-size:14.5px;font-weight:800;color:var(--text)">FINN erklärt deine Analyse</div><div style="font-size:12px;color:var(--text-soft)">Teil deiner Premium-Mitgliedschaft</div></div></div>'+
+      '<button data-act="inbodyAssess" '+(busy?'disabled':'')+' style="width:100%;margin-top:13px;border:none;border-radius:13px;background:'+(busy?'var(--surface-2)':'var(--teal)')+';color:'+(busy?'var(--text-soft)':'#fff')+';font-weight:800;font-size:14.5px;padding:13px;cursor:'+(busy?'default':'pointer')+'">'+(busy?'FINN denkt nach …':(txt?'Neu einschätzen':'Einschätzung holen'))+'</button>'+body+'</div>';
+  }
+  function ibHistoryCard(){
+    var d=inbodyData(); if(!d) return ''; var list=d.list||[]; if(!list.length) return '';
+    var rows=list.map(function(m){
+      var bits=[]; if(m.weightKg!=null) bits.push('Gewicht '+ibNum(m.weightKg)+' kg'); if(m.pbf!=null) bits.push('KFA '+ibNum(m.pbf)+' %'); if(m.smmKg!=null) bits.push('Muskel '+ibNum(m.smmKg)+' kg'); if(m.score!=null) bits.push('Score '+ibNum(m.score));
+      var sel=m.date||String(m.ts||'');
+      return '<div style="display:flex;align-items:flex-start;gap:10px;padding:11px 0;border-top:1px solid var(--border)"><div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:700;color:var(--text)">'+esc(m.date?ernDeDate(m.date):'Messung')+'</div><div style="font-size:12.5px;color:var(--text-soft);margin-top:2px;line-height:1.5">'+esc(bits.join(' · ')||'—')+'</div></div><button data-act="inbodyDelete" data-arg="'+esc(sel)+'" aria-label="Löschen" style="border:none;background:none;cursor:pointer;padding:4px;flex-shrink:0">'+svg('<path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"></path>',{c:'var(--text-soft)',w:1.8,s:17})+'</button></div>';
+    }).join('');
+    return '<div style="'+IB_CARD+'"><div style="font-size:15px;font-weight:900;color:var(--text);margin-bottom:2px">Alle Messungen</div>'+rows+'</div>';
+  }
+  // Ein Feld im Prüf-/Korrektur-Formular (still gesetzt via window.__ibSet, kein Re-Render).
+  function ibReviewField(field,label,unit,type){
+    var rv=S.inbodyReview||{}; var v=rv[field];
+    if(type==='date'){ return '<label style="display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--border)"><span style="flex:1;font-size:13.5px;font-weight:700;color:var(--text)">'+esc(label)+'</span><input type="date" value="'+esc(rv.date||'')+'" onchange="window.__ibSet(\'date\',this)" style="border:1.5px solid var(--border);border-radius:11px;background:var(--surface-2);color:var(--text);font-size:14px;font-weight:700;padding:9px 10px"></label>'; }
+    var val=(v==null||v==='')?'':String(v).replace('.',',');
+    return '<label style="display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--border)"><span style="flex:1;font-size:13.5px;font-weight:600;color:var(--text)">'+esc(label)+'</span><input type="text" inputmode="decimal" value="'+esc(val)+'" onchange="window.__ibSet(\''+field+'\',this)" style="width:92px;border:1.5px solid var(--border);border-radius:11px;background:var(--surface-2);color:var(--text);font-size:15px;font-weight:700;padding:9px 10px;text-align:right"><span style="width:44px;font-size:12px;color:var(--text-soft)">'+esc(unit||'')+'</span></label>';
+  }
+  function ibReviewForm(){
+    var msg=S.inbodyMsg?('<div style="font-size:13px;font-weight:600;margin-top:10px;color:'+(S.inbodyErr?'var(--err-fg)':'var(--teal-ink)')+'">'+esc(S.inbodyMsg)+'</div>'):'';
+    var core=ibReviewField('date','Messdatum','','date')+
+      ibReviewField('weightKg','Gewicht','kg')+
+      ibReviewField('pbf','Körperfettanteil','%')+
+      ibReviewField('smmKg','Skelettmuskelmasse','kg')+
+      ibReviewField('bfmKg','Körperfettmasse','kg')+
+      ibReviewField('vfl','Viszerales Fett-Level','')+
+      ibReviewField('score','InBody-Score','/100');
+    var more=ibReviewField('bmi','BMI','kg/m²')+
+      ibReviewField('whr','Taille-Hüft-Verhältnis','')+
+      ibReviewField('bmr','Grundumsatz','kcal')+
+      ibReviewField('ffmKg','Fettfreie Masse','kg')+
+      ibReviewField('tbwL','Körperwasser','L')+
+      ibReviewField('proteinKg','Protein','kg')+
+      ibReviewField('mineralKg','Mineralien','kg')+
+      ibReviewField('heightCm','Größe','cm')+
+      ibReviewField('age','Alter','J.')+
+      ibReviewField('targetWeightKg','Zielgewicht','kg');
+    return '<div style="'+IB_CARD+'">'+
+      '<div style="font-size:16px;font-weight:900;color:var(--text)">Werte prüfen &amp; speichern</div>'+
+      '<div style="font-size:12.5px;color:var(--text-soft);font-weight:500;margin-top:3px;line-height:1.5">FINN hat deinen Bogen ausgelesen. Bitte kurz prüfen und bei Bedarf korrigieren – dann speichern.</div>'+
+      core+
+      '<details style="margin-top:6px"><summary style="cursor:pointer;font-size:12.5px;font-weight:800;color:var(--teal-ink);padding:10px 0">Weitere Werte anzeigen</summary>'+more+'</details>'+
+      msg+
+      '<div style="display:flex;gap:9px;margin-top:14px">'+
+        '<button data-act="inbodyReviewCancel" style="border:1.5px solid var(--border);border-radius:13px;background:var(--surface);color:var(--text-soft);font-weight:800;font-size:14px;padding:12px 16px;cursor:pointer">Verwerfen</button>'+
+        '<button data-act="inbodySave" '+(S.inbodyBusy?'disabled':'')+' style="flex:1;border:none;border-radius:13px;background:'+(S.inbodyBusy?'var(--surface-2)':'var(--teal)')+';color:'+(S.inbodyBusy?'var(--text-soft)':'#fff')+';font-weight:800;font-size:15px;padding:13px;cursor:'+(S.inbodyBusy?'default':'pointer')+'">'+(S.inbodyBusy?'Speichert …':'Messung speichern')+'</button>'+
+      '</div></div>';
+  }
+  // Kompakte Einstiegskarte für den Fortschritts-Tab.
+  function inbodyFortCard(){
+    var d=DATA.inbody; var latest=(d&&d.ok&&d.latest)||null;
+    var CARD='background:var(--surface);border-radius:20px;box-shadow:0 14px 38px rgba(4,33,40,.10);padding:18px';
+    var body;
+    if(latest){
+      var bits=[]; if(latest.pbf!=null) bits.push('KFA '+ibNum(latest.pbf)+' %'); if(latest.smmKg!=null) bits.push('Muskel '+ibNum(latest.smmKg)+' kg'); if(latest.score!=null) bits.push('Score '+ibNum(latest.score));
+      body='<div style="font-size:12.5px;color:var(--text-soft);font-weight:600;margin-top:3px">'+esc((latest.date?ernDeDate(latest.date)+' · ':'')+(bits.join(' · ')||'gespeichert'))+'</div>';
+    } else {
+      body='<div style="font-size:12.5px;color:var(--text-soft);font-weight:600;margin-top:3px">Bogen scannen – Muskel, Fett &amp; Score im Verlauf</div>';
+    }
+    return '<div data-act="nav" data-arg="inbody" style="'+CARD+';cursor:pointer;display:flex;align-items:center;gap:14px"><div style="width:44px;height:44px;border-radius:13px;background:var(--surface-2);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:22px">🧬</div><div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:900;color:var(--text)">InBody-Analyse</div>'+body+'</div>'+svg('<path d="M9 18l6-6-6-6"></path>',{c:'var(--text-soft)',w:2.2,s:20})+'</div>';
+  }
+  function scrInbody(){
+    var head=subHeader('InBody-Analyse','Körperanalyse & Verlauf','fort');
+    var d=DATA.inbody;
+    // Prüf-Formular (nach Scan oder manuell) hat Vorrang.
+    if(S.inbodyReview){ return '<div class="narrow" style="display:flex;flex-direction:column;gap:14px">'+head+ibReviewForm()+'</div>'; }
+    if(d===false||d==null){ return '<div class="narrow">'+head+'<div style="'+IB_CARD+';text-align:center;color:var(--text-soft)">Lädt …</div></div>'; }
+    if(!d.ok && d.available===false){ return '<div class="narrow">'+head+'<div style="'+IB_CARD+'"><div style="font-weight:800;color:var(--text)">Gerade nicht verfügbar</div><div style="font-size:13px;color:var(--text-soft);margin-top:5px">Die InBody-Analyse steht dir in Kürze zur Verfügung.</div></div></div>'; }
+    if(!d.ok){ return '<div class="narrow">'+head+'<div style="'+IB_CARD+';text-align:center"><div style="color:var(--text-soft);margin-bottom:10px">Konnte nicht geladen werden.</div><button data-act="inbodyReload" style="border:none;background:var(--teal);color:#fff;font-weight:800;border-radius:12px;padding:11px 18px;cursor:pointer">Erneut versuchen</button></div></div>'; }
+
+    var list=d.list||[]; var latest=d.latest||null; var count=list.length;
+    var blocks=[];
+    var cam='<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle>';
+    var quotaLine='';
+    if(!d.premium && d.quota && !d.quota.unlimited){ var lft=inbodyQuotaLeft(); quotaLine=(lft>0)?('<div style="font-size:11.5px;color:var(--text-soft);font-weight:700;text-align:center;margin-top:9px">✨ Noch '+lft+' von '+(d.quota.limit||5)+' KI-Auslesen diesen Monat gratis</div>'):('<div style="font-size:11.5px;color:#b4552f;font-weight:700;text-align:center;margin-top:9px">Gratis-Kontingent aufgebraucht – <button data-act="ernUpgradeOpen" style="border:none;background:none;color:var(--teal-ink);font-weight:900;cursor:pointer;padding:0;text-decoration:underline">mit Premium unbegrenzt</button> oder von Hand eintragen</div>'); }
+    var errLine=S.inbodyMsg?('<div style="font-size:12.5px;font-weight:600;margin-top:10px;text-align:center;color:'+(S.inbodyErr?'var(--err-fg)':'var(--teal-ink)')+'">'+esc(S.inbodyMsg)+'</div>'):'';
+    var scanCard='<div style="'+IB_CARD+'">'+
+      '<div style="font-size:16px;font-weight:900;color:var(--text)">'+(count?'Neue Messung hinzufügen':'InBody-Bogen einscannen')+'</div>'+
+      '<div style="font-size:12.5px;color:var(--text-soft);font-weight:500;margin-top:4px;line-height:1.5">Fotografiere deinen Ergebnisbogen vom InBody 270 – FINN liest die Werte automatisch aus. Du prüfst sie danach.</div>'+
+      '<label style="display:flex;align-items:center;justify-content:center;gap:9px;width:100%;margin-top:14px;padding:15px;border:none;border-radius:15px;background:var(--teal);color:#fff;font-weight:800;font-size:15px;cursor:pointer'+(S.inbodyBusy?';opacity:.6':'')+'">'+svg(cam,{c:'#fff',w:2,s:21})+(S.inbodyBusy?'FINN liest …':'Bogen fotografieren')+'<input type="file" accept="image/*" capture="environment" onchange="window.__inbodyPhoto(this)" '+(S.inbodyBusy?'disabled ':'')+'style="display:none"></label>'+
+      '<label style="display:block;text-align:center;margin-top:8px;font-size:12.5px;font-weight:800;color:var(--teal-ink);cursor:pointer;padding:6px">Stattdessen Foto aus Galerie<input type="file" accept="image/*" onchange="window.__inbodyPhoto(this)" '+(S.inbodyBusy?'disabled ':'')+'style="display:none"></label>'+
+      '<button data-act="inbodyManual" style="width:100%;border:none;background:none;color:var(--text-soft);font-size:12.5px;font-weight:800;cursor:pointer;padding:6px">Werte lieber von Hand eintragen</button>'+
+      quotaLine+errLine+'</div>';
+    blocks.push(scanCard);
+
+    if(latest){
+      var ev=d.eval||[]; var scoreItem=null, rest=[];
+      ev.forEach(function(m){ if(m.key==='score') scoreItem=m; else rest.push(m); });
+      var hero='';
+      if(scoreItem){
+        hero='<div style="background:linear-gradient(150deg,#0e6072,#063540);border-radius:22px;padding:22px;color:#fff;box-shadow:0 16px 40px rgba(4,33,40,.2)">'+
+          '<div style="font-size:12px;font-weight:800;color:#aed0d6;text-transform:uppercase;letter-spacing:.5px">InBody-Score'+(latest.date?(' · '+esc(ernDeDate(latest.date))):'')+'</div>'+
+          '<div style="display:flex;align-items:flex-end;gap:12px;margin-top:6px"><div style="font-size:60px;font-weight:900;letter-spacing:-2.5px;line-height:.85">'+ibNum(scoreItem.value)+'</div><div style="font-size:14px;font-weight:700;color:#eaf6f8;padding-bottom:8px">/ 100</div></div>'+
+          (scoreItem.note?'<div style="font-size:12px;color:#cfe8ec;font-weight:500;line-height:1.5;margin-top:10px">'+esc(scoreItem.note)+'</div>':'')+'</div>';
+      } else if(latest.date){
+        hero='<div style="font-size:12.5px;color:var(--text-soft);font-weight:700;padding:0 4px">Neueste Messung: '+esc(ernDeDate(latest.date))+'</div>';
+      }
+      var metricsCard=rest.length?('<div style="'+IB_CARD+'"><div style="font-size:15px;font-weight:900;color:var(--text);margin-bottom:2px">Deine Werte im Detail</div><div style="font-size:12px;color:var(--text-soft);font-weight:500;margin-bottom:6px">Mit gesunden Richtwerten – kein medizinischer Befund.</div>'+rest.map(function(m,i){ return ibMetricRow(m,i===0); }).join('')+'</div>'):'';
+      blocks.push(hero); blocks.push(metricsCard);
+      blocks.push(ibTrendCard()); blocks.push(ibCurvesCard()); blocks.push(ibFinnCard()); blocks.push(ibHistoryCard());
+    } else {
+      blocks.push('<div style="'+IB_CARD+'"><div style="font-size:15.5px;font-weight:800;color:var(--text)">Was die InBody-Analyse zeigt</div><div style="font-size:13px;color:var(--text-soft);margin-top:5px;line-height:1.55">Der InBody 270 misst deine <b>Muskel-</b> und <b>Fettverteilung</b>, dein <b>Körperwasser</b> und den <b>InBody-Score</b>. So siehst du echten Fortschritt – auch wenn die Waage mal stehen bleibt. Scanne deinen ersten Bogen; jede weitere Messung zeigt dir den Verlauf.</div></div>');
+    }
+
+    var out=blocks.filter(Boolean).join('');
+    out+='<div style="display:flex;gap:11px;background:#E7F1F3;border:1px solid #CBE2E7;border-radius:16px;padding:14px 15px">'+svg('<rect x="3" y="11" width="18" height="10" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path>',{c:'#0a4958',w:1.9,s:19})+'<div style="font-size:12px;color:var(--text-muted);font-weight:500;line-height:1.5">Deine InBody-Werte sind vertraulich, fließen nur mit deiner Nutzung in FINN &amp; dein Vitalalter ein und lassen sich jederzeit löschen.</div></div>';
+    return '<div class="narrow" style="display:flex;flex-direction:column;gap:14px">'+head+out+'</div>';
+  }
   function scrProfil(){
     var p=DATA.profile||{}; var c=DATA.contract||{};
     var name=((p.firstName||'')+' '+(p.lastName||'')).trim()||'Mitglied';
@@ -6103,6 +6315,7 @@
     var AWARD='<circle cx="12" cy="8" r="6"></circle><path d="M15.5 13.5L17 22l-5-3-5 3 1.5-8.5"></path>';
     var coaching=card([
       ['fort','Fortschritt & Vitalität','Vitalalter, Rang & Punkte',AWARD,true],
+      ['inbody','InBody-Analyse','Körperanalyse scannen & Verlauf','<path d="M3 12h4l3 8 4-16 3 8h4"></path>'],
       ERN_ON?['ern','Ernährung','Tagesziel, Tracking & Rezepte','<path d="M11 21A7 7 0 0 1 4 14C4 8.5 8 4 13.5 4c2.7 0 4.6 1 6.5 1.8 0 8.7-4.3 15.2-9 15.2z"></path><path d="M11 21c0-5.5 3.3-10 7.5-12"></path>']:null,
       ERN_ON?['finnusage','FINN-Nutzung','KI-Kontingent & Verbrauch','<path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.5 8.6 8.6 0 0 1-4-1L3 20l1-5a8.4 8.4 0 0 1-1-4A8.5 8.5 0 0 1 11.5 3 8.5 8.5 0 0 1 21 11.5z"></path>']:null,
       SOCIAL_ON?['social','Trainingspartner','Verbinden, Chat & Challenges','<circle cx="9" cy="7" r="3"></circle><path d="M2.5 20c0-3.3 2.9-6 6.5-6s6.5 2.7 6.5 6"></path><circle cx="17.5" cy="8.5" r="2.4"></circle><path d="M16 14.2c2.6.4 4.5 2.5 4.5 5.3"></path>',(DATA.social&&DATA.social.requests&&DATA.social.requests.length>0)]:null
@@ -7087,10 +7300,10 @@
   // ---- responsive chrome (Desktop-Sidebar + Topbar) ----
   var DASH_IC='<rect x="3" y="3" width="7" height="9" rx="1.5"></rect><rect x="14" y="3" width="7" height="5" rx="1.5"></rect><rect x="14" y="12" width="7" height="9" rx="1.5"></rect><rect x="3" y="16" width="7" height="5" rx="1.5"></rect>';
   var NAVITEMS=[['home','Übersicht',DASH_IC],['card','Mitgliedskarte','<rect x="3" y="3" width="7" height="7" rx="1.4"></rect><rect x="14" y="3" width="7" height="7" rx="1.4"></rect><rect x="3" y="14" width="7" height="7" rx="1.4"></rect><path d="M14 14h3v3h-3z"></path><path d="M20 14v3M14 20h3M20 20v.01"></path>'],['fort','Fortschritt','<circle cx="12" cy="8" r="6"></circle><path d="M15.5 13.5L17 22l-5-3-5 3 1.5-8.5"></path>'],['ern','Ernährung','<path d="M11 21A7 7 0 0 1 4 14C4 8.5 8 4 13.5 4c2.7 0 4.6 1 6.5 1.8 0 8.7-4.3 15.2-9 15.2z"></path><path d="M11 21c0-5.5 3.3-10 7.5-12"></path>'],['insta','Instagram',IG_ICON],['data','Meine Daten',IC.user],['contract','Vertragsverwaltung',IC.doc],['account','Beitragskonto','<rect x="2" y="5" width="20" height="14" rx="2"></rect><path d="M2 9h20M6 15h5"></path>'],['appt','Termine',IC.cal],['referral','Freunde werben',IC.gift],['checkins','Check-ins',IC.list],['postfach','Postfach',IC.mail],['help','Hilfe',IC.help],['settings','Einstellungen',IC.cog]];
-  var TITLES={home:'Übersicht',data:'Meine Daten',contract:'Vertragsverwaltung',account:'Beitragskonto',appt:'Termine',checkin:'Check-in',referral:'Freunde werben',checkins:'Check-in-Verlauf',postfach:'Postfach',help:'Hilfe & Kontakt',settings:'Einstellungen',profil:'Profil',card:'Mitgliedskarte',fort:'Fortschritt',ern:'Ernährung',coach:'Coach',tag:'Training',figur:'Figur-Check',abo:'Mein Abo',recht:'Widerruf & Recht',blog:'Blog',insta:'Instagram',social:'Trainingspartner',finnusage:'FINN-Nutzung'};
+  var TITLES={home:'Übersicht',data:'Meine Daten',contract:'Vertragsverwaltung',account:'Beitragskonto',appt:'Termine',checkin:'Check-in',referral:'Freunde werben',checkins:'Check-in-Verlauf',postfach:'Postfach',help:'Hilfe & Kontakt',settings:'Einstellungen',profil:'Profil',card:'Mitgliedskarte',fort:'Fortschritt',ern:'Ernährung',coach:'Coach',tag:'Training',figur:'Figur-Check',inbody:'InBody-Analyse',abo:'Mein Abo',recht:'Widerruf & Recht',blog:'Blog',insta:'Instagram',social:'Trainingspartner',finnusage:'FINN-Nutzung'};
   // App-Leiste: Zurück-Ziel je Unterseite (Standard: Start). Aus dem Profil-Hub geöffnete
   // Seiten kehren zum Profil-Hub zurück; der Figur-Check lebt im Coach-Bereich.
-  var APPBAR_BACK={figur:'coach',fort:'profil',data:'profil',contract:'profil',account:'profil',card:'profil',checkins:'profil',referral:'profil',help:'profil',settings:'profil',abo:'profil',recht:'profil',postfach:'profil',finnusage:'profil',blog:'profil',social:'home',insta:'home'};
+  var APPBAR_BACK={figur:'coach',inbody:'fort',fort:'profil',data:'profil',contract:'profil',account:'profil',card:'profil',checkins:'profil',referral:'profil',help:'profil',settings:'profil',abo:'profil',recht:'profil',postfach:'profil',finnusage:'profil',blog:'profil',social:'home',insta:'home'};
   // Bottom-Nav-Wurzeln (kein Zurück-Pfeil). 4. Slot ist Ernährung (an) bzw. Termine (aus).
   var APPBAR_ROOTS=ERN_ON?{home:1,tag:1,ern:1,coach:1}:{home:1,tag:1,appt:1,coach:1};
   function initials(p){ p=p||{}; var a=(p.firstName||'').trim(),b=(p.lastName||'').trim(); return (((a?a[0]:'')+(b?b[0]:'')).toUpperCase())||'FT'; }
@@ -7319,6 +7532,7 @@
       case 'card': html=scrCard(); break;
       case 'fort': html=scrFort(); break;
       case 'figur': html=scrFigur(); break;
+      case 'inbody': html=scrInbody(); break;
       case 'ern': html=scrErn(); break;
       case 'coach': html=scrCoach(); break;
       case 'tag': html=scrMeinTag(); break;
@@ -7449,6 +7663,33 @@
         if(d&&d.error==='premium_required'){ ernEnsureModulePrice(); setS({ernUpgrade:true}); return; }
         S.figurErr=true; S.figurMsg=(d&&d.message)||'Das hat nicht geklappt – bitte erneut.'; setS({});
       }).catch(function(){ S.figurReviewBusy=false; S.figurErr=true; S.figurMsg='Netzwerkfehler – bitte erneut.'; setS({}); });
+    },
+    // ── InBody-Analyse ──
+    inbodyReload:function(){ DATA.inbody=null; render(); loadInbody(); },
+    inbodyManual:function(){ var today=''; try{ today=new Date().toISOString().slice(0,10); }catch(e){} S.inbodyReview={date:today}; S.inbodyMsg=''; S.inbodyErr=false; setS({}); },
+    inbodyReviewCancel:function(){ S.inbodyReview=null; S.inbodyMsg=''; S.inbodyErr=false; setS({}); },
+    inbodySave:function(){
+      if(S.inbodyBusy) return; var rv=S.inbodyReview||{};
+      var has=['weightKg','pbf','smmKg','bmi','score','vfl','bfmKg'].some(function(k){ return rv[k]!=null; });
+      if(!has){ S.inbodyErr=true; S.inbodyMsg='Bitte gib mindestens einen Kernwert ein (z. B. Gewicht oder Körperfett).'; setS({}); return; }
+      S.inbodyBusy=true; S.inbodyMsg=''; S.inbodyErr=false; render();
+      api('/api/member/inbody',{method:'POST',body:JSON.stringify({action:'save',measurement:rv})}).then(function(r){
+        S.inbodyBusy=false;
+        if(r&&r.ok){ DATA.inbody=r; S.inbodyReview=null; S.inbodyAssess=''; S.inbodyErr=false; S.inbodyMsg='Gespeichert – dein Verlauf ist aktualisiert.'; }
+        else { S.inbodyErr=true; S.inbodyMsg=(r&&r.message)||'Das hat nicht geklappt – bitte erneut.'; }
+        setS({});
+      }).catch(function(){ S.inbodyBusy=false; S.inbodyErr=true; S.inbodyMsg='Netzwerkfehler – bitte erneut.'; setS({}); });
+    },
+    inbodyDelete:function(a){ if(!a) return; if(!window.confirm('Diese Messung wirklich löschen?')) return; api('/api/member/inbody',{method:'POST',body:JSON.stringify({action:'delete',sel:a})}).then(function(r){ if(r&&r.ok){ DATA.inbody=r; S.inbodyMsg=''; S.inbodyErr=false; } setS({}); }).catch(function(){}); },
+    inbodyAssess:function(){
+      if(S.inbodyAssessBusy) return; S.inbodyAssessBusy=true; render();
+      api('/api/member/inbody',{method:'POST',timeoutMs:45000,body:JSON.stringify({action:'assess'})}).then(function(r){
+        S.inbodyAssessBusy=false;
+        if(r&&r.ok&&r.text){ S.inbodyAssess=r.text; }
+        else if(r&&r.error==='premium_required'){ ernEnsureModulePrice(); setS({ernUpgrade:true}); return; }
+        else { S.inbodyErr=true; S.inbodyMsg=(r&&r.message)||'Das hat gerade nicht geklappt – bitte erneut.'; }
+        setS({});
+      }).catch(function(){ S.inbodyAssessBusy=false; S.inbodyErr=true; S.inbodyMsg='Netzwerkfehler – bitte erneut.'; setS({}); });
     },
     trainReload:function(){ DATA.training=null; render(); loadTraining(); },
     trainSeg:function(a){ S.trainSeg=(a==='plaene'||a==='uebungen'||a==='verlauf')?a:'einheit'; S.trainDetail=null; S.trainDetailFull=null; S.trainGenOpen=false; S.trainMsg=''; setS({}); },
