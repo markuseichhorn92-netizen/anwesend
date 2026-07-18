@@ -14,11 +14,16 @@
  *                                 NSSpeechRecognitionUsageDescription,
  *                                 NSPhotoLibraryUsageDescription, NSPhotoLibraryAddUsageDescription
  *   - Android AndroidManifest.xml: CAMERA, RECORD_AUDIO (+ Kamera als optionales Feature)
- *   - Android MainActivity.java:  fragt CAMERA/RECORD_AUDIO zur LAUFZEIT an. Ohne erteiltes
- *                                 Laufzeit-Recht lehnt der Android-WebView getUserMedia ab
- *                                 (NotAllowedError) – dann geht die Live-Kamera fürs
- *                                 Essen-Tracking / den Barcode-Scan / das Sprach-Diktat nicht.
- *                                 (Die Manifest-Berechtigung allein reicht auf Android NICHT.)
+ *   - Android MainActivity.java:  (1) fragt CAMERA/RECORD_AUDIO zur LAUFZEIT an und
+ *                                 (2) setzt einen WebChromeClient mit onPermissionRequest, der
+ *                                 die Kamera/Mikro für die eigene Domain im WebView freigibt.
+ *                                 BEIDES ist nötig: Ohne das Laufzeit-Recht UND ohne das
+ *                                 onPermissionRequest lehnt der Android-WebView getUserMedia ab
+ *                                 (NotAllowedError → „Kamerazugriff wurde nicht erlaubt") – dann
+ *                                 geht die Live-Kamera fürs Essen-Tracking / den Barcode-Scan /
+ *                                 das Sprach-Diktat nicht. (Manifest + Laufzeit-Recht allein
+ *                                 reichen auf Android NICHT; der WebView gatet Web-getUserMedia
+ *                                 zusätzlich über onPermissionRequest.)
  *
  * Es ist ein NO-OP, solange `ios/`/`android/` noch nicht erzeugt wurden, und
  * fügt vorhandene Schlüssel/Anpassungen NICHT doppelt hinzu. Läuft automatisch aus den
@@ -102,11 +107,17 @@ function patchAndroidManifest() {
   console.log('✓ Android: ergänzt →\n' + lines.map(function (l) { return '    ' + l.trim(); }).join('\n'));
 }
 
-// Android: MainActivity so patchen, dass CAMERA/RECORD_AUDIO zur Laufzeit angefragt werden.
-// Grund: Der Android-WebView gibt getUserMedia (Foto-Tracking, Barcode-Scan, Sprach-Diktat)
-// nur frei, wenn die App die Laufzeit-Berechtigung wirklich hält – die Manifest-Angabe allein
-// genügt nicht. Wird nur der Capacitor-Standard (leere BridgeActivity) ersetzt; eine bereits
-// angepasste Activity (enthält schon "requestPermissions") bleibt unangetastet.
+// Android: MainActivity so patchen, dass die Live-Kamera im WebView wirklich funktioniert.
+// Zwei Dinge sind nötig – die Manifest-Berechtigung allein genügt NICHT:
+//   1) CAMERA/RECORD_AUDIO zur LAUFZEIT anfragen (App-Ebene).
+//   2) Einen WebChromeClient mit onPermissionRequest setzen, der die Web-getUserMedia-Anfrage
+//      der eigenen Domain im WebView freigibt (WebView-Ebene). Fehlt (2), lehnt der Android-
+//      WebView die Kamera ab (NotAllowedError → „Kamerazugriff wurde nicht erlaubt"), selbst
+//      wenn (1) längst erteilt ist.
+// Als vollständig gepatcht gilt eine MainActivity, die bereits „onPermissionRequest" enthält.
+// Ersetzt werden der Capacitor-Standard UND die frühere (nur-Laufzeitrechte-)Variante – beide
+// „extends BridgeActivity" ohne onPermissionRequest. Eine sonst individuell angepasste Activity
+// (kein BridgeActivity) bleibt unangetastet.
 function patchAndroidMainActivity() {
   const base = path.join(ROOT, 'android', 'app', 'src', 'main', 'java');
   if (!fs.existsSync(base)) { console.log('· Android MainActivity.java noch nicht vorhanden – übersprungen.'); return; }
@@ -123,33 +134,55 @@ function patchAndroidMainActivity() {
   }(base));
   if (!found) { console.log('· Android MainActivity.java nicht gefunden – übersprungen.'); return; }
   let src = fs.readFileSync(found, 'utf8');
-  if (src.indexOf('requestPermissions') >= 0) { console.log('✓ Android: MainActivity fragt Laufzeit-Rechte bereits an.'); return; }
-  if (src.indexOf('extends BridgeActivity') < 0) { console.log('· Android: MainActivity ist bereits individuell angepasst – Laufzeit-Rechte bitte manuell ergänzen.'); return; }
+  if (src.indexOf('onPermissionRequest') >= 0) { console.log('✓ Android: MainActivity gibt Kamera im WebView bereits frei (onPermissionRequest vorhanden).'); return; }
+  if (src.indexOf('extends BridgeActivity') < 0) { console.log('· Android: MainActivity ist individuell angepasst – Kamera-Freigabe (onPermissionRequest) bitte manuell ergänzen.'); return; }
   const pkgMatch = src.match(/package\s+([\w.]+)\s*;/);
   const pkg = pkgMatch ? pkgMatch[1] : 'de.fitinn.portal';
   const patched = 'package ' + pkg + ';\n\n'
     + 'import android.Manifest;\n'
     + 'import android.content.pm.PackageManager;\n'
     + 'import android.os.Bundle;\n'
+    + 'import android.webkit.PermissionRequest;\n'
     + 'import androidx.core.app.ActivityCompat;\n'
     + 'import androidx.core.content.ContextCompat;\n'
-    + 'import com.getcapacitor.BridgeActivity;\n\n'
+    + 'import com.getcapacitor.Bridge;\n'
+    + 'import com.getcapacitor.BridgeActivity;\n'
+    + 'import com.getcapacitor.BridgeWebChromeClient;\n\n'
     + 'public class MainActivity extends BridgeActivity {\n'
     + '    @Override\n'
     + '    public void onCreate(Bundle savedInstanceState) {\n'
-    + '        super.onCreate(savedInstanceState);\n'
-    + '        // Kamera/Mikrofon zur Laufzeit anfragen, damit getUserMedia im WebView\n'
-    + '        // (Essen-Foto, Barcode-Scan, Sprach-Diktat) auf Android funktioniert.\n'
+    + '        super.onCreate(savedInstanceState);\n\n'
+    + '        // 1) App-Laufzeitrechte für Kamera/Mikrofon anfragen (nötige Voraussetzung).\n'
     + '        String[] perms = { Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO };\n'
     + '        boolean need = false;\n'
     + '        for (String p : perms) {\n'
     + '            if (ContextCompat.checkSelfPermission(this, p) != PackageManager.PERMISSION_GRANTED) need = true;\n'
     + '        }\n'
-    + '        if (need) ActivityCompat.requestPermissions(this, perms, 4711);\n'
+    + '        if (need) ActivityCompat.requestPermissions(this, perms, 4711);\n\n'
+    + '        // 2) WebView-Ebene: getUserMedia der eigenen Domain freigeben. Ohne dieses\n'
+    + '        //    onPermissionRequest lehnt der Android-WebView Kamera/Mikro ab, selbst wenn\n'
+    + '        //    die App-Laufzeitrechte erteilt sind (Barcode-Scan, Essen-Foto, Sprach-Diktat).\n'
+    + '        final Bridge b = this.getBridge();\n'
+    + '        if (b != null && b.getWebView() != null) {\n'
+    + '            b.getWebView().setWebChromeClient(new BridgeWebChromeClient(b) {\n'
+    + '                @Override\n'
+    + '                public void onPermissionRequest(final PermissionRequest request) {\n'
+    + '                    String origin = request.getOrigin() != null ? request.getOrigin().toString() : "";\n'
+    + '                    if (origin.contains("fit-inn-trier.de")) {\n'
+    + '                        runOnUiThread(new Runnable() {\n'
+    + '                            @Override\n'
+    + '                            public void run() { request.grant(request.getResources()); }\n'
+    + '                        });\n'
+    + '                    } else {\n'
+    + '                        super.onPermissionRequest(request);\n'
+    + '                    }\n'
+    + '                }\n'
+    + '            });\n'
+    + '        }\n'
     + '    }\n'
     + '}\n';
   fs.writeFileSync(found, patched, 'utf8');
-  console.log('✓ Android: MainActivity ergänzt → fragt CAMERA/RECORD_AUDIO zur Laufzeit an (' + found + ')');
+  console.log('✓ Android: MainActivity ergänzt → Laufzeit-Rechte + WebView-Kamerafreigabe (onPermissionRequest) (' + found + ')');
 }
 
 function main() {
