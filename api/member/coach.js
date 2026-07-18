@@ -16,6 +16,7 @@ const M = require('../../lib/members');
 const AI = require('../../lib/ai');
 const HELP = require('../../lib/help');
 const MLAccount = require('../../lib/mlAccount');
+const FinnMemory = require('../../lib/finnMemory');
 
 // ── Live-Daten fürs Chat-Gespräch (nur die des angemeldeten Mitglieds) ──
 // Vertrag, nächste Termine, Besuche, Beitragskonto – parallel und fehlertolerant
@@ -142,12 +143,28 @@ module.exports = async function handler(req, res) {
     res.statusCode = 200; return res.end(JSON.stringify({ ok: true, message: STATIC_TIPS[idx], ai: false }));
   }
 
-  // ── Chat mit FINN ──
+  // ── Chat mit FINN + FINN-Gedächtnis-Verwaltung ──
   if (req.method === 'POST') {
+    const body = await M.readBody(req);
+    const action = String(body.action || '');
+
+    // FINN-Gedächtnis verwalten (Opt-in, ansehen, einzeln/alles vergessen) – für die Profil-UI.
+    if (action.indexOf('memory-') === 0) {
+      if (!(await M.rateLimit('coach-mem:' + sess.id, 60, 3600))) {
+        res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'rate_limited' }));
+      }
+      let mem;
+      if (action === 'memory-optin') mem = await FinnMemory.setOptIn(sess.id, !!body.on);
+      else if (action === 'memory-forget') mem = await FinnMemory.forget(sess.id, String(body.text || ''));
+      else if (action === 'memory-clear') mem = await FinnMemory.clear(sess.id);
+      else mem = await FinnMemory.get(sess.id);   // memory-get
+      res.statusCode = 200;
+      return res.end(JSON.stringify({ ok: true, on: mem.on, items: mem.items.map((x) => x.t) }));
+    }
+
     if (!(await M.rateLimit('coach-chat:' + sess.id, 40, 3600))) {
       res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'rate_limited', message: 'Kurz durchatmen – das waren viele Fragen auf einmal. Versuch es gleich nochmal.' }));
     }
-    const body = await M.readBody(req);
     const question = String(body.question || '').trim();
     if (question.length < 2) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'empty' })); }
     if (!AI.hasAI) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'no_ai', message: 'FINN ist gerade nicht verfügbar. Magst du es direkt unserem Team schreiben?' })); }
@@ -162,14 +179,27 @@ module.exports = async function handler(req, res) {
       : topic === 'training'
       ? 'App-Kontext: Das Mitglied stellt diese Frage gerade im Trainings-Bereich der App (Trainingsplan, Übungen an unseren Geräten, richtige Technik, wie oft trainieren, Einheiten). Beziehe dich – wenn es passt – auf diesen Kontext.'
       : '';
-    // Datenminimierung: nur Vorname + Tarif + aggregierte Live-Daten an die KI –
+    // FINN-Langzeitgedächtnis (nur bei Opt-in): gemerkte Fakten in den Kontext geben und
+    // FINN erlauben, Neues via [[merke: …]] zu ergänzen (Anweisung nur, wenn aktiviert).
+    let mem = { on: false, items: [] };
+    try { mem = await FinnMemory.get(sess.id); } catch (e) {}
+    const memoryText = FinnMemory.toPromptText(mem);
+    // Datenminimierung: nur Vorname + Tarif + aggregierte Live-Daten (+ ggf. Gemerktes) an die KI –
     // Nachname/Mitgliedsnummer sind für die Antwort nicht erforderlich.
-    const member = { firstName: m.firstName, rateName: det.rateName, details: det.text + (topicHint ? ('\n\n' + topicHint) : '') };
+    const member = {
+      firstName: m.firstName,
+      rateName: det.rateName,
+      details: det.text + (topicHint ? ('\n\n' + topicHint) : '') + (memoryText ? ('\n\n' + memoryText) : ''),
+      memoDirective: mem.on ? FinnMemory.MEMO_DIRECTIVE : '',
+    };
     const r = await AI.coachReply(member, Array.isArray(body.history) ? body.history : [], question, HELP);
     res.statusCode = 200;
     if (r.ok) {
       try { require('../../lib/handled').record('ai', sess.id, 'chat'); } catch (e) {}
-      const parsed = extractLink(r.answer);
+      // [[merke: …]]-Marker immer aus der sichtbaren Antwort entfernen; speichern nur bei Opt-in.
+      const memParsed = FinnMemory.extractMemos(r.answer);
+      if (memParsed.memos.length) { try { await FinnMemory.remember(sess.id, memParsed.memos); } catch (e) {} }
+      const parsed = extractLink(memParsed.text);
       return res.end(JSON.stringify({ ok: true, answer: parsed.text, link: parsed.link }));
     }
     return res.end(JSON.stringify({ ok: false, error: r.error || 'ai_failed', message: 'Da komme ich gerade nicht weiter. Magst du es unserem Team schreiben?' }));
