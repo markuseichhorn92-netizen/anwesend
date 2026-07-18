@@ -439,7 +439,7 @@
 (function(){
   "use strict";
   var $ = function(id){ return document.getElementById(id); };
-  var esc = function(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); };
+  var esc = function(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); };
   var TEAL='var(--teal-ink)';      // Teal als Text-/Icon-Farbe (hell: dunkel, dunkel: hell)
   var TEALBG='var(--teal)';        // Teal als Flächenfarbe (Buttons, Badges, Avatare)
 
@@ -680,6 +680,8 @@
   function nav(s){
     closeMenu();   // bei Navigation das Burger-Menü schließen
     if(isFormer() && FORMER_OK.indexOf(s)<0) s='home';   // Ehemalige: gesperrte Screens -> Übersicht
+    // Vital-Check verlassen: laufende BLE-Messung + Timer sauber stoppen (kein Hintergrund-Stream/Save).
+    if(S.screen==='morning' && s!=='morning'){ try{ moStopMeasure(); }catch(e){} S.morningPhase='idle'; S.morningLiveBpm=null; S.morningElapsed=0; }
     S.screen=s;
     if(s==='help'){ S.helpSel=null; S.helpCat='all'; S.helpQ=''; S.helpShowAll=false; S.aiPhase='idle'; S.aiQuery=''; S.aiAsked=''; S.aiAnswer=''; S.aiFeedback=null; S.ctOpen=false; S.ctSent=false; S.ctMsg=''; S.ctErr=''; S.artFb=null; }
     if(s==='postfach'){ S.pfSel=null; S.pfThread=false; S.pfErr=''; S.pfDraft=''; S.pfSearch=''; S.pfLimit=12; loadInbox(); }
@@ -6667,7 +6669,7 @@
     try{ d.push('P:'+((window.Capacitor&&Capacitor.Plugins)?(Object.keys(Capacitor.Plugins).join(',')||'-'):'-')); }catch(e){}
     return '<div style="font-size:10px;color:var(--text-soft);font-weight:700;text-align:center;margin-top:8px;font-family:ui-monospace,monospace;word-break:break-all;opacity:.85">Diagnose · '+esc(d.join(' · '))+'</div>';
   }
-  function moStopMeasure(){ try{ if(moHR.timer) clearInterval(moHR.timer); }catch(e){} moHR.timer=null; try{ if(moHR.stop) moHR.stop(); }catch(e){} moHR.stop=null; }
+  function moStopMeasure(){ try{ if(moHR.timer) clearInterval(moHR.timer); }catch(e){} moHR.timer=null; try{ if(moHR.watchdog) clearTimeout(moHR.watchdog); }catch(e){} moHR.watchdog=null; try{ if(moHR.stop) moHR.stop(); }catch(e){} moHR.stop=null; }
   function moStartMeasure(kind){
     var d=morningData(); if(!d) return;
     if(!d.premium){ ernEnsureModulePrice(); setS({ernUpgrade:true}); return; }
@@ -6675,15 +6677,18 @@
     kind=(kind==='training')?'training':'morgen';
     S.morningMeasureKind=kind;
     var secs=moSecs(kind);
-    moHR={ samples:[], rr:[], timer:null, stop:null, startTs:0 };
+    moStopMeasure();   // evtl. verwaisten Timer/Stream aus einem früheren Lauf beenden
+    moHR={ samples:[], rr:[], timer:null, watchdog:null, stop:null, startTs:0 };
     S.morningPhase='connecting'; S.morningErr=false; S.morningMsg=''; S.morningLiveBpm=null; S.morningElapsed=0; render();
     moHR.stop=moBleStart(function(bpm,rr){
-      if(S.morningPhase==='connecting'){ S.morningPhase='measuring'; moHR.startTs=Date.now(); }  // Countdown erst ab dem ersten echten Puls
+      if(S.morningPhase==='connecting'){ S.morningPhase='measuring'; moHR.startTs=Date.now(); if(moHR.watchdog){ clearTimeout(moHR.watchdog); moHR.watchdog=null; } }  // Countdown erst ab dem ersten echten Puls
       moHR.samples.push({t:Date.now(),bpm:bpm});
       if(rr&&rr.length) rr.forEach(function(x){ if(x>=300&&x<=2000) moHR.rr.push(x); });
       S.morningLiveBpm=bpm;
       render();
     },function(code){ moStopMeasure(); S.morningPhase='idle'; S.morningErr=true; S.morningMsg=moErrMsg(code); setS({}); });
+    // Watchdog: kommt binnen 20 s kein verwertbarer Puls, sauber abbrechen statt ewig „verbinden…".
+    moHR.watchdog=setTimeout(function(){ if(S.morningPhase==='connecting'){ moStopMeasure(); S.morningPhase='idle'; S.morningErr=true; S.morningMsg='Kein Signal vom Gurt – Elektroden anfeuchten, Gurt eng anlegen und andere Apps (Polar Beat, Uhr) trennen.'; setS({}); } },20000);
     moHR.timer=setInterval(function(){ if(!moHR.startTs) return; S.morningElapsed=Math.round((Date.now()-moHR.startTs)/1000); if(S.morningElapsed>=secs){ moFinishMeasure(); } else { render(); } },1000);
   }
   function moFinishMeasure(){
@@ -6832,20 +6837,23 @@
   function moEuro(n){ return (Math.round(n*100)/100).toFixed(2).replace('.',',')+' €'; }
   function moStrapOfferCard(){
     var d=morningData(); var prem=!!(d&&d.premium);
+    var reserved=!!(S.morningStrapReserved||(d&&d.strapReserved));
     var full=MO_H9_PRICE, disc=full*(1-MO_H9_DISC);
     var priceHtml=prem
       ? '<span style="text-decoration:line-through;color:var(--text-soft);font-weight:700;font-size:12.5px">'+moEuro(full)+'</span> <span style="font-size:17px;font-weight:900;color:var(--teal-ink)">'+moEuro(disc)+'</span> <span style="font-size:10.5px;font-weight:800;color:#176b37;background:#E7F6EC;border-radius:8px;padding:2px 7px;white-space:nowrap">−20 % Premium</span>'
       : '<span style="font-size:17px;font-weight:900;color:var(--text)">'+moEuro(full)+'</span> <span style="font-size:11.5px;font-weight:800;color:var(--teal-ink)">· mit Coach Premium −20 %</span>';
-    var cta;
-    if(S.morningStrapReserved){
-      cta='<div style="margin-top:12px;padding:11px 13px;border-radius:12px;background:#E7F6EC;color:#176b37;font-size:12.5px;font-weight:800;line-height:1.4">✓ Reserviert – wir legen dir den Gurt an der Rezeption bereit. Bezahlen &amp; mitnehmen direkt an der Theke.</div>';
+    var cta, foot;
+    if(reserved){
+      cta='<div style="margin-top:14px;padding:11px 13px;border-radius:12px;background:#E7F6EC;color:#176b37;font-size:12.5px;font-weight:800;line-height:1.4">✓ Reserviert – wir legen dir den Gurt an der Rezeption bereit. Bezahlen &amp; mitnehmen direkt an der Theke.</div>';
+      foot='';
     } else {
       var busy=!!S.morningStrapBusy;
-      cta='<button data-act="morningStrapReserve" '+(busy?'disabled ':'')+'style="margin-top:12px;width:100%;padding:12px;border:none;border-radius:12px;background:var(--teal);color:#fff;font-weight:900;font-size:13.5px;cursor:pointer'+(busy?';opacity:.6':'')+'">'+(busy?'Wird reserviert …':'Gurt reservieren')+'</button>'
-        +'<div style="font-size:10.5px;color:var(--text-soft);font-weight:600;margin-top:7px;text-align:center;opacity:.85">Unverbindlich · keine Zahlung online · Abholung &amp; Bezahlung an der Theke</div>'
+      cta='<button data-act="morningStrapReserve" '+(busy?'disabled ':'')+'style="margin-top:14px;width:100%;padding:13px;border:none;border-radius:13px;background:var(--teal);color:#fff;font-weight:900;font-size:13.5px;cursor:pointer'+(busy?';opacity:.6':'')+'">'+(busy?'Wird reserviert …':'Gurt reservieren')+'</button>'
+        +'<div style="font-size:10.5px;color:var(--text-soft);font-weight:600;margin-top:7px;text-align:center;opacity:.85">Unverbindlich · keine Zahlung online</div>'
         +(S.morningStrapErr?('<div style="font-size:11.5px;font-weight:700;margin-top:7px;text-align:center;color:var(--err-fg)">'+esc(S.morningStrapErr)+'</div>'):'');
+      foot='<div style="font-size:11px;color:var(--text-soft);font-weight:600;margin-top:12px;text-align:center;opacity:.85;border-top:1px solid var(--border);padding-top:11px">Abholung &amp; Bezahlung an der Rezeption. Funktioniert auch mit jedem anderen Bluetooth-Brustgurt (Standard-Herzfrequenz).</div>';
     }
-    return '<div style="'+MO_CARD+'"><div style="display:flex;align-items:center;gap:13px"><span style="font-size:26px">❤️</span><div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:900;color:var(--text)">Noch kein Herzgurt?</div><div style="font-size:12px;color:var(--text-soft);font-weight:600;line-height:1.45;margin-top:2px">Den Polar H9 gibt es an der Studio-Theke – misst Puls &amp; HRV zuverlässig.</div><div style="margin-top:8px">'+priceHtml+'</div></div></div>'+cta+'<div style="font-size:11px;color:var(--text-soft);font-weight:600;margin-top:10px;opacity:.85">Erhältst du an der Rezeption. Es funktioniert auch jeder andere Bluetooth-Brustgurt mit Standard-Herzfrequenz.</div></div>';
+    return '<div style="'+MO_CARD+'"><div style="display:flex;align-items:center;gap:13px"><span style="font-size:26px">❤️</span><div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:900;color:var(--text)">Noch kein Herzgurt?</div><div style="font-size:12px;color:var(--text-soft);font-weight:600;line-height:1.45;margin-top:2px">Der Polar H9 misst Puls &amp; HRV zuverlässig – ideal für den Vital-Check.</div><div style="margin-top:8px">'+priceHtml+'</div></div></div>'+cta+foot+'</div>';
   }
   // Einstiegs-Karte zur Atem-Übung.
   function moBreatheEntry(){
@@ -7056,7 +7064,7 @@
   function moWrap(head,blocks){
     var out=blocks.filter(Boolean).join('');
     var mo=morningData();
-    out+='<div style="display:flex;gap:11px;background:#E7F1F3;border:1px solid #CBE2E7;border-radius:16px;padding:14px 15px">'+svg('<rect x="3" y="11" width="18" height="10" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path>',{c:'#0a4958',w:1.9,s:19})+'<div style="font-size:12px;color:var(--text-muted);font-weight:500;line-height:1.5">Herz-/HRV-Werte sind Gesundheitsdaten – vertraulich, nur mit deiner Einwilligung, jederzeit löschbar. Kein Medizinprodukt, keine Diagnose. '+((mo&&mo.consent)?'<button data-act="morningRevoke" style="border:none;background:none;color:var(--teal-ink);font-weight:800;cursor:pointer;padding:0;text-decoration:underline;font-size:12px">Einwilligung widerrufen &amp; löschen</button>':'')+'</div></div>';
+    out+='<div style="display:flex;gap:11px;background:#E7F1F3;border:1px solid #CBE2E7;border-radius:16px;padding:14px 15px">'+svg('<rect x="3" y="11" width="18" height="10" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path>',{c:'#0a4958',w:1.9,s:19})+'<div style="font-size:12px;color:#4a5a5e;font-weight:500;line-height:1.5">Herz-/HRV-Werte sind Gesundheitsdaten – vertraulich, nur mit deiner Einwilligung, jederzeit löschbar. Kein Medizinprodukt, keine Diagnose. '+((mo&&mo.consent)?'<button data-act="morningRevoke" style="border:none;background:none;color:#0a4958;font-weight:800;cursor:pointer;padding:0;text-decoration:underline;font-size:12px">Einwilligung widerrufen &amp; löschen</button>':'')+'</div></div>';
     return '<div class="narrow" style="display:flex;flex-direction:column;gap:14px">'+head+out+'</div>';
   }
   function scrMorning(){
@@ -8541,7 +8549,7 @@
     morningStrapReserve:function(){ if(S.morningStrapBusy||S.morningStrapReserved) return; S.morningStrapBusy=true; S.morningStrapErr=''; render();
       api('/api/member/morning',{method:'POST',body:JSON.stringify({action:'strapReserve'})}).then(function(r){
         S.morningStrapBusy=false;
-        if(r&&r.ok){ S.morningStrapReserved=true; S.morningStrapErr=''; }
+        if(r&&r.ok){ S.morningStrapReserved=true; S.morningStrapErr=''; if(DATA.morning){ DATA.morning.strapReserved=true; } }
         else { S.morningStrapErr=(r&&r.message)||'Reservierung hat gerade nicht geklappt – bitte erneut.'; }
         setS({});
       }).catch(function(){ S.morningStrapBusy=false; S.morningStrapErr='Netzwerkfehler – bitte erneut.'; setS({}); }); },

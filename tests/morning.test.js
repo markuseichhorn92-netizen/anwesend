@@ -139,6 +139,9 @@ function run() {
   ok('21. overtraining alert bei 3 belasteten Messungen', MO.overtraining(otAlert).level === 'alert' && MO.overtraining(otAlert).days === 3);
   ok('21b. overtraining ok bei erholtem jüngsten Tag', MO.overtraining([MO.sanitize({ date: '2026-07-18', rhr: 54, hrvRmssd: 61 })].concat(otBase)).level === 'ok');
   ok('21c. overtraining ok bei <3 Messungen', MO.overtraining([MO.sanitize({ rhr: 55 })]).level === 'ok');
+  // 21d: kurze Historie – die belasteten Tage dürfen die Referenz nicht verwässern (sonst stumme Warnung).
+  const otShort = [MO.sanitize({ rhr: 63, hrvRmssd: 48 }), MO.sanitize({ rhr: 63, hrvRmssd: 48 }), MO.sanitize({ rhr: 63, hrvRmssd: 48 }), MO.sanitize({ rhr: 55, hrvRmssd: 60 }), MO.sanitize({ rhr: 55, hrvRmssd: 60 })];
+  ok('21d. overtraining alert auch bei kurzer Historie', MO.overtraining(otShort).level === 'alert' && MO.overtraining(otShort).days === 3);
 
   // 22. FINN-Vollkontext (toPromptText) mit Kraft/Zonen, Trainings-Check-in, HRV-Alter, Übertraining
   const ctx = MO.toPromptText(otAlert, { trList: [MO.sanitize({ rhr: 60, hrvRmssd: 50 })], age: 41 });

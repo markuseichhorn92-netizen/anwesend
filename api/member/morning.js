@@ -44,6 +44,7 @@ async function readState(id) {
   const list = await MO.list(id);
   let consent = false; try { consent = await MO.getConsent(id); } catch (e) {}
   let teamShare = false; try { teamShare = await MO.getTeamShare(id); } catch (e) {}
+  let strapReserved = false; try { strapReserved = await MO.getStrapReserved(id); } catch (e) {}
   let age = 0; try { const prof = (await Coaching.kvGetJson('nutri:p:' + id)) || {}; age = Number(prof.age) || 0; } catch (e) {}
   const tier = Ent.publicTier(await Ent.getEntitlement(id));
   const base = MO.baseline(list);
@@ -56,6 +57,7 @@ async function readState(id) {
     premium: !!tier.premium, tier: tier.tier, trialing: tier.trialing,
     consent: consent,
     teamShare: teamShare,
+    strapReserved: strapReserved,
     list: list,
     latest: latest,
     baseline: base,
@@ -97,9 +99,11 @@ module.exports = async function handler(req, res) {
   }
   if (req.method !== 'POST') return j(res, 405, { ok: false, error: 'method_not_allowed' });
 
-  if (!(await M.rateLimit('morning:' + id, 60, 3600))) return j(res, 429, { ok: false, error: 'rate_limited' });
   const body = await M.readBody(req);
   const action = String((body && body.action) || '');
+  // Einwilligungs-Widerruf (DSGVO) ist IMMER erlaubt – nicht ratelimiten.
+  const isConsentRevoke = action === 'consent' && !(body.value === true || body.value === 'true' || body.value === 1);
+  if (!isConsentRevoke && !(await M.rateLimit('morning:' + id, 60, 3600))) return j(res, 429, { ok: false, error: 'rate_limited' });
 
   try {
     const premium = Ent.isPremium(await Ent.getEntitlement(id));
@@ -136,6 +140,9 @@ module.exports = async function handler(req, res) {
     // KEIN Online-Kauf, KEINE Zahlung: Bezahlung & Übergabe an der Theke
     // -> kein Fernabsatz, kein Widerruf. Für alle Mitglieder (nicht premium-gated).
     if (action === 'strapReserve') {
+      // Schon reserviert? Nicht doppelt melden – nur bestätigen.
+      let already = false; try { already = await MO.getStrapReserved(id); } catch (e) {}
+      if (already) return j(res, 200, { ok: true, reserved: true, message: 'Schon reserviert – wir legen dir den Polar H9 an der Rezeption bereit.' });
       if (!(await M.rateLimit('strap-reserve:' + id, 4, 86400))) {
         return j(res, 200, { ok: false, error: 'rate_limited', message: 'Du hast den Herzgurt schon reserviert – wir legen ihn dir an der Rezeption bereit.' });
       }
@@ -169,6 +176,7 @@ module.exports = async function handler(req, res) {
         if (r && r.ok) ok = true;
       } catch (e) {}
       if (!ok) return j(res, 200, { ok: false, message: 'Reservierung konnte gerade nicht gespeichert werden – bitte später erneut oder frag an der Rezeption.' });
+      try { await MO.setStrapReserved(id, true); } catch (e) {}
       return j(res, 200, { ok: true, reserved: true, message: 'Reserviert! Wir legen dir den Polar H9 an der Rezeption bereit – bezahlen und mitnehmen kannst du ihn direkt an der Theke.' });
     }
 
