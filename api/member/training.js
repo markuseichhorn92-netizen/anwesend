@@ -26,7 +26,37 @@ const AI = require('../../lib/ai');
 const Ent = require('../../lib/entitlements');
 const Quota = require('../../lib/nutriquota');
 const Welcome = require('../../lib/welcomeGift');
+const Profile = require('../../lib/memberProfile');
 const { hasStore, redisPipeline } = require('../../lib/store');
+
+// ── Trainings-Vitalpunkte: abgeschlossene Einheiten zahlen in denselben Punkte-/Rang-Topf
+//    wie Check-ins & Ernährung. Ledger als JSON-Map {date:pts} (formatsicher, ein Read/Write).
+const VPKEY = (id) => 'train:vp:' + String(id);
+async function loadVpMap(id) {
+  try { const [r] = await redisPipeline([['GET', VPKEY(id)]]); const o = r ? JSON.parse(r) : {}; return (o && typeof o === 'object') ? o : {}; } catch (e) { return {}; }
+}
+function vpLedgerFrom(map) {
+  const out = [];
+  Object.keys(map || {}).forEach(function (d) { const p = parseInt(map[d], 10) || 0; if (p > 0 && /^\d{4}-\d{2}-\d{2}$/.test(d)) out.push({ date: d, pts: p }); });
+  out.sort(function (a, b) { return a.date < b.date ? 1 : -1; });
+  return out.slice(0, 120);
+}
+async function saveVpDay(id, date, pts) {
+  try {
+    const map = await loadVpMap(id);
+    const prev = parseInt(map[date], 10) || 0;
+    if (pts <= prev) return prev;               // pro Tag den besten Wert behalten (kein Doppelzählen)
+    map[date] = pts;
+    const keys = Object.keys(map).filter(function (k) { return /^\d{4}-\d{2}-\d{2}$/.test(k); }).sort();
+    while (keys.length > 140) { delete map[keys.shift()]; }
+    await redisPipeline([['SET', VPKEY(id), JSON.stringify(map), 'EX', String(220 * 86400)]]);
+    return pts;
+  } catch (e) { return pts; }
+}
+// Vitalpunkte fürs Training: moderat, gedeckelt. ~10 je protokollierter Übung + 40 fürs Abschließen.
+function trainVpFor(doneCount, finished) { let vp = (doneCount | 0) * 10 + (finished ? 40 : 0); if (vp < 0) vp = 0; if (vp > 150) vp = 150; return vp; }
+// kcal-Schätzung (ehrlich „ca.“): MET × Körpergewicht × Stunden. Kraft gemischt ~5,5 MET.
+function kcalFor(durationSec, weightKg, met) { const hrs = Math.max(0, Math.min(3, (durationSec || 0) / 3600)); const w = (weightKg && weightKg > 0) ? weightKg : 75; return Math.round((met || 5.5) * w * hrs); }
 
 // ── Trainings-Session (heutige Einheit abhaken / Sätze protokollieren) ──
 const SKEY = (id, date) => 'train:sess:' + String(id) + ':' + date;
@@ -127,16 +157,18 @@ async function readState(id) {
     const [sessn, rot] = await Promise.all([loadSession(id, today), loadRot(id)]);
     todayDay = todayDayFor(active, (sessn && sessn.planId === active.plan.id) ? sessn : null, rot, today);
   }
+  const vpMap = await loadVpMap(id);
   return {
     ok: true, available: true,
     tip: T.tipOfDay(today),
     inspiration: T.INSPIRATION,
     plans: T.getLibrary().map(T.trimPlan),
-    exercises: Ex.publicList(), exerciseGroups: Ex.GROUPS,
+    exercises: Ex.publicList(), exerciseGroups: Ex.GROUPS, exerciseMuscles: Ex.MUSCLES,
     goals: T.GOALS, levels: T.LEVELS, locations: T.LOCATIONS,
     myPlan: active ? { plan: active.plan, startedAt: active.startedAt, source: active.plan.source, todayDay: todayDay } : null,
     premium: !!tier.premium, aiAvailable: !!AI.hasAI,
     quota: Quota.publicQuota(qUsed, tier.premium, qMonth),
+    vitalLedger: vpLedgerFrom(vpMap),
   };
 }
 
@@ -179,6 +211,17 @@ module.exports = async function handler(req, res) {
           const it = sess.items[key] || { done: false, sets: 0 };
           if (body.done != null) it.done = !!body.done;
           if (body.sets != null) { let n = parseInt(body.sets, 10); if (isNaN(n) || n < 0) n = 0; if (n > 20) n = 20; it.sets = n; }
+          // Detailliertes Satz-Protokoll (Gewicht/Wdh./Pause) für Nicht-KI-Geräte.
+          if (Array.isArray(body.entries)) {
+            it.entries = body.entries.slice(0, 20).map(function (en) {
+              en = en || {};
+              let w = parseFloat(en.w); if (!isFinite(w) || w < 0) w = 0; if (w > 1000) w = 1000;
+              let reps = parseInt(en.reps, 10); if (!isFinite(reps) || reps < 0) reps = 0; if (reps > 200) reps = 200;
+              let rest = parseInt(en.rest, 10); if (!isFinite(rest) || rest < 0) rest = 0; if (rest > 3600) rest = 3600;
+              return { w: Math.round(w * 10) / 10, reps: reps, rest: rest };
+            });
+            it.sets = it.entries.length;   // Satz-Zähler = Anzahl protokollierter Sätze
+          }
           sess.items[key] = it; await saveSession(id, date, sess);
           // Tag komplett abgehakt? -> Rotations-Marker setzen (nächstes Mal ist der Folgetag dran).
           const dm = /^d(\d+)e/.exec(key);
@@ -195,6 +238,43 @@ module.exports = async function handler(req, res) {
         sess = { planId: active.plan.id, items: {} }; await saveSession(id, date, sess);
       }
       return j(res, 200, { ok: true, available: true, active: true, date: date, planId: sess.planId, items: sess.items });
+    }
+
+    // Einheit abschließen: Vitalpunkte gutschreiben, kcal schätzen, (Premium) FINN-Einschätzung.
+    // Setzt außerdem Rotations-Marker + Verlauf (auch ohne dass jede Übung abgehakt wurde).
+    if (action === 'session-finish') {
+      const date = berlinDate();
+      const active = await T.resolveActive(id);
+      if (!active || !active.plan) return j(res, 200, { ok: false, error: 'no_plan', message: 'Kein aktiver Plan.' });
+      let sn = await loadSession(id, date);
+      if (!sn || sn.planId !== active.plan.id) sn = { planId: active.plan.id, items: {} };
+      const len = ((active.plan.days || []).length) || 1;
+      let di = parseInt(body.day, 10); if (isNaN(di) || di < 0) di = 0; if (di >= len) di = len - 1;
+      const dayDef = (active.plan.days || [])[di] || {};
+      const exs = dayDef.exercises || [];
+      const isTouched = function (i) { const it = sn.items['d' + di + 'e' + i]; return !!(it && (it.done || (it.sets | 0) > 0 || (Array.isArray(it.entries) && it.entries.length))); };
+      let doneCount = 0; const doneNames = [];
+      for (let i = 0; i < exs.length; i++) { if (isTouched(i)) { doneCount++; doneNames.push(String((exs[i] && exs[i].name) || '').slice(0, 40)); } }
+      let durSec = parseInt(body.durationSec, 10); if (isNaN(durSec) || durSec < 0) durSec = 0; if (durSec > 4 * 3600) durSec = 4 * 3600;
+      let weightKg = 75; try { const prof = await Profile.get(id); if (prof && prof.weightKg) weightKg = prof.weightKg; } catch (e) {}
+      const kcal = kcalFor(durSec, weightKg, 5.5);
+      const vp = trainVpFor(doneCount, true);
+      const vpAwarded = await saveVpDay(id, date, vp);
+      try { await saveRot(id, { planId: active.plan.id, day: di, date: date }); await appendHist(id, active.plan, di, sn, date); } catch (e) {}
+      // FINN-Einschätzung nur für Premium (kostenfreies Extra, kein Kontingent-Verbrauch).
+      let finn = '';
+      const premium = Ent.isPremium(await Ent.getEntitlement(id));
+      if (premium && AI.hasAI && doneCount > 0) {
+        try {
+          const r = await AI.trainingSummary({
+            firstName: (sess && sess.firstName) || '',
+            dayTitle: String(dayDef.name || 'Training'), goal: active.plan.goal || '',
+            durationMin: Math.round(durSec / 60), exercises: doneNames, vp: vp, kcal: kcal,
+          });
+          if (r && r.ok && r.text) finn = r.text;
+        } catch (e) {}
+      }
+      return j(res, 200, { ok: true, date: date, vp: vp, vpAwarded: vpAwarded, kcal: kcal, durationMin: Math.round(durSec / 60), exercisesDone: doneCount, exercisesTotal: exs.length, premium: premium, finn: finn });
     }
 
     // Vollständigen Bibliotheks-Plan liefern (für die Detailansicht).

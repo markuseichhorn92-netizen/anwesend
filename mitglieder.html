@@ -492,6 +492,7 @@
     obPrefilled:false, obServerChecked:false, obSex:'', obHeightCm:null, obWeightKg:null, obTargetWeight:null, obTrainTime:'', obLikes:[], obDislikes:[],
     obDiet:'', obAllergies:[], obHealthConsent:false, obHealth:[], obHealthNote:'',
     welcomeGift:false, welcomeTrainBusy:false, welcomeTrainDone:false, welcomeTrainErr:'', welcomeErnBusy:false, welcomeErnDone:false, welcomeErnErr:'',
+    trainRunStart:0, trainExDetail:null, trainFinish:null, trainFinishBusy:false,
     ernFormInit:false, ernEdit:false, ernGoal:'abnehmen', ernSex:'w', ernH:170, ernW:70, ernAge:30, ernAct:'moderat', ernDiet:'omnivor',
     ernBusy:false, ernMsg:'', ernErr:false, ernAsk:'', ernAnswer:'', ernAskBusy:false, ernRecipes:null, ernRecipesBusy:false, ernCoachBusy:false, ernCoachSent:false, ernPhotoBusy:false, ernRec:false,
     ernTab:'heute', ernPlanTab:'woche', ernPlanBusy:false, ernFridge:'', ernRecipeSel:null, ernRecipeSaved:false,
@@ -2785,6 +2786,10 @@
     if(ERN_ON && DATA.nutri && DATA.nutri.ok && Array.isArray(DATA.nutri.vitalLedger)){
       DATA.nutri.vitalLedger.forEach(function(d){ if(!d||!(d.pts>0)) return; var t=Date.parse((d.date||'')+'T20:00:00'); entries.push({t:isNaN(t)?Date.now():t,emoji:'🥗',bg:'#E7F6EC',title:'Ernährung getrackt',sub:d.date?deDate(d.date+'T12:00:00'):'',pts:d.pts,color:'#176b37'}); });
     }
+    // ── Training ↔ Vitalpunkte: abgeschlossene Einheiten zahlen in dieselbe Punktesumme ein. ──
+    if(DATA.training && Array.isArray(DATA.training.vitalLedger)){
+      DATA.training.vitalLedger.forEach(function(d){ if(!d||!(d.pts>0)) return; var t=Date.parse((d.date||'')+'T18:00:00'); entries.push({t:isNaN(t)?Date.now():t,emoji:'🏋️',bg:'#E7F1F3',title:'Training abgeschlossen',sub:d.date?deDate(d.date+'T12:00:00'):'',pts:d.pts,color:'#176b37'}); });
+    }
     // ── Trainingspartner ↔ Vitalpunkte: Verbindungen & gemeinsame Sessions zahlen in dieselbe Summe ein. ──
     if(SOCIAL_ON && DATA.social && DATA.social.enabled && Array.isArray(DATA.social.vitalLedger)){
       DATA.social.vitalLedger.forEach(function(d){ if(!d||!(d.pts>0)) return; var t=Date.parse((d.date||'')+'T19:00:00'); entries.push({t:isNaN(t)?Date.now():t,emoji:'🤝',bg:'#E7F1F3',title:d.reason||'Trainingspartner',sub:d.date?deDate(d.date+'T12:00:00'):'',pts:d.pts,color:'#176b37'}); });
@@ -3571,13 +3576,12 @@
       var ring=$('ern_fast_ring'); if(ring){ var deg=Math.min(360,Math.round(f.win?f.elapsed/f.win*360:0)); ring.style.background='conic-gradient(#0a4958 '+deg+'deg,var(--surface-2) 0)'; }
     }catch(e){}
   },1000);
-  // Trainings-Pausen-Timer live nachführen (im Tracker, ohne Voll-Render)
+  // Trainings-Timer live nachführen (Trainingszeit + Satz-Pause), ohne Voll-Render.
   setInterval(function(){
     try{
-      if(!S.trainRun||!S.trainRestKey||!S.trainRestStart) return;
-      var el=$('tr_rest'); if(!el) return;
-      var s=Math.max(0,Math.floor((Date.now()-S.trainRestStart)/1000));
-      el.textContent='⏱ Pause '+Math.floor(s/60)+':'+((s%60)<10?'0':'')+(s%60);
+      if(!S.trainRun) return;
+      if(S.trainRunStart){ var elp=$('tr_elapsed'); if(elp){ var e=Math.max(0,Math.floor((Date.now()-S.trainRunStart)/1000)); elp.textContent=Math.floor(e/60)+':'+((e%60)<10?'0':'')+(e%60); } }
+      if(S.trainRestKey&&S.trainRestStart){ var el=$('tr_rest'); if(el){ var s=Math.max(0,Math.floor((Date.now()-S.trainRestStart)/1000)); el.textContent=Math.floor(s/60)+':'+((s%60)<10?'0':'')+(s%60); } }
     }catch(e){}
   },1000);
   // Client-Vorschau der Zielwerte (spiegelt den Server – Mifflin-St-Jeor)
@@ -3848,6 +3852,13 @@
   // Wunschgewicht bestätigt (Blur/Enter) -> FINNs Einschätzung neu berechnen.
   window.__obEstRefresh=function(){ render(); };
   window.__obHealthNote=function(el){ S.obHealthNote=el?el.value:''; };
+  // Satz-Protokoll: Gewicht/Wdh. still setzen (kein Re-Render -> Fokus bleibt); Speichern bei onchange.
+  window.__trSet=function(key,idx,field,el){ var it=trainSessLocal(key); it.entries=Array.isArray(it.entries)?it.entries:[]; if(!it.entries[idx]) return;
+    var v=el?el.value:'';
+    if(field==='w'){ var w=parseFloat(String(v).replace(',','.').replace(/[^\d.]/g,'')); it.entries[idx].w=isFinite(w)?Math.max(0,Math.min(1000,Math.round(w*10)/10)):0; }
+    else if(field==='reps'){ var r=parseInt(String(v).replace(/[^\d]/g,''),10); it.entries[idx].reps=isFinite(r)?Math.max(0,Math.min(200,r)):0; }
+    it.sets=it.entries.length; };
+  window.__trSetSave=function(key){ try{ trainSetSave(key); }catch(e){} };
   window.__ernVoiceSend=function(){ var el=document.getElementById('ern_voiceq'); var t=el?(el.value||''):(S.ernVoiceText||''); S.ernVoiceText=t; ernLogText(t); };
   // Produkt-Detail: Portion wählen -> Nährwerte -> Übernehmen (Licht-Screen)
   function ernProductPicker(){
@@ -4738,10 +4749,71 @@
   function trainRunItems(){ var d=DATA.training||{}; var mp=d.myPlan&&d.myPlan.plan; if(!mp||!mp.days) return []; var day=mp.days[trainTodayDay(mp)]||mp.days[0]; return (day&&day.exercises)||[]; }
   function trainSessItem(key){ var s=(DATA.trainSess&&DATA.trainSess.items)||{}; return s[key]||{done:false,sets:0}; }
   function trainSessLocal(key){ DATA.trainSess=DATA.trainSess||{items:{}}; DATA.trainSess.items=DATA.trainSess.items||{}; if(!DATA.trainSess.items[key]) DATA.trainSess.items[key]={done:false,sets:0}; return DATA.trainSess.items[key]; }
+  // Satz-Protokoll einer Übung serverseitig sichern (nach Ändern/Ergänzen/Löschen).
+  function trainSetSave(key){ var it=trainSessLocal(key); api('/api/member/training',{method:'POST',body:JSON.stringify({action:'session-set',key:key,entries:(it.entries||[])})}).then(function(r){ if(r&&r.ok){ DATA.trainSess={items:r.items||{},planId:r.planId}; } }).catch(function(){}); }
   // Einheitlicher „‹ Zurück"-Kopf für alle Detail-/Unteransichten (Training-Detail,
   // Plan-Generator, Tracker, Rezept-Detail …). Ersetzt die früher uneinheitlichen
   // Zurück-Buttons (mal „Fertig", mal „Zurück", mal Chip, mal Text-Link).
   function subBack(act,label){ return '<button data-act="'+act+'" style="display:inline-flex;align-items:center;gap:6px;background:none;border:none;color:var(--teal-ink);font-size:13.5px;font-weight:800;margin:2px 0 12px;padding:0;cursor:pointer;font-family:inherit">'+svg(IC.back,{c:'var(--teal-ink)',w:2.2,s:17})+esc(label||'Zurück')+'</button>'; }
+  // ── Technogym-KI-Geräte (Biostrength / Biocircuit „Zirkel") → Deeplink in die mywellness-App ──
+  var TG_APP_URL='https://tgapp-link.mywellness.com/cc8c1dd38';
+  function trIsTg(e){ return !!(e && (e.bio || /biocircuit|biocircut|circuit|zirkel/i.test((e.machine||'')+' '+(e.name||'')))); }
+  // Plan-Übung aus einem Session-Key (d<di>e<ix>) auflösen.
+  function trainExByKey(key){ var m=/^d(\d+)e(\d+)$/.exec(key||''); if(!m) return null; var d=DATA.training||{}; var mp=d.myPlan&&d.myPlan.plan; if(!mp||!mp.days) return null; var day=mp.days[parseInt(m[1],10)]; var exs=(day&&day.exercises)||[]; return exs[parseInt(m[2],10)]||null; }
+  // Muskelgruppe einer Plan-Übung bestimmen: erst exakter Treffer in der Übungs-DB, sonst Heuristik.
+  function trExGroupOf(e){ if(!e) return 'ganzkoerper';
+    var list=(DATA.training&&DATA.training.exercises)||[]; var nn=trainExNorm(e.name), mm=trainExNorm(e.machine||'');
+    for(var i=0;i<list.length;i++){ if(trainExNorm(list[i].name)===nn && (!mm||trainExNorm(list[i].machine)===mm)) return list[i].group; }
+    for(var j=0;j<list.length;j++){ if(trainExNorm(list[j].name)===nn) return list[j].group; }
+    var s=nn+' '+mm;
+    var rules=[['cardio',/lauf|treadmill|bike|rad |skill|climb|vario|crosstrainer|cardio|recline|ellip/],['brust',/brust|chest|bankdr|butterfly|pectoral|fliegende/],['ruecken',/rucken|lat |latzug|rudern|\brow\b|klimmz|reverse fly|rear delt|zug/],['schulter',/schulter|shoulder|seitheben|frontheben|face pull|nacken|delt|uberkopf/],['arme',/bizeps|trizeps|curl|arm ext|arm curl|hammer|stirndr|dips/],['po',/hip thrust|glute|gesass|abduzt|adduzt|abductor|adductor|kickback|beckenheb|huftstreck/],['beine',/bein|leg|knieb|squat|ausfall|kreuzheb|wade|calf|lunge/],['bauch',/bauch|crunch|core|plank|beinheb|russian|rumpf|abdominal|torso/],['mobility',/faszien|dehn|katze|mobility|stretch|bird dog|vierfussl/],['ganzkoerper',/kettlebell|swing|goblet|burpee|farmer|sling|turkisch/]];
+    for(var k=0;k<rules.length;k++){ if(rules[k][1].test(s)) return rules[k][0]; }
+    return 'ganzkoerper';
+  }
+  function trMuscleInfo(group){ var m=(DATA.training&&DATA.training.exerciseMuscles)||{}; return m[group]||m.ganzkoerper||{primary:'',regions:['fullbody'],desc:''}; }
+  // Kurzbeschreibung/Cue aus der Übungs-DB (sonst plan-eigene Notiz).
+  function trExCueOf(e){ if(!e) return ''; var list=(DATA.training&&DATA.training.exercises)||[]; var nn=trainExNorm(e.name), mm=trainExNorm(e.machine||''); for(var i=0;i<list.length;i++){ if(trainExNorm(list[i].name)===nn && (!mm||trainExNorm(list[i].machine)===mm)) return list[i].cue||''; } for(var j=0;j<list.length;j++){ if(trainExNorm(list[j].name)===nn) return list[j].cue||''; } return e.note||''; }
+  // Schematisches Körperdiagramm (Vorder-/Rückseite) – trainierte Muskeln farbig hervorgehoben.
+  function muscleBodySvg(regions){
+    var set={}; (regions||[]).forEach(function(r){ set[r]=1; });
+    if(set.fullbody||set.heart){ ['chest','abs','delts','biceps','triceps','quads','hams','glutes','calves','lats','traps'].forEach(function(k){ set[k]=1; }); }
+    var ACC='#0e6072', BASE='var(--surface-2)', SK='var(--border-strong)';
+    var on=function(k){ return set[k]?ACC:BASE; };
+    function body(ox,back){
+      var g='';
+      g+='<circle cx="'+(ox+45)+'" cy="16" r="10" fill="'+SK+'"/>';
+      g+='<rect x="'+(ox+28)+'" y="28" width="34" height="58" rx="14" fill="'+SK+'"/>';
+      g+='<rect x="'+(ox+15)+'" y="32" width="11" height="44" rx="6" fill="'+SK+'"/>';
+      g+='<rect x="'+(ox+64)+'" y="32" width="11" height="44" rx="6" fill="'+SK+'"/>';
+      g+='<rect x="'+(ox+30)+'" y="88" width="13" height="58" rx="7" fill="'+SK+'"/>';
+      g+='<rect x="'+(ox+47)+'" y="88" width="13" height="58" rx="7" fill="'+SK+'"/>';
+      if(!back){
+        g+='<ellipse cx="'+(ox+45)+'" cy="43" rx="15" ry="9" fill="'+on('chest')+'"/>';
+        g+='<rect x="'+(ox+37)+'" y="54" width="16" height="24" rx="4" fill="'+on('abs')+'"/>';
+        g+='<ellipse cx="'+(ox+24)+'" cy="33" rx="7" ry="6" fill="'+on('delts')+'"/><ellipse cx="'+(ox+66)+'" cy="33" rx="7" ry="6" fill="'+on('delts')+'"/>';
+        g+='<ellipse cx="'+(ox+20)+'" cy="47" rx="5" ry="9" fill="'+on('biceps')+'"/><ellipse cx="'+(ox+70)+'" cy="47" rx="5" ry="9" fill="'+on('biceps')+'"/>';
+        g+='<ellipse cx="'+(ox+18)+'" cy="68" rx="4" ry="8" fill="'+on('forearms')+'"/><ellipse cx="'+(ox+72)+'" cy="68" rx="4" ry="8" fill="'+on('forearms')+'"/>';
+        g+='<rect x="'+(ox+31)+'" y="92" width="11" height="34" rx="5" fill="'+on('quads')+'"/><rect x="'+(ox+48)+'" y="92" width="11" height="34" rx="5" fill="'+on('quads')+'"/>';
+        g+='<rect x="'+(ox+32)+'" y="130" width="9" height="15" rx="4" fill="'+on('calves')+'"/><rect x="'+(ox+49)+'" y="130" width="9" height="15" rx="4" fill="'+on('calves')+'"/>';
+      } else {
+        g+='<rect x="'+(ox+33)+'" y="32" width="24" height="12" rx="5" fill="'+on('traps')+'"/>';
+        g+='<rect x="'+(ox+34)+'" y="45" width="22" height="18" rx="5" fill="'+on('lats')+'"/>';
+        g+='<rect x="'+(ox+37)+'" y="64" width="16" height="12" rx="4" fill="'+on('lowerback')+'"/>';
+        g+='<ellipse cx="'+(ox+20)+'" cy="47" rx="5" ry="9" fill="'+on('triceps')+'"/><ellipse cx="'+(ox+70)+'" cy="47" rx="5" ry="9" fill="'+on('triceps')+'"/>';
+        g+='<rect x="'+(ox+31)+'" y="88" width="12" height="14" rx="5" fill="'+on('glutes')+'"/><rect x="'+(ox+47)+'" y="88" width="12" height="14" rx="5" fill="'+on('glutes')+'"/>';
+        g+='<rect x="'+(ox+31)+'" y="104" width="11" height="24" rx="5" fill="'+on('hams')+'"/><rect x="'+(ox+48)+'" y="104" width="11" height="24" rx="5" fill="'+on('hams')+'"/>';
+        g+='<rect x="'+(ox+32)+'" y="130" width="9" height="15" rx="4" fill="'+on('calves')+'"/><rect x="'+(ox+49)+'" y="130" width="9" height="15" rx="4" fill="'+on('calves')+'"/>';
+      }
+      return g;
+    }
+    return '<svg viewBox="0 0 210 162" width="100%" style="max-width:250px;display:block;margin:2px auto 0" xmlns="http://www.w3.org/2000/svg">'+
+      body(2,false)+body(107,true)+
+      '<text x="47" y="159" text-anchor="middle" font-size="9" font-weight="700" fill="var(--text-soft)">Vorderseite</text>'+
+      '<text x="152" y="159" text-anchor="middle" font-size="9" font-weight="700" fill="var(--text-soft)">Rückseite</text></svg>';
+  }
+  function trFmtSec(s){ s=Math.max(0,s|0); var m=Math.floor(s/60); return m+':'+pad2(s%60); }
+  // Verstrichene Trainingszeit seit Start der Einheit (überlebt Re-Render via localStorage, tageweise).
+  function trainElapsedSec(){ if(!S.trainRunStart) return 0; return Math.max(0,Math.floor((Date.now()-S.trainRunStart)/1000)); }
   function trainingRun(){
     var d=DATA.training||{}; var mp=d.myPlan&&d.myPlan.plan;
     var back=subBack('trainRunClose');
@@ -4755,29 +4827,80 @@
     var prog='<div style="background:var(--surface);border-radius:16px;box-shadow:0 8px 22px rgba(4,33,40,.07);padding:14px 16px;margin-bottom:14px"><div style="display:flex;align-items:baseline;justify-content:space-between"><span style="font-size:15px;font-weight:900;color:var(--text)">'+esc((mp.days[di]&&mp.days[di].name)||'Training')+'</span><span style="font-size:13px;font-weight:800;color:var(--teal-ink)">'+doneN+'/'+exs.length+' erledigt</span></div><div style="height:8px;background:var(--surface-2);border-radius:6px;overflow:hidden;margin-top:9px"><div style="height:100%;border-radius:6px;background:'+ERN_G+';width:'+pct+'%;transition:width .2s"></div></div></div>';
     var rows=exs.map(function(e,ix){ return trainRunRow(e,'d'+di+'e'+ix); }).join('');
     var doneAll=exs.length&&doneN===exs.length;
-    var footer=(doneAll?'<div style="background:linear-gradient(150deg,#12879c,#0a4958);border-radius:16px;padding:16px;text-align:center;color:#fff;margin-top:6px"><div style="font-size:28px">🎉</div><div style="font-size:15px;font-weight:900;margin-top:4px">Einheit geschafft – stark!</div></div>':'')+
-      '<button data-act="trainRunReset" style="width:100%;margin-top:12px;padding:11px;border:1.5px solid var(--border-strong);border-radius:12px;background:var(--surface);color:var(--text-soft);font-weight:700;font-size:12.5px;cursor:pointer">Fortschritt zurücksetzen</button>';
+    // Verstrichene Trainingszeit (läuft ab „Training starten").
+    var elapsed='<div style="display:flex;align-items:center;gap:8px;background:var(--surface);border-radius:14px;box-shadow:0 8px 22px rgba(4,33,40,.07);padding:12px 15px;margin-bottom:12px"><span style="width:34px;height:34px;border-radius:10px;background:rgba(14,96,114,.1);display:flex;align-items:center;justify-content:center;flex-shrink:0">'+svg('<circle cx="12" cy="13" r="8"></circle><path d="M12 9v4l2 2M9 2h6"></path>',{c:'var(--teal-ink)',w:2,s:18})+'</span><div style="flex:1;min-width:0"><div style="font-size:10.5px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.4px">Trainingszeit</div><div id="tr_elapsed" style="font-size:19px;font-weight:900;color:var(--text);font-variant-numeric:tabular-nums;line-height:1.1">'+trFmtSec(trainElapsedSec())+'</div></div></div>';
+    var finishBtn='<button data-act="trainFinish"'+(S.trainFinishBusy?' disabled':'')+' style="width:100%;margin-top:14px;padding:16px;border:none;border-radius:15px;background:linear-gradient(150deg,#12879c,#0a4958);color:#fff;font-weight:900;font-size:15.5px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:9px;box-shadow:0 12px 30px rgba(14,96,114,.28)">'+(S.trainFinishBusy?(trainSpin(18)+'Wird abgeschlossen …'):('✓ Einheit abschließen'))+'</button>';
+    var footer=finishBtn+
+      '<button data-act="trainRunReset" style="width:100%;margin-top:10px;padding:11px;border:1.5px solid var(--border-strong);border-radius:12px;background:var(--surface);color:var(--text-soft);font-weight:700;font-size:12.5px;cursor:pointer">Fortschritt zurücksetzen</button>';
     return '<div style="padding:0 2px 96px">'+back+
       '<div style="font-size:20px;font-weight:900;letter-spacing:-.4px;color:var(--text);margin:0 2px 3px">'+esc(mp.title)+'</div>'+
-      '<div style="font-size:12.5px;font-weight:500;color:var(--text-2);margin:0 2px 14px">Hak jede Übung ab, wenn du sie geschafft hast. 🤖 = Biostrength: einfach abhaken, den Rest macht die KI.</div>'+
-      dayTabs+prog+rows+footer+'</div>';
+      '<div style="font-size:12.5px;font-weight:500;color:var(--text-2);margin:0 2px 14px">Tippe eine Übung an für Beschreibung &amp; Muskeln. 🤖 = am Gerät per App/Band anmelden, den Rest macht die KI.</div>'+
+      elapsed+dayTabs+prog+rows+footer+'</div>';
   }
+  // Übungszeile im Tracker: Name antippbar (Detail), KI-Geräte mit App-Link, sonst Satz-Protokoll.
   function trainRunRow(e,key){
-    var it=trainSessItem(key); var done=!!it.done;
-    var head='<div style="display:flex;align-items:flex-start;gap:11px"><div style="flex:1;min-width:0"><div style="font-size:14.5px;font-weight:900;color:'+(done?'var(--text-soft)':'var(--text)')+';'+(done?'text-decoration:line-through':'')+'">'+esc(e.name)+'</div>'+(e.machine?'<div style="font-size:11.5px;font-weight:700;color:var(--ern-acc);margin-top:2px">🔧 '+esc(e.machine)+(e.bio?' <span style="color:var(--text-soft);font-weight:600">· 🤖 KI</span>':'')+'</div>':'')+'</div>'+
+    var it=trainSessItem(key); var done=!!it.done; var tg=trIsTg(e);
+    var nameBtn='<button data-act="trExDetail" data-arg="'+esc(key)+'" style="display:block;width:100%;text-align:left;background:none;border:none;padding:0;cursor:pointer;font-family:inherit"><span style="font-size:14.5px;font-weight:900;color:'+(done?'var(--text-soft)':'var(--text)')+';'+(done?'text-decoration:line-through':'')+'">'+esc(e.name)+'</span> '+svg('<circle cx="12" cy="12" r="9"></circle><path d="M12 11v5M12 8h.01"></path>',{c:'var(--placeholder)',w:2,s:14})+(e.machine?'<span style="display:block;font-size:11.5px;font-weight:700;color:var(--ern-acc);margin-top:2px">🔧 '+esc(e.machine)+(tg?' <span style="color:var(--text-soft);font-weight:600">· 🤖 KI</span>':'')+'</span>':'')+'</button>';
+    var head='<div style="display:flex;align-items:flex-start;gap:11px"><div style="flex:1;min-width:0">'+nameBtn+'</div>'+
       '<button data-act="trainToggle" data-arg="'+esc(key)+'" aria-label="Erledigt" style="flex-shrink:0;width:34px;height:34px;border-radius:50%;border:2px solid '+(done?ERN_G:'var(--border-strong)')+';background:'+(done?ERN_G:'var(--surface)')+';display:flex;align-items:center;justify-content:center;cursor:pointer">'+(done?svg('<path d="M20 6L9 17l-5-5"></path>',{c:'#fff',w:3,s:17}):'')+'</button></div>';
     var body='';
-    if(!e.bio){
-      var target='Ziel: '+esc(e.sets)+' × '+esc(e.reps)+' · Pause '+esc(e.rest);
-      var sets=it.sets||0; var tgt=parseInt(e.sets,10)||0;
-      var timer=(S.trainRestKey===key)?'<span id="tr_rest" style="font-size:12px;font-weight:800;color:var(--ern-acc)">⏱ Pause 0:00</span>':'<span style="font-size:11.5px;font-weight:600;color:var(--placeholder)">'+target+'</span>';
-      body='<div style="display:flex;align-items:center;gap:10px;margin-top:11px;padding-top:11px;border-top:1px solid var(--border)">'+
-        '<button data-act="trainSetMinus" data-arg="'+esc(key)+'" style="width:32px;height:32px;border-radius:9px;border:1.5px solid var(--border-strong);background:var(--surface);color:var(--teal-ink);font-size:18px;font-weight:900;cursor:pointer;flex-shrink:0">−</button>'+
-        '<div style="text-align:center;min-width:64px"><div style="font-size:16px;font-weight:900;color:var(--text)">'+sets+(tgt?(' / '+tgt):'')+'</div><div style="font-size:10px;font-weight:700;color:var(--placeholder);text-transform:uppercase;letter-spacing:.3px">Sätze</div></div>'+
-        '<button data-act="trainSetPlus" data-arg="'+esc(key)+'" style="width:32px;height:32px;border-radius:9px;border:1.5px solid '+ERN_G+';background:rgba(14,96,114,.06);color:var(--teal-ink);font-size:18px;font-weight:900;cursor:pointer;flex-shrink:0">+</button>'+
-        '<div style="flex:1;text-align:right">'+timer+'</div></div>';
+    if(tg){
+      body='<div style="margin-top:11px;padding-top:11px;border-top:1px solid var(--border)"><a href="'+TG_APP_URL+'" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:9px;text-decoration:none;background:rgba(14,96,114,.06);border:1.5px solid '+ERN_G+';border-radius:12px;padding:11px 13px"><span style="width:30px;height:30px;border-radius:9px;background:'+ERN_GD+';display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:15px">📲</span><span style="flex:1;min-width:0"><span style="display:block;font-size:13px;font-weight:900;color:var(--teal-ink)">In der Technogym-App öffnen</span><span style="display:block;font-size:11px;font-weight:600;color:var(--text-soft);margin-top:1px">Per App oder Band am Gerät anmelden – Gewicht &amp; Progression macht die KI.</span></span>'+svg('<path d="M7 17L17 7M9 7h8v8"></path>',{c:'var(--teal-ink)',w:2.2,s:16})+'</a></div>';
+    } else {
+      body=trainSetLog(e,key,it);
     }
     return '<div style="background:var(--surface);border-radius:15px;box-shadow:0 6px 18px rgba(4,33,40,.06);padding:14px 15px;margin-bottom:10px'+(done?';opacity:.7':'')+'">'+head+body+'</div>';
+  }
+  // Satz-Protokoll (Nicht-KI-Geräte): je Satz Gewicht/Wdh./Pause, editierbar + ergänzbar.
+  function trainSetLog(e,key,it){
+    it=it||trainSessItem(key); var entries=Array.isArray(it.entries)?it.entries:[];
+    var target='Ziel: '+esc(e.sets)+' × '+esc(e.reps)+(e.rest?(' · Pause '+esc(e.rest)):'');
+    var hdr='<div style="display:flex;align-items:center;justify-content:space-between;margin-top:11px;padding-top:11px;border-top:1px solid var(--border)"><span style="font-size:11.5px;font-weight:700;color:var(--placeholder)">'+target+'</span>'+(entries.length?'<span style="font-size:11px;font-weight:800;color:var(--teal-ink)">'+entries.length+' Satz'+(entries.length===1?'':'ätze')+'</span>':'')+'</div>';
+    var rowsH='';
+    entries.forEach(function(en,idx){
+      var restTxt=(en.rest>0)?('⏱ '+trFmtSec(en.rest)):'–';
+      rowsH+='<div style="display:flex;align-items:center;gap:7px;margin-top:8px">'+
+        '<span style="width:20px;font-size:12px;font-weight:800;color:var(--text-soft);flex-shrink:0">'+(idx+1)+'.</span>'+
+        '<div style="display:flex;align-items:center;gap:3px;background:var(--surface-2);border-radius:9px;padding:5px 8px"><input inputmode="decimal" value="'+esc(en.w!=null?String(en.w).replace('.',','):'')+'" placeholder="0" oninput="window.__trSet&&window.__trSet(\''+key+'\','+idx+',\'w\',this)" onchange="window.__trSetSave&&window.__trSetSave(\''+key+'\')" style="width:44px;border:none;background:transparent;color:var(--text);font-size:14px;font-weight:800;outline:none;text-align:right;font-family:inherit"><span style="font-size:11px;font-weight:700;color:var(--text-soft)">kg</span></div>'+
+        '<span style="font-size:13px;font-weight:800;color:var(--placeholder)">×</span>'+
+        '<div style="display:flex;align-items:center;gap:3px;background:var(--surface-2);border-radius:9px;padding:5px 8px"><input inputmode="numeric" value="'+esc(en.reps!=null&&en.reps>0?String(en.reps):'')+'" placeholder="0" oninput="window.__trSet&&window.__trSet(\''+key+'\','+idx+',\'reps\',this)" onchange="window.__trSetSave&&window.__trSetSave(\''+key+'\')" style="width:36px;border:none;background:transparent;color:var(--text);font-size:14px;font-weight:800;outline:none;text-align:right;font-family:inherit"><span style="font-size:11px;font-weight:700;color:var(--text-soft)">Wdh</span></div>'+
+        '<span style="flex:1;text-align:right;font-size:11px;font-weight:700;color:'+(en.rest>0?'var(--ern-acc)':'var(--placeholder)')+'">'+restTxt+'</span>'+
+        '<button data-act="trainSetDel" data-arg="'+esc(key)+'|'+idx+'" aria-label="Satz löschen" style="width:26px;height:26px;border-radius:8px;border:none;background:var(--surface-2);color:var(--text-soft);font-size:15px;cursor:pointer;flex-shrink:0;line-height:1">×</button></div>';
+    });
+    var restLive=(S.trainRestKey===key)?'<div style="margin-top:9px;text-align:center;font-size:12px;font-weight:800;color:var(--ern-acc)">⏱ Pause läuft: <span id="tr_rest">0:00</span></div>':'';
+    var addBtn='<button data-act="trainSetAdd" data-arg="'+esc(key)+'" style="width:100%;margin-top:10px;padding:9px;border:1.5px dashed '+ERN_G+';border-radius:11px;background:rgba(14,96,114,.05);color:var(--teal-ink);font-weight:800;font-size:12.5px;cursor:pointer">＋ Satz'+(entries.length?' hinzufügen':' erfassen')+'</button>';
+    return hdr+rowsH+restLive+addBtn;
+  }
+  // Übungs-Detail (Vollbild): Beschreibung + Muskeldiagramm; KI-Geräte mit App-Link.
+  function trainExDetailSheet(){
+    var key=S.trainExDetail; var e=trainExByKey(key);
+    var back=subBack('trExDetailClose','Zur Einheit');
+    if(!e){ return '<div style="padding:0 2px">'+back+trainCardBox('<div style="font-size:14px;font-weight:600;color:var(--text-soft)">Übung nicht gefunden.</div>')+'</div>'; }
+    var tg=trIsTg(e); var grp=trExGroupOf(e); var mi=trMuscleInfo(grp); var cue=trExCueOf(e);
+    var glabel=((DATA.training&&DATA.training.exerciseGroups)||[]).reduce(function(m,g){ m[g[0]]=g[1]; return m; },{})[grp]||'';
+    var hero='<div style="background:linear-gradient(150deg,'+ERN_G2+','+ERN_GD+');border-radius:20px;padding:18px 20px;color:#fff;box-shadow:0 14px 34px rgba(14,96,114,.22);margin-bottom:14px">'+
+      (glabel?'<div style="font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.5px;color:#bfe0e6">'+esc(glabel)+'</div>':'')+
+      '<div style="font-size:21px;font-weight:900;letter-spacing:-.4px;margin-top:3px">'+esc(e.name)+'</div>'+
+      (e.machine?'<div style="font-size:12.5px;font-weight:700;color:#cfe8ec;margin-top:5px">🔧 '+esc(e.machine)+(tg?' · 🤖 Technogym-KI':'')+'</div>':'')+
+      (!tg&&e.sets?'<div style="display:inline-block;background:rgba(255,255,255,.16);border-radius:8px;padding:4px 10px;font-size:12px;font-weight:800;margin-top:10px">Ziel: '+esc(e.sets)+' × '+esc(e.reps)+(e.rest?(' · Pause '+esc(e.rest)):'')+'</div>':'')+'</div>';
+    var diagram=trainCardBox('<div style="font-size:12px;font-weight:900;color:var(--ern-acc);text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px">Trainierte Muskeln</div>'+muscleBodySvg(mi.regions)+(mi.primary?'<div style="font-size:13px;font-weight:800;color:var(--text);text-align:center;margin-top:10px">'+esc(mi.primary)+'</div>':'')+(mi.desc?'<div style="font-size:12.5px;font-weight:500;color:var(--text-2);line-height:1.5;margin-top:6px;text-align:center">'+esc(mi.desc)+'</div>':''),'16px');
+    var howto=cue?trainCardBox('<div style="font-size:12px;font-weight:900;color:var(--ern-acc);text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">So führst du sie aus</div><div style="font-size:14px;font-weight:600;color:var(--text);line-height:1.55">'+esc(cue)+'</div>','16px'):'';
+    var tgBox=tg?trainCardBox('<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px"><span style="width:34px;height:34px;border-radius:10px;background:'+ERN_GD+';display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:17px">🤖</span><div style="font-size:14.5px;font-weight:900;color:var(--text)">Am Gerät anmelden</div></div><div style="font-size:13px;font-weight:500;color:var(--text-2);line-height:1.55;margin-bottom:12px">Melde dich per <b style="color:var(--teal-ink)">Technogym-App</b> oder deinem <b style="color:var(--teal-ink)">Band</b> am Gerät an – Sitz, Gewicht und Progression stellt die KI automatisch ein.</div><a href="'+TG_APP_URL+'" target="_blank" rel="noopener" style="display:flex;align-items:center;justify-content:center;gap:8px;text-decoration:none;background:'+ERN_G+';color:#fff;border-radius:13px;padding:13px;font-weight:900;font-size:14px">📲 Technogym-App öffnen'+svg('<path d="M7 17L17 7M9 7h8v8"></path>',{c:'#fff',w:2.2,s:16})+'</a>','16px'):'';
+    return '<div style="padding:0 2px 96px">'+back+hero+diagram+howto+tgBox+'</div>';
+  }
+  // Abschluss-Zusammenfassung nach „Einheit abschließen": VP, kcal, (Premium) FINN.
+  function trainFinishOverlay(){
+    var f=S.trainFinish||{};
+    var finnBox=f.finn?'<div style="background:rgba(127,227,168,.1);border:1px solid rgba(127,227,168,.3);border-radius:16px;padding:15px 16px;margin-top:14px;text-align:left"><div style="display:flex;align-items:center;gap:8px;margin-bottom:7px"><span style="width:26px;height:26px;border-radius:50%;background:#7fd8e0;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0">✨</span><span style="font-size:11.5px;font-weight:900;color:#0a4958;text-transform:uppercase;letter-spacing:.3px">FINNs Einschätzung</span></div><div style="font-size:13.5px;font-weight:600;color:#0a4958;line-height:1.55">'+esc(f.finn)+'</div></div>':'';
+    var stat=function(big,sub){ return '<div style="flex:1;background:rgba(255,255,255,.14);border-radius:15px;padding:14px 8px;text-align:center"><div style="font-size:24px;font-weight:900;color:#fff;letter-spacing:-.5px;line-height:1">'+big+'</div><div style="font-size:11px;font-weight:700;color:#cfe8ec;margin-top:4px">'+sub+'</div></div>'; };
+    var card='<div style="background:linear-gradient(160deg,#12879c,#0a4958);border-radius:24px;padding:26px 22px calc(22px + env(safe-area-inset-bottom,0px));width:100%;max-width:380px;box-shadow:0 22px 60px rgba(4,33,40,.4);color:#fff;text-align:center">'+
+      '<div style="font-size:52px;line-height:1">🎉</div>'+
+      '<div style="font-size:23px;font-weight:900;letter-spacing:-.4px;margin-top:6px">Einheit geschafft!</div>'+
+      '<div style="font-size:13.5px;font-weight:600;color:#cfe8ec;margin-top:4px">'+(f.exercisesDone||0)+' von '+(f.exercisesTotal||0)+' Übungen · '+(f.durationMin||0)+' Min</div>'+
+      '<div style="display:flex;gap:10px;margin-top:18px">'+stat('+'+(f.vp||0),'Vitalpunkte')+stat('~'+(f.kcal||0),'kcal verbrannt')+'</div>'+
+      finnBox+
+      '<button data-act="trainFinishClose" style="width:100%;margin-top:18px;border:none;border-radius:15px;background:#fff;color:#0a4958;font-weight:900;font-size:16px;padding:15px;cursor:pointer">Stark – weiter so!</button></div>';
+    return '<div class="trFinishWrap" style="position:fixed;inset:0;z-index:82;background:rgba(4,33,40,.55);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;padding:20px;overflow-y:auto">'+card+'</div>';
   }
   // ═══════════════════ Trainings-Bereich – Tages-Hub (heutige Einheit) ═══════════════════
   // Bündelt das Heute an einem Ort: heutige Trainingseinheit abhaken (identischer Tracker
@@ -4956,6 +5079,7 @@
     if(!DATA.checkins) loadCheckins();   // Wochen-Ring braucht die Studio-Besuche
     var wrap=function(inner){ return '<div class="ernwrap" style="padding-bottom:calc(96px + env(safe-area-inset-bottom,0px))">'+inner+'</div>'; };
     // Vollbild-Unteransichten (Zurück führt zurück ins jeweilige Segment).
+    if(S.trainExDetail) return wrap('<div style="padding:14px 2px 0">'+trainExDetailSheet()+'</div>');
     if(S.trainRun) return wrap('<div style="padding:14px 2px 0">'+trainingRun()+'</div>');
     if(S.trainGenOpen) return wrap('<div style="padding:14px 2px 0">'+trainingGenSheet()+'</div>');
     if(S.trainDetail) return wrap('<div style="padding:14px 2px 0">'+trainingDetail()+'</div>');
@@ -7107,6 +7231,7 @@
     if(S.screen==='ern'&&S.ernCapture) html+=ernErfassen();   // Erfassen-Popup (Bottom-Sheet) über dem Ernährungs-Screen
     if(TOKEN && S.screen!=='login' && !isFormer() && !obDone()){ if(S.obServerChecked!==true) obServerCheck(); else { obPrefillOnce(); html+=obOverlayHtml(); } }
     if(TOKEN && S.screen!=='login' && !isFormer() && obDone() && S.welcomeGift) html+=welcomeGiftHtml();
+    if(S.trainFinish) html+=trainFinishOverlay();
     // Chat-Eingaben über die Neu-Zeichnung retten (Wert, Fokus, Cursor & Scroll-Position) –
     // sonst verschwindet getippter Text und die Tastatur klappt zu, sobald im Hintergrund
     // Daten nachladen (das war der große Chat-Bug).
@@ -7223,8 +7348,36 @@
       if(!isActive){ api('/api/member/training',{method:'POST',body:JSON.stringify({action:'plan-detail',planId:a})}).then(function(r){ if(r&&r.ok&&r.plan&&S.trainDetail===a){ S.trainDetailFull=r.plan; render(); } }).catch(function(){}); }
     },
     trainBack:function(){ S.trainDetail=null; S.trainDetailFull=null; setS({}); },
-    trainRun:function(){ S.trainRun=true; S.trainRunDay=0; S.trainRestKey=''; S.trainRestStart=0; loadTrainSession(); setS({}); },
+    trainRun:function(){ S.trainRun=true; S.trainRunDay=0; S.trainRestKey=''; S.trainRestStart=0;
+      // Trainingszeit starten – bzw. eine noch junge, laufende Session (nach Re-Render/Reload) fortsetzen.
+      var now=Date.now(), st=0; try{ st=parseInt(localStorage.getItem('fi_train_start')||'0',10)||0; }catch(e){}
+      if(!(st>0 && (now-st)<4*3600e3)){ st=now; try{ localStorage.setItem('fi_train_start',String(st)); }catch(e){} }
+      S.trainRunStart=st; loadTrainSession(); setS({}); },
     trainRunClose:function(){ S.trainRun=false; S.trainRestKey=''; setS({}); },
+    // Übungs-Detail (Beschreibung + Muskeldiagramm) öffnen/schließen.
+    trExDetail:function(key){ S.trainExDetail=key; try{ window.scrollTo(0,0); }catch(e){} setS({}); },
+    trExDetailClose:function(){ S.trainExDetail=null; try{ window.scrollTo(0,0); }catch(e){} setS({}); },
+    // Satz-Protokoll: Satz ergänzen (misst die Pause seit dem letzten Satz) / löschen.
+    trainSetAdd:function(key){ var it=trainSessLocal(key); it.entries=Array.isArray(it.entries)?it.entries:[];
+      if(S.trainRestKey===key && S.trainRestStart && it.entries.length){ var sec=Math.max(0,Math.round((Date.now()-S.trainRestStart)/1000)); it.entries[it.entries.length-1].rest=Math.min(3600,sec); }
+      var last=it.entries[it.entries.length-1]||{}; var e=trainExByKey(key)||{}; var pr=parseInt(String(e.reps||'').replace(/[^\d]/g,''),10)||0;
+      it.entries.push({w:(last.w||0), reps:(last.reps||pr||0), rest:0}); it.sets=it.entries.length;
+      S.trainRestKey=key; S.trainRestStart=Date.now(); render(); trainSetSave(key); },
+    trainSetDel:function(a){ var p=String(a||'').split('|'); var key=p[0]; var idx=parseInt(p[1],10); var it=trainSessLocal(key);
+      if(!Array.isArray(it.entries)||isNaN(idx)) return; it.entries.splice(idx,1); it.sets=it.entries.length;
+      if(!it.entries.length && S.trainRestKey===key) S.trainRestKey=''; render(); trainSetSave(key); },
+    // Einheit abschließen -> Zusammenfassung (VP, kcal, ggf. FINN).
+    trainFinish:function(){ if(S.trainFinishBusy) return; var d=DATA.training; var mp=d&&d.myPlan&&d.myPlan.plan; if(!mp||!mp.days){ return; }
+      var di=trainTodayDay(mp); var dur=trainElapsedSec(); S.trainFinishBusy=true; render();
+      api('/api/member/training',{method:'POST',timeoutMs:30000,body:JSON.stringify({action:'session-finish',day:di,durationSec:dur})})
+        .then(function(r){ S.trainFinishBusy=false;
+          if(r&&r.ok){ S.trainFinish={vp:r.vp||0,kcal:r.kcal||0,durationMin:r.durationMin||0,exercisesDone:r.exercisesDone||0,exercisesTotal:r.exercisesTotal||0,finn:r.finn||'',premium:!!r.premium};
+            S.trainRun=false; S.trainRunStart=0; try{ localStorage.removeItem('fi_train_start'); }catch(e){}
+            loadTraining(); if(!DATA.checkins) loadCheckins(); loadTrainSession();
+          } else { S.trainMsg=(r&&r.message)||'Abschluss hat gerade nicht geklappt – bitte gleich nochmal.'; }
+          setS({}); })
+        .catch(function(){ S.trainFinishBusy=false; S.trainMsg='Verbindung gerade nicht möglich.'; setS({}); }); },
+    trainFinishClose:function(){ S.trainFinish=null; S.trainSeg='einheit'; try{ window.scrollTo(0,0); }catch(e){} setS({}); },
     // „+" im Training: feste Hauptaktion = heutige Einheit starten. Ohne aktiven Plan
     // zuerst zum Pläne-Tab (dort Plan holen / FINN-Plan erstellen).
     trainAdd:function(){ var d=DATA.training; var mp=d&&d.myPlan&&d.myPlan.plan; if(mp&&mp.days&&mp.days.length){ ACT.trainRun(); } else { S.trainSeg='plaene'; S.trainDetail=null; S.trainGenOpen=false; setS({}); } },
