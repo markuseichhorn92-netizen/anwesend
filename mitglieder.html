@@ -465,7 +465,7 @@
 
   // ---- state ----
   var TOKEN = localStorage.getItem('fi_member_token') || sessionStorage.getItem('fi_member_token') || null;
-  var DATA = { profile:null, contract:null, checkins:null, appts:null, plan:null, planAgg:null, planAggTom:null, inbox:null, prefs:null, membershipActive:true, bookable:null, slots:null, account:null, blog:null, typical:null, hours:null, insta:null, live:null, pauseInfo:null, cancelReasons:null, documents:null, modules:null, commPrefs:null, nutri:null, nutriPlan:null, nutriSaved:null, nutriWeek:null, nutriFavs:null, nutriLib:null, nutriCook:null };
+  var DATA = { profile:null, contract:null, checkins:null, appts:null, plan:null, planAgg:null, planAggTom:null, inbox:null, prefs:null, membershipActive:true, bookable:null, slots:null, account:null, blog:null, typical:null, hours:null, insta:null, live:null, pauseInfo:null, cancelReasons:null, documents:null, modules:null, commPrefs:null, nutri:null, nutriPlan:null, nutriSaved:null, nutriWeek:null, nutriFavs:null, nutriLib:null, nutriCook:null, finnMem:null };
   // Erlaubte Screens für ehemalige Mitglieder (alles andere wird gesperrt)
   var FORMER_OK = ['home','checkins','help','postfach','settings','profil'];
   function isFormer(){ return DATA.membershipActive===false; }
@@ -3428,6 +3428,8 @@
   // Koch-Plan (was wann kochen) + abgeleitete Einkaufsliste.
   function loadCook(){ api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'cookplan-get'})}).then(function(d){ DATA.nutriCook=(d&&d.ok)?{cookplan:d.cookplan||[],shopping:d.shopping||[]}:{cookplan:[],shopping:[]}; rIf(['ern']); }).catch(function(){ DATA.nutriCook={cookplan:[],shopping:[]}; rIf(['ern']); }); }
   function loadWeek(){ api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'week'})}).then(function(d){ DATA.nutriWeek=(d&&d.ok)?d:{ok:false}; rIf(['ern']); }).catch(function(){ DATA.nutriWeek={ok:false}; rIf(['ern']); }); }
+  // FINN-Langzeitgedächtnis (Opt-in) – Zustand + gemerkte Fakten für die Einstellungen laden.
+  function loadFinnMem(){ api('/api/member/coach',{method:'POST',body:JSON.stringify({action:'memory-get'})}).then(function(d){ DATA.finnMem=(d&&d.ok)?{on:!!d.on,items:Array.isArray(d.items)?d.items:[]}:{on:false,items:[]}; rIf(['settings']); }).catch(function(){ DATA.finnMem={on:false,items:[]}; rIf(['settings']); }); }
   // Coaching-Programm (8-Wochen-Reise) laden – eigener Endpunkt, Snapshot in DATA.coach.
   function loadCoach(){ api('/api/member/nutrition-coach').then(function(d){ DATA.coach=(d&&d.ok)?d:{ok:false,available:!!(d&&d.available)}; rIf(['ern','coach']); }).catch(function(){ DATA.coach={ok:false,available:false}; rIf(['ern','coach']); }); }
   // Training-Tab: Tipp, Inspiration, Trainingsplan-Bibliothek + „Mein Plan" (api/member/training).
@@ -6576,6 +6578,7 @@
   // ---- render ----
   // ---- Einstellungen (Darstellung / Benachrichtigungen / Datenschutz) ----
   function scrSettings(){
+    if(DATA.finnMem==null) loadFinnMem();
     var pref = (window.__themePref ? window.__themePref() : 'system');
     var remOn = !(DATA.prefs && DATA.prefs.reminders===false);
     // Titel + Zurück trägt die App-Leiste – hier nur noch eine schlanke Eyebrow-Zeile.
@@ -6629,7 +6632,21 @@
     var goalsCard='<div class="card" style="border-radius:20px;box-shadow:0 12px 34px rgba(4,33,40,.10)">'+secHead('<circle cx="12" cy="8" r="6"></circle><path d="M15.5 13.5L17 22l-5-3-5 3 1.5-8.5"></path>','Training & Ziele','Dein Wochenziel & Coaching-Fokus.')+
       '<div style="margin-top:8px">'+row('<path d="M6 20v-5M12 20V8M18 20v-9"></path><path d="M4 20h16"></path>','Ziele & Onboarding anpassen',goalSub,'replayOnboarding','')+
       row('<circle cx="12" cy="12" r="9"></circle><path d="M15.5 8.5l-2 5-5 2 2-5z"></path>','App-Tour erneut ansehen','Die wichtigsten Bereiche Schritt für Schritt','tourRestart','')+'</div></div>';
-    return gradHd+appearance+'<div style="height:16px"></div>'+notif+(commCard?('<div style="height:16px"></div>'+commCard):'')+'<div style="height:16px"></div>'+pushCard+'<div style="height:16px"></div>'+goalsCard+'<div style="height:16px"></div>'+privacy;
+    // FINN-Gedächtnis (Opt-in): FINN darf sich Wichtiges über das Mitglied merken. Voll transparent + löschbar.
+    // (Nach der swt-Definition gebaut, da es den Schalter-Helfer nutzt.)
+    var FINN_IC='<path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.5 8.6 8.6 0 0 1-4-1L3 20l1-5a8.4 8.4 0 0 1-1-4A8.5 8.5 0 0 1 11.5 3 8.5 8.5 0 0 1 21 11.5z"></path>';
+    var fm=DATA.finnMem;
+    var memBody;
+    if(fm==null){ memBody='<div style="font-size:12.5px;color:var(--text-soft);margin-top:14px;line-height:1.5">Lädt …</div>'; }
+    else if(!fm.on){ memBody='<div style="font-size:12.5px;color:var(--text-soft);margin-top:14px;line-height:1.5">Aus – FINN merkt sich nichts über dich. Aktiviere es, damit FINN dein Ziel, deine Vorlieben und Einschränkungen über Gespräche hinweg berücksichtigt. Keine sensiblen Gesundheitsdiagnosen.</div>'; }
+    else if(!fm.items.length){ memBody='<div style="font-size:12.5px;color:var(--text-soft);margin-top:14px;line-height:1.5">An – FINN merkt sich noch nichts. Sobald im Chat etwas Dauerhaftes auftaucht (z. B. dein Ziel), erscheint es hier zum Nachlesen und Löschen.</div>'; }
+    else {
+      var memItems=fm.items.map(function(t){ return '<div style="display:flex;align-items:center;gap:10px;padding:11px 0;border-top:1px solid var(--border)"><span style="width:6px;height:6px;border-radius:50%;background:'+TEAL+';flex-shrink:0"></span><span style="flex:1;min-width:0;font-size:13.5px;font-weight:600;color:var(--text);line-height:1.4">'+esc(t)+'</span><button data-act="finnMemForget" data-arg="'+encodeURIComponent(t)+'" aria-label="Vergessen" style="width:30px;height:30px;border-radius:9px;border:none;background:var(--surface-2);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'+svg('<path d="M18 6L6 18M6 6l12 12"></path>',{c:'var(--text-soft)',w:2,s:14})+'</button></div>'; }).join('');
+      memBody='<div style="margin-top:10px">'+memItems+'</div><button data-act="finnMemClear" style="width:100%;margin-top:13px;padding:11px;border:1.5px solid var(--border);border-radius:12px;background:var(--surface);color:#c5654f;font-weight:800;font-size:13px;cursor:pointer">Alles vergessen</button>';
+    }
+    var memCard='<div class="card" style="border-radius:20px;box-shadow:0 12px 34px rgba(4,33,40,.10)">'+secHead(FINN_IC,'FINN-Gedächtnis','Dein Coach erinnert sich – über Gespräche hinweg.')+
+      '<div style="display:flex;align-items:center;gap:14px;margin-top:18px"><div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:800;color:var(--text)">FINN darf sich Dinge merken</div><div style="font-size:13px;color:var(--text-muted);margin-top:2px;line-height:1.45">Ziel, Vorlieben &amp; Einschränkungen – nur für dich, jederzeit löschbar.</div></div>'+swt(!!(fm&&fm.on),'finnMemToggle','')+'</div>'+memBody+'</div>';
+    return gradHd+appearance+'<div style="height:16px"></div>'+notif+(commCard?('<div style="height:16px"></div>'+commCard):'')+'<div style="height:16px"></div>'+pushCard+'<div style="height:16px"></div>'+goalsCard+'<div style="height:16px"></div>'+memCard+'<div style="height:16px"></div>'+privacy;
   }
 
   // ---- responsive chrome (Desktop-Sidebar + Topbar) ----
@@ -7687,6 +7704,13 @@
       var revert=function(){ DATA.prefs.reminders=prev; S.planRemind=prev; render(); };
       api('/api/member/prefs',{method:'POST',body:JSON.stringify({reminders:val})}).then(function(r){ if(r&&r.prefs){ DATA.prefs=r.prefs; render(); } else { revert(); } }).catch(revert);
     },
+    // FINN-Gedächtnis (Opt-in) verwalten: aktivieren/deaktivieren, einzeln vergessen, alles löschen.
+    finnMemToggle:function(){ if(S.finnMemBusy) return; var cur=!!(DATA.finnMem&&DATA.finnMem.on); S.finnMemBusy=true; render();
+      api('/api/member/coach',{method:'POST',body:JSON.stringify({action:'memory-optin',on:!cur})}).then(function(d){ S.finnMemBusy=false; if(d&&d.ok) DATA.finnMem={on:!!d.on,items:Array.isArray(d.items)?d.items:[]}; render(); }).catch(function(){ S.finnMemBusy=false; render(); }); },
+    finnMemForget:function(a){ var text=decodeURIComponent(a||''); if(!text) return;
+      api('/api/member/coach',{method:'POST',body:JSON.stringify({action:'memory-forget',text:text})}).then(function(d){ if(d&&d.ok) DATA.finnMem={on:!!d.on,items:Array.isArray(d.items)?d.items:[]}; render(); }).catch(function(){}); },
+    finnMemClear:function(){ if(!confirm('Alles löschen, was FINN sich gemerkt hat?')) return;
+      api('/api/member/coach',{method:'POST',body:JSON.stringify({action:'memory-clear'})}).then(function(d){ if(d&&d.ok) DATA.finnMem={on:!!d.on,items:Array.isArray(d.items)?d.items:[]}; render(); }).catch(function(){}); },
     togglePush:function(){ var prev=!(DATA.prefs&&DATA.prefs.push===false); var val=!prev; DATA.prefs=DATA.prefs||{}; DATA.prefs.push=val; setS({});
       var revert=function(){ DATA.prefs.push=prev; render(); };
       api('/api/member/prefs',{method:'POST',body:JSON.stringify({push:val})}).then(function(r){ if(r&&r.prefs){ DATA.prefs=r.prefs; render(); } else { revert(); } }).catch(revert); },

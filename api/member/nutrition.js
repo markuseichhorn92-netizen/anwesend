@@ -991,6 +991,7 @@ module.exports = async function handler(req, res) {
     if (String(body.confirm || '') !== 'LOESCHEN') { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'confirm_required', message: 'Bitte bestätige das vollständige Löschen.' })); }
     const keys = [PKEY(id), FAVKEY(id), PLANKEY(id), SHOPKEY(id), RECKEY(id), COOKKEY(id), FASTKEY(id)];
     Coaching.deleteKeys(id).forEach(function (k) { keys.push(k); });   // Coaching-Keys mitlöschen (nutri:prem bleibt bewusst außen vor)
+    try { keys.push(require('../../lib/finnMemory').MKEY(id)); } catch (e) {}   // FINN-Gedächtnis (DSGVO) mitlöschen
     for (let i = 0; i < 400; i++) keys.push(DKEY(id, dayKeyMinus(date, i)));
     try { await redisPipeline(keys.map(function (k) { return ['DEL', k]; })); } catch (e) {}
     res.statusCode = 200; return res.end(JSON.stringify({ ok: true, deleted: true }));
