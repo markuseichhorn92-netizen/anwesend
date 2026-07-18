@@ -1882,12 +1882,28 @@
     var remain=Math.max(0,(v.goal||0)-(v.weekVisits||0));
     var goalPill=pill(remain<=0?'🎯 Wochenziel ✅':('🎯 noch '+remain+'×'));
     var vAge=vitalAge();
-    var pills=goalPill+pill('🔥 '+v.streak+' Wo.')+pill(deNum(v.points)+' VP')+(vAge.age!=null?pill('Vitalalter '+vAge.age):'');
+    var pills=goalPill+pill('🔥 '+v.streak+' Wo.')+pill(deNum(v.points)+' VP');
     return '<button data-act="nav" data-arg="coach" style="width:100%;text-align:left;border:none;cursor:pointer;font-family:inherit;background:linear-gradient(150deg,#12879c,#0e6072 58%,#0a4958);border-radius:22px;padding:18px 20px;color:#fff;box-shadow:0 16px 40px rgba(14,96,114,.28);margin-bottom:16px">'+
       '<div style="display:flex;align-items:center;gap:12px">'+ava+'<div style="flex:1;min-width:0"><div style="font-size:11px;font-weight:900;color:#bfe0e6;text-transform:uppercase;letter-spacing:.4px">Dein Coach</div><div style="font-size:16.5px;font-weight:900">FINN · Tipp des Tages</div></div>'+svg('<path d="M9 6l6 6-6 6"></path>',{c:'rgba(255,255,255,.8)',w:2.4,s:18})+'</div>'+
       '<div style="font-size:13.5px;font-weight:600;color:#eafff4;line-height:1.5;margin-top:10px">'+(tip?esc(tip):'FINN stellt dir gleich deinen Tagestipp zusammen …')+'</div>'+
       '<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">'+pills+'</div>'+
     '</button>';
+  }
+  // Vitalalter prominent auf der Startseite: große Zahl + Einordnung, führt in den Fortschritt.
+  function homeVitalCard(){
+    var va=vitalAge();
+    var chev=svg('<path d="M9 6l6 6-6 6"></path>',{c:'var(--text-soft)',w:2.4,s:18});
+    if(va.age==null){
+      return '<button data-act="nav" data-arg="data" style="width:100%;text-align:left;border:none;cursor:pointer;font-family:inherit;background:var(--surface);border-radius:20px;box-shadow:0 12px 30px rgba(4,33,40,.09);padding:16px 18px;margin-bottom:16px"><div style="display:flex;align-items:center;gap:13px"><div style="width:52px;height:52px;border-radius:14px;background:var(--surface-2);display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0">🌱</div><div style="flex:1;min-width:0"><div style="font-size:15.5px;font-weight:900;color:var(--text)">Dein Vitalalter</div><div style="font-size:12.5px;color:var(--text-soft);font-weight:600;margin-top:2px;line-height:1.45">Geburtsdatum ergänzen – dann berechnet FINN dein Vitalalter aus deiner Aktivität.</div></div>'+chev+'</div></button>';
+    }
+    var d=va.delta;
+    var badge=(d>0)?('<span style="background:#E7F6EC;color:#176b37;font-size:12px;font-weight:900;border-radius:20px;padding:5px 11px;white-space:nowrap">'+d+' J. jünger</span>'):((d<0)?('<span style="background:#FBF0E3;color:#9a5a18;font-size:12px;font-weight:900;border-radius:20px;padding:5px 11px;white-space:nowrap">über Alter</span>'):('<span style="background:var(--surface-2);color:var(--text-soft);font-size:12px;font-weight:900;border-radius:20px;padding:5px 11px;white-space:nowrap">= dein Alter</span>'));
+    var sub=(d>0)?('FINN schätzt dich '+d+' '+(d===1?'Jahr':'Jahre')+' jünger als dein echtes Alter ('+va.real+').'):((d<0)?('Aktuell etwas über deinem Alter ('+va.real+') – ein paar Einheiten drehen das.'):('Genau dein echtes Alter ('+va.real+') – dranbleiben lohnt sich.'));
+    return '<button data-act="nav" data-arg="fort" style="width:100%;text-align:left;border:none;cursor:pointer;font-family:inherit;background:var(--surface);border-radius:20px;box-shadow:0 12px 30px rgba(4,33,40,.09);padding:16px 18px;margin-bottom:16px">'+
+      '<div style="display:flex;align-items:center;gap:14px">'+
+        '<div style="width:64px;height:64px;border-radius:50%;background:linear-gradient(150deg,#0e6072,#063540);display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;flex-shrink:0;box-shadow:0 10px 24px rgba(14,96,114,.28)"><span style="font-size:25px;font-weight:900;letter-spacing:-1px;line-height:1">'+va.age+'</span><span style="font-size:8px;font-weight:800;color:#aed0d6;text-transform:uppercase;letter-spacing:.3px;margin-top:1px">Jahre</span></div>'+
+        '<div style="flex:1;min-width:0"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span style="font-size:15.5px;font-weight:900;color:var(--text)">Vitalalter</span>'+badge+'</div><div style="font-size:12.5px;color:var(--text-soft);font-weight:600;line-height:1.45;margin-top:3px">'+esc(sub)+'</div></div>'+chev+
+      '</div></button>';
   }
   // Ernährungs-Karte auf der Startseite – nur wenn das Modul freigeschaltet ist (ERN_ON).
   // Zeigt live: kcal übrig (Ring), Streak und die heute verdienten Vitalpunkte; führt ins Essen-Modul.
@@ -1972,6 +1988,9 @@
     loadFinnTip(); loadInsta(); loadTypical(); loadLive(); loadHours();
     if(ERN_ON&&DATA.nutri==null) loadNutri();   // Ernährungs-Karte auf der Startseite mit Live-Daten füttern
     if(SOCIAL_ON&&DATA.social==null) loadSocial();   // Trainingspartner-Karte auf der Startseite mit Live-Daten füttern
+    if(DATA.checkins==null) loadCheckins();      // fürs Vitalalter (Aktivität) auf der Startseite
+    if(DATA.training==null) loadTraining();      // fürs Vitalalter (Einheiten)
+    if(DATA.mprofile==null) loadMemberProfile(); // fürs Vitalalter (Lebensstil)
     var p=DATA.profile||{}; var name=p.firstName||'';
     // Schnellzugriff – 4 Kacheln mit Live-Daten (wie im Design). Rest liegt im Profil-Hub + Bottom-Nav.
     if(DATA.account===null) loadAccount();
@@ -2013,6 +2032,7 @@
     var discover=homeInsta()+homeBlog();
     return ''+
       homeCoachHero()+
+      homeVitalCard()+
       checkinBtn()+
       homeMeinTagHero()+
       homeTodayStrip()+
