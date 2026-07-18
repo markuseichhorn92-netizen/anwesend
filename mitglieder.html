@@ -6706,10 +6706,34 @@
     var d=morningData(); if(!d) return ''; var ba=d.bioAge; if(!ba||ba.age==null) return '';
     var delta=ba.delta, deltaTxt='', col='var(--teal-ink)';
     if(delta!=null){ if(delta<=-2){ deltaTxt=Math.abs(delta)+' Jahre jünger als dein Alter 🎉'; col='#176b37'; } else if(delta>=2){ deltaTxt=delta+' Jahre über deinem Alter'; col='#b4552f'; } else { deltaTxt='etwa auf Höhe deines Alters'; } }
-    return '<div style="'+MO_CARD+';display:flex;align-items:center;gap:16px">'+
+    var ser=(d.bioAgeSeries||[]).filter(function(x){ return x&&x.age!=null; });
+    var trend=(ser.length>=3)?('<div style="margin-top:14px;border-top:1px solid var(--border);padding-top:11px"><div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:3px"><span style="font-size:12px;font-weight:800;color:var(--text-soft)">Verlauf HRV-Fitnessalter</span><span style="font-size:10.5px;font-weight:700;color:var(--text-soft)">niedriger = besser</span></div>'+figMiniChart(ser.map(function(x){ return {value:x.age,date:x.date}; }))+'</div>'):'';
+    return '<div style="'+MO_CARD+'">'+
+      '<div style="display:flex;align-items:center;gap:16px">'+
       '<div style="width:70px;height:70px;border-radius:50%;background:linear-gradient(150deg,#0e6072,#063540);display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;flex-shrink:0"><div style="font-size:24px;font-weight:900;line-height:1">'+ba.age+'</div><div style="font-size:9px;font-weight:700;color:#aed0d6;letter-spacing:.3px">JAHRE</div></div>'+
       '<div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:900;color:var(--text)">HRV-Fitnessalter</div>'+(deltaTxt?'<div style="font-size:12.5px;font-weight:700;color:'+col+';margin-top:2px">'+esc(deltaTxt)+'</div>':'')+'<div style="font-size:11px;color:var(--text-soft);font-weight:500;margin-top:4px;line-height:1.4">Geschätzt aus deiner HRV – eine Orientierung, keine medizinische Messung.</div></div>'+
+      '</div>'+trend+
     '</div>';
+  }
+  // Trainings-Herzfrequenzzonen: welche Zone heute passt, aus Ampel + geschätzter max. HF.
+  var MO_ZREC={
+    gruen:{keys:['Z3','Z4','Z5'],title:'Heute geht viel: Zone 3–5',note:'Dein System ist erholt – intensive Reize sind heute möglich.'},
+    gelb:{keys:['Z2','Z3'],title:'Heute moderat: Zone 2–3',note:'Bleib im aeroben Bereich, kein Maximalreiz.'},
+    rot:{keys:['Z1','Z2'],title:'Heute locker: Zone 1–2',note:'Regeneratives Tempo – klar unter der Schwelle bleiben.'}
+  };
+  function moZonesCard(level){
+    var d=morningData(); if(!d) return ''; var z=d.zones; if(!z||!z.table||!z.table.length) return '';
+    var rec=MO_ZREC[level]; var hi=rec?rec.keys:[];
+    var rows=z.table.map(function(t){ var on=hi.indexOf(t.key)>=0;
+      return '<div style="display:flex;align-items:center;gap:11px;padding:9px 0;border-top:1px solid var(--border)">'+
+        '<span style="width:26px;font-size:12px;font-weight:900;color:'+(on?'var(--teal-ink)':'var(--text-soft)')+'">'+esc(t.key)+'</span>'+
+        '<span style="flex:1;font-size:12.5px;font-weight:'+(on?'800':'600')+';color:'+(on?'var(--text)':'var(--text-soft)')+'">'+esc(t.label)+'<span style="font-weight:600;color:var(--text-soft);font-size:10.5px"> · '+t.pctLo+'–'+t.pctHi+'%</span></span>'+
+        '<span style="font-size:12.5px;font-weight:'+(on?'900':'700')+';color:'+(on?'var(--teal-ink)':'var(--text-soft)')+';white-space:nowrap">'+t.bpmLo+'–'+t.bpmHi+' bpm</span>'+
+      '</div>'; }).join('');
+    var head=rec
+      ?('<div style="display:flex;align-items:center;gap:9px"><span style="font-size:20px">🎯</span><div><div style="font-size:15.5px;font-weight:900;color:var(--teal-ink)">'+esc(rec.title)+'</div><div style="font-size:12px;color:var(--text-soft);font-weight:600;margin-top:1px">'+esc(rec.note)+'</div></div></div>')
+      :('<div style="font-size:15px;font-weight:900;color:var(--text)">Deine Trainingszonen</div><div style="font-size:12px;color:var(--text-soft);font-weight:600;margin-top:2px">Sobald deine Baseline steht, hebt FINN dir die passende Zone für heute hervor.</div>');
+    return '<div style="'+MO_CARD+'">'+head+'<div style="margin-top:9px">'+rows+'</div><div style="font-size:10.5px;color:var(--text-soft);font-weight:600;margin-top:10px;opacity:.85">Zonen aus deiner geschätzten max. Herzfrequenz ~'+z.hrMax+' bpm (208 − 0,7 × Alter).</div></div>';
   }
   // Einstiegs-Karte zur Atem-Übung.
   function moBreatheEntry(){
@@ -6919,13 +6943,13 @@
     if(mode==='training'){
       blocks.push(moMeasureCard('training'));
       var tr=d.training||{};
-      if(tr.latest){ blocks.push(moTrainVerdictCard()); }
+      if(tr.latest){ blocks.push(moTrainVerdictCard()); blocks.push(moZonesCard(tr.readiness&&tr.readiness.level)); }
       else if(!tr.hasBaseline){ blocks.push('<div style="'+MO_CARD+'"><div style="font-size:13px;color:var(--text-soft);font-weight:600;line-height:1.55">Der Trainings-Check-in vergleicht deinen Puls mit deiner <b>Morgen-Baseline</b>. Mach zuerst ein paar Morgen-Check-ins – dann wird der Trainings-Check aussagekräftig.</div></div>'); }
       blocks.push(moTrainHistoryCard());
     } else {
       blocks.push(moMeasureCard('morgen'));
       if(d.latest){
-        blocks.push(moReadinessHero()); blocks.push(moLoadCard()); blocks.push(moBalanceCard()); blocks.push(moBioAgeCard());
+        blocks.push(moReadinessHero()); blocks.push(moLoadCard()); blocks.push(moZonesCard(d.readiness&&d.readiness.level)); blocks.push(moBalanceCard()); blocks.push(moBioAgeCard());
         blocks.push(moEvalCard()); blocks.push(moCheckinCard()); blocks.push(moBreatheEntry()); blocks.push(moTrendCard()); blocks.push(moInsightsCard()); blocks.push(moCurvesCard()); blocks.push(moFinnCard()); blocks.push(moHistoryCard());
       } else { blocks.push(intro); blocks.push(moBreatheEntry()); }
     }

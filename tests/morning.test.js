@@ -118,6 +118,19 @@ function run() {
   ok('18c. trainReadiness ohne Baseline -> kalibrierung', MO.trainReadiness(mk('2026-07-18', 55), MO.baseline(few)).level === 'kalibrierung' && MO.trainReadiness(mk('2026-07-18', 55), MO.baseline(few)).hasBaseline === false);
   ok('18d. sanitize kind training/morgen', MO.sanitize({ rhr: 55, kind: 'training' }).kind === 'training' && MO.sanitize({ rhr: 55 }).kind === 'morgen');
 
+  // 19. Trainings-Herzfrequenzzonen aus max. HF (Tanaka)
+  const z = MO.trainingZones(40);
+  ok('19. trainingZones: hrMax ~180 + 5 Zonen', z && z.hrMax === 180 && z.table.length === 5);
+  ok('19b. Z2 bpm-Bereich = 60–70% von 180', (function () { const z2 = z.table.find((t) => t.key === 'Z2'); return z2 && z2.bpmLo === 108 && z2.bpmHi === 126; })());
+  ok('19c. trainingZones null ohne Alter', MO.trainingZones(0) === null && MO.trainingZones(null) === null);
+
+  // 20. HRV-Fitnessalter-Verlauf (aus Tages-HRV, ältester zuerst)
+  const bser = [MO.sanitize({ date: '2026-07-18', rhr: 54, hrvRmssd: 60 }), MO.sanitize({ date: '2026-07-17', rhr: 55, hrvRmssd: 50 }), MO.sanitize({ date: '2026-07-16', rhr: 56, hrvRmssd: 40 })];
+  const hs = MO.hrvAgeSeries(bser);
+  ok('20. hrvAgeSeries: 3 Punkte, ältester zuerst', hs.length === 3 && hs[0].date === '2026-07-16' && typeof hs[0].age === 'number');
+  ok('20b. höhere HRV -> jüngeres HRV-Alter im Verlauf', hs[2].age < hs[0].age);
+  ok('20c. hrvAgeSeries ignoriert Messungen ohne HRV', MO.hrvAgeSeries([MO.sanitize({ date: '2026-07-18', rhr: 55 })]).length === 0);
+
   console.log(pass ? 'MORNING PASS' : 'MORNING FAIL');
   process.exit(pass ? 0 : 1);
 }

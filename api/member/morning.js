@@ -54,6 +54,8 @@ async function readState(id) {
     readiness: readiness,
     balance: latest ? MO.balance(latest, base) : null,
     bioAge: latest ? MO.hrvAge(latest, age, base) : null,
+    bioAgeSeries: MO.hrvAgeSeries(list),
+    zones: MO.trainingZones(age),
     trainingLoad: readiness ? MO.trainingLoad(readiness, latest) : null,
     insights: MO.insights(list),
     trend: MO.trend(list),
