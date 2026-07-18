@@ -5802,30 +5802,45 @@
       '<div style="min-width:0"><div style="font-size:19px;font-weight:900;letter-spacing:-.3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(name)+'</div><div style="font-size:13px;color:#aed0d6;font-weight:600;margin-top:1px">Mitgliedsnr. '+esc(p.customerNumber||'—')+'</div></div></div>'+
       '<div style="display:flex;gap:10px;margin-top:18px">'+stat(esc((c&&c.rateName)||'—'),'Tarif')+stat(String(v.visits),'Besuche '+(new Date()).getFullYear())+stat(status,'Status',stCol)+'</div>'+
     '</div>';
-    var row=function(key,t,d,icon,accent){ return '<button data-act="nav" data-arg="'+key+'" style="display:flex;align-items:center;gap:13px;width:100%;padding:15px 16px;border:none;border-top:1px solid var(--border);background:var(--surface);cursor:pointer;text-align:left">'+
-      '<div style="width:38px;height:38px;border-radius:11px;background:'+(accent?'#FBEFE2':'var(--surface-2)')+';display:flex;align-items:center;justify-content:center;flex-shrink:0">'+svg(icon,{c:(accent?'#E08C53':TEAL),w:1.9,s:19})+'</div>'+
-      '<div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:700;color:var(--text)">'+t+'</div><div style="font-size:12.5px;color:var(--text-soft);font-weight:500">'+d+'</div></div>'+
-      svg('<path d="M9 18l6-6-6-6"></path>',{c:'var(--text-soft)',w:2.2,s:18})+'</button>'; };
-    var AWARD='<circle cx="12" cy="8" r="6"></circle><path d="M15.5 13.5L17 22l-5-3-5 3 1.5-8.5"></path>';
     var un=pfUnread();
-    var list='<div style="background:var(--surface);border-radius:18px;box-shadow:0 12px 32px rgba(4,33,40,.08);overflow:hidden;margin-top:16px">'+
-      row('postfach','Postfach',(un>0?(un+' ungelesene Nachricht'+(un===1?'':'en')):'Nachrichten & FINN'),IC.mail,un>0)+
-      row('appt','Termine','Buchen & verwalten',IC.cal)+
-      row('fort','Fortschritt & Vitalität','Rang, Punkte, Aktivitäts-Alter',AWARD,true)+
-      (ERN_ON?row('ern','Ernährung','Tagesziel, Tracking & Rezepte','<path d="M11 21A7 7 0 0 1 4 14C4 8.5 8 4 13.5 4c2.7 0 4.6 1 6.5 1.8 0 8.7-4.3 15.2-9 15.2z"></path><path d="M11 21c0-5.5 3.3-10 7.5-12"></path>'):'')+
-      (ERN_ON?row('finnusage','FINN-Nutzung','KI-Kontingent & Verbrauch','<path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.5 8.6 8.6 0 0 1-4-1L3 20l1-5a8.4 8.4 0 0 1-1-4A8.5 8.5 0 0 1 11.5 3 8.5 8.5 0 0 1 21 11.5z"></path>'):'')+
-      (SOCIAL_ON?row('social','Trainingspartner','Verbinden, Chat & Challenges','<circle cx="9" cy="7" r="3"></circle><path d="M2.5 20c0-3.3 2.9-6 6.5-6s6.5 2.7 6.5 6"></path><circle cx="17.5" cy="8.5" r="2.4"></circle><path d="M16 14.2c2.6.4 4.5 2.5 4.5 5.3"></path>',(DATA.social&&DATA.social.requests&&DATA.social.requests.length>0)):'')+
-      row('data','Meine Daten','Adresse & Bankverbindung',IC.user)+
-      row('contract','Vertrag','Tarif, Kündigung, Pause',IC.doc)+
-      row('account','Beitragskonto','Offene Posten & Rechnungen','<rect x="2" y="5" width="20" height="14" rx="2"></rect><path d="M2 9h20M6 15h5"></path>')+
-      row('referral','Freunde werben','Code teilen & Prämien',IC.gift)+
-      row('checkins','Check-in-Verlauf','Besuche & Nachweis',IC.list)+
-      row('help','Hilfe & Kontakt','KI-Assistent, FAQ, Team',IC.help)+
-      row('settings','Einstellungen','Benachrichtigungen, Datenschutz',IC.cog)+
-    '</div>';
-    var head='<div style="margin:2px 2px 14px;font-size:13px;font-weight:600;color:var(--text-soft)">Mitgliedschaft verwalten</div>';
-    return head+hero+'<div style="margin-top:16px">'+ernAboRow()+'</div>'+list+
-      '<button data-act="logout" style="width:100%;margin-top:14px;border:1.5px solid var(--border);border-radius:14px;background:var(--surface);color:var(--err-fg);font-weight:800;font-size:15px;padding:14px;cursor:pointer">Abmelden</button>';
+    // Schnellzugriff-Chips (die drei wichtigsten Ziele direkt oben).
+    var chip=function(key,label,icon,badge){ return '<button data-act="nav" data-arg="'+key+'" style="position:relative;flex:1;display:flex;flex-direction:column;align-items:center;gap:7px;padding:14px 6px;border:none;border-radius:16px;background:var(--surface);box-shadow:0 8px 22px rgba(4,33,40,.07);cursor:pointer"><span style="width:40px;height:40px;border-radius:12px;background:var(--surface-2);display:flex;align-items:center;justify-content:center">'+svg(icon,{c:TEAL,w:1.9,s:20})+'</span><span style="font-size:12px;font-weight:800;color:var(--text)">'+label+'</span>'+((badge>0)?'<span style="position:absolute;top:8px;right:14px;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:#E08C53;color:#fff;font-size:10.5px;font-weight:900;display:flex;align-items:center;justify-content:center">'+(badge>99?'99+':badge)+'</span>':'')+'</button>'; };
+    var quick='<div style="display:flex;gap:10px;margin-top:13px">'+
+      chip('card','Mitgliedskarte','<rect x="2" y="5" width="20" height="14" rx="2.5"></rect><path d="M2 10h20"></path>')+
+      chip('postfach','Postfach',IC.mail,un)+
+      chip('help','Hilfe',IC.help)+'</div>';
+    // Menü-Zeile + gruppierte Karten (modern, scanbar).
+    var row=function(it,first){ var key=it[0],t=it[1],d=it[2],icon=it[3],accent=it[4]; return '<button data-act="nav" data-arg="'+key+'" style="display:flex;align-items:center;gap:13px;width:100%;padding:14px 16px;border:none;'+(first?'':'border-top:1px solid var(--border);')+'background:var(--surface);cursor:pointer;text-align:left">'+
+      '<div style="width:38px;height:38px;border-radius:11px;background:'+(accent?'#FBEFE2':'var(--surface-2)')+';display:flex;align-items:center;justify-content:center;flex-shrink:0">'+svg(icon,{c:(accent?'#E08C53':TEAL),w:1.9,s:19})+'</div>'+
+      '<div style="flex:1;min-width:0"><div style="font-size:14.5px;font-weight:700;color:var(--text)">'+t+'</div><div style="font-size:12px;color:var(--text-soft);font-weight:500">'+d+'</div></div>'+
+      svg('<path d="M9 18l6-6-6-6"></path>',{c:'var(--text-soft)',w:2.2,s:18})+'</button>'; };
+    var lbl=function(t){ return '<div style="margin:22px 6px 9px;font-size:12px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.5px">'+t+'</div>'; };
+    var card=function(items){ items=items.filter(Boolean); if(!items.length) return ''; return '<div style="background:var(--surface);border-radius:18px;box-shadow:0 10px 28px rgba(4,33,40,.07);overflow:hidden">'+items.map(function(it,i){ return row(it,i===0); }).join('')+'</div>'; };
+    var AWARD='<circle cx="12" cy="8" r="6"></circle><path d="M15.5 13.5L17 22l-5-3-5 3 1.5-8.5"></path>';
+    var coaching=card([
+      ['fort','Fortschritt & Vitalität','Rang, Punkte, Aktivitäts-Alter',AWARD,true],
+      ERN_ON?['ern','Ernährung','Tagesziel, Tracking & Rezepte','<path d="M11 21A7 7 0 0 1 4 14C4 8.5 8 4 13.5 4c2.7 0 4.6 1 6.5 1.8 0 8.7-4.3 15.2-9 15.2z"></path><path d="M11 21c0-5.5 3.3-10 7.5-12"></path>']:null,
+      ERN_ON?['finnusage','FINN-Nutzung','KI-Kontingent & Verbrauch','<path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.5 8.6 8.6 0 0 1-4-1L3 20l1-5a8.4 8.4 0 0 1-1-4A8.5 8.5 0 0 1 11.5 3 8.5 8.5 0 0 1 21 11.5z"></path>']:null,
+      SOCIAL_ON?['social','Trainingspartner','Verbinden, Chat & Challenges','<circle cx="9" cy="7" r="3"></circle><path d="M2.5 20c0-3.3 2.9-6 6.5-6s6.5 2.7 6.5 6"></path><circle cx="17.5" cy="8.5" r="2.4"></circle><path d="M16 14.2c2.6.4 4.5 2.5 4.5 5.3"></path>',(DATA.social&&DATA.social.requests&&DATA.social.requests.length>0)]:null
+    ]);
+    var konto=card([
+      ['data','Meine Daten','Adresse & Bankverbindung',IC.user],
+      ['contract','Vertrag','Tarif, Kündigung, Pause',IC.doc],
+      ['account','Beitragskonto','Offene Posten & Rechnungen','<rect x="2" y="5" width="20" height="14" rx="2"></rect><path d="M2 9h20M6 15h5"></path>'],
+      ['appt','Termine','Buchen & verwalten',IC.cal],
+      ['checkins','Check-in-Verlauf','Besuche & Nachweis',IC.list]
+    ]);
+    var mehr=card([
+      ['referral','Freunde werben','Code teilen & Prämien',IC.gift],
+      ['insta','Instagram','Neues aus dem Studio','<rect x="3" y="3" width="18" height="18" rx="5"></rect><circle cx="12" cy="12" r="4"></circle><circle cx="17.5" cy="6.5" r="1.1"></circle>'],
+      ['settings','Einstellungen','Benachrichtigungen, Datenschutz',IC.cog]
+    ]);
+    return hero+quick+
+      '<div style="margin-top:16px">'+ernAboRow()+'</div>'+
+      lbl('Coaching & Fortschritt')+coaching+
+      lbl('Mein Konto')+konto+
+      lbl('Service & Mehr')+mehr+
+      '<button data-act="logout" style="width:100%;margin-top:22px;border:1.5px solid var(--border);border-radius:14px;background:var(--surface);color:var(--err-fg);font-weight:800;font-size:15px;padding:14px;cursor:pointer">Abmelden</button>';
   }
   // FINN-Nutzung: eigener Bereich im Profil – zeigt Basic-Kontingent-Verbrauch bzw. Premium-Verbrauch.
   function ernUsageMonthLabel(ym){ try{ var p=String(ym||'').split('-'); var M=['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember']; var mi=(parseInt(p[1],10)||1)-1; return (M[mi]||'')+' '+(p[0]||''); }catch(e){ return ''; } }
@@ -7258,7 +7273,7 @@
     // tippen behält den versteckten Team-Zugang bei (kurze Sammelpause vor dem Öffnen).
     avatarTap:function(){ window.__at=(window.__at||0)+1; if(window.__atT) clearTimeout(window.__atT);
       if(window.__at>=5){ window.__at=0; if(confirm('Team-Bereich öffnen?')) location.assign('/team'); return; }
-      window.__atT=setTimeout(function(){ if(window.__at===1) openMenu(); window.__at=0; },300); },
+      window.__atT=setTimeout(function(){ if(window.__at===1) nav('profil'); window.__at=0; },300); },
     // Versteckter Ernährungs-Testmodus: 7× schnell aufs Datum tippen -> nur dieses Gerät.
     // Wirkt nur, wenn der Server den Demo-Modus erlaubt (FEATURE_DEMO=1) –
     // in Produktion bleibt der Tipp-Trick damit folgenlos.
@@ -7873,7 +7888,7 @@
       }).catch(function(){ setS({wifiBusy:false,wifiMsg:'Konnte nicht verbinden.'}); }); }
       catch(e){ setS({wifiBusy:false,wifiMsg:'Konnte nicht verbinden.'}); }
     },
-    menu:function(){ openMenu(); },
+    menu:function(){ nav('profil'); },
     menuClose:function(){ closeMenu(); },
     setTheme:function(a){ if(window.__setTheme) window.__setTheme(a); setQuiet({}); },
     // Optimistisch – aber bei Fehler den Schalter zurücksetzen (nicht falschen Zustand zeigen).
