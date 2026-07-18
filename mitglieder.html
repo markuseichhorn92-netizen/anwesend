@@ -3095,7 +3095,7 @@
     // 7) Ränge
     var ranks='<div style="'+CARD.replace('padding:20px','padding:18px')+'"><div style="font-size:16px;font-weight:900;color:var(--text);margin-bottom:8px">Ränge</div>'+VITAL_TIERS.map(function(t,i){ var cur=(i===v.rankIdx); var passed=(i<=v.rankIdx); return '<div style="display:flex;align-items:center;gap:12px;padding:9px 0"><div style="width:32px;height:32px;border-radius:50%;background:'+(passed?'#0a4958':'var(--surface-2)')+';display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:15px">'+t[2]+'</div><div style="flex:1;font-size:14px;font-weight:'+(cur?'900':'600')+';color:'+(cur?'var(--teal-ink)':'var(--text-2)')+'">'+esc(t[0])+'</div><div style="font-size:12.5px;font-weight:700;color:var(--text-soft)">'+(t[1]===0?'Start':(deNum(t[1])+' VP'))+'</div></div>'; }).join('')+'</div>';
 
-    return subHeader('Fortschritt','Vitalalter · Rang · Punkte','profil')+coachTipStrip()+'<div style="display:flex;flex-direction:column;gap:14px">'+fa+ring+badgesCard()+act+morningEntryCard()+inbodyFortCard()+ben+ledger+warn+ranks+'</div>';
+    return subHeader('Fortschritt','Vitalalter · Rang · Punkte','profil')+coachTipStrip()+'<div style="display:flex;flex-direction:column;gap:14px">'+fa+ring+badgesCard()+act+morningEntryCard()+progressPickCard()+ben+ledger+warn+ranks+'</div>';
   }
 
   // ── Ernährung (eigenständiges Modul, Tagesziel + KI-Tracking + FINN-Coach) ──
@@ -3724,7 +3724,7 @@
   // Server-Antwort einer Gedächtnis-Aktion in DATA.finnMem übernehmen (on/decided/items).
   function finnMemApply(d){ if(d&&d.ok) DATA.finnMem={on:!!d.on,decided:!!d.decided,items:Array.isArray(d.items)?d.items:[]}; }
   // Coaching-Programm (8-Wochen-Reise) laden – eigener Endpunkt, Snapshot in DATA.coach.
-  function loadCoach(){ api('/api/member/nutrition-coach').then(function(d){ DATA.coach=(d&&d.ok)?d:{ok:false,available:!!(d&&d.available)}; rIf(['ern','coach']); }).catch(function(){ DATA.coach={ok:false,available:false}; rIf(['ern','coach']); }); }
+  function loadCoach(){ api('/api/member/nutrition-coach').then(function(d){ DATA.coach=(d&&d.ok)?d:{ok:false,available:!!(d&&d.available)}; rIf(['ern','coach','fort']); }).catch(function(){ DATA.coach={ok:false,available:false}; rIf(['ern','coach','fort']); }); }
   // Training-Tab: Tipp, Inspiration, Trainingsplan-Bibliothek + „Mein Plan" (api/member/training).
   function loadTraining(){ api('/api/member/training').then(function(d){ DATA.training=(d&&d.ok)?d:{ok:false,available:!!(d&&d.available)}; rIf(['coach','tag','home']); }).catch(function(){ DATA.training={ok:false,available:false}; rIf(['coach','tag','home']); }); }
   // Trainings-Session (heutige Einheit) laden – Abhak-/Satz-Stände.
@@ -4761,7 +4761,7 @@
     if(tab==='lernen'){ body=ernCoachHome(); }                                       // Wochen-Lern-Einheiten
     else if(tab==='ern'){ body=coachInsights('ern')+themeCta('Zum Essen-Tagebuch','ern','🥗'); }
     else if(tab==='training'){ body=coachInsights('training')+themeCta('Zum Trainingsplan','tag','🏋️'); }
-    else if(tab==='lifestyle'){ if(DATA.mprofile==null) loadMemberProfile(); if(DATA.morning==null) loadMorning(); body=vitalCard()+morningEntryCard()+vitalLifestyleForm()+coachFigurCard(); }
+    else if(tab==='lifestyle'){ if(DATA.mprofile==null) loadMemberProfile(); if(DATA.morning==null) loadMorning(); body=vitalCard()+morningEntryCard()+vitalLifestyleForm()+progressPickCard(); }
     else { if(DATA.checkins==null) loadCheckins(); if(DATA.mprofile==null) loadMemberProfile(); if(DATA.morning==null) loadMorning(); body=coachFinnHub()+coachVitalHero()+morningEntryCard()+ernPremiumCard(); }  // Übersicht: FINN-first + Vitalalter/Status-Fokus + Vital-Check
     return wrap(header+coachTabBar(tab)+body);
   }
@@ -6568,6 +6568,50 @@
       body='<div style="font-size:12.5px;color:var(--text-soft);font-weight:600;margin-top:3px">Bogen scannen – Muskel, Fett &amp; Score im Verlauf</div>';
     }
     return '<div data-act="nav" data-arg="inbody" style="'+CARD+';cursor:pointer;display:flex;align-items:center;gap:14px"><div style="width:44px;height:44px;border-radius:13px;background:var(--surface-2);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:22px">🧬</div><div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:900;color:var(--text)">InBody-Analyse</div>'+body+'</div>'+svg('<path d="M9 18l6-6-6-6"></path>',{c:'var(--text-soft)',w:2.2,s:20})+'</div>';
+  }
+  // Fälligkeit einer wiederkehrenden Messung: {has, due, label}. intervalDays = empfohlener Abstand.
+  function measDue(latest, intervalDays){
+    var lastTs=null;
+    if(latest){ if(latest.date){ var t=Date.parse(latest.date+'T12:00:00'); if(!isNaN(t)) lastTs=t; } else if(latest.ts){ var n=Number(latest.ts); if(n>0) lastTs=n; } }
+    if(lastTs==null) return { has:false, due:true, label:'Noch keine – jetzt die erste machen' };
+    var days=Math.floor((Date.now()-lastTs)/86400000);
+    if(days>=intervalDays) return { has:true, due:true, label:'Jetzt wieder dran – zuletzt vor '+days+' Tag'+(days===1?'':'en') };
+    var nd=new Date(lastTs+intervalDays*86400000);
+    return { has:true, due:false, label:'Nächste empfohlen ab '+('0'+nd.getDate()).slice(-2)+'.'+('0'+(nd.getMonth()+1)).slice(-2)+'.' };
+  }
+  // ── EIN Chooser „Fortschritt messen": InBody (bevorzugt) · Erfolgskontrolle · Figur-Check ──
+  // Führt die verstreuten Einstiege zusammen; zeigt für die InBody-Analyse Fälligkeit + Anleitung.
+  function progressPickCard(){
+    if(DATA.inbody==null) loadInbody();
+    if(DATA.figur==null) loadFigur();
+    if(ERN_ON && DATA.coach==null) loadCoach();
+    var CARD='background:var(--surface);border-radius:20px;box-shadow:0 14px 38px rgba(4,33,40,.10);padding:18px';
+    var ibLatest=(DATA.inbody&&DATA.inbody.ok&&DATA.inbody.latest)||null;
+    var figPts=(DATA.figur&&DATA.figur.ok&&Array.isArray(DATA.figur.points))?DATA.figur.points:[];
+    var figDates=figPts.map(function(p){ return p&&p.date; }).filter(Boolean).sort();
+    var figLast=figDates.length?{date:figDates[figDates.length-1]}:null;
+    var nc=(DATA.coach&&DATA.coach.nextCheckin)||null;
+    var ibD=measDue(ibLatest,42), figD=measDue(figLast,28);
+    var row=function(act,arg,ico,iconBg,title,sub,due,badge){
+      var attrs=arg?('data-act="nav" data-arg="'+arg+'"'):('data-act="'+act+'"');
+      return '<button '+attrs+' style="width:100%;text-align:left;border:none;cursor:pointer;font-family:inherit;background:'+(due?'linear-gradient(150deg,#12879c,#0a4958)':'var(--surface-2)')+';border-radius:15px;padding:14px;display:flex;align-items:center;gap:13px;margin-top:10px">'+
+        '<span style="width:44px;height:44px;border-radius:13px;background:'+(due?'rgba(255,255,255,.16)':iconBg)+';display:flex;align-items:center;justify-content:center;font-size:21px;flex-shrink:0">'+ico+'</span>'+
+        '<div style="flex:1;min-width:0"><div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap"><span style="font-size:14.5px;font-weight:900;color:'+(due?'#fff':'var(--text)')+'">'+esc(title)+'</span>'+(badge?('<span style="font-size:9.5px;font-weight:900;letter-spacing:.3px;text-transform:uppercase;color:'+(due?'#0a4958':'#176b37')+';background:'+(due?'#eafff4':'#E7F6EC')+';border-radius:7px;padding:2px 7px">'+esc(badge)+'</span>'):'')+'</div>'+
+        '<div style="font-size:12px;font-weight:600;color:'+(due?'#cfe8ec':'var(--text-soft)')+';margin-top:2px;line-height:1.4">'+esc(sub)+'</div></div>'+
+        svg('<path d="M9 6l6 6-6 6"></path>',{c:due?'rgba(255,255,255,.75)':'var(--text-soft)',w:2.2,s:18})+'</button>';
+    };
+    var ibBits=[]; if(ibLatest){ if(ibLatest.pbf!=null) ibBits.push('KFA '+ibNum(ibLatest.pbf)+' %'); if(ibLatest.smmKg!=null) ibBits.push('Muskel '+ibNum(ibLatest.smmKg)+' kg'); if(ibLatest.score!=null) ibBits.push('Score '+ibNum(ibLatest.score)); }
+    var ibSub=ibD.label+(ibBits.length?(' · '+ibBits.join(' · ')):' · Muskel, Fett & Score');
+    var howto='<div style="display:flex;gap:8px;background:var(--surface-2);border-radius:12px;padding:10px 12px;margin-top:10px"><span style="font-size:14px;line-height:1.3">📋</span><div style="font-size:11px;color:var(--text-soft);font-weight:600;line-height:1.55">So läuft die InBody-Messung: an der Rezeption ~60 Sek. barfuß auf den <b>InBody 270</b>, danach den Ausdruck hier <b>abfotografieren</b> – FINN liest die Werte automatisch aus. Alle ~6 Wochen ist ideal.</div></div>';
+    var ckRow='';
+    if(nc){ var ckDue=!!(nc.first||nc.overdue); var ckLbl=nc.first?'Jetzt deinen ersten Check-in machen':(nc.overdue?'Jetzt fällig – wie lief’s?':('Nächste am '+(nc.dueDate?nc.dueDate.split('-').reverse().slice(0,2).join('.'):''))); ckRow=row('progressErfolg','','📊','rgba(14,96,114,.10)','Erfolgskontrolle',ckLbl+' · 2-Wochen-Check-in mit FINN',ckDue,''); }
+    return '<div style="'+CARD+'">'+
+      '<div style="font-size:16px;font-weight:900;color:var(--text)">Fortschritt messen</div>'+
+      '<div style="font-size:12.5px;color:var(--text-soft);font-weight:600;margin-top:3px;line-height:1.45">Wähle, wie du deinen Fortschritt festhältst – am aussagekräftigsten ist die InBody-Analyse.</div>'+
+      row('','inbody','🧬','rgba(14,96,114,.10)','InBody-Analyse',ibSub,ibD.due,'Empfohlen')+
+      howto+ckRow+
+      row('','figur','📏','#FBEFE2','Figur-Check',(figLast?figD.label:'Umfänge & Vorher-Nachher-Fotos'),false,'')+
+    '</div>';
   }
   function scrInbody(){
     var head=subHeader('InBody-Analyse','Körperanalyse & Verlauf','fort');
@@ -9162,6 +9206,8 @@
     ernImpulseAck:function(){ var c=DATA.coach; if(c&&c.impulse){ c.impulse.acked=true; render(); }
       api('/api/member/nutrition-coach',{method:'POST',body:JSON.stringify({action:'impulse-ack'})}).then(function(d){ if(d&&d.ok) DATA.coach=d; render(); }).catch(function(){}); },
     // ── Erfolgskontrolle (14-Tage-Check-in) ──
+    // Aus dem „Fortschritt messen"-Chooser (z. B. von der Fortschritt-Seite): erst zum Coach, dann Check-in öffnen.
+    progressErfolg:function(){ nav('coach'); try{ if(ACT.ernCheckinOpen) ACT.ernCheckinOpen(); }catch(e){} },
     ernCheckinOpen:function(){ S.ernCk=true; S.ernCkResult=null; S.ernCkHelp=false; S.ernCkMood=3; S.ernCkAdh=50; S.ernCkW=''; S.ernCkWaist=''; S.ernCkNote=''; S.ernMsg=''; S.ernErr=false; S.ernCkHist=null; try{ window.scrollTo(0,0); }catch(e){} render();
       api('/api/member/nutrition-coach',{method:'POST',body:JSON.stringify({action:'checkin-history'})}).then(function(d){ var h=(d&&d.ok&&Array.isArray(d.history))?d.history:[]; S.ernCkHist=h; if(h.length&&!S.ernCkW) S.ernCkW=String(h[h.length-1].weight); render(); }).catch(function(){ S.ernCkHist=[]; render(); }); },
     ernCheckinClose:function(){ S.ernCk=false; S.ernCkResult=null; S.ernMsg=''; S.ernErr=false; loadCoach(); },
