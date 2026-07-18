@@ -323,6 +323,18 @@
   .ciBadge .ciPulse{position:absolute;inset:0;border-radius:50%;animation:ciRing 1s ease-out .15s}
   .ciChk{stroke-dasharray:34;stroke-dashoffset:34;animation:ciDraw .5s ease .25s forwards}
   .ciWaveEmoji{font-size:54px;display:inline-block;transform-origin:70% 70%;animation:ciWave 1.4s ease .1s 2}
+  /* Schematische Übungs-Bewegung (Übungs-Detail, Nicht-KI-Geräte) */
+  @keyframes mvV{0%,100%{transform:translateY(0)}50%{transform:translateY(36px)}}
+  @keyframes mvH{0%,100%{transform:translateX(0)}50%{transform:translateX(34px)}}
+  @keyframes mvSpin{to{transform:rotate(360deg)}}
+  @keyframes mvPulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.16);opacity:.55}}
+  .mvBox{background:rgba(14,96,114,.05);border-radius:14px;padding:10px 8px 8px;margin-bottom:12px}
+  .mvLbl{text-align:center;font-size:12px;font-weight:800;color:var(--teal-ink);margin-top:2px}
+  .mvSlideV{animation:mvV 2.4s ease-in-out infinite}
+  .mvSlideH{animation:mvH 2.4s ease-in-out infinite}
+  .mvCycle{transform-box:view-box;transform-origin:86px 48px;animation:mvSpin 3s linear infinite}
+  .mvHold{transform-box:view-box;transform-origin:86px 48px;animation:mvPulse 2.4s ease-in-out infinite}
+  @media (prefers-reduced-motion:reduce){.mvSlideV,.mvSlideH,.mvCycle,.mvHold{animation:none}}
   .pfGrid{display:block}
   .pfHideMobile{display:none}
   .pfBackBtn{display:flex}
@@ -4887,6 +4899,31 @@
   function trMuscleInfo(group){ var m=(DATA.training&&DATA.training.exerciseMuscles)||{}; return m[group]||m.ganzkoerper||{primary:'',regions:['fullbody'],desc:''}; }
   // Kurzbeschreibung/Cue aus der Übungs-DB (sonst plan-eigene Notiz).
   function trExCueOf(e){ if(!e) return ''; var list=(DATA.training&&DATA.training.exercises)||[]; var nn=trainExNorm(e.name), mm=trainExNorm(e.machine||''); for(var i=0;i<list.length;i++){ if(trainExNorm(list[i].name)===nn && (!mm||trainExNorm(list[i].machine)===mm)) return list[i].cue||''; } for(var j=0;j<list.length;j++){ if(trainExNorm(list[j].name)===nn) return list[j].cue||''; } return e.note||''; }
+  // Schritt-für-Schritt-Anleitung + Bewegungsmuster aus der Übungs-DB (Name+Gerät-Match; greift auch für Plan-Übungen).
+  function trStepsOf(e){ if(!e) return {steps:[],pattern:''}; var list=(DATA.training&&DATA.training.exercises)||[]; var nn=trainExNorm(e.name), mm=trainExNorm(e.machine||'');
+    for(var i=0;i<list.length;i++){ if(trainExNorm(list[i].name)===nn && (!mm||trainExNorm(list[i].machine)===mm)) return {steps:Array.isArray(list[i].steps)?list[i].steps:[],pattern:list[i].pattern||''}; }
+    for(var j=0;j<list.length;j++){ if(trainExNorm(list[j].name)===nn) return {steps:Array.isArray(list[j].steps)?list[j].steps:[],pattern:list[j].pattern||''}; }
+    return {steps:Array.isArray(e.steps)?e.steps:[], pattern:e.pattern||''};
+  }
+  // Schematische Bewegungs-Animation (kein echter Körper, sondern ein sauberer Richtungs-/Achsen-Hinweis).
+  // Muster -> Achse (v/h/cycle/hold) + Label. Reine CSS-Animation; prefers-reduced-motion schaltet sie ab.
+  function moveAnimSvg(pattern){
+    var MV={ 'press-fwd':{a:'h',lbl:'Wegdrücken'},'press-up':{a:'v',lbl:'Nach oben drücken'},'pull-down':{a:'v',lbl:'Nach unten ziehen'},'pull-row':{a:'h',lbl:'Zu dir ziehen'},'hinge':{a:'v',lbl:'Hüfte beugen & strecken'},'squat':{a:'v',lbl:'Beugen & Strecken'},'curl':{a:'v',lbl:'Beugen'},'extend':{a:'v',lbl:'Strecken'},'raise':{a:'v',lbl:'Heben & Senken'},'rotate':{a:'cycle',lbl:'Rotation'},'core':{a:'v',lbl:'Einrollen'},'carry':{a:'h',lbl:'Tragen / Gehen'},'cardio':{a:'cycle',lbl:'Gleichmäßige Ausdauer'},'stretch':{a:'hold',lbl:'Dehnen & Halten'} };
+    var m=MV[pattern]; if(!m) return '';
+    var teal='#12879c';
+    var fig='<g opacity="0.14" fill="'+teal+'"><circle cx="30" cy="24" r="7"/><rect x="24" y="33" width="12" height="28" rx="6"/><rect x="16" y="36" width="9" height="5.5" rx="2.75"/><rect x="35" y="36" width="9" height="5.5" rx="2.75"/><rect x="25" y="58" width="4.6" height="24" rx="2.3"/><rect x="30.4" y="58" width="4.6" height="24" rx="2.3"/></g>';
+    var body;
+    if(m.a==='cycle'){
+      body='<circle cx="86" cy="48" r="19" fill="none" stroke="'+teal+'" stroke-width="2.6" stroke-dasharray="4 6" opacity="0.4"/><g class="mvCycle"><circle cx="86" cy="29" r="5.5" fill="'+teal+'"/></g>';
+    } else if(m.a==='hold'){
+      body='<circle class="mvHold" cx="86" cy="48" r="15" fill="none" stroke="'+teal+'" stroke-width="3"/><circle cx="86" cy="48" r="4" fill="'+teal+'"/>';
+    } else if(m.a==='h'){
+      body='<line x1="62" y1="48" x2="106" y2="48" stroke="'+teal+'" stroke-width="2" stroke-dasharray="3 5" opacity="0.4"/><g class="mvSlideH"><circle cx="66" cy="48" r="6" fill="'+teal+'"/><path d="M74 43l7 5-7 5" fill="none" stroke="'+teal+'" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></g>';
+    } else {
+      body='<line x1="86" y1="26" x2="86" y2="70" stroke="'+teal+'" stroke-width="2" stroke-dasharray="3 5" opacity="0.4"/><g class="mvSlideV"><circle cx="86" cy="30" r="6" fill="'+teal+'"/><path d="M81 39l5 6 5-6" fill="none" stroke="'+teal+'" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></g>';
+    }
+    return '<div class="mvBox"><svg viewBox="0 0 120 90" width="100%" style="max-width:210px;display:block;margin:0 auto" aria-hidden="true">'+fig+body+'</svg><div class="mvLbl">'+esc(m.lbl)+'</div></div>';
+  }
   // Übungs-Detail aus verschiedenen Quellen auflösen: Tracker-Key / DB-Id (x:) / Plan (p:) / Name (n:).
   function trFindPlan(pid){ var d=DATA.training||{}; if(d.myPlan&&d.myPlan.plan&&String(d.myPlan.plan.id)===String(pid)) return d.myPlan.plan; if(S.trainDetailFull&&String(S.trainDetailFull.id)===String(pid)) return S.trainDetailFull; var lib=Array.isArray(d.plans)?d.plans:[]; for(var i=0;i<lib.length;i++){ if(String(lib[i].id)===String(pid)) return lib[i]; } return null; }
   function trExByName(nm){ var list=(DATA.training&&DATA.training.exercises)||[]; var nn=trainExNorm(nm); for(var i=0;i<list.length;i++){ if(trainExNorm(list[i].name)===nn) return list[i]; } return null; }
@@ -5059,7 +5096,14 @@
       (e.machine?'<div style="font-size:12.5px;font-weight:700;color:#cfe8ec;margin-top:5px">🔧 '+esc(e.machine)+(tg?' · 🤖 Technogym-KI':'')+'</div>':'')+
       (!tg&&e.sets?'<div style="display:inline-block;background:rgba(255,255,255,.16);border-radius:8px;padding:4px 10px;font-size:12px;font-weight:800;margin-top:10px">Ziel: '+esc(e.sets)+' × '+esc(e.reps)+(e.rest?(' · Pause '+esc(e.rest)):'')+'</div>':'')+'</div>';
     var diagram=trainCardBox('<div style="font-size:12px;font-weight:900;color:var(--ern-acc);text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px">Trainierte Muskeln</div>'+muscleBodySvg(mi.regions)+(mi.primary?'<div style="font-size:13px;font-weight:800;color:var(--text);text-align:center;margin-top:10px">'+esc(mi.primary)+'</div>':'')+(mi.desc?'<div style="font-size:12.5px;font-weight:500;color:var(--text-2);line-height:1.5;margin-top:6px;text-align:center">'+esc(mi.desc)+'</div>':''),'16px');
-    var howto=cue?trainCardBox('<div style="font-size:12px;font-weight:900;color:var(--ern-acc);text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">So führst du sie aus</div><div style="font-size:14px;font-weight:600;color:var(--text);line-height:1.55">'+esc(cue)+'</div>','16px'):'';
+    // Nicht-KI-Geräte: nummerierte Schritt-für-Schritt-Anleitung + schematische Bewegung. KI-Geräte: nur der Cue (Gerät führt).
+    var st=trStepsOf(e), howto;
+    if(!tg && st.steps.length){
+      var stepRows=st.steps.map(function(s,i){ return '<div style="display:flex;gap:11px;align-items:flex-start;padding:8px 0'+(i?';border-top:1px solid var(--border)':'')+'"><span style="flex-shrink:0;width:24px;height:24px;border-radius:50%;background:'+ERN_G+';color:#fff;font-size:12.5px;font-weight:900;display:flex;align-items:center;justify-content:center;line-height:1">'+(i+1)+'</span><span style="font-size:13.5px;font-weight:600;color:var(--text);line-height:1.5">'+esc(s)+'</span></div>'; }).join('');
+      howto=trainCardBox('<div style="font-size:12px;font-weight:900;color:var(--ern-acc);text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px">So führst du sie aus</div>'+moveAnimSvg(st.pattern)+(cue?'<div style="font-size:13px;font-weight:600;color:var(--text-2);line-height:1.5;margin:2px 0 10px">'+esc(cue)+'</div>':'')+stepRows,'16px');
+    } else {
+      howto=cue?trainCardBox('<div style="font-size:12px;font-weight:900;color:var(--ern-acc);text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">So führst du sie aus</div><div style="font-size:14px;font-weight:600;color:var(--text);line-height:1.55">'+esc(cue)+'</div>','16px'):'';
+    }
     var tgBox=tg?trainCardBox('<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px"><span style="width:34px;height:34px;border-radius:10px;background:'+ERN_GD+';display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:17px">🤖</span><div style="font-size:14.5px;font-weight:900;color:var(--text)">Am Gerät anmelden</div></div><div style="font-size:13px;font-weight:500;color:var(--text-2);line-height:1.55;margin-bottom:12px">Melde dich per <b style="color:var(--teal-ink)">Technogym-App</b> oder deinem <b style="color:var(--teal-ink)">Band</b> am Gerät an – Sitz, Gewicht und Progression stellt die KI automatisch ein.</div><a href="'+TG_APP_URL+'" target="_blank" rel="noopener" style="display:flex;align-items:center;justify-content:center;gap:8px;text-decoration:none;background:'+ERN_G+';color:#fff;border-radius:13px;padding:13px;font-weight:900;font-size:14px">📲 Technogym-App öffnen'+svg('<path d="M7 17L17 7M9 7h8v8"></path>',{c:'#fff',w:2.2,s:16})+'</a>','16px'):'';
     var histList=trExHistory(e.name);
     var histRows=histList.map(function(h){ var sets=trSetSummary(h.x.entries); var val=sets?sets:(h.x.bio?'🤖 KI-Gerät':((h.x.sets||0)+' Satz'+((h.x.sets===1)?'':'ätze'))); return '<div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:9px 0;border-top:1px solid var(--border)"><span style="font-size:12.5px;font-weight:800;color:var(--text);flex-shrink:0">'+deDate(h.date+'T12:00:00')+'</span><span style="font-size:12.5px;font-weight:600;color:var(--text-2);text-align:right">'+esc(val)+'</span></div>'; }).join('');
