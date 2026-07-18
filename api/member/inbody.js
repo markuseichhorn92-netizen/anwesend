@@ -115,7 +115,7 @@ module.exports = async function handler(req, res) {
       const ctx = IB.toPromptText(list, sex);
       const sys = 'Du bist FINN, der persönliche Coach von Fit-Inn Trier. Ein Mitglied hat seine InBody-Körperanalyse eingescannt. Erkläre die wichtigsten Werte kurz und verständlich (per du, warmherzig, 3–5 Sätze), ordne den Trend ein und gib 1–2 konkrete, sichere Empfehlungen passend zum Ziel. Kein Namensgruß, keine Aufzählung, kein Markdown. Stelle KEINE Diagnosen; verweise bei Auffälligkeiten auf ärztlichen Rat.';
       const user = ctx + (goal ? ('\nZiel des Mitglieds: ' + String(goal).slice(0, 40)) : '') + '\n\nGib deine Einschätzung.';
-      const cc = await AI.messagesRaw({ system: sys, messages: [{ role: 'user', content: user }], maxTokens: 340, temperature: 0.75 });
+      const cc = await AI.messagesRaw({ system: sys, messages: [{ role: 'user', content: user }], maxTokens: 340, temperature: 0.75, model: AI.MODEL_ANALYSIS });
       const text = (cc && cc.ok && Array.isArray(cc.content)) ? cc.content.filter((b) => b && b.type === 'text').map((b) => b.text).join('').trim() : '';
       if (!text) return j(res, 200, { ok: false, error: 'gen_failed', message: 'Das hat gerade nicht geklappt – bitte gleich noch einmal.' });
       return j(res, 200, { ok: true, text: text });
