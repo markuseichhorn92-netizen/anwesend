@@ -1755,8 +1755,8 @@
       var likeChips=likeOpts.map(function(x){ return chip((S.obLikes||[]).indexOf(x)>=0,x,'obToggle','likes|'+x); }).join('');
       var disOpts=['Laufen','Beintraining','Frühsport','Gruppen','Lange Einheiten'];
       var disChips=disOpts.map(function(x){ return chip((S.obDislikes||[]).indexOf(x)>=0,x,'obToggle','dislikes|'+x); }).join('');
-      inner='<div style="flex:1">'+hTitle('Was trainierst du gern?','FINN schlägt dir passende Übungen &amp; Kurse vor. Mehrfachauswahl.')+chipsWrap(likeChips)+
-        subLbl('Worauf hast du eher keine Lust?')+chipsWrap(disChips)+'</div>';
+      inner='<div style="flex:1">'+hTitle('Was trainierst du gern?','FINN schlägt dir passende Übungen &amp; Kurse vor. Mehrfachauswahl – oder überspringen.')+chipsWrap(likeChips)+
+        subLbl('Worauf hast du eher keine Lust?')+chipsWrap(chip((S.obDislikes||[]).length===0,'Nichts davon','obNone','dislikes')+disChips)+'</div>';
     } else if(step===6){
       var hc=!!S.obHealthConsent;
       var hSw='<button data-act="obHealthToggle" role="switch" aria-checked="'+(hc?'true':'false')+'" style="position:relative;width:52px;height:31px;border-radius:30px;border:none;cursor:pointer;background:'+(hc?'#7fd8e0':'rgba(255,255,255,.22)')+';flex-shrink:0;transition:background .2s"><span style="position:absolute;top:3px;left:'+(hc?'24px':'3px')+';width:25px;height:25px;border-radius:50%;background:#fff;transition:left .2s;box-shadow:0 1px 3px rgba(0,0,0,.35)"></span></button>';
@@ -1765,7 +1765,7 @@
       if(hc){
         var hOpts=['Rücken','Knie','Schulter','Nacken','Hüfte','Herz-Kreislauf','Bluthochdruck','Diabetes','Asthma','Gelenke','Schwangerschaft'];
         var hChips=hOpts.map(function(x){ return chip((S.obHealth||[]).indexOf(x)>=0,x,'obToggle','health|'+x); }).join('');
-        healthBody=chipsWrap(hChips)+'<textarea id="ob_health_note" rows="2" placeholder="Sonstiges, das dein Coach wissen sollte? (freiwillig)" oninput="window.__obHealthNote&&window.__obHealthNote(this)" style="width:100%;margin-top:12px;border:none;border-radius:14px;padding:12px 14px;font-size:14.5px;font-weight:600;color:#0a4958;background:rgba(255,255,255,.92);font-family:inherit;resize:none;line-height:1.4">'+esc(S.obHealthNote||'')+'</textarea>';
+        healthBody=chipsWrap(chip((S.obHealth||[]).length===0,'Keine Beschwerden','obNone','health')+hChips)+'<textarea id="ob_health_note" rows="2" placeholder="Sonstiges, das dein Coach wissen sollte? (freiwillig)" oninput="window.__obHealthNote&&window.__obHealthNote(this)" style="width:100%;margin-top:12px;border:none;border-radius:14px;padding:12px 14px;font-size:14.5px;font-weight:600;color:#0a4958;background:rgba(255,255,255,.92);font-family:inherit;resize:none;line-height:1.4">'+esc(S.obHealthNote||'')+'</textarea>';
       } else {
         healthBody='<div style="margin-top:16px;background:rgba(255,255,255,.06);border-radius:14px;padding:14px 16px;font-size:12.5px;color:#aed0d6;font-weight:500;line-height:1.5">Ohne Einwilligung speichern wir keine Gesundheitsdaten. Du kannst den Schritt einfach mit „Weiter" überspringen.</div>';
       }
@@ -1776,7 +1776,7 @@
       var alOpts=['Gluten','Laktose','Nüsse','Erdnüsse','Eier','Soja','Fisch','Meeresfrüchte'];
       var alChips=alOpts.map(function(x){ return chip((S.obAllergies||[]).indexOf(x)>=0,x,'obToggle','allergies|'+x); }).join('');
       inner='<div style="flex:1">'+hTitle('Wie ernährst du dich?','FINN passt Rezepte und Tipps daran an.')+chipsWrap(dietChips)+
-        subLbl('Allergien oder Unverträglichkeiten?')+chipsWrap(alChips)+'</div>';
+        subLbl('Allergien oder Unverträglichkeiten?')+chipsWrap(chip((S.obAllergies||[]).length===0,'Keine','obNone','allergies')+alChips)+'</div>';
     } else {
       // Schritt 9: Einwilligung fürs FINN-Gedächtnis (freiwillig, Standard aus).
       var memSw='<button data-act="obMemToggle" role="switch" aria-checked="'+(S.obMemConsent?'true':'false')+'" style="position:relative;width:52px;height:31px;border-radius:30px;border:none;cursor:pointer;background:'+(S.obMemConsent?'#7fd8e0':'rgba(255,255,255,.22)')+';flex-shrink:0;transition:background .2s"><span style="position:absolute;top:3px;left:'+(S.obMemConsent?'24px':'3px')+';width:25px;height:25px;border-radius:50%;background:#fff;transition:left .2s;box-shadow:0 1px 3px rgba(0,0,0,.35)"></span></button>';
@@ -7261,6 +7261,8 @@
     obHealthToggle:function(){ setS({obHealthConsent:!S.obHealthConsent}); },
     // Mehrfachauswahl-Chip (Vorlieben/Abneigungen/Gesundheit/Allergien): "feld|Wert" umschalten.
     obToggle:function(a){ var p=String(a||'').split('|'); var map={likes:'obLikes',dislikes:'obDislikes',health:'obHealth',allergies:'obAllergies'}; var f=map[p[0]]; if(!f) return; var val=p.slice(1).join('|'); var arr=(S[f]||[]).slice(); var ix=arr.indexOf(val); if(ix>=0) arr.splice(ix,1); else arr.push(val); var o={}; o[f]=arr; setS(o); },
+    // „Nichts davon / Keine": Auswahl dieses Schritts leeren (= bewusst nichts angegeben).
+    obNone:function(a){ var map={likes:'obLikes',dislikes:'obDislikes',health:'obHealth',allergies:'obAllergies'}; var f=map[a]; if(!f) return; var o={}; o[f]=[]; setS(o); },
     replayOnboarding:function(){ obApplyPrefill(obData()||{}); S.obPrefilled=true; try{ localStorage.removeItem('fi_ob_v2'); }catch(e){} setS({obStep:0}); try{ window.scrollTo(0,0); }catch(e){} },
     // ── App-Tour (Schritt für Schritt durch die App) ──
     tourNext:function(){ var n=(S.tourStep||0)+1; if(n>=tourSteps().length){ endTour(); render(); } else { S.tourStep=n; positionTour(true); } },
