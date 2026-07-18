@@ -493,7 +493,7 @@
     obDiet:'', obAllergies:[], obHealthConsent:false, obHealth:[], obHealthNote:'',
     welcomeGift:false, welcomeTrainBusy:false, welcomeTrainDone:false, welcomeTrainErr:'', welcomeErnBusy:false, welcomeErnDone:false, welcomeErnErr:'',
     trainRunStart:0, trainExDetail:null, trainFinish:null, trainFinishBusy:false,
-    inbodyBusy:false, inbodyReview:null, inbodyMsg:'', inbodyErr:false, inbodyAssess:'', inbodyAssessBusy:false,
+    inbodyBusy:false, inbodyReview:null, inbodyMsg:'', inbodyErr:false, inbodyAssess:'', inbodyAssessBusy:false, ibMetric:null, ibAmpel:false,
     ernFormInit:false, ernEdit:false, ernGoal:'abnehmen', ernSex:'w', ernH:170, ernW:70, ernAge:30, ernAct:'moderat', ernDiet:'omnivor',
     ernBusy:false, ernMsg:'', ernErr:false, ernAsk:'', ernAnswer:'', ernAskBusy:false, ernRecipes:null, ernRecipesBusy:false, ernCoachBusy:false, ernCoachSent:false, ernPhotoBusy:false, ernRec:false,
     ernTab:'heute', ernPlanTab:'woche', ernPlanBusy:false, ernFridge:'', ernRecipeSel:null, ernRecipeSaved:false,
@@ -676,7 +676,7 @@
     if(s==='checkins'||s==='fort') loadCheckins();   // immer frisch: Studio-Check-ins vom Band erscheinen sofort
     if(ERN_ON&&(s==='home'||s==='fort')) loadNutri();   // Ernährungs-Vitalpunkte für Startseite/Fortschritt frisch halten
     if(s==='figur'){ S.figurAdd=false; S.figurMsg=''; S.figurErr=false; S.figurBusy=false; S.figurReviewBusy=false; loadFigur(); }
-    if(s==='inbody'){ S.inbodyReview=null; S.inbodyMsg=''; S.inbodyErr=false; S.inbodyBusy=false; S.inbodyAssess=''; S.inbodyAssessBusy=false; loadInbody(); }
+    if(s==='inbody'){ S.inbodyReview=null; S.inbodyMsg=''; S.inbodyErr=false; S.inbodyBusy=false; S.inbodyAssess=''; S.inbodyAssessBusy=false; S.ibMetric=null; S.ibAmpel=false; loadInbody(); }
     if(SOCIAL_ON&&(s==='home'||s==='profil')) loadSocial();   // Trainingspartner-Snapshot für Startseite/Profil
     if(s==='social'){ S.socMsg=''; S.socErr=false; S.socBusy=false; S.socCopied=false; S.socChat=null; DATA.socDm=null; S.socRoom=null; DATA.socRoomThread=null; S.socRoomCreate=false; S.socRoomInvite=false; S.socRules=false; if(window.__socBuddy){ S.socCode=window.__socBuddy; window.__socBuddy=null; } if(window.__socOpenChat){ S.socChat=String(window.__socOpenChat); window.__socOpenChat=null; DATA.socDm=null; loadDm(S.socChat); } else if(window.__socOpenRoom){ S.socRoom=String(window.__socOpenRoom); window.__socOpenRoom=null; DATA.socRoomThread=null; loadRoomThread(S.socRoom); } loadSocial(); }
     if(s==='blog'){ S.blogSel=null; S.blogPost=null; loadBlog(); }
@@ -6145,11 +6145,95 @@
   var IB_DEC={score:0,pbf:1,smi:2,smm:1,vfl:0,whr:2,bmi:1,ecwtbw:3,bmr:0};
   function ibMetricRow(m,first){
     var c=ibCat(m.cat);
-    return '<div style="display:flex;align-items:flex-start;gap:12px;padding:13px 0'+(first?'':';border-top:1px solid var(--border)')+'">'+
+    var chev=svg('<path d="M9 18l6-6-6-6"></path>',{c:'var(--text-soft)',w:2.2,s:16});
+    return '<div data-act="ibMetric" data-arg="'+m.key+'" role="button" style="display:flex;align-items:flex-start;gap:12px;padding:13px 0'+(first?'':';border-top:1px solid var(--border)')+';cursor:pointer">'+
       '<span style="width:11px;height:11px;border-radius:50%;background:'+c.dot+';flex-shrink:0;margin-top:5px"></span>'+
-      '<div style="flex:1;min-width:0"><div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px"><span style="font-size:14px;font-weight:800;color:var(--text)">'+esc(m.label)+'</span><span style="font-size:15.5px;font-weight:900;color:'+c.fg+';white-space:nowrap">'+ibNum(m.value,IB_DEC[m.key])+esc(m.unit||'')+'</span></div>'+
+      '<div style="flex:1;min-width:0"><div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px"><span style="font-size:14px;font-weight:800;color:var(--text);display:flex;align-items:center;gap:5px">'+esc(m.label)+'</span><span style="display:flex;align-items:center;gap:5px;white-space:nowrap"><span style="font-size:15.5px;font-weight:900;color:'+c.fg+'">'+ibNum(m.value,IB_DEC[m.key])+esc(m.unit||'')+'</span>'+chev+'</span></div>'+
       (m.note?'<div style="font-size:12px;color:var(--text-soft);font-weight:500;line-height:1.45;margin-top:3px">'+esc(m.note)+'</div>':'')+
       (m.ref?'<div style="font-size:10.5px;color:var(--text-soft);font-weight:700;margin-top:3px;opacity:.8">'+esc(m.ref)+'</div>':'')+'</div></div>';
+  }
+  // Erklärtext je Kennzahl (Beschreibung im Detail-Sheet).
+  var IB_EXPLAIN={
+    score:'Der InBody-Score fasst deine Körperzusammensetzung in einer Zahl (0–100) zusammen – vor allem, wie viel Muskelmasse du im Verhältnis zu deinem Körper hast. Ab 70 ist normal, 80+ gilt als sehr muskulös.',
+    pbf:'Der Anteil deines Körpergewichts, der aus Fett besteht – aussagekräftiger als das reine Gewicht. Der gesunde Bereich hängt von Alter und Geschlecht ab: mit dem Alter darf er etwas höher liegen.',
+    smi:'Skelettmuskel-Index = deine Arm- und Beinmuskulatur geteilt durch deine Größe². Ein standardisiertes Maß für deine Muskulatur. Wichtig, um altersbedingtem Muskelabbau (Sarkopenie) vorzubeugen.',
+    smm:'Deine gesamte Skelettmuskelmasse in kg – die Muskulatur, die du durch Training aufbaust. Mehr Muskel heißt: besserer Stoffwechsel, mehr Kraft und ein höherer Grundumsatz.',
+    vfl:'Das Fett rund um deine inneren Organe im Bauchraum. Ein wichtiger Gesundheitsmarker – zu viel davon erhöht das Risiko für Herz-Kreislauf- und Stoffwechsel-Erkrankungen. Gesund ist unter Level 10.',
+    whr:'Verhältnis von Taille zu Hüfte – zeigt, wo dein Fett sitzt. Bauchbetontes Fett ist ungünstiger für die Gesundheit als hüftbetontes.',
+    bmi:'Gewicht im Verhältnis zur Größe – ein grober Richtwert. Bei viel Muskelmasse kann der BMI hoch sein, ohne dass Fett das Problem ist. Deshalb ist dein Körperfettanteil aussagekräftiger.',
+    ecwtbw:'Verhältnis von Extrazellular- zu Gesamtkörperwasser. Ausgeglichen ist unter 0,390. Ein erhöhter Wert kann auf Wassereinlagerungen, eine Entzündung oder Übertraining hindeuten.',
+    bmr:'Grundumsatz: die Kalorien, die dein Körper in völliger Ruhe verbraucht. Die Basis für dein Kalorienziel – mehr Muskelmasse hebt ihn an.'
+  };
+  var IB_FIELD={pbf:'pbf',smi:'smi',smm:'smmKg',vfl:'vfl',whr:'whr',bmi:'bmi',score:'score',ecwtbw:'ecwtbw',bmr:'bmr'};
+  // InBody-Körpertyp aus dem Muskel-Fett-Verhältnis: C (Fett über Muskel),
+  // I (ausgewogen), D (viel Muskel) – wie die 3-Balken-Form auf dem Bogen.
+  function ibBodyType(m){
+    if(!m) return null;
+    var sex=(m.sex==='m')?'m':((m.sex==='w')?'w':((DATA.profile&&DATA.profile.sex==='m')?'m':'w')); var age=m.age||null;
+    var pbf=m.pbf, smi=m.smi;
+    if(smi==null && m.heightCm){ var lb=[m.leanRAkg,m.leanLAkg,m.leanRLkg,m.leanLLkg]; if(lb.every(function(v){return v!=null;})){ var hm=m.heightCm/100; smi=Math.round(lb.reduce(function(a,b){return a+b;},0)/(hm*hm)*100)/100; } }
+    if(pbf==null && smi==null) return null;
+    var idealHi=(sex==='m')?((age&&age>=60)?24:(age&&age>=40)?21:19):((age&&age>=60)?35:(age&&age>=40)?34:33); if(!age) idealHi=(sex==='m')?20:28;
+    var typLo=(sex==='m')?((age&&age>=60)?7.3:(age&&age>=40)?8.0:8.5):((age&&age>=60)?5.7:(age&&age>=40)?6.1:6.4);
+    var fatHigh=(pbf!=null && pbf>idealHi);
+    var muscleHigh=(smi!=null && smi>=typLo);
+    var muscleLow=(smi!=null && smi<typLo);
+    var code,label,desc;
+    if(muscleHigh && !fatHigh){ code='D'; label='D-Form · athletisch'; desc='Deine drei Balken (Gewicht · Muskel · Fett) bilden ein „D": viel Muskelmasse im Verhältnis zum Fett. Athletischer Typ – halte deine Leistung, achte auf Regeneration und genug Eiweiß.'; }
+    else if(fatHigh && (muscleLow || smi==null)){ code='C'; label='C-Form · Fett über Muskel'; desc='Deine drei Balken bilden ein „C": das Körperfett liegt über der Muskelmasse. Typisch, wenn Muskeln fehlen und der Fettanteil höher ist. Am meisten bringt jetzt Kraft-/Muskelaufbau plus ein moderates Kaloriendefizit.'; }
+    else { code='I'; label='I-Form · ausgewogen'; desc='Deine drei Balken sind ähnlich lang – die „I-Form": ein ausgewogenes Verhältnis von Gewicht, Muskel und Fett. Ein guter Ausgangspunkt zum Halten und gezielten Verbessern.'; }
+    return {code:code,label:label,desc:desc};
+  }
+  // Ampel-Zählung über alle bewerteten Kennzahlen (info zählt nicht).
+  function ibAmpelCounts(){
+    var ev=(inbodyData()&&inbodyData().eval)||[]; var g=0,y=0,r=0;
+    ev.forEach(function(m){ if(m.cat==='good')g++; else if(m.cat==='warn')y++; else if(m.cat==='bad')r++; });
+    return {good:g,warn:y,bad:r,total:g+y+r};
+  }
+  // Ampel- + Körpertyp-Karte (Übersicht, tippbar -> Ampel-Sheet).
+  function ibAmpelBodyCard(){
+    var d=inbodyData(); if(!d||!d.latest) return '';
+    var a=ibAmpelCounts(); var bt=ibBodyType(d.latest);
+    var dot=function(col,n,lab){ return '<div style="flex:1;text-align:center"><div style="width:34px;height:34px;border-radius:50%;background:'+col+';margin:0 auto;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:900;font-size:15px">'+n+'</div><div style="font-size:10.5px;font-weight:800;color:var(--text-soft);margin-top:5px">'+lab+'</div></div>'; };
+    var typeBadge=bt?('<div style="display:flex;align-items:center;gap:11px;margin-top:15px;padding-top:14px;border-top:1px solid var(--border)"><div style="width:44px;height:44px;border-radius:12px;background:var(--surface-2);display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:900;color:var(--teal-ink);flex-shrink:0">'+bt.code+'</div><div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:900;color:var(--text)">Körpertyp: '+esc(bt.label)+'</div><div style="font-size:11.5px;color:var(--text-soft);font-weight:600">InBody-Typ aus Muskel-Fett-Verhältnis</div></div></div>'):'';
+    return '<div data-act="ibAmpel" role="button" style="'+IB_CARD+';cursor:pointer"><div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:12px"><div style="font-size:15px;font-weight:900;color:var(--text)">Ampel &amp; Körpertyp</div>'+svg('<path d="M9 18l6-6-6-6"></path>',{c:'var(--text-soft)',w:2.2,s:18})+'</div>'+
+      '<div style="display:flex;gap:8px">'+dot('#22a866',a.good,'im Grünen')+dot('#C77A2E',a.warn,'im Blick')+dot('#d9603a',a.bad,'Fokus')+'</div>'+typeBadge+'</div>';
+  }
+  // Ampel-Sheet: jede Kennzahl als Ampel-Zeile + Körpertyp-Erklärung.
+  function ibAmpelSheet(){
+    var d=inbodyData(); var ev=(d&&d.eval)||[]; var bt=d&&d.latest?ibBodyType(d.latest):null;
+    var head=subHeader('Ampel-Analyse','Alle Werte auf einen Blick','inbody');
+    var rows=ev.map(function(m){ var c=ibCat(m.cat); var lab=(m.cat==='good')?'im grünen Bereich':(m.cat==='warn')?'im Blick behalten':(m.cat==='bad')?'Fokus':'Info';
+      return '<div data-act="ibMetric" data-arg="'+m.key+'" role="button" style="display:flex;align-items:center;gap:12px;padding:13px 0;border-top:1px solid var(--border);cursor:pointer"><span style="width:14px;height:14px;border-radius:50%;background:'+c.dot+';flex-shrink:0"></span><div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:800;color:var(--text)">'+esc(m.label)+'</div><div style="font-size:11.5px;font-weight:700;color:'+c.fg+'">'+lab+'</div></div><span style="font-size:14.5px;font-weight:900;color:var(--text)">'+ibNum(m.value,IB_DEC[m.key])+esc(m.unit||'')+'</span>'+svg('<path d="M9 18l6-6-6-6"></path>',{c:'var(--text-soft)',w:2.2,s:15})+'</div>'; }).join('');
+    var legend='<div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:12px;font-size:11.5px;font-weight:700;color:var(--text-soft)"><span style="display:flex;align-items:center;gap:5px"><span style="width:11px;height:11px;border-radius:50%;background:#22a866"></span>gut</span><span style="display:flex;align-items:center;gap:5px"><span style="width:11px;height:11px;border-radius:50%;background:#C77A2E"></span>im Blick</span><span style="display:flex;align-items:center;gap:5px"><span style="width:11px;height:11px;border-radius:50%;background:#d9603a"></span>Fokus</span></div>';
+    var ampel='<div style="'+IB_CARD+'"><div style="font-size:15px;font-weight:900;color:var(--text);margin-bottom:2px">Deine Werte als Ampel</div><div style="font-size:12px;color:var(--text-soft);font-weight:500">Tippe eine Zeile für Verlauf &amp; Erklärung.</div>'+rows+legend+'</div>';
+    var typeCard=bt?('<div style="'+IB_CARD+'"><div style="display:flex;align-items:center;gap:13px;margin-bottom:8px"><div style="width:52px;height:52px;border-radius:14px;background:linear-gradient(150deg,#0e6072,#063540);display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:900;color:#fff;flex-shrink:0">'+bt.code+'</div><div><div style="font-size:16px;font-weight:900;color:var(--text)">'+esc(bt.label)+'</div><div style="font-size:12px;color:var(--text-soft);font-weight:600">InBody-Körpertyp</div></div></div><div style="font-size:13px;color:var(--text-2);font-weight:500;line-height:1.55">'+esc(bt.desc)+'</div><div style="display:flex;gap:8px;margin-top:14px">'+['C','I','D'].map(function(code){ var on=(bt.code===code); var t={C:'Fett > Muskel',I:'ausgewogen',D:'viel Muskel'}[code]; return '<div style="flex:1;text-align:center;padding:11px 6px;border-radius:12px;background:'+(on?'rgba(14,96,114,.10)':'var(--surface-2)')+';border:2px solid '+(on?ERN_G:'transparent')+'"><div style="font-size:19px;font-weight:900;color:'+(on?'var(--teal-ink)':'var(--text-soft)')+'">'+code+'</div><div style="font-size:10px;font-weight:700;color:var(--text-soft);margin-top:2px">'+t+'</div></div>'; }).join('')+'</div></div>'):'';
+    return '<div class="narrow" style="display:flex;flex-direction:column;gap:14px">'+head+ampel+typeCard+'</div>';
+  }
+  // Detail-Sheet einer Kennzahl: Verlauf-Kurve + Bewertung + Beschreibung.
+  function ibMetricSheet(key){
+    var d=inbodyData(); var ev=(d&&d.eval)||[]; var m=ev.filter(function(x){ return x.key===key; })[0];
+    var head=subHeader('','','inbody');
+    if(!m) return '<div class="narrow">'+head+'<div style="'+IB_CARD+';text-align:center;color:var(--text-soft)">Kein Wert.</div></div>';
+    var c=ibCat(m.cat);
+    var lab=(m.cat==='good')?'im grünen Bereich':(m.cat==='warn')?'im Blick behalten':(m.cat==='bad')?'Fokus':'Info';
+    var hero='<div style="'+IB_CARD+'"><div style="display:flex;align-items:center;gap:11px"><span style="width:16px;height:16px;border-radius:50%;background:'+c.dot+';flex-shrink:0"></span><div style="flex:1;min-width:0"><div style="font-size:16px;font-weight:900;color:var(--text)">'+esc(m.label)+'</div><div style="font-size:12px;font-weight:800;color:'+c.fg+'">'+lab+'</div></div><div style="font-size:26px;font-weight:900;color:'+c.fg+';letter-spacing:-.5px">'+ibNum(m.value,IB_DEC[m.key])+esc(m.unit||'')+'</div></div>'+
+      (m.note?'<div style="font-size:13px;color:var(--text-2);font-weight:500;line-height:1.5;margin-top:12px">'+esc(m.note)+'</div>':'')+
+      (m.ref?'<div style="font-size:11.5px;color:var(--text-soft);font-weight:700;margin-top:8px;background:var(--surface-2);border-radius:10px;padding:9px 11px">'+esc(m.ref)+'</div>':'')+'</div>';
+    // Verlauf-Kurve dieser Kennzahl (aus allen Messungen).
+    var fld=IB_FIELD[key]; var list=(d&&d.list)||[];
+    var series=list.slice().reverse().filter(function(x){ return x[fld]!=null; }).map(function(x){ return {value:x[fld],date:x.date}; });
+    var curve='';
+    if(series.length>=2){
+      var first=series[0], last=series[series.length-1]; var dv=Math.round((last.value-first.value)*100)/100;
+      curve='<div style="'+IB_CARD+'"><div style="display:flex;align-items:baseline;justify-content:space-between"><div style="font-size:15px;font-weight:900;color:var(--text)">Verlauf</div><div style="font-size:12.5px;font-weight:800;color:var(--text-soft)">'+series.length+' Messungen</div></div>'+figMiniChart(series)+
+        '<div style="display:flex;justify-content:space-between;font-size:11.5px;font-weight:700;color:var(--text-soft);margin-top:6px"><span>'+(first.date?esc(ernDeDate(first.date)):'Start')+' · '+ibNum(first.value,IB_DEC[key])+'</span><span>jetzt '+ibNum(last.value,IB_DEC[key])+' ('+(dv>0?'+':'')+ibNum(dv,IB_DEC[key])+')</span></div></div>';
+    } else {
+      curve='<div style="'+IB_CARD+';color:var(--text-soft);font-size:13px;font-weight:600">📈 Ab deiner zweiten InBody-Messung siehst du hier den Verlauf dieser Kennzahl.</div>';
+    }
+    var explain=IB_EXPLAIN[key]?('<div style="'+IB_CARD+'"><div style="font-size:15px;font-weight:900;color:var(--text);margin-bottom:6px">Was bedeutet das?</div><div style="font-size:13.5px;color:var(--text-2);font-weight:500;line-height:1.6">'+esc(IB_EXPLAIN[key])+'</div></div>'):'';
+    var back='<button data-act="ibMetricClose" style="display:inline-flex;align-items:center;gap:6px;border:none;background:none;color:var(--teal-ink);font-weight:800;font-size:14px;cursor:pointer;padding:2px 0;margin-bottom:4px">'+svg(IC.back,{c:'var(--teal-ink)',w:2.2,s:18})+'Zurück zur Analyse</button>';
+    return '<div class="narrow" style="display:flex;flex-direction:column;gap:14px">'+head+back+hero+curve+explain+'</div>';
   }
   // Segmentale Mageranalyse: 5-Segment-Balken (wie InBody) + Symmetrie-Hinweis.
   function ibSegmentCard(){
@@ -6288,6 +6372,9 @@
     if(d===false||d==null){ return '<div class="narrow">'+head+'<div style="'+IB_CARD+';text-align:center;color:var(--text-soft)">Lädt …</div></div>'; }
     if(!d.ok && d.available===false){ return '<div class="narrow">'+head+'<div style="'+IB_CARD+'"><div style="font-weight:800;color:var(--text)">Gerade nicht verfügbar</div><div style="font-size:13px;color:var(--text-soft);margin-top:5px">Die InBody-Analyse steht dir in Kürze zur Verfügung.</div></div></div>'; }
     if(!d.ok){ return '<div class="narrow">'+head+'<div style="'+IB_CARD+';text-align:center"><div style="color:var(--text-soft);margin-bottom:10px">Konnte nicht geladen werden.</div><button data-act="inbodyReload" style="border:none;background:var(--teal);color:#fff;font-weight:800;border-radius:12px;padding:11px 18px;cursor:pointer">Erneut versuchen</button></div></div>'; }
+    // Detail-Sheets (auf eine Kennzahl getippt bzw. Ampel-Analyse geöffnet).
+    if(S.ibMetric) return ibMetricSheet(S.ibMetric);
+    if(S.ibAmpel) return ibAmpelSheet();
 
     var list=d.list||[]; var latest=d.latest||null; var count=list.length;
     var blocks=[];
@@ -6300,7 +6387,7 @@
       '<div style="font-size:12.5px;color:var(--text-soft);font-weight:500;margin-top:4px;line-height:1.5">Fotografiere deinen Ergebnisbogen vom InBody 270 – FINN liest die Werte automatisch aus. Du prüfst sie danach.</div>'+
       '<label style="display:flex;align-items:center;justify-content:center;gap:9px;width:100%;margin-top:14px;padding:15px;border:none;border-radius:15px;background:var(--teal);color:#fff;font-weight:800;font-size:15px;cursor:pointer'+(S.inbodyBusy?';opacity:.6':'')+'">'+svg(cam,{c:'#fff',w:2,s:21})+(S.inbodyBusy?'FINN liest …':'Bogen fotografieren')+'<input type="file" accept="image/*" capture="environment" onchange="window.__inbodyPhoto(this)" '+(S.inbodyBusy?'disabled ':'')+'style="display:none"></label>'+
       '<label style="display:block;text-align:center;margin-top:8px;font-size:12.5px;font-weight:800;color:var(--teal-ink);cursor:pointer;padding:6px">Stattdessen Foto aus Galerie<input type="file" accept="image/*" onchange="window.__inbodyPhoto(this)" '+(S.inbodyBusy?'disabled ':'')+'style="display:none"></label>'+
-      '<button data-act="inbodyManual" style="width:100%;border:none;background:none;color:var(--text-soft);font-size:12.5px;font-weight:800;cursor:pointer;padding:6px">Werte lieber von Hand eintragen</button>'+
+      '<button data-act="inbodyManual" style="width:100%;border:none;background:none;color:var(--text-soft);font-size:12px;font-weight:700;cursor:pointer;padding:6px">Kein Foto zur Hand? Werte manuell eintragen</button>'+
       quotaLine+errLine+'</div>';
     blocks.push(scanCard);
 
@@ -6316,8 +6403,8 @@
       } else if(latest.date){
         hero='<div style="font-size:12.5px;color:var(--text-soft);font-weight:700;padding:0 4px">Neueste Messung: '+esc(ernDeDate(latest.date))+'</div>';
       }
-      var metricsCard=rest.length?('<div style="'+IB_CARD+'"><div style="font-size:15px;font-weight:900;color:var(--text);margin-bottom:2px">Deine Werte im Detail</div><div style="font-size:12px;color:var(--text-soft);font-weight:500;margin-bottom:6px">Mit gesunden Richtwerten – kein medizinischer Befund.</div>'+rest.map(function(m,i){ return ibMetricRow(m,i===0); }).join('')+'</div>'):'';
-      blocks.push(hero); blocks.push(metricsCard); blocks.push(ibSegmentCard());
+      var metricsCard=rest.length?('<div style="'+IB_CARD+'"><div style="font-size:15px;font-weight:900;color:var(--text);margin-bottom:2px">Deine Werte im Detail</div><div style="font-size:12px;color:var(--text-soft);font-weight:500;margin-bottom:6px">Tippe einen Wert für Verlauf, Bewertung &amp; Erklärung.</div>'+rest.map(function(m,i){ return ibMetricRow(m,i===0); }).join('')+'</div>'):'';
+      blocks.push(hero); blocks.push(ibAmpelBodyCard()); blocks.push(metricsCard); blocks.push(ibSegmentCard());
       blocks.push(ibTrendCard()); blocks.push(ibCurvesCard()); blocks.push(ibFinnCard()); blocks.push(ibHistoryCard());
     } else {
       blocks.push('<div style="'+IB_CARD+'"><div style="font-size:15.5px;font-weight:800;color:var(--text)">Was die InBody-Analyse zeigt</div><div style="font-size:13px;color:var(--text-soft);margin-top:5px;line-height:1.55">Der InBody 270 misst deine <b>Muskel-</b> und <b>Fettverteilung</b>, dein <b>Körperwasser</b> und den <b>InBody-Score</b>. So siehst du echten Fortschritt – auch wenn die Waage mal stehen bleibt. Scanne deinen ersten Bogen; jede weitere Messung zeigt dir den Verlauf.</div></div>');
@@ -7723,6 +7810,9 @@
       }).catch(function(){ S.inbodyBusy=false; S.inbodyErr=true; S.inbodyMsg='Netzwerkfehler – bitte erneut.'; setS({}); });
     },
     inbodyDelete:function(a){ if(!a) return; if(!window.confirm('Diese Messung wirklich löschen?')) return; api('/api/member/inbody',{method:'POST',body:JSON.stringify({action:'delete',sel:a})}).then(function(r){ if(r&&r.ok){ DATA.inbody=r; S.inbodyMsg=''; S.inbodyErr=false; } setS({}); }).catch(function(){}); },
+    ibMetric:function(a){ if(!a) return; S.ibMetric=a; S.ibAmpel=false; setS({}); },
+    ibMetricClose:function(){ S.ibMetric=null; setS({}); },
+    ibAmpel:function(){ S.ibAmpel=true; S.ibMetric=null; setS({}); },
     inbodyAssess:function(){
       if(S.inbodyAssessBusy) return; S.inbodyAssessBusy=true; render();
       api('/api/member/inbody',{method:'POST',timeoutMs:45000,body:JSON.stringify({action:'assess'})}).then(function(r){
