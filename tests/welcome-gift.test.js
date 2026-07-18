@@ -49,6 +49,17 @@ async function run() {
   // 6. Anderes Mitglied hat sein eigenes Geschenk
   ok('6. anderes Mitglied hat frisches Geschenk', (await W.tryClaim('M2', 'train')) === true);
 
+  // 7. available() prüft nur (verbraucht nichts) – mehrfach abfragbar
+  const M3 = 'M3';
+  ok('7. available anfangs true', (await W.available(M3, 'ern')) === true);
+  ok('7b. available verändert nichts (noch true)', (await W.available(M3, 'ern')) === true);
+
+  // 8. consume() erst nach Erfolg -> danach nicht mehr verfügbar
+  ok('8. consume löst ein', (await W.consume(M3, 'ern')) === true);
+  ok('8b. danach available false', (await W.available(M3, 'ern')) === false);
+  ok('8c. zweites consume schlägt fehl', (await W.consume(M3, 'ern')) === false);
+  ok('8d. anderer Bereich bleibt frei', (await W.available(M3, 'train')) === true);
+
   console.log(pass ? 'WELCOME-GIFT PASS' : 'WELCOME-GIFT FAIL');
   process.exit(pass ? 0 : 1);
 }

@@ -33,7 +33,11 @@ module.exports = async function handler(req, res) {
     let profile;
     if (action === 'clear') profile = await Profile.clear(sess.id);
     else if (action === 'clear-health') profile = await Profile.clearHealth(sess.id);
-    else profile = await Profile.save(sess.id, body.profile || body);
+    else if (action === 'welcome-reset') {
+      // Onboarding wiederholt -> Willkommensgeschenk („erster Plan aufs Haus") wieder freigeben.
+      try { await require('../../lib/welcomeGift').save(sess.id, { train: false, ern: false }); } catch (e) {}
+      profile = await Profile.get(sess.id);
+    } else profile = await Profile.save(sess.id, body.profile || body);
     res.statusCode = 200; return res.end(JSON.stringify({ ok: true, profile: profile }));
   }
   res.statusCode = 405; return res.end(JSON.stringify({ ok: false, error: 'method_not_allowed' }));

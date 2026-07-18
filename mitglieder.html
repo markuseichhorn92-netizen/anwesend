@@ -7301,7 +7301,10 @@
     obToggle:function(a){ var p=String(a||'').split('|'); var map={likes:'obLikes',dislikes:'obDislikes',health:'obHealth',allergies:'obAllergies'}; var f=map[p[0]]; if(!f) return; var val=p.slice(1).join('|'); var arr=(S[f]||[]).slice(); var ix=arr.indexOf(val); if(ix>=0) arr.splice(ix,1); else arr.push(val); var o={}; o[f]=arr; setS(o); },
     // „Nichts davon / Keine": Auswahl dieses Schritts leeren (= bewusst nichts angegeben).
     obNone:function(a){ var map={likes:'obLikes',dislikes:'obDislikes',health:'obHealth',allergies:'obAllergies'}; var f=map[a]; if(!f) return; var o={}; o[f]=[]; setS(o); },
-    replayOnboarding:function(){ obApplyPrefill(obData()||{}); S.obPrefilled=true; try{ localStorage.removeItem('fi_ob_v2'); }catch(e){} setS({obStep:0}); try{ window.scrollTo(0,0); }catch(e){} },
+    replayOnboarding:function(){ obApplyPrefill(obData()||{}); S.obPrefilled=true; try{ localStorage.removeItem('fi_ob_v2'); localStorage.removeItem('fi_welcome_seen'); }catch(e){}
+      // Willkommensgeschenk serverseitig wieder freigeben (erster Plan geht erneut aufs Haus).
+      try{ api('/api/member/profile',{method:'POST',body:JSON.stringify({action:'welcome-reset'})}).catch(function(){}); }catch(e){}
+      setS({obStep:0}); try{ window.scrollTo(0,0); }catch(e){} },
     // ── App-Tour (Schritt für Schritt durch die App) ──
     tourNext:function(){ var n=(S.tourStep||0)+1; if(n>=tourSteps().length){ endTour(); render(); } else { S.tourStep=n; positionTour(true); } },
     tourSkip:function(){ endTour(); render(); },
@@ -7334,7 +7337,7 @@
       setS({welcomeTrainBusy:true,welcomeTrainErr:''});
       api('/api/member/training',{method:'POST',timeoutMs:60000,body:JSON.stringify({action:'generate',welcome:true,level:lvl,days:days,note:nb.join(' · ').slice(0,140)})})
       .then(function(r){ if(r&&r.ok&&r.plan){ api('/api/member/training',{method:'POST',body:JSON.stringify({action:'plan-start-custom',plan:r.plan})}).then(function(s){ if(s&&s.ok) DATA.training=s; setS({welcomeTrainBusy:false,welcomeTrainDone:true}); }).catch(function(){ setS({welcomeTrainBusy:false,welcomeTrainDone:true}); }); }
-        else { setS({welcomeTrainBusy:false,welcomeTrainErr:(r&&r.message)||'Hat gerade nicht geklappt – bitte nochmal.'}); } })
+        else { setS({welcomeTrainBusy:false,welcomeTrainErr:'Klappt gerade nicht – versuch es gleich nochmal oder erstelle den Plan im Bereich Training.'}); } })
       .catch(function(){ setS({welcomeTrainBusy:false,welcomeTrainErr:'Verbindung gerade nicht möglich.'}); });
     },
     welcomeErn:function(){ if(S.welcomeErnBusy||S.welcomeErnDone) return;
@@ -7344,7 +7347,7 @@
       setS({welcomeErnBusy:true,welcomeErnErr:''});
       api('/api/member/nutrition',{method:'POST',timeoutMs:120000,body:JSON.stringify({action:'plan-generate',welcome:true,goal:goalMap[o.goal||S.obGoal]||'',diet:dietMap[o.diet||S.obDiet]||''})})
       .then(function(d){ if(d&&d.ok){ DATA.nutriPlan={plan:d.plan,shopping:d.shopping}; setS({welcomeErnBusy:false,welcomeErnDone:true}); }
-        else { setS({welcomeErnBusy:false,welcomeErnErr:(d&&d.message)||'Hat gerade nicht geklappt – bitte nochmal.'}); } })
+        else { setS({welcomeErnBusy:false,welcomeErnErr:'Klappt gerade nicht – versuch es gleich nochmal oder erstelle den Plan im Bereich Ernährung.'}); } })
       .catch(function(){ setS({welcomeErnBusy:false,welcomeErnErr:'Verbindung gerade nicht möglich.'}); });
     },
     welcomeDone:function(){ try{ localStorage.setItem('fi_welcome_seen','1'); }catch(e){} setS({welcomeGift:false}); try{ window.scrollTo(0,0); }catch(e){} },

@@ -233,7 +233,8 @@ module.exports = async function handler(req, res) {
       const premium = Ent.isPremium(await Ent.getEntitlement(id));
       const month = Quota.monthOf(berlinDate());
       // „Erster Plan aufs Haus": einmalig gratis, ohne Premium und ohne Kontingent-Verbrauch.
-      const welcomeFree = !!body.welcome && (await Welcome.tryClaim(id, 'train'));
+      // Nur PRÜFEN (nicht verbrauchen) – eingelöst wird erst nach erfolgreicher Generierung.
+      const welcomeFree = !!body.welcome && (await Welcome.available(id, 'train'));
       if (!welcomeFree && !premium && !(await Quota.canUse(id, month))) {
         return j(res, 200, { ok: false, error: 'premium_required', quota: 'exhausted', message: QUOTA_MSG });
       }
@@ -251,9 +252,9 @@ module.exports = async function handler(req, res) {
       if (!r.ok || !r.plan) return j(res, 200, { ok: false, error: 'gen_failed', message: 'Das hat gerade nicht geklappt – bitte versuch es gleich noch einmal.' });
       const plan = T.normalizePlan(r.plan, 'finn');
       if (!plan) return j(res, 200, { ok: false, error: 'gen_failed', message: 'Das hat gerade nicht geklappt – bitte versuch es gleich noch einmal.' });
-      // KI-Aktion erst nach Erfolg abbuchen. Der Monatszähler zählt für ALLE hoch
-      // (auch Premium, damit die Nutzungsübersicht stimmt); gedeckelt wird nur Basic.
-      // Der Willkommens-Plan („aufs Haus") verbraucht NICHTS vom Kontingent.
+      // Erst JETZT (nach Erfolg) das Geschenk einlösen bzw. das Kontingent abbuchen –
+      // ein fehlgeschlagener Versuch verbraucht so weder Geschenk noch Kontingent.
+      if (welcomeFree) { try { await Welcome.consume(id, 'train'); } catch (e) {} }
       const used = welcomeFree ? await Quota.getUsed(id, month) : await Quota.incr(id, month);
       return j(res, 200, { ok: true, plan: plan, quota: Quota.publicQuota(used, premium, month), welcome: welcomeFree });
     }

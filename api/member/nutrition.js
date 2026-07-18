@@ -616,8 +616,9 @@ module.exports = async function handler(req, res) {
 
   // ── FINN generiert Rezepte -> in die studioweite Bibliothek + Nutri-Score ──
   if (action === 'recipes') {
-    // „Erster Plan aufs Haus": der erste FINN-Wochenplan ist gratis (ohne Kontingent-Verbrauch).
-    const welcomeFree = !!body.welcome && (await Welcome.tryClaim(id, 'ern'));
+    // „Erster Plan aufs Haus": der erste FINN-Wochenplan ist gratis. Nur PRÜFEN – eingelöst
+    // wird erst nach erfolgreicher Generierung (fehlgeschlagener Versuch verbraucht nichts).
+    const welcomeFree = !!body.welcome && (await Welcome.available(id, 'ern'));
     if (!welcomeFree) { if (!(await gateAI())) return; }
     await ensureSeed();   // Startbestand einmalig übernehmen (idempotent)
     if (!AI.hasAI) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'FINN ist gerade nicht verfügbar – schau in der Rezept-Bibliothek vorbei.' })); }
@@ -667,6 +668,7 @@ module.exports = async function handler(req, res) {
         rec.dayOffset = mealsForAI[i] ? mealsForAI[i].dayOffset : 0;
       });
     }
+    if (welcomeFree) { try { await Welcome.consume(id, 'ern'); } catch (e) {} }
     const quota = welcomeFree ? Quota.publicQuota(await Quota.getUsed(id, monthKey), premium, monthKey) : await chargeAI();
     res.statusCode = 200; return res.end(JSON.stringify({ ok: true, recipes: saved, quota: quota, days: daysReq, welcome: welcomeFree }));
   }
@@ -771,8 +773,8 @@ module.exports = async function handler(req, res) {
 
   // ── Wochenplan generieren (FINN) + Einkaufsliste ableiten ──
   if (action === 'plan-generate') {
-    // „Erster Plan aufs Haus": einmalig gratis, ohne Premium und ohne Kontingent-Verbrauch.
-    const welcomeFree = !!body.welcome && (await Welcome.tryClaim(id, 'ern'));
+    // „Erster Plan aufs Haus": einmalig gratis. Nur PRÜFEN – eingelöst wird nach Erfolg.
+    const welcomeFree = !!body.welcome && (await Welcome.available(id, 'ern'));
     if (!welcomeFree) { if (!(await gateAI())) return; }
     if (!(await M.rateLimit('nutri-plan:' + id, 10, 3600))) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'Kurz durchatmen – gleich wieder versuchen.' })); }
     const t = targetsFor(profile || {});
@@ -784,6 +786,7 @@ module.exports = async function handler(req, res) {
     const plan = { days: r.days, createdAt: Date.now() };
     const shop = (r.shopping || []).map(function (s, i) { return { i: i, name: s.name, amount: s.amount, category: s.category || 'Sonstiges', checked: false }; });
     try { await redisPipeline([['SET', PLANKEY(id), JSON.stringify(plan)], ['SET', SHOPKEY(id), JSON.stringify(shop)]]); } catch (e) {}
+    if (welcomeFree) { try { await Welcome.consume(id, 'ern'); } catch (e) {} }
     const quota = welcomeFree ? Quota.publicQuota(await Quota.getUsed(id, monthKey), premium, monthKey) : await chargeAI();
     res.statusCode = 200; return res.end(JSON.stringify({ ok: true, plan: plan, shopping: shop, quota: quota, welcome: welcomeFree }));
   }
