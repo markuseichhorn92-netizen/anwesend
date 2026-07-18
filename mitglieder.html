@@ -4411,10 +4411,11 @@
     var insights=coachInsights();
     // Motivation (Vitalpunkte/Rang/Streak/Aktivitäts-Alter) – wiederverwendet.
     var motiv=vitalCard();
-    // Coaching-Programm (gate-aware): nur wenn verfügbar.
+    // Coaching-Programm (gate-aware): nur wenn verfügbar – einklappbar, Standard zu (entlastet die Seite).
     var c=DATA.coach, program='';
     if(c&&c.ok&&c.available!==false){
-      program='<div style="font-size:17px;font-weight:900;color:var(--text);letter-spacing:-.3px;margin:22px 2px 12px">Dein Coaching-Programm</div>'+ernCoachHome();
+      var progOpen=!!S.coachProgOpen;
+      program='<button data-act="coachProgToggle" style="width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;background:none;border:none;cursor:pointer;font-family:inherit;padding:0;margin:22px 2px 12px;text-align:left"><span style="font-size:17px;font-weight:900;color:var(--text);letter-spacing:-.3px">Dein Coaching-Programm</span>'+svg(progOpen?'<path d="M18 15l-6-6-6 6"></path>':'<path d="M6 9l6 6 6-6"></path>',{c:'var(--text-soft)',w:2.4,s:20})+'</button>'+(progOpen?ernCoachHome():'');
     }
     // FINN oben & dominant; darunter kurze Erkenntnisse + Motivation; Programm/Premium/Figur sekundär unten.
     return wrap(header+coachFinnHub()+insights+motiv+program+ernPremiumCard()+coachFigurCard());
@@ -4450,11 +4451,6 @@
   }
   // Reine Coaching-Erkenntnisse: ganzheitlicher Blick + Abschnitt Training + Abschnitt Ernährung.
   // Datenbasiert (sofort, datensparsam) – die FINN-Analyse (KI) ergänzt den ganzheitlichen Blick auf Tipp.
-  function coachSectionCard(title, ic, bullets){
-    return '<div style="background:var(--surface);border-radius:20px;box-shadow:0 12px 30px rgba(4,33,40,.09);padding:16px 18px;margin-bottom:14px">'+
-      '<div style="display:flex;align-items:center;gap:9px;margin-bottom:6px"><span style="font-size:19px">'+ic+'</span><span style="font-size:15.5px;font-weight:900;color:var(--text)">'+esc(title)+'</span></div>'+
-      bullets.map(function(b){ return '<div style="display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-top:1px solid var(--border)"><span style="flex-shrink:0;font-size:15px;margin-top:1px">'+(b.ic||'•')+'</span><div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:800;color:var(--text)">'+esc(b.t)+'</div>'+(b.s?'<div style="font-size:12px;font-weight:500;color:var(--text-2);line-height:1.45;margin-top:1px">'+esc(b.s)+'</div>':'')+'</div></div>'; }).join('')+'</div>';
-  }
   function coachHolistic(){
     var d=DATA.training||{}, mp=d.myPlan&&d.myPlan.plan, n=DATA.nutri;
     var visits=0; try{ var cutoff=Date.now()-7*864e5; (DATA.checkins||[]).forEach(function(x){ if(x&&x.in&&Date.parse(x.in)>=cutoff) visits++; }); }catch(e){}
@@ -4479,7 +4475,6 @@
     else { tB.push({ic:'🎯',t:'Noch kein Trainingsplan', s:'Hol dir in „Mein Tag → Training" einen Plan – dann sieht dein Coach hier deinen Fortschritt.'}); }
     tB.push({ic:'📅',t:'Diese Woche '+visits+'× im Studio', s: visits>=goal?('Wochenziel erreicht ('+goal+'×) – stark dabei! 💪'):('Noch '+Math.max(0,goal-visits)+'× bis zu deinem Wochenziel ('+goal+'×).')});
     if(didToday) tB.push({ic:'✅',t:'Heute schon trainiert', s:'Du hast deine heutige Einheit begonnen – dranbleiben lohnt sich.'});
-    var trainingCard=coachSectionCard('Training','🏋️',tB);
     // Abschnitt Ernährung
     var eB=[];
     if(ERN_ON && n && n.ok && n.onboarded){
@@ -4492,8 +4487,14 @@
     } else if(ERN_ON){
       eB.push({ic:'🥗',t:'Ernährung noch nicht eingerichtet', s:'Richte in „Mein Tag → Ernährung" dein Tagesziel ein – dann coacht FINN auch hier.'});
     }
-    var ernCard=(eB.length)?coachSectionCard('Ernährung','🥗',eB):'';
-    return trainingCard+ernCard;
+    // Eine gemeinsame „Deine Woche"-Karte mit Abschnitten Training + Ernährung (statt zwei getrennter Karten).
+    var bulHtml=function(bl){ return bl.map(function(b){ return '<div style="display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-top:1px solid var(--border)"><span style="flex-shrink:0;font-size:15px;margin-top:1px">'+(b.ic||'•')+'</span><div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:800;color:var(--text)">'+esc(b.t)+'</div>'+(b.s?'<div style="font-size:12px;font-weight:500;color:var(--text-2);line-height:1.45;margin-top:1px">'+esc(b.s)+'</div>':'')+'</div></div>'; }).join(''); };
+    var subHd=function(ic,title){ return '<div style="display:flex;align-items:center;gap:9px;margin-bottom:2px"><span style="font-size:18px">'+ic+'</span><span style="font-size:14.5px;font-weight:900;color:var(--text)">'+esc(title)+'</span></div>'; };
+    return '<div style="background:var(--surface);border-radius:20px;box-shadow:0 12px 30px rgba(4,33,40,.09);padding:16px 18px;margin-bottom:14px">'+
+      '<div style="font-size:11px;font-weight:900;color:var(--text-soft);text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px">Deine Woche</div>'+
+      subHd('🏋️','Training')+bulHtml(tB)+
+      (eB.length?('<div style="height:1px;background:var(--border);margin:16px 0 12px"></div>'+subHd('🥗','Ernährung')+bulHtml(eB)):'')+
+    '</div>';
   }
   // ═══ Training-Bausteine (aus dem früheren Coach-Training-Tab; heute von „Mein Tag" genutzt) ═══
   var TRAIN_LOC={ studio:'Studio', zuhause:'Zuhause', beides:'Studio & zuhause' };
@@ -7017,6 +7018,7 @@
     trainSeg:function(a){ S.trainSeg=(a==='plaene'||a==='uebungen'||a==='verlauf')?a:'einheit'; S.trainDetail=null; S.trainDetailFull=null; S.trainGenOpen=false; S.trainMsg=''; setS({}); },
     trainQuickEx:function(){ S.trainSeg='uebungen'; S.trainDetail=null; S.trainGenOpen=false; setS({}); },
     // Coach: FINN-Analyse (KI) – verbindet Training + Ernährung zu einer Erkenntnis (quota-gated).
+    coachProgToggle:function(){ S.coachProgOpen=!S.coachProgOpen; setS({}); },
     coachFinn:function(){
       if(S.coachFinnBusy) return; S.coachFinnBusy=true; S.coachFinnMsg=''; render();
       var d=DATA.training||{}, mp=d.myPlan&&d.myPlan.plan, n=DATA.nutri;
