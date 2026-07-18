@@ -733,6 +733,31 @@ module.exports = async function handler(req, res) {
       : { ok: false, error: r.error || 'ai_failed', message: 'Da komme ich gerade nicht weiter. Versuch es gleich nochmal.' }));
   }
 
+  // ── Produkt-Check beim Einkaufen: FINN bewertet EIN gescanntes Produkt aufs Ziel („kaufen?") ──
+  if (action === 'product-check') {
+    if (!(await gateAI())) return;
+    if (!AI.hasAI) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'no_ai', message: 'FINN ist gerade nicht verfügbar.' })); }
+    const prod = body.product || {};
+    const name = cleanStr(prod.name, 100);
+    if (!name) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'no_product', message: 'Kein Produkt zum Prüfen.' })); }
+    if (!(await M.rateLimit('nutri-prodcheck:' + id, 40, 3600))) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'rate_limited', message: 'Kurz durchatmen – gleich wieder versuchen.' })); }
+    const gn = String(prod.grade || '').trim().toUpperCase();
+    const nn = prod.nutriments || {};
+    const numOrNull = function (v) { const x = Number(v); return (v == null || !isFinite(x) || x < 0) ? null : Math.round(x * 10) / 10; };
+    let m = null; try { m = await M.getMember(id); } catch (e) {}
+    const r = await AI.nutritionProductCheck({
+      firstName: (m && m.firstName) || '', goal: GOALS[profile && profile.goal] || 'ausgewogen', under18: !!targetsFor(profile || {}).under18,
+      name: name, brand: cleanStr(prod.brand, 80), grade: /^[ABCDE]$/.test(gn) ? gn : '',
+      kcal100: numOrNull(nn.kcal100g), protein100: numOrNull(nn.protein100g), sugars100: numOrNull(nn.sugars100g),
+      satfat100: numOrNull(nn.satfat100g), salt100: numOrNull(nn.salt100g), fiber100: numOrNull(nn.fiber100g),
+    });
+    if (r.ok) { try { require('../../lib/handled').record('ai', id, 'nutri-prodcheck'); } catch (e) {} }
+    const eq = r.ok ? await chargeAI() : null;
+    res.statusCode = 200; return res.end(JSON.stringify(r.ok
+      ? { ok: true, verdict: r.verdict, summary: r.summary, tip: r.tip, quota: eq }
+      : { ok: false, error: r.error || 'ai_failed', message: 'Da komme ich gerade nicht weiter. Versuch es gleich nochmal.' }));
+  }
+
   // ── Stoffwechsel-Coaching anfragen (Inbox-Vorgang + Studio-Mail) ──
   if (action === 'coaching-request') {
     if (!(await M.rateLimit('nutri-coaching:' + id, 5, 86400))) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'Deine Anfrage liegt uns schon vor – wir melden uns.' })); }
