@@ -46,6 +46,10 @@ async function run() {
   await AI.coachTrainingFocus({ goal: 'abnehmen', week: 3, lessonTitle: 'Eiweiß zuerst', lessonTheme: 'Makros' });
   ok('8. coachTrainingFocus nutzt Plan-Modell', lastModel === 'model-plan');
 
+  // Morgen-Check (H9) -> ANALYSIS (Auswertung)
+  await AI.coachMorningCheck({ rhr: 58, rhrBaseline: 55, goal: 'aufbau' });
+  ok('9. coachMorningCheck nutzt Analyse-Modell', lastModel === 'model-analysis');
+
   console.log(pass ? 'AI-MODEL PASS' : 'AI-MODEL FAIL');
   process.exit(pass ? 0 : 1);
 }

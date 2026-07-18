@@ -46,8 +46,10 @@
     signIn: function () { return Promise.resolve({ ok: false, unavailable: true }); },
     connectWifi: function () { return Promise.resolve({ ok: false, unavailable: true }); },
     getPosition: function () { return Promise.resolve(null); },
+    startHeartRate: function () { return Promise.resolve({ ok: false, unavailable: true }); },
+    stopHeartRate: function () {},
     pushStatus: function () { return ''; },
-    available: { push: false, biometrics: false, apple: false, google: false, wifi: false, geo: false },
+    available: { push: false, biometrics: false, apple: false, google: false, wifi: false, geo: false, hr: false },
   };
   window.FitInnNative = API;
   if (!isNative) return;   // im Browser ist hier Schluss.
@@ -115,6 +117,53 @@
     };
     if (GeoPlugin.requestPermissions) { return GeoPlugin.requestPermissions().then(go).catch(go); }
     return go();
+  };
+
+  // ── Herzfrequenz (Polar H9 & andere BLE-Brustgurte): Standard Heart-Rate-Service ──
+  // iOS-WKWebView kann kein Web Bluetooth -> hier nativ über @capacitor-community/bluetooth-le
+  // (Plugin-Name: BluetoothLe). Streamt Puls (BPM) + – falls der Gurt sie sendet –
+  // R-R-Intervalle (in ms, für die HRV-Berechnung). Der H9 sendet R-R weniger
+  // zuverlässig als der H10, daher wird HRV client-seitig nur „best effort" genutzt.
+  // Auf Android/Desktop nutzt der Portal-Code stattdessen direkt navigator.bluetooth.
+  // HINWEIS: Event-Name/Payload des Roh-Plugins sind versionsabhängig – am echten
+  // Gerät gegenprüfen (Standard-UUIDs 0x180D / 0x2A37 bleiben gleich).
+  var HR_SERVICE = '0000180d-0000-1000-8000-00805f9b34fb';
+  var HR_MEAS = '00002a37-0000-1000-8000-00805f9b34fb';
+  var Ble = getPlugin('BluetoothLe');
+  API.available.hr = !!Ble;
+  var hrState = { deviceId: null, listener: null };
+  function b64ToBytes(b64) {
+    try { var bin = atob(String(b64 || '')); var a = new Uint8Array(bin.length); for (var i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i); return a; } catch (e) { return new Uint8Array(0); }
+  }
+  // Heart-Rate-Measurement (0x2A37) parsen: Flags-Byte, dann 8- oder 16-Bit-BPM,
+  // optional Energie + R-R-Intervalle (1/1024 s -> ms).
+  function parseHR(bytes) {
+    if (!bytes || !bytes.length) return null;
+    var flags = bytes[0]; var i = 1; var bpm;
+    if (flags & 0x01) { bpm = bytes[i] | (bytes[i + 1] << 8); i += 2; } else { bpm = bytes[i]; i += 1; }
+    if (flags & 0x08) { i += 2; }            // Energie-Feld überspringen (falls vorhanden)
+    var rr = [];
+    if (flags & 0x10) { while (i + 1 < bytes.length) { rr.push(Math.round((bytes[i] | (bytes[i + 1] << 8)) / 1024 * 1000)); i += 2; } }
+    return (bpm && bpm > 0) ? { bpm: bpm, rr: rr } : null;
+  }
+  API.startHeartRate = function (cb) {
+    if (!Ble || typeof cb !== 'function') return Promise.resolve({ ok: false, unavailable: true });
+    return Promise.resolve()
+      .then(function () { return Ble.initialize ? Ble.initialize() : null; })
+      .then(function () { return Ble.requestDevice ? Ble.requestDevice({ services: [HR_SERVICE] }) : null; })
+      .then(function (dev) { hrState.deviceId = dev && (dev.deviceId || (dev.device && dev.device.deviceId)); if (!hrState.deviceId) throw new Error('no_device'); return Ble.connect({ deviceId: hrState.deviceId }); })
+      .then(function () {
+        if (Ble.addListener) hrState.listener = Ble.addListener('notification', function (ev) { var hr = parseHR(b64ToBytes(ev && (ev.value || ev.data))); if (hr) cb(hr); });
+        return Ble.startNotifications ? Ble.startNotifications({ deviceId: hrState.deviceId, service: HR_SERVICE, characteristic: HR_MEAS }) : null;
+      })
+      .then(function () { return { ok: true }; })
+      .catch(function (e) { API.stopHeartRate(); return { ok: false, error: (e && e.message) || String(e) }; });
+  };
+  API.stopHeartRate = function () {
+    try { if (hrState.listener && hrState.listener.remove) hrState.listener.remove(); } catch (e) {}
+    try { if (Ble && Ble.stopNotifications && hrState.deviceId) Ble.stopNotifications({ deviceId: hrState.deviceId, service: HR_SERVICE, characteristic: HR_MEAS }); } catch (e) {}
+    try { if (Ble && Ble.disconnect && hrState.deviceId) Ble.disconnect({ deviceId: hrState.deviceId }); } catch (e) {}
+    hrState.deviceId = null; hrState.listener = null;
   };
 
   function token() {

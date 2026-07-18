@@ -274,6 +274,38 @@ an `/api/push/register`.
 
 ---
 
+## 8b. Morgen-Check: Herzfrequenz-Gurt (Polar H9) per Bluetooth
+
+Der **Morgen-Check** liest über den Standard-BLE-Herzfrequenzdienst (`0x180D`, Characteristic
+`0x2A37`) den Ruhepuls und – falls der Gurt R‑R‑Intervalle sendet – die HRV aus und leitet
+daraus die Trainingsbereitschaft ab. iOS‑WKWebView kann **kein** Web Bluetooth, deshalb braucht
+es ein natives Plugin. Der Web‑Fallback (`navigator.bluetooth`) greift nur auf Android‑Chrome/
+Desktop; in der iOS‑App läuft es über das Plugin.
+
+1. Plugin installieren:
+   ```bash
+   cd nativeapp
+   npm install @capacitor-community/bluetooth-le
+   npm run sync            # cap sync + patch-native.js (trägt die Bluetooth-Rechte nach)
+   ```
+   Das Plugin steht bereits in `nativeapp/package.json`; nach `npm install` ist es dabei.
+2. Berechtigungen trägt **`patch-native.js`** automatisch nach (idempotent, läuft in `npm run sync`):
+   - **iOS Info.plist:** `NSBluetoothAlwaysUsageDescription` + `NSBluetoothPeripheralUsageDescription`.
+   - **Android Manifest:** `BLUETOOTH_SCAN`, `BLUETOOTH_CONNECT` (ältere Android‑Versionen: die
+     Legacy‑Rechte bringt das Plugin selbst mit).
+3. Ablauf (steckt schon in `assets/native.js` → `FitInnNative.startHeartRate/stopHeartRate` und
+   `available.hr`): Der Portal‑Code (`scrMorning`) verbindet den Gurt, misst 2–3 Minuten und
+   speichert nur die abgeleiteten Werte (Ruhepuls/HRV) – **nicht** den Roh‑Puls‑Stream.
+4. Am **echten Gerät testen:** Gurt anlegen, Elektroden anfeuchten. Der Event‑Name/Payload des
+   Roh‑Plugins kann je Plugin‑Version variieren – die Standard‑UUIDs bleiben gleich; bei
+   Abweichungen die Notify‑Verdrahtung in `assets/native.js` gegenprüfen.
+
+> Herz-/HRV-Werte sind Gesundheitsdaten (DSGVO Art. 9): Verarbeitung nur mit ausdrücklicher
+> Einwilligung (im Screen abgefragt), jederzeit widerrufbar/löschbar. Es ist ein Wellness‑Signal,
+> **kein** Medizinprodukt und keine Diagnose.
+
+---
+
 ## 9. Deep-Links (optional, aber empfohlen)
 
 Damit ein Tipp auf eine Push-Nachricht direkt die richtige Seite öffnet bzw. `https`-Links die

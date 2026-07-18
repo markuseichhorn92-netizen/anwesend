@@ -12,8 +12,11 @@
  * Dieses Skript trägt die nötigen Schlüssel idempotent nach:
  *   - iOS  Info.plist:            NSCameraUsageDescription, NSMicrophoneUsageDescription,
  *                                 NSSpeechRecognitionUsageDescription,
- *                                 NSPhotoLibraryUsageDescription, NSPhotoLibraryAddUsageDescription
- *   - Android AndroidManifest.xml: CAMERA, RECORD_AUDIO (+ Kamera als optionales Feature)
+ *                                 NSPhotoLibraryUsageDescription, NSPhotoLibraryAddUsageDescription,
+ *                                 NSBluetoothAlwaysUsageDescription, NSBluetoothPeripheralUsageDescription
+ *                                 (Bluetooth für den H9-Morgen-Check)
+ *   - Android AndroidManifest.xml: CAMERA, RECORD_AUDIO, BLUETOOTH_SCAN, BLUETOOTH_CONNECT
+ *                                 (+ Kamera als optionales Feature)
  *   - Android MainActivity.java:  (1) fragt CAMERA/RECORD_AUDIO zur LAUFZEIT an und
  *                                 (2) setzt einen WebChromeClient mit onPermissionRequest, der
  *                                 die Kamera/Mikro für die eigene Domain im WebView freigibt.
@@ -47,11 +50,20 @@ const IOS_KEYS = {
     'Die App braucht Zugriff auf deine Fotos, damit du ein vorhandenes Bild auswählen kannst.',
   NSPhotoLibraryAddUsageDescription:
     'Die App möchte aufgenommene Fotos in deiner Mediathek speichern dürfen.',
+  // Bluetooth (Polar H9 & andere BLE-Brustgurte) für den Morgen-Check.
+  NSBluetoothAlwaysUsageDescription:
+    'Die App verbindet sich per Bluetooth mit deinem Herzfrequenz-Gurt (z. B. Polar H9) für den Morgen-Check deiner Trainingsbereitschaft.',
+  NSBluetoothPeripheralUsageDescription:
+    'Die App verbindet sich per Bluetooth mit deinem Herzfrequenz-Gurt (z. B. Polar H9) für den Morgen-Check deiner Trainingsbereitschaft.',
 };
 
 const ANDROID_PERMISSIONS = [
   'android.permission.CAMERA',
   'android.permission.RECORD_AUDIO',
+  // BLE-Herzfrequenzgurt (Android 12+ Bluetooth-Runtime-Rechte). Für ältere
+  // Android-Versionen bringt das Plugin die Legacy-Rechte (BLUETOOTH/…_ADMIN) selbst mit.
+  'android.permission.BLUETOOTH_SCAN',
+  'android.permission.BLUETOOTH_CONNECT',
 ];
 const ANDROID_FEATURES = [
   // Kamera/Mikro nur „optional" verlangen, damit Geräte ohne Kamera die App
