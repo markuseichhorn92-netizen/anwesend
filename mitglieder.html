@@ -6178,11 +6178,37 @@
     var fatHigh=(pbf!=null && pbf>idealHi);
     var muscleHigh=(smi!=null && smi>=typLo);
     var muscleLow=(smi!=null && smi<typLo);
-    var code,label,desc;
-    if(muscleHigh && !fatHigh){ code='D'; label='D-Form · athletisch'; desc='Deine drei Balken (Gewicht · Muskel · Fett) bilden ein „D": viel Muskelmasse im Verhältnis zum Fett. Athletischer Typ – halte deine Leistung, achte auf Regeneration und genug Eiweiß.'; }
-    else if(fatHigh && (muscleLow || smi==null)){ code='C'; label='C-Form · Fett über Muskel'; desc='Deine drei Balken bilden ein „C": das Körperfett liegt über der Muskelmasse. Typisch, wenn Muskeln fehlen und der Fettanteil höher ist. Am meisten bringt jetzt Kraft-/Muskelaufbau plus ein moderates Kaloriendefizit.'; }
-    else { code='I'; label='I-Form · ausgewogen'; desc='Deine drei Balken sind ähnlich lang – die „I-Form": ein ausgewogenes Verhältnis von Gewicht, Muskel und Fett. Ein guter Ausgangspunkt zum Halten und gezielten Verbessern.'; }
-    return {code:code,label:label,desc:desc};
+    // Balkenlängen in % (100 % = Referenz) – so entsteht schematisch die Buchstabenform.
+    var clamp=function(v){ return Math.max(50,Math.min(160,Math.round(v))); };
+    var fatPct=(pbf!=null)?clamp(pbf/idealHi*100):100;
+    var musclePct=(smi!=null)?clamp(smi/typLo*100):100;
+    var weightPct=(m.bmi!=null)?clamp(m.bmi/22*100):clamp((fatPct+musclePct)/2);
+    var bars={weight:weightPct,muscle:musclePct,fat:fatPct};
+    var code,label,desc,form;
+    if(muscleHigh && !fatHigh){ code='D'; label='D-Form · athletisch';
+      desc='Viel Muskelmasse im Verhältnis zum Fett. Athletischer Typ – halte deine Leistung, achte auf Regeneration und genug Eiweiß.';
+      form='Der <b>Muskel-Balken</b> (Mitte) ragt weiter nach rechts als Gewicht (oben) und Fett (unten) – die Enden wölben sich zu einem <b>D</b>.'; }
+    else if(fatHigh && (muscleLow || smi==null)){ code='C'; label='C-Form · Fett über Muskel';
+      desc='Das Körperfett liegt über der Muskelmasse. Typisch, wenn Muskeln fehlen und der Fettanteil höher ist. Am meisten bringt jetzt Kraft-/Muskelaufbau plus ein moderates Kaloriendefizit.';
+      form='Der <b>Muskel-Balken</b> (Mitte) ist kürzer als Gewicht (oben) und Fett (unten) – die Enden wölben sich zu einem <b>C</b>.'; }
+    else { code='I'; label='I-Form · ausgewogen';
+      desc='Ein ausgewogenes Verhältnis von Gewicht, Muskel und Fett. Guter Ausgangspunkt zum Halten und gezielten Verbessern.';
+      form='Alle drei Balken (Gewicht · Muskel · Fett) enden ähnlich weit rechts – eine fast gerade Linie, das <b>I</b>.'; }
+    return {code:code,label:label,desc:desc,form:form,bars:bars};
+  }
+  // Schematische Muskel-Fett-Grafik (3 Balken): die Verbindungslinie ihrer Enden
+  // zeichnet die C/I/D-Form. Muskel = Mitte, teal; Fett = unten, orange.
+  function ibBodyGraph(bt){
+    if(!bt||!bt.bars) return ''; var b=bt.bars;
+    var X0=70, X100=176, MAXX=280;
+    var xEnd=function(p){ return Math.round(Math.min(MAXX, X0+(p/100)*(X100-X0))); };
+    var rows=[['Gewicht',b.weight,'#9fb4b8'],['Muskel',b.muscle,ERN_G2],['Fett',b.fat,'#E07A5F']];
+    var ys=[28,64,100];
+    var barsSvg=rows.map(function(r,i){ var xe=xEnd(r[1]); var y=ys[i]; return '<rect x="'+X0+'" y="'+(y-12)+'" width="'+Math.max(2,xe-X0)+'" height="24" rx="6" fill="'+r[2]+'"></rect><text x="'+(X0-9)+'" y="'+(y+4)+'" text-anchor="end" font-size="12.5" font-weight="800" fill="var(--text-2)">'+r[0]+'</text><text x="'+(xe+7)+'" y="'+(y+4)+'" font-size="11" font-weight="800" fill="var(--text-soft)">'+r[1]+'%</text>'; }).join('');
+    var pts=rows.map(function(r,i){ return xEnd(r[1])+' '+ys[i]; }).join(' ');
+    var lineSvg='<polyline points="'+pts+'" fill="none" stroke="#0a4958" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round"></polyline>'+rows.map(function(r,i){ return '<circle cx="'+xEnd(r[1])+'" cy="'+ys[i]+'" r="4.5" fill="#0a4958"></circle>'; }).join('');
+    var ref='<line x1="'+X100+'" y1="12" x2="'+X100+'" y2="116" stroke="var(--border-strong)" stroke-width="1.4" stroke-dasharray="3 4"></line><text x="'+X100+'" y="130" text-anchor="middle" font-size="9.5" font-weight="700" fill="var(--text-soft)">100% · Normal</text>';
+    return '<svg viewBox="0 0 300 138" width="100%" style="display:block;margin:10px 0 4px;overflow:visible" role="img" aria-label="Muskel-Fett-Balken">'+ref+barsSvg+lineSvg+'</svg>';
   }
   // Ampel-Zählung über alle bewerteten Kennzahlen (info zählt nicht).
   function ibAmpelCounts(){
@@ -6207,7 +6233,12 @@
       return '<div data-act="ibMetric" data-arg="'+m.key+'" role="button" style="display:flex;align-items:center;gap:12px;padding:13px 0;border-top:1px solid var(--border);cursor:pointer"><span style="width:14px;height:14px;border-radius:50%;background:'+c.dot+';flex-shrink:0"></span><div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:800;color:var(--text)">'+esc(m.label)+'</div><div style="font-size:11.5px;font-weight:700;color:'+c.fg+'">'+lab+'</div></div><span style="font-size:14.5px;font-weight:900;color:var(--text)">'+ibNum(m.value,IB_DEC[m.key])+esc(m.unit||'')+'</span>'+svg('<path d="M9 18l6-6-6-6"></path>',{c:'var(--text-soft)',w:2.2,s:15})+'</div>'; }).join('');
     var legend='<div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:12px;font-size:11.5px;font-weight:700;color:var(--text-soft)"><span style="display:flex;align-items:center;gap:5px"><span style="width:11px;height:11px;border-radius:50%;background:#22a866"></span>gut</span><span style="display:flex;align-items:center;gap:5px"><span style="width:11px;height:11px;border-radius:50%;background:#C77A2E"></span>im Blick</span><span style="display:flex;align-items:center;gap:5px"><span style="width:11px;height:11px;border-radius:50%;background:#d9603a"></span>Fokus</span></div>';
     var ampel='<div style="'+IB_CARD+'"><div style="font-size:15px;font-weight:900;color:var(--text);margin-bottom:2px">Deine Werte als Ampel</div><div style="font-size:12px;color:var(--text-soft);font-weight:500">Tippe eine Zeile für Verlauf &amp; Erklärung.</div>'+rows+legend+'</div>';
-    var typeCard=bt?('<div style="'+IB_CARD+'"><div style="display:flex;align-items:center;gap:13px;margin-bottom:8px"><div style="width:52px;height:52px;border-radius:14px;background:linear-gradient(150deg,#0e6072,#063540);display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:900;color:#fff;flex-shrink:0">'+bt.code+'</div><div><div style="font-size:16px;font-weight:900;color:var(--text)">'+esc(bt.label)+'</div><div style="font-size:12px;color:var(--text-soft);font-weight:600">InBody-Körpertyp</div></div></div><div style="font-size:13px;color:var(--text-2);font-weight:500;line-height:1.55">'+esc(bt.desc)+'</div><div style="display:flex;gap:8px;margin-top:14px">'+['C','I','D'].map(function(code){ var on=(bt.code===code); var t={C:'Fett > Muskel',I:'ausgewogen',D:'viel Muskel'}[code]; return '<div style="flex:1;text-align:center;padding:11px 6px;border-radius:12px;background:'+(on?'rgba(14,96,114,.10)':'var(--surface-2)')+';border:2px solid '+(on?ERN_G:'transparent')+'"><div style="font-size:19px;font-weight:900;color:'+(on?'var(--teal-ink)':'var(--text-soft)')+'">'+code+'</div><div style="font-size:10px;font-weight:700;color:var(--text-soft);margin-top:2px">'+t+'</div></div>'; }).join('')+'</div></div>'):'';
+    var typeCard=bt?('<div style="'+IB_CARD+'">'+
+      '<div style="display:flex;align-items:center;gap:13px"><div style="width:52px;height:52px;border-radius:14px;background:linear-gradient(150deg,#0e6072,#063540);display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:900;color:#fff;flex-shrink:0">'+bt.code+'</div><div><div style="font-size:16px;font-weight:900;color:var(--text)">'+esc(bt.label)+'</div><div style="font-size:12px;color:var(--text-soft);font-weight:600">InBody-Körpertyp · Muskel-Fett-Form</div></div></div>'+
+      ibBodyGraph(bt)+
+      '<div style="font-size:12.5px;color:var(--text-2);font-weight:500;line-height:1.55;background:var(--surface-2);border-radius:12px;padding:11px 13px;margin-top:6px">'+bt.form+'</div>'+
+      '<div style="font-size:13px;color:var(--text-2);font-weight:500;line-height:1.55;margin-top:11px">'+esc(bt.desc)+'</div>'+
+      '<div style="display:flex;gap:8px;margin-top:14px">'+['C','I','D'].map(function(code){ var on=(bt.code===code); var t={C:'Fett > Muskel',I:'ausgewogen',D:'viel Muskel'}[code]; return '<div style="flex:1;text-align:center;padding:11px 6px;border-radius:12px;background:'+(on?'rgba(14,96,114,.10)':'var(--surface-2)')+';border:2px solid '+(on?ERN_G:'transparent')+'"><div style="font-size:19px;font-weight:900;color:'+(on?'var(--teal-ink)':'var(--text-soft)')+'">'+code+'</div><div style="font-size:10px;font-weight:700;color:var(--text-soft);margin-top:2px">'+t+'</div></div>'; }).join('')+'</div></div>'):'';
     return '<div class="narrow" style="display:flex;flex-direction:column;gap:14px">'+head+ampel+typeCard+'</div>';
   }
   // Detail-Sheet einer Kennzahl: Verlauf-Kurve + Bewertung + Beschreibung.
