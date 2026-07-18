@@ -107,7 +107,10 @@ module.exports = async function handler(req, res) {
     // Angebot (Preis, Testphase, Pflichtangaben) wird separat als premiumOffer geliefert,
     // damit der Kauf-Screen den Preis anzeigen kann.
     const notPrem = (list, key) => (list || []).filter((x) => !Mod.isPremiumModule(x && x[key]));
-    const premiumOffer = available ? ((r.bookable || []).find((x) => Mod.isPremiumModule(x && x.id)) || null) : null;
+    // Alle buchbaren Premium-Varianten (Monat / Jahr / Vital-Starter) – der Kauf-Screen
+    // kann daraus die Auswahlkarten bauen. premiumOffer bleibt für Abwärtskompatibilität.
+    const premiumOffers = available ? ((r.bookable || []).filter((x) => Mod.isPremiumModule(x && x.id))) : [];
+    const premiumOffer = premiumOffers[0] || null;
     res.statusCode = 200;
     return res.end(JSON.stringify({
       ok: true,
@@ -116,6 +119,7 @@ module.exports = async function handler(req, res) {
       bookable: available ? notPrem(r.bookable, 'id') : [],
       premium: premium,
       premiumOffer: premiumOffer,
+      premiumOffers: premiumOffers,
     }));
   }
 
