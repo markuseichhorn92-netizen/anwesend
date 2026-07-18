@@ -4,7 +4,7 @@
 //  - Demo-Buddy (lib/social) ist opt-in (SOCIAL_DEMO=1), in Produktion aus
 //  - Client: Launch-Flags kommen vom Server (fi_flags_srv), Testmodus nur bei
 //    serverseitig erlaubtem Demo-Modus; keine negativen Vitalpunkte mehr;
-//    „Fitness-Alter" ist transparent als „Aktivitäts-Alter" benannt
+//    „Fitness-Alter" ist transparent als „Vitalalter" benannt (keine med. Messung)
 //  - KI-Datenminimierung: kein Nachname/keine Mitgliedsnummer in KI-Prompts
 const path = require('path');
 const fs = require('fs');
@@ -73,9 +73,9 @@ async function run() {
     html.indexOf('fi_flags_srv') >= 0 && /var ERN_LAUNCH=srvFlags\(\)\.ern!==false/.test(html) && !/var SOCIAL_LAUNCH\s*=\s*false/.test(html));
   ok('7. Testmodus nur bei Server-Demo-Flag', /srvFlags\(\)\.demo===true/.test(html));
   ok('8. keine negativen Vitalpunkte mehr (Pausen neutral)', !/pts:\s*-/.test(html) && html.indexOf('kein Punktabzug') >= 0);
-  ok('9. „Aktivitäts-Alter" statt „Fitness-Alter" + Berechnungsbasis sichtbar',
-    html.indexOf('Aktivitäts-Alter') >= 0 && !/>Fitness-Alter</.test(html) && !/pill\('Fit-Alter/.test(html)
-    && html.indexOf('Check-ins der letzten 8 Wochen') >= 0);
+  ok('9. „Vitalalter" (transparent, keine Messung) statt „Fitness-Alter"',
+    html.indexOf('Vitalalter') >= 0 && !/>Fitness-Alter</.test(html) && !/pill\('Fit-Alter/.test(html)
+    && html.indexOf('keine medizinische oder biologische Messung') >= 0);
   ok('10. keine „keine Daten an Dritte"-Pauschalaussage mehr',
     html.indexOf('Deine Daten werden nicht an Dritte weitergegeben') < 0 && html.indexOf('nichts wird an Dritte gegeben') < 0);
 

@@ -59,6 +59,13 @@ async function run() {
   const ptNo = P.toPromptText(P.sanitize({ goal: 'Abnehmen', health: { consent: false, items: ['Diabetes'] } }));
   ok('4c. toPromptText verrät KEINE Gesundheit ohne Einwilligung', /Ziel/.test(ptNo) && !/Diabetes/.test(ptNo));
 
+  // 4d. Lebensstil (Vitalalter): nur mit Einwilligung übernehmen, im Prompt-Text erwähnt
+  const lc = P.sanitize({ lifestyle: { consent: false, sleep: 'gut', smoking: 'ja' } });
+  ok('4d. Lebensstil ohne Einwilligung leer', lc.lifestyle.consent === false && lc.lifestyle.sleep === '' && lc.lifestyle.smoking === '');
+  const ly = P.sanitize({ goal: 'Abnehmen', lifestyle: { consent: true, sleep: 'gut', stress: 'hoch', smoking: 'ja', sitting: 'viel' } });
+  ok('4e. Lebensstil mit Einwilligung übernommen', ly.lifestyle.sleep === 'gut' && ly.lifestyle.smoking === 'ja' && ly.lifestyle.stress === 'hoch');
+  ok('4f. toPromptText nennt Lebensstil (mit Einwilligung)', /Lebensstil/.test(P.toPromptText(ly)));
+
   // ── KV-gebundene Operationen ──
   const ID = 'M1';
   // 5. Standard: leeres Profil

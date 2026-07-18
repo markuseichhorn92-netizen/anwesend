@@ -33,6 +33,7 @@ module.exports = async function handler(req, res) {
     let profile;
     if (action === 'clear') profile = await Profile.clear(sess.id);
     else if (action === 'clear-health') profile = await Profile.clearHealth(sess.id);
+    else if (action === 'lifestyle') profile = await Profile.saveLifestyle(sess.id, body.lifestyle || {});
     else if (action === 'welcome-reset') {
       // Onboarding wiederholt -> Willkommensgeschenk („erster Plan aufs Haus") wieder freigeben.
       try { await require('../../lib/welcomeGift').save(sess.id, { train: false, ern: false }); } catch (e) {}

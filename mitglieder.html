@@ -1787,7 +1787,7 @@
       var sexes=[['w','Weiblich'],['m','Männlich'],['d','Divers']];
       var sexChips=sexes.map(function(x){ return chip(S.obSex===x[0],x[1],'obSex',x[0]); }).join('');
       var numFld=function(field,val,unit,ph){ return '<div style="flex:1;background:rgba(255,255,255,.1);border-radius:14px;padding:11px 14px"><div style="font-size:11px;color:#aed0d6;font-weight:700;text-transform:uppercase;letter-spacing:.4px">'+(unit==='cm'?'Größe':'Gewicht')+'</div><div style="display:flex;align-items:baseline;gap:5px;margin-top:3px"><input inputmode="numeric" enterkeyhint="done" value="'+esc(val==null?'':String(val))+'" placeholder="'+ph+'" oninput="window.__obNum&&window.__obNum(\''+field+'\',this)" style="width:100%;min-width:0;border:none;background:transparent;color:#fff;font-size:23px;font-weight:900;outline:none;font-family:inherit"><span style="font-size:13px;color:#aed0d6;font-weight:700;flex-shrink:0">'+unit+'</span></div></div>'; };
-      inner='<div style="flex:1">'+hTitle('Deine Körperdaten','Damit FINN Kalorien, Portionen und dein Aktivitäts-Alter realistisch berechnet.')+
+      inner='<div style="flex:1">'+hTitle('Deine Körperdaten','Damit FINN Kalorien, Portionen und dein Vitalalter realistisch berechnet.')+
         '<div style="font-size:13px;color:#aed0d6;font-weight:700;margin-top:20px;margin-bottom:8px">Geschlecht</div><div style="display:flex;gap:8px">'+sexChips+'</div>'+
         '<div style="display:flex;gap:10px;margin-top:16px">'+numFld('obHeightCm',S.obHeightCm,'cm','175')+numFld('obWeightKg',S.obWeightKg,'kg','74')+'</div>'+
         subLbl('Wie alt bist du?')+'<div style="display:flex;align-items:center;gap:14px;margin-top:10px;background:rgba(255,255,255,.1);border-radius:15px;padding:11px 16px"><button data-act="obAge" data-arg="-1" style="width:38px;height:38px;border-radius:11px;border:none;background:rgba(255,255,255,.16);color:#fff;font-size:22px;font-weight:800;cursor:pointer">−</button><div style="flex:1;text-align:center;font-size:24px;font-weight:900">'+S.obAge+' <span style="font-size:14px;color:#aed0d6;font-weight:600">Jahre</span></div><button data-act="obAge" data-arg="1" style="width:38px;height:38px;border-radius:11px;border:none;background:rgba(255,255,255,.16);color:#fff;font-size:22px;font-weight:800;cursor:pointer">+</button></div></div>';
@@ -1866,7 +1866,8 @@
     var pill=function(t){ return '<span style="background:rgba(255,255,255,.16);border-radius:10px;padding:6px 10px;font-size:12px;font-weight:900;white-space:nowrap">'+t+'</span>'; };
     var remain=Math.max(0,(v.goal||0)-(v.weekVisits||0));
     var goalPill=pill(remain<=0?'🎯 Wochenziel ✅':('🎯 noch '+remain+'×'));
-    var pills=goalPill+pill('🔥 '+v.streak+' Wo.')+pill(deNum(v.points)+' VP')+(v.fitAge!=null?pill('Aktivitäts-Alter '+v.fitAge):'');
+    var vAge=vitalAge();
+    var pills=goalPill+pill('🔥 '+v.streak+' Wo.')+pill(deNum(v.points)+' VP')+(vAge.age!=null?pill('Vitalalter '+vAge.age):'');
     return '<button data-act="nav" data-arg="coach" style="width:100%;text-align:left;border:none;cursor:pointer;font-family:inherit;background:linear-gradient(150deg,#12879c,#0e6072 58%,#0a4958);border-radius:22px;padding:18px 20px;color:#fff;box-shadow:0 16px 40px rgba(14,96,114,.28);margin-bottom:16px">'+
       '<div style="display:flex;align-items:center;gap:12px">'+ava+'<div style="flex:1;min-width:0"><div style="font-size:11px;font-weight:900;color:#bfe0e6;text-transform:uppercase;letter-spacing:.4px">Dein Coach</div><div style="font-size:16.5px;font-weight:900">FINN · Tipp des Tages</div></div>'+svg('<path d="M9 6l6 6-6 6"></path>',{c:'rgba(255,255,255,.8)',w:2.4,s:18})+'</div>'+
       '<div style="font-size:13.5px;font-weight:600;color:#eafff4;line-height:1.5;margin-top:10px">'+(tip?esc(tip):'FINN stellt dir gleich deinen Tagestipp zusammen …')+'</div>'+
@@ -2841,6 +2842,67 @@
     if(durs.length){ var avgMs=durs.reduce(function(a,b){return a+b;},0)/durs.length; var mins=Math.round(avgMs/60000); avgDurationLabel=Math.floor(mins/60)+':'+pad2(mins%60); }
     return {visits:visits,points:points,rankName:cur[0],rankIcon:cur[2]||'',rankIdx:ti,nextRank:nxt?nxt[0]:null,toNext:toNext,deg:deg,streak:streak,weekVisits:weekVisits,goal:weekGoal(),fitAge:fitAge,age:age,fitAgeDelta:fitAgeDelta,activeWeeks:activeWeeks,longestStreak:longest,avgPerWeekLabel:avgPerWeekLabel,avgDurationLabel:avgDurationLabel,maxed:!nxt};
   }
+  // ── Vitalalter: geschätztes „Alter" aus Aktivität + Lebensstil (Motivations-Wert, keine Messung) ──
+  // Faktoren aus vorhandenen Daten (Training, Ernährung, Figur) + freiwilliger Selbstauskunft.
+  function vaLifestyle(){ var p=DATA.mprofile; var l=p&&typeof p==='object'&&p.lifestyle; return (l&&l.consent)?l:null; }
+  function vitalAge(){
+    var v=vitalsData(); var real=v.age;
+    if(real==null) return {age:null,real:null};
+    var factors=[]; var add=function(key,label,years,note){ years=Math.round(years*2)/2; if(Math.abs(years)>=0.5){ factors.push({key:key,label:label,years:years,note:note||''}); } };
+    var now=Date.now();
+    var ci=(Array.isArray(DATA.checkins)?DATA.checkins:[]).filter(function(x){return x&&x.in&&!isNaN(Date.parse(x.in));});
+    var recent8=ci.filter(function(x){ return Date.parse(x.in)>=now-56*864e5; }).length;
+    add('freq','Regelmäßiges Training', -Math.min(4,(recent8/8)*1.2), (Math.round(recent8/8*10)/10)+'×/Woche zuletzt');
+    add('streak','Dranbleiben', -Math.min(2,(v.streak||0)*0.4), (v.streak||0)+' Wochen in Folge');
+    var units=(DATA.training&&Array.isArray(DATA.training.units))?DATA.training.units:[];
+    var u8=units.filter(function(u){ var t=Date.parse((u.t||'')+'T12:00:00'); return isFinite(t)&&t>=now-56*864e5; });
+    add('units','Protokollierte Einheiten', -Math.min(2,u8.length*0.3), u8.length?(u8.length+' abgeschlossen'):'');
+    var byEx={}; units.forEach(function(u){ (u.ex||[]).forEach(function(x){ var mw=0; (x.entries||[]).forEach(function(en){ if((en.w||0)>mw) mw=en.w; }); if(mw>0){ (byEx[x.n]=byEx[x.n]||[]).push({t:u.t||'',w:mw}); } }); });
+    var prog=0; Object.keys(byEx).forEach(function(k){ var arr=byEx[k].slice().sort(function(a,b){return a.t<b.t?-1:1;}); if(arr.length>=2 && arr[arr.length-1].w>arr[0].w) prog++; });
+    add('prog','Kraftfortschritt', -Math.min(1.5,prog*0.5), prog?('steigende Gewichte bei '+prog+' Übung'+(prog===1?'':'en')):'');
+    var grp={}; u8.forEach(function(u){ (u.ex||[]).forEach(function(x){ try{ grp[trExGroupOf({name:x.n,machine:x.machine})]=1; }catch(e){} }); });
+    var gN=Object.keys(grp).length; add('balance','Ausgewogenes Training', -(gN>=4?1:(gN>=2?0.5:0)), gN?(gN+' Muskelgruppen'):'');
+    if(ERN_ON && DATA.nutri && DATA.nutri.ok){ var ns=DATA.nutri.streak||0; add('nutri','Bewusste Ernährung', -Math.min(2,ns*0.2), ns?(ns+' Tage getrackt'):''); }
+    if(DATA.figur && DATA.figur.ok && Array.isArray(DATA.figur.points) && DATA.figur.points.length){ add('figur','Körperwerte im Blick', -Math.min(1,DATA.figur.points.length*0.3), DATA.figur.points.length+' Messungen'); }
+    var ls=vaLifestyle();
+    if(ls){
+      var sl={wenig:1.5,mittel:0,gut:-1}[ls.sleep]; if(sl!=null) add('sleep', sl<0?'Guter Schlaf':'Wenig Schlaf', sl, '');
+      var si={wenig:-0.5,mittel:0,viel:1.5}[ls.sitting]; if(si!=null) add('sitting', si<0?'Wenig Sitzen':'Viel Sitzen', si, '');
+      var st={niedrig:-0.5,mittel:0,hoch:1.5}[ls.stress]; if(st!=null) add('stress', st<0?'Wenig Stress':'Hoher Stress', st, '');
+      var sm={nein:0,gelegentlich:1.5,ja:3}[ls.smoking]; if(sm!=null) add('smoke','Rauchen', sm, '');
+    }
+    var sum=factors.reduce(function(s,f){ return s+f.years; },0); sum=Math.max(-15,Math.min(8,sum));
+    var age=Math.max(16,Math.round(real+sum)); var delta=real-age;
+    factors.sort(function(a,b){ return a.years-b.years; });
+    return {age:age,real:real,delta:delta,factors:factors,hasLifestyle:!!ls};
+  }
+  function loadMemberProfile(){ if(DATA.mprofile==null) DATA.mprofile=false; api('/api/member/profile',{method:'GET'}).then(function(d){ DATA.mprofile=(d&&d.profile)||{}; rIf(['fort','coach']); }).catch(function(){ DATA.mprofile=(DATA.mprofile&&typeof DATA.mprofile==='object')?DATA.mprofile:{}; rIf(['fort']); }); }
+  function lsSave(ls){ DATA.mprofile=(DATA.mprofile&&typeof DATA.mprofile==='object')?DATA.mprofile:{}; DATA.mprofile.lifestyle=ls; render(); api('/api/member/profile',{method:'POST',body:JSON.stringify({action:'lifestyle',lifestyle:ls})}).then(function(d){ if(d&&d.profile){ DATA.mprofile=d.profile; render(); } }).catch(function(){}); }
+  // Lebensstil-Selbstauskunft (Schlaf/Sitzen/Stress/Rauchen) mit Einwilligung.
+  function vitalLifestyleForm(){
+    var CARD='background:var(--surface);border-radius:20px;box-shadow:0 14px 38px rgba(4,33,40,.10);padding:20px';
+    var ls=(DATA.mprofile&&typeof DATA.mprofile==='object'&&DATA.mprofile.lifestyle)||{}; var on=!!ls.consent;
+    var sw='<button data-act="lsConsent" role="switch" aria-checked="'+(on?'true':'false')+'" style="position:relative;width:50px;height:29px;border-radius:30px;border:none;cursor:pointer;background:'+(on?ERN_G:'var(--border-strong)')+';flex-shrink:0"><span style="position:absolute;top:3px;left:'+(on?'24px':'3px')+';width:23px;height:23px;border-radius:50%;background:#fff;transition:left .2s;box-shadow:0 1px 3px rgba(0,0,0,.3)"></span></button>';
+    var head='<div style="display:flex;align-items:center;gap:12px"><div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:900;color:var(--text)">Lebensstil einbeziehen</div><div style="font-size:12px;color:var(--text-soft);font-weight:500;line-height:1.45;margin-top:2px">Freiwillig: Schlaf, Sitzen, Stress &amp; Rauchen fließen ins Vitalalter ein. Besonders geschützte Daten, jederzeit änderbar.</div></div>'+sw+'</div>';
+    if(!on) return '<div style="'+CARD+'">'+head+'</div>';
+    var rows=[['sleep','Schlaf',[['gut','7–9 h'],['mittel','6–7 h'],['wenig','< 6 h']]],['sitting','Sitzen am Tag',[['wenig','wenig'],['mittel','mittel'],['viel','viel']]],['stress','Stress',[['niedrig','niedrig'],['mittel','mittel'],['hoch','hoch']]],['smoking','Rauchen',[['nein','nein'],['gelegentlich','geleg.'],['ja','ja']]]];
+    var body=rows.map(function(r){ var cur=ls[r[0]]||''; return '<div style="margin-top:14px"><div style="font-size:12.5px;font-weight:800;color:var(--text-soft);margin-bottom:7px">'+r[1]+'</div><div style="display:flex;gap:7px">'+r[2].map(function(o){ var sel=(cur===o[0]); return '<button data-act="lsSet" data-arg="'+r[0]+'|'+o[0]+'" style="flex:1;padding:9px 4px;border:2px solid '+(sel?ERN_G:'var(--border-strong)')+';border-radius:11px;background:'+(sel?'rgba(14,96,114,.08)':'var(--surface)')+';color:'+(sel?'var(--teal-ink)':'var(--text-2)')+';font-size:12.5px;font-weight:800;cursor:pointer">'+esc(o[1])+'</button>'; }).join('')+'</div></div>'; }).join('');
+    return '<div style="'+CARD+'">'+head+body+'</div>';
+  }
+  // Vitalalter-Karten (Hero + transparente Faktoren + Lebensstil-Form).
+  function vitalAgeCard(){
+    var CARD='background:var(--surface);border-radius:20px;box-shadow:0 14px 38px rgba(4,33,40,.10);padding:20px';
+    var va=vitalAge();
+    if(va.age==null) return '<div style="'+CARD+'"><div style="font-size:16px;font-weight:900;color:var(--text)">Vitalalter</div><div style="font-size:13px;color:var(--text-muted);font-weight:500;line-height:1.5;margin-top:6px">Ergänze in „Meine Daten" dein Geburtsdatum – dann berechnet FINN dein Vitalalter aus deiner Aktivität (keine medizinische Messung).</div></div>'+vitalLifestyleForm();
+    var deltaTxt=(va.delta>0)?('<b style="color:#7ee0b0">'+va.delta+' '+(va.delta===1?'Jahr':'Jahre')+' jünger</b> als dein echtes Alter ('+va.real+')'):((va.delta<0)?('etwas über deinem Alter – da geht was! 💪'):('genau dein Alter ('+va.real+')'));
+    var hero='<div style="background:linear-gradient(150deg,#0e6072,#063540);border-radius:22px;padding:22px;color:#fff;box-shadow:0 16px 40px rgba(4,33,40,.2)">'+
+      '<div style="font-size:12px;font-weight:800;color:#aed0d6;text-transform:uppercase;letter-spacing:.5px">Dein Vitalalter</div>'+
+      '<div style="display:flex;align-items:flex-end;gap:14px;margin-top:6px"><div style="font-size:62px;font-weight:900;letter-spacing:-2.5px;line-height:.85">'+va.age+'</div><div style="font-size:14px;font-weight:600;color:#eaf6f8;line-height:1.4;padding-bottom:7px">'+deltaTxt+'</div></div>'+
+      '<div style="font-size:11.5px;color:#9fc4cc;font-weight:500;line-height:1.5;margin-top:14px">Aus deiner Aktivität geschätzt – ein Motivations-Wert, keine medizinische oder biologische Messung.</div></div>';
+    var frow=function(f){ var good=f.years<0; return '<div style="display:flex;align-items:center;gap:11px;padding:10px 0;border-top:1px solid var(--border)"><span style="width:28px;height:28px;border-radius:9px;background:'+(good?'#E7F6EC':'#FBECE8')+';color:'+(good?'#176b37':'#b4552f')+';display:flex;align-items:center;justify-content:center;flex-shrink:0;font-weight:900;font-size:15px">'+(good?'↓':'↑')+'</span><div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:800;color:var(--text)">'+esc(f.label)+'</div>'+(f.note?'<div style="font-size:11px;font-weight:600;color:var(--text-soft)">'+esc(f.note)+'</div>':'')+'</div><div style="font-size:14px;font-weight:900;color:'+(good?'#176b37':'#b4552f')+'">'+(good?'−':'+')+Math.abs(f.years)+' J.</div></div>'; };
+    var factorsCard=va.factors.length?'<div style="'+CARD+'"><div style="font-size:15px;font-weight:900;color:var(--text)">Was dein Vitalalter beeinflusst</div><div style="font-size:12px;color:var(--text-soft);font-weight:500;margin:2px 0">Transparent aufgeschlüsselt – jeder Baustein zählt.</div>'+va.factors.map(frow).join('')+'</div>':'';
+    return hero+factorsCard+vitalLifestyleForm();
+  }
   function deNum(n){ try{ return Number(n||0).toLocaleString('de-DE'); }catch(e){ return String(n); } }
   function vitalCard(){
     var v=vitalsData();
@@ -2858,7 +2920,7 @@
       '<div style="display:flex;gap:9px;margin-top:15px">'+
         '<div style="flex:1;background:#FBEFE2;border-radius:13px;padding:11px 12px"><div style="font-size:17px;font-weight:900;color:#b5631f">🔥 '+v.streak+'</div><div style="font-size:10.5px;font-weight:700;color:#b5631f;margin-top:1px">Wochen-Streak</div></div>'+
         '<div style="flex:1;background:var(--surface-2);border-radius:13px;padding:11px 12px"><div style="font-size:17px;font-weight:900;color:var(--teal-ink)">'+v.weekVisits+'/'+v.goal+'</div><div style="font-size:10.5px;font-weight:700;color:var(--teal-ink);margin-top:1px">Wochenziel</div></div>'+
-        '<div style="flex:1;background:var(--surface-2);border-radius:13px;padding:11px 12px"><div style="font-size:17px;font-weight:900;color:var(--teal-ink)">'+(v.fitAge!=null?v.fitAge:'–')+'</div><div style="font-size:10.5px;font-weight:700;color:var(--teal-ink);margin-top:1px">Aktivitäts-Alter</div></div>'+
+        '<div style="flex:1;background:var(--surface-2);border-radius:13px;padding:11px 12px"><div style="font-size:17px;font-weight:900;color:var(--teal-ink)">'+(function(){ var a=vitalAge().age; return a!=null?a:'–'; })()+'</div><div style="font-size:10.5px;font-weight:700;color:var(--teal-ink);margin-top:1px">Vitalalter</div></div>'+
       '</div>'+
     '</div>';
   }
@@ -2895,6 +2957,10 @@
   function scrFort(){
     if(SOCIAL_ON&&DATA.social==null) loadSocial();
     if(ERN_ON&&DATA.nutri==null) loadNutri();
+    if(DATA.checkins==null) loadCheckins();
+    if(DATA.training==null) loadTraining();      // Einheiten-Verlauf fürs Vitalalter
+    if(DATA.figur==null) loadFigur();            // Körperwerte fürs Vitalalter
+    if(DATA.mprofile==null) loadMemberProfile(); // Lebensstil-Selbstauskunft
     var v=vitalsData();
     var CARD='background:var(--surface);border-radius:20px;box-shadow:0 14px 38px rgba(4,33,40,.10);padding:20px';
     // 1) Vitalpunkte-Ring
@@ -2904,19 +2970,8 @@
         '<div style="font-size:34px;font-weight:900;letter-spacing:-1px;line-height:1.05">'+deNum(v.points)+' VP</div>'+
         '<div style="font-size:13px;color:#aed0d6;font-weight:600;margin-top:3px">'+(v.maxed?'Höchster Rang erreicht 🏆':('Noch '+deNum(v.toNext)+' VP bis '+esc(v.nextRank)))+'</div></div>'+
     '</div></div>';
-    // 2) Aktivitäts-Alter (ehem. „Fitness-Alter" – transparent umbenannt, Basis + Zeitraum sichtbar)
-    var fa;
-    if(v.fitAge!=null){
-      var deltaLine=v.fitAgeDelta>0
-        ? '<div style="font-size:14px;font-weight:800;color:#176b37">Rechnerisch '+v.fitAgeDelta+' '+(v.fitAgeDelta===1?'Jahr':'Jahre')+' unter deinem echten Alter</div>'
-        : '<div style="font-size:14px;font-weight:800;color:var(--text)">Dein Aktivitäts-Alter</div>';
-      fa='<div style="'+CARD+'"><div style="display:flex;align-items:center;gap:16px">'+
-        '<div style="text-align:center;flex-shrink:0"><div style="font-size:11px;font-weight:700;color:var(--text-soft);text-transform:uppercase;letter-spacing:.4px">Aktivitäts-Alter</div><div style="font-size:46px;font-weight:900;color:var(--teal-ink);letter-spacing:-1.5px;line-height:1">'+v.fitAge+'</div></div>'+
-        '<div style="flex:1;min-width:0">'+deltaLine+'<div style="font-size:13px;color:var(--text-muted);font-weight:500;line-height:1.5;margin-top:4px">So gerechnet: dein Alter minus einen Aktivitäts-Bonus (max. 12) aus deinen Check-ins der letzten 8 Wochen. Ein spielerischer Motivations-Wert – keine medizinische oder biologische Messung.</div></div>'+
-      '</div><div style="display:flex;align-items:center;gap:9px;background:#E7F6EC;border-radius:13px;padding:12px 14px;margin-top:16px">'+svg('<path d="M3 12h4l3 8 4-16 3 8h4"></path>',{c:'#176b37',w:1.9,s:18})+'<span style="font-size:13px;font-weight:700;color:#176b37">Bleib dran: Wer regelmäßig trainiert, gewinnt laut Studien gesunde Lebensjahre.</span></div></div>';
-    } else {
-      fa='<div style="'+CARD+'"><div style="font-size:16px;font-weight:900;color:var(--text)">Aktivitäts-Alter</div><div style="font-size:13px;color:var(--text-muted);font-weight:500;line-height:1.5;margin-top:6px">Ergänze in „Meine Daten" dein Geburtsdatum – dann berechnen wir dein Aktivitäts-Alter aus deinen Check-ins der letzten 8 Wochen (dein Alter minus Aktivitäts-Bonus, keine medizinische Messung).</div></div>';
-    }
+    // 2) Vitalalter – geschätzt aus Aktivität + Lebensstil, transparent aufgeschlüsselt.
+    var fa=vitalAgeCard();
     // 3) Deine Aktivität
     var stats=[[v.avgPerWeekLabel,'Ø Besuche / Woche'],[String(v.activeWeeks),'Aktive Wochen '+(new Date()).getFullYear()],[String(v.longestStreak),'Längste Streak (Wo.)'],[v.avgDurationLabel,'Ø Dauer / Besuch']];
     var act='<div style="'+CARD+'"><div style="font-size:16px;font-weight:900;color:var(--text);margin-bottom:4px">Deine Aktivität</div><div style="font-size:12.5px;color:var(--text-soft);font-weight:500;margin-bottom:16px">Aus deinen Check-ins – das Wichtigste zählt: dass du da bist.</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:11px">'+stats.map(function(s){ return '<div style="background:var(--surface-2);border-radius:14px;padding:14px 15px"><div style="font-size:24px;font-weight:900;color:var(--teal-ink);letter-spacing:-.5px">'+esc(s[0])+'</div><div style="font-size:11.5px;color:var(--text-muted);font-weight:700;margin-top:2px">'+esc(s[1])+'</div></div>'; }).join('')+'</div></div>';
@@ -2934,7 +2989,7 @@
     // 7) Ränge
     var ranks='<div style="'+CARD.replace('padding:20px','padding:18px')+'"><div style="font-size:16px;font-weight:900;color:var(--text);margin-bottom:8px">Ränge</div>'+VITAL_TIERS.map(function(t,i){ var cur=(i===v.rankIdx); var passed=(i<=v.rankIdx); return '<div style="display:flex;align-items:center;gap:12px;padding:9px 0"><div style="width:32px;height:32px;border-radius:50%;background:'+(passed?'#0a4958':'var(--surface-2)')+';display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:15px">'+t[2]+'</div><div style="flex:1;font-size:14px;font-weight:'+(cur?'900':'600')+';color:'+(cur?'var(--teal-ink)':'var(--text-2)')+'">'+esc(t[0])+'</div><div style="font-size:12.5px;font-weight:700;color:var(--text-soft)">'+(t[1]===0?'Start':(deNum(t[1])+' VP'))+'</div></div>'; }).join('')+'</div>';
 
-    return subHeader('Fortschritt','Rang · Longevity · Punkte','profil')+coachTipStrip()+'<div style="display:flex;flex-direction:column;gap:14px">'+ring+fa+badgesCard()+act+ben+ledger+warn+ranks+'</div>';
+    return subHeader('Fortschritt','Vitalalter · Rang · Punkte','profil')+coachTipStrip()+'<div style="display:flex;flex-direction:column;gap:14px">'+fa+ring+badgesCard()+act+ben+ledger+warn+ranks+'</div>';
   }
 
   // ── Ernährung (eigenständiges Modul, Tagesziel + KI-Tracking + FINN-Coach) ──
@@ -6047,7 +6102,7 @@
     var card=function(items){ items=items.filter(Boolean); if(!items.length) return ''; return '<div style="background:var(--surface);border-radius:18px;box-shadow:0 10px 28px rgba(4,33,40,.07);overflow:hidden">'+items.map(function(it,i){ return row(it,i===0); }).join('')+'</div>'; };
     var AWARD='<circle cx="12" cy="8" r="6"></circle><path d="M15.5 13.5L17 22l-5-3-5 3 1.5-8.5"></path>';
     var coaching=card([
-      ['fort','Fortschritt & Vitalität','Rang, Punkte, Aktivitäts-Alter',AWARD,true],
+      ['fort','Fortschritt & Vitalität','Vitalalter, Rang & Punkte',AWARD,true],
       ERN_ON?['ern','Ernährung','Tagesziel, Tracking & Rezepte','<path d="M11 21A7 7 0 0 1 4 14C4 8.5 8 4 13.5 4c2.7 0 4.6 1 6.5 1.8 0 8.7-4.3 15.2-9 15.2z"></path><path d="M11 21c0-5.5 3.3-10 7.5-12"></path>']:null,
       ERN_ON?['finnusage','FINN-Nutzung','KI-Kontingent & Verbrauch','<path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.5 8.6 8.6 0 0 1-4-1L3 20l1-5a8.4 8.4 0 0 1-1-4A8.5 8.5 0 0 1 11.5 3 8.5 8.5 0 0 1 21 11.5z"></path>']:null,
       SOCIAL_ON?['social','Trainingspartner','Verbinden, Chat & Challenges','<circle cx="9" cy="7" r="3"></circle><path d="M2.5 20c0-3.3 2.9-6 6.5-6s6.5 2.7 6.5 6"></path><circle cx="17.5" cy="8.5" r="2.4"></circle><path d="M16 14.2c2.6.4 4.5 2.5 4.5 5.3"></path>',(DATA.social&&DATA.social.requests&&DATA.social.requests.length>0)]:null
@@ -7445,6 +7500,9 @@
           setS({}); })
         .catch(function(){ S.trainFinishBusy=false; S.trainMsg='Verbindung gerade nicht möglich.'; setS({}); }); },
     trainFinishClose:function(){ S.trainFinish=null; S.trainSeg='einheit'; try{ window.scrollTo(0,0); }catch(e){} setS({}); },
+    // Vitalalter – Lebensstil-Selbstauskunft (Einwilligung + Chips), speichert sofort.
+    lsConsent:function(){ var ls=(DATA.mprofile&&typeof DATA.mprofile==='object'&&DATA.mprofile.lifestyle)||{}; lsSave(Object.assign({},ls,{consent:!ls.consent})); },
+    lsSet:function(a){ var ls=(DATA.mprofile&&typeof DATA.mprofile==='object'&&DATA.mprofile.lifestyle)||{}; if(!ls.consent) return; var p=String(a||'').split('|'); var o=Object.assign({},ls); o[p[0]]=(o[p[0]]===p[1]?'':p[1]); lsSave(o); },
     // „+" im Training: feste Hauptaktion = heutige Einheit starten. Ohne aktiven Plan
     // zuerst zum Pläne-Tab (dort Plan holen / FINN-Plan erstellen).
     trainAdd:function(){ var d=DATA.training; var mp=d&&d.myPlan&&d.myPlan.plan; if(mp&&mp.days&&mp.days.length){ ACT.trainRun(); } else { S.trainSeg='plaene'; S.trainDetail=null; S.trainGenOpen=false; setS({}); } },
