@@ -36,6 +36,7 @@ const PREMIUM_MSG = 'Der Morgen-Check mit dem Polar H9 ist ein Coach-Premium-Fea
 async function readState(id) {
   const list = await MO.list(id);
   let consent = false; try { consent = await MO.getConsent(id); } catch (e) {}
+  let teamShare = false; try { teamShare = await MO.getTeamShare(id); } catch (e) {}
   let age = 0; try { const prof = (await Coaching.kvGetJson('nutri:p:' + id)) || {}; age = Number(prof.age) || 0; } catch (e) {}
   const tier = Ent.publicTier(await Ent.getEntitlement(id));
   const base = MO.baseline(list);
@@ -47,6 +48,7 @@ async function readState(id) {
     ok: true, available: true,
     premium: !!tier.premium, tier: tier.tier, trialing: tier.trialing,
     consent: consent,
+    teamShare: teamShare,
     list: list,
     latest: latest,
     baseline: base,
@@ -59,6 +61,7 @@ async function readState(id) {
     trainingLoad: readiness ? MO.trainingLoad(readiness, latest) : null,
     insights: MO.insights(list),
     overtraining: MO.overtraining(list),
+    weekly: MO.weeklyReport(list),
     trend: MO.trend(list),
     minCalib: MO.MIN_CALIB,
     vitalLedger: MO.vpLedger(list).concat(MO.vpLedgerTraining(trList)),
@@ -111,6 +114,14 @@ module.exports = async function handler(req, res) {
       const isTrain = meas.kind === 'training';
       const r = isTrain ? await MO.trAdd(id, meas, Date.now()) : await MO.add(id, meas, Date.now());
       if (!r.ok) return j(res, 200, { ok: false, error: r.error || 'save_failed', message: 'Es kam kein verwertbarer Messwert an. Miss bitte ruhig und versuch es erneut.' });
+      return j(res, 200, Object.assign({ ok: true }, await readState(id)));
+    }
+
+    // Trainer-Freigabe der Bereitschaft (Opt-in). Einschalten nur mit bestehender Einwilligung.
+    if (action === 'teamshare') {
+      const on = body.value === true || body.value === 'true' || body.value === 1;
+      if (on && !(await MO.getConsent(id))) return j(res, 200, { ok: false, error: 'consent_required', message: 'Aktiviere zuerst den Vital-Check.' });
+      await MO.setTeamShare(id, on);
       return j(res, 200, Object.assign({ ok: true }, await readState(id)));
     }
 

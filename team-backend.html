@@ -504,7 +504,7 @@ async function openProfile(id){
   S.profileLoading=true; S.profile=null; syncUrl(true); render();   // URL -> /team/mitglieder/<id>
   try{ var r=await tapi('/api/team/members?id='+encodeURIComponent(id)); if(r.ok) S.profile=r.profile; }
   catch(e){} S.profileLoading=false; render();
-  if(S.profile){ loadProfileTags(id); loadProfileDocs(id); loadAccessMedia(id); loadMemberCheckins(id); loadMemberCoaching(id); loadMemberPreview(id); loadMemberMessages(id); loadMemberNutrition(id); loadMemberTraining(id); if(isAdmin()&&!S.rhOffersLoaded) loadRetentionOffers(); }
+  if(S.profile){ loadProfileTags(id); loadProfileDocs(id); loadAccessMedia(id); loadMemberCheckins(id); loadMemberCoaching(id); loadMemberVital(id); loadMemberPreview(id); loadMemberMessages(id); loadMemberNutrition(id); loadMemberTraining(id); if(isAdmin()&&!S.rhOffersLoaded) loadRetentionOffers(); }
 }
 // ---------- Mitglieder-Tags ----------
 // Tags des offenen Profils laden (GET ?memberId). Ohne Store -> leere Liste, kein Fehler.
@@ -808,6 +808,29 @@ function coachingBlock(p){
   '</div>';
   var lcBlock=lc?('<div style="margin-top:12px;background:#eef7f1;border:1px solid rgba(15,122,74,.16);border-radius:14px;padding:13px 15px"><div style="font-size:12px;font-weight:800;color:#0f7a4a;text-transform:uppercase;letter-spacing:.3px">Letzter Check-in · '+deDate(lc.date)+'</div><div style="font-size:13.5px;font-weight:700;color:#2c3338;margin-top:5px">'+(lc.weight!=null?(lc.weight+' kg'):'—')+(lc.waist!=null?(' · Taille '+lc.waist+' cm'):'')+' · Umsetzung '+(lc.adherence!=null?lc.adherence+'%':'—')+' · Stimmung '+(moodTxt[lc.mood]||'—')+'</div></div>'):'<div style="margin-top:12px;font-size:12.5px;color:#8a929a;font-weight:600">Noch kein Check-in.</div>';
   return accWrap('coaching','🥗 Ernährungs-Coaching', grid+lcBlock, 'Programm-Status des Mitglieds (nur Ansicht)');
+}
+// ---------- Vital-Check (read-only, nur bei Mitglieds-Freigabe) ----------
+// Zeigt NUR die aggregierte Bereitschafts-Ampel + Übertraining – keine Puls-/HRV-Rohwerte.
+async function loadMemberVital(id){
+  S.memberVitalLoading=true; scheduleRender();
+  try{ var r=await tapi('/api/team/vital?id='+encodeURIComponent(id)); S.memberVital=(r&&r.ok)?r:{shared:false}; }
+  catch(e){ S.memberVital={shared:false}; }
+  S.memberVitalLoading=false; scheduleRender();
+}
+function vitalBlock(p){
+  var v=S.memberVital;
+  if(!v||!v.shared) return '';   // nicht freigegeben -> keine Karte
+  var deDate=function(ymd){ if(!ymd) return '—'; var t=String(ymd).split('-'); return t.length===3?(t[2]+'.'+t[1]+'.'+t[0]):ymd; };
+  if(!v.hasData) return accWrap('vital','❤️ Vital-Check','<div style="font-size:12.5px;color:#8a929a;font-weight:600">Freigegeben, aber noch keine Messung.</div>','Bereitschaft (vom Mitglied freigegeben)');
+  var rd=v.readiness||{}; var lvl=rd.level;
+  var map={gruen:{emo:'🟢',lab:'Bereit',col:'#0f7a4a',bg:'#eef7f1'},gelb:{emo:'🟡',lab:'Moderat',col:'#8a6d1f',bg:'#fbf3e2'},rot:{emo:'🔴',lab:'Erholung',col:'#b5402f',bg:'#fbece8'}};
+  var s=map[lvl]||{emo:'📈',lab:'Kalibrierung',col:'#8a929a',bg:'#f2f6f7'};
+  var head='<div style="display:flex;align-items:center;gap:11px;background:'+s.bg+';border-radius:14px;padding:13px 15px"><span style="font-size:22px">'+s.emo+'</span><div style="flex:1;min-width:0"><div style="font-size:14.5px;font-weight:900;color:'+s.col+'">'+esc(rd.headline||s.lab)+(rd.score!=null?(' · '+rd.score+'/100'):'')+'</div><div style="font-size:11.5px;font-weight:700;color:#8a929a">Letzte Messung '+deDate(v.date)+'</div></div></div>';
+  var ot=v.overtraining;
+  var otBlock=(ot&&ot.level&&ot.level!=='ok')?('<div style="margin-top:10px;background:#fbece8;border:1px solid rgba(181,64,47,.16);border-radius:12px;padding:11px 13px;font-size:12.5px;font-weight:700;color:#b5402f">⚠️ '+esc(ot.note||'Übertrainings-Signal – bitte Erholung ansprechen')+'</div>'):'';
+  var wk=v.weekly;
+  var wkBlock=(wk&&(wk.gruen+wk.gelb+wk.rot)>0)?('<div style="margin-top:10px;font-size:12.5px;font-weight:700;color:#2c3338">Woche: 🟢 '+wk.gruen+' · 🟡 '+wk.gelb+' · 🔴 '+wk.rot+(wk.avgScore!=null?(' · Ø '+wk.avgScore+'/100'):'')+'</div>'):'';
+  return accWrap('vital','❤️ Vital-Check', head+otBlock+wkBlock, 'Nur Ampel &amp; Übertraining – keine Rohwerte (vom Mitglied freigegeben)');
 }
 // ---------- Ernährungs-Premium: Vorschau freischalten (nur Admin) ----------
 // Damit das Team die kostenpflichtigen Coaching-/KI-Inhalte prüfen oder einem Mitglied
@@ -2616,7 +2639,7 @@ function membersNode(){
     '</div>';
     var tabHtml;
     if(curTab==='train'){
-      tabHtml=checkinsBlock(p)+coachingBlock(p)+trainingPlanBlock(p);
+      tabHtml=checkinsBlock(p)+vitalBlock(p)+coachingBlock(p)+trainingPlanBlock(p);
     } else if(curTab==='ernaehrung'){
       tabHtml=nutritionBlock(p)+nutritionPreviewBlock(p);
     } else if(curTab==='docs'){

@@ -689,7 +689,7 @@
     if(ERN_ON&&(s==='home'||s==='fort')) loadNutri();   // Ernährungs-Vitalpunkte für Startseite/Fortschritt frisch halten
     if(s==='figur'){ S.figurAdd=false; S.figurMsg=''; S.figurErr=false; S.figurBusy=false; S.figurReviewBusy=false; loadFigur(); }
     if(s==='inbody'){ S.inbodyReview=null; S.inbodyMsg=''; S.inbodyErr=false; S.inbodyBusy=false; S.inbodyAssess=''; S.inbodyAssessBusy=false; S.ibMetric=null; S.ibAmpel=false; loadInbody(); }
-    if(s==='morning'){ moStopMeasure(); S.morningPhase='idle'; S.morningMsg=''; S.morningErr=false; S.morningBusy=false; S.morningLiveBpm=null; S.morningElapsed=0; S.morningAssess=null; S.morningAssessBusy=false; S.morningConsentBusy=false; S.morningBreathe=false; S.morningJournal={}; S.vitalMode='morgen'; S.morningMeasureKind='morgen'; loadMorning(); }
+    if(s==='morning'){ moStopMeasure(); S.morningPhase='idle'; S.morningMsg=''; S.morningErr=false; S.morningBusy=false; S.morningLiveBpm=null; S.morningElapsed=0; S.morningAssess=null; S.morningAssessBusy=false; S.morningConsentBusy=false; S.morningBreathe=false; S.morningJournal={}; S.vitalMode='morgen'; S.morningMeasureKind='morgen'; S.morningShareBusy=false; loadMorning(); }
     if(SOCIAL_ON&&(s==='home'||s==='profil')) loadSocial();   // Trainingspartner-Snapshot für Startseite/Profil
     if(s==='social'){ S.socMsg=''; S.socErr=false; S.socBusy=false; S.socCopied=false; S.socChat=null; DATA.socDm=null; S.socRoom=null; DATA.socRoomThread=null; S.socRoomCreate=false; S.socRoomInvite=false; S.socRules=false; if(window.__socBuddy){ S.socCode=window.__socBuddy; window.__socBuddy=null; } if(window.__socOpenChat){ S.socChat=String(window.__socOpenChat); window.__socOpenChat=null; DATA.socDm=null; loadDm(S.socChat); } else if(window.__socOpenRoom){ S.socRoom=String(window.__socOpenRoom); window.__socOpenRoom=null; DATA.socRoomThread=null; loadRoomThread(S.socRoom); } loadSocial(); }
     if(s==='blog'){ S.blogSel=null; S.blogPost=null; loadBlog(); }
@@ -6883,6 +6883,20 @@
     var d=morningData(); var ins=(d&&d.insights)||[]; if(!ins.length) return '';
     return '<div style="'+MO_CARD+'"><div style="font-size:15px;font-weight:900;color:var(--text);margin-bottom:2px">Deine Muster</div><div style="font-size:12px;color:var(--text-soft);font-weight:500;margin-bottom:8px">Aus deinen bisherigen Check-ins.</div>'+ins.map(function(s,i){ return '<div style="display:flex;gap:9px;padding:9px 0'+(i?';border-top:1px solid var(--border)':'')+'"><span style="font-size:15px">💡</span><div style="font-size:13px;color:var(--text-2);font-weight:600;line-height:1.45">'+esc(s)+'</div></div>'; }).join('')+'</div>';
   }
+  // Wochen-Vitalitäts-Report: Ampel-Verteilung, Ø-Bereitschaft, HRV-Alter-Trend der letzten 7 Tage.
+  function moWeeklyCard(){
+    var d=morningData(); if(!d) return ''; var w=d.weekly; if(!w) return '';
+    var total=w.gruen+w.gelb+w.rot; if(!total) return '';
+    var seg=function(n,col){ return n>0?('<div style="flex:'+n+';background:'+col+'"></div>'):''; };
+    var bar='<div style="display:flex;height:10px;border-radius:6px;overflow:hidden;margin:11px 0 8px;background:var(--surface-2)">'+seg(w.gruen,'#22a866')+seg(w.gelb,'#e0a23c')+seg(w.rot,'#d9603a')+'</div>';
+    var legend='<div style="display:flex;gap:14px;font-size:11px;font-weight:800"><span style="color:#176b37">🟢 '+w.gruen+' bereit</span><span style="color:#9a5a18">🟡 '+w.gelb+'</span><span style="color:#b4552f">🔴 '+w.rot+'</span></div>';
+    var chips=[];
+    if(w.avgScore!=null) chips.push({v:w.avgScore+'/100',l:'Ø Bereitschaft'});
+    if(w.ageDelta!=null&&w.ageDelta!==0) chips.push({v:(w.ageDelta<0?'−':'+')+Math.abs(w.ageDelta)+' J.',l:'HRV-Alter-Trend'});
+    chips.push({v:w.days+'×',l:'Messungen'});
+    var chipHtml='<div style="display:flex;gap:9px;margin-top:13px">'+chips.map(function(c){ return '<div style="flex:1;background:var(--surface-2);border-radius:12px;padding:9px 10px"><div style="font-size:15px;font-weight:900;color:var(--teal-ink)">'+esc(c.v)+'</div><div style="font-size:10px;font-weight:700;color:var(--text-soft);margin-top:1px">'+esc(c.l)+'</div></div>'; }).join('')+'</div>';
+    return '<div style="'+MO_CARD+'"><div style="font-size:15px;font-weight:900;color:var(--text)">Deine Woche im Vital-Check</div>'+bar+legend+chipHtml+'<div style="font-size:12.5px;color:var(--text-2);font-weight:600;line-height:1.5;margin-top:12px">'+esc(w.note)+'</div></div>';
+  }
   function moClock(ts){ try{ var dt=new Date(Number(ts)); return ('0'+dt.getHours()).slice(-2)+':'+('0'+dt.getMinutes()).slice(-2); }catch(e){ return ''; } }
   // Segment-Umschalter Morgen-Check-in ↔ Trainings-Check-in (Vital-Check-Oberbegriff).
   function vitalSegment(){
@@ -7005,6 +7019,13 @@
     }).join('');
     return '<div style="'+MO_CARD+'"><div style="font-size:15px;font-weight:900;color:var(--text);margin-bottom:2px">Alle Messungen</div>'+rows+'</div>';
   }
+  // Trainer-Freigabe (Opt-in): Team sieht nur die aggregierte Ampel, keine Rohwerte.
+  function moTeamShareCard(){
+    var d=morningData(); if(!d||!d.consent) return '';
+    var on=!!d.teamShare; var busy=S.morningShareBusy;
+    var sw='<button data-act="morningTeamShare" data-arg="'+(on?'0':'1')+'" role="switch" aria-checked="'+(on?'true':'false')+'" '+(busy?'disabled ':'')+'style="position:relative;width:50px;height:29px;border-radius:30px;border:none;cursor:pointer;background:'+(on?'var(--teal)':'var(--border-strong)')+';flex-shrink:0"><span style="position:absolute;top:3px;left:'+(on?'24px':'3px')+';width:23px;height:23px;border-radius:50%;background:#fff;transition:left .2s;box-shadow:0 1px 3px rgba(0,0,0,.3)"></span></button>';
+    return '<div style="'+MO_CARD+'"><div style="display:flex;align-items:center;gap:12px"><div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:900;color:var(--text)">🧑‍🏫 Trainer:in meine Bereitschaft zeigen</div><div style="font-size:12px;color:var(--text-soft);font-weight:500;line-height:1.5;margin-top:3px">Freiwillig: Dein:e Trainer:in sieht dann nur deine <b>Ampel</b> und ein Übertrainings-Signal – <b>keine</b> Puls- oder HRV-Rohwerte. Jederzeit abschaltbar.</div></div>'+sw+'</div></div>';
+  }
   function moPremiumTeaser(){
     var cc=ernCtaCopy();
     return '<div style="'+MO_CARD+';background:linear-gradient(150deg,#12879c,#0a4958);color:#fff"><div style="font-size:17px;font-weight:900">🔒 Vital-Check ist Coach Premium</div><div style="font-size:13.5px;font-weight:600;color:#cfe8ec;line-height:1.55;margin:10px 0 14px">Verbinde deinen Herzgurt per Bluetooth: Der <b>Morgen-Check-in</b> misst 2–3 Minuten Ruhepuls &amp; HRV, der <b>Trainings-Check-in</b> prüft kurz vorm Workout deine Bereitschaft. FINN erkennt an deiner persönlichen Baseline, wie bereit du bist – grün, gelb oder rot – und passt deine Empfehlung an: Vollgas, moderat oder Erholung.</div><button data-act="ernUpgradeOpen" style="width:100%;padding:14px;border:none;border-radius:14px;background:var(--surface);color:var(--teal-ink);font-weight:900;font-size:14.5px;cursor:pointer">'+esc(cc.cta)+'</button></div>';
@@ -7040,7 +7061,7 @@
       blocks.push(moMeasureCard('morgen'));
       if(d.latest){
         blocks.push(moReadinessHero()); blocks.push(moOvertrainingCard()); blocks.push(moLoadCard()); blocks.push(moZonesCard(d.readiness&&d.readiness.level)); blocks.push(moStrengthCard(d.readiness&&d.readiness.level)); blocks.push(moBalanceCard()); blocks.push(moBioAgeCard());
-        blocks.push(moEvalCard()); blocks.push(moCheckinCard()); blocks.push(moBreatheEntry()); blocks.push(moTrendCard()); blocks.push(moInsightsCard()); blocks.push(moCurvesCard()); blocks.push(moFinnCard()); blocks.push(moHistoryCard());
+        blocks.push(moEvalCard()); blocks.push(moCheckinCard()); blocks.push(moBreatheEntry()); blocks.push(moWeeklyCard()); blocks.push(moTrendCard()); blocks.push(moInsightsCard()); blocks.push(moCurvesCard()); blocks.push(moFinnCard()); blocks.push(moHistoryCard()); blocks.push(moTeamShareCard());
       } else { blocks.push(intro); blocks.push(moBreatheEntry()); }
     }
     return moWrap(head,blocks);
@@ -8491,6 +8512,8 @@
       api('/api/member/morning',{method:'POST',body:JSON.stringify({action:'consent',value:false})}).then(function(r){ if(r&&r.ok){ DATA.morning=r; S.morningAssess=null; S.morningErr=false; S.morningMsg='Einwilligung widerrufen – deine Daten wurden gelöscht.'; } rIf(['morning','fort','coach','home']); setS({}); }).catch(function(){}); },
     morningDelete:function(a){ if(!a) return; if(!window.confirm('Diese Messung wirklich löschen?')) return;
       api('/api/member/morning',{method:'POST',body:JSON.stringify({action:'delete',sel:a})}).then(function(r){ if(r&&r.ok){ DATA.morning=r; S.morningMsg=''; S.morningErr=false; } rIf(['morning','fort','coach','home']); setS({}); }).catch(function(){}); },
+    morningTeamShare:function(a){ if(S.morningShareBusy) return; S.morningShareBusy=true; render();
+      api('/api/member/morning',{method:'POST',body:JSON.stringify({action:'teamshare',value:(a==='1'||a===1||a===true)})}).then(function(r){ S.morningShareBusy=false; if(r&&r.ok&&r.list!=null){ DATA.morning=r; } setS({}); }).catch(function(){ S.morningShareBusy=false; setS({}); }); },
     morningDeleteTrain:function(a){ if(!a) return; if(!window.confirm('Diesen Trainings-Check-in wirklich löschen?')) return;
       api('/api/member/morning',{method:'POST',body:JSON.stringify({action:'delete',scope:'training',sel:a})}).then(function(r){ if(r&&r.ok){ DATA.morning=r; S.morningMsg=''; S.morningErr=false; } rIf(['morning','fort','coach','home']); setS({}); }).catch(function(){}); },
     morningAssess:function(){ if(S.morningAssessBusy) return; S.morningAssessBusy=true; render();

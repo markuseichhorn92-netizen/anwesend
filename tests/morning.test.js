@@ -146,6 +146,11 @@ function run() {
   ok('22b. FINN-Kontext nennt Übertrainings-Signal', /Übertrainings-Signal/.test(ctx));
   ok('22c. FINN-Kontext nennt HRV-Fitnessalter + Trainings-Check-in', /HRV-Fitnessalter/.test(ctx) && /Trainings-Check-in/.test(ctx));
 
+  // 23. Wochen-Vitalitäts-Report
+  const wk = MO.weeklyReport(otAlert);
+  ok('23. weeklyReport: Ampel-Verteilung + Note + Übertraining', wk && (wk.gruen + wk.gelb + wk.rot) > 0 && typeof wk.note === 'string' && wk.overtraining === 'alert');
+  ok('23b. weeklyReport null bei <3 Messungen', MO.weeklyReport([mk('2026-07-18', 55, 60)]) === null);
+
   console.log(pass ? 'MORNING PASS' : 'MORNING FAIL');
   process.exit(pass ? 0 : 1);
 }
