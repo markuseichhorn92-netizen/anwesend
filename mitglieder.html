@@ -483,7 +483,7 @@
     obStep:0, obGoal:'Gesundheit & Longevity', obFreq:3, obAge:34, obExp:'gelegentlich',
     ernFormInit:false, ernEdit:false, ernGoal:'abnehmen', ernSex:'w', ernH:170, ernW:70, ernAge:30, ernAct:'moderat', ernDiet:'omnivor',
     ernBusy:false, ernMsg:'', ernErr:false, ernAsk:'', ernAnswer:'', ernAskBusy:false, ernRecipes:null, ernRecipesBusy:false, ernCoachBusy:false, ernCoachSent:false, ernPhotoBusy:false, ernRec:false,
-    ernTab:'heute', ernPlanTab:'kochplan', ernPlanBusy:false, ernFridge:'', ernRecipeSel:null, ernRecipeSaved:false,
+    ernTab:'heute', ernPlanTab:'woche', ernPlanBusy:false, ernFridge:'', ernRecipeSel:null, ernRecipeSaved:false,
     ernLibQ:'', ernCookPick:false, ernCookDay:'0', ernKoch:null,
     ernPlanDraft:null, ernPlanDraftBusy:false, ernPlanReplaceIdx:-1, ernPlanQuiz:null,
     ernCFSwapIdx:-1, ernCFSwapTxt:'', ernCFSwapBusy:false, ernCFRefine:'', ernCFRefineBusy:false,
@@ -5235,7 +5235,7 @@
     if(c==null) return '<div style="text-align:center;color:var(--text-soft);font-size:14px;font-weight:600;padding:30px">Lädt …</div>';
     var CARD='background:var(--surface);border-radius:20px;box-shadow:0 12px 30px rgba(4,33,40,.09);padding:16px;margin-bottom:12px';
     var shop=Array.isArray(c.shopping)?c.shopping:[];
-    if(!shop.length) return '<div style="'+CARD+';text-align:center;padding:34px 22px"><div style="width:70px;height:70px;border-radius:22px;background:rgba(14,96,114,.1);display:flex;align-items:center;justify-content:center;font-size:32px;margin:0 auto">🛒</div><div style="font-size:16px;font-weight:900;color:var(--text);margin-top:16px">Noch keine Einkaufsliste</div><div style="font-size:13px;color:var(--text-muted);font-weight:500;margin-top:8px;line-height:1.5">Plane Rezepte im Koch-Plan – FINN fasst die Zutaten automatisch zusammen.</div><button data-act="ernPlanTab" data-arg="kochplan" style="margin-top:16px;padding:13px 20px;border:none;border-radius:13px;background:'+ERN_G+';color:#fff;font-weight:900;font-size:14px;cursor:pointer">Zum Koch-Plan</button></div>';
+    if(!shop.length) return '<div style="'+CARD+';text-align:center;padding:34px 22px"><div style="width:70px;height:70px;border-radius:22px;background:rgba(14,96,114,.1);display:flex;align-items:center;justify-content:center;font-size:32px;margin:0 auto">🛒</div><div style="font-size:16px;font-weight:900;color:var(--text);margin-top:16px">Noch keine Einkaufsliste</div><div style="font-size:13px;color:var(--text-muted);font-weight:500;margin-top:8px;line-height:1.5">Plane Rezepte in deiner Woche – FINN fasst die Zutaten automatisch zusammen.</div><button data-act="ernPlanTab" data-arg="woche" style="margin-top:16px;padding:13px 20px;border:none;border-radius:13px;background:'+ERN_G+';color:#fff;font-weight:900;font-size:14px;cursor:pointer">Zur Woche</button></div>';
     var done=shop.filter(function(x){return x.checked;}).length;
     var head='<div style="display:flex;align-items:center;justify-content:space-between;margin:2px 2px 12px"><span style="font-size:13px;font-weight:800;color:var(--text-muted)">'+done+' von '+shop.length+' erledigt</span>'+(done?'<button data-act="ernCookClear" style="border:none;background:none;color:#c5654f;font-size:12.5px;font-weight:800;cursor:pointer">Erledigte entfernen</button>':'')+'</div>';
     var row=function(it){ return '<button data-act="ernCookCheck" data-arg="'+encodeURIComponent(it.key)+'" aria-pressed="'+(it.checked?'true':'false')+'" style="width:100%;display:flex;align-items:center;gap:12px;background:'+(it.checked?'var(--surface-2)':'var(--surface)')+';border:none;border-radius:14px;padding:13px 14px;margin-bottom:8px;cursor:pointer;text-align:left;box-shadow:0 6px 16px rgba(4,33,40,.05)"><span style="width:24px;height:24px;border-radius:8px;background:'+(it.checked?ERN_OK:'var(--surface)')+';border:2px solid '+(it.checked?ERN_OK:'var(--border)')+';display:flex;align-items:center;justify-content:center;flex-shrink:0">'+(it.checked?svg('<path d="M20 6L9 17l-5-5"></path>',{c:'#fff',w:3,s:14}):'')+'</span><span style="flex:1;font-size:14.5px;font-weight:700;color:'+(it.checked?'var(--text-soft)':'var(--text)')+';text-decoration:'+(it.checked?'line-through':'none')+'">'+esc(it.name)+'</span><span style="font-size:13px;font-weight:800;color:var(--text-soft)">'+esc(it.amount||'')+'</span></button>'; };
@@ -5290,18 +5290,21 @@
   function ernPlan(){
     var pd=DATA.nutriPlan;
     var CARD='background:var(--surface);border-radius:20px;box-shadow:0 12px 30px rgba(4,33,40,.09);padding:16px;margin-bottom:12px';
-    var ptab=S.ernPlanTab||'kochplan', busy=S.ernPlanBusy;
-    var SEGS=[['kochplan','Koch-Plan'],['woche','Wochenplan'],['einkauf','Einkaufsliste']];
+    var ptab=(S.ernPlanTab==='einkauf')?'einkauf':'woche';   // alles außer Einkauf = Woche (auch alte „kochplan"-Zustände)
+    var SEGS=[['woche','Woche'],['einkauf','Einkaufsliste']];
     var seg='<div style="display:flex;gap:4px;background:var(--surface-2);border-radius:14px;padding:4px;margin-bottom:14px">'+SEGS.map(function(o){ var sel=ptab===o[0]; return '<button data-act="ernPlanTab" data-arg="'+o[0]+'" style="flex:1;border:none;background:'+(sel?ERN_G:'transparent')+';color:'+(sel?'#fff':'var(--text-muted)')+';font-size:12.5px;font-weight:800;padding:10px 4px;border-radius:11px;cursor:pointer">'+o[1]+'</button>'; }).join('')+'</div>';
-    // Koch-Plan: geplante Rezepte (was wann kochen). Einkaufsliste hat einen eigenen Tab.
-    if(ptab==='kochplan') return seg+ernCookPlanView();
     if(ptab==='einkauf') return seg+ernCookShoppingBlock();
-    if(pd==null){ return seg+'<div style="text-align:center;color:var(--text-soft);font-size:14px;font-weight:600;padding:30px">Lädt …</div>'; }
-    var genBtn=function(label){ return '<button data-act="ernPlanGen" '+(busy?'disabled ':'')+'style="margin-top:18px;padding:14px 22px;border:none;border-radius:14px;background:'+ERN_G+';color:#fff;font-weight:900;font-size:14.5px;cursor:pointer">'+(busy?'FINN plant …':label)+'</button>'; };
+    // „Woche": deine geplanten Rezepte (Liste + Verwaltung + FINN-Plan-CTA) oben, darunter
+    // FINN-Wochenideen. Ersetzt die früheren Sub-Tabs Koch-Plan + Wochenplan (waren redundant).
+    var wk=ernCookPlanView();
+    if(S.ernPlanDraft) return seg+wk;   // Entwurf im Fokus (ernCookPlanView zeigt dann nur den Entwurf)
+    if(pd==null) return seg+wk;         // FINN-Wochenideen laden noch – Rezepte trotzdem zeigen
+    var busy=S.ernPlanBusy;
+    var genBtn=function(label){ return '<button data-act="ernPlanGen" '+(busy?'disabled ':'')+'style="width:100%;margin-top:6px;padding:12px;border:1.5px solid var(--border);background:var(--surface);color:var(--text-muted);border-radius:14px;font-weight:800;font-size:13px;cursor:pointer">'+(busy?'FINN plant …':label)+'</button>'; };
     if(ptab==='woche'){
       // Datumsbasierte 7-Tage-Woche: DEINE geplanten Rezepte (Koch-Plan) + FINNs Vorschläge je Tag.
       var plan=pd.plan;
-      var cook=(DATA.nutriCook&&Array.isArray(DATA.nutriCook.cookplan))?DATA.nutriCook.cookplan:[];
+      var cook=[];   // deine Rezepte stehen bereits oben (ernCookPlanView); das Raster zeigt nur FINN-Ideen
       var EMO={'Frühstück':'🌅','Mittag':'☀️','Mittagessen':'☀️','Abend':'🌙','Abendessen':'🌙','Snack':'🍎','Snacks':'🍎'};
       var WD=['So','Mo','Di','Mi','Do','Fr','Sa'];
       var pmsg=S.ernMsg?'<div role="'+(S.ernErr?'alert':'status')+'" style="font-size:12.5px;font-weight:700;color:'+(S.ernErr?'var(--err-fg)':ERN_G)+';margin:0 2px 12px;line-height:1.4">'+esc(S.ernMsg)+'</div>':'';
@@ -5322,15 +5325,13 @@
           for(var pj=0;pj<plan.days.length;pj++){ if(plan.days[pj].day===wd){ fd=plan.days[pj]; pdIdx=pj; break; } }
           if(fd){ finnRows=fd.meals.map(function(m,mi){ finnKcal+=(m.kcal||0); return '<div style="display:flex;align-items:center;gap:11px;padding:10px 0;border-top:1px solid var(--border)"><span style="width:30px;height:30px;border-radius:9px;background:var(--surface-2);display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0">'+(EMO[m.label]||'🍽️')+'</span><div style="flex:1;min-width:0"><div style="font-size:10.5px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.4px">'+esc(m.label)+' · FINN-Idee</div><div style="font-size:13.5px;font-weight:700;color:var(--text);margin-top:1px">'+esc(m.title)+'</div></div><span style="font-size:12px;font-weight:800;color:var(--text-soft)">'+ernNum(m.kcal)+'</span><button data-act="ernPlanMealLog" data-arg="'+pdIdx+':'+mi+'" aria-label="'+esc(m.title)+' ins Protokoll übernehmen" style="width:30px;height:30px;border-radius:9px;border:1.5px solid rgba(14,96,114,.25);background:var(--surface-2);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'+svg('<path d="M12 5v14M5 12h14"></path>',{c:'var(--ern-acc)',w:2.4,s:15})+'</button></div>'; }).join(''); }
         }
-        if(!cookRows&&!finnRows) continue;
+        if(!finnRows) continue;
         var total=cookKcal+finnKcal;
         daysOut+='<div style="'+CARD.replace('padding:16px','padding:14px 16px 8px')+'"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2px"><span style="font-size:14.5px;font-weight:900;color:var(--text)">'+esc(label)+'</span>'+(total?'<span style="font-size:12px;font-weight:800;color:var(--ern-acc)">'+ernNum(total)+' kcal</span>':'')+'</div>'+cookRows+finnRows+'</div>';
       }
-      if(!daysOut){
-        return seg+pmsg+'<div style="'+CARD+';text-align:center;padding:30px 22px"><div style="width:70px;height:70px;border-radius:22px;background:rgba(14,96,114,.1);display:flex;align-items:center;justify-content:center;font-size:32px;margin:0 auto">🗓️</div><div style="font-size:16px;font-weight:900;color:var(--text);margin-top:16px">Deine Woche im Blick</div><div style="font-size:13px;color:var(--text-muted);font-weight:500;margin-top:8px;line-height:1.5">Plane Rezepte im Koch-Plan – sie erscheinen hier am jeweiligen Tag. FINN kann die Woche zusätzlich mit Ideen ergänzen.</div>'+genBtn('FINN-Woche ergänzen')+'</div>';
-      }
-      var intro='<div style="font-size:12px;font-weight:600;color:var(--text-soft);margin:0 2px 12px;line-height:1.4">Deine geplanten Rezepte + FINNs Vorschläge – die nächsten 7 Tage.</div>';
-      return seg+pmsg+intro+daysOut+'<button data-act="ernPlanGen" '+(busy?'disabled ':'')+'style="width:100%;padding:12px;border:1.5px solid var(--border);background:var(--surface);color:var(--text-muted);border-radius:14px;font-weight:800;font-size:13px;cursor:pointer">'+(busy?'FINN plant …':(plan?'FINN-Ideen neu':'FINN-Ideen ergänzen'))+'</button>';
+      if(!daysOut){ return seg+wk+pmsg+genBtn(plan?'FINN-Ideen neu vorschlagen':'FINN-Ideen für die Woche'); }
+      var finnHead='<div style="font-size:12px;font-weight:900;color:var(--ern-acc);text-transform:uppercase;letter-spacing:.4px;margin:8px 2px 10px">FINN-Ideen für die Woche</div>';
+      return seg+wk+finnHead+pmsg+daysOut+genBtn(plan?'FINN-Ideen neu':'FINN-Ideen ergänzen');
     }
     var shop=Array.isArray(pd.shopping)?pd.shopping:[];
     if(!shop.length){ return seg+'<div style="'+CARD+';text-align:center;padding:34px 22px"><div style="width:70px;height:70px;border-radius:22px;background:rgba(14,96,114,.1);display:flex;align-items:center;justify-content:center;font-size:32px;margin:0 auto">🛒</div><div style="font-size:16px;font-weight:900;color:var(--text);margin-top:16px">Noch keine Einkaufsliste</div><div style="font-size:13px;color:var(--text-muted);font-weight:500;margin-top:8px;line-height:1.5">Erstelle deinen Wochenplan – FINN fasst die Zutaten automatisch zusammen.</div>'+genBtn('Woche & Liste erstellen')+'</div>'; }
@@ -6768,12 +6769,12 @@
       var FOOD_IC='<path d="M4 11h16v1a8 8 0 0 1-16 0z"></path><path d="M8.5 4c0 1-1 1.2-1 2.2s1 1.2 1 2.2M12 4c0 1-1 1.2-1 2.2s1 1.2 1 2.2M15.5 4c0 1-1 1.2-1 2.2s1 1.2 1 2.2"></path>';
       var TRAIN_IC='<path d="M4 8v8M8 5.5v13M16 5.5v13M20 8v8M8 12h8"></path>';
       var onErn=(sc==='ern'); var ciIn=!!S.checkedInAt; var qaOpen=!!S.qaOpen;
-      // Kontextabhängiges „+", passt sich dem Bereich an: Ernährung → Erfassen; Training → je Segment
-      // (Pläne → FINN-Plan, sonst Übung nachschlagen); sonst der Assistent-Hub (Öffnen = „×").
-      var onTraining=(sc==='tag'); var tseg=onTraining?(S.trainSeg||'einheit'):'';
+      // „+" pro Bereich EINE feste, vorhersehbare Aktion: Ernährung → Erfassen;
+      // Training → Einheit starten; sonst der Assistent-Hub (Öffnen = „×").
+      var onTraining=(sc==='tag');
       var special=onErn||onTraining;
-      var centerAct=onErn?'ernOpenCapture':(onTraining?(tseg==='plaene'?'trainGenOpen':'trainQuickEx'):(qaOpen?'qaClose':'qaOpen'));
-      var centerLabel=onErn?'Erfassen':(onTraining?(tseg==='plaene'?'FINN-Plan':'Übung'):(qaOpen?'Schließen':'Hinzufügen'));
+      var centerAct=onErn?'ernOpenCapture':(onTraining?'trainAdd':(qaOpen?'qaClose':'qaOpen'));
+      var centerLabel=onErn?'Erfassen':(onTraining?'Starten':(qaOpen?'Schließen':'Hinzufügen'));
       var showClose=(qaOpen&&!special);
       var centerInner=showClose
         ? svg('<path d="M6 6l12 12M18 6L6 18"></path>',{c:'#fff',w:2.4,s:24})
@@ -6804,7 +6805,7 @@
       {sel:'#app [data-act="trainSeg"][data-arg="einheit"]', t:'Deine Einheit', d:'Hier startest du dein heutiges Training aus deinem aktiven Plan – Übung für Übung zum Abhaken.'},
       {sel:'#app [data-act="trainSeg"][data-arg="plaene"]', t:'Trainingspläne', d:'Fertige Pläne aus der Bibliothek oder ein persönlicher FINN-Plan – hier holst du dir dein Programm.'},
       {sel:'#app [data-act="trainSeg"][data-arg="uebungen"]', t:'Übungen nachschlagen', d:'Alle Übungen an unseren Geräten mit Anleitung – ideal direkt an der Maschine.'},
-      {sel:'.btmnav [data-act="trainQuickEx"], .btmnav [data-act="trainGenOpen"]', t:'Der Plus-Knopf', d:'Öffnet im Training genau das Passende: eine Übung nachschlagen oder einen FINN-Plan erstellen.'}
+      {sel:'.btmnav [data-act="trainAdd"]', t:'Der Plus-Knopf', d:'Startet deine heutige Einheit. Noch kein Plan? Dann führt er dich zu den Plänen.'}
     ];
     if(key==='ern') return [
       {sel:'#app [data-act="ernTab"][data-arg="heute"]', t:'Heute', d:'Dein Tagesziel mit Kalorien, Eiweiß und Wasser – alles, was du heute isst, landet hier.'},
@@ -7047,6 +7048,9 @@
     trainBack:function(){ S.trainDetail=null; S.trainDetailFull=null; setS({}); },
     trainRun:function(){ S.trainRun=true; S.trainRunDay=0; S.trainRestKey=''; S.trainRestStart=0; loadTrainSession(); setS({}); },
     trainRunClose:function(){ S.trainRun=false; S.trainRestKey=''; setS({}); },
+    // „+" im Training: feste Hauptaktion = heutige Einheit starten. Ohne aktiven Plan
+    // zuerst zum Pläne-Tab (dort Plan holen / FINN-Plan erstellen).
+    trainAdd:function(){ var d=DATA.training; var mp=d&&d.myPlan&&d.myPlan.plan; if(mp&&mp.days&&mp.days.length){ ACT.trainRun(); } else { S.trainSeg='plaene'; S.trainDetail=null; S.trainGenOpen=false; setS({}); } },
     trainRunDay:function(a){ S.trainRunDay=parseInt(a,10)||0; S.trainRestKey=''; render(); },
     trainToggle:function(key){ var it=trainSessLocal(key); it.done=!it.done; if(it.done) S.trainRestKey=''; render();
       api('/api/member/training',{method:'POST',body:JSON.stringify({action:'session-set',key:key,done:it.done})}).then(function(r){ if(r&&r.ok){ DATA.trainSess={items:r.items||{},planId:r.planId}; render(); } }).catch(function(){});
@@ -7558,7 +7562,7 @@
     ernTab:function(a){ S.ernTab=a; S.ernMsg=''; S.ernErr=false; S.ernRecipeSel=null; S.ernChatOpen=false; S.ernLesson=null; S.ernVert=null; S.ernLessonData=null; S.ernCk=false; S.ernCkResult=null; if(a==='heute'&&S.ernViewDate){ S.ernViewDate=''; loadNutri(); } if(a==='plan'){ if(DATA.nutriCook==null) loadCook(); if((S.ernPlanTab==='woche'||S.ernPlanTab==='einkauf')&&DATA.nutriPlan==null) loadNutriPlan(); } if(a==='rezepte'){ if(DATA.nutriSaved==null) loadSaved(); if(DATA.nutriLib==null) loadLib(); if(DATA.nutriCook==null) loadCook(); } if(a==='coach') loadCoach(); if(a==='verlauf') loadWeek(); setQuiet({}); },
     ernFastPlan:function(a){ api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'fast',do:'plan',plan:a})}).then(function(d){ if(d&&d.ok) DATA.nutri=d; render(); }).catch(function(){}); },
     ernFastToggle:function(){ if(S.ernFastBusy) return; var act=ernFastMs().active?'stop':'start'; S.ernFastBusy=true; api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'fast',do:act})}).then(function(d){ S.ernFastBusy=false; if(d&&d.ok){ DATA.nutri=d; } else { S.ernErr=true; S.ernMsg=(d&&d.message)||'Fasten-Timer konnte nicht umgeschaltet werden.'; } render(); }).catch(function(){ S.ernFastBusy=false; S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); }); },
-    ernPlanTab:function(a){ if((a==='kochplan'||a==='einkauf')&&DATA.nutriCook==null) loadCook(); if(a==='woche'&&DATA.nutriPlan==null) loadNutriPlan(); setQuiet({ernPlanTab:a}); },
+    ernPlanTab:function(a){ if(DATA.nutriCook==null) loadCook(); if(a!=='einkauf'&&DATA.nutriPlan==null) loadNutriPlan(); setQuiet({ernPlanTab:a}); },
     // „FINN-Ideen ergänzen"/„Plan vorschlagen" öffnen jetzt den Fragebogen (welche Mahlzeiten + Vorlieben).
     ernPlanGen:function(){ if(S.ernPlanDraftBusy) return; if(ernNeedPremium()) return; setQuiet({ernPlanQuiz:ernPlanQuizDefaults(),ernMsg:'',ernErr:false}); },
     ernPlanMealLog:function(a){ var p=String(a||'').split(':'); var pl=DATA.nutriPlan&&DATA.nutriPlan.plan; var d=pl&&pl.days&&pl.days[parseInt(p[0],10)]; var m=d&&d.meals&&d.meals[parseInt(p[1],10)]; if(!m||S.ernBusy) return;
@@ -7594,7 +7598,7 @@
     ernCookAdd:function(){ var r=S.ernRecipeSel; if(!r||S.ernBusy) return; var serv=Math.max(1,Math.min(12,parseInt(S.ernRecipeServ,10)||1)); var off=parseInt(S.ernCookDay,10)||0; var d=new Date(); d.setDate(d.getDate()+off); var p=function(n){return(n<10?'0':'')+n;}; var ymd=d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());
       S.ernBusy=true; render();
       api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'cookplan-add',recipe:r,servings:serv,date:ymd})})
-      .then(function(res){ S.ernBusy=false; if(res&&res.ok){ DATA.nutriCook={cookplan:res.cookplan||[],shopping:res.shopping||[]}; S.ernCookPick=false; S.ernRecipeSel=null; S.ernTab='plan'; S.ernPlanTab='kochplan'; S.ernMsg='Zum Koch-Plan hinzugefügt: '+r.title; S.ernErr=false; } else { S.ernErr=true; S.ernMsg=(res&&res.message)||'Konnte nicht hinzufügen – bitte erneut.'; } render(); try{ window.scrollTo(0,0); }catch(e){} })
+      .then(function(res){ S.ernBusy=false; if(res&&res.ok){ DATA.nutriCook={cookplan:res.cookplan||[],shopping:res.shopping||[]}; S.ernCookPick=false; S.ernRecipeSel=null; S.ernTab='plan'; S.ernPlanTab='woche'; S.ernMsg='Zum Koch-Plan hinzugefügt: '+r.title; S.ernErr=false; } else { S.ernErr=true; S.ernMsg=(res&&res.message)||'Konnte nicht hinzufügen – bitte erneut.'; } render(); try{ window.scrollTo(0,0); }catch(e){} })
       .catch(function(){ S.ernBusy=false; S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); }); },
     ernCookRemove:function(a){ api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'cookplan-remove',id:a})}).then(function(d){ if(d&&d.ok){ DATA.nutriCook={cookplan:d.cookplan||[],shopping:d.shopping||[]}; } render(); }).catch(function(){}); },
     ernCookDone:function(a){ api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'cookplan-done',id:a})}).then(function(d){ if(d&&d.ok){ DATA.nutriCook={cookplan:d.cookplan||[],shopping:d.shopping||[]}; } render(); }).catch(function(){}); },
@@ -7626,7 +7630,7 @@
           // Planslots: EINE Portion je Mahlzeit (das isst du) – so bleibt die Tages-kcal realistisch.
           // dayOffset kommt vom Server (Mehrtagesplanung).
           S.ernPlanDraft=d.recipes.map(function(r){ return {recipe:r, meal:(r.meal||null), dayOffset:Math.max(0,Math.min(13,parseInt(r.dayOffset,10)||0)), servings:1}; });
-          S.ernPlanQuiz=null; S.ernTab='plan'; S.ernPlanTab='kochplan'; DATA.nutriLib=null; loadLib();
+          S.ernPlanQuiz=null; S.ernTab='plan'; S.ernPlanTab='woche'; DATA.nutriLib=null; loadLib();
         } else { S.ernErr=true; S.ernMsg=(d&&d.message)||'FINN kann gerade nicht planen. Versuch es gleich nochmal.'; }
         render(); try{ window.scrollTo(0,0); }catch(e){}
       })
