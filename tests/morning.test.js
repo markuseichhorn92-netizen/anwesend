@@ -90,6 +90,27 @@ function run() {
   // 14. toPromptText nennt die vegetative Balance
   ok('14. toPromptText enthält Anspannung↔Regeneration', /Anspannung↔Regeneration/.test(MO.toPromptText(list)));
 
+  // 15. Fragebogen-Felder (Whoop-Journal) werden übernommen
+  var jm = MO.sanitize({ rhr: 55, sleepSelf: 'gut', moodSelf: 'ok', stressSelf: 'hoch', soreness: 'stark', sick: '1' });
+  ok('15. sanitize Journal (stress/soreness/sick)', jm.stressSelf === 'hoch' && jm.soreness === 'stark' && jm.sick === 1);
+  ok('15b. sick nein -> 0', MO.sanitize({ rhr: 55, sick: 'nein' }).sick === 0);
+  ok('15c. ungültiger Stress -> leer', MO.sanitize({ rhr: 55, stressSelf: 'foo' }).stressSelf === '');
+
+  // 16. Subjektive Kappung der Belastungssteuerung
+  ok('16. gute Ampel aber angeschlagen -> Ruhe', MO.trainingLoad({ level: 'gruen' }, MO.sanitize({ rhr: 55, sick: '1' })).key === 'ruhe');
+  ok('16b. gute Ampel aber schlecht geschlafen -> moderat', MO.trainingLoad({ level: 'gruen' }, MO.sanitize({ rhr: 55, sleepSelf: 'schlecht' })).key === 'moderat');
+  ok('16c. gute Ampel ohne Flags -> voll (keine Kappung)', MO.trainingLoad({ level: 'gruen' }, MO.sanitize({ rhr: 55 })).key === 'voll');
+  ok('16d. Kappung hebt nie an (rote Ampel bleibt Ruhe)', MO.trainingLoad({ level: 'rot' }, MO.sanitize({ rhr: 55 })).key === 'ruhe');
+
+  // 17. Muster-Erkenntnisse (insights): guter vs. schlechter Schlaf -> RHR-Unterschied
+  var big = [];
+  ['2026-07-18', '2026-07-17', '2026-07-16'].forEach(function (dt) { big.push(MO.sanitize({ date: dt, rhr: 52, hrvRmssd: 66, sleepSelf: 'gut' })); });
+  ['2026-07-15', '2026-07-14', '2026-07-13'].forEach(function (dt) { big.push(MO.sanitize({ date: dt, rhr: 60, hrvRmssd: 50, sleepSelf: 'schlecht' })); });
+  ['2026-07-12', '2026-07-11'].forEach(function (dt) { big.push(MO.sanitize({ date: dt, rhr: 56, hrvRmssd: 58, sleepSelf: 'ok' })); });
+  var ins = MO.insights(big);
+  ok('17. insights liefert Muster (>=1)', Array.isArray(ins) && ins.length >= 1 && /gutem Schlaf/.test(ins.join(' ')));
+  ok('17b. insights leer bei <8 Messungen', MO.insights(big.slice(0, 5)).length === 0);
+
   console.log(pass ? 'MORNING PASS' : 'MORNING FAIL');
   process.exit(pass ? 0 : 1);
 }

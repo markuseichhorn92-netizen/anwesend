@@ -689,7 +689,7 @@
     if(ERN_ON&&(s==='home'||s==='fort')) loadNutri();   // Ernährungs-Vitalpunkte für Startseite/Fortschritt frisch halten
     if(s==='figur'){ S.figurAdd=false; S.figurMsg=''; S.figurErr=false; S.figurBusy=false; S.figurReviewBusy=false; loadFigur(); }
     if(s==='inbody'){ S.inbodyReview=null; S.inbodyMsg=''; S.inbodyErr=false; S.inbodyBusy=false; S.inbodyAssess=''; S.inbodyAssessBusy=false; S.ibMetric=null; S.ibAmpel=false; loadInbody(); }
-    if(s==='morning'){ moStopMeasure(); S.morningPhase='idle'; S.morningMsg=''; S.morningErr=false; S.morningBusy=false; S.morningLiveBpm=null; S.morningElapsed=0; S.morningAssess=null; S.morningAssessBusy=false; S.morningConsentBusy=false; S.morningBreathe=false; loadMorning(); }
+    if(s==='morning'){ moStopMeasure(); S.morningPhase='idle'; S.morningMsg=''; S.morningErr=false; S.morningBusy=false; S.morningLiveBpm=null; S.morningElapsed=0; S.morningAssess=null; S.morningAssessBusy=false; S.morningConsentBusy=false; S.morningBreathe=false; S.morningJournal={}; loadMorning(); }
     if(SOCIAL_ON&&(s==='home'||s==='profil')) loadSocial();   // Trainingspartner-Snapshot für Startseite/Profil
     if(s==='social'){ S.socMsg=''; S.socErr=false; S.socBusy=false; S.socCopied=false; S.socChat=null; DATA.socDm=null; S.socRoom=null; DATA.socRoomThread=null; S.socRoomCreate=false; S.socRoomInvite=false; S.socRules=false; if(window.__socBuddy){ S.socCode=window.__socBuddy; window.__socBuddy=null; } if(window.__socOpenChat){ S.socChat=String(window.__socOpenChat); window.__socOpenChat=null; DATA.socDm=null; loadDm(S.socChat); } else if(window.__socOpenRoom){ S.socRoom=String(window.__socOpenRoom); window.__socOpenRoom=null; DATA.socRoomThread=null; loadRoomThread(S.socRoom); } loadSocial(); }
     if(s==='blog'){ S.blogSel=null; S.blogPost=null; loadBlog(); }
@@ -6634,6 +6634,7 @@
     var meas={ date:moToday(), rhr:moMedian(half), hrMin:Math.min.apply(null,samples.map(function(s){return s.bpm;})) };
     var hrv=moRmssd(rr); if(hrv!=null&&rr.length>=20) meas.hrvRmssd=hrv;
     var sdnn=moSdnn(rr); if(sdnn!=null&&rr.length>=20) meas.hrvSdnn=sdnn;
+    var j=S.morningJournal||{}; ['sleepSelf','moodSelf','stressSelf','soreness','sick'].forEach(function(f){ if(j[f]!=null&&j[f]!=='') meas[f]=j[f]; });
     moSave(meas);
   }
   function moSave(meas){
@@ -6721,6 +6722,45 @@
       '<button data-act="morningBreatheClose" style="border:none;border-radius:13px;background:var(--surface-2);color:var(--teal-ink);font-weight:800;font-size:14px;padding:12px 24px;cursor:pointer">Fertig</button>'+
     '</div>';
     return '<div class="narrow" style="display:flex;flex-direction:column;gap:14px">'+head+body+'</div>';
+  }
+  // Morgen-Fragebogen (Whoop-Journal): Chip-Auswahl je Frage.
+  function moChips(field,opts){
+    var sel=(S.morningJournal||{})[field];
+    return '<div style="display:flex;gap:7px;flex-wrap:wrap;margin-top:7px">'+opts.map(function(o){ var on=sel===o[0]; return '<button data-act="morningJournalSet" data-arg="'+field+':'+o[0]+'" style="border:1.5px solid '+(on?ERN_G:'var(--border-strong)')+';border-radius:20px;background:'+(on?ERN_G:'var(--surface)')+';color:'+(on?'#fff':'var(--text-2)')+';font-size:12.5px;font-weight:800;padding:8px 13px;cursor:pointer">'+esc(o[1])+'</button>'; }).join('')+'</div>';
+  }
+  function moJournalCard(){
+    var head=subHeader('Morgen-Check-in','Wie fühlst du dich heute?','morning');
+    var row=function(label,field,opts){ return '<div style="padding:13px 0;border-top:1px solid var(--border)"><div style="font-size:13.5px;font-weight:800;color:var(--text)">'+label+'</div>'+moChips(field,opts)+'</div>'; };
+    var body='<div style="'+MO_CARD+'">'+
+      '<div style="font-size:16px;font-weight:900;color:var(--text)">Kurzer Check-in vor der Messung</div>'+
+      '<div style="font-size:12.5px;color:var(--text-soft);font-weight:500;margin-top:4px;line-height:1.5">Wie war deine Nacht, wie fühlst du dich? FINN bezieht das in die Auswertung ein. Freiwillig – du kannst auch überspringen.</div>'+
+      row('😴 Schlaf','sleepSelf',[['schlecht','schlecht'],['ok','ok'],['gut','gut']])+
+      row('⚡ Energie','moodSelf',[['schlecht','müde'],['ok','ok'],['gut','topfit']])+
+      row('🧠 Stress','stressSelf',[['niedrig','niedrig'],['mittel','mittel'],['hoch','hoch']])+
+      row('💪 Muskelkater','soreness',[['kein','kein'],['leicht','leicht'],['stark','stark']])+
+      row('🤒 Fühlst du dich angeschlagen?','sick',[['0','nein'],['1','ja']])+
+      '<div style="display:flex;gap:9px;margin-top:16px">'+
+        '<button data-act="morningJournalSkip" style="border:1.5px solid var(--border);border-radius:13px;background:var(--surface);color:var(--text-soft);font-weight:800;font-size:14px;padding:12px 16px;cursor:pointer">Überspringen</button>'+
+        '<button data-act="morningJournalNext" style="flex:1;border:none;border-radius:13px;background:var(--teal);color:#fff;font-weight:800;font-size:15px;padding:13px;cursor:pointer">❤️ Weiter zur Messung</button>'+
+      '</div></div>';
+    return '<div class="narrow" style="display:flex;flex-direction:column;gap:14px">'+head+body+'</div>';
+  }
+  // „Dein Check-in" – zeigt die Fragebogen-Antworten der letzten Messung.
+  function moCheckinCard(){
+    var d=morningData(); var m=d&&d.latest; if(!m) return '';
+    var bits=[];
+    if(m.sleepSelf) bits.push('😴 Schlaf: '+m.sleepSelf);
+    if(m.moodSelf) bits.push('⚡ Energie: '+(m.moodSelf==='gut'?'topfit':(m.moodSelf==='schlecht'?'müde':'ok')));
+    if(m.stressSelf) bits.push('🧠 Stress: '+m.stressSelf);
+    if(m.soreness&&m.soreness!=='kein') bits.push('💪 Muskelkater: '+m.soreness);
+    if(m.sick===1) bits.push('🤒 angeschlagen');
+    if(!bits.length) return '';
+    return '<div style="'+MO_CARD+'"><div style="font-size:15px;font-weight:900;color:var(--text);margin-bottom:8px">Dein Check-in</div><div style="display:flex;flex-wrap:wrap;gap:8px">'+bits.map(function(b){ return '<div style="background:var(--surface-2);border-radius:11px;padding:8px 11px;font-size:12px;font-weight:700;color:var(--text-2)">'+esc(b)+'</div>'; }).join('')+'</div></div>';
+  }
+  // „Deine Muster" – Whoop-artige Korrelationen aus den Check-ins.
+  function moInsightsCard(){
+    var d=morningData(); var ins=(d&&d.insights)||[]; if(!ins.length) return '';
+    return '<div style="'+MO_CARD+'"><div style="font-size:15px;font-weight:900;color:var(--text);margin-bottom:2px">Deine Muster</div><div style="font-size:12px;color:var(--text-soft);font-weight:500;margin-bottom:8px">Aus deinen bisherigen Check-ins.</div>'+ins.map(function(s,i){ return '<div style="display:flex;gap:9px;padding:9px 0'+(i?';border-top:1px solid var(--border)':'')+'"><span style="font-size:15px">💡</span><div style="font-size:13px;color:var(--text-2);font-weight:600;line-height:1.45">'+esc(s)+'</div></div>'; }).join('')+'</div>';
   }
   function moMeasureCard(){
     var d=morningData(); if(!d) return '';
@@ -6824,10 +6864,11 @@
     if(!d.premium){ blocks.push(moPremiumTeaser()); blocks.push(intro); return moWrap(head,blocks); }
     if(S.morningPhase==='consent' || !d.consent){ blocks.push(moConsentCard()); if(!d.latest) blocks.push(intro); return moWrap(head,blocks); }
     if(S.morningBreathe) return moBreatheCard();
+    if(S.morningPhase==='journal') return moJournalCard();
     blocks.push(moMeasureCard());
     if(d.latest){
       blocks.push(moReadinessHero()); blocks.push(moLoadCard()); blocks.push(moBalanceCard()); blocks.push(moBioAgeCard());
-      blocks.push(moEvalCard()); blocks.push(moBreatheEntry()); blocks.push(moTrendCard()); blocks.push(moCurvesCard()); blocks.push(moFinnCard()); blocks.push(moHistoryCard());
+      blocks.push(moEvalCard()); blocks.push(moCheckinCard()); blocks.push(moBreatheEntry()); blocks.push(moTrendCard()); blocks.push(moInsightsCard()); blocks.push(moCurvesCard()); blocks.push(moFinnCard()); blocks.push(moHistoryCard());
     } else { blocks.push(intro); blocks.push(moBreatheEntry()); }
     return moWrap(head,blocks);
   }
@@ -8255,7 +8296,10 @@
     },
     // ── Morgen-Check (Polar H9) ──
     morningReload:function(){ DATA.morning=null; render(); loadMorning(); },
-    morningMeasure:function(){ moStartMeasure(); },
+    morningMeasure:function(){ var d=morningData(); if(!d) return; if(!d.premium){ ernEnsureModulePrice(); setS({ernUpgrade:true}); return; } if(!d.consent){ S.morningPhase='consent'; setS({}); return; } S.morningPhase='journal'; try{ window.scrollTo(0,0); }catch(e){} setS({}); },
+    morningJournalSet:function(a){ if(!a) return; var i=a.indexOf(':'); if(i<0) return; var f=a.slice(0,i), v=a.slice(i+1); S.morningJournal=S.morningJournal||{}; if(S.morningJournal[f]===v) delete S.morningJournal[f]; else S.morningJournal[f]=v; setS({}); },
+    morningJournalNext:function(){ moStartMeasure(); },
+    morningJournalSkip:function(){ moStartMeasure(); },
     morningCancel:function(){ moStopMeasure(); S.morningPhase='idle'; S.morningLiveBpm=null; S.morningElapsed=0; setS({}); },
     morningFinish:function(){ moFinishMeasure(); },
     morningConsentCancel:function(){ S.morningPhase='idle'; setS({}); },
