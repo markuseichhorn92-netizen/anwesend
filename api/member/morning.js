@@ -36,9 +36,11 @@ const PREMIUM_MSG = 'Der Morgen-Check mit dem Polar H9 ist ein Coach-Premium-Fea
 async function readState(id) {
   const list = await MO.list(id);
   let consent = false; try { consent = await MO.getConsent(id); } catch (e) {}
+  let age = 0; try { const prof = (await Coaching.kvGetJson('nutri:p:' + id)) || {}; age = Number(prof.age) || 0; } catch (e) {}
   const tier = Ent.publicTier(await Ent.getEntitlement(id));
   const base = MO.baseline(list);
   const latest = list[0] || null;
+  const readiness = latest ? MO.readiness(latest, base) : null;
   return {
     ok: true, available: true,
     premium: !!tier.premium, tier: tier.tier, trialing: tier.trialing,
@@ -47,7 +49,10 @@ async function readState(id) {
     latest: latest,
     baseline: base,
     eval: latest ? MO.evaluate(latest, base) : [],
-    readiness: latest ? MO.readiness(latest, base) : null,
+    readiness: readiness,
+    balance: latest ? MO.balance(latest, base) : null,
+    bioAge: latest ? MO.hrvAge(latest, age, base) : null,
+    trainingLoad: readiness ? MO.trainingLoad(readiness) : null,
     trend: MO.trend(list),
     minCalib: MO.MIN_CALIB,
     vitalLedger: MO.vpLedger(list),
@@ -106,13 +111,15 @@ module.exports = async function handler(req, res) {
       if (!list.length) return j(res, 200, { ok: false, error: 'no_data', message: 'Miss zuerst deinen Morgen-Check.' });
       if (!AI.hasAI) return j(res, 200, { ok: false, error: 'no_ai', message: 'FINN ist gerade nicht verfügbar.' });
       const m = list[0]; const base = MO.baseline(list); const t = MO.trend(list);
+      const bal = MO.balance(m, base); const ba = MO.hrvAge(m, 0, base);
       let firstName = '', goal = '', age = 0, plannedTraining = '';
       try { const mem = await M.getMember(id); firstName = (mem && mem.firstName) || ''; } catch (e) {}
       try { const prof = (await Coaching.kvGetJson('nutri:p:' + id)) || {}; goal = prof.goal || ''; age = Number(prof.age) || 0; } catch (e) {}
       try { const act = await Training.resolveActive(id); if (act && act.plan) plannedTraining = act.plan.title || ''; } catch (e) {}
       const r = await AI.coachMorningCheck({
         firstName: firstName, goal: goal,
-        rhr: m.rhr, rhrBaseline: base.rhr, hrv: m.hrvRmssd, hrvBaseline: base.hrv,
+        rhr: m.rhr, rhrBaseline: base.rhr, hrv: m.hrvRmssd, hrvBaseline: base.hrv, sdnn: m.hrvSdnn,
+        balance: (bal && bal.value != null) ? bal.value : null, balanceLabel: (bal && bal.value != null) ? bal.label : '',
         respRate: m.respRate, orthostatic: m.orthostaticDelta, sleepSelf: m.sleepSelf, moodSelf: m.moodSelf,
         trendRhr: (t && t.sincePrev) ? t.sincePrev.rhr : null,
         plannedTraining: plannedTraining, calibrating: base.calibrating,

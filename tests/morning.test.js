@@ -66,6 +66,30 @@ function run() {
   ok('9. hasAny true bei RHR', MO.hasAny(mk('2026-07-18', 55)) === true);
   ok('9b. hasAny false bei leerem Objekt', MO.hasAny(MO.sanitize({})) === false);
 
+  // 10. SDNN wird übernommen + evaluiert
+  ok('10. sanitize hrvSdnn (Alias sdnn)', MO.sanitize({ sdnn: 65 }).hrvSdnn === 65);
+  const evS = MO.evaluate(MO.sanitize({ rhr: 55, hrvRmssd: 60, sdnn: 70 }), base);
+  ok('10b. evaluate enthält SDNN-Zeile', !!evS.find(function (x) { return x.key === 'sdnn'; }));
+
+  // 11. Vegetative Balance (Anspannung <-> Regeneration)
+  ok('11. Gute Werte -> hohe Balance (Regeneration)', (function () { var b = MO.balance(mk('2026-07-18', 54, 66), base); return b && b.value >= 66 && b.level === 'regeneration'; })());
+  ok('11b. Stress-Werte -> niedrige Balance (Anspannung)', (function () { var b = MO.balance(mk('2026-07-18', 70, 38), base); return b && b.value <= 40 && b.level === 'anspannung'; })());
+  ok('11c. Ohne Baseline -> kalibrierung', (function () { var b = MO.balance(few[0], MO.baseline(few)); return b && b.level === 'kalibrierung'; })());
+
+  // 12. HRV-Fitnessalter
+  const ha = MO.hrvAge(mk('2026-07-18', 55, 42), 40, base);   // base.hrv ~60 -> jung
+  ok('12. hrvAge nutzt Baseline-HRV + liefert age/delta', ha && typeof ha.age === 'number' && ha.actualAge === 40 && typeof ha.delta === 'number');
+  ok('12b. hohe HRV -> jüngeres HRV-Alter als 40', ha.age < 40);
+  ok('12c. hrvAge null ohne HRV', MO.hrvAge(mk('2026-07-18', 55), 40, { rhr: 55 }) === null);
+
+  // 13. Belastungssteuerung aus Ampel
+  ok('13. grün -> volle Belastung', MO.trainingLoad({ level: 'gruen' }).key === 'voll');
+  ok('13b. rot -> Regeneration', MO.trainingLoad({ level: 'rot' }).key === 'ruhe');
+  ok('13c. kalibrierung -> kalibrierung', MO.trainingLoad({ level: 'kalibrierung' }).key === 'kalibrierung');
+
+  // 14. toPromptText nennt die vegetative Balance
+  ok('14. toPromptText enthält Anspannung↔Regeneration', /Anspannung↔Regeneration/.test(MO.toPromptText(list)));
+
   console.log(pass ? 'MORNING PASS' : 'MORNING FAIL');
   process.exit(pass ? 0 : 1);
 }
