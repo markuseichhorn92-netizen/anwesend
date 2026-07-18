@@ -770,7 +770,7 @@
   function loadModules(){ if(modulesBusy) return; if(DATA.modules&&typeof DATA.modules==='object') return; modulesBusy=true;
     api('/api/member/modules').then(function(d){ modulesBusy=false; DATA.modules=(d&&d.ok)?{available:!!d.available,booked:(d.booked||[]),bookable:(d.bookable||[]),premium:(d.premium||null),premiumOffer:(d.premiumOffer||null)}:{available:false}; render(); })
       .catch(function(){ modulesBusy=false; DATA.modules={available:false}; render(); }); }
-  // Ernährungs-Premium (Magicline-Zusatzmodul, SEPA) in der Vertragsverwaltung kündigen.
+  // Coach Premium (Magicline-Zusatzmodul, SEPA) in der Vertragsverwaltung kündigen.
   // Kündigt NUR das Modul, nie die Mitgliedschaft; Modul-Vertrags-ID kommt server-seitig.
   function modCancelPrem(){
     if(S.modBusyId) return;
@@ -1788,7 +1788,7 @@
   }
   function obOverlayHtml(){
     var step=S.obStep||0;
-    var dots=''; for(var i=0;i<10;i++){ dots+='<span style="flex:1;height:5px;border-radius:4px;background:'+(i<=step?'#F6A964':'rgba(255,255,255,.18)')+'"></span>'; }
+    var dots=''; for(var i=0;i<11;i++){ dots+='<span style="flex:1;height:5px;border-radius:4px;background:'+(i<=step?'#F6A964':'rgba(255,255,255,.18)')+'"></span>'; }
     // FINN-Einschätzung zum Ziel (computed, wird als FINNs Take präsentiert) – reagiert auf Ziel/Werte.
     var obGoalEst=function(){
       var g=S.obGoal||'', w=parseInt(S.obWeightKg,10)||0, t=parseInt(S.obTargetWeight,10)||0, f=parseInt(S.obFreq,10)||3;
@@ -1809,7 +1809,7 @@
     var hTitle=function(t,s){ return '<div style="font-size:23px;font-weight:900;letter-spacing:-.4px;line-height:1.15">'+t+'</div>'+(s?'<div style="font-size:13.5px;color:#aed0d6;font-weight:500;margin-top:8px;line-height:1.5">'+s+'</div>':''); };
     var inner='';
     if(step===0){
-      inner='<div style="flex:1;display:flex;flex-direction:column;justify-content:center;text-align:center"><div style="font-size:60px">👋</div><div style="font-size:30px;font-weight:900;letter-spacing:-.6px;margin-top:14px;line-height:1.12">Willkommen bei<br>Fit-Inn Trier</div><div style="font-size:15px;color:#aed0d6;font-weight:500;line-height:1.55;margin-top:14px;max-width:315px;align-self:center">Ein paar kurze Fragen – damit dein Coach FINN dich passend zu deinem Ziel, deinem Alltag und deiner Gesundheit begleiten kann. Alles freiwillig und jederzeit in den Einstellungen änderbar.</div></div>';
+      inner='<div style="flex:1;display:flex;flex-direction:column;justify-content:center;text-align:center"><div style="font-size:60px">👋</div><div style="font-size:30px;font-weight:900;letter-spacing:-.6px;margin-top:14px;line-height:1.12">Willkommen bei<br>Fit-Inn Trier</div><div style="font-size:15px;color:#aed0d6;font-weight:500;line-height:1.55;margin-top:14px;max-width:315px;align-self:center">Ein paar kurze Fragen – damit dein Coach FINN dich passend zu deinem Ziel, deinem Alltag und deiner Gesundheit begleiten kann: vom Trainingsplan über die Ernährung bis zu deinem neuen <b>Vital-Check</b>. Alles freiwillig und jederzeit in den Einstellungen änderbar.</div></div>';
     } else if(step===1){
       inner='<div style="flex:1">'+hTitle('Was ist dein<br>wichtigstes Ziel?','Daran richtet dein Coach alles aus.')+'<div style="display:flex;flex-direction:column;gap:10px;margin-top:22px">'+
         goals.map(function(g){ var sel=S.obGoal===g[0]; return '<button data-act="obGoal" data-arg="'+esc(g[0])+'" style="display:flex;align-items:center;gap:13px;width:100%;padding:15px;border:2px solid '+optBorder(sel)+';border-radius:15px;background:'+optBg(sel)+';cursor:pointer;text-align:left"><span style="font-size:23px">'+g[1]+'</span><span style="flex:1;font-size:15.5px;font-weight:800;color:#fff">'+esc(g[0])+'</span>'+(sel?svg('<path d="M5 13l4 4L19 7"></path>',{c:'#7fd8e0',w:2.6,s:20}):'')+'</button>'; }).join('')+'</div></div>';
@@ -1865,16 +1865,24 @@
       var alChips=alOpts.map(function(x){ return chip((S.obAllergies||[]).indexOf(x)>=0,x,'obToggle','allergies|'+x); }).join('');
       inner='<div style="flex:1">'+hTitle('Wie ernährst du dich?','FINN passt Rezepte und Tipps daran an.')+chipsWrap(dietChips)+
         subLbl('Allergien oder Unverträglichkeiten?')+chipsWrap(chip((S.obAllergies||[]).length===0,'Keine','obNone','allergies')+alChips)+'</div>';
-    } else {
+    } else if(step===9){
       // Schritt 9: Einwilligung fürs FINN-Gedächtnis (freiwillig, Standard aus).
       var memSw='<button data-act="obMemToggle" role="switch" aria-checked="'+(S.obMemConsent?'true':'false')+'" style="position:relative;width:52px;height:31px;border-radius:30px;border:none;cursor:pointer;background:'+(S.obMemConsent?'#7fd8e0':'rgba(255,255,255,.22)')+';flex-shrink:0;transition:background .2s"><span style="position:absolute;top:3px;left:'+(S.obMemConsent?'24px':'3px')+';width:25px;height:25px;border-radius:50%;background:#fff;transition:left .2s;box-shadow:0 1px 3px rgba(0,0,0,.35)"></span></button>';
       inner='<div style="flex:1">'+hTitle('Darf FINN sich<br>Dinge merken?','Dein Coach FINN kann sich Ziel, Vorlieben und Einschränkungen über Gespräche hinweg merken – so wird er persönlicher. Nur für dich, jederzeit in den Einstellungen löschbar. Keine sensiblen Gesundheitsdiagnosen.')+
         '<div style="display:flex;align-items:center;gap:14px;margin-top:24px;background:rgba(255,255,255,.1);border-radius:16px;padding:16px 18px"><div style="flex:1;min-width:0"><div style="font-size:15.5px;font-weight:800;color:#fff">FINN darf sich Dinge merken</div><div style="font-size:12.5px;color:#aed0d6;font-weight:500;margin-top:2px">Empfohlen für persönlicheres Coaching.</div></div>'+memSw+'</div>'+
         '<div style="font-size:12px;color:#8fb3ba;font-weight:500;margin-top:14px;line-height:1.5">Du kannst das jederzeit in den Einstellungen ändern.</div></div>';
+    } else {
+      // Schritt 10: Vital-Check – Ausblick & Werbung (Teil von Coach Premium).
+      var amp=function(c,t){ return '<div style="flex:1;text-align:center"><div style="width:34px;height:34px;border-radius:50%;background:'+c+';margin:0 auto;box-shadow:0 6px 16px '+c+'66"></div><div style="font-size:11px;color:#aed0d6;font-weight:700;margin-top:7px">'+t+'</div></div>'; };
+      inner='<div style="flex:1">'+hTitle('Neu: dein Vital-Check ❤️','Miss morgens kurz deine Bereitschaft – FINN sagt dir, wann Vollgas und wann Erholung dran ist.')+
+        '<div style="display:flex;gap:10px;margin-top:22px">'+amp('#1c9b5e','Bereit')+amp('#e0a52f','Moderat')+amp('#d9603a','Erholung')+'</div>'+
+        '<div style="margin-top:22px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);border-radius:18px;padding:17px 18px"><div style="font-size:14px;font-weight:800;color:#fff">So funktioniert\'s</div><div style="font-size:13px;color:#cfe8ec;font-weight:500;line-height:1.55;margin-top:8px">Leg morgens kurz einen Herzfrequenz-Gurt an. Der Vital-Check misst Ruhepuls &amp; HRV und erkennt an deiner persönlichen Baseline, wie erholt du bist. Das fließt in dein <b>Vitalalter</b> und deine <b>Trainingssteuerung</b> ein.</div></div>'+
+        '<div style="margin-top:14px;display:flex;align-items:center;gap:10px;background:rgba(127,227,168,.1);border:1px solid rgba(127,227,168,.28);border-radius:14px;padding:13px 15px"><span style="font-size:19px">✨</span><span style="font-size:12.5px;color:#eafff4;font-weight:700;line-height:1.45">Teil von <b>Coach Premium</b> – gleich ausprobieren und deine erste Messung machen.</span></div>'+
+      '</div>';
     }
     return '<div class="obOverlay" style="position:fixed;inset:0;z-index:80;background:linear-gradient(170deg,#0e6072 0%,#0a4958 50%,#063540 100%);display:flex;flex-direction:column;padding:calc(40px + env(safe-area-inset-top,0px)) 24px calc(24px + env(safe-area-inset-bottom,0px));color:#fff;overflow-y:auto;max-width:480px;margin:0 auto">'+
       '<div style="display:flex;align-items:center;gap:12px;margin-bottom:24px;flex-shrink:0">'+(step>=1?'<button data-act="obBack" aria-label="Zurück" style="width:36px;height:36px;border-radius:11px;border:none;background:rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'+svg(IC.back,{c:'#fff',w:2.2,s:19})+'</button>':'')+'<div style="display:flex;gap:6px;flex:1">'+dots+'</div></div>'+inner+
-      '<button data-act="obNext" style="width:100%;margin-top:20px;border:none;border-radius:15px;background:#fff;color:#0a4958;font-weight:900;font-size:16px;padding:16px;cursor:pointer;flex-shrink:0">'+(step>=9?'Los geht\'s':'Weiter')+'</button>'+
+      '<button data-act="obNext" style="width:100%;margin-top:20px;border:none;border-radius:15px;background:#fff;color:#0a4958;font-weight:900;font-size:16px;padding:16px;cursor:pointer;flex-shrink:0">'+(step>=10?'Los geht\'s':'Weiter')+'</button>'+
     '</div>';
   }
   // Schlanker FINN-Anreißer für Unterseiten (Training/Fortschritt): Tipp des Tages
@@ -2247,7 +2255,7 @@
   // wenn es nichts anzuzeigen gibt, blendet sich die Karte still aus – der Wunsch-
   // /Kontaktweg bleibt bestehen. Buchen/Kündigen postet an /api/member/modules und
   // lädt die Liste neu; alle dynamischen Strings via esc().
-  // Ernährungs-Premium (Zusatzmodul, SEPA) in der Vertragsverwaltung: Status + Kündigen.
+  // Coach Premium (Zusatzmodul, SEPA) in der Vertragsverwaltung: Status + Kündigen.
   // Aus DATA.modules.premium (Entitlement-basiert, zuverlässig, ohne Nutri-Abhängigkeit).
   function ernContractPremiumCard(){
     var p=DATA.modules&&DATA.modules.premium; if(!p||!p.active) return '';
@@ -3237,7 +3245,7 @@
     if(ernPremium()){
       var until=DATA.nutri&&DATA.nutri.premiumUntil; var days=until?Math.max(0,Math.ceil((until-Date.now())/86400000)):0;
       var label=ernTrialing()?('Gratis-Test aktiv'+(days?(' · noch '+days+' Tag'+(days===1?'':'e')):'')):'Premium aktiv';
-      return '<div style="display:flex;align-items:center;gap:10px;background:rgba(14,96,114,.10);border:1px solid rgba(14,96,114,.22);border-radius:14px;padding:11px 14px;margin-bottom:14px"><span style="font-size:16px">⭐</span><span style="flex:1;font-size:12.5px;font-weight:800;color:'+ERN_G+'">'+label+'</span><button data-act="ernDataOpen" style="border:none;background:transparent;color:var(--text-soft);font-size:11.5px;font-weight:800;cursor:pointer;padding:0">Verwalten</button></div>';
+      return '<div style="display:flex;align-items:center;gap:10px;background:rgba(14,96,114,.10);border:1px solid rgba(14,96,114,.22);border-radius:14px;padding:11px 14px;margin-bottom:14px"><span style="font-size:16px">⭐</span><span style="flex:1;font-size:12.5px;font-weight:800;color:'+ERN_G+'">'+label+'</span><button data-act="nav" data-arg="abo" style="border:none;background:transparent;color:var(--text-soft);font-size:11.5px;font-weight:800;cursor:pointer;padding:0">Verwalten</button></div>';
     }
     var pc=ernPriceCopy();
     // Freemium konkret: verbleibendes Gratis-Kontingent zeigen (macht den Upgrade-Nutzen greifbar).
@@ -3387,7 +3395,7 @@
       var endTxt=n.premiumPermanent?'dauerhaft freigeschaltet':(n.premiumUntil?('freigeschaltet bis '+ernFmtDate(n.premiumUntil)):'freigeschaltet');
       return '<div style="'+CARD+'">'+
         '<div style="font-size:15px;font-weight:900;color:var(--text);display:flex;align-items:center;gap:8px">⭐ Premium · gratis</div>'+
-        '<div style="font-size:12.5px;font-weight:600;color:var(--text-muted);line-height:1.55;margin-top:8px">Dein Studio hat dir das Ernährungs-Premium <b>kostenlos</b> '+endTxt+'. Du musst nichts bezahlen und nichts kündigen – viel Erfolg! 💚</div>'+
+        '<div style="font-size:12.5px;font-weight:600;color:var(--text-muted);line-height:1.55;margin-top:8px">Dein Studio hat dir das Coach Premium <b>kostenlos</b> '+endTxt+'. Du musst nichts bezahlen und nichts kündigen – viel Erfolg! 💚</div>'+
       '</div>';
     }
     // Premium über das Magicline-Zusatzmodul (SEPA, Teil des Mitgliedsvertrags) -> keine
@@ -4463,7 +4471,7 @@
     var msg=S.ernMsg?'<div role="'+(S.ernErr?'alert':'status')+'" style="font-size:12.5px;font-weight:700;color:'+(S.ernErr?'var(--err-fg)':ERN_G)+';text-align:center;margin-top:4px;line-height:1.4">'+esc(S.ernMsg)+'</div>':'';
     return '<div style="padding:4px 2px 40px">'+head+aboSec+infoSec+exportSec+delDaySec+delAllSec+msg+'</div>';
   }
-  // ── „Mein Ernährungs-Abo" – eigener Konto-Screen (aus Profil/Meine Daten/Beitragskonto) ──
+  // ── „Mein Coach Premium" – eigener Konto-Screen (aus Profil/Meine Daten/Beitragskonto) ──
   // Leichter Abo-Status für die Konto-Einstiege (zeigt die Zeile nur, wenn Premium).
   function loadErnBilling(){
     api('/api/member/nutrition-billing',{method:'POST',body:JSON.stringify({action:'status'})})
@@ -4475,15 +4483,15 @@
     var sub=eb.comp?'Vom Studio freigeschaltet':(viaMod?(eb.cancelAtPeriodEnd?'Gekündigt – läuft aus':'Teil deiner Mitgliedschaft'):(eb.cancelAtPeriodEnd?'Gekündigt – läuft aus':(eb.trialing?'Gratis-Test aktiv':'Verwalten, Karte & Rechnungen')));
     return '<button data-act="nav" data-arg="abo" style="width:100%;text-align:left;border:none;background:var(--surface);border-radius:16px;box-shadow:0 8px 24px rgba(4,33,40,.08);padding:15px 16px;margin-bottom:14px;cursor:pointer;display:flex;align-items:center;gap:13px">'+
       '<div style="width:38px;height:38px;border-radius:11px;background:rgba(14,96,114,.10);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:18px">⭐</div>'+
-      '<div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:800;color:var(--text)">Mein Ernährungs-Abo</div><div style="font-size:12.5px;color:var(--text-soft);font-weight:600">'+esc(sub)+'</div></div>'+
+      '<div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:800;color:var(--text)">Mein Coach Premium</div><div style="font-size:12.5px;color:var(--text-soft);font-weight:600">'+esc(sub)+'</div></div>'+
       svg('<path d="M9 18l6-6-6-6"></path>',{c:'var(--text-soft)',w:2.2,s:18})+'</button>';
   }
   function scrAbo(){
     var back='<button data-act="nav" data-arg="profil" aria-label="Zurück" style="width:38px;height:38px;border-radius:12px;border:none;background:var(--surface);box-shadow:0 4px 12px rgba(4,33,40,.08);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'+svg(IC.back,{c:'#0a4958',w:2.2,s:19})+'</button>';
-    var head='<div style="display:flex;align-items:center;gap:12px;padding:2px 2px 14px">'+back+'<div style="flex:1"><div style="font-size:20px;font-weight:900;color:var(--text);letter-spacing:-.4px">Mein Ernährungs-Abo</div><div style="font-size:12px;font-weight:700;color:var(--text-soft)">Status, Zahlung &amp; Rechnungen</div></div></div>';
+    var head='<div style="display:flex;align-items:center;gap:12px;padding:2px 2px 14px">'+back+'<div style="flex:1"><div style="font-size:20px;font-weight:900;color:var(--text);letter-spacing:-.4px">Mein Coach Premium</div><div style="font-size:12px;font-weight:700;color:var(--text-soft)">Status, Zahlung &amp; Rechnungen</div></div></div>';
     var body;
     if(ernPremium()){ body=ernManageCard(); }
-    else { body='<div style="background:var(--surface);border-radius:18px;box-shadow:0 8px 24px rgba(4,33,40,.08);padding:18px;text-align:center"><div style="font-size:15px;font-weight:900;color:var(--text)">Kein aktives Abo</div><div style="font-size:12.5px;font-weight:600;color:var(--text-muted);line-height:1.5;margin:8px 0 14px">Du hast aktuell kein Ernährungs-Premium.</div>'+(ERN_ON?'<button data-act="nav" data-arg="ern" style="width:100%;padding:13px;border:none;border-radius:13px;background:'+ERN_G+';color:#fff;font-weight:900;font-size:14.5px;cursor:pointer">Zum Ernährungscoach</button>':'')+'</div>'; }
+    else { body='<div style="background:var(--surface);border-radius:18px;box-shadow:0 8px 24px rgba(4,33,40,.08);padding:18px;text-align:center"><div style="font-size:15px;font-weight:900;color:var(--text)">Kein aktives Coach Premium</div><div style="font-size:12.5px;font-weight:600;color:var(--text-muted);line-height:1.5;margin:8px 0 14px">Du hast aktuell kein Coach Premium – FINN-Coach für Training &amp; Ernährung plus den Vital-Check.</div><button data-act="nav" data-arg="coach" style="width:100%;padding:13px;border:none;border-radius:13px;background:'+ERN_G+';color:#fff;font-weight:900;font-size:14.5px;cursor:pointer">Coach Premium entdecken</button></div>'; }
     var msg=S.ernMsg?'<div role="'+(S.ernErr?'alert':'status')+'" style="font-size:12.5px;font-weight:700;color:'+(S.ernErr?'var(--err-fg)':ERN_G)+';text-align:center;margin-top:8px;line-height:1.4">'+esc(S.ernMsg)+'</div>':'';
     // Zahlende (nicht vom Studio freigeschaltete) Mitglieder: Widerruf & Pflichtinfos erreichbar.
     var n=DATA.nutri||{}; var wdLink=(ernPremium()&&!n.premiumComp&&!n.premiumViaModule)?'<div style="text-align:center;margin-top:14px"><button data-act="nav" data-arg="recht" style="background:none;border:none;color:var(--text-soft);font-size:12px;font-weight:700;text-decoration:underline;cursor:pointer">Widerruf &amp; Pflichtinfos</button></div>':'';
@@ -4507,8 +4515,8 @@
     var head='<div style="display:flex;align-items:center;gap:12px;padding:2px 2px 14px">'+back+'<div style="flex:1"><div style="font-size:20px;font-weight:900;color:var(--text);letter-spacing:-.4px">Widerruf &amp; Rechtliches</div><div style="font-size:12px;font-weight:700;color:var(--text-soft)">Fernabsatz · digitale Leistung</div></div></div>';
     // A) Pflichtinfos zum Premium-Abo (§312j BGB)
     var trialLine=pc.trialText?('<li>'+pc.trialDays+' Tage gratis testen, danach '+esc(pc.pricePer)+'</li>'):('<li>'+esc(pc.pricePer)+'</li>');
-    var info='<div style="'+CARD+'"><div style="'+H+'">Ernährungs-Premium – die Eckdaten</div><ul style="'+P+';margin:0;padding-left:18px">'+
-      '<li><b>Leistung:</b> KI-Ernährungscoach – Foto-Analyse, FINN-Chat, KI-Rezepte, Wochenplan &amp; Auswertung</li>'+
+    var info='<div style="'+CARD+'"><div style="'+H+'">Coach Premium – die Eckdaten</div><ul style="'+P+';margin:0;padding-left:18px">'+
+      '<li><b>Leistung:</b> KI-Coach FINN für Training &amp; Ernährung – Trainingspläne &amp; Progression, Foto-Analyse, FINN-Chat, KI-Rezepte, Wochenplan &amp; Auswertung sowie der Vital-Check (Bereitschaft/HRV)</li>'+
       '<li><b>Preis:</b> '+esc(pc.pricePer)+' inkl. MwSt.</li>'+trialLine+
       '<li><b>Laufzeit:</b> monatlich; verlängert sich automatisch um je einen Monat</li>'+
       '<li><b>Kündigung:</b> jederzeit zum Ende des bezahlten Monats – in der App unter „Mein Abo"</li>'+
@@ -4521,24 +4529,24 @@
       '<b>Folgen des Widerrufs.</b> Wenn du diesen Vertrag widerrufst, haben wir dir alle Zahlungen, die wir von dir erhalten haben, unverzüglich und spätestens binnen vierzehn Tagen ab dem Tag zurückzuzahlen, an dem die Mitteilung über deinen Widerruf bei uns eingegangen ist. Hast du verlangt, dass die Dienstleistung während der Widerrufsfrist beginnen soll, so hast du uns einen angemessenen Betrag zu zahlen, der dem Anteil der bis zum Widerruf bereits erbrachten Leistungen entspricht.</div></div>';
     // C) Muster-Widerrufsformular
     var muster='<div style="'+CARD+'"><div style="'+H+'">Muster-Widerrufsformular</div>'+
-      '<div style="'+P+';white-space:pre-line;font-family:inherit">'+esc('An '+LEGAL.firma+', '+LEGAL.anschrift+', E-Mail: '+LEGAL.email+':\n\nHiermit widerrufe ich den von mir abgeschlossenen Vertrag über die Erbringung der folgenden Dienstleistung: Ernährungs-Premium (Abo)\n\n– Bestellt am: ____________\n– Name: ____________\n– Anschrift: ____________\n– Datum: ____________\n– Unterschrift (nur bei Papier): ____________')+'</div></div>';
+      '<div style="'+P+';white-space:pre-line;font-family:inherit">'+esc('An '+LEGAL.firma+', '+LEGAL.anschrift+', E-Mail: '+LEGAL.email+':\n\nHiermit widerrufe ich den von mir abgeschlossenen Vertrag über die Erbringung der folgenden Dienstleistung: Coach Premium (Abo)\n\n– Bestellt am: ____________\n– Name: ____________\n– Anschrift: ____________\n– Datum: ____________\n– Unterschrift (nur bei Papier): ____________')+'</div></div>';
     // D) Widerrufsbutton + Ablauf
     var wd;
     if(!hasSub){
-      wd='<div style="'+CARD+'"><div style="'+H+'">Widerruf erklären</div><div style="'+P+'">'+(comp?'Dein Ernährungs-Premium wurde vom Studio kostenlos freigeschaltet – hier gibt es keinen zahlungspflichtigen Vertrag zum Widerrufen.':'Für dein Konto ist aktuell kein zahlungspflichtiges Premium-Abo hinterlegt, das widerrufen werden könnte.')+'</div></div>';
+      wd='<div style="'+CARD+'"><div style="'+H+'">Widerruf erklären</div><div style="'+P+'">'+(comp?'Dein Coach Premium wurde vom Studio kostenlos freigeschaltet – hier gibt es keinen zahlungspflichtigen Vertrag zum Widerrufen.':'Für dein Konto ist aktuell kein zahlungspflichtiges Premium-Abo hinterlegt, das widerrufen werden könnte.')+'</div></div>';
     } else if(S.wdStep===2){
       wd='<div style="'+CARD+';border:1.5px solid rgba(14,96,114,.35)"><div style="'+H+';color:var(--ern-acc)">✓ Widerruf eingegangen</div><div style="'+P+'">Wir haben deinen Widerruf am '+esc(ernFmtDate(S.wdDoneAt||Date.now()))+' erhalten und dein Abo beendet. Eine Bestätigung ist an deine E-Mail unterwegs. Eine etwaige anteilige Erstattung wickeln wir separat ab.</div></div>';
     } else if(S.wdStep===1){
       var nm=(DATA.profile&&((DATA.profile.firstName||'')+' '+(DATA.profile.lastName||'')).trim())||'';
       var err=S.wdErr&&S.wdMsg?'<div role="alert" style="font-size:12.5px;font-weight:700;color:var(--err-fg);margin-top:10px">'+esc(S.wdMsg)+'</div>':'';
       wd='<div style="'+CARD+';border:1.5px solid rgba(192,57,43,.30)"><div style="'+H+'">Widerruf verbindlich erklären</div>'+
-        '<div style="'+P+';margin-bottom:12px">Du widerrufst hiermit deinen Vertrag über <b>Ernährungs-Premium</b>'+(nm?(' als <b>'+esc(nm)+'</b>'):'')+' mit Datum '+esc(ernFmtDate(Date.now()))+'. Dein Abo wird sofort beendet; künftige Abbuchungen entfallen.</div>'+
+        '<div style="'+P+';margin-bottom:12px">Du widerrufst hiermit deinen Vertrag über <b>Coach Premium</b>'+(nm?(' als <b>'+esc(nm)+'</b>'):'')+' mit Datum '+esc(ernFmtDate(Date.now()))+'. Dein Abo wird sofort beendet; künftige Abbuchungen entfallen.</div>'+
         '<div style="display:flex;gap:8px">'+
           '<button data-act="wdBack" '+(S.wdBusy?'disabled ':'')+'style="flex:1;padding:13px;border:1.5px solid var(--border);border-radius:12px;background:var(--surface);color:var(--text-2);font-weight:800;font-size:14px;cursor:pointer">Abbrechen</button>'+
           '<button data-act="wdSubmit" '+(S.wdBusy?'disabled ':'')+'style="flex:1.4;padding:13px;border:none;border-radius:12px;background:#c0392b;color:#fff;font-weight:900;font-size:14px;cursor:pointer;opacity:'+(S.wdBusy?'.6':'1')+'">'+(S.wdBusy?'Sende …':'Widerruf absenden')+'</button>'+
         '</div>'+err+'</div>';
     } else {
-      wd='<div style="'+CARD+'"><div style="'+H+'">Widerruf erklären</div><div style="'+P+';margin-bottom:13px">Du kannst deinen Vertrag über Ernährungs-Premium mit einem Klick widerrufen. Wir bestätigen dir den Eingang per E-Mail.</div>'+
+      wd='<div style="'+CARD+'"><div style="'+H+'">Widerruf erklären</div><div style="'+P+';margin-bottom:13px">Du kannst deinen Vertrag über Coach Premium mit einem Klick widerrufen. Wir bestätigen dir den Eingang per E-Mail.</div>'+
         '<button data-act="wdStart" style="width:100%;padding:14px;border:1.5px solid rgba(192,57,43,.35);border-radius:13px;background:var(--surface);color:var(--err-fg);font-weight:900;font-size:14.5px;cursor:pointer">Vertrag widerrufen</button></div>';
     }
     var links='<div style="display:flex;flex-wrap:wrap;gap:6px 14px;justify-content:center;margin-top:8px;padding-top:6px">'+
@@ -8750,7 +8758,7 @@
     obMemToggle:function(){ setS({obMemConsent:!S.obMemConsent}); },
     // Zurück im Onboarding: einen Schritt zurück, Overlay nach oben scrollen.
     obBack:function(){ if((S.obStep||0)>0){ setS({obStep:S.obStep-1}); var o=document.querySelector('.obOverlay'); if(o) o.scrollTop=0; } },
-    obNext:function(){ if((S.obStep||0)>=9){
+    obNext:function(){ if((S.obStep||0)>=10){
         // Volles Profil zusammenstellen (Gesundheit nur bei Einwilligung).
         var prof={goal:S.obGoal,freq:S.obFreq,age:S.obAge,sex:S.obSex||'',heightCm:S.obHeightCm||null,weightKg:S.obWeightKg||null,targetWeight:S.obTargetWeight||null,trainTime:S.obTrainTime||'',exp:S.obExp,likes:(S.obLikes||[]),dislikes:(S.obDislikes||[]),diet:S.obDiet||'',allergies:(S.obAllergies||[]),onboarded:true,health:{consent:!!S.obHealthConsent,items:(S.obHealthConsent?(S.obHealth||[]):[]),note:(S.obHealthConsent?(S.obHealthNote||''):'')}};
         try{ localStorage.setItem('fi_ob_v2',JSON.stringify(Object.assign({memConsent:!!S.obMemConsent},prof))); }catch(e){}
