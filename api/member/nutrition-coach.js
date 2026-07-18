@@ -187,7 +187,8 @@ module.exports = async function handler(req, res) {
     // Nur Premium (KI): einmalig erzeugt und im State gecacht. Nicht-Premium -> Teaser (kein KI-Call, keine Kosten).
     let trainingFocus = (ls && ls.trainingFocus) || null;
     if (!trainingFocus) {
-      if (!premium) {
+      const focusAllowed = premium || week === 1;   // Woche 1 gratis (Kostprobe, wie die Lektion selbst); 2+ Premium.
+      if (!focusAllowed) {
         trainingFocus = { teaser: true };
       } else if (AI.hasAI && (await M.rateLimit('nutri-trainfocus:' + id, 20, 3600))) {
         const prof = (await Coaching.kvGetJson('nutri:p:' + id)) || {};
