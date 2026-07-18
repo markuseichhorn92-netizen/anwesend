@@ -4968,15 +4968,17 @@
     var prog='<div style="background:var(--surface);border-radius:16px;box-shadow:0 8px 22px rgba(4,33,40,.07);padding:14px 16px;margin-bottom:14px"><div style="display:flex;align-items:baseline;justify-content:space-between"><span style="font-size:15px;font-weight:900;color:var(--text)">'+esc((mp.days[di]&&mp.days[di].name)||'Training')+'</span><span style="font-size:13px;font-weight:800;color:var(--teal-ink)">'+doneN+'/'+exs.length+' erledigt</span></div><div style="height:8px;background:var(--surface-2);border-radius:6px;overflow:hidden;margin-top:9px"><div style="height:100%;border-radius:6px;background:'+ERN_G+';width:'+pct+'%;transition:width .2s"></div></div></div>';
     var rows=exs.map(function(e,ix){ return trainRunRow(e,'d'+di+'e'+ix); }).join('');
     var doneAll=exs.length&&doneN===exs.length;
-    // Verstrichene Trainingszeit (läuft ab „Training starten").
+    var running=S.trainRunStart>0;   // Zeit läuft erst nach „Training starten"
+    // Läuft: verstrichene Zeit anzeigen. Sonst: expliziter Start-Button (Ansehen startet NICHT).
     var elapsed='<div style="display:flex;align-items:center;gap:8px;background:var(--surface);border-radius:14px;box-shadow:0 8px 22px rgba(4,33,40,.07);padding:12px 15px;margin-bottom:12px"><span style="width:34px;height:34px;border-radius:10px;background:rgba(14,96,114,.1);display:flex;align-items:center;justify-content:center;flex-shrink:0">'+svg('<circle cx="12" cy="13" r="8"></circle><path d="M12 9v4l2 2M9 2h6"></path>',{c:'var(--teal-ink)',w:2,s:18})+'</span><div style="flex:1;min-width:0"><div style="font-size:10.5px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.4px">Trainingszeit</div><div id="tr_elapsed" style="font-size:19px;font-weight:900;color:var(--text);font-variant-numeric:tabular-nums;line-height:1.1">'+trFmtSec(trainElapsedSec())+'</div></div></div>';
+    var startCard='<button data-act="trainBegin" style="width:100%;padding:16px;border:none;border-radius:15px;background:linear-gradient(150deg,#12879c,#0a4958);color:#fff;font-weight:900;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:9px;box-shadow:0 12px 30px rgba(14,96,114,.28);margin-bottom:8px"><span style="font-size:14px">▶</span> Training starten</button><div style="font-size:11.5px;font-weight:600;color:var(--text-soft);text-align:center;margin:0 2px 14px;line-height:1.45">Nur schauen? Alles gut – die Zeit läuft erst, wenn du auf „Training starten" tippst.</div>';
     var finishBtn='<button data-act="trainFinish"'+(S.trainFinishBusy?' disabled':'')+' style="width:100%;margin-top:14px;padding:16px;border:none;border-radius:15px;background:linear-gradient(150deg,#12879c,#0a4958);color:#fff;font-weight:900;font-size:15.5px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:9px;box-shadow:0 12px 30px rgba(14,96,114,.28)">'+(S.trainFinishBusy?(trainSpin(18)+'Wird abgeschlossen …'):('✓ Einheit abschließen'))+'</button>';
-    var footer=finishBtn+
-      '<button data-act="trainRunReset" style="width:100%;margin-top:10px;padding:11px;border:1.5px solid var(--border-strong);border-radius:12px;background:var(--surface);color:var(--text-soft);font-weight:700;font-size:12.5px;cursor:pointer">Fortschritt zurücksetzen</button>';
+    var resetBtn='<button data-act="trainRunReset" style="width:100%;margin-top:10px;padding:11px;border:1.5px solid var(--border-strong);border-radius:12px;background:var(--surface);color:var(--text-soft);font-weight:700;font-size:12.5px;cursor:pointer">Fortschritt zurücksetzen</button>';
+    var footer=(running?finishBtn:'')+resetBtn;
     return '<div style="padding:0 2px 96px">'+back+
       '<div style="font-size:20px;font-weight:900;letter-spacing:-.4px;color:var(--text);margin:0 2px 3px">'+esc(mp.title)+'</div>'+
       '<div style="font-size:12.5px;font-weight:500;color:var(--text-2);margin:0 2px 14px">Tippe eine Übung an für Beschreibung &amp; Muskeln. 🤖 = am Gerät per App/Band anmelden, den Rest macht die KI.</div>'+
-      elapsed+dayTabs+prog+rows+footer+'</div>';
+      (running?elapsed:startCard)+dayTabs+prog+rows+footer+'</div>';
   }
   // Übungszeile im Tracker: Name antippbar (Detail), KI-Geräte mit App-Link, sonst Satz-Protokoll.
   function trainRunRow(e,key){
@@ -5035,8 +5037,9 @@
   // Abschluss-Zusammenfassung nach „Einheit abschließen": VP, kcal, (Premium) FINN.
   function trainFinishOverlay(){
     var f=S.trainFinish||{};
-    var finnBox=f.finn?'<div style="background:rgba(127,227,168,.1);border:1px solid rgba(127,227,168,.3);border-radius:16px;padding:15px 16px;margin-top:14px;text-align:left"><div style="display:flex;align-items:center;gap:8px;margin-bottom:7px"><span style="width:26px;height:26px;border-radius:50%;background:#7fd8e0;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0">✨</span><span style="font-size:11.5px;font-weight:900;color:#0a4958;text-transform:uppercase;letter-spacing:.3px">FINNs Einschätzung</span></div><div style="font-size:13.5px;font-weight:600;color:#0a4958;line-height:1.55">'+esc(f.finn)+'</div></div>':'';
-    var stat=function(big,sub){ return '<div style="flex:1;background:rgba(255,255,255,.14);border-radius:15px;padding:14px 8px;text-align:center"><div style="font-size:24px;font-weight:900;color:#fff;letter-spacing:-.5px;line-height:1">'+big+'</div><div style="font-size:11px;font-weight:700;color:#cfe8ec;margin-top:4px">'+sub+'</div></div>'; };
+    // Heller Panel + dunkler Text = hoher Kontrast (vorher dunkler Text auf dunklem Grund).
+    var finnBox=f.finn?'<div style="background:#ffffff;border-radius:16px;padding:15px 16px;margin-top:14px;text-align:left;box-shadow:0 10px 24px rgba(4,33,40,.22)"><div style="display:flex;align-items:center;gap:8px;margin-bottom:7px"><span style="width:26px;height:26px;border-radius:50%;background:#0e6072;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0">✨</span><span style="font-size:11.5px;font-weight:900;color:#0e6072;text-transform:uppercase;letter-spacing:.3px">FINNs Einschätzung</span></div><div style="font-size:13.5px;font-weight:600;color:#123">'+esc(f.finn)+'</div></div>':'';
+    var stat=function(big,sub){ return '<div style="flex:1;background:rgba(255,255,255,.2);border-radius:15px;padding:14px 8px;text-align:center"><div style="font-size:24px;font-weight:900;color:#fff;letter-spacing:-.5px;line-height:1">'+big+'</div><div style="font-size:11px;font-weight:800;color:#eaf6f8;margin-top:4px">'+sub+'</div></div>'; };
     var card='<div style="background:linear-gradient(160deg,#12879c,#0a4958);border-radius:24px;padding:26px 22px calc(22px + env(safe-area-inset-bottom,0px));width:100%;max-width:380px;box-shadow:0 22px 60px rgba(4,33,40,.4);color:#fff;text-align:center">'+
       '<div style="font-size:52px;line-height:1">🎉</div>'+
       '<div style="font-size:23px;font-weight:900;letter-spacing:-.4px;margin-top:6px">Einheit geschafft!</div>'+
@@ -5170,13 +5173,17 @@
     if(mp.days.length>1){ dayTabs='<div style="display:flex;gap:7px;overflow-x:auto;padding-bottom:6px;margin-bottom:14px;-webkit-overflow-scrolling:touch">'+mp.days.map(function(dd,ix){ var on=(ix===di); return '<button data-act="trainRunDay" data-arg="'+ix+'" style="flex-shrink:0;border:1.5px solid '+(on?ERN_G:'var(--border-strong)')+';border-radius:20px;background:'+(on?ERN_G:'var(--surface)')+';color:'+(on?'#fff':'var(--text-2)')+';font-size:12.5px;font-weight:800;padding:8px 13px;cursor:pointer;white-space:nowrap">'+esc(dd.name||('Tag '+(ix+1)))+'</button>'; }).join('')+'</div>'; }
     var pct=exs.length?Math.round(doneN/exs.length*100):0;
     var progRow=started?'<div style="margin-top:15px"><div style="display:flex;justify-content:space-between;font-size:11.5px;font-weight:800;color:#e9f5f7"><span>'+doneN+' / '+exs.length+' erledigt</span><span>'+pct+'%</span></div><div style="height:7px;background:rgba(255,255,255,.22);border-radius:5px;overflow:hidden;margin-top:6px"><div style="height:100%;border-radius:5px;background:var(--surface);width:'+pct+'%"></div></div></div>':'';
+    // „Training starten" startet die Zeit (trainRunGo). „Weiter"/„Ansehen" öffnen nur (trainRun) –
+    // Ansehen darf die Trainingszeit NICHT auslösen.
     var btnLabel=allDone?'Einheit ansehen':(started?'Weiter trainieren':'Training starten');
+    var btnAct=(!started&&!allDone)?'trainRunGo':'trainRun';
     var hero='<div style="background:linear-gradient(155deg,'+ERN_G2+','+ERN_G+' 55%,'+ERN_GD+');border-radius:22px;padding:20px;color:#fff;box-shadow:0 16px 38px rgba(14,96,114,.28);margin-bottom:14px">'+
       '<div style="font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.6px;color:#bfe0e6">Heutige Einheit</div>'+
       '<div style="font-size:23px;font-weight:900;letter-spacing:-.5px;margin-top:3px">'+esc((day&&day.name)||'Training')+'</div>'+
       '<div style="display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:700;color:#cfe8ec;margin-top:6px"><span>'+exs.length+' Übungen</span><span style="opacity:.5">·</span><span>ca. '+est+' Min</span></div>'+
       progRow+
-      '<button data-act="trainRun" style="width:100%;margin-top:16px;padding:15px;border:none;border-radius:14px;background:#ffffff;color:#0A4958;font-weight:900;font-size:15.5px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px">'+(allDone?'':'<span style="font-size:13px">▶</span>')+btnLabel+'</button></div>';
+      '<button data-act="'+btnAct+'" style="width:100%;margin-top:16px;padding:15px;border:none;border-radius:14px;background:#ffffff;color:#0A4958;font-weight:900;font-size:15.5px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px">'+((!started&&!allDone)?'<span style="font-size:13px">▶</span>':'')+btnLabel+'</button>'+
+      (allDone?'<button data-act="trainRunGo" style="width:100%;margin-top:9px;padding:11px;border:1.5px solid rgba(255,255,255,.5);border-radius:12px;background:transparent;color:#fff;font-weight:800;font-size:13px;cursor:pointer">Nochmal trainieren (Zeit neu starten)</button>':'')+'</div>';
     var preview=exs.length?trainCardBox('<div style="font-size:12px;font-weight:900;color:var(--ern-acc);text-transform:uppercase;letter-spacing:.4px;margin-bottom:2px">Das erwartet dich <span style="color:var(--placeholder);font-weight:700;text-transform:none;letter-spacing:0">· antippen für Details</span></div>'+exs.map(function(e,ix){ var dn=trainSessItem('d'+di+'e'+ix).done; return '<button data-act="trExDetail" data-arg="d'+di+'e'+ix+'" style="display:flex;width:100%;text-align:left;align-items:center;gap:10px;padding:9px 0;border:none;border-top:1px solid var(--border);background:none;cursor:pointer;font-family:inherit"><span style="width:22px;height:22px;border-radius:50%;background:'+(dn?ERN_G:'var(--surface-2)')+';color:'+(dn?'#fff':'var(--text-soft)')+';font-size:11px;font-weight:900;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+(dn?'✓':(ix+1))+'</span><div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:800;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(e.name)+'</div>'+(e.machine?'<div style="font-size:11px;font-weight:700;color:var(--ern-acc);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">🔧 '+esc(e.machine)+(e.bio?' · 🤖 KI':'')+'</div>':'')+'</div>'+(e.bio?'':'<span style="font-size:11.5px;font-weight:800;color:var(--placeholder);flex-shrink:0">'+esc(e.sets)+'×'+esc(e.reps)+'</span>')+svg('<path d="M9 6l6 6-6 6"></path>',{c:'var(--placeholder)',w:2,s:13})+'</button>'; }).join(''),'16px'):'';
     var sec='border:1.5px solid var(--border-strong);background:var(--surface);border-radius:11px;font-size:12.5px;font-weight:800;padding:10px 12px;cursor:pointer;color:var(--teal-ink)';
     var actions='<div style="display:flex;gap:8px;margin:2px 2px 0">'+
@@ -7874,11 +7881,16 @@
       if(!isActive){ api('/api/member/training',{method:'POST',body:JSON.stringify({action:'plan-detail',planId:a})}).then(function(r){ if(r&&r.ok&&r.plan&&S.trainDetail===a){ S.trainDetailFull=r.plan; render(); } }).catch(function(){}); }
     },
     trainBack:function(){ S.trainDetail=null; S.trainDetailFull=null; setS({}); },
+    // Tracker ÖFFNEN (ansehen): startet die Zeit NICHT von selbst – setzt nur eine bereits
+    // laufende, junge Session fort. Gestartet wird ausschließlich per Button (trainBegin/trainRunGo).
     trainRun:function(){ S.trainRun=true; S.trainRunDay=0; S.trainRestKey=''; S.trainRestStart=0;
-      // Trainingszeit starten – bzw. eine noch junge, laufende Session (nach Re-Render/Reload) fortsetzen.
       var now=Date.now(), st=0; try{ st=parseInt(localStorage.getItem('fi_train_start')||'0',10)||0; }catch(e){}
-      if(!(st>0 && (now-st)<4*3600e3)){ st=now; try{ localStorage.setItem('fi_train_start',String(st)); }catch(e){} }
-      S.trainRunStart=st; loadTrainSession(); setS({}); },
+      S.trainRunStart=(st>0 && (now-st)<4*3600e3)?st:0;
+      loadTrainSession(); setS({}); },
+    // Zeit explizit starten (Button im Tracker) – ohne die Ansicht zu verlassen.
+    trainBegin:function(){ if(!(S.trainRunStart>0)){ var now=Date.now(); S.trainRunStart=now; try{ localStorage.setItem('fi_train_start',String(now)); }catch(e){} } setS({}); },
+    // Öffnen UND sofort starten – für den klar beschrifteten „Training starten"-Button.
+    trainRunGo:function(){ S.trainRun=true; S.trainRunDay=0; S.trainRestKey=''; S.trainRestStart=0; var now=Date.now(); S.trainRunStart=now; try{ localStorage.setItem('fi_train_start',String(now)); }catch(e){} loadTrainSession(); setS({}); },
     trainRunClose:function(){ S.trainRun=false; S.trainRestKey=''; setS({}); },
     // Übungs-Detail (Beschreibung + Muskeldiagramm) öffnen/schließen.
     trExDetail:function(key){ S.trainExDetail=key; try{ window.scrollTo(0,0); }catch(e){} setS({}); },
@@ -7909,7 +7921,7 @@
     lsSet:function(a){ var ls=(DATA.mprofile&&typeof DATA.mprofile==='object'&&DATA.mprofile.lifestyle)||{}; if(!ls.consent) return; var p=String(a||'').split('|'); var o=Object.assign({},ls); o[p[0]]=(o[p[0]]===p[1]?'':p[1]); lsSave(o); },
     // „+" im Training: feste Hauptaktion = heutige Einheit starten. Ohne aktiven Plan
     // zuerst zum Pläne-Tab (dort Plan holen / FINN-Plan erstellen).
-    trainAdd:function(){ var d=DATA.training; var mp=d&&d.myPlan&&d.myPlan.plan; if(mp&&mp.days&&mp.days.length){ ACT.trainRun(); } else { S.trainSeg='plaene'; S.trainDetail=null; S.trainGenOpen=false; setS({}); } },
+    trainAdd:function(){ var d=DATA.training; var mp=d&&d.myPlan&&d.myPlan.plan; if(mp&&mp.days&&mp.days.length){ ACT.trainRunGo(); } else { S.trainSeg='plaene'; S.trainDetail=null; S.trainGenOpen=false; setS({}); } },
     trainRunDay:function(a){ S.trainRunDay=parseInt(a,10)||0; S.trainRestKey=''; render(); },
     trainToggle:function(key){ var it=trainSessLocal(key); it.done=!it.done; if(it.done) S.trainRestKey=''; render();
       api('/api/member/training',{method:'POST',body:JSON.stringify({action:'session-set',key:key,done:it.done})}).then(function(r){ if(r&&r.ok){ DATA.trainSess={items:r.items||{},planId:r.planId}; render(); } }).catch(function(){});
