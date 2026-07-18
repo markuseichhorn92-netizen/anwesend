@@ -4871,12 +4871,17 @@
   function trainExByKey(key){ var m=/^d(\d+)e(\d+)$/.exec(key||''); if(!m) return null; var d=DATA.training||{}; var mp=d.myPlan&&d.myPlan.plan; if(!mp||!mp.days) return null; var day=mp.days[parseInt(m[1],10)]; var exs=(day&&day.exercises)||[]; return exs[parseInt(m[2],10)]||null; }
   // Muskelgruppe einer Plan-Übung bestimmen: erst exakter Treffer in der Übungs-DB, sonst Heuristik.
   function trExGroupOf(e){ if(!e) return 'ganzkoerper';
+    // 1) Vom Plan/DB mitgelieferte, gültige Muskelgruppe hat Vorrang (Plan-Übungen tragen sie jetzt).
+    var MM=(DATA.training&&DATA.training.exerciseMuscles)||{}; if(e.group&&MM[e.group]) return e.group;
     var list=(DATA.training&&DATA.training.exercises)||[]; var nn=trainExNorm(e.name), mm=trainExNorm(e.machine||'');
     for(var i=0;i<list.length;i++){ if(trainExNorm(list[i].name)===nn && (!mm||trainExNorm(list[i].machine)===mm)) return list[i].group; }
     for(var j=0;j<list.length;j++){ if(trainExNorm(list[j].name)===nn) return list[j].group; }
-    var s=nn+' '+mm;
     var rules=[['cardio',/lauf|treadmill|bike|rad |skill|climb|vario|crosstrainer|cardio|recline|ellip/],['brust',/brust|chest|bankdr|butterfly|pectoral|fliegende/],['ruecken',/rucken|lat |latzug|rudern|\brow\b|klimmz|reverse fly|rear delt|zug/],['schulter',/schulter|shoulder|seitheben|frontheben|face pull|nacken|delt|uberkopf/],['arme',/bizeps|trizeps|curl|arm ext|arm curl|hammer|stirndr|dips/],['po',/hip thrust|glute|gesass|abduzt|adduzt|abductor|adductor|kickback|beckenheb|huftstreck/],['beine',/bein|leg|knieb|squat|ausfall|kreuzheb|wade|calf|lunge/],['bauch',/bauch|crunch|core|plank|beinheb|russian|rumpf|abdominal|torso/],['mobility',/faszien|dehn|katze|mobility|stretch|bird dog|vierfussl/],['ganzkoerper',/kettlebell|swing|goblet|burpee|farmer|sling|turkisch/]];
-    for(var k=0;k<rules.length;k++){ if(rules[k][1].test(s)) return rules[k][0]; }
+    // Heuristik: erst nur am Namen (stärkstes Signal), dann Name+Gerät – generische Gerätenamen
+    // („Kabelzug", „Multipower") sollen die Gruppe nicht dominieren. Identisch zu lib/exercises.groupOf.
+    for(var k=0;k<rules.length;k++){ if(rules[k][1].test(nn)) return rules[k][0]; }
+    var s=nn+' '+mm;
+    for(var k2=0;k2<rules.length;k2++){ if(rules[k2][1].test(s)) return rules[k2][0]; }
     return 'ganzkoerper';
   }
   function trMuscleInfo(group){ var m=(DATA.training&&DATA.training.exerciseMuscles)||{}; return m[group]||m.ganzkoerper||{primary:'',regions:['fullbody'],desc:''}; }
