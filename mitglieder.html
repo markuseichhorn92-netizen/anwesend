@@ -4405,22 +4405,38 @@
     var header='<div style="margin:2px 2px 14px"><div style="font-size:19px;font-weight:900;color:var(--text);letter-spacing:-.3px">'+(nm?('Hey '+esc(nm)+' 👋'):'Willkommen zurück')+'</div>'+
       '<div style="font-size:13px;font-weight:600;color:var(--text-soft);margin-top:2px">Deine Erkenntnisse aus Training &amp; Ernährung</div></div>';
     if(S.ernChatOpen) return wrap(header+ernCoach());
-    // Tipp des Tages (allgemeiner FINN-Coach) – ganze Karte öffnet den FINN-Chat.
-    var tip=S.finnTip||'';
-    var tipHero='<button data-act="openFinn" style="width:100%;text-align:left;border:none;cursor:pointer;font-family:inherit;background:var(--surface);border-radius:20px;box-shadow:0 12px 30px rgba(4,33,40,.09);padding:16px;margin-bottom:14px;display:flex;gap:13px;align-items:flex-start">'+
-      ernFinnAvatar(46)+'<div style="flex:1;min-width:0"><div style="font-size:11px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.4px">FINN · Tipp des Tages</div>'+
-      '<div style="font-size:14px;font-weight:600;color:var(--text);line-height:1.5;margin-top:4px">'+(tip?esc(tip):'FINN stellt dir gleich deinen Tipp zusammen …')+'</div>'+
-      '<div style="font-size:12px;font-weight:800;color:var(--ern-acc);margin-top:8px;display:flex;align-items:center;gap:5px">Frag FINN etwas '+svg('<path d="M9 6l6 6-6 6"></path>',{c:'var(--ern-acc)',w:2.2,s:14})+'</div></div></button>';
-    // Erkenntnisse (ganzheitlicher Blick + Training + Ernährung), datenbasiert + FINN-Analyse.
+    // FINN-first: eine dominante FINN-Karte (Blick für heute + Chat-Einstieg + Schnellfragen) trägt den Hub.
     var insights=coachInsights();
     // Motivation (Vitalpunkte/Rang/Streak/Aktivitäts-Alter) – wiederverwendet.
     var motiv=vitalCard();
-    // Coaching-Programm (gate-aware): nur wenn verfügbar; sonst tragen Tipp + Erkenntnisse den Hub.
+    // Coaching-Programm (gate-aware): nur wenn verfügbar.
     var c=DATA.coach, program='';
     if(c&&c.ok&&c.available!==false){
       program='<div style="font-size:17px;font-weight:900;color:var(--text);letter-spacing:-.3px;margin:22px 2px 12px">Dein Coaching-Programm</div>'+ernCoachHome();
     }
-    return wrap(header+tipHero+insights+motiv+ernPremiumCard()+coachFigurCard()+program);
+    // FINN oben & dominant; darunter kurze Erkenntnisse + Motivation; Programm/Premium/Figur sekundär unten.
+    return wrap(header+coachFinnHub()+insights+motiv+program+ernPremiumCard()+coachFigurCard());
+  }
+  // FINN-first Coach-Hub: EINE dominante FINN-Karte – Tages-Blick (datenbasiert bzw. KI-Analyse),
+  // direkter Chat-Einstieg und Schnellfragen. Ersetzt den früheren getrennten Tipp-Hero + Blick-Karte.
+  function coachFinnHub(){
+    var holo=(S.coachFinn&&S.coachFinn.text)?S.coachFinn.text:coachHolistic();
+    var analyse=S.coachFinnBusy
+      ? '<div style="margin-top:13px;display:flex;align-items:center;gap:9px;font-size:12.5px;font-weight:800;color:#eafaf1">'+trainSpin(16)+' FINN analysiert …</div>'
+      : '<button data-act="coachFinn" style="margin-top:13px;border:1.5px solid rgba(255,255,255,.4);background:rgba(255,255,255,.12);color:#fff;border-radius:11px;font-size:12.5px;font-weight:800;padding:9px 14px;cursor:pointer">🤖 '+((S.coachFinn&&S.coachFinn.text)?'Neue FINN-Analyse':'Tiefere FINN-Analyse holen')+'</button>';
+    var chips=['Wie läuft es bei mir?','Was soll ich heute tun?','Tipp für mein Ziel'].map(function(q){
+      return '<button data-act="finnQuick" data-arg="'+esc(q)+'" style="flex:0 0 auto;border:1.5px solid rgba(255,255,255,.35);background:rgba(255,255,255,.10);color:#fff;border-radius:20px;font-size:12.5px;font-weight:700;padding:8px 13px;cursor:pointer;white-space:nowrap">'+esc(q)+'</button>';
+    }).join('');
+    return '<div style="background:linear-gradient(150deg,#12879c,#0e6072 58%,#0a4958);border-radius:22px;padding:18px 20px 20px;color:#fff;box-shadow:0 16px 38px rgba(14,96,114,.30);margin-bottom:16px">'+
+      '<div style="display:flex;align-items:center;gap:12px"><div style="width:46px;height:46px;border-radius:50%;overflow:hidden;flex-shrink:0;background:#0a3d4a"><img src="/assets/brand/finn-mark.svg" alt="" style="width:100%;height:100%;display:block"></div>'+
+      '<div style="flex:1;min-width:0"><div style="font-size:16px;font-weight:900">Dein Coach FINN</div><div style="font-size:11.5px;font-weight:700;color:#bfe0e6">KI · rund um die Uhr für dich da</div></div></div>'+
+      '<div style="font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.5px;color:#bfe0e6;margin-top:15px">FINN · Dein Blick für heute</div>'+
+      '<div style="font-size:15px;font-weight:700;line-height:1.5;margin-top:6px">'+esc(holo)+'</div>'+
+      (S.coachFinnMsg?'<div style="font-size:12px;font-weight:700;color:#ffd9cf;margin-top:8px">'+esc(S.coachFinnMsg)+'</div>':'')+analyse+
+      '<div style="height:1px;background:rgba(255,255,255,.16);margin:16px 0 13px"></div>'+
+      '<button data-act="openFinn" style="width:100%;display:flex;align-items:center;justify-content:center;gap:8px;border:none;border-radius:13px;background:#fff;color:#0A4958;font-weight:900;font-size:14.5px;padding:13px;cursor:pointer">'+svg('<path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.5 8.6 8.6 0 0 1-4-1L3 20l1-5a8.4 8.4 0 0 1-1-4A8.5 8.5 0 0 1 11.5 3 8.5 8.5 0 0 1 21 11.5z"></path>',{c:'#0A4958',w:2,s:18})+'Mit FINN chatten</button>'+
+      '<div style="display:flex;gap:8px;overflow-x:auto;margin-top:11px;-webkit-overflow-scrolling:touch;padding-bottom:2px">'+chips+'</div>'+
+    '</div>';
   }
   // Einstieg in den Figur-Check (Maße & Fortschritt) aus dem Coach-Hub.
   function coachFigurCard(){
@@ -4454,15 +4470,7 @@
     var visits=0; try{ var cutoff=Date.now()-7*864e5; (DATA.checkins||[]).forEach(function(x){ if(x&&x.in&&Date.parse(x.in)>=cutoff) visits++; }); }catch(e){}
     var goal=(mp&&mp.daysPerWeek)||3;
     var sess=(DATA.trainSess&&DATA.trainSess.items)||{}; var didToday=Object.keys(sess).some(function(k){ return sess[k]&&sess[k].done; });
-    // Ganzheitlicher Blick: datenbasiert, per „FINN-Analyse" durch KI ersetzbar.
-    var holo=(S.coachFinn&&S.coachFinn.text)?S.coachFinn.text:coachHolistic();
-    var finnBtn=S.coachFinnBusy
-      ? '<div style="margin-top:12px;display:flex;align-items:center;gap:9px;font-size:12.5px;font-weight:800;color:#eafaf1">'+trainSpin(16)+' FINN analysiert …</div>'
-      : '<button data-act="coachFinn" style="margin-top:12px;border:1.5px solid rgba(255,255,255,.45);background:rgba(255,255,255,.12);color:#fff;border-radius:11px;font-size:12.5px;font-weight:800;padding:9px 14px;cursor:pointer">🤖 '+((S.coachFinn&&S.coachFinn.text)?'Neue FINN-Analyse':'Tiefere FINN-Analyse holen')+'</button>';
-    var holoCard='<div style="background:linear-gradient(150deg,#12879c,#0e6072 58%,#0a4958);border-radius:20px;padding:18px 20px;color:#fff;box-shadow:0 14px 34px rgba(14,96,114,.26);margin-bottom:16px">'+
-      '<div style="font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.5px;color:#bfe0e6">FINN · Dein Blick für heute</div>'+
-      '<div style="font-size:15px;font-weight:700;line-height:1.5;margin-top:7px">'+esc(holo)+'</div>'+
-      (S.coachFinnMsg?'<div style="font-size:12px;font-weight:700;color:#ffd9cf;margin-top:8px">'+esc(S.coachFinnMsg)+'</div>':'')+finnBtn+'</div>';
+    // Der ganzheitliche „Blick für heute" + die FINN-Analyse leben jetzt oben im FINN-Hub (coachFinnHub).
     // Abschnitt Training
     var tB=[];
     if(mp){ tB.push({ic:'📋',t:'Dein Plan: '+mp.title, s:trainMetaLine(mp)+(mp.aiAssist?' · Technogym-KI steuert die Progression':'')}); }
@@ -4483,7 +4491,7 @@
       eB.push({ic:'🥗',t:'Ernährung noch nicht eingerichtet', s:'Richte in „Mein Tag → Ernährung" dein Tagesziel ein – dann coacht FINN auch hier.'});
     }
     var ernCard=(eB.length)?coachSectionCard('Ernährung','🥗',eB):'';
-    return holoCard+trainingCard+ernCard;
+    return trainingCard+ernCard;
   }
   // ═══ Training-Bausteine (aus dem früheren Coach-Training-Tab; heute von „Mein Tag" genutzt) ═══
   var TRAIN_LOC={ studio:'Studio', zuhause:'Zuhause', beides:'Studio & zuhause' };
@@ -7110,6 +7118,8 @@
       }
     },
     openFinn:function(topic){ S.finnTopic=(topic==='ernaehrung'||topic==='training')?topic:''; setS({finnOpen:true}); setTimeout(function(){ var t=$('finn_q'); if(t) t.focus(); finnScrollBottom(); },60); },
+    // Schnellfrage aus dem Coach-Hub: FINN-Chat öffnen und die Frage direkt senden.
+    finnQuick:function(q){ S.finnTopic=''; setS({finnOpen:true}); setTimeout(function(){ var t=$('finn_q'); if(t){ t.value=q||''; } ACT.finnSend(); },140); },
     finnRefresh:function(){ S.finnTip=''; S.finnTipLoaded=false; loadFinnTip(); render(); },
     ciToggle:function(){ if(S.screen!=='home') nav('home'); if(S.checkedInAt){ if(ACT.doCheckout) ACT.doCheckout(); } else { if(ACT.doCheckin) ACT.doCheckin(); } },
     obGoal:function(a){ setS({obGoal:a}); },
