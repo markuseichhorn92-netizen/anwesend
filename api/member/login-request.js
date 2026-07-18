@@ -80,6 +80,12 @@ module.exports = async function handler(req, res) {
     if (emailOk) {
       const matches = await M.findAllByEmailDob(email, dob);
 
+      // Kein Konto zu E-Mail + Geburtsdatum: klare Rückmeldung statt still weiter zum
+      // Code-Schritt (früher wurde nie ein Code verschickt, obwohl die App „Code eingeben"
+      // zeigte). E-Mail UND Geburtsdatum zusammen sind datenschutzunkritisch genug; der
+      // Versuch bleibt rate-limitiert (oben 15/IP, hier 10/E-Mail) gegen Enumeration.
+      if (!matches.length) return send(res, { ok: true, step: 'notfound' });
+
       // Konto bestimmen: per Nummer, eindeutig, oder automatisch das Mitgliedschaftskonto.
       let chosen = null;
       if (num) {

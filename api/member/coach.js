@@ -17,6 +17,7 @@ const AI = require('../../lib/ai');
 const HELP = require('../../lib/help');
 const MLAccount = require('../../lib/mlAccount');
 const FinnMemory = require('../../lib/finnMemory');
+const MemberProfile = require('../../lib/memberProfile');
 
 // ── Live-Daten fürs Chat-Gespräch (nur die des angemeldeten Mitglieds) ──
 // Vertrag, nächste Termine, Besuche, Beitragskonto – parallel und fehlertolerant
@@ -184,12 +185,16 @@ module.exports = async function handler(req, res) {
     let mem = { on: false, items: [] };
     try { mem = await FinnMemory.get(sess.id); } catch (e) {}
     const memoryText = FinnMemory.toPromptText(mem);
-    // Datenminimierung: nur Vorname + Tarif + aggregierte Live-Daten (+ ggf. Gemerktes) an die KI –
+    // Onboarding-Profil (Ziel, Körperdaten, Rhythmus, Erfahrung, Vorlieben, Ernährung –
+    // und, NUR bei Einwilligung, Gesundheit/Beschwerden): macht FINN persönlicher & sicherer.
+    let profileText = '';
+    try { profileText = MemberProfile.toPromptText(await MemberProfile.get(sess.id)); } catch (e) {}
+    // Datenminimierung: nur Vorname + Tarif + aggregierte Live-Daten (+ ggf. Profil/Gemerktes) an die KI –
     // Nachname/Mitgliedsnummer sind für die Antwort nicht erforderlich.
     const member = {
       firstName: m.firstName,
       rateName: det.rateName,
-      details: det.text + (topicHint ? ('\n\n' + topicHint) : '') + (memoryText ? ('\n\n' + memoryText) : ''),
+      details: det.text + (topicHint ? ('\n\n' + topicHint) : '') + (profileText ? ('\n\n' + profileText) : '') + (memoryText ? ('\n\n' + memoryText) : ''),
       memoDirective: mem.on ? FinnMemory.MEMO_DIRECTIVE : '',
     };
     const r = await AI.coachReply(member, Array.isArray(body.history) ? body.history : [], question, HELP);

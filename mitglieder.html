@@ -489,6 +489,8 @@
     qaOpen:false, dp:null,
     blogSel:null, blogPost:null, instaSel:null,
     obStep:0, obGoal:'Gesundheit & Longevity', obFreq:3, obAge:34, obExp:'gelegentlich', obMemConsent:false,
+    obPrefilled:false, obSex:'', obHeightCm:null, obWeightKg:null, obTrainTime:'', obLikes:[], obDislikes:[],
+    obDiet:'', obAllergies:[], obHealthConsent:false, obHealth:[], obHealthNote:'',
     ernFormInit:false, ernEdit:false, ernGoal:'abnehmen', ernSex:'w', ernH:170, ernW:70, ernAge:30, ernAct:'moderat', ernDiet:'omnivor',
     ernBusy:false, ernMsg:'', ernErr:false, ernAsk:'', ernAnswer:'', ernAskBusy:false, ernRecipes:null, ernRecipesBusy:false, ernCoachBusy:false, ernCoachSent:false, ernPhotoBusy:false, ernRec:false,
     ernTab:'heute', ernPlanTab:'woche', ernPlanBusy:false, ernFridge:'', ernRecipeSel:null, ernRecipeSaved:false,
@@ -1671,8 +1673,20 @@
   }
   // Tipp des Tages – rotierend (tagesstabil).
   // ── Onboarding (4 Schritte, einmalig) – wie im Mockup ──
-  function obDone(){ try{ return !!localStorage.getItem('fi_ob_v1'); }catch(e){ return true; } }
-  function obData(){ try{ var v=localStorage.getItem('fi_ob_v1'); return v?JSON.parse(v):null; }catch(e){ return null; } }
+  // Onboarding v2 = ausführliche Version (Körperdaten, Gesundheit, Ernährung …). Bestehende
+  // Nutzer:innen (nur fi_ob_v1) durchlaufen es einmal neu; ihre alten Antworten werden vorbelegt.
+  function obDone(){ try{ return !!localStorage.getItem('fi_ob_v2'); }catch(e){ return true; } }
+  function obData(){ try{ var v=localStorage.getItem('fi_ob_v2')||localStorage.getItem('fi_ob_v1'); return v?JSON.parse(v):null; }catch(e){ return null; } }
+  // Gespeicherte Antworten in den State übernehmen (Vorbelegung).
+  function obApplyPrefill(o){ o=o||{};
+    if(o.goal) S.obGoal=o.goal; if(o.freq) S.obFreq=o.freq; if(o.age) S.obAge=o.age; if(o.exp) S.obExp=o.exp;
+    if(o.sex) S.obSex=o.sex; if(o.heightCm) S.obHeightCm=o.heightCm; if(o.weightKg) S.obWeightKg=o.weightKg;
+    if(o.trainTime) S.obTrainTime=o.trainTime; if(Array.isArray(o.likes)) S.obLikes=o.likes.slice(); if(Array.isArray(o.dislikes)) S.obDislikes=o.dislikes.slice();
+    if(o.diet) S.obDiet=o.diet; if(Array.isArray(o.allergies)) S.obAllergies=o.allergies.slice();
+    if(o.health&&typeof o.health==='object'){ S.obHealthConsent=!!o.health.consent; if(Array.isArray(o.health.items)) S.obHealth=o.health.items.slice(); if(o.health.note) S.obHealthNote=o.health.note; }
+    if(o.memConsent!=null) S.obMemConsent=!!o.memConsent;
+  }
+  function obPrefillOnce(){ if(S.obPrefilled) return; S.obPrefilled=true; obApplyPrefill(obData()||{}); }
   // ── Coach-Premium-Nudge auf Start: dezent, wegklickbar, höchstens 1×/7 Tage ──
   // Nur Gratis-Nutzer (nie Premium/Trial), nur onboarded, nie in Chat/Sheet/Overlay.
   var PREM_NUDGE_CAP=7*864e5;
@@ -1703,34 +1717,76 @@
   }
   function obOverlayHtml(){
     var step=S.obStep||0;
-    var dots=''; for(var i=0;i<5;i++){ dots+='<span style="flex:1;height:5px;border-radius:4px;background:'+(i<=step?'#F6A964':'rgba(255,255,255,.18)')+'"></span>'; }
+    var dots=''; for(var i=0;i<9;i++){ dots+='<span style="flex:1;height:5px;border-radius:4px;background:'+(i<=step?'#F6A964':'rgba(255,255,255,.18)')+'"></span>'; }
     var goals=[['Abnehmen','🔥'],['Muskelaufbau','💪'],['Ausdauer & Fitness','🏃'],['Gesundheit & Longevity','❤️'],['Stressabbau & Kopf frei','🧘']];
     var exps=[['einsteiger','Einsteiger:in','Neu im Studio oder Wiedereinstieg','🌱'],['gelegentlich','Gelegentlich','Ich trainiere ab und zu','⚡'],['erfahren','Erfahren','Training gehört zu meinem Alltag','🏅']];
     var optBorder=function(sel){ return sel?'#7fd8e0':'rgba(255,255,255,.18)'; };
     var optBg=function(sel){ return sel?'rgba(127,227,168,.12)':'rgba(255,255,255,.06)'; };
+    var chip=function(sel,label,act,arg){ return '<button data-act="'+act+'" data-arg="'+esc(arg)+'" style="padding:10px 14px;border:2px solid '+optBorder(sel)+';border-radius:13px;background:'+optBg(sel)+';color:#fff;font-weight:800;font-size:13.5px;cursor:pointer">'+esc(label)+(sel?' ✓':'')+'</button>'; };
+    var chipsWrap=function(h){ return '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:14px">'+h+'</div>'; };
+    var subLbl=function(t){ return '<div style="font-size:13px;color:#aed0d6;font-weight:700;margin-top:22px">'+t+'</div>'; };
+    var hTitle=function(t,s){ return '<div style="font-size:23px;font-weight:900;letter-spacing:-.4px;line-height:1.15">'+t+'</div>'+(s?'<div style="font-size:13.5px;color:#aed0d6;font-weight:500;margin-top:8px;line-height:1.5">'+s+'</div>':''); };
     var inner='';
     if(step===0){
-      inner='<div style="flex:1;display:flex;flex-direction:column;justify-content:center;text-align:center"><div style="font-size:60px">👋</div><div style="font-size:30px;font-weight:900;letter-spacing:-.6px;margin-top:14px;line-height:1.12">Willkommen bei<br>Fit-Inn Trier</div><div style="font-size:15px;color:#aed0d6;font-weight:500;line-height:1.55;margin-top:14px;max-width:300px;align-self:center">In 4 kurzen Schritten richten wir dein Training ein – damit dein Coach dich jeden Tag passend motivieren kann.</div></div>';
+      inner='<div style="flex:1;display:flex;flex-direction:column;justify-content:center;text-align:center"><div style="font-size:60px">👋</div><div style="font-size:30px;font-weight:900;letter-spacing:-.6px;margin-top:14px;line-height:1.12">Willkommen bei<br>Fit-Inn Trier</div><div style="font-size:15px;color:#aed0d6;font-weight:500;line-height:1.55;margin-top:14px;max-width:315px;align-self:center">Ein paar kurze Fragen – damit dein Coach FINN dich passend zu deinem Ziel, deinem Alltag und deiner Gesundheit begleiten kann. Alles freiwillig und jederzeit in den Einstellungen änderbar.</div></div>';
     } else if(step===1){
-      inner='<div style="flex:1"><div style="font-size:24px;font-weight:900;letter-spacing:-.4px;line-height:1.15">Was ist dein<br>wichtigstes Ziel?</div><div style="font-size:14px;color:#aed0d6;font-weight:500;margin-top:8px">Daran richtet dein Coach alles aus.</div><div style="display:flex;flex-direction:column;gap:10px;margin-top:22px">'+
+      inner='<div style="flex:1">'+hTitle('Was ist dein<br>wichtigstes Ziel?','Daran richtet dein Coach alles aus.')+'<div style="display:flex;flex-direction:column;gap:10px;margin-top:22px">'+
         goals.map(function(g){ var sel=S.obGoal===g[0]; return '<button data-act="obGoal" data-arg="'+esc(g[0])+'" style="display:flex;align-items:center;gap:13px;width:100%;padding:15px;border:2px solid '+optBorder(sel)+';border-radius:15px;background:'+optBg(sel)+';cursor:pointer;text-align:left"><span style="font-size:23px">'+g[1]+'</span><span style="flex:1;font-size:15.5px;font-weight:800;color:#fff">'+esc(g[0])+'</span>'+(sel?svg('<path d="M5 13l4 4L19 7"></path>',{c:'#7fd8e0',w:2.6,s:20}):'')+'</button>'; }).join('')+'</div></div>';
     } else if(step===2){
-      var freqBtns=''; for(var n=1;n<=6;n++){ var on=S.obFreq===n; freqBtns+='<button data-act="obFreq" data-arg="'+n+'" style="flex:1;padding:14px 0;border:2px solid '+optBorder(on)+';border-radius:13px;background:'+optBg(on)+';color:#fff;font-weight:800;font-size:16px;cursor:pointer">'+n+'</button>'; }
-      inner='<div style="flex:1"><div style="font-size:24px;font-weight:900;letter-spacing:-.4px;line-height:1.15">Wie oft möchtest<br>du trainieren?</div><div style="font-size:14px;color:#aed0d6;font-weight:500;margin-top:8px">Pro Woche – ehrlich, nicht perfekt. Das wird dein Wochenziel für Vitalpunkte.</div><div style="text-align:center;margin:22px 0"><span style="font-size:60px;font-weight:900;letter-spacing:-2px">'+S.obFreq+'</span><span style="font-size:19px;font-weight:700;color:#aed0d6"> ×/Woche</span></div><div style="display:flex;gap:8px">'+freqBtns+'</div>'+
-        '<div style="font-size:20px;font-weight:900;letter-spacing:-.4px;margin-top:28px">Wie alt bist du?</div><div style="font-size:13px;color:#aed0d6;font-weight:500;margin-top:6px">Für dein Aktivitäts-Alter & deinen Longevity-Score.</div><div style="display:flex;align-items:center;gap:14px;margin-top:14px;background:rgba(255,255,255,.1);border-radius:15px;padding:13px 16px"><button data-act="obAge" data-arg="-1" style="width:38px;height:38px;border-radius:11px;border:none;background:rgba(255,255,255,.16);color:#fff;font-size:22px;font-weight:800;cursor:pointer">−</button><div style="flex:1;text-align:center;font-size:26px;font-weight:900">'+S.obAge+' <span style="font-size:14px;color:#aed0d6;font-weight:600">Jahre</span></div><button data-act="obAge" data-arg="1" style="width:38px;height:38px;border-radius:11px;border:none;background:rgba(255,255,255,.16);color:#fff;font-size:22px;font-weight:800;cursor:pointer">+</button></div></div>';
+      var sexes=[['w','Weiblich'],['m','Männlich'],['d','Divers']];
+      var sexChips=sexes.map(function(x){ return chip(S.obSex===x[0],x[1],'obSex',x[0]); }).join('');
+      var numFld=function(field,val,unit,ph){ return '<div style="flex:1;background:rgba(255,255,255,.1);border-radius:14px;padding:11px 14px"><div style="font-size:11px;color:#aed0d6;font-weight:700;text-transform:uppercase;letter-spacing:.4px">'+(unit==='cm'?'Größe':'Gewicht')+'</div><div style="display:flex;align-items:baseline;gap:5px;margin-top:3px"><input inputmode="numeric" enterkeyhint="done" value="'+esc(val==null?'':String(val))+'" placeholder="'+ph+'" oninput="window.__obNum&&window.__obNum(\''+field+'\',this)" style="width:100%;min-width:0;border:none;background:transparent;color:#fff;font-size:23px;font-weight:900;outline:none;font-family:inherit"><span style="font-size:13px;color:#aed0d6;font-weight:700;flex-shrink:0">'+unit+'</span></div></div>'; };
+      inner='<div style="flex:1">'+hTitle('Deine Körperdaten','Damit FINN Kalorien, Portionen und dein Aktivitäts-Alter realistisch berechnet.')+
+        '<div style="font-size:13px;color:#aed0d6;font-weight:700;margin-top:20px;margin-bottom:8px">Geschlecht</div><div style="display:flex;gap:8px">'+sexChips+'</div>'+
+        '<div style="display:flex;gap:10px;margin-top:16px">'+numFld('obHeightCm',S.obHeightCm,'cm','175')+numFld('obWeightKg',S.obWeightKg,'kg','74')+'</div>'+
+        subLbl('Wie alt bist du?')+'<div style="display:flex;align-items:center;gap:14px;margin-top:10px;background:rgba(255,255,255,.1);border-radius:15px;padding:11px 16px"><button data-act="obAge" data-arg="-1" style="width:38px;height:38px;border-radius:11px;border:none;background:rgba(255,255,255,.16);color:#fff;font-size:22px;font-weight:800;cursor:pointer">−</button><div style="flex:1;text-align:center;font-size:24px;font-weight:900">'+S.obAge+' <span style="font-size:14px;color:#aed0d6;font-weight:600">Jahre</span></div><button data-act="obAge" data-arg="1" style="width:38px;height:38px;border-radius:11px;border:none;background:rgba(255,255,255,.16);color:#fff;font-size:22px;font-weight:800;cursor:pointer">+</button></div></div>';
     } else if(step===3){
-      inner='<div style="flex:1"><div style="font-size:24px;font-weight:900;letter-spacing:-.4px;line-height:1.15">Wie viel Erfahrung<br>hast du?</div><div style="font-size:14px;color:#aed0d6;font-weight:500;margin-top:8px">So passt dein Coach die Tipps an.</div><div style="display:flex;flex-direction:column;gap:10px;margin-top:22px">'+
+      var freqBtns=''; for(var n=1;n<=6;n++){ var on=S.obFreq===n; freqBtns+='<button data-act="obFreq" data-arg="'+n+'" style="flex:1;padding:14px 0;border:2px solid '+optBorder(on)+';border-radius:13px;background:'+optBg(on)+';color:#fff;font-weight:800;font-size:16px;cursor:pointer">'+n+'</button>'; }
+      var times=[['morgens','🌅 Morgens'],['mittags','☀️ Mittags'],['abends','🌙 Abends'],['flexibel','🔄 Flexibel']];
+      var timeChips=times.map(function(x){ return chip(S.obTrainTime===x[0],x[1],'obTime',x[0]); }).join('');
+      inner='<div style="flex:1">'+hTitle('Wie oft & wann?','Pro Woche – ehrlich, nicht perfekt. Das wird dein Wochenziel für Vitalpunkte.')+
+        '<div style="text-align:center;margin:16px 0 4px"><span style="font-size:54px;font-weight:900;letter-spacing:-2px">'+S.obFreq+'</span><span style="font-size:18px;font-weight:700;color:#aed0d6"> ×/Woche</span></div><div style="display:flex;gap:8px">'+freqBtns+'</div>'+
+        subLbl('Zu welcher Tageszeit am liebsten?')+chipsWrap(timeChips)+'</div>';
+    } else if(step===4){
+      inner='<div style="flex:1">'+hTitle('Wie viel Erfahrung<br>hast du?','So passt dein Coach die Tipps an.')+'<div style="display:flex;flex-direction:column;gap:10px;margin-top:22px">'+
         exps.map(function(e){ var sel=S.obExp===e[0]; return '<button data-act="obExp" data-arg="'+e[0]+'" style="display:flex;align-items:center;gap:13px;width:100%;padding:16px;border:2px solid '+optBorder(sel)+';border-radius:15px;background:'+optBg(sel)+';cursor:pointer;text-align:left"><span style="font-size:23px">'+e[3]+'</span><span style="flex:1"><span style="display:block;font-size:15.5px;font-weight:800;color:#fff">'+esc(e[1])+'</span><span style="display:block;font-size:12.5px;color:#aed0d6;font-weight:500">'+esc(e[2])+'</span></span></button>'; }).join('')+'</div></div>';
+    } else if(step===5){
+      var likeOpts=['Geräte/Maschinen','Freihanteln','Kurse','Cardio','Functional','Zuhause','Draußen','Schwimmen'];
+      var likeChips=likeOpts.map(function(x){ return chip((S.obLikes||[]).indexOf(x)>=0,x,'obToggle','likes|'+x); }).join('');
+      var disOpts=['Laufen','Beintraining','Frühsport','Gruppen','Lange Einheiten'];
+      var disChips=disOpts.map(function(x){ return chip((S.obDislikes||[]).indexOf(x)>=0,x,'obToggle','dislikes|'+x); }).join('');
+      inner='<div style="flex:1">'+hTitle('Was trainierst du gern?','FINN schlägt dir passende Übungen &amp; Kurse vor. Mehrfachauswahl.')+chipsWrap(likeChips)+
+        subLbl('Worauf hast du eher keine Lust?')+chipsWrap(disChips)+'</div>';
+    } else if(step===6){
+      var hc=!!S.obHealthConsent;
+      var hSw='<button data-act="obHealthToggle" role="switch" aria-checked="'+(hc?'true':'false')+'" style="position:relative;width:52px;height:31px;border-radius:30px;border:none;cursor:pointer;background:'+(hc?'#7fd8e0':'rgba(255,255,255,.22)')+';flex-shrink:0;transition:background .2s"><span style="position:absolute;top:3px;left:'+(hc?'24px':'3px')+';width:25px;height:25px;border-radius:50%;background:#fff;transition:left .2s;box-shadow:0 1px 3px rgba(0,0,0,.35)"></span></button>';
+      var consentCard='<div style="display:flex;align-items:center;gap:14px;margin-top:18px;background:rgba(255,255,255,.1);border-radius:16px;padding:15px 18px"><div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:800;color:#fff">FINN darf meine Gesundheitsangaben nutzen</div><div style="font-size:12px;color:#aed0d6;font-weight:500;margin-top:2px;line-height:1.45">Damit dein Coach sicher berät (z.&nbsp;B. Rücken/Knie schonen).</div></div>'+hSw+'</div>';
+      var healthBody='';
+      if(hc){
+        var hOpts=['Rücken','Knie','Schulter','Nacken','Hüfte','Herz-Kreislauf','Bluthochdruck','Diabetes','Asthma','Gelenke','Schwangerschaft'];
+        var hChips=hOpts.map(function(x){ return chip((S.obHealth||[]).indexOf(x)>=0,x,'obToggle','health|'+x); }).join('');
+        healthBody=chipsWrap(hChips)+'<textarea id="ob_health_note" rows="2" placeholder="Sonstiges, das dein Coach wissen sollte? (freiwillig)" oninput="window.__obHealthNote&&window.__obHealthNote(this)" style="width:100%;margin-top:12px;border:none;border-radius:14px;padding:12px 14px;font-size:14.5px;font-weight:600;color:#0a4958;background:rgba(255,255,255,.92);font-family:inherit;resize:none;line-height:1.4">'+esc(S.obHealthNote||'')+'</textarea>';
+      } else {
+        healthBody='<div style="margin-top:16px;background:rgba(255,255,255,.06);border-radius:14px;padding:14px 16px;font-size:12.5px;color:#aed0d6;font-weight:500;line-height:1.5">Ohne Einwilligung speichern wir keine Gesundheitsdaten. Du kannst den Schritt einfach mit „Weiter" überspringen.</div>';
+      }
+      inner='<div style="flex:1">'+hTitle('Gesundheit &amp; Beschwerden','Worauf soll dein Coach Rücksicht nehmen? Besonders geschützt (DSGVO Art. 9) und freiwillig – FINN stellt keine Diagnosen und verweist bei Bedarf auf ärztlichen Rat &amp; die Trainer:innen vor Ort.')+consentCard+healthBody+'</div>';
+    } else if(step===7){
+      var diets=[['alles','🍽️ Alles'],['vegetarisch','🥗 Vegetarisch'],['vegan','🌱 Vegan'],['pescetarisch','🐟 Pescetarisch'],['low-carb','🥑 Low-Carb'],['high-protein','💪 High-Protein']];
+      var dietChips=diets.map(function(x){ return chip(S.obDiet===x[0],x[1],'obDiet',x[0]); }).join('');
+      var alOpts=['Gluten','Laktose','Nüsse','Erdnüsse','Eier','Soja','Fisch','Meeresfrüchte'];
+      var alChips=alOpts.map(function(x){ return chip((S.obAllergies||[]).indexOf(x)>=0,x,'obToggle','allergies|'+x); }).join('');
+      inner='<div style="flex:1">'+hTitle('Wie ernährst du dich?','FINN passt Rezepte und Tipps daran an.')+chipsWrap(dietChips)+
+        subLbl('Allergien oder Unverträglichkeiten?')+chipsWrap(alChips)+'</div>';
     } else {
-      // Schritt 5: Einwilligung fürs FINN-Gedächtnis (freiwillig, Standard aus).
+      // Schritt 9: Einwilligung fürs FINN-Gedächtnis (freiwillig, Standard aus).
       var memSw='<button data-act="obMemToggle" role="switch" aria-checked="'+(S.obMemConsent?'true':'false')+'" style="position:relative;width:52px;height:31px;border-radius:30px;border:none;cursor:pointer;background:'+(S.obMemConsent?'#7fd8e0':'rgba(255,255,255,.22)')+';flex-shrink:0;transition:background .2s"><span style="position:absolute;top:3px;left:'+(S.obMemConsent?'24px':'3px')+';width:25px;height:25px;border-radius:50%;background:#fff;transition:left .2s;box-shadow:0 1px 3px rgba(0,0,0,.35)"></span></button>';
-      inner='<div style="flex:1"><div style="font-size:24px;font-weight:900;letter-spacing:-.4px;line-height:1.15">Darf FINN sich<br>Dinge merken?</div><div style="font-size:14px;color:#aed0d6;font-weight:500;margin-top:8px;line-height:1.5">Dein Coach FINN kann sich dein Ziel, deine Vorlieben und Einschränkungen über Gespräche hinweg merken – so wird er persönlicher. Nur für dich, jederzeit in den Einstellungen löschbar. Keine sensiblen Gesundheitsdiagnosen.</div>'+
+      inner='<div style="flex:1">'+hTitle('Darf FINN sich<br>Dinge merken?','Dein Coach FINN kann sich Ziel, Vorlieben und Einschränkungen über Gespräche hinweg merken – so wird er persönlicher. Nur für dich, jederzeit in den Einstellungen löschbar. Keine sensiblen Gesundheitsdiagnosen.')+
         '<div style="display:flex;align-items:center;gap:14px;margin-top:24px;background:rgba(255,255,255,.1);border-radius:16px;padding:16px 18px"><div style="flex:1;min-width:0"><div style="font-size:15.5px;font-weight:800;color:#fff">FINN darf sich Dinge merken</div><div style="font-size:12.5px;color:#aed0d6;font-weight:500;margin-top:2px">Empfohlen für persönlicheres Coaching.</div></div>'+memSw+'</div>'+
         '<div style="font-size:12px;color:#8fb3ba;font-weight:500;margin-top:14px;line-height:1.5">Du kannst das jederzeit in den Einstellungen ändern.</div></div>';
     }
     return '<div class="obOverlay" style="position:fixed;inset:0;z-index:80;background:linear-gradient(170deg,#0e6072 0%,#0a4958 50%,#063540 100%);display:flex;flex-direction:column;padding:calc(40px + env(safe-area-inset-top,0px)) 24px calc(24px + env(safe-area-inset-bottom,0px));color:#fff;overflow-y:auto;max-width:480px;margin:0 auto">'+
-      '<div style="display:flex;gap:6px;margin-bottom:28px;flex-shrink:0">'+dots+'</div>'+inner+
-      '<button data-act="obNext" style="width:100%;margin-top:20px;border:none;border-radius:15px;background:#fff;color:#0a4958;font-weight:900;font-size:16px;padding:16px;cursor:pointer;flex-shrink:0">'+(step>=4?'Los geht\'s':'Weiter')+'</button>'+
+      '<div style="display:flex;gap:6px;margin-bottom:24px;flex-shrink:0">'+dots+'</div>'+inner+
+      '<button data-act="obNext" style="width:100%;margin-top:20px;border:none;border-radius:15px;background:#fff;color:#0a4958;font-weight:900;font-size:16px;padding:16px;cursor:pointer;flex-shrink:0">'+(step>=8?'Los geht\'s':'Weiter')+'</button>'+
     '</div>';
   }
   // Schlanker FINN-Anreißer für Unterseiten (Training/Fortschritt): Tipp des Tages
@@ -3649,6 +3705,41 @@
     if(ernScanStream){ try{ ernScanStream.getTracks().forEach(function(t){ t.stop(); }); }catch(e){} ernScanStream=null; }
     ernScanDet=null; };
   window.__ernScanManual=function(){ var el=document.getElementById('ern_bc'); ernScanLookup(el?el.value:''); };
+  // Barcode aus einem FOTO lesen (robuster Fallback für Geräte, auf denen die Live-Kamera
+  // im WebView blockiert ist – v. a. Android). Nutzt den nativen BarcodeDetector, sonst ZXing,
+  // beides auf dem Standbild. Kein getUserMedia nötig -> funktioniert in jedem WebView.
+  window.__ernScanPhoto=function(input){
+    var f=input&&input.files&&input.files[0]; try{ if(input) input.value=''; }catch(e){}
+    if(!f) return;
+    if(!/^image\//.test(f.type||'')){ setS({ernScanErr:'Bitte ein Foto auswählen.'}); return; }
+    setS({ernScanErr:'',ernScanBusy:true,ernScanNotFound:false});
+    var rd=new FileReader();
+    rd.onload=function(e){
+      var src=String((e.target&&e.target.result)||'');
+      var img=new Image();
+      img.onload=function(){
+        var done=function(code){ var d=String(code||'').replace(/\D/g,''); if(d.length>=8){ ernScanLookup(d); } else { setS({ernScanBusy:false,ernScanErr:'Auf dem Foto war kein Barcode erkennbar – bitte tippe die Nummer unten ein.'}); } };
+        function zx(){ ernLoadZXing().then(function(ZX){ var reader=null; try{ reader=new ZX.BrowserMultiFormatReader(); }catch(e3){ reader=null; } if(!reader){ done(''); return; }
+          var p=null; try{ if(typeof reader.decodeFromImageUrl==='function') p=reader.decodeFromImageUrl(src);
+            else if(typeof reader.decodeFromImageElement==='function') p=reader.decodeFromImageElement(img);
+            else if(typeof reader.decodeFromImage==='function') p=reader.decodeFromImage(img); }catch(e4){ p=null; }
+          if(!p||!p.then){ done(''); return; }
+          p.then(function(result){ var txt=''; try{ txt=(result&&(result.getText?result.getText():(result.text||'')))||''; }catch(e5){} done(txt); }).catch(function(){ done(''); });
+        }).catch(function(){ done(''); }); }
+        if(typeof window.BarcodeDetector!=='undefined'){
+          try{ var det=new window.BarcodeDetector({formats:['ean_13','ean_8','upc_a','upc_e','code_128']});
+            det.detect(img).then(function(codes){ var hit=(codes||[]).map(function(c){ return c&&c.rawValue; }).find(function(v){ return String(v||'').replace(/\D/g,'').length>=8; }); if(hit){ done(hit); } else { zx(); } }).catch(function(){ zx(); });
+            return;
+          }catch(e2){ /* -> ZXing */ }
+        }
+        zx();
+      };
+      img.onerror=function(){ setS({ernScanBusy:false,ernScanErr:'Foto konnte nicht gelesen werden.'}); };
+      img.src=src;
+    };
+    rd.onerror=function(){ setS({ernScanBusy:false,ernScanErr:'Foto konnte nicht gelesen werden.'}); };
+    rd.readAsDataURL(f);
+  };
   window.__ernProdSearch=function(){ var el=document.getElementById('ern_prodq'); if(ernSearchTimer){ try{ clearTimeout(ernSearchTimer); }catch(e){} ernSearchTimer=null; } ernSearchGo(el?el.value:''); };
   // ── Live-Suche: tippt der Nutzer, wird nach kurzer Pause automatisch gesucht (debounced) ──
   var ernSearchTimer=null;
@@ -3691,6 +3782,12 @@
   };
   // ── Sprache: Text an die KI-Schätzung schicken (Feld funktioniert auf jedem Gerät, auch per Tastatur-Diktat) ──
   window.__ernVoiceText=function(el){ S.ernVoiceText=el?el.value:''; };
+  // Onboarding-Zahlenfelder (Größe/Gewicht) + Gesundheits-Notiz: still setzen (kein Re-Render,
+  // damit der Fokus im Feld bleibt); übernommen wird beim „Weiter".
+  window.__obNum=function(field,el){ var v=parseInt(String((el&&el.value)||'').replace(/[^\d]/g,''),10);
+    if(field==='obHeightCm') S.obHeightCm=isFinite(v)?Math.max(0,Math.min(250,v)):null;
+    else if(field==='obWeightKg') S.obWeightKg=isFinite(v)?Math.max(0,Math.min(400,v)):null; };
+  window.__obHealthNote=function(el){ S.obHealthNote=el?el.value:''; };
   window.__ernVoiceSend=function(){ var el=document.getElementById('ern_voiceq'); var t=el?(el.value||''):(S.ernVoiceText||''); S.ernVoiceText=t; ernLogText(t); };
   // Produkt-Detail: Portion wählen -> Nährwerte -> Übernehmen (Licht-Screen)
   function ernProductPicker(){
@@ -3826,12 +3923,15 @@
       // Barcode: Kamera-Scan (falls BarcodeDetector verfügbar) + immer manuelle Eingabe.
       var canScan=ernScanSupported();
       var video='<video id="ern_scan_video" playsinline muted style="width:100%;height:230px;object-fit:cover;border-radius:20px;background:#0e2529;'+(ernScanActive?'':'display:none;')+'"></video>';
+      // Foto-Fallback: liest den Barcode aus einem aufgenommenen Bild. Funktioniert in JEDEM
+      // WebView (auch dort, wo die Live-Kamera / getUserMedia blockiert ist – v. a. Android).
+      var scanPhotoBtn='<label style="display:flex;align-items:center;justify-content:center;gap:8px;width:100%;margin-top:10px;padding:14px;border:1.5px solid rgba(10,73,88,.25);border-radius:15px;background:var(--surface);color:var(--teal-ink);font-weight:800;font-size:14.5px;cursor:pointer">'+svg('<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle>',{c:'var(--teal-ink)',w:2,s:19})+'Barcode fotografieren<input type="file" accept="image/*" capture="environment" onchange="window.__ernScanPhoto(this)" '+(S.ernScanBusy?'disabled ':'')+'style="display:none"></label>';
       var camArea='';
       if(canScan){
         camArea=(ernScanActive?video+'<button data-act="ernScanStop" style="width:100%;margin-top:12px;padding:14px;border:1.5px solid rgba(10,73,88,.25);border-radius:15px;background:var(--surface);color:var(--teal-ink);font-weight:800;font-size:14.5px;cursor:pointer">Kamera stoppen</button><div style="text-align:center;font-size:12px;font-weight:600;color:var(--text-soft);margin-top:10px">Barcode in den Rahmen halten …</div>'
-          :'<button data-act="ernScanStart" aria-label="Barcode mit Kamera scannen" style="width:100%;padding:16px;border:none;border-radius:16px;background:#0e6072;color:#fff;font-weight:900;font-size:15.5px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:9px">'+svg('<path d="M3 5v14M7 5v14M11 5v14M14 5v14M18 5v14M21 5v14"></path>',{c:'#fff',w:2,s:20})+'Barcode scannen</button>'+video);
+          :'<button data-act="ernScanStart" aria-label="Barcode mit Kamera scannen" style="width:100%;padding:16px;border:none;border-radius:16px;background:#0e6072;color:#fff;font-weight:900;font-size:15.5px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:9px">'+svg('<path d="M3 5v14M7 5v14M11 5v14M14 5v14M18 5v14M21 5v14"></path>',{c:'#fff',w:2,s:20})+'Barcode scannen</button>'+video+scanPhotoBtn);
       } else {
-        camArea='<div style="background:var(--surface);border-radius:16px;padding:16px;text-align:center;font-size:12.5px;font-weight:600;color:var(--text-soft);line-height:1.55">Kamera-Scan wird auf diesem Gerät nicht unterstützt – bitte den Barcode unten eintippen.</div>';
+        camArea='<div style="background:var(--surface);border-radius:16px;padding:16px;text-align:center;font-size:12.5px;font-weight:600;color:var(--text-soft);line-height:1.55">Live-Scan ist auf diesem Gerät nicht verfügbar – fotografiere den Barcode oder tippe ihn unten ein.</div>'+scanPhotoBtn;
       }
       var manual='<div style="margin-top:16px"><label for="ern_bc" style="font-size:12px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.4px">Barcode eintippen</label>'+
         '<div style="display:flex;gap:8px;margin-top:8px"><input id="ern_bc" inputmode="numeric" enterkeyhint="search" aria-label="Barcode-Nummer" placeholder="z. B. 4000417025005" value="'+esc(S.ernScanCode||'')+'" onkeydown="if(event.key===\'Enter\'){event.preventDefault();window.__ernScanManual&&window.__ernScanManual();}" style="flex:1;min-width:0;border:1.5px solid var(--border);border-radius:13px;padding:12px 14px;font-size:15px;font-weight:700;color:var(--text);background:var(--surface)">'+
@@ -6930,7 +7030,7 @@
     if(S.qaOpen) html+=qaSheet();
     if(S.ernUpgrade) html+=ernUpgradeScreen();   // Coach-Premium-Kauf als Bottom-Sheet-Popup über dem aktuellen Screen
     if(S.screen==='ern'&&S.ernCapture) html+=ernErfassen();   // Erfassen-Popup (Bottom-Sheet) über dem Ernährungs-Screen
-    if(TOKEN && S.screen!=='login' && !isFormer() && !obDone()) html+=obOverlayHtml();
+    if(TOKEN && S.screen!=='login' && !isFormer() && !obDone()){ obPrefillOnce(); html+=obOverlayHtml(); }
     // Chat-Eingaben über die Neu-Zeichnung retten (Wert, Fokus, Cursor & Scroll-Position) –
     // sonst verschwindet getippter Text und die Tastatur klappt zu, sobald im Hintergrund
     // Daten nachladen (das war der große Chat-Bug).
@@ -7155,7 +7255,13 @@
     finnRefresh:function(){ S.finnTip=''; S.finnTipLoaded=false; loadFinnTip(); render(); },
     ciToggle:function(){ if(S.screen!=='home') nav('home'); if(S.checkedInAt){ if(ACT.doCheckout) ACT.doCheckout(); } else { if(ACT.doCheckin) ACT.doCheckin(); } },
     obGoal:function(a){ setS({obGoal:a}); },
-    replayOnboarding:function(){ var o=obData()||{}; try{ localStorage.removeItem('fi_ob_v1'); }catch(e){} setS({obStep:0,obGoal:o.goal||S.obGoal,obFreq:o.freq||S.obFreq,obAge:o.age||S.obAge,obExp:o.exp||S.obExp}); try{ window.scrollTo(0,0); }catch(e){} },
+    obSex:function(a){ setS({obSex:a}); },
+    obTime:function(a){ setS({obTrainTime:(S.obTrainTime===a?'':a)}); },
+    obDiet:function(a){ setS({obDiet:(S.obDiet===a?'':a)}); },
+    obHealthToggle:function(){ setS({obHealthConsent:!S.obHealthConsent}); },
+    // Mehrfachauswahl-Chip (Vorlieben/Abneigungen/Gesundheit/Allergien): "feld|Wert" umschalten.
+    obToggle:function(a){ var p=String(a||'').split('|'); var map={likes:'obLikes',dislikes:'obDislikes',health:'obHealth',allergies:'obAllergies'}; var f=map[p[0]]; if(!f) return; var val=p.slice(1).join('|'); var arr=(S[f]||[]).slice(); var ix=arr.indexOf(val); if(ix>=0) arr.splice(ix,1); else arr.push(val); var o={}; o[f]=arr; setS(o); },
+    replayOnboarding:function(){ obApplyPrefill(obData()||{}); S.obPrefilled=true; try{ localStorage.removeItem('fi_ob_v2'); }catch(e){} setS({obStep:0}); try{ window.scrollTo(0,0); }catch(e){} },
     // ── App-Tour (Schritt für Schritt durch die App) ──
     tourNext:function(){ var n=(S.tourStep||0)+1; if(n>=tourSteps().length){ endTour(); render(); } else { S.tourStep=n; positionTour(true); } },
     tourSkip:function(){ endTour(); render(); },
@@ -7164,7 +7270,13 @@
     obAge:function(a){ var d=parseInt(a,10)||0; setS({obAge:Math.max(14,Math.min(99,(S.obAge||34)+d))}); },
     obExp:function(a){ setS({obExp:a}); },
     obMemToggle:function(){ setS({obMemConsent:!S.obMemConsent}); },
-    obNext:function(){ if((S.obStep||0)>=4){ try{ localStorage.setItem('fi_ob_v1',JSON.stringify({goal:S.obGoal,freq:S.obFreq,age:S.obAge,exp:S.obExp})); }catch(e){} S.finnTipLoaded=false;
+    obNext:function(){ if((S.obStep||0)>=8){
+        // Volles Profil zusammenstellen (Gesundheit nur bei Einwilligung).
+        var prof={goal:S.obGoal,freq:S.obFreq,age:S.obAge,sex:S.obSex||'',heightCm:S.obHeightCm||null,weightKg:S.obWeightKg||null,trainTime:S.obTrainTime||'',exp:S.obExp,likes:(S.obLikes||[]),dislikes:(S.obDislikes||[]),diet:S.obDiet||'',allergies:(S.obAllergies||[]),health:{consent:!!S.obHealthConsent,items:(S.obHealthConsent?(S.obHealth||[]):[]),note:(S.obHealthConsent?(S.obHealthNote||''):'')}};
+        try{ localStorage.setItem('fi_ob_v2',JSON.stringify(Object.assign({memConsent:!!S.obMemConsent},prof))); }catch(e){}
+        // Onboarding-Profil serverseitig sichern (FINN nutzt es als Kontext).
+        try{ api('/api/member/profile',{method:'POST',body:JSON.stringify({profile:prof})}).catch(function(){}); }catch(e){}
+        S.finnTipLoaded=false;
         // FINN-Gedächtnis-Einwilligung aus dem Onboarding übernehmen (Ja ODER Nein = Entscheidung getroffen).
         try{ api('/api/member/coach',{method:'POST',body:JSON.stringify({action:'memory-optin',on:!!S.obMemConsent})}).then(function(d){ finnMemApply(d); }).catch(function(){}); }catch(e){}
         // Direkt nach den Onboarding-Fragen: einmalige App-Tour (Schritt für Schritt).
@@ -7800,6 +7912,7 @@
         .then(function(x){ var j=x.j;
           if(x.s===429||j.error==='rate_limited'){ setS({busy:false,loginErr:'Zu viele Versuche – bitte ein paar Minuten warten und dann erneut probieren.'}); return; }
           if(j.step==='needdob'){ setS({busy:false,loginErr:'Bitte Geburtsdatum ausfüllen.'}); return; }
+          if(j.step==='notfound'){ setS({busy:false,loginErr:'Wir konnten kein Konto mit dieser E-Mail und diesem Geburtsdatum finden. Bitte prüfe beide Angaben – oder melde dich beim Studio.'}); return; }
           if(j.step==='number'){ setS({busy:false,liNum:'',loginStep:'confirmNumber',loginErr:''}); return; }
           if(j.step==='channel'){ setS({busy:false,channels:(j.channels||[]),loginStep:'channel',loginErr:''}); return; }
           if(j.challenge){ setS({busy:false,challenge:j.challenge,loginStep:'verify',otp:'',loginErr:'',loginDemo:!!j.demo}); return; }
@@ -7832,6 +7945,7 @@
         .then(function(r){return r.json().then(function(j){return {s:r.status,j:j||{}};}).catch(function(){return {s:r.status,j:{}};});})
         .then(function(x){ var j=x.j;
           if(x.s===429||j.error==='rate_limited'){ setS({busy:false,loginErr:'Zu viele Versuche – bitte ein paar Minuten warten und dann erneut probieren.'}); return; }
+          if(j.step==='notfound'){ setS({busy:false,loginErr:'Wir konnten kein Konto mit dieser E-Mail und diesem Geburtsdatum finden. Bitte prüfe beide Angaben – oder melde dich beim Studio.'}); return; }
           if(j.numberMismatch){ setS({busy:false,loginErr:'Diese Mitgliedsnummer passt nicht zu den angegebenen Daten.'}); return; }
           if(j.step==='channel'){ setS({busy:false,channels:(j.channels||[]),loginStep:'channel',loginErr:''}); return; }
           if(j.challenge){ setS({busy:false,challenge:j.challenge,loginStep:'verify',otp:'',loginErr:'',loginVia:(j.via||'email')}); return; }

@@ -14,9 +14,14 @@
  *                                 NSSpeechRecognitionUsageDescription,
  *                                 NSPhotoLibraryUsageDescription, NSPhotoLibraryAddUsageDescription
  *   - Android AndroidManifest.xml: CAMERA, RECORD_AUDIO (+ Kamera als optionales Feature)
+ *   - Android MainActivity.java:  fragt CAMERA/RECORD_AUDIO zur LAUFZEIT an. Ohne erteiltes
+ *                                 Laufzeit-Recht lehnt der Android-WebView getUserMedia ab
+ *                                 (NotAllowedError) – dann geht die Live-Kamera fürs
+ *                                 Essen-Tracking / den Barcode-Scan / das Sprach-Diktat nicht.
+ *                                 (Die Manifest-Berechtigung allein reicht auf Android NICHT.)
  *
  * Es ist ein NO-OP, solange `ios/`/`android/` noch nicht erzeugt wurden, und
- * fügt vorhandene Schlüssel NICHT doppelt hinzu. Läuft automatisch aus den
+ * fügt vorhandene Schlüssel/Anpassungen NICHT doppelt hinzu. Läuft automatisch aus den
  * npm-Scripts (`sync`, `ios`, `android`, `setup`); kann jederzeit erneut laufen.
  */
 
@@ -97,10 +102,61 @@ function patchAndroidManifest() {
   console.log('✓ Android: ergänzt →\n' + lines.map(function (l) { return '    ' + l.trim(); }).join('\n'));
 }
 
+// Android: MainActivity so patchen, dass CAMERA/RECORD_AUDIO zur Laufzeit angefragt werden.
+// Grund: Der Android-WebView gibt getUserMedia (Foto-Tracking, Barcode-Scan, Sprach-Diktat)
+// nur frei, wenn die App die Laufzeit-Berechtigung wirklich hält – die Manifest-Angabe allein
+// genügt nicht. Wird nur der Capacitor-Standard (leere BridgeActivity) ersetzt; eine bereits
+// angepasste Activity (enthält schon "requestPermissions") bleibt unangetastet.
+function patchAndroidMainActivity() {
+  const base = path.join(ROOT, 'android', 'app', 'src', 'main', 'java');
+  if (!fs.existsSync(base)) { console.log('· Android MainActivity.java noch nicht vorhanden – übersprungen.'); return; }
+  // MainActivity.java irgendwo unter java/ finden (Paketpfad hängt von appId ab).
+  let found = null;
+  (function walk(dir) {
+    let entries = [];
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch (e) { return; }
+    for (const en of entries) {
+      const full = path.join(dir, en.name);
+      if (en.isDirectory()) walk(full);
+      else if (en.name === 'MainActivity.java' && !found) found = full;
+    }
+  }(base));
+  if (!found) { console.log('· Android MainActivity.java nicht gefunden – übersprungen.'); return; }
+  let src = fs.readFileSync(found, 'utf8');
+  if (src.indexOf('requestPermissions') >= 0) { console.log('✓ Android: MainActivity fragt Laufzeit-Rechte bereits an.'); return; }
+  if (src.indexOf('extends BridgeActivity') < 0) { console.log('· Android: MainActivity ist bereits individuell angepasst – Laufzeit-Rechte bitte manuell ergänzen.'); return; }
+  const pkgMatch = src.match(/package\s+([\w.]+)\s*;/);
+  const pkg = pkgMatch ? pkgMatch[1] : 'de.fitinn.portal';
+  const patched = 'package ' + pkg + ';\n\n'
+    + 'import android.Manifest;\n'
+    + 'import android.content.pm.PackageManager;\n'
+    + 'import android.os.Bundle;\n'
+    + 'import androidx.core.app.ActivityCompat;\n'
+    + 'import androidx.core.content.ContextCompat;\n'
+    + 'import com.getcapacitor.BridgeActivity;\n\n'
+    + 'public class MainActivity extends BridgeActivity {\n'
+    + '    @Override\n'
+    + '    public void onCreate(Bundle savedInstanceState) {\n'
+    + '        super.onCreate(savedInstanceState);\n'
+    + '        // Kamera/Mikrofon zur Laufzeit anfragen, damit getUserMedia im WebView\n'
+    + '        // (Essen-Foto, Barcode-Scan, Sprach-Diktat) auf Android funktioniert.\n'
+    + '        String[] perms = { Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO };\n'
+    + '        boolean need = false;\n'
+    + '        for (String p : perms) {\n'
+    + '            if (ContextCompat.checkSelfPermission(this, p) != PackageManager.PERMISSION_GRANTED) need = true;\n'
+    + '        }\n'
+    + '        if (need) ActivityCompat.requestPermissions(this, perms, 4711);\n'
+    + '    }\n'
+    + '}\n';
+  fs.writeFileSync(found, patched, 'utf8');
+  console.log('✓ Android: MainActivity ergänzt → fragt CAMERA/RECORD_AUDIO zur Laufzeit an (' + found + ')');
+}
+
 function main() {
   console.log('Fit-Inn · native Kamera/Mikro-Berechtigungen prüfen …');
   try { patchInfoPlist(); } catch (e) { console.error('✗ iOS-Patch fehlgeschlagen:', e && e.message); }
   try { patchAndroidManifest(); } catch (e) { console.error('✗ Android-Patch fehlgeschlagen:', e && e.message); }
+  try { patchAndroidMainActivity(); } catch (e) { console.error('✗ Android-MainActivity-Patch fehlgeschlagen:', e && e.message); }
   console.log('Fertig.');
 }
 
