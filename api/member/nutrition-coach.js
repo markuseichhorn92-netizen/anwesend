@@ -7,7 +7,7 @@
  * kuratierten Lektionen + adaptiver FINN-Begleitung). Basis-Programm ist gratis;
  * KI-Teile (Personalisierung, Impuls, Check-in-Auswertung) sind Premium – Gate
  * wie in nutrition.js (`premium_required`). Der Premium-Status wird NICHT hier,
- * sondern vom Stripe-Webhook gesetzt.
+ * sondern über den Magicline-Zusatzmodul-Abgleich (lib/mlPremium) gesetzt.
  *
  *   GET                      -> Snapshot (enrolled, aktuelle Woche/Lektion, Premium-Status)
  *   POST { action:'enroll', prefs? }     -> ins Programm einschreiben (frei)

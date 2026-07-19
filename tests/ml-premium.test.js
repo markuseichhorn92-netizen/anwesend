@@ -1,7 +1,7 @@
 'use strict';
-// Premium übers Magicline-Zusatzmodul (SEPA, Teil der Mitgliedschaft) – Alternative
-// zum Stripe-Abo. Spiegelt die ECHTE Open-API-Realität: es gibt KEINEN Endpunkt, der
-// gebuchte Module auflistet – nur Buchen (liefert die Vertrags-ID), Lesen per ID und
+// Premium übers Magicline-Zusatzmodul (SEPA, Teil der Mitgliedschaft) – der einzige
+// Premium-Kaufweg der App. Spiegelt die ECHTE Open-API-Realität: es gibt KEINEN Endpunkt,
+// der gebuchte Module auflistet – nur Buchen (liefert die Vertrags-ID), Lesen per ID und
 // Kündigen per ID. Getestet gegen einen In-Memory-Store, ohne Magicline echt aufzurufen:
 //   1. bookModule liefert die additionalModuleContractId aus der Kauf-Antwort
 //   2. getModuleContract/Reasons: Normalisierung + 404 -> gone
@@ -9,7 +9,7 @@
 //   4. grantFromBooking: Premium an, Vertrags-ID gemerkt (Basis fürs Kündigen)
 //   5. reconcile mit gekündigtem Modul (per ID verifiziert) -> until = Modul-Ende
 //   6. Modul weg (404) + alt -> abräumen; frisch -> Schonfrist schützt
-//   7. Stripe gewinnt fürs Gating, merkt aber die Modul-ID (Modul bleibt sichtbar/kündbar)
+//   7. grantFromBooking schreibt Magicline-Premium; eine Team-Comp bleibt unangetastet
 const path = require('path');
 const ROOT = path.resolve(__dirname, '..');
 
@@ -107,20 +107,19 @@ async function run() {
   const tE = await MlPremium.reconcile('E');
   ok('6b. frische Buchung überlebt 404 (Schonfrist)', tE && tE.premium === true);
 
-  // 7. Stripe gewinnt fürs Gating, merkt aber die Modul-ID (Modul bleibt sichtbar/kündbar)
-  await Ent.setEntitlement('D', { tier: 'premium', status: 'active', stripeSubId: 'sub_1', updatedAt: Date.now() });
+  // 7. grantFromBooking (frischer Kunde) schreibt Magicline-Premium mit gemerkter Modul-ID
   const gD = await MlPremium.grantFromBooking('D', 7001);
   const rawD = await Ent.getEntitlement('D');
-  ok('7. Stripe-Vorrang: grant speichert nur moduleContractId, source bleibt stripe',
-    gD === false && rawD.stripeSubId === 'sub_1' && rawD.status === 'active' && rawD.moduleContractId === 7001 && rawD.source === undefined);
-  moduleContract = { name: 'App Premium', price: { amount: 4.99 }, startDate: '2026-01-01', contractCancelationCanBeWithdrawn: false, availableCancelationDates: ['2026-09-30'] };
-  await MlPremium.invalidate('D');
-  const tD = await MlPremium.reconcile('D');
-  const rawD2 = await Ent.getEntitlement('D');
-  const stD = await MlPremium.moduleStatus('D', { fresh: true });
-  ok('7b. reconcile lässt Stripe unangetastet, Modul bleibt über gemerkte ID sichtbar',
-    tD && tD.premium === true && tD.source === 'stripe' && rawD2.stripeSubId === 'sub_1' && rawD2.status === 'active'
-    && stD && stD.booked === true && stD.moduleContractId === 7001);
+  ok('7. grantFromBooking: source magicline, premium an, Modul-ID gemerkt',
+    gD === true && rawD.source === 'magicline' && rawD.status === 'active' && rawD.moduleContractId === 7001 && Ent.isPremium(rawD) === true);
+
+  // 7b. reconcile lässt eine Team-Freischaltung (comp) unangetastet (source bleibt team_*)
+  await Ent.setEntitlement('F', { tier: 'premium', status: 'active', source: 'team_preview', until: null, updatedAt: Date.now() });
+  moduleContract = null; await MlPremium.invalidate('F');
+  const tF = await MlPremium.reconcile('F');
+  const rawF = await Ent.getEntitlement('F');
+  ok('7b. reconcile lässt Team-Comp unangetastet (source bleibt team_preview)',
+    tF && tF.premium === true && tF.comp === true && rawF.source === 'team_preview');
 
   // 8. Trial: bookModule erkennt die Testphase aus der Modul-Config -> bookTrialPeriod:true
   purchasable = [{ id: 42, paymentFrequencies: [{ id: 9 }], trialPeriodConfig: { term: { value: 7, unit: 'DAY' }, description: '7 Tage gratis' } }];

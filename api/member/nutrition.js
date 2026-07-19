@@ -40,7 +40,6 @@ const SR = require('../../lib/studioReply');
 const Ent = require('../../lib/entitlements');
 const MlPremium = require('../../lib/mlPremium');
 const Coaching = require('../../lib/coaching');
-const Stripe = require('../../lib/stripe');
 const Recipes = require('../../lib/recipes');
 const Quota = require('../../lib/nutriquota');
 const Welcome = require('../../lib/welcomeGift');
@@ -340,8 +339,7 @@ async function buildState(id, profile, forDate) {
   // Verbrauch wird für alle gezählt (auch Premium), damit die Nutzungsübersicht stimmt.
   const qMonth = Quota.monthOf(todayYMD);
   const qUsed = await Quota.getUsed(id, qMonth);
-  // Preis/Trial dynamisch (aus Stripe, gecacht) – die UI zeigt es statt hartcodierter Copy.
-  let priceInfo = null; try { priceInfo = await Stripe.getPriceInfo(); } catch (e) {}
+  // Preis/Testphase zeigt die UI aus dem Magicline-Zusatzmodul (loadModules), nicht hier.
   return {
     ok: true, available: true, onboarded: onboarded,
     profile: profile ? { goal: profile.goal, sex: profile.sex, height: profile.height, weight: profile.weight, age: profile.age, activity: profile.activity, diet: profile.diet } : null,
@@ -358,7 +356,6 @@ async function buildState(id, profile, forDate) {
     premiumComp: tier.comp || false, premiumPermanent: tier.permanent || false,
     premiumSource: tier.source || null, premiumViaModule: !!tier.viaModule,
     premiumModuleId: MlPremium.configured() ? require('../../lib/mlModules').PREMIUM_MODULE_ID : null,
-    premiumInfo: { price: priceInfo, trialDays: Stripe.TRIAL_DAYS, pk: Stripe.PUBLISHABLE || '' },
     quota: Quota.publicQuota(qUsed, tier.premium, qMonth),
   };
 }
@@ -1024,7 +1021,7 @@ module.exports = async function handler(req, res) {
     res.statusCode = 200; return res.end(JSON.stringify({ ok: true, export: {
       exportedAt: new Date().toISOString(),
       profile: prof ? { goal: prof.goal, sex: prof.sex, height: prof.height, weight: prof.weight, age: prof.age, activity: prof.activity, diet: prof.diet, consentAt: prof.consentAt || null } : null,
-      subscription: Ent.publicTier(await Ent.getEntitlement(id)),   // Abo-Status (read-only; Kündigung über Stripe-Portal)
+      subscription: Ent.publicTier(await Ent.getEntitlement(id)),   // Abo-Status (read-only; Kündigung über die Modul-Kündigung)
       days: days,
       favorites: (await kvGetJson(FAVKEY(id))) || [],
       plan: (await kvGetJson(PLANKEY(id))) || null,

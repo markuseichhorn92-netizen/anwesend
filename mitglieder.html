@@ -432,9 +432,6 @@
     </div>
   </div>
   <div id="rcContainer"></div>
-  <!-- Persistenter Layer für Stripe-Sheets (Embedded Checkout / Payment Element).
-       Liegt AUSSERHALB von #app, damit render() den Stripe-Iframe nie abreißt. -->
-  <div id="ern_pay_layer" style="display:none"></div>
 </div>
 
 <script>
@@ -707,8 +704,8 @@
     if(s==='finnusage') loadNutri();   // Nutzungs-/Kontingent-Daten frisch holen
     // Abo-Status für die Konto-Einstiege (Profil/Meine Daten/Beitragskonto) + der Abo-Screen selbst.
     if(s==='profil'||s==='data'||s==='account'||s==='abo') loadErnBilling();
-    if(s==='abo'){ S.ernMsg=''; S.ernErr=false; DATA.ernSub=undefined; DATA.ernInvoices=undefined; loadNutri(); loadSubInfo(); loadErnInvoices(); }
-    if(s==='recht'){ S.wdStep=0; S.wdErr=false; S.wdMsg=''; loadErnBilling(); if(TOKEN){ loadNutri(); loadSubInfo(); } }
+    if(s==='abo'){ S.ernMsg=''; S.ernErr=false; loadNutri(); }
+    if(s==='recht'){ loadErnBilling(); if(TOKEN){ loadNutri(); } }
     if(s==='ern'){ try{ window.__ernStopScan&&window.__ernStopScan(); }catch(e){} S.ernMsg=''; S.ernErr=false; S.ernAsk=''; S.ernAnswer=''; S.ernRecipes=null; S.ernCoachSent=false; S.ernTab='heute'; S.ernRecipeSel=null; S.ernKoch=null; S.ernCookPick=false; S.ernPlanDraft=null; S.ernPlanReplaceIdx=-1; S.ernCapture=false; S.ernConfirm=null; S.ernProd=null; S.ernShop=false; S.ernShopProd=null; S.ernShopAlt=null; S.ernShopFinn=null; S.ernScanPurpose='log'; S.sos=false; S.sosCrave=''; S.sosTrigger=''; S.sosFinn=null; S.buyGuide=false; S.ernEntryEdit=null; S.ernViewDate=''; S.ernFavMgr=false; S.ernData=false; S.ernUpgrade=false; S.ernLesson=null; S.ernLessonData=null; S.ernChatOpen=false; S.ernCk=false; S.ernCkResult=null; S.ernObStep=0; S.ernChat=ernChatLoad(); loadNutri(); loadFavs(); loadCoach(); loadCook(); }
     if(s==='coach'){ S.ernLesson=null; S.ernVert=null; S.ernLessonData=null; S.ernCk=false; S.ernCkResult=null; S.ernChatOpen=false; S.ernUpgrade=false; S.ernMsg=''; S.ernErr=false; S.coachMapOpen=false; S.coachVertOpen=false; S.ernChat=ernChatLoad(); S.trainDetail=null; S.trainRun=false; S.trainRestKey=''; S.trainGenOpen=false; S.trainGenPlan=null; S.trainGenBusy=false; S.trainBusy=false; S.trainMsg=''; loadFinnTip(); loadCoach(); loadTraining(); if(!DATA.checkins) loadCheckins(); }
     if(s==='appt'){ if(!DATA.appts) loadAppts(); if(DATA.bookable===null) loadBookable(); }
@@ -2326,8 +2323,7 @@
       line='Läuft als Zusatzmodul über deinen Vertrag und wird per SEPA-Lastschrift abgebucht. Kündigst du, wird nur das Modul beendet – nicht deine Mitgliedschaft.';
       right='<button data-act="modCancelPrem" data-arg="prem"'+(busy?' disabled':'')+' style="margin-top:14px;padding:11px 16px;border-radius:12px;border:1.5px solid #e3b8b1;background:var(--surface);color:var(--err-fg);font-weight:700;font-size:13.5px;cursor:pointer">'+(busy?'…':'Premium kündigen')+'</button>';
     }
-    // Doppelzahlung: Modul gebucht UND Stripe-Abo aktiv -> deutlich warnen.
-    var warn=p.stripeAlso?'<div style="display:flex;gap:9px;background:var(--err-bg);border-radius:12px;padding:11px 13px;margin-top:12px;font-size:12.5px;color:var(--err-fg);font-weight:700;line-height:1.45"><span>⚠️</span><span>Du hast zusätzlich ein <b>Stripe-Premium</b> aktiv – aktuell zahlst du <b>doppelt</b>. Kündige das Stripe-Abo unter Ernährung → Meine Daten.</span></div>':'';
+    var warn='';
     // modMsg nur hier zeigen, wenn die generische Modul-Karte es nicht ohnehin rendert.
     var otherMods=!!(DATA.modules&&DATA.modules.available===true&&(((DATA.modules.booked||[]).length)||((DATA.modules.bookable||[]).length)));
     var msg=(S.modMsg&&!otherMods)?'<div style="font-size:13px;font-weight:700;margin-top:12px;color:'+(S.modErr?'var(--err-fg)':'var(--teal-ink)')+'">'+esc(S.modMsg)+'</div>':'';
@@ -3245,7 +3241,7 @@
   function ernTrialing(){ return !!(DATA.nutri && DATA.nutri.trialing); }
   // ── Premium über ein Magicline-Zusatzmodul (SEPA, Teil der Mitgliedschaft) ──
   // Aktiv, wenn das Studio ein Premium-Modul konfiguriert hat (ML_PREMIUM_MODULE_ID).
-  // Dann läuft Kauf UND Kündigung über den Mitgliedsvertrag statt über Stripe.
+  // Kauf UND Kündigung laufen über den Mitgliedsvertrag (SEPA-Zusatzmodul).
   function ernModuleMode(){ return !!(DATA.nutri && DATA.nutri.premiumModuleId); }
   function ernModuleId(){ return (DATA.nutri && DATA.nutri.premiumModuleId) || null; }
   function ernViaModule(){ return !!(DATA.nutri && DATA.nutri.premiumViaModule); }
@@ -3290,13 +3286,13 @@
     return '<button data-act="ernUpgradeOpen" style="display:inline-flex;align-items:center;gap:5px;border:none;background:'+c2+';color:'+f2+';border-radius:9px;padding:4px 9px;font-size:11px;font-weight:900;cursor:pointer">🔒 Kontingent aufgebraucht · Upgrade</button>';
   }
   // Dashboard-Karte: für Free ein Upgrade-CTA, für Premium ein dezenter Status.
-  // Preis-/Trial-Copy: dynamisch aus dem Backend (Stripe, gecacht), sonst Fallback.
+  // Preis-/Trial-Copy aus dem Magicline-Zusatzmodul (loadModules); solange die
+  // Modul-Liste nicht geladen ist, ein neutraler Fallback.
   function ernPriceCopy(){
-    var pi=(DATA.nutri&&DATA.nutri.premiumInfo)||{};
-    var p=pi.price||null;
-    var td=(typeof pi.trialDays==='number')?pi.trialDays:7;
-    var priceLabel=(p&&p.label)?p.label:'4,99 €';
-    var per=(p&&p.intervalLabel)?p.intervalLabel:'Monat';
+    var mp=ernModulePrice();
+    var td=ernModuleTrialDays();
+    var priceLabel=mp||'4,99 €';
+    var per='Monat';
     return { price:priceLabel, per:per, pricePer:priceLabel+'/'+per, trialDays:td, trialText:(td>0?(td+' Tage gratis'):'') };
   }
   // Adaptive Upgrade-Copy je nach Vorgeschichte (Server: premiumEver/trialEligible).
@@ -3325,66 +3321,8 @@
     var pill=(q&&left===0)?'<span style="display:inline-block;margin-top:7px;background:rgba(255,255,255,.18);border-radius:8px;padding:3px 9px;font-size:10.5px;font-weight:900;color:#fff">Kontingent 0/'+lim+'</span>':(q?'<span style="display:inline-block;margin-top:7px;background:rgba(255,255,255,.18);border-radius:8px;padding:3px 9px;font-size:10.5px;font-weight:900;color:#fff">✨ '+left+'/'+lim+' gratis</span>':'');
     return '<button data-act="ernUpgradeOpen" aria-label="Coach Premium'+(pc.trialText?(' – '+pc.trialText+' testen'):'')+'" style="width:100%;text-align:left;border:none;cursor:pointer;background:linear-gradient(150deg,#12879c,#0a4958);border-radius:18px;padding:16px;margin-bottom:14px;box-shadow:0 12px 30px rgba(4,33,40,.18);font-family:inherit;display:flex;align-items:center;gap:13px"><span style="width:46px;height:46px;border-radius:14px;background:rgba(255,255,255,.16);display:flex;align-items:center;justify-content:center;font-size:23px;flex-shrink:0">✨</span><div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:900;color:#fff">Coach Premium</div><div style="font-size:12.5px;font-weight:600;color:#cfe8ec;margin-top:2px;line-height:1.35">'+sub+'</div>'+pill+'</div>'+svg('<path d="M9 6l6 6-6 6"></path>',{c:'rgba(255,255,255,.75)',w:2.2,s:20})+'</button>';
   }
-  // ═══ Stripe.js (nur bei Bedarf laden) – für Embedded Checkout & Payment Element ═══
-  var __stripeJs=null, __stripeInst=null, __ernCheckout=null, __ernPmEl=null, __ernPmStripe=null;
-  function ernPk(){ return (DATA.nutri&&DATA.nutri.premiumInfo&&DATA.nutri.premiumInfo.pk)||''; }
-  function ernStripeLoad(){
-    if(__stripeJs) return __stripeJs;
-    __stripeJs=new Promise(function(resolve,reject){
-      if(window.Stripe){ resolve(window.Stripe); return; }
-      var add=function(src,onFail){ var s=document.createElement('script'); s.src=src; s.async=true; s.onload=function(){ window.Stripe?resolve(window.Stripe):onFail(); }; s.onerror=onFail; document.head.appendChild(s); };
-      add('https://js.stripe.com/v3/', function(){ add('https://js.stripe.com/basil/stripe.js', function(){ reject(new Error('stripe_load_failed')); }); });
-    });
-    return __stripeJs;
-  }
-  function ernStripe(){ var pk=ernPk(); if(!pk) return Promise.reject(new Error('no_pk')); return ernStripeLoad().then(function(St){ if(!__stripeInst) __stripeInst=St(pk); return __stripeInst; }); }
-  // Persistenter Sheet-Layer außerhalb von #app (render() fasst ihn nie an).
-  function ernPayLayer(){ return document.getElementById('ern_pay_layer'); }
-  function ernPaySheet(inner, title){
-    return '<div class="ernCapScrim" data-act="ernPayClose"></div>'+
-      '<div class="ernCapSheet" role="dialog" aria-modal="true"><div class="ernCapGrip"></div>'+
-      '<div style="display:flex;align-items:center;gap:10px;padding:2px 18px 10px"><div style="flex:1;font-size:17px;font-weight:900;color:#15171B">'+esc(title)+'</div>'+
-      '<button data-act="ernPayClose" aria-label="Schließen" style="width:34px;height:34px;border-radius:11px;border:none;background:#e3e9ea;color:#5a666c;cursor:pointer;font-size:20px;line-height:1">×</button></div>'+
-      '<div style="flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:0 18px 8px">'+inner+'</div></div>';
-  }
-  function ernPayClose(){
-    if(__ernCheckout){ try{ __ernCheckout.destroy(); }catch(e){} __ernCheckout=null; }
-    __ernPmEl=null; __ernPmStripe=null;
-    var lay=ernPayLayer(); if(lay){ lay.style.display='none'; lay.innerHTML=''; }
-  }
-  // ── Embedded Checkout (Kauf im Sheet, kein Seitenwechsel) ──
-  function ernCoStart(){
-    if(S.ernUpgradeBusy) return; S.ernUpgradeBusy=true; S.ernErr=false; S.ernMsg=''; render();
-    api('/api/member/nutrition-billing',{method:'POST',body:JSON.stringify({action:'checkout',embedded:true})})
-    .then(function(d){ S.ernUpgradeBusy=false;
-      if(d&&d.error==='already_premium'){ S.ernUpgrade=false; S.ernMsg='Du hast Premium bereits aktiv. 🎉'; S.ernErr=false; loadNutri(); render(); return; }
-      if(!(d&&d.ok&&d.clientSecret)){ S.ernErr=true; S.ernMsg=(d&&d.message)||'Konnte nicht starten – bitte später erneut.'; render(); return; }
-      var lay=ernPayLayer(); if(!lay){ S.ernErr=true; render(); return; }
-      lay.style.display='block';
-      lay.innerHTML=ernPaySheet('<div id="ern_co_mount" style="min-height:360px"></div><div id="ern_pay_err" role="alert" style="font-size:12.5px;font-weight:700;color:#c0392b;text-align:center;margin-top:10px"></div>','Premium – sicher bezahlen');
-      ernStripe().then(function(stripe){ return stripe.initEmbeddedCheckout({ clientSecret:d.clientSecret, onComplete:function(){ ernCoComplete(); } }); })
-      .then(function(checkout){ __ernCheckout=checkout; checkout.mount('#ern_co_mount'); })
-      .catch(function(){ ernPayClose(); // Stripe.js nicht ladbar -> Redirect-Checkout als Fallback
-        api('/api/member/nutrition-billing',{method:'POST',body:JSON.stringify({action:'checkout'})}).then(function(rd){ if(rd&&rd.ok&&rd.url){ window.location.href=rd.url; } else { S.ernErr=true; S.ernMsg='Bezahlung konnte nicht gestartet werden – bitte später erneut.'; render(); } }).catch(function(){ S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); }); });
-      render();
-    }).catch(function(){ S.ernUpgradeBusy=false; S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); });
-  }
-  function ernCoComplete(){
-    ernPayClose(); S.ernUpgrade=false;
-    // Premium wird serverseitig per Webhook gesetzt -> kurz pollen (wie ernPremiumReturn).
-    S.ernMsg='Premium wird aktiviert …'; S.ernErr=false; render();
-    var tries=0;
-    var poll=function(){ tries++; try{ loadNutri(); }catch(e){}
-      setTimeout(function(){
-        if(DATA.nutri&&DATA.nutri.premium){ S.ernMsg='Premium aktiviert – viel Erfolg! 🎉'; S.ernErr=false; render(); return; }
-        if(tries>=6){ S.ernMsg='Fast geschafft – die Freischaltung kann einen kurzen Moment dauern.'; S.ernErr=false; render(); return; }
-        poll();
-      },1500);
-    };
-    poll();
-  }
   // ── Premium über das Magicline-Zusatzmodul buchen (SEPA über den Mitgliedsvertrag) ──
-  // Kein Stripe/keine Kartendaten: die Abbuchung läuft über den bestehenden Vertrag.
+  // Keine Kartendaten: die Abbuchung läuft per SEPA über den bestehenden Vertrag.
   function ernModuleBook(){
     if(S.ernUpgradeBusy) return;
     // Der Preis muss vor der verbindlichen Bestellung sichtbar sein (§312j) – sonst erst laden.
@@ -3415,51 +3353,10 @@
   }
   // ── In-App-Abo-Verwaltung: Live-Status, Kündigen/Reaktivieren, Karte, Rechnungen ──
   function ernFmtDate(ms){ try{ var d=new Date(ms); return ('0'+d.getDate()).slice(-2)+'.'+('0'+(d.getMonth()+1)).slice(-2)+'.'+d.getFullYear(); }catch(e){ return ''; } }
-  function loadSubInfo(){ if(!ernPremium()) return;
-    api('/api/member/nutrition-billing',{method:'POST',body:JSON.stringify({action:'sub-info'})})
-    .then(function(d){ DATA.ernSub=(d&&d.ok)?(d.subscription||{}):null; if(S.ernData) render(); }).catch(function(){ DATA.ernSub=null; }); }
-  function loadErnInvoices(){ if(!ernPremium()) return;
-    api('/api/member/nutrition-billing',{method:'POST',body:JSON.stringify({action:'invoices'})})
-    .then(function(d){ DATA.ernInvoices=(d&&d.ok&&Array.isArray(d.invoices))?d.invoices:[]; if(S.ernData) render(); }).catch(function(){ DATA.ernInvoices=[]; }); }
-  function ernSubToggle(action){
-    S.ernDataBusy=true; S.ernErr=false; S.ernMsg=''; render();
-    api('/api/member/nutrition-billing',{method:'POST',body:JSON.stringify({action:action})})
-    .then(function(d){ S.ernDataBusy=false;
-      if(d&&d.ok){ S.ernMsg=(action==='cancel')?'Gekündigt – dein Zugang bleibt bis zum Periodenende.':'Willkommen zurück – deine Kündigung ist zurückgenommen. 🎉'; S.ernErr=false; loadSubInfo(); loadNutri(); }
-      else { S.ernErr=true; S.ernMsg=(d&&d.message)||'Konnte nicht ausgeführt werden – bitte später erneut.'; }
-      render();
-    }).catch(function(){ S.ernDataBusy=false; S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); });
-  }
-  // Karten-Wechsel im Sheet (Payment Element via SetupIntent).
-  function ernPmStart(){
-    var lay=ernPayLayer(); if(!lay) return;
-    if(!ernPk()){ if(ACT&&ACT.ernPortal) ACT.ernPortal(); return; }   // ohne pk kein In-App-Feld -> Hosted-Portal
-    S.ernDataBusy=true; render();
-    api('/api/member/nutrition-billing',{method:'POST',body:JSON.stringify({action:'setup-intent'})})
-    .then(function(d){ S.ernDataBusy=false; render();
-      if(!(d&&d.ok&&d.clientSecret)){ S.ernErr=true; S.ernMsg=(d&&d.message)||'Karten-Änderung nicht möglich.'; render(); return; }
-      lay.style.display='block';
-      lay.innerHTML=ernPaySheet('<div id="ern_pm_mount" style="min-height:120px"></div><div id="ern_pay_err" role="alert" style="font-size:12.5px;font-weight:700;color:#c0392b;text-align:center;margin-top:10px"></div><button data-act="ernPmSubmit" id="ern_pm_submit" style="width:100%;margin-top:14px;padding:15px;border:none;border-radius:14px;background:'+ERN_G+';color:#fff;font-weight:900;font-size:15px;cursor:pointer">Karte speichern</button>','Zahlungsart ändern');
-      ernStripe().then(function(stripe){ __ernPmStripe=stripe; var elements=stripe.elements({clientSecret:d.clientSecret}); __ernPmEl=elements; elements.create('payment').mount('#ern_pm_mount'); })
-      .catch(function(){ var er=document.getElementById('ern_pay_err'); if(er) er.innerHTML='Bezahlfeld konnte nicht geladen werden.<br><button data-act="ernPortal" style="margin-top:10px;padding:10px 14px;border:none;border-radius:12px;background:#0a4958;color:#fff;font-weight:800;font-size:13px;cursor:pointer">Im Stripe-Portal ändern</button>'; });
-    }).catch(function(){ S.ernDataBusy=false; S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); });
-  }
-  function ernPmSubmit(){
-    if(!__ernPmStripe||!__ernPmEl) return;
-    var btn=document.getElementById('ern_pm_submit'); var er=document.getElementById('ern_pay_err');
-    if(btn){ btn.disabled=true; btn.textContent='Speichere …'; } if(er) er.textContent='';
-    __ernPmStripe.confirmSetup({ elements:__ernPmEl, redirect:'if_required' }).then(function(res){
-      if(res&&res.error){ if(er) er.textContent=res.error.message||'Karte konnte nicht gespeichert werden.'; if(btn){ btn.disabled=false; btn.textContent='Karte speichern'; } return; }
-      var pmId=(res&&res.setupIntent&&res.setupIntent.payment_method)||'';
-      api('/api/member/nutrition-billing',{method:'POST',body:JSON.stringify({action:'set-default-pm',paymentMethodId:pmId})})
-      .then(function(d){ ernPayClose(); if(d&&d.ok){ S.ernMsg='Zahlungsart aktualisiert. ✓'; S.ernErr=false; } else { S.ernErr=true; S.ernMsg=(d&&d.message)||'Karte konnte nicht gesetzt werden.'; } loadSubInfo(); render(); })
-      .catch(function(){ ernPayClose(); S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); });
-    }).catch(function(){ if(er) er.textContent='Karte konnte nicht gespeichert werden.'; if(btn){ btn.disabled=false; btn.textContent='Karte speichern'; } });
-  }
-  // Verwaltungs-Karte (ersetzt den früheren „Portal öffnen"-Block).
+  // Verwaltungs-Karte: Comp-Freischaltung oder Magicline-Zusatzmodul.
   function ernManageCard(){
     var CARD='background:var(--surface);border-radius:18px;padding:17px;box-shadow:0 8px 24px rgba(4,33,40,.08);margin-bottom:14px';
-    var busy=S.ernDataBusy, dpc=ernPriceCopy(), n=DATA.nutri||{}, sub=DATA.ernSub;
+    var busy=S.ernDataBusy, n=DATA.nutri||{};
     // Vom Studio kostenlos freigeschaltet (Team-Grant) -> kein Zahl-/Kündigen-UI.
     if(n.premiumComp){
       var endTxt=n.premiumPermanent?'dauerhaft freigeschaltet':(n.premiumUntil?('freigeschaltet bis '+ernFmtDate(n.premiumUntil)):'freigeschaltet');
@@ -3469,7 +3366,7 @@
       '</div>';
     }
     // Premium über das Magicline-Zusatzmodul (SEPA, Teil des Mitgliedsvertrags) -> keine
-    // Stripe-UI. Kündigen betrifft NUR das Modul, nie die Mitgliedschaft.
+    // Kündigen betrifft NUR das Modul, nie die Mitgliedschaft.
     if(n.premiumViaModule){
       var mCancelAt=!!n.premiumCancelAt, mEnd=n.premiumUntil?ernFmtDate(n.premiumUntil):'';
       var mTrial=ernTrialing(), mTrialEnd=ernTrialEnd();
@@ -3488,35 +3385,13 @@
         mBtn+
       '</div>';
     }
+    // Premium aktiv, aber ohne bekannte Quelle (Alt-Datensatz) -> neutraler Status.
     var trialing=ernTrialing();
-    var cancelAt=(sub&&typeof sub.cancelAtPeriodEnd==='boolean')?sub.cancelAtPeriodEnd:!!n.premiumCancelAt;
-    var periodEnd=(sub&&sub.currentPeriodEnd)||n.premiumUntil||0;
-    var endLbl=periodEnd?ernFmtDate(periodEnd):'';
-    var statusLine;
-    if(cancelAt){ statusLine='Gekündigt – dein Zugang bleibt bis '+esc(endLbl)+'. Danach endet Premium automatisch.'; }
-    else if(trialing){ var pd=n.premiumUntil?Math.max(0,Math.ceil((n.premiumUntil-Date.now())/86400000)):0; statusLine='Gratis-Test'+(pd?(' – noch '+pd+' Tag'+(pd===1?'':'e')):'')+', danach '+esc(dpc.pricePer)+(endLbl?(' (erste Abbuchung '+esc(endLbl)+')'):'')+'.'; }
-    else { statusLine='Premium aktiv – '+esc(dpc.pricePer)+(endLbl?('. Nächste Abbuchung am '+esc(endLbl)):'')+'.'; }
-    var card=sub&&sub.card;
-    var cardLine=card?((card.brand?(card.brand.charAt(0).toUpperCase()+card.brand.slice(1)):'Karte')+' •••• '+esc(String(card.last4||''))+' · gültig bis '+('0'+(card.expMonth||'')).slice(-2)+'/'+String(card.expYear||'').slice(-2)):(DATA.ernSub===undefined?'Zahlungsart wird geladen …':'Keine Karte hinterlegt');
-    var cancelBtn=cancelAt
-      ? '<button data-act="ernReactivateSub" '+(busy?'disabled ':'')+'style="flex:1;padding:12px;border:none;border-radius:12px;background:'+ERN_G+';color:#fff;font-weight:800;font-size:14px;cursor:pointer">Kündigung zurücknehmen</button>'
-      : '<button data-act="ernCancelSub" '+(busy?'disabled ':'')+'style="flex:1;padding:12px;border:1.5px solid rgba(192,57,43,.3);border-radius:12px;background:var(--surface);color:var(--err-fg);font-weight:800;font-size:14px;cursor:pointer">Kündigen</button>';
-    var cardBtn='<button data-act="ernCardChange" '+(busy?'disabled ':'')+'style="flex:1;padding:12px;border:1.5px solid rgba(10,73,88,.25);border-radius:12px;background:var(--surface);color:var(--teal-ink);font-weight:800;font-size:14px;cursor:pointer">Karte ändern</button>';
-    var invs=DATA.ernInvoices, invHtml='';
-    if(Array.isArray(invs)&&invs.length){
-      invHtml='<div style="margin-top:14px;border-top:1px solid #eef2f3;padding-top:12px"><div style="font-size:11px;font-weight:900;color:var(--text-soft);text-transform:uppercase;letter-spacing:.3px;margin-bottom:6px">Rechnungen</div>'+
-        invs.slice(0,6).map(function(iv){ var dt=iv.date?ernFmtDate(iv.date):''; var amt=((iv.amount||0)/100).toFixed(2).replace('.',',')+' '+(iv.currency==='EUR'?'€':esc(iv.currency||'')); var link=iv.pdf||iv.hostedUrl;
-          return '<div style="display:flex;align-items:center;gap:10px;padding:6px 0;font-size:13px"><span style="flex:1;color:var(--text-2);font-weight:600">'+esc(dt)+'</span><span style="font-weight:800;color:var(--text)">'+amt+'</span>'+(link?('<a href="'+esc(link)+'" target="_blank" rel="noopener" style="color:var(--ern-acc);font-weight:800;text-decoration:none">PDF</a>'):'')+'</div>';
-        }).join('')+'</div>';
-    }
-    var badge=cancelAt?' · gekündigt':(trialing?' · Test':' · aktiv');
+    var endLbl=n.premiumUntil?ernFmtDate(n.premiumUntil):'';
+    var statusLine=trialing?('Gratis-Test aktiv'+(endLbl?(' – bis '+esc(endLbl)):'')+'.'):'Premium aktiv.';
     return '<div style="'+CARD+'">'+
-      '<div style="font-size:15px;font-weight:900;color:var(--text);display:flex;align-items:center;gap:8px">⭐ Premium'+badge+'</div>'+
-      '<div style="font-size:12.5px;font-weight:600;color:var(--text-muted);line-height:1.55;margin:8px 0 12px">'+statusLine+'</div>'+
-      '<div style="font-size:12.5px;font-weight:700;color:var(--text-2);margin-bottom:12px">💳 '+cardLine+'</div>'+
-      '<div style="display:flex;gap:8px">'+cancelBtn+cardBtn+'</div>'+
-      invHtml+
-      '<button data-act="ernPortal" '+(busy?'disabled ':'')+'style="width:100%;margin-top:12px;padding:9px;border:none;background:transparent;color:var(--text-soft);font-weight:700;font-size:12px;cursor:pointer;text-decoration:underline">Im Stripe-Portal verwalten</button>'+
+      '<div style="font-size:15px;font-weight:900;color:var(--text);display:flex;align-items:center;gap:8px">⭐ Coach Premium</div>'+
+      '<div style="font-size:12.5px;font-weight:600;color:var(--text-muted);line-height:1.55;margin:8px 0 0">'+statusLine+' Fragen zu deinem Zugang beantwortet dir dein Studio-Team gern.</div>'+
     '</div>';
   }
   // Vor einer KI-Aktion: kein Premium -> Upgrade-Screen zeigen und Aktion abbrechen (true).
@@ -3539,10 +3414,11 @@
     var busy=S.ernUpgradeBusy; var pc=ernPriceCopy();
     var feats=ERN_PREMIUM_FEATURES.map(function(f){ return '<div style="display:flex;align-items:flex-start;gap:13px;padding:11px 0"><span style="width:40px;height:40px;border-radius:12px;background:rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">'+f[0]+'</span><div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:900;color:#fff">'+f[1]+'</div><div style="font-size:12.5px;font-weight:500;color:#cfe8ec;line-height:1.4;margin-top:1px">'+esc(f[2])+'</div></div></div>'; }).join('');
     var err=(S.ernErr&&S.ernMsg)?'<div role="alert" style="font-size:12.5px;font-weight:700;color:#ffd7cf;text-align:center;margin-top:12px">'+esc(S.ernMsg)+'</div>':'';
-    // Copy dynamisch: Modul-Modus läuft über den Mitgliedsvertrag (SEPA), sonst über Stripe.
+    // Kauf läuft über das Magicline-Zusatzmodul (SEPA über den Mitgliedsvertrag).
+    // Ohne konfiguriertes Modul kein In-App-Kauf -> nur Info „übers Studio".
     var moduleMode=ernModuleMode();
     var headline, ctaLabel, fine, consentText;
-    var moduleInfoBox='', buyBlocked=false;
+    var moduleInfoBox='', buyBlocked=false, noPurchase=false;
     if(moduleMode){
       // Selbstheilend: den Modul-Preis IMMER laden, sobald der Kauf-Screen im
       // Modul-Modus rendert – unabhängig davon, wie er geöffnet wurde. (Früher nur
@@ -3575,19 +3451,20 @@
       // Der Preis MUSS vor der Bestellung sichtbar sein -> ohne Preis kein Kauf.
       if(!mp) buyBlocked=true;
     } else {
-      headline=pc.trialText?(pc.trialText+' testen – danach nur <b style="color:#fff">'+esc(pc.pricePer)+'</b>. Jederzeit kündbar.'):('Nur <b style="color:#fff">'+esc(pc.pricePer)+'</b>. Jederzeit kündbar.');
-      ctaLabel=busy?'Einen Moment …':(pc.trialText?(pc.trialDays+' Tage gratis starten'):'Premium starten');
-      fine=pc.trialText?('Sichere Zahlung über Stripe · keine Kartendaten in der App.<br>Nach '+pc.trialDays+' Tagen '+esc(pc.pricePer)+' (inkl. MwSt). Verlängert sich automatisch um je 1 Monat, jederzeit zum Monatsende kündbar.'):('Sichere Zahlung über Stripe · keine Kartendaten in der App.<br>'+esc(pc.pricePer)+' (inkl. MwSt). Verlängert sich automatisch um je 1 Monat, jederzeit zum Monatsende kündbar.');
-      // §312j: ausdrückliche Einwilligung zur sofortigen Ausführung (digitale Leistung).
-      consentText='Ich verlange ausdrücklich, dass Fit-Inn sofort mit der Bereitstellung der Premium-Funktionen beginnt. Mir ist bekannt, dass mein Widerrufsrecht mit vollständiger Vertragserfüllung erlischt und bei einem Widerruf nach Nutzungsbeginn ein anteiliger Betrag anfallen kann.';
+      // Kein buchbares Premium-Modul konfiguriert -> kein In-App-Kauf. Coach Premium
+      // ist dann Teil bestimmter Mitgliedschaften und wird über das Studio freigeschaltet.
+      noPurchase=true;
+      headline='Coach Premium ist Teil bestimmter Mitgliedschaften.';
+      ctaLabel='Verstanden';
+      fine='Frag dein Studio-Team, wie du Coach Premium zu deiner Mitgliedschaft dazubekommst.';
+      consentText='';
     }
-    var buyConsent='<button data-act="ernBuyConsentToggle" style="width:100%;display:flex;align-items:flex-start;gap:11px;padding:13px 14px;background:rgba(255,255,255,.10);border:1.5px solid '+(S.ernBuyConsent?'#fff':'rgba(255,255,255,.30)')+';border-radius:14px;cursor:pointer;text-align:left;margin-top:20px">'+
+    var buyConsent=noPurchase?'':('<button data-act="ernBuyConsentToggle" style="width:100%;display:flex;align-items:flex-start;gap:11px;padding:13px 14px;background:rgba(255,255,255,.10);border:1.5px solid '+(S.ernBuyConsent?'#fff':'rgba(255,255,255,.30)')+';border-radius:14px;cursor:pointer;text-align:left;margin-top:20px">'+
       '<span style="width:22px;height:22px;border-radius:7px;border:2px solid #fff;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:'+(S.ernBuyConsent?'#fff':'transparent')+';margin-top:1px">'+(S.ernBuyConsent?svg('<path d="M20 6L9 17l-5-5"></path>',{c:'var(--ern-acc)',w:3.2,s:14}):'')+'</span>'+
       '<span style="font-size:11.5px;font-weight:600;color:#eafff4;line-height:1.5">'+consentText+'</span>'+
-    '</button>';
-    // Widerrufsbelehrung (Fernabsatz/digitale Leistung) betrifft nur den Stripe-Kauf.
-    // Beim Zusatzmodul läuft der Kauf über den Mitgliedsvertrag – Link hier ausblenden.
-    var legalLink=moduleMode?'':'<div style="text-align:center;margin-top:12px"><button data-act="nav" data-arg="recht" style="background:none;border:none;color:#eafff4;font-size:12px;font-weight:800;text-decoration:underline;cursor:pointer">Pflichtinfos &amp; Widerrufsbelehrung</button></div>';
+    '</button>');
+    // Kauf läuft immer über das Zusatzmodul (Mitgliedsvertrag) – separater Rechtslink entfällt.
+    var legalLink='';
     var quotaBadge=(!ernPremium()&&ernQuota())?('<div style="display:inline-block;margin-top:14px;background:rgba(255,255,255,.16);border-radius:12px;padding:8px 14px;font-size:12.5px;font-weight:800;color:#fff">'+(ernQuotaLeft()>0?('✨ Noch '+ernQuotaLeft()+' von '+ernQuotaLimit()+' FINN-Aktionen diesen Monat gratis'):('🔒 Dein Gratis-Kontingent ist diesen Monat aufgebraucht'))+'</div>'):'';
     var closeX='<button data-act="ernUpgradeClose" aria-label="Schließen" style="position:absolute;top:12px;right:14px;width:36px;height:36px;border-radius:11px;border:none;background:rgba(255,255,255,.16);display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:3">'+svg('<path d="M18 6L6 18M6 6l12 12"></path>',{c:'#fff',w:2.3,s:18})+'</button>';
     // Als Bottom-Sheet-Popup (Scrim + Sheet) statt Vollbild – wird in render() über
@@ -3604,7 +3481,9 @@
           '<div style="background:rgba(255,255,255,.08);border-radius:20px;padding:8px 16px;margin-top:20px">'+feats+'</div>'+
           moduleInfoBox+
           buyConsent+
-          '<button data-act="ernUpgradeGo" '+((busy||buyBlocked)?'disabled ':'')+'style="width:100%;margin-top:16px;padding:17px;border:none;border-radius:16px;background:#ffffff;color:#0E6072;font-weight:900;font-size:16.5px;cursor:pointer;box-shadow:0 10px 26px rgba(0,0,0,.22);opacity:'+((busy||buyBlocked||!S.ernBuyConsent)?'.55':'1')+'">'+ctaLabel+'</button>'+
+          (noPurchase
+            ? '<button data-act="ernUpgradeClose" style="width:100%;margin-top:20px;padding:17px;border:none;border-radius:16px;background:#ffffff;color:#0E6072;font-weight:900;font-size:16.5px;cursor:pointer;box-shadow:0 10px 26px rgba(0,0,0,.22)">'+ctaLabel+'</button>'
+            : '<button data-act="ernUpgradeGo" '+((busy||buyBlocked)?'disabled ':'')+'style="width:100%;margin-top:16px;padding:17px;border:none;border-radius:16px;background:#ffffff;color:#0E6072;font-weight:900;font-size:16.5px;cursor:pointer;box-shadow:0 10px 26px rgba(0,0,0,.22);opacity:'+((busy||buyBlocked||!S.ernBuyConsent)?'.55':'1')+'">'+ctaLabel+'</button>')+
           ((moduleMode&&buyBlocked&&ernModulesLoaded())?'<button data-act="ernModulePriceRetry" style="width:100%;margin-top:8px;padding:10px;border:none;background:transparent;color:#eafff4;font-weight:800;font-size:13px;cursor:pointer;text-decoration:underline">Preis erneut laden</button>':'')+
           '<div style="font-size:11.5px;color:#bfe0e6;font-weight:600;text-align:center;line-height:1.5;margin-top:12px">'+fine+'</div>'+
           legalLink+
@@ -4801,7 +4680,7 @@
   function ernDataScreen(){
     var busy=S.ernDataBusy, CARD='background:var(--surface);border-radius:18px;padding:17px;box-shadow:0 8px 24px rgba(4,33,40,.08);margin-bottom:14px';
     var head='<div style="display:flex;align-items:center;gap:12px;padding:2px 2px 14px"><button data-act="ernDataClose" aria-label="Zurück" style="width:38px;height:38px;border-radius:12px;border:none;background:var(--surface);box-shadow:0 4px 12px rgba(4,33,40,.08);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'+svg(IC.back,{c:'#0a4958',w:2.2,s:19})+'</button><div style="flex:1"><div style="font-size:20px;font-weight:900;color:var(--text);letter-spacing:-.4px">Meine Daten</div><div style="font-size:12px;font-weight:700;color:var(--text-soft)">Ernährung &amp; Datenschutz</div></div></div>';
-    // Abo-Bereich: Premium verwalten/kündigen (Stripe-Portal) oder holen.
+    // Abo-Bereich: Premium verwalten/kündigen (Zusatzmodul) oder holen.
     var pu=DATA.nutri&&DATA.nutri.premiumUntil; var pdays=pu?Math.max(0,Math.ceil((pu-Date.now())/86400000)):0;
     var dpc=ernPriceCopy();
     var aboSec=ernPremium()
@@ -4828,14 +4707,12 @@
   }
   // ── „Mein Coach Premium" – eigener Konto-Screen (aus Profil/Meine Daten/Beitragskonto) ──
   // Leichter Abo-Status für die Konto-Einstiege (zeigt die Zeile nur, wenn Premium).
-  function loadErnBilling(){
-    api('/api/member/nutrition-billing',{method:'POST',body:JSON.stringify({action:'status'})})
-    .then(function(d){ DATA.ernBilling=(d&&d.ok)?d:null; render(); }).catch(function(){ DATA.ernBilling=null; });
-  }
+  // Quelle ist DATA.nutri (kein separater Billing-Endpunkt mehr).
+  function loadErnBilling(){ if(ERN_ON && DATA.nutri==null){ try{ loadNutri(); }catch(e){} } }
   function ernAboRow(){
-    var eb=DATA.ernBilling; if(!(eb&&eb.premium)) return '';
-    var viaMod=!!(DATA.nutri&&DATA.nutri.premiumViaModule);
-    var sub=eb.comp?'Vom Studio freigeschaltet':(viaMod?(eb.cancelAtPeriodEnd?'Gekündigt – läuft aus':'Teil deiner Mitgliedschaft'):(eb.cancelAtPeriodEnd?'Gekündigt – läuft aus':(eb.trialing?'Gratis-Test aktiv':'Verwalten, Karte & Rechnungen')));
+    var n=DATA.nutri; if(!(n&&n.ok&&n.premium)) return '';
+    var viaMod=!!n.premiumViaModule, comp=!!n.premiumComp, cancelAt=!!n.premiumCancelAt, trialing=!!n.trialing;
+    var sub=comp?'Vom Studio freigeschaltet':(cancelAt?'Gekündigt – läuft aus':(trialing?'Gratis-Test aktiv':(viaMod?'Teil deiner Mitgliedschaft':'Premium aktiv')));
     return '<button data-act="nav" data-arg="abo" style="width:100%;text-align:left;border:none;background:var(--surface);border-radius:16px;box-shadow:0 8px 24px rgba(4,33,40,.08);padding:15px 16px;margin-bottom:14px;cursor:pointer;display:flex;align-items:center;gap:13px">'+
       '<div style="width:38px;height:38px;border-radius:11px;background:rgba(14,96,114,.10);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:18px">⭐</div>'+
       '<div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:800;color:var(--text)">Mein Coach Premium</div><div style="font-size:12.5px;color:var(--text-soft);font-weight:600">'+esc(sub)+'</div></div>'+
@@ -4843,7 +4720,7 @@
   }
   function scrAbo(){
     var back='<button data-act="nav" data-arg="profil" aria-label="Zurück" style="width:38px;height:38px;border-radius:12px;border:none;background:var(--surface);box-shadow:0 4px 12px rgba(4,33,40,.08);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'+svg(IC.back,{c:'#0a4958',w:2.2,s:19})+'</button>';
-    var head='<div style="display:flex;align-items:center;gap:12px;padding:2px 2px 14px">'+back+'<div style="flex:1"><div style="font-size:20px;font-weight:900;color:var(--text);letter-spacing:-.4px">Mein Coach Premium</div><div style="font-size:12px;font-weight:700;color:var(--text-soft)">Status, Zahlung &amp; Rechnungen</div></div></div>';
+    var head='<div style="display:flex;align-items:center;gap:12px;padding:2px 2px 14px">'+back+'<div style="flex:1"><div style="font-size:20px;font-weight:900;color:var(--text);letter-spacing:-.4px">Mein Coach Premium</div><div style="font-size:12px;font-weight:700;color:var(--text-soft)">Status &amp; Kündigung</div></div></div>';
     var body;
     if(ernPremium()){ body=ernManageCard(); }
     else { body='<div style="background:var(--surface);border-radius:18px;box-shadow:0 8px 24px rgba(4,33,40,.08);padding:18px;text-align:center"><div style="font-size:15px;font-weight:900;color:var(--text)">Kein aktives Coach Premium</div><div style="font-size:12.5px;font-weight:600;color:var(--text-muted);line-height:1.5;margin:8px 0 14px">Du hast aktuell kein Coach Premium – FINN-Coach für Training &amp; Ernährung plus den Vital-Check.</div><button data-act="nav" data-arg="coach" style="width:100%;padding:13px;border:none;border-radius:13px;background:'+ERN_G+';color:#fff;font-weight:900;font-size:14.5px;cursor:pointer">Coach Premium entdecken</button></div>'; }
@@ -4860,12 +4737,12 @@
     var H='font-size:15px;font-weight:900;color:var(--text);margin-bottom:9px';
     var P='font-size:12.5px;font-weight:600;color:var(--text-muted);line-height:1.6';
     var pc=ernPriceCopy();
-    var bill=DATA.ernBilling||{};
-    var comp=!!bill.comp||!!(DATA.nutri&&DATA.nutri.premiumComp);
-    // Modul-Premium (SEPA über den Mitgliedsvertrag) ist kein Fernabsatz-Digitalkauf ->
-    // kein Widerruf-Button; gekündigt wird über die Modul-Kündigung.
-    var viaModule=!!(DATA.nutri&&DATA.nutri.premiumViaModule);
-    var hasSub=!!TOKEN&&!!bill.premium&&!comp&&!viaModule;   // zahlendes, widerrufbares Stripe-Abo
+    var n=DATA.nutri||{};
+    var comp=!!n.premiumComp;
+    // Premium läuft als Magicline-Zusatzmodul über den Mitgliedsvertrag (SEPA) – kein
+    // Fernabsatz-Digitalkauf; beendet wird über die Modul-Kündigung, nicht per Widerrufsbutton.
+    var viaModule=!!n.premiumViaModule;
+    var hasPrem=!!TOKEN&&!!n.premium;
     var back='<button data-act="rechtBack" aria-label="Zurück" style="width:38px;height:38px;border-radius:12px;border:none;background:var(--surface);box-shadow:0 4px 12px rgba(4,33,40,.08);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'+svg(IC.back,{c:'#0a4958',w:2.2,s:19})+'</button>';
     var head='<div style="display:flex;align-items:center;gap:12px;padding:2px 2px 14px">'+back+'<div style="flex:1"><div style="font-size:20px;font-weight:900;color:var(--text);letter-spacing:-.4px">Widerruf &amp; Rechtliches</div><div style="font-size:12px;font-weight:700;color:var(--text-soft)">Fernabsatz · digitale Leistung</div></div></div>';
     // A) Pflichtinfos zum Premium-Abo (§312j BGB)
@@ -4880,29 +4757,19 @@
     // B) Widerrufsbelehrung (amtliches Muster, digitale Dienstleistung)
     var beleh='<div style="'+CARD+'"><div style="'+H+'">Widerrufsbelehrung</div>'+
       '<div style="'+P+'"><b>Widerrufsrecht.</b> Du hast das Recht, binnen vierzehn Tagen ohne Angabe von Gründen diesen Vertrag zu widerrufen. Die Widerrufsfrist beträgt vierzehn Tage ab dem Tag des Vertragsabschlusses.<br><br>'+
-      'Um dein Widerrufsrecht auszuüben, musst du uns ('+esc(LEGAL.firma)+', '+esc(LEGAL.anschrift)+', E-Mail: '+esc(LEGAL.email)+') mittels einer eindeutigen Erklärung (z. B. ein mit der Post versandter Brief oder eine E-Mail) über deinen Entschluss, diesen Vertrag zu widerrufen, informieren. Du kannst dafür das Muster-Widerrufsformular verwenden, das ist aber nicht vorgeschrieben. Am einfachsten erklärst du den Widerruf direkt über den <b>Widerrufsbutton</b> unten in dieser App. Zur Wahrung der Widerrufsfrist reicht es aus, dass du die Mitteilung vor Ablauf der Widerrufsfrist absendest.<br><br>'+
+      'Um dein Widerrufsrecht auszuüben, musst du uns ('+esc(LEGAL.firma)+', '+esc(LEGAL.anschrift)+', E-Mail: '+esc(LEGAL.email)+') mittels einer eindeutigen Erklärung (z. B. ein mit der Post versandter Brief oder eine E-Mail) über deinen Entschluss, diesen Vertrag zu widerrufen, informieren. Du kannst dafür das Muster-Widerrufsformular unten verwenden, das ist aber nicht vorgeschrieben. Zur Wahrung der Widerrufsfrist reicht es aus, dass du die Mitteilung vor Ablauf der Widerrufsfrist absendest.<br><br>'+
       '<b>Folgen des Widerrufs.</b> Wenn du diesen Vertrag widerrufst, haben wir dir alle Zahlungen, die wir von dir erhalten haben, unverzüglich und spätestens binnen vierzehn Tagen ab dem Tag zurückzuzahlen, an dem die Mitteilung über deinen Widerruf bei uns eingegangen ist. Hast du verlangt, dass die Dienstleistung während der Widerrufsfrist beginnen soll, so hast du uns einen angemessenen Betrag zu zahlen, der dem Anteil der bis zum Widerruf bereits erbrachten Leistungen entspricht.</div></div>';
     // C) Muster-Widerrufsformular
     var muster='<div style="'+CARD+'"><div style="'+H+'">Muster-Widerrufsformular</div>'+
       '<div style="'+P+';white-space:pre-line;font-family:inherit">'+esc('An '+LEGAL.firma+', '+LEGAL.anschrift+', E-Mail: '+LEGAL.email+':\n\nHiermit widerrufe ich den von mir abgeschlossenen Vertrag über die Erbringung der folgenden Dienstleistung: Coach Premium (Abo)\n\n– Bestellt am: ____________\n– Name: ____________\n– Anschrift: ____________\n– Datum: ____________\n– Unterschrift (nur bei Papier): ____________')+'</div></div>';
-    // D) Widerrufsbutton + Ablauf
+    // D) Widerruf/Kündigung erklären (Modul-Premium läuft über den Mitgliedsvertrag)
     var wd;
-    if(!hasSub){
-      wd='<div style="'+CARD+'"><div style="'+H+'">Widerruf erklären</div><div style="'+P+'">'+(comp?'Dein Coach Premium wurde vom Studio kostenlos freigeschaltet – hier gibt es keinen zahlungspflichtigen Vertrag zum Widerrufen.':'Für dein Konto ist aktuell kein zahlungspflichtiges Premium-Abo hinterlegt, das widerrufen werden könnte.')+'</div></div>';
-    } else if(S.wdStep===2){
-      wd='<div style="'+CARD+';border:1.5px solid rgba(14,96,114,.35)"><div style="'+H+';color:var(--ern-acc)">✓ Widerruf eingegangen</div><div style="'+P+'">Wir haben deinen Widerruf am '+esc(ernFmtDate(S.wdDoneAt||Date.now()))+' erhalten und dein Abo beendet. Eine Bestätigung ist an deine E-Mail unterwegs. Eine etwaige anteilige Erstattung wickeln wir separat ab.</div></div>';
-    } else if(S.wdStep===1){
-      var nm=(DATA.profile&&((DATA.profile.firstName||'')+' '+(DATA.profile.lastName||'')).trim())||'';
-      var err=S.wdErr&&S.wdMsg?'<div role="alert" style="font-size:12.5px;font-weight:700;color:var(--err-fg);margin-top:10px">'+esc(S.wdMsg)+'</div>':'';
-      wd='<div style="'+CARD+';border:1.5px solid rgba(192,57,43,.30)"><div style="'+H+'">Widerruf verbindlich erklären</div>'+
-        '<div style="'+P+';margin-bottom:12px">Du widerrufst hiermit deinen Vertrag über <b>Coach Premium</b>'+(nm?(' als <b>'+esc(nm)+'</b>'):'')+' mit Datum '+esc(ernFmtDate(Date.now()))+'. Dein Abo wird sofort beendet; künftige Abbuchungen entfallen.</div>'+
-        '<div style="display:flex;gap:8px">'+
-          '<button data-act="wdBack" '+(S.wdBusy?'disabled ':'')+'style="flex:1;padding:13px;border:1.5px solid var(--border);border-radius:12px;background:var(--surface);color:var(--text-2);font-weight:800;font-size:14px;cursor:pointer">Abbrechen</button>'+
-          '<button data-act="wdSubmit" '+(S.wdBusy?'disabled ':'')+'style="flex:1.4;padding:13px;border:none;border-radius:12px;background:#c0392b;color:#fff;font-weight:900;font-size:14px;cursor:pointer;opacity:'+(S.wdBusy?'.6':'1')+'">'+(S.wdBusy?'Sende …':'Widerruf absenden')+'</button>'+
-        '</div>'+err+'</div>';
+    if(comp){
+      wd='<div style="'+CARD+'"><div style="'+H+'">Widerruf erklären</div><div style="'+P+'">Dein Coach Premium wurde vom Studio kostenlos freigeschaltet – hier gibt es keinen zahlungspflichtigen Vertrag zum Widerrufen.</div></div>';
+    } else if(viaModule||hasPrem){
+      wd='<div style="'+CARD+'"><div style="'+H+'">Widerruf &amp; Kündigung</div><div style="'+P+'">Coach Premium läuft als <b>Zusatzmodul über deinen Mitgliedsvertrag</b> (SEPA). Zum Beenden nutzt du am einfachsten die Kündigung unter <b>„Mein Coach Premium"</b> – nur das Modul wird beendet, deine Mitgliedschaft läuft normal weiter. Einen Widerruf kannst du zusätzlich mit dem Muster-Formular oben per E-Mail an '+esc(LEGAL.email)+' erklären.</div></div>';
     } else {
-      wd='<div style="'+CARD+'"><div style="'+H+'">Widerruf erklären</div><div style="'+P+';margin-bottom:13px">Du kannst deinen Vertrag über Coach Premium mit einem Klick widerrufen. Wir bestätigen dir den Eingang per E-Mail.</div>'+
-        '<button data-act="wdStart" style="width:100%;padding:14px;border:1.5px solid rgba(192,57,43,.35);border-radius:13px;background:var(--surface);color:var(--err-fg);font-weight:900;font-size:14.5px;cursor:pointer">Vertrag widerrufen</button></div>';
+      wd='<div style="'+CARD+'"><div style="'+H+'">Widerruf erklären</div><div style="'+P+'">Für dein Konto ist aktuell kein zahlungspflichtiges Premium hinterlegt, das widerrufen werden könnte.</div></div>';
     }
     var links='<div style="display:flex;flex-wrap:wrap;gap:6px 14px;justify-content:center;margin-top:8px;padding-top:6px">'+
       [['Impressum','impressum-fit-inn-trier'],['Datenschutz','datenschutz-fit-inn-trier'],['AGB','agbs-fit-inn-trier']].map(function(l){return '<a href="https://www.fit-inn-trier.de/'+l[1]+'" target="_blank" rel="noopener" style="color:var(--text-soft);font-size:12px;font-weight:700;text-decoration:none">'+l[0]+'</a>';}).join('')+'</div>';
@@ -10400,48 +10267,24 @@
     ernFavLog:function(a){ a=String(a||''); var parts=a.split(':'), fid=parts[0], factor=parts[1]?parseFloat(parts[1]):1;
       api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'fav-log',id:fid,factor:factor,date:ernActiveDate()})})
       .then(function(d){ if(d&&d.ok){ DATA.nutri=d; var nm=(d.added&&d.added[0]&&d.added[0].name)||'Favorit'; S.ernMsg='Protokolliert: '+nm; S.ernErr=false; render(); } else { S.ernErr=true; S.ernMsg=(d&&d.message)||'Konnte nicht protokollieren – bitte erneut.'; render(); } }).catch(function(){ S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); }); },
-    // ── Premium (Freemium/Stripe) ──
+    // ── Premium (Freemium / Coach Premium über Zusatzmodul) ──
     ernUpgradeOpen:function(){ setS({ernUpgrade:true, ernMsg:'', ernErr:false}); ernEnsureModulePrice(); },
     ernModulePriceRetry:function(){ DATA.modules=null; try{ loadModules(); }catch(e){} render(); },
     // Aus dem Profil-Bereich „FINN-Nutzung": ins Ernährungsmodul wechseln und Upgrade öffnen.
     ernUsageUpgrade:function(){ nav('ern'); S.ernUpgrade=true; ernEnsureModulePrice(); render(); },
     ernUpgradeClose:function(){ setS({ernUpgrade:false, ernMsg:'', ernErr:false}); },
     ernBuyConsentToggle:function(){ setQuiet({ernBuyConsent:!S.ernBuyConsent, ernErr:false, ernMsg:''}); },
-    // Rechts-Screen: Widerruf-Ablauf.
-    rechtBack:function(){ S.wdStep=0; S.wdErr=false; S.wdMsg=''; nav(TOKEN?'profil':'login'); },
-    wdStart:function(){ setS({wdStep:1, wdErr:false, wdMsg:''}); },
-    wdBack:function(){ setS({wdStep:0, wdErr:false, wdMsg:''}); },
-    wdSubmit:function(){ if(S.wdBusy) return; S.wdBusy=true; S.wdErr=false; S.wdMsg=''; render();
-      api('/api/member/nutrition-billing',{method:'POST',body:JSON.stringify({action:'widerruf'})})
-      .then(function(d){ S.wdBusy=false;
-        if(d&&d.ok){ S.wdStep=2; S.wdDoneAt=d.at||Date.now(); DATA.ernBilling=null; DATA.ernSub=undefined; loadErnBilling(); loadNutri(); loadSubInfo(); render(); }
-        else { S.wdErr=true; S.wdMsg=(d&&d.message)||'Widerruf konnte nicht abgesendet werden – bitte später erneut oder melde dich im Studio.'; render(); } })
-      .catch(function(){ S.wdBusy=false; S.wdErr=true; S.wdMsg='Verbindung gerade nicht möglich.'; render(); }); },
+    // Rechts-Screen: zurück (Pflichtinfos/Widerrufsbelehrung sind rein informativ).
+    rechtBack:function(){ nav(TOKEN?'profil':'login'); },
     ernUpgradeGo:function(){
+      // Kauf läuft über das Magicline-Zusatzmodul (SEPA über den Mitgliedsvertrag).
       // §312j / Buchungs-Einwilligung: ohne Bestätigung kein Kaufstart.
+      if(!ernModuleMode()){ setS({ernUpgrade:false}); return; }   // kein Modul -> kein In-App-Kauf
       if(!S.ernBuyConsent){ S.ernErr=true; S.ernMsg='Bitte bestätige die Einwilligung, um fortzufahren.'; render(); try{ window.__scrollAppBottom&&window.__scrollAppBottom(); }catch(e){} return; }
-      // Modul-Modus: Premium läuft über ein Magicline-Zusatzmodul (SEPA über den
-      // Mitgliedsvertrag) – kein Stripe/kein Kartenfeld.
-      if(ernModuleMode()){ ernModuleBook(); return; }
-      // Bevorzugt Embedded Checkout im Sheet (kein Seitenwechsel). Ohne veröffentlichten
-      // Key (pk) Fallback auf den bisherigen Redirect-Checkout.
-      if(ernPk()){ ernCoStart(); return; }
-      if(S.ernUpgradeBusy) return; S.ernUpgradeBusy=true; S.ernErr=false; S.ernMsg=''; render();
-      api('/api/member/nutrition-billing',{method:'POST',body:JSON.stringify({action:'checkout'})})
-      .then(function(d){ if(d&&d.ok&&d.url){ window.location.href=d.url; return; }
-        S.ernUpgradeBusy=false; if(d&&d.error==='already_premium'){ S.ernUpgrade=false; S.ernMsg='Du hast Premium bereits aktiv. 🎉'; S.ernErr=false; loadNutri(); } else { S.ernErr=true; S.ernMsg=(d&&d.message)||'Konnte nicht starten – bitte später erneut.'; } render(); })
-      .catch(function(){ S.ernUpgradeBusy=false; S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); }); },
-    ernPayClose:function(){ ernPayClose(); },
-    ernPortal:function(){ if(S.ernDataBusy) return; S.ernDataBusy=true; render();
-      api('/api/member/nutrition-billing',{method:'POST',body:JSON.stringify({action:'portal'})})
-      .then(function(d){ if(d&&d.ok&&d.url){ window.location.href=d.url; return; } S.ernDataBusy=false; S.ernErr=true; S.ernMsg=(d&&d.message)||'Abo-Verwaltung nicht möglich.'; render(); })
-      .catch(function(){ S.ernDataBusy=false; S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); }); },
-    ernCancelSub:function(){ if(S.ernDataBusy) return; var sub=DATA.ernSub; var pe=(sub&&sub.currentPeriodEnd)||(DATA.nutri&&DATA.nutri.premiumUntil)||0; var end=pe?(' zum '+ernFmtDate(pe)):''; if(!window.confirm('Premium'+end+' kündigen? Dein Zugang bleibt bis dahin aktiv.')) return; ernSubToggle('cancel'); },
-    ernReactivateSub:function(){ if(S.ernDataBusy) return; ernSubToggle('reactivate'); },
+      ernModuleBook();
+    },
     // Premium (Magicline-Zusatzmodul) kündigen – kündigt NUR das Modul, nicht die Mitgliedschaft.
     ernModuleCancel:function(){ ernModuleCancel(); },
-    ernCardChange:function(){ if(S.ernDataBusy) return; ernPmStart(); },
-    ernPmSubmit:function(){ ernPmSubmit(); },
     // ── Coaching-Programm (8-Wochen-Reise) ──
     ernEnroll:function(){ if(S.ernEnrollBusy) return; S.ernEnrollBusy=true; S.ernErr=false; S.ernMsg=''; render();
       api('/api/member/nutrition-coach',{method:'POST',body:JSON.stringify({action:'enroll'})})
@@ -10504,7 +10347,7 @@
     ernCoachChatOpen:function(){ setS({ernChatOpen:true}); },
     ernCoachChatClose:function(){ setS({ernChatOpen:false}); },
     // ── Etappe 6: Datenschutz – Export / Tag löschen / alles löschen ──
-    ernDataOpen:function(){ DATA.ernSub=undefined; DATA.ernInvoices=undefined; setS({ernData:true, ernMsg:'', ernErr:false}); if(ernPremium()&&!ernViaModule()){ loadSubInfo(); loadErnInvoices(); } },
+    ernDataOpen:function(){ setS({ernData:true, ernMsg:'', ernErr:false}); },
     ernDataClose:function(){ S.ernData=false; S.ernMsg=''; S.ernErr=false; loadNutri(); loadFavs(); },
     ernDataExport:function(){ if(S.ernDataBusy) return; S.ernDataBusy=true; S.ernMsg=''; S.ernErr=false; render();
       api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'export'})})
@@ -11570,32 +11413,6 @@
   // Anmeldung wird direkt eingecheckt (Face-ID-Gate greift wie beim manuellen
   // Check-in). Kein Standort-Check. Wiederholtes Auslösen ist per 8s-Sperre entkoppelt.
   var NFC=null; try{ NFC=new URL(window.location.href).searchParams.get('nfc'); }catch(e){}
-  // Rückkehr von Stripe-Checkout/Portal (?ern_premium=success|cancel|portal).
-  var EPR=null; try{ EPR=new URL(window.location.href).searchParams.get('ern_premium'); }catch(e){}
-  function ernPremiumReturn(kind){
-    try{ var u=new URL(window.location.href); u.searchParams.delete('ern_premium'); window.history.replaceState({}, document.title, u.pathname+u.search+u.hash); }catch(e){}
-    try{ nav('ern'); }catch(e){}
-    if(kind==='success'){
-      // Premium wird serverseitig erst durch den Stripe-Webhook gesetzt – das kann ein
-      // paar Sekunden dauern. Statt eines einmaligen Nachladens pollen wir kurz, bis der
-      // Status kippt (max ~9 s), damit die Freischaltung sofort sichtbar ist.
-      S.ernMsg='Premium wird aktiviert …'; S.ernErr=false;
-      var tries=0;
-      var poll=function(){
-        tries++;
-        try{ loadNutri(); }catch(e){}
-        setTimeout(function(){
-          if(DATA.nutri && DATA.nutri.premium){ S.ernMsg='Premium aktiviert – viel Erfolg! 🎉'; S.ernErr=false; render(); return; }
-          if(tries>=8){ S.ernMsg='Fast geschafft – die Freischaltung kann einen Moment dauern. Tippe unten erneut auf „Essen", dann ist Premium da.'; S.ernErr=false; render(); return; }
-          poll();
-        }, 1500);
-      };
-      poll();
-    }
-    else if(kind==='cancel'){ S.ernMsg='Kein Problem – du kannst Premium jederzeit starten.'; S.ernErr=false; }
-    else { setTimeout(function(){ try{ loadNutri(); }catch(e){} }, 500); }
-    render();
-  }
   var __nfcAt=0;
   function nfcArrive(){
     var now=Date.now(); if(now-__nfcAt<8000) return; __nfcAt=now;
@@ -11684,7 +11501,7 @@
   if(ALT){ bootActionLogin(ALT); }
   else if(MLT){ bootMagic(MLT); }
   else if(bioGate){ S.screen='login'; render(); }
-  else if(TOKEN){ loadMe().then(function(){ loadAppts(); loadPlan(); loadPlanAgg(); loadInbox(); loadPrefs(); if(DATA.checkins===null) loadCheckins(); render(); checkArrival(); var go=magicGo(); if(go!=='home'){ try{ nav(go); }catch(e){} } if(NFC){ NFC=null; nfcArrive(); } if(EPR){ var k=EPR; EPR=null; ernPremiumReturn(k); } }).catch(function(e){
+  else if(TOKEN){ loadMe().then(function(){ loadAppts(); loadPlan(); loadPlanAgg(); loadInbox(); loadPrefs(); if(DATA.checkins===null) loadCheckins(); render(); checkArrival(); var go=magicGo(); if(go!=='home'){ try{ nav(go); }catch(e){} } if(NFC){ NFC=null; nfcArrive(); } }).catch(function(e){
     // 401 hat api() bereits sauber ausgeloggt. Ein TRANSIENTER Fehler (Timeout/kurzes
     // Funkloch) darf die gültige Sitzung NICHT löschen – sonst Zwangs-Logout beim Öffnen.
     if(e&&e.message==='unauthorized') return;

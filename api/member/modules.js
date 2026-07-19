@@ -83,13 +83,11 @@ module.exports = async function handler(req, res) {
     const available = !!(r && r.available);
     // Ernährungs-Premium (Zusatzmodul, SEPA) für die Vertragsverwaltung. Die Karte
     // erscheint, sobald das Modul TATSÄCHLICH gebucht ist (per gemerkter Vertrags-ID
-    // verifiziert) – auch dann, wenn Premium gerade dem Stripe-Abo zugeschrieben wird
-    // (Stripe hat Vorrang). Sonst bliebe ein parallel gebuchtes Modul unsichtbar und
-    // unkündbar. stripeAlso warnt vor Doppelzahlung.
+    // verifiziert), damit es sichtbar & kündbar bleibt.
     let premium = null;
     if (Mod.premiumConfigured()) {
       try {
-        await MlPremium.reconcile(sess.id);   // Premium-Quelle (Stripe-Vorrang) frisch halten
+        await MlPremium.reconcile(sess.id);   // Premium-Status frisch halten
         const st = await MlPremium.moduleStatus(sess.id);   // Modul gebucht? (id-basiert)
         if (st && st.booked) {
           const nowMs = Date.now();
@@ -97,8 +95,6 @@ module.exports = async function handler(req, res) {
           const inTrial = !!(trialEndMs && !isNaN(trialEndMs) && trialEndMs >= nowMs);
           const cancelUntil = (st.cancelled && st.endDate) ? Date.parse(st.endDate + 'T23:59:59') : null;
           premium = { active: true, trialing: inTrial, trialEnd: inTrial ? (st.trialEnd || null) : null, until: (st.cancelled && cancelUntil && !isNaN(cancelUntil)) ? cancelUntil : null, cancelAtPeriodEnd: !!st.cancelled };
-          let ent = null; try { ent = await Ent.getEntitlement(sess.id); } catch (e) {}
-          if (ent && ent.stripeSubId && Ent.isPremium(ent)) premium.stripeAlso = true;
         }
       } catch (e) {}
     }
