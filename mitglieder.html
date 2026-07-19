@@ -5801,9 +5801,29 @@
     api.clearWatch=function(id){ delete geoCbs[id]; try{ P.clearWatch({watchId:id}); }catch(e){} };
     api.healthAuth=function(){ return P.healthAuth(); };
     api.getHealthWorkouts=function(sinceTs){ return P.getHealthWorkouts({sinceTs:sinceTs||0}); };
+    api.getHealthMetrics=function(){ return P.getHealthMetrics(); };
     api.saveHealthWorkout=function(s){ return P.saveHealthWorkout(s||{}); };
     window.FitInnNative=api;
     return true;
+  }
+  // Gesundheits-Kennzahlen (Ruhepuls, HRV, Schlaf, Gewicht, Körperfett, VO2max, Schritte) aus Apple Health.
+  function woHealthFetchMetrics(){
+    var P=woNativePlugin(); if(!P||!P.getHealthMetrics) return;
+    try{ P.getHealthMetrics().then(function(r){ if(r&&r.ok){ DATA.healthMetrics=Object.assign({t:Date.now()},r); rIf(['tag','morning','fort','home','figur']); } }).catch(function(){}); }catch(e){}
+  }
+  function woHealthMetricsRow(){
+    var m=DATA.healthMetrics; if(!m||!m.ok) return '';
+    var items=[];
+    if(m.restingHr) items.push(['❤️','Ruhepuls',Math.round(m.restingHr)+' bpm']);
+    if(m.hrv) items.push(['〰️','HRV',Math.round(m.hrv)+' ms']);
+    if(m.sleepMin) items.push(['😴','Schlaf',(Math.floor(m.sleepMin/60))+'h '+(m.sleepMin%60)+'m']);
+    if(m.vo2max) items.push(['🫁','VO₂max',(Math.round(m.vo2max*10)/10)]);
+    if(m.weightKg) items.push(['⚖️','Gewicht',(Math.round(m.weightKg*10)/10)+' kg']);
+    if(m.bodyFatPct) items.push(['📊','Körperfett',(Math.round(m.bodyFatPct*10)/10)+' %']);
+    if(m.steps) items.push(['👟','Schritte',m.steps.toLocaleString('de-DE')]);
+    if(!items.length) return '';
+    var cells=items.map(function(c){ return '<div style="flex:1 1 30%;min-width:90px;background:var(--surface-2);border-radius:12px;padding:9px 8px"><div style="font-size:10px;font-weight:800;color:var(--text-soft)">'+c[0]+' '+esc(c[1])+'</div><div style="font-size:15px;font-weight:900;color:var(--text);margin-top:1px">'+esc(String(c[2]))+'</div></div>'; }).join('');
+    return '<div style="margin-top:13px"><div style="font-size:11px;font-weight:900;color:var(--text-soft);text-transform:uppercase;letter-spacing:.4px;margin-bottom:7px">Aus Apple Health</div><div style="display:flex;flex-wrap:wrap;gap:7px">'+cells+'</div></div>';
   }
   // Kleine Diagnose für die Health-Karte (nur in der nativen App sichtbar).
   function woHealthDiag(){ try{ var c=window.Capacitor; var keys=(c&&c.Plugins)?Object.keys(c.Plugins).join(', '):'—'; return 'Cap:'+(c?1:0)+' · nativ:'+((c&&c.isNativePlatform&&c.isNativePlatform())?1:0)+' · FitInnNative-Plugin:'+(woNativePlugin()?'JA':'nein')+' · Plugins:['+keys+']'; }catch(e){ return 'diag:'+e; } }
@@ -5824,7 +5844,7 @@
     if(!P){ setS({woHealthMsg:'Health-Sync geht nur in der Fit-Inn-App ('+woHealthPlatform()+').'}); return; }
     if(S.woHealthBusy) return; S.woHealthBusy=true; S.woHealthMsg=''; render();
     try{ P.healthAuth().then(function(r){ S.woHealthBusy=false;
-      if(r&&r.ok&&(r.read||r.write)){ woHealthSetPref({connected:true,write:(r.write!==false),read:(r.read!==false)}); S.woHealthMsg=''; setS({}); woHealthImport(true); }
+      if(r&&r.ok&&(r.read||r.write)){ woHealthSetPref({connected:true,write:(r.write!==false),read:(r.read!==false)}); S.woHealthMsg=''; setS({}); woHealthImport(true); woHealthFetchMetrics(); }
       else { S.woHealthMsg='Kein Zugriff auf '+woHealthPlatform()+' – bitte die Freigabe erlauben. ('+woHealthErr(r&&r.error)+')'; setS({}); }
     }).catch(function(err){ S.woHealthBusy=false; S.woHealthMsg='Verbindung fehlgeschlagen: '+woHealthErr(err); setS({}); }); }
     catch(e){ S.woHealthBusy=false; S.woHealthMsg='Health-Fehler: '+woHealthErr(e); setS({}); }
@@ -5838,7 +5858,7 @@
     var send=function(list){
       api('/api/member/workouts',{method:'POST',timeoutMs:30000,body:JSON.stringify({action:'import',workouts:(list||[]).slice(0,200)})})
         .then(function(r){ S.woHealthBusy=false;
-          if(r&&r.ok){ DATA.workouts=r; woHealthSetPref({lastSync:Date.now()}); var n=r.imported||0; S.woHealthMsg=(n>0)?(n+' Einheit'+(n>1?'en':'')+' aus '+woHealthPlatform()+' übernommen (+'+(r.vpAdded||0)+' VP).'):'Alles aktuell – keine neuen Einheiten.'; rIf(['tag','home','fort','coach']); }
+          if(r&&r.ok){ DATA.workouts=r; woHealthSetPref({lastSync:Date.now()}); var n=r.imported||0; S.woHealthMsg=(n>0)?(n+' Einheit'+(n>1?'en':'')+' aus '+woHealthPlatform()+' übernommen (+'+(r.vpAdded||0)+' VP).'):'Alles aktuell – keine neuen Einheiten.'; woHealthFetchMetrics(); rIf(['tag','home','fort','coach']); }
           else if(r&&r.error==='premium_required'){ ernEnsureModulePrice(); setS({ernUpgrade:true}); return; }
           else if(r&&r.error==='consent_required'){ S.woHealthMsg='Bitte zuerst den Vital-Check aktivieren (Einwilligung für Herzdaten).'; }
           else { S.woHealthMsg=(r&&r.message)||'Import hat nicht geklappt – bitte erneut.'; }
@@ -5870,10 +5890,12 @@
     } else if(!connected){
       body='<button data-act="woHealthConnect"'+(busy?' disabled':'')+' style="width:100%;margin-top:13px;padding:14px;border:none;border-radius:14px;background:'+ERN_G+';color:#fff;font-weight:900;font-size:14px;cursor:pointer">'+(busy?'Verbinde …':('Mit '+esc(plat)+' verbinden'))+'</button>';
     } else {
+      if(DATA.healthMetrics==null){ DATA.healthMetrics=false; woHealthFetchMetrics(); }   // einmal laden
       var pr=woHealthPref(); var last=pr.lastSync?('Zuletzt synchronisiert: '+deDate(new Date(pr.lastSync).toISOString())):'Noch nicht synchronisiert';
       var wOn=woHealthWriteOn(); var wCap=woHealthWriteCap();
       body='<div style="margin-top:12px;display:flex;align-items:center;gap:8px;font-size:12px;font-weight:800;color:var(--ok-fg,#1f8a54)">'+svg('<path d="M20 6L9 17l-5-5"></path>',{c:'currentColor',w:2.4,s:16})+'<span>Verbunden mit '+esc(plat)+'</span></div>'+
         '<div style="font-size:11px;font-weight:600;color:var(--text-soft);margin-top:4px">'+esc(last)+'</div>'+
+        woHealthMetricsRow()+
         '<button data-act="woHealthImport"'+(busy?' disabled':'')+' style="width:100%;margin-top:12px;padding:13px;border:none;border-radius:13px;background:'+ERN_G+';color:#fff;font-weight:900;font-size:14px;cursor:pointer">'+(busy?'Synchronisiere …':'Jetzt synchronisieren')+'</button>'+
         (wCap?('<button data-act="woHealthWrite" style="width:100%;margin-top:9px;padding:11px;border:1.5px solid var(--border-strong);border-radius:12px;background:var(--surface);color:var(--teal-ink);font-weight:800;font-size:12.5px;cursor:pointer">Aufgezeichnete Einheiten nach '+esc(plat)+' schreiben: '+(wOn?'AN':'AUS')+'</button>'):'')+
         '<button data-act="woHealthOff" style="width:100%;margin-top:8px;padding:9px;border:none;background:transparent;color:var(--text-soft);font-weight:800;font-size:12px;cursor:pointer">Trennen</button>';

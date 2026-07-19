@@ -32,6 +32,7 @@ public class FitInnNativePlugin: CAPPlugin, CAPBridgedPlugin, CBCentralManagerDe
     public let pluginMethods: [CAPPluginMethod] = [
         CAPPluginMethod(name: "healthAuth", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "getHealthWorkouts", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "getHealthMetrics", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "saveHealthWorkout", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "startHeartRate", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "stopHeartRate", returnType: CAPPluginReturnNone),
@@ -46,10 +47,14 @@ public class FitInnNativePlugin: CAPPlugin, CAPBridgedPlugin, CBCentralManagerDe
 
     private func hkReadTypes() -> Set<HKObjectType> {
         var s: Set<HKObjectType> = [HKObjectType.workoutType()]
-        let ids: [HKQuantityTypeIdentifier] = [.heartRate, .distanceWalkingRunning, .distanceCycling, .activeEnergyBurned]
+        let ids: [HKQuantityTypeIdentifier] = [
+            .heartRate, .distanceWalkingRunning, .distanceCycling, .activeEnergyBurned,
+            .restingHeartRate, .heartRateVariabilitySDNN, .bodyMass, .bodyFatPercentage, .stepCount, .vo2Max,
+        ]
         for id in ids {
             if let t = HKObjectType.quantityType(forIdentifier: id) { s.insert(t) }
         }
+        if let sleep = HKObjectType.categoryType(forIdentifier: .sleepAnalysis) { s.insert(sleep) }
         return s
     }
     private func hkShareTypes() -> Set<HKSampleType> {
@@ -170,6 +175,65 @@ public class FitInnNativePlugin: CAPPlugin, CAPBridgedPlugin, CBCentralManagerDe
             if samples.isEmpty { finish() }
             else { builder.add(samples) { _, _ in finish() } }
         }
+    }
+
+    // Gesundheits-Kennzahlen (jeweils der jüngste Wert) für Vital-Check, Figur-Check & Co.
+    // -> { ok, restingHr, hrv, weightKg, bodyFatPct, vo2max, steps (heute), sleepMin (letzte Nacht) }.
+    @objc func getHealthMetrics(_ call: CAPPluginCall) {
+        guard HKHealthStore.isHealthDataAvailable() else { call.resolve(["ok": false]); return }
+        let group = DispatchGroup()
+        let syncQ = DispatchQueue(label: "de.fitinn.metrics")
+        var out: [String: Any] = [:]
+
+        // Jüngsten Einzelwert einer Größe lesen (mit Skalierung, z. B. Prozent 0..1 -> %).
+        func latest(_ id: HKQuantityTypeIdentifier, _ unit: HKUnit, _ key: String, _ scale: Double) {
+            guard let t = HKObjectType.quantityType(forIdentifier: id) else { return }
+            group.enter()
+            let sort = NSSortDescriptor(key: HKSampleSortIdentifierEndDate, ascending: false)
+            let q = HKSampleQuery(sampleType: t, predicate: nil, limit: 1, sortDescriptors: [sort]) { _, samples, _ in
+                if let s = samples?.first as? HKQuantitySample {
+                    let v = s.quantity.doubleValue(for: unit) * scale
+                    syncQ.async { out[key] = (Double(round(v * 10) / 10)); group.leave() }
+                } else { group.leave() }
+            }
+            healthStore.execute(q)
+        }
+
+        latest(.restingHeartRate, HKUnit.count().unitDivided(by: .minute()), "restingHr", 1)
+        latest(.heartRateVariabilitySDNN, HKUnit.secondUnit(with: .milli), "hrv", 1)
+        latest(.bodyMass, HKUnit.gramUnit(with: .kilo), "weightKg", 1)
+        latest(.bodyFatPercentage, HKUnit.percent(), "bodyFatPct", 100)   // 0..1 -> %
+        latest(.vo2Max, HKUnit(from: "ml/kg*min"), "vo2max", 1)
+
+        // Schritte heute (Summe seit Mitternacht).
+        if let stepType = HKObjectType.quantityType(forIdentifier: .stepCount) {
+            group.enter()
+            let start = Calendar.current.startOfDay(for: Date())
+            let pred = HKQuery.predicateForSamples(withStart: start, end: Date(), options: .strictStartDate)
+            let sq = HKStatisticsQuery(quantityType: stepType, quantitySamplePredicate: pred, options: .cumulativeSum) { _, stats, _ in
+                let v = stats?.sumQuantity()?.doubleValue(for: HKUnit.count()) ?? 0
+                syncQ.async { out["steps"] = Int(v); group.leave() }
+            }
+            healthStore.execute(sq)
+        }
+
+        // Schlaf der letzten Nacht (Summe echter Schlafphasen der letzten 18 h).
+        // Kategorie-Rohwerte: 0 = im Bett, 2 = wach; alles andere zählt als schlafend.
+        if let sleepType = HKObjectType.categoryType(forIdentifier: .sleepAnalysis) {
+            group.enter()
+            let since = Date().addingTimeInterval(-18 * 3600)
+            let pred = HKQuery.predicateForSamples(withStart: since, end: Date(), options: [])
+            let sq = HKSampleQuery(sampleType: sleepType, predicate: pred, limit: HKObjectQueryNoLimit, sortDescriptors: nil) { _, samples, _ in
+                var sec = 0.0
+                for case let s as HKCategorySample in (samples ?? []) {
+                    if s.value != 0 && s.value != 2 { sec += s.endDate.timeIntervalSince(s.startDate) }
+                }
+                syncQ.async { out["sleepMin"] = Int(sec / 60.0); group.leave() }
+            }
+            healthStore.execute(sq)
+        }
+
+        group.notify(queue: .main) { out["ok"] = true; call.resolve(out) }
     }
 
     // HealthKit-Aktivität -> unsere Aktivitäts-Keys (siehe lib/workouts.js ACTIVITIES).
