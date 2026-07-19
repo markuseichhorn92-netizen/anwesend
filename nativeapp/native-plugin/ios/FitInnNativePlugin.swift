@@ -24,7 +24,21 @@ import CoreLocation
  * WebView eingespielt – dieses Plugin liefert nur die nativen Methoden dahinter.
  */
 @objc(FitInnNativePlugin)
-public class FitInnNativePlugin: CAPPlugin, CBCentralManagerDelegate, CBPeripheralDelegate, CLLocationManagerDelegate {
+public class FitInnNativePlugin: CAPPlugin, CAPBridgedPlugin, CBCentralManagerDelegate, CBPeripheralDelegate, CLLocationManagerDelegate {
+
+    // Registrierung bei Capacitor 6+/8 (CAPBridgedPlugin) – ersetzt die alte .m-Makro-Registrierung.
+    public let identifier = "FitInnNativePlugin"
+    public let jsName = "FitInnNative"
+    public let pluginMethods: [CAPPluginMethod] = [
+        CAPPluginMethod(name: "healthAuth", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "getHealthWorkouts", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "saveHealthWorkout", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "startHeartRate", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "stopHeartRate", returnType: CAPPluginReturnNone),
+        CAPPluginMethod(name: "getPosition", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "watchPosition", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "clearWatch", returnType: CAPPluginReturnNone),
+    ]
 
     // MARK: - Apple Health (HealthKit)
 

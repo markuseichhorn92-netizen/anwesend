@@ -16,8 +16,8 @@ der Health-Sync.
 | Datei | Zweck |
 |---|---|
 | `ios/MainViewController.swift` | App-Startseite (Storyboard `customClass`); spielt den `window.FitInnNative`-Shim in die WebView ein (Shim ist eingebettet) |
-| `ios/FitInnNativePlugin.swift` | Das Plugin: HealthKit + CoreBluetooth + CoreLocation (nur die nativen Methoden) |
-| `ios/FitInnNativePlugin.m` | Registriert das Plugin bei Capacitor als `FitInnNative` |
+| `ios/FitInnNativePlugin.swift` | Das Plugin: HealthKit + CoreBluetooth + CoreLocation. Registriert sich bei Capacitor 6+/8 selbst über `CAPBridgedPlugin` (`jsName = "FitInnNative"`). |
+| `ios/FitInnNativePlugin.m` | Nur noch Alt-Kompatibilität (Capacitor ≤5). Unter Capacitor 8 inaktiv – kann bleiben. |
 | `fitinn-native-bridge.js` | Reine **Referenz** des Shims (der echte Code steckt eingebettet in `MainViewController.swift`) |
 
 ## Einbau
