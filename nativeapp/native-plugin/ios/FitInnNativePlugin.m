@@ -8,6 +8,7 @@ CAP_PLUGIN(FitInnNativePlugin, "FitInnNative",
     // Apple Health
     CAP_PLUGIN_METHOD(healthAuth, CAPPluginReturnPromise);
     CAP_PLUGIN_METHOD(getHealthWorkouts, CAPPluginReturnPromise);
+    CAP_PLUGIN_METHOD(getHealthMetrics, CAPPluginReturnPromise);
     CAP_PLUGIN_METHOD(saveHealthWorkout, CAPPluginReturnPromise);
     // Herzfrequenz-Gurt (BLE) – Messwerte kommen als „heartRate"-Event
     CAP_PLUGIN_METHOD(startHeartRate, CAPPluginReturnPromise);
