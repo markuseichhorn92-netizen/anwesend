@@ -5658,10 +5658,47 @@
     return trainWeekCard()+woHistoryCard()+visits+unitsCard;
   }
 
-  // ═══ Trainings-Aufzeichnung mit Puls (Gurt) – Stufe 1: Indoor ═══
+  // ═══ Trainings-Aufzeichnung mit Puls (Gurt) – Indoor + Outdoor (GPS) ═══
   var woHR={ samples:[], timer:null, watchdog:null, stop:null, startTs:0 };
+  var woGeo={ points:[], distM:0, elevM:0, stop:null };
   var woWakeBound=false;
   var WO_ZCOL=['#7fb8c4','#4a9fd4','#22c17a','#e8b04a','#e8735a'];   // Z1..Z5
+  // GPS-Tracking: native watchPosition -> Web-watchPosition -> native/Web getPosition gepollt.
+  // Vordergrund reicht (Bildschirm an via Wake-Lock); echtes Hintergrund-Tracking braucht eine
+  // native watchPosition-Methode (siehe patch-native.js-Hinweis).
+  function woGeoStart(onPoint,onErr){
+    try{ if(window.FitInnNative&&FitInnNative.available&&FitInnNative.available.geo&&FitInnNative.watchPosition){
+      var wid=FitInnNative.watchPosition(function(p){ if(p) onPoint(p.lat,p.lng,(p.alt!=null?p.alt:null),(p.acc!=null?p.acc:null)); });
+      return function(){ try{ FitInnNative.clearWatch&&FitInnNative.clearWatch(wid); }catch(e){} };
+    } }catch(e){}
+    try{ if(navigator.geolocation&&navigator.geolocation.watchPosition){
+      var id=navigator.geolocation.watchPosition(function(pos){ var c=pos.coords; onPoint(c.latitude,c.longitude,c.altitude,c.accuracy); }, function(e){ if(onErr) onErr(e); }, {enableHighAccuracy:true,maximumAge:1000,timeout:20000});
+      return function(){ try{ navigator.geolocation.clearWatch(id); }catch(e){} };
+    } }catch(e){}
+    // Fallback: Einzelabfrage im Takt (nutzt die vorhandene getPosition-Bridge der App).
+    var poll=function(){ try{
+      if(window.FitInnNative&&FitInnNative.available&&FitInnNative.available.geo&&FitInnNative.getPosition){ FitInnNative.getPosition().then(function(p){ if(p) onPoint(p.lat,p.lng,(p.alt!=null?p.alt:null),(p.acc!=null?p.acc:null)); }).catch(function(){}); }
+      else if(navigator.geolocation){ navigator.geolocation.getCurrentPosition(function(pos){ var c=pos.coords; onPoint(c.latitude,c.longitude,c.altitude,c.accuracy); }, function(){}, {enableHighAccuracy:true,timeout:15000,maximumAge:0}); }
+      else { if(onErr) onErr({code:'unsupported'}); }
+    }catch(e){} };
+    poll(); var pid=setInterval(poll,4000);
+    return function(){ try{ clearInterval(pid); }catch(e){} };
+  }
+  function woGeoHav(a,b,c,d){ var R=6371000,toR=Math.PI/180; var dLa=(c-a)*toR,dLn=(d-b)*toR,la1=a*toR,la2=c*toR; var x=Math.sin(dLa/2)*Math.sin(dLa/2)+Math.cos(la1)*Math.cos(la2)*Math.sin(dLn/2)*Math.sin(dLn/2); return 2*R*Math.asin(Math.min(1,Math.sqrt(x))); }
+  function woGeoAdd(lat,lng,alt,acc){
+    if(lat==null||lng==null||isNaN(lat)||isNaN(lng)) return;
+    if(acc!=null&&acc>50) return;   // ungenaue Fixes verwerfen
+    var now=Date.now(); var pts=woGeo.points;
+    if(pts.length){ var p=pts[pts.length-1]; var dd=woGeoHav(p.lat,p.lng,lat,lng); var dt=(now-p.t)/1000;
+      if(dt>0&&(dd/dt)>15) return;   // >54 km/h = GPS-Sprung -> ignorieren
+      if(dd>=4){ woGeo.distM+=dd; if(alt!=null&&p.alt!=null){ var da=alt-p.alt; if(da>0.7) woGeo.elevM+=da; } pts.push({lat:lat,lng:lng,t:now,alt:alt}); }
+    } else { pts.push({lat:lat,lng:lng,t:now,alt:alt}); }
+  }
+  function woGeoStats(){ var dist=woGeo.distM||0, el=S.woElapsed||0; return { distM:Math.round(dist), paceSec:(dist>50&&el>0)?Math.round(el/(dist/1000)):null, elevM:Math.round(woGeo.elevM||0), fixes:woGeo.points.length }; }
+  function woRoutePath(route,w,h){ if(!route||route.length<2) return ''; var las=route.map(function(p){return p[0];}),lns=route.map(function(p){return p[1];}); var laMin=Math.min.apply(null,las),laMax=Math.max.apply(null,las),lnMin=Math.min.apply(null,lns),lnMax=Math.max.apply(null,lns); var laR=(laMax-laMin)||1e-5,lnR=(lnMax-lnMin)||1e-5; var pad=8,sc=Math.min((w-2*pad)/lnR,(h-2*pad)/laR); var ox=(w-lnR*sc)/2,oy=(h-laR*sc)/2; var pts=route.map(function(p){ var x=ox+(p[1]-lnMin)*sc; var y=oy+(laMax-p[0])*sc; return (Math.round(x*10)/10)+','+(Math.round(y*10)/10); }).join(' '); return '<svg viewBox="0 0 '+w+' '+h+'" width="100%" height="'+h+'" style="display:block"><polyline points="'+pts+'" fill="none" stroke="'+ERN_G+'" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"></polyline></svg>'; }
+  function woFmtPace(sec){ if(!sec) return '–'; var m=Math.floor(sec/60),s=sec%60; return m+':'+(s<10?'0':'')+s; }
+  function woKm(m){ return (Math.round((m||0)/100)/10).toString().replace('.',','); }
+  function woRouteBox(route){ if(!route||route.length<2) return ''; return '<div style="margin-top:16px;background:var(--surface-2);border-radius:14px;padding:12px"><div style="font-size:11px;font-weight:900;color:var(--text-soft);text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px">📍 Deine Strecke</div>'+woRoutePath(route,360,150)+'</div>'; }
   function loadWorkouts(){
     if(DATA.workouts==null) DATA.workouts=false;
     api('/api/member/workouts').then(function(d){ DATA.workouts=(d&&typeof d==='object'&&(d.ok||d.available===false))?d:{ok:false,available:false}; rIf(['tag','home','fort','coach','morning']); })
@@ -5680,30 +5717,46 @@
   function woZoneBar(zoneSecs,h){ h=h||12; var tot=(zoneSecs||[]).reduce(function(a,b){return a+(b||0);},0)||1; var seg=(zoneSecs||[]).map(function(s,i){ var pct=Math.round((s||0)/tot*100); return pct>0?'<div style="width:'+pct+'%;background:'+WO_ZCOL[i]+'"></div>':''; }).join(''); return '<div style="display:flex;height:'+h+'px;border-radius:6px;overflow:hidden;background:var(--surface-2)">'+seg+'</div>'; }
   function woZoneLegend(zoneSecs){ return '<div style="display:flex;flex-direction:column;gap:5px;margin-top:9px">'+(zoneSecs||[]).map(function(s,i){ if(!(s>0)) return ''; return '<div style="display:flex;align-items:center;gap:8px"><span style="width:10px;height:10px;border-radius:3px;background:'+WO_ZCOL[i]+';flex-shrink:0"></span><span style="font-size:12px;font-weight:800;color:var(--text);flex:1;min-width:0">Z'+(i+1)+' · '+esc(woZoneLabel(i))+'</span><span style="font-size:12px;font-weight:800;color:var(--text-2)">'+woFmtDur(s)+'</span></div>'; }).join('')+'</div>'; }
 
-  function woStopRec(){ try{ if(woHR.timer) clearInterval(woHR.timer); }catch(e){} woHR.timer=null; try{ if(woHR.watchdog) clearTimeout(woHR.watchdog); }catch(e){} woHR.watchdog=null; try{ if(woHR.stop) woHR.stop(); }catch(e){} woHR.stop=null; moReleaseWake(); }
-  function woStartRec(){
+  function woStopRec(){ try{ if(woHR.timer) clearInterval(woHR.timer); }catch(e){} woHR.timer=null; try{ if(woHR.watchdog) clearTimeout(woHR.watchdog); }catch(e){} woHR.watchdog=null; try{ if(woHR.stop) woHR.stop(); }catch(e){} woHR.stop=null; try{ if(woGeo.stop) woGeo.stop(); }catch(e){} woGeo.stop=null; moReleaseWake(); }
+  function woStartRec(kind){
+    kind=(kind==='outdoor')?'outdoor':'indoor';
     woStopRec();
     woHR={ samples:[], timer:null, watchdog:null, stop:null, startTs:0 };
-    S.woPhase='connecting'; S.woErr=false; S.woMsg=''; S.woLiveBpm=null; S.woElapsed=0; S.woResult=null; S.woReview=null; render();
+    woGeo={ points:[], distM:0, elevM:0, stop:null };
+    S.woKind=kind; S.woPhase='connecting'; S.woErr=false; S.woMsg=''; S.woLiveBpm=null; S.woElapsed=0; S.woResult=null; S.woReview=null; S.woGpsFix=false; render();
     moAcquireWake(); if(!woWakeBound){ try{ document.addEventListener('visibilitychange',function(){ if(document.visibilityState==='visible'&&woMeasuring()) moAcquireWake(); }); }catch(e){} woWakeBound=true; }
+    // Puls: indoor erforderlich, outdoor optional (GPS ist primär).
     woHR.stop=moBleStart(function(bpm,rr){
-      if(S.woPhase==='connecting'){ S.woPhase='measuring'; woHR.startTs=Date.now(); if(woHR.watchdog){ clearTimeout(woHR.watchdog); woHR.watchdog=null; } }
-      woHR.samples.push({t:Date.now(),bpm:bpm});
-      S.woLiveBpm=bpm; render();
-    },function(code){ woStopRec(); S.woPhase='idle'; S.woErr=true; S.woMsg=moErrMsg(code); setS({}); });
-    woHR.watchdog=setTimeout(function(){ if(S.woPhase==='connecting'){ woStopRec(); S.woPhase='idle'; S.woErr=true; S.woMsg='Kein Signal vom Gurt – Elektroden anfeuchten, Gurt eng anlegen und andere Apps (Polar Beat, Uhr) trennen.'; setS({}); } },20000);
+      if(S.woPhase==='connecting'&&kind==='indoor'){ S.woPhase='measuring'; woHR.startTs=Date.now(); if(woHR.watchdog){ clearTimeout(woHR.watchdog); woHR.watchdog=null; } }
+      if(!woHR.startTs) woHR.startTs=Date.now();
+      woHR.samples.push({t:Date.now(),bpm:bpm}); S.woLiveBpm=bpm; render();
+    },function(code){ if(kind==='indoor'){ woStopRec(); S.woPhase='idle'; S.woErr=true; S.woMsg=moErrMsg(code); setS({}); } });
+    if(kind==='outdoor'){
+      // GPS primär: sofort messen, Timer läuft ab Start (Puls trudelt ein, wenn ein Gurt da ist).
+      S.woPhase='measuring'; woHR.startTs=Date.now();
+      woGeo.stop=woGeoStart(function(lat,lng,alt,acc){ woGeoAdd(lat,lng,alt,acc); S.woGpsFix=true; render(); },function(e){ /* weiter versuchen; Hinweis „GPS suchen…" bleibt */ });
+    } else {
+      woHR.watchdog=setTimeout(function(){ if(S.woPhase==='connecting'){ woStopRec(); S.woPhase='idle'; S.woErr=true; S.woMsg='Kein Signal vom Gurt – Elektroden anfeuchten, Gurt eng anlegen und andere Apps (Polar Beat, Uhr) trennen.'; setS({}); } },20000);
+    }
     woHR.timer=setInterval(function(){ if(!woHR.startTs) return; S.woElapsed=Math.round((Date.now()-woHR.startTs)/1000); render(); },1000);
   }
   function woFinishRec(){
     woStopRec();
-    var s=woHR.samples||[];
-    if(s.length<5){ S.woPhase='idle'; S.woErr=true; S.woMsg='Zu wenige Messwerte – die Aufzeichnung war zu kurz.'; setS({}); return; }
-    // Auf höchstens 600 Punkte herunterrechnen (Server aggregiert daraus die maßgeblichen Werte).
-    var step=Math.max(1,Math.ceil(s.length/600)); var ds=[];
-    for(var i=0;i<s.length;i+=step) ds.push({t:s[i].t,bpm:s[i].bpm});
-    if(ds.length && ds[ds.length-1].t!==s[s.length-1].t) ds.push({t:s[s.length-1].t,bpm:s[s.length-1].bpm});
+    var kind=S.woKind||'indoor'; var s=woHR.samples||[]; var gs=woGeoStats();
+    var enough=(kind==='outdoor') ? (s.length>=5 || gs.distM>50 || (S.woElapsed||0)>=60) : (s.length>=5);
+    if(!enough){ S.woPhase='idle'; S.woErr=true; S.woMsg=(kind==='outdoor'?'Zu kurz oder kein GPS-Signal – bitte draußen mit freiem Himmel erneut versuchen.':'Zu wenige Messwerte – die Aufzeichnung war zu kurz.'); setS({}); return; }
+    // Puls-Reihe herunterrechnen (Server aggregiert daraus die maßgeblichen Werte).
+    var ds=[]; if(s.length){ var step=Math.max(1,Math.ceil(s.length/600)); for(var i=0;i<s.length;i+=step) ds.push({t:s[i].t,bpm:s[i].bpm}); if(ds[ds.length-1].t!==s[s.length-1].t) ds.push({t:s[s.length-1].t,bpm:s[s.length-1].bpm}); }
+    // Client-Zusammenfassung (Fallback + Anzeige, falls kein Puls vorliegt).
+    var cs=woLiveStats();
+    var payload={ action:'save', kind:kind, activity:S.woActivity||(kind==='outdoor'?'laufen':'studio'), date:moToday(), samples:ds,
+      durationSec:S.woElapsed||0, avgHr:cs?cs.avg:null, maxHr:cs?cs.max:null, minHr:(s.length?Math.min.apply(null,s.map(function(x){return x.bpm;})):null), zoneSecs:cs?cs.zoneSecs:[0,0,0,0,0] };
+    if(kind==='outdoor'){
+      var route=woGeo.points.slice(); if(route.length>600){ var st2=Math.ceil(route.length/600); var rr2=[]; for(var k=0;k<route.length;k+=st2) rr2.push(route[k]); route=rr2; }
+      payload.outdoor={ distanceM:gs.distM, paceSec:gs.paceSec, elevM:gs.elevM, route:route.map(function(p){return [Math.round(p.lat*1e5)/1e5,Math.round(p.lng*1e5)/1e5];}) };
+    }
     S.woPhase='saving'; S.woErr=false; S.woMsg=''; render();
-    api('/api/member/workouts',{method:'POST',timeoutMs:30000,body:JSON.stringify({action:'save',kind:'indoor',activity:S.woActivity||'studio',date:moToday(),samples:ds})})
+    api('/api/member/workouts',{method:'POST',timeoutMs:30000,body:JSON.stringify(payload)})
       .then(function(r){ S.woPhase='idle';
         if(r&&r.ok){ DATA.workouts=r; S.woResult=r.session||null; S.woReview=null; S.woMsg=''; S.woErr=false; if(S.woResult) woFetchReview(); }
         else if(r&&r.error==='premium_required'){ ernEnsureModulePrice(); setS({ernUpgrade:true}); return; }
@@ -5720,27 +5773,40 @@
   // Einstiegskarte im Training (Einheit-Tab).
   function woEntryCard(){
     var d=woData(); var wl=(d&&d.weekly)||null;
-    var sub= (wl&&wl.sessions>0) ? (wl.sessions+' Einheit'+(wl.sessions>1?'en':'')+' diese Woche · '+wl.minutes+' min · Last '+wl.trimp) : 'Gurt anlegen, Puls & Zonen live sehen – zählt für deine Erholung.';
+    var sub= (wl&&wl.sessions>0) ? (wl.sessions+' Einheit'+(wl.sessions>1?'en':'')+' diese Woche · '+wl.minutes+' min · Last '+wl.trimp) : 'Indoor mit Gurt oder Outdoor per GPS – Puls, Zonen & Strecke live. Zählt für deine Erholung.';
     var err=(S.woErr&&S.woMsg&&!woMeasuring()&&!S.woResult)?'<div style="font-size:12px;font-weight:700;color:var(--err-fg);margin-top:9px;line-height:1.4">'+esc(S.woMsg)+'</div>':'';
     return '<button data-act="woOpen" style="width:100%;text-align:left;border:none;font-family:inherit;cursor:pointer;background:linear-gradient(150deg,#12879c,#0e6072 60%,#0a4958);border-radius:20px;padding:16px 18px;margin-bottom:14px;color:#fff;box-shadow:0 14px 34px rgba(6,45,55,.24)">'+
       '<div style="display:flex;align-items:center;gap:13px"><div style="width:46px;height:46px;border-radius:14px;background:rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0">❤️</div>'+
       '<div style="flex:1;min-width:0"><div style="font-size:15.5px;font-weight:900">Training mit Puls aufzeichnen</div><div style="font-size:12px;font-weight:600;color:#bfe0e6;margin-top:2px;line-height:1.4">'+esc(sub)+'</div></div>'+svg('<path d="M9 18l6-6-6-6"></path>',{c:'rgba(255,255,255,.75)',w:2.2,s:18})+'</div>'+err+'</button>';
   }
-  // Auswahl-Sheet: Aktivität wählen + starten.
+  // Auswahl-Sheet: Indoor/Outdoor + Aktivität wählen + starten.
   function woStartSheet(){
-    var acts=[['studio','🏋️','Studio'],['kraft','💪','Kraft'],['cardio','🚴','Cardio'],['kurs','🧘','Kurs']];
-    var sel=S.woActivity||'studio';
+    var mode=(S.woMode==='outdoor')?'outdoor':'indoor';
+    var actsIn=[['studio','🏋️','Studio'],['kraft','💪','Kraft'],['cardio','🚴','Cardio'],['kurs','🧘','Kurs']];
+    var actsOut=[['laufen','🏃','Laufen'],['radfahren','🚴','Rad'],['gehen','🚶','Gehen'],['wandern','🥾','Wandern']];
+    var acts=(mode==='outdoor')?actsOut:actsIn;
+    var sel=S.woActivity; if(acts.map(function(a){return a[0];}).indexOf(sel)<0){ sel=acts[0][0]; S.woActivity=sel; }
+    var seg=[['indoor','🏠 Indoor'],['outdoor','🧭 Outdoor']].map(function(m){ var on=mode===m[0]; return '<button data-act="woMode" data-arg="'+m[0]+'" style="flex:1;border:none;background:'+(on?ERN_G:'transparent')+';color:'+(on?'#fff':'var(--text-muted)')+';font-size:13.5px;font-weight:800;padding:10px;border-radius:11px;cursor:pointer">'+m[1]+'</button>'; }).join('');
     var chips=acts.map(function(a){ var on=sel===a[0]; return '<button data-act="woActivity" data-arg="'+a[0]+'" style="flex:1;min-width:0;border:1.5px solid '+(on?ERN_G:'var(--border)')+';background:'+(on?'rgba(14,96,114,.08)':'var(--surface)')+';border-radius:14px;padding:12px 6px;cursor:pointer;font-family:inherit;display:flex;flex-direction:column;align-items:center;gap:5px"><span style="font-size:22px">'+a[1]+'</span><span style="font-size:12px;font-weight:800;color:'+(on?'var(--ern-acc)':'var(--text)')+'">'+a[2]+'</span></button>'; }).join('');
-    var strapHint=moBleAvail()?'':'<div style="font-size:11.5px;font-weight:700;color:var(--text-soft);text-align:center;margin-top:10px;line-height:1.4">Kein Gurt erkannt – am besten in der Fit-Inn-App mit angelegtem Polar-Gurt starten.</div>';
+    var hint=(mode==='outdoor')
+      ? '<div style="font-size:11.5px;font-weight:700;color:var(--text-soft);text-align:center;margin-top:10px;line-height:1.4">📍 GPS zeichnet Strecke & Tempo auf. Puls wird ergänzt, wenn du den Gurt trägst. Bildschirm anlassen.</div>'
+      : (moBleAvail()?'':'<div style="font-size:11.5px;font-weight:700;color:var(--text-soft);text-align:center;margin-top:10px;line-height:1.4">Kein Gurt erkannt – am besten in der Fit-Inn-App mit angelegtem Polar-Gurt starten.</div>');
     var body='<div style="background:var(--surface);border-radius:24px 24px 0 0;padding:20px 18px calc(20px + env(safe-area-inset-bottom,0px));box-shadow:0 -12px 40px rgba(4,20,25,.28)">'+
       '<div style="width:40px;height:5px;border-radius:3px;background:var(--border-strong);margin:0 auto 14px"></div>'+
       '<div style="font-size:17px;font-weight:900;color:var(--text);text-align:center">Womit trainierst du?</div>'+
-      '<div style="font-size:12.5px;font-weight:600;color:var(--text-soft);text-align:center;margin-top:4px">Puls wird live mit dem Brustgurt aufgezeichnet.</div>'+
-      '<div style="display:flex;gap:8px;margin-top:16px">'+chips+'</div>'+strapHint+
+      '<div style="display:flex;gap:4px;background:var(--surface-2);border-radius:13px;padding:4px;margin-top:14px">'+seg+'</div>'+
+      '<div style="display:flex;gap:8px;margin-top:14px">'+chips+'</div>'+hint+
       '<button data-act="woBegin" style="width:100%;margin-top:16px;padding:15px;border:none;border-radius:15px;background:'+ERN_G+';color:#fff;font-weight:900;font-size:15px;cursor:pointer">Aufzeichnung starten</button>'+
       '<button data-act="woClose" style="width:100%;margin-top:9px;padding:12px;border:none;background:transparent;color:var(--text-soft);font-weight:800;font-size:13px;cursor:pointer">Abbrechen</button>'+
     '</div>';
     return '<div role="dialog" aria-label="Training aufzeichnen" data-act="woClose" style="position:fixed;inset:0;z-index:120;background:rgba(6,24,29,.55);backdrop-filter:blur(3px);display:flex;align-items:flex-end"><div data-act="noop" style="width:100%;max-width:480px;margin:0 auto">'+body+'</div></div>';
+  }
+  // Outdoor-Live-Zeile (Distanz/Tempo/Höhe + GPS-Status).
+  function woRecOutdoorRow(){
+    var g=woGeoStats();
+    var cells=[['Distanz',woKm(g.distM)+' km'],['Tempo',(g.paceSec?woFmtPace(g.paceSec):'–')+' /km'],['Höhe',g.elevM+' m']];
+    var searching=(!S.woGpsFix)?'<div style="font-size:11.5px;font-weight:700;color:#e8c06a;text-align:center;margin-bottom:8px">📡 GPS-Signal suchen … (freier Himmel hilft)</div>':'';
+    return '<div style="margin-top:14px">'+searching+'<div style="display:flex;gap:10px">'+cells.map(function(c){ return '<div style="flex:1;background:rgba(255,255,255,.08);border-radius:13px;padding:10px 6px;text-align:center"><div style="font-size:18px;font-weight:900;color:#fff">'+esc(c[1])+'</div><div style="font-size:9.5px;font-weight:800;color:#bfe6ec;margin-top:1px">'+c[0]+'</div></div>'; }).join('')+'</div></div>';
   }
   // Vollbild-Aufzeichnung (Bildschirm bleibt an).
   function woRecOverlay(){
@@ -5755,6 +5821,7 @@
       inner='<div style="width:100%;max-width:360px">'+
         '<div style="text-align:center;color:#bfe6ec;font-size:11px;font-weight:900;letter-spacing:.6px;text-transform:uppercase">'+esc(woActLabel(S.woActivity||'studio'))+'</div>'+
         '<div style="text-align:center;color:#fff;font-size:40px;font-weight:900;letter-spacing:-1px;margin-top:2px;font-variant-numeric:tabular-nums">'+woFmtDur(S.woElapsed)+'</div>'+
+        (S.woKind==='outdoor'?woRecOutdoorRow():'')+
         '<div style="display:flex;align-items:center;justify-content:center;gap:14px;margin-top:14px">'+
           '<div style="width:118px;height:118px;border-radius:50%;border:5px solid '+col+';display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(255,255,255,.06)"><span style="font-size:38px;font-weight:900;color:#fff;line-height:1">'+(bpm||'–')+'</span><span style="font-size:10px;font-weight:800;color:#bfe6ec;letter-spacing:.4px">BPM</span></div>'+
           '<div style="text-align:left"><div style="font-size:11px;font-weight:900;color:'+col+';text-transform:uppercase;letter-spacing:.4px">Zone '+(cur>=0?(cur+1):'–')+'</div><div style="font-size:15px;font-weight:900;color:#fff">'+(cur>=0?esc(woZoneLabel(cur)):'—')+'</div>'+
@@ -5783,7 +5850,8 @@
     var card='<div style="background:var(--surface);border-radius:24px;max-width:420px;width:100%;padding:22px 20px;box-shadow:0 24px 60px rgba(4,20,25,.4);max-height:90vh;overflow-y:auto">'+
       '<div style="text-align:center"><div style="font-size:34px">🎉</div><div style="font-size:19px;font-weight:900;color:var(--text);margin-top:4px">Einheit gespeichert</div><div style="font-size:12.5px;font-weight:800;color:var(--ern-acc);margin-top:3px">'+esc(woActLabel(s.activity))+' · +'+vp+' Vitalpunkte</div></div>'+
       '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:16px">'+grid+'</div>'+
-      '<div style="margin-top:16px">'+woZoneBar(s.zoneSecs,14)+woZoneLegend(s.zoneSecs)+'</div>'+
+      (s.avgHr?('<div style="margin-top:16px">'+woZoneBar(s.zoneSecs,14)+woZoneLegend(s.zoneSecs)+'</div>'):'')+
+      woRouteBox(s.route)+
       finn+
       '<button data-act="woResultClose" style="width:100%;margin-top:16px;padding:14px;border:none;border-radius:14px;background:'+ERN_G+';color:#fff;font-weight:900;font-size:14.5px;cursor:pointer">Fertig</button>'+
     '</div>';
@@ -5813,7 +5881,8 @@
       '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><div><div style="font-size:18px;font-weight:900;color:var(--text)">'+esc(woActLabel(s.activity))+'</div><div style="font-size:12px;font-weight:700;color:var(--text-soft)">'+deDateLong((s.date||'')+'T12:00:00')+'</div></div>'+
       '<button data-act="woDetailClose" aria-label="Schließen" style="width:32px;height:32px;border-radius:10px;border:none;background:var(--surface-2);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'+svg('<path d="M18 6L6 18M6 6l12 12"></path>',{c:'var(--text-soft)',w:2.4,s:15})+'</button></div>'+
       '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:16px">'+grid+'</div>'+
-      '<div style="margin-top:16px">'+woZoneBar(s.zoneSecs,14)+woZoneLegend(s.zoneSecs)+'</div>'+
+      (s.avgHr?('<div style="margin-top:16px">'+woZoneBar(s.zoneSecs,14)+woZoneLegend(s.zoneSecs)+'</div>'):'')+
+      woRouteBox(s.route)+
       finn+
       '<button data-act="woDelete" data-arg="'+esc(String(s.ts))+'" style="width:100%;margin-top:12px;padding:11px;border:none;background:transparent;color:var(--err-fg);font-weight:800;font-size:12.5px;cursor:pointer">Einheit löschen</button>'+
     '</div>';
@@ -9411,10 +9480,11 @@
     // Training trotz Erholungsphase (Soft-Lock übersteuern – nur für diese Sitzung).
     trainRecoveryOverride:function(){ S.recoveryOverride=true; setS({}); },
     // ── Trainings-Aufzeichnung mit Puls (Stufe 1) ──
-    woOpen:function(){ if(DATA.workouts==null) loadWorkouts(); S.woActivity=S.woActivity||'studio'; S.woErr=false; S.woMsg=''; setS({woOpen:true}); },
+    woOpen:function(){ if(DATA.workouts==null) loadWorkouts(); S.woMode=S.woMode||'indoor'; S.woActivity=S.woActivity||(S.woMode==='outdoor'?'laufen':'studio'); S.woErr=false; S.woMsg=''; setS({woOpen:true}); },
     woClose:function(){ setS({woOpen:false}); },
+    woMode:function(a){ var m=(a==='outdoor')?'outdoor':'indoor'; S.woMode=m; S.woActivity=(m==='outdoor')?'laufen':'studio'; setS({}); },
     woActivity:function(a){ if(a) setS({woActivity:a}); },
-    woBegin:function(){ S.woOpen=false; S.woActivity=S.woActivity||'studio'; render(); woStartRec(); },
+    woBegin:function(){ var m=(S.woMode==='outdoor')?'outdoor':'indoor'; S.woOpen=false; S.woActivity=S.woActivity||(m==='outdoor'?'laufen':'studio'); render(); woStartRec(m); },
     woCancel:function(){ woStopRec(); S.woPhase='idle'; S.woLiveBpm=null; S.woElapsed=0; setS({}); },
     woFinish:function(){ if(S.woPhase==='saving') return; woFinishRec(); },
     woResultClose:function(){ S.woResult=null; S.woReview=null; setS({}); },

@@ -48,6 +48,7 @@ function run() {
 
   // 6. validSession
   ok('14. valid: kurz/ohne Puls ungültig', !WO.validSession({ durationSec: 3, avgHr: 0 }) && WO.validSession({ durationSec: 30, avgHr: 120 }));
+  ok('14b. valid: Outdoor ohne Puls, aber mit Strecke gültig', WO.validSession({ kind: 'outdoor', durationSec: 600, avgHr: 0, distanceM: 4000 }) && !WO.validSession({ kind: 'indoor', durationSec: 600, avgHr: 0, distanceM: 4000 }));
 
   // 7. weeklyLoad: nur letzte 7 Tage
   const now = Date.now();

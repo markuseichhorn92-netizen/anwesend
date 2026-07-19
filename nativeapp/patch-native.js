@@ -55,6 +55,13 @@ const IOS_KEYS = {
     'Die App verbindet sich per Bluetooth mit deinem Herzfrequenz-Gurt (z. B. Polar H9) für den Morgen-Check deiner Trainingsbereitschaft.',
   NSBluetoothPeripheralUsageDescription:
     'Die App verbindet sich per Bluetooth mit deinem Herzfrequenz-Gurt (z. B. Polar H9) für den Morgen-Check deiner Trainingsbereitschaft.',
+  // Standort für Outdoor-Trainings (Strecke/Distanz/Tempo) + Studio-Check-in.
+  // Hinweis: Echtes HINTERGRUND-Tracking (Bildschirm aus) braucht zusätzlich
+  // NSLocationAlwaysAndWhenInUseUsageDescription, das Background-Location-Entitlement
+  // und eine native watchPosition-Methode in FitInnNative. Im Vordergrund (Bildschirm an,
+  // Wake-Lock) genügt „WhenInUse"; daher hier bewusst nur der WhenInUse-Schlüssel.
+  NSLocationWhenInUseUsageDescription:
+    'Die App braucht deinen Standort, um Outdoor-Trainings (Laufen, Radfahren) mit Strecke, Distanz und Tempo aufzuzeichnen – und um dich beim Check-in in deinem Studio zu erkennen.',
 };
 
 const ANDROID_PERMISSIONS = [
@@ -64,6 +71,9 @@ const ANDROID_PERMISSIONS = [
   // Android-Versionen bringt das Plugin die Legacy-Rechte (BLUETOOTH/…_ADMIN) selbst mit.
   'android.permission.BLUETOOTH_SCAN',
   'android.permission.BLUETOOTH_CONNECT',
+  // Standort für Outdoor-Trainings (Strecke/Distanz/Tempo) + Studio-Check-in.
+  'android.permission.ACCESS_FINE_LOCATION',
+  'android.permission.ACCESS_COARSE_LOCATION',
 ];
 const ANDROID_FEATURES = [
   // Kamera/Mikro nur „optional" verlangen, damit Geräte ohne Kamera die App
