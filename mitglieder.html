@@ -591,7 +591,7 @@
   };
   function isoToday(){ var d=new Date(); var p=function(n){return(n<10?'0':'')+n;}; return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate()); }
 
-  function setS(p){ Object.assign(S,p); render(); window.scrollTo(0,0); }
+  function setS(p){ Object.assign(S,p); render(); }
   function setQuiet(p){ Object.assign(S,p); render(); }
 
   // ---- helpers ----
@@ -3373,7 +3373,7 @@
       if(d&&d.ok){
         S.ernUpgrade=false; S.ernErr=false;
         S.ernMsg=(d.via==='magicline')?(td>0?('Coach Premium ist aktiv – die ersten '+td+' Tage gratis. 🎉'):'Coach Premium ist aktiviert – viel Erfolg! 🎉'):'Alles klar – wir aktivieren dein Coach Premium und melden uns kurz.';
-        loadNutri(); render(); try{ window.scrollTo(0,0); }catch(e){} return;
+        loadNutri(); render(); return;
       }
       S.ernErr=true; S.ernMsg=(d&&d.message)||'Konnte nicht gestartet werden – bitte später erneut.'; render();
     }).catch(function(){ S.ernUpgradeBusy=false; S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); });
@@ -3499,7 +3499,7 @@
   // Vor einer KI-Aktion: kein Premium -> Upgrade-Screen zeigen und Aktion abbrechen (true).
   // Gate vor einer KI-Aktion: Premium darf immer; Basic darf, solange das Monats-Kontingent
   // reicht (der Server bucht bei Erfolg ab). Erst wenn 0 übrig ist -> Upgrade-Screen.
-  function ernNeedPremium(){ if(ernPremium()) return false; if(ernQuotaLeft()>0) return false; ernEnsureModulePrice(); setS({ernUpgrade:true}); try{ window.scrollTo(0,0); }catch(e){} return true; }
+  function ernNeedPremium(){ if(ernPremium()) return false; if(ernQuotaLeft()>0) return false; ernEnsureModulePrice(); setS({ernUpgrade:true}); return true; }
   var ERN_PREMIUM_FEATURES=[
     ['🍎','Ernährung mit KI','Teller fotografieren oder eintippen – FINN erkennt Kalorien & Makros. Plus Wochenpläne & KI-Rezepte.'],
     ['🏋️','KI-Trainingspläne','Individuelle Trainingspläne von FINN – passend zu Ziel & Ausrüstung.'],
@@ -3622,7 +3622,7 @@
       if(d&&d.error==='premium_required'){ try{ window.__ernStopCam&&window.__ernStopCam(); }catch(e){} setS({ernCapture:false,ernUpgrade:true}); return; }
       ernQuotaApply(d);
       if(d&&d.ok&&d.items&&d.items.length){ ernOpenConfirm(d.items,'ai'); }
-      else { S.ernErr=true; S.ernMsg=(d&&d.message)||'Auf dem Foto konnte ich nichts erkennen.'; render(); try{ window.scrollTo(0,0); }catch(e){} } })
+      else { S.ernErr=true; S.ernMsg=(d&&d.message)||'Auf dem Foto konnte ich nichts erkennen.'; render(); } })
     .catch(function(){ S.ernPhotoBusy=false; S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); });
   }
   // Freitext/Sprache -> KI-SCHÄTZUNG (kein Speichern!) -> Bestätigen-Screen.
@@ -3635,7 +3635,7 @@
       if(d&&d.error==='premium_required'){ setS({ernCapture:false,ernUpgrade:true}); return; }
       ernQuotaApply(d);
       if(d&&d.ok&&d.items&&d.items.length){ ernOpenConfirm(d.items,'ai'); }
-      else { S.ernErr=true; S.ernMsg=(d&&d.message)||'Nichts erkannt – beschreib es genauer.'; render(); try{ window.scrollTo(0,0); }catch(e){} } })
+      else { S.ernErr=true; S.ernMsg=(d&&d.message)||'Nichts erkannt – beschreib es genauer.'; render(); } })
     .catch(function(){ S.ernBusy=false; S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); });
   }
   // ── Bestätigen-Screen: KI-/Barcode-/manuelle Einträge prüfen, bearbeiten, dann speichern (confirm-log) ──
@@ -3650,7 +3650,7 @@
     else { S.ernConfirm={ source:source||'ai', date:(S.ernConfirm&&S.ernConfirm.date)||today, items:mapped }; }
     S.ernAddToConfirm=false; S.ernEval=null; S.ernEvalBusy=false; S.ernCFSwapIdx=-1; S.ernCFSwapTxt=''; S.ernCFRefine='';
     try{ window.__ernStopScan&&window.__ernStopScan(); }catch(e){}
-    S.ernCapture=false; S.ernProd=null; S.ernMsg=''; S.ernErr=false; render(); try{ window.scrollTo(0,0); }catch(e){}
+    S.ernCapture=false; S.ernProd=null; S.ernMsg=''; S.ernErr=false; render();
   }
   function ernCloseConfirm(){ S.ernConfirm=null; S.ernConfirmBusy=false; S.ernAddToConfirm=false; S.ernEval=null; S.ernEvalBusy=false; S.ernCFSwapIdx=-1; S.ernCFSwapTxt=''; S.ernCFRefine=''; render(); }
   // Live-Update der Bestätigen-Felder OHNE Re-Render (Fokus/Tastatur bleiben erhalten).
@@ -3847,7 +3847,7 @@
   function ernCurrentMeal(){ var h=new Date().getHours(); return h<11?'fruehstueck':(h<15?'mittag':(h<21?'abend':'snack')); }
   function ernOffNotice(){ return '<div style="font-size:10.5px;color:var(--text-soft);font-weight:600;line-height:1.55;text-align:center;margin-top:12px">Produktdaten: <a href="https://world.openfoodfacts.org" target="_blank" rel="noopener" style="color:var(--teal-ink);text-decoration:underline">Open Food Facts</a> · Lizenz <a href="https://opendatacommons.org/licenses/odbl/1-0/" target="_blank" rel="noopener" style="color:var(--teal-ink);text-decoration:underline">ODbL</a>. Angaben können unvollständig oder fehlerhaft sein.</div>'; }
   function ernDefaultGrams(p){ var s=String((p&&p.servingSize)||''); var m=s.match(/(\d+(?:[.,]\d+)?)\s*g/i); if(m){ var n=Math.round(parseFloat(m[1].replace(',','.'))); if(n>0&&n<3000) return n; } return 100; }
-  function ernOpenProduct(prod,stale){ try{ window.__ernStopScan&&window.__ernStopScan(); }catch(e){} setS({ernProd:Object.assign({stale:!!stale},prod), ernCapture:false, ernGrams:ernDefaultGrams(prod), ernUnit:'g', ernSearchResults:null, ernScanNotFound:false, ernScanErr:''}); try{ window.scrollTo(0,0); }catch(e){} }
+  function ernOpenProduct(prod,stale){ try{ window.__ernStopScan&&window.__ernStopScan(); }catch(e){} setS({ernProd:Object.assign({stale:!!stale},prod), ernCapture:false, ernGrams:ernDefaultGrams(prod), ernUnit:'g', ernSearchResults:null, ernScanNotFound:false, ernScanErr:''}); }
 
   // ═══════════════ Produkt-Check „Beim Einkaufen" (Barcode → Ampel, kein Log-Zwang) ═══════════════
   // Ampel-Bewertung eines Produkts – rein clientseitig (kostenlos), aus Nutri-Score + Nährwert-Schwellen + Ziel.
@@ -3895,7 +3895,7 @@
     }
     return sc.light==='gruen'?'Ausgewogen – gut vereinbar, wenn du dein Gewicht halten willst.':(sc.light==='rot'?'Als Genuss okay – nicht zu oft, wenn du halten willst.':'In Maßen gut mit deinem Ziel vereinbar.');
   }
-  function ernOpenShopVerdict(prod){ try{ window.__ernStopScan&&window.__ernStopScan(); }catch(e){} setS({ernShop:false,ernScanPurpose:'log',ernShopProd:prod||null,ernShopAlt:null,ernShopAltBusy:false,ernShopFinn:null,ernShopFinnBusy:false,ernScanErr:'',ernScanNotFound:false}); try{ window.scrollTo(0,0); }catch(e){} }
+  function ernOpenShopVerdict(prod){ try{ window.__ernStopScan&&window.__ernStopScan(); }catch(e){} setS({ernShop:false,ernScanPurpose:'log',ernShopProd:prod||null,ernShopAlt:null,ernShopAltBusy:false,ernShopFinn:null,ernShopFinnBusy:false,ernScanErr:'',ernScanNotFound:false}); }
   // Suchbegriff für die „bessere Alternative": Produktname ohne Mengen/Zahlen, erste 3 Wörter.
   function ernShopAltQuery(p){ var s=String((p&&p.name)||''); s=s.replace(/\b\d+([.,]\d+)?\s*(g|kg|ml|l|cl|%)\b/gi,' ').replace(/[0-9]+/g,' ').replace(/\s+/g,' ').trim(); var w=s.split(' ').filter(Boolean).slice(0,3).join(' '); return w||s.trim(); }
   function ernShopAltFetch(){
@@ -4504,7 +4504,7 @@
   // Stand für einen (validierten) Tag laden – Server begrenzt Vergangenheit selbst.
   function loadNutriDate(date){ if(S.ernDayBusy) return; S.ernViewDate=date; S.ernDayBusy=true; S.ernMsg=''; render();
     api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'state',date:date})})
-    .then(function(d){ S.ernDayBusy=false; if(d&&d.ok){ DATA.nutri=d; } render(); try{ window.scrollTo(0,0); }catch(e){} })
+    .then(function(d){ S.ernDayBusy=false; if(d&&d.ok){ DATA.nutri=d; } render(); })
     .catch(function(){ S.ernDayBusy=false; render(); }); }
   // Tages-Navigator (◀ Datum ▶ + „Heute") – nur auf dem Heute-Tab über der Mahlzeitenliste.
   function ernDayNav(){ var td=(DATA.nutri&&DATA.nutri.today)||{}, cur=td.date||isoToday(), isToday=td.isToday!==false&&cur===isoToday();
@@ -4518,7 +4518,7 @@
   // Einzel-Eintrag bearbeiten (Portion/Makros/Mahlzeit ändern, duplizieren, löschen).
   function ernOpenEntry(id){ var td=(DATA.nutri&&DATA.nutri.today)||{}; var e=(td.entries||[]).filter(function(x){ return String(x.id)===String(id); })[0]; if(!e) return;
     S.ernEntryEdit={ id:e.id, date:td.date||isoToday(), name:e.name||'', portion:e.portion||'', meal:e.meal||'snack', kcal:+e.kcal||0, p:+e.p||0, c:+e.c||0, f:+e.f||0, source:e.source||'' };
-    S.ernMsg=''; S.ernErr=false; S.ernEval=null; S.ernEvalBusy=false; render(); try{ window.scrollTo(0,0); }catch(e){}
+    S.ernMsg=''; S.ernErr=false; S.ernEval=null; S.ernEvalBusy=false; render();
   }
   // Live-Update ohne Re-Render (Fokus bleibt), analog __ernCF.
   window.__ernEE=function(field,value){ var e=S.ernEntryEdit; if(!e) return;
@@ -7426,7 +7426,7 @@
   // Anleitung schon einmal gesehen (dann nicht mehr automatisch zeigen)?
   function moGuideSeen(){ try{ return !!localStorage.getItem('fi_vital_guide_v1'); }catch(e){ return false; } }
   // Nach der Anleitung die eigentliche Messung starten (Morgen -> Fragebogen, Training -> direkt).
-  function moBeginMeasure(kind){ kind=(kind==='training')?'training':'morgen'; if(kind==='training'){ moStartMeasure('training'); return; } S.morningMeasureKind='morgen'; S.morningPhase='journal'; try{ window.scrollTo(0,0); }catch(e){} setS({}); }
+  function moBeginMeasure(kind){ kind=(kind==='training')?'training':'morgen'; if(kind==='training'){ moStartMeasure('training'); return; } S.morningMeasureKind='morgen'; S.morningPhase='journal'; setS({}); }
   // Kurz-Erinnerung an die wichtigsten Punkte – erscheint IMMER vor dem Messen (auch nach „nicht mehr anzeigen").
   function moReminderStrip(){
     return '<div style="display:flex;gap:9px;background:var(--surface-2);border-radius:12px;padding:10px 12px;margin-top:12px"><span style="font-size:15px;line-height:1.3">💡</span><div style="flex:1;min-width:0"><div style="font-size:11.5px;color:var(--text-2);font-weight:700;line-height:1.55">Elektroden <b>anfeuchten</b> · Gurt <b>eng</b> auf die Haut · <b>1–2 Min ruhig</b> bleiben, nicht direkt nach Bewegung.</div><button data-act="morningGuideOpen" style="border:none;background:none;color:var(--teal-ink);font-size:11.5px;font-weight:800;cursor:pointer;padding:3px 0 0;text-decoration:underline">Ganze Anleitung ansehen</button></div></div>';
@@ -8945,6 +8945,31 @@
   window.addEventListener('resize',function(){ if(tourActive()) positionTour(false); });
   window.addEventListener('scroll',function(){ if(tourActive()) positionTour(false); },{passive:true});
 
+  // ── Scroll-Position je Ansicht merken („nicht mehr nach oben springen") ──
+  // Bei einer Aktion INNERHALB derselben Ansicht (Toggle, Sheet öffnen/schließen, Häkchen,
+  // Live-Update) bleibt die Position erhalten. Nur beim Wechsel in eine ANDERE Ansicht
+  // (Screen, Vollbild-Unteransicht, Tab, Formularschritt) wird oben gestartet bzw. die
+  // zuletzt gemerkte Position wiederhergestellt. Bottom-Sheets/Overlays bilden bewusst
+  // KEINEN eigenen Bucket – so bleibt die Seite dahinter genau an ihrer Stelle.
+  var SCROLL_MEM={}, RENDER_SKEY='';
+  function renderScrollKey(){
+    var s=S.screen||'home', x='';
+    if(s==='tag'){
+      if(S.trainExDetail) x='exd'; else if(S.trainRun) x='run'; else if(S.trainDetail) x='det';
+      else if(S.trainGenOpen) x='gen'; else x='seg:'+(S.trainSeg||'einheit');
+    } else if(s==='ern'){
+      if(S.ernCk) x='ck'+(S.ernCkResult?':r':''); else if(S.ernData) x='data';
+      else if(S.ernEdit) x='edit:'+(S.ernObStep||0); else if(S.ernLesson) x='les:'+(S.ernLessonStep||0);
+      else if(S.ernRecipeSel) x='rec'; else if(S.ernKoch!=null) x='koch'; else if(S.ernPlanDraft) x='draft';
+      else x='tab:'+(S.ernTab||'heute')+(S.ernViewDate?(':'+S.ernViewDate):'');
+    } else if(s==='coach'){
+      if(S.ernLesson) x='les:'+(S.ernLessonStep||0); else if(S.ernVert) x='vert';
+      else if(S.ernCk) x='ck'+(S.ernCkResult?':r':''); else x='tab:'+(S.coachTab||'uebersicht');
+    } else if(s==='morning'){
+      x=/^(journal|connecting|measuring|saving)$/.test(S.morningPhase||'')?'meas':(S.vitalMode||'morgen');
+    } else if(s==='blog'){ x=S.blogSel?'post':'list'; }
+    return s+'|'+x;
+  }
   function render(){
     // Ernährungs-Modul ausgeblendet (Feature-Schalter ERN_ON): nie rendern, zur Übersicht
     if(!ERN_ON && S.screen==='ern') S.screen='home';
@@ -9012,6 +9037,15 @@
     ['finn_q','pf_reply','ern_log','ern_ask','ern_fridge','ern_capq','ern_prodq','ern_bc','ern_voiceq','ern_cf_swap','ern_cf_refine','soc_msg','soc_code','soc_name','soc_rmsg','soc_roomname','soc_report','fig_weight','fig_waist','fig_hips','fig_chest','fig_arm','fig_thigh','fig_bodyFat','fig_note'].forEach(function(id){ var e=$(id); if(e){ keep[id]={v:e.value,f:document.activeElement===e,ss:e.selectionStart,se:e.selectionEnd,h:e.style.height}; } });
     var keepScroll={};
     ['finn_scroll','pf_scroll'].forEach(function(id){ var e=$(id); if(e){ keepScroll[id]=e.scrollTop; } });
+    // Scroll-Position der AKTUELLEN Ansicht sichern. Auf Mobil ist der Scroller .maincol
+    // (nicht das Fenster); dort setzt das Ersetzen von #app.innerHTML die Position auf 0.
+    // Auf Desktop scrollt das Fenster. Bei fixiertem Body (Vollbild-Chat, nur Desktop-Fenster)
+    // liefert scrollY 0 und würde die echte Position überschreiben -> dann nicht sichern.
+    var _skPrev=RENDER_SKEY;
+    var _skEl=(window.innerWidth<1000)?document.querySelector('.maincol'):null;
+    var _skLocked=(!_skEl)&&document.body.classList.contains('chatLock');
+    var _skY=_skLocked?0:(_skEl?_skEl.scrollTop:(window.pageYOffset||document.documentElement.scrollTop||0));
+    if(_skPrev!=='' && !_skLocked) SCROLL_MEM[_skPrev]=_skY;
     $('app').innerHTML=html;
     Object.keys(keep).forEach(function(id){ var e=$(id); if(!e) return; var k=keep[id]; e.value=k.v; if(k.h) e.style.height=k.h; if(k.f){ e.focus(); try{ e.setSelectionRange(k.ss,k.se); }catch(_){ } } });
     // Chat-Verläufe: unten angedockt bleiben (neueste Nachricht), außer der Nutzer hat
@@ -9057,6 +9091,13 @@
     // Neu-Zeichnung neu aufs Ziel ausrichten (die Elemente wurden ersetzt).
     if(!tourActive()) maybeStartSectionTour();
     if(tourActive()){ var first=!$('tourHole'); setTimeout(function(){ positionTour(first); },80); }
+    // Scroll-Position setzen: gleiche Ansicht (und verlässlich gemessen) -> halten;
+    // andere Ansicht -> zuletzt gemerkte Position oder oben. Ziel ist derselbe Scroller
+    // wie beim Sichern (mobil .maincol, sonst Fenster).
+    var _skNew=renderScrollKey(); RENDER_SKEY=_skNew;
+    var _skTo=(_skNew===_skPrev && !_skLocked)?_skY:(SCROLL_MEM.hasOwnProperty(_skNew)?SCROLL_MEM[_skNew]:0);
+    var _skElR=(window.innerWidth<1000)?document.querySelector('.maincol'):null;
+    if(_skElR){ _skElR.scrollTop=_skTo; } else { try{ window.scrollTo(0,_skTo); }catch(e){} }
   }
 
   // ---- actions (event delegation) ----
@@ -9133,15 +9174,15 @@
     },
     // ── Morgen-Check (Polar H9) ──
     morningReload:function(){ DATA.morning=null; render(); loadMorning(); },
-    vitalMode:function(a){ var m=(a==='training')?'training':'morgen'; if(S.vitalMode===m) return; S.vitalMode=m; S.morningMsg=''; S.morningErr=false; try{ window.scrollTo(0,0); }catch(e){} setS({}); },
+    vitalMode:function(a){ var m=(a==='training')?'training':'morgen'; if(S.vitalMode===m) return; S.vitalMode=m; S.morningMsg=''; S.morningErr=false; setS({}); },
     morningMeasure:function(a){ var d=morningData(); if(!d) return; if(!d.premium){ ernEnsureModulePrice(); setS({ernUpgrade:true}); return; } if(!d.consent){ S.morningPhase='consent'; setS({}); return; } var kind=(a==='training')?'training':'morgen';
-      S.moGuide='start'; S.moGuideKind=kind; S.moGuideStep=0; try{ window.scrollTo(0,0); }catch(e){} setS({}); },
-    morningGuideOpen:function(){ S.moGuide='info'; S.moGuideStep=0; try{ window.scrollTo(0,0); }catch(e){} setS({}); },
+      S.moGuide='start'; S.moGuideKind=kind; S.moGuideStep=0; setS({}); },
+    morningGuideOpen:function(){ S.moGuide='info'; S.moGuideStep=0; setS({}); },
     morningGuideClose:function(){ S.moGuide=false; S.moGuideStep=0; setS({}); },
     morningGuideNext:function(){ S.moGuideStep=Math.min(MO_GUIDE_STEPS.length-1,(parseInt(S.moGuideStep,10)||0)+1); setS({}); },
     morningGuidePrev:function(){ S.moGuideStep=Math.max(0,(parseInt(S.moGuideStep,10)||0)-1); setS({}); },
     morningGuideStart:function(){ var k=S.moGuideKind||'morgen'; S.moGuide=false; S.moGuideStep=0; render(); moBeginMeasure(k); },
-    moMetric:function(a){ if(a&&MO_METRIC_INFO[a]){ S.moMetric=a; try{ window.scrollTo(0,0); }catch(e){} setS({}); } },
+    moMetric:function(a){ if(a&&MO_METRIC_INFO[a]){ S.moMetric=a; setS({}); } },
     moMetricClose:function(){ S.moMetric=null; setS({}); },
     morningJournalSet:function(a){ if(!a) return; var i=a.indexOf(':'); if(i<0) return; var f=a.slice(0,i), v=a.slice(i+1); S.morningJournal=S.morningJournal||{}; if(S.morningJournal[f]===v) delete S.morningJournal[f]; else S.morningJournal[f]=v; setS({}); },
     morningJournalNext:function(){ moStartMeasure('morgen'); },
@@ -9149,8 +9190,8 @@
     morningCancel:function(){ moStopMeasure(); S.morningPhase='idle'; S.morningLiveBpm=null; S.morningElapsed=0; setS({}); },
     morningFinish:function(){ moFinishMeasure(); },
     morningConsentCancel:function(){ S.morningPhase='idle'; setS({}); },
-    morningBreatheOpen:function(){ S.morningBreathe=true; try{ window.scrollTo(0,0); }catch(e){} setS({}); },
-    morningBreatheClose:function(){ S.morningBreathe=false; try{ window.scrollTo(0,0); }catch(e){} setS({}); },
+    morningBreatheOpen:function(){ S.morningBreathe=true; setS({}); },
+    morningBreatheClose:function(){ S.morningBreathe=false; setS({}); },
     morningConsent:function(a){ if(S.morningConsentBusy) return; S.morningConsentBusy=true; render();
       api('/api/member/morning',{method:'POST',body:JSON.stringify({action:'consent',value:(a==='1'||a===1||a===true)})}).then(function(r){
         S.morningConsentBusy=false;
@@ -9205,7 +9246,7 @@
     trainQuickEx:function(){ S.trainSeg='uebungen'; S.trainDetail=null; S.trainGenOpen=false; setS({}); },
     // Coach: FINN-Analyse (KI) – verbindet Training + Ernährung zu einer Erkenntnis (quota-gated).
     coachProgToggle:function(){ S.coachProgOpen=!S.coachProgOpen; setS({}); },
-    coachTab:function(a){ if(['uebersicht','lernen','ern','training','lifestyle'].indexOf(a)<0) return; S.coachTab=a; if(a==='lifestyle'&&DATA.mprofile==null) loadMemberProfile(); try{ window.scrollTo(0,0); }catch(e){} setS({}); },
+    coachTab:function(a){ if(['uebersicht','lernen','ern','training','lifestyle'].indexOf(a)<0) return; S.coachTab=a; if(a==='lifestyle'&&DATA.mprofile==null) loadMemberProfile(); setS({}); },
     coachFinn:function(){
       if(S.coachFinnBusy) return; S.coachFinnBusy=true; S.coachFinnMsg=''; render();
       var d=DATA.training||{}, mp=d.myPlan&&d.myPlan.plan, n=DATA.nutri;
@@ -9233,8 +9274,8 @@
     trainRunGo:function(){ S.trainRun=true; S.trainRunDay=0; S.trainRestKey=''; S.trainRestStart=0; var now=Date.now(); S.trainRunStart=now; try{ localStorage.setItem('fi_train_start',String(now)); }catch(e){} loadTrainSession(); setS({}); },
     trainRunClose:function(){ S.trainRun=false; S.trainRestKey=''; setS({}); },
     // Übungs-Detail (Beschreibung + Muskeldiagramm) öffnen/schließen.
-    trExDetail:function(key){ S.trainExDetail=key; try{ window.scrollTo(0,0); }catch(e){} setS({}); },
-    trExDetailClose:function(){ S.trainExDetail=null; try{ window.scrollTo(0,0); }catch(e){} setS({}); },
+    trExDetail:function(key){ S.trainExDetail=key; setS({}); },
+    trExDetailClose:function(){ S.trainExDetail=null; setS({}); },
     // Satz-Protokoll: Satz ergänzen (misst die Pause seit dem letzten Satz) / löschen.
     trainSetAdd:function(key){ var it=trainSessLocal(key); it.entries=Array.isArray(it.entries)?it.entries:[];
       if(S.trainRestKey===key && S.trainRestStart && it.entries.length){ var sec=Math.max(0,Math.round((Date.now()-S.trainRestStart)/1000)); it.entries[it.entries.length-1].rest=Math.min(3600,sec); }
@@ -9255,7 +9296,7 @@
           } else { S.trainMsg=(r&&r.message)||'Abschluss hat gerade nicht geklappt – bitte gleich nochmal.'; }
           setS({}); })
         .catch(function(){ S.trainFinishBusy=false; S.trainMsg='Verbindung gerade nicht möglich.'; setS({}); }); },
-    trainFinishClose:function(){ S.trainFinish=null; S.trainSeg='einheit'; try{ window.scrollTo(0,0); }catch(e){} setS({}); },
+    trainFinishClose:function(){ S.trainFinish=null; S.trainSeg='einheit'; setS({}); },
     // Vitalalter – Lebensstil-Selbstauskunft (Einwilligung + Chips), speichert sofort.
     lsConsent:function(){ var ls=(DATA.mprofile&&typeof DATA.mprofile==='object'&&DATA.mprofile.lifestyle)||{}; lsSave(Object.assign({},ls,{consent:!ls.consent})); },
     lsSet:function(a){ var ls=(DATA.mprofile&&typeof DATA.mprofile==='object'&&DATA.mprofile.lifestyle)||{}; if(!ls.consent) return; var p=String(a||'').split('|'); var o=Object.assign({},ls); o[p[0]]=(o[p[0]]===p[1]?'':p[1]); lsSave(o); },
@@ -9290,7 +9331,7 @@
       if(g) S.trainGenGoal=g.value; if(l) S.trainGenLevel=l.value; if(dd) S.trainGenDays=parseInt(dd.value,10)||3; if(lo) S.trainGenLoc=lo.value; if(nt) S.trainGenNote=nt.value;
       S.trainGenBusy=true; S.trainMsg=''; render();
       api('/api/member/training',{method:'POST',timeoutMs:45000,body:JSON.stringify({action:'generate',goal:S.trainGenGoal,level:S.trainGenLevel,days:S.trainGenDays,location:S.trainGenLoc,note:S.trainGenNote})})
-        .then(function(r){ S.trainGenBusy=false; if(r&&r.ok&&r.plan){ S.trainGenPlan=r.plan; S.trainMsg=''; if(r.quota&&DATA.training) DATA.training.quota=r.quota; } else if(r&&r.error==='premium_required'){ S.trainGenOpen=false; nav('ern'); S.ernUpgrade=true; ernEnsureModulePrice(); try{window.scrollTo(0,0);}catch(e){} } else { S.trainMsg=(r&&r.message)||'Das hat nicht geklappt – bitte gleich nochmal.'; } setS({}); })
+        .then(function(r){ S.trainGenBusy=false; if(r&&r.ok&&r.plan){ S.trainGenPlan=r.plan; S.trainMsg=''; if(r.quota&&DATA.training) DATA.training.quota=r.quota; } else if(r&&r.error==='premium_required'){ S.trainGenOpen=false; nav('ern'); S.ernUpgrade=true; ernEnsureModulePrice();  } else { S.trainMsg=(r&&r.message)||'Das hat nicht geklappt – bitte gleich nochmal.'; } setS({}); })
         .catch(function(){ S.trainGenBusy=false; S.trainMsg='Das hat nicht geklappt – bitte gleich nochmal.'; setS({}); });
     },
     // FINN plant die nächste Steigerung aus den protokollierten Einheiten (Premium).
@@ -9298,7 +9339,7 @@
       api('/api/member/training',{method:'POST',timeoutMs:45000,body:JSON.stringify({action:'progress'})})
         .then(function(r){ S.trainGenBusy=false;
           if(r&&r.ok&&r.plan){ S.trainGenPlan=r.plan; S.trainGenOpen=true; S.trainMsg='FINN hat deine nächste Steigerung geplant – prüfen & übernehmen.'; if(r.quota&&DATA.training) DATA.training.quota=r.quota; }
-          else if(r&&r.error==='premium_required'){ nav('ern'); S.ernUpgrade=true; ernEnsureModulePrice(); try{window.scrollTo(0,0);}catch(e){} }
+          else if(r&&r.error==='premium_required'){ nav('ern'); S.ernUpgrade=true; ernEnsureModulePrice();  }
           else { S.trainMsg=(r&&r.message)||'Das hat nicht geklappt – bitte gleich nochmal.'; }
           setS({}); })
         .catch(function(){ S.trainGenBusy=false; S.trainMsg='Das hat nicht geklappt – bitte gleich nochmal.'; setS({}); });
@@ -9376,11 +9417,11 @@
     replayOnboarding:function(){ obApplyPrefill(obData()||{}); S.obPrefilled=true; try{ localStorage.removeItem('fi_ob_v2'); localStorage.removeItem('fi_welcome_seen'); }catch(e){}
       // Willkommensgeschenk serverseitig wieder freigeben (erster Plan geht erneut aufs Haus).
       try{ api('/api/member/profile',{method:'POST',body:JSON.stringify({action:'welcome-reset'})}).catch(function(){}); }catch(e){}
-      setS({obStep:0}); try{ window.scrollTo(0,0); }catch(e){} },
+      setS({obStep:0}); },
     // ── App-Tour (Schritt für Schritt durch die App) ──
     tourNext:function(){ var n=(S.tourStep||0)+1; if(n>=tourSteps().length){ endTour(); render(); } else { S.tourStep=n; positionTour(true); } },
     tourSkip:function(){ endTour(); render(); },
-    tourRestart:function(){ S.screen='home'; S.tourKey='app'; S.tourStep=0; try{ window.scrollTo(0,0); }catch(e){} render(); },
+    tourRestart:function(){ S.screen='home'; S.tourKey='app'; S.tourStep=0; render(); },
     obFreq:function(a){ setS({obFreq:parseInt(a,10)||3}); },
     obAge:function(a){ var d=parseInt(a,10)||0; setS({obAge:Math.max(14,Math.min(99,(S.obAge||34)+d))}); },
     obExp:function(a){ setS({obExp:a}); },
@@ -9398,10 +9439,10 @@
         try{ api('/api/member/coach',{method:'POST',body:JSON.stringify({action:'memory-optin',on:!!S.obMemConsent})}).then(function(d){ finnMemApply(d); }).catch(function(){}); }catch(e){}
         // Willkommensgeschenk: der erste Plan geht aufs Haus (einmalig, sonst App-Tour).
         var welcomeSeen='1'; try{ welcomeSeen=localStorage.getItem('fi_welcome_seen'); }catch(e){}
-        if(!welcomeSeen){ setS({obStep:0,screen:'home',welcomeGift:true,welcomeTrainDone:false,welcomeErnDone:false,welcomeTrainErr:'',welcomeErnErr:'',welcomeTrainBusy:false,welcomeErnBusy:false}); loadFinnTip(); try{ window.scrollTo(0,0); }catch(e){} return; }
+        if(!welcomeSeen){ setS({obStep:0,screen:'home',welcomeGift:true,welcomeTrainDone:false,welcomeErnDone:false,welcomeTrainErr:'',welcomeErnErr:'',welcomeTrainBusy:false,welcomeErnBusy:false}); loadFinnTip(); return; }
         // Direkt nach den Onboarding-Fragen: einmalige App-Tour (Schritt für Schritt).
         var tourSeen='1'; try{ tourSeen=localStorage.getItem('fi_tour_v1'); }catch(e){}
-        if(!tourSeen){ S.screen='home'; S.tourKey='app'; S.tourStep=0; try{ window.scrollTo(0,0); }catch(e){} }
+        if(!tourSeen){ S.screen='home'; S.tourKey='app'; S.tourStep=0; }
         setS({obStep:0}); loadFinnTip(); } else { setS({obStep:(S.obStep||0)+1}); var o=document.querySelector('.obOverlay'); if(o) o.scrollTop=0; } },
     // ── Willkommensgeschenk: erster Plan aufs Haus (einmalig gratis, ohne Kontingent) ──
     welcomeTrain:function(){ if(S.welcomeTrainBusy||S.welcomeTrainDone) return;
@@ -9424,7 +9465,7 @@
         else { setS({welcomeErnBusy:false,welcomeErnErr:'Klappt gerade nicht – versuch es gleich nochmal oder erstelle den Plan im Bereich Ernährung.'}); } })
       .catch(function(){ setS({welcomeErnBusy:false,welcomeErnErr:'Verbindung gerade nicht möglich.'}); });
     },
-    welcomeDone:function(){ try{ localStorage.setItem('fi_welcome_seen','1'); }catch(e){} setS({welcomeGift:false}); try{ window.scrollTo(0,0); }catch(e){} },
+    welcomeDone:function(){ try{ localStorage.setItem('fi_welcome_seen','1'); }catch(e){} setS({welcomeGift:false}); },
     noop:function(){},   // fängt Klicks im Overlay-Inneren ab (Backdrop-Klick schließt)
     // Assistent-Hub öffnen. Beitragskonto nachladen, damit der proaktive Vorschlag greifen kann.
     qaOpen:function(){ if(!DATA.account && typeof loadAccount==='function'){ try{ loadAccount(); }catch(e){} } setQuiet({qaOpen:true}); },
@@ -9498,10 +9539,10 @@
       else if(f==='w') S.ernW=Math.max(35,Math.min(250,S.ernW+d));
       else if(f==='age') S.ernAge=Math.max(14,Math.min(100,S.ernAge+d));
       render(); },
-    ernRecompute:function(){ ernSeedForm(); setS({ernEdit:true,ernObStep:0,ernMsg:'',ernErr:false}); try{ window.scrollTo(0,0); }catch(e){} },
+    ernRecompute:function(){ ernSeedForm(); setS({ernEdit:true,ernObStep:0,ernMsg:'',ernErr:false}); },
     ernSaveProfile:function(){ if(S.ernBusy) return; S.ernBusy=true; S.ernMsg=''; S.ernErr=false; render();
       api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'save-profile',consent:!!S.ernConsent,profile:{goal:S.ernGoal,sex:S.ernSex,height:S.ernH,weight:S.ernW,age:S.ernAge,activity:S.ernAct,diet:S.ernDiet}})})
-      .then(function(d){ S.ernBusy=false; if(d&&d.ok){ DATA.nutri=d; S.ernEdit=false; S.ernObStep=0; } else { S.ernErr=true; S.ernMsg='Konnte nicht speichern. Bitte später erneut.'; } render(); try{ window.scrollTo(0,0); }catch(e){} })
+      .then(function(d){ S.ernBusy=false; if(d&&d.ok){ DATA.nutri=d; S.ernEdit=false; S.ernObStep=0; } else { S.ernErr=true; S.ernMsg='Konnte nicht speichern. Bitte später erneut.'; } render(); })
       .catch(function(){ S.ernBusy=false; S.ernErr=true; S.ernMsg='Konnte nicht speichern. Bitte später erneut.'; render(); }); },
     ernLog:function(){ if(S.ernBusy) return; var t=$('ern_log'); var q=t?(t.value||'').trim():''; if(q.length>=2) ernLogText(q); },
     ernCapSearch:function(){ if(S.ernBusy) return; var t=$('ern_capq'); var q=t?(t.value||'').trim():''; if(q.length>=2) ernLogText(q); },
@@ -9527,12 +9568,12 @@
     ernBuyGuideClose:function(){ setS({buyGuide:false}); },
     ernBuyGuideScan:function(){ setS({buyGuide:false,ernShop:true,ernScanPurpose:'shop',ernShopProd:null,ernScanErr:'',ernScanNotFound:false,ernScanCode:''}); },
     ernCapMenu:function(){ try{ window.__ernStopScan&&window.__ernStopScan(); window.__ernStopCam&&window.__ernStopCam(); }catch(e){} setS({ernCapTab:'menu', ernScanErr:'', ernSearchErr:'', ernCamErr:'', ernMsg:''}); },
-    ernCloseCapture:function(){ try{ window.__ernStopScan&&window.__ernStopScan(); window.__ernStopCam&&window.__ernStopCam(); }catch(e){} S.ernAddToConfirm=false; setS({ernCapture:false}); try{ window.scrollTo(0,0); }catch(e){} },
+    ernCloseCapture:function(){ try{ window.__ernStopScan&&window.__ernStopScan(); window.__ernStopCam&&window.__ernStopCam(); }catch(e){} S.ernAddToConfirm=false; setS({ernCapture:false}); },
     // Bestätigen-Screen (Punkt 1)
     ernCFRemove:function(a){ var cf=S.ernConfirm; if(!cf) return; cf.items.splice(parseInt(a,10),1); if(!cf.items.length){ ernCloseConfirm(); return; } render(); },
     // „+ Eintrag hinzufügen" -> Suche/Scan/Barcode/KI im Erfassen-Sheet; das Ergebnis wird an
     // die laufende Mahlzeit angehängt (statt eine neue zu beginnen). „manuell" bleibt als Fallback.
-    ernCFAdd:function(){ if(!S.ernConfirm) return; S.ernAddToConfirm=true; S.ernCapTab='search'; S.ernSearchResults=null; S.ernSearchQ=''; S.ernSearchErr=''; S.ernScanErr=''; S.ernScanNotFound=false; setS({ernCapture:true}); try{ window.scrollTo(0,0); }catch(e){} },
+    ernCFAdd:function(){ if(!S.ernConfirm) return; S.ernAddToConfirm=true; S.ernCapTab='search'; S.ernSearchResults=null; S.ernSearchQ=''; S.ernSearchErr=''; S.ernScanErr=''; S.ernScanNotFound=false; setS({ernCapture:true}); },
     ernCFAddManual:function(){ var cf=S.ernConfirm; if(!cf) return; cf.items.push({name:'',portion:'',meal:'snack',kcal:0,p:0,c:0,f:0,estimated:false,source:'manual'}); render(); },
     ernCFCancel:function(){ ernCloseConfirm(); },
     // Einen falsch erkannten Eintrag austauschen: Beschreibung -> FINN erkennt ihn neu.
@@ -9566,7 +9607,7 @@
         ernQuotaApply(d);
         if(d&&d.ok&&d.items&&d.items.length){ cf.items=d.items.map(function(it){ return { name:String(it.name||''), portion:String(it.portion||''), meal:it.meal||'snack', kcal:Math.max(0,parseInt(it.kcal,10)||0), p:Math.max(0,parseInt(it.p,10)||0), c:Math.max(0,parseInt(it.c,10)||0), f:Math.max(0,parseInt(it.f,10)||0), estimated:true, source:'ai' }; }); S.ernCFRefine=''; S.ernCFSwapIdx=-1; S.ernEval=null; S.ernMsg='Neu geschätzt ✓'; S.ernErr=false; }
         else { S.ernErr=true; S.ernMsg=(d&&d.message)||'Konnte nicht neu schätzen – beschreib es genauer.'; }
-        render(); try{ window.scrollTo(0,0); }catch(e){}
+        render();
       })
       .catch(function(){ S.ernCFRefineBusy=false; S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); }); },
     ernCFSave:function(){ if(S.ernConfirmBusy) return; var cf=S.ernConfirm; if(!cf||!cf.items.length) return;
@@ -9613,7 +9654,7 @@
     ernMoreToggle:function(){ setQuiet({ernMoreOpen:!S.ernMoreOpen}); },
     coachMapToggle:function(){ setQuiet({coachMapOpen:!S.coachMapOpen}); },
     coachVertToggle:function(){ setQuiet({coachVertOpen:!S.coachVertOpen}); },
-    ernObNext:function(){ if((S.ernObStep||0)>=4){ if(!S.ernConsent){ S.ernErr=true; S.ernMsg='Bitte bestätige die Einwilligung, um zu starten.'; render(); return; } ACT.ernSaveProfile(); } else { setS({ernObStep:(S.ernObStep||0)+1}); try{ window.scrollTo(0,0); }catch(e){} } },
+    ernObNext:function(){ if((S.ernObStep||0)>=4){ if(!S.ernConsent){ S.ernErr=true; S.ernMsg='Bitte bestätige die Einwilligung, um zu starten.'; render(); return; } ACT.ernSaveProfile(); } else { setS({ernObStep:(S.ernObStep||0)+1}); } },
     ernConsent:function(){ setQuiet({ernConsent:!S.ernConsent, ernErr:false, ernMsg:''}); },
     ernObBack:function(){ if((S.ernObStep||0)>0) setS({ernObStep:S.ernObStep-1}); },
     ernVoice:function(){
@@ -9653,17 +9694,17 @@
       if(!(e.kcal>0||e.p>0||e.c>0||e.f>0)){ S.ernErr=true; S.ernMsg='Bitte gib zumindest Kalorien oder Makros an.'; render(); return; }
       S.ernEntryBusy=true; S.ernErr=false; S.ernMsg=''; render();
       api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'entry-update',id:e.id,date:e.date,patch:{name:e.name,portion:e.portion,meal:e.meal,kcal:e.kcal,p:e.p,c:e.c,f:e.f}})})
-      .then(function(d){ S.ernEntryBusy=false; if(d&&d.ok){ DATA.nutri=d; S.ernEntryEdit=null; S.ernMsg='Aktualisiert ✓'; S.ernErr=false; } else { S.ernErr=true; S.ernMsg=(d&&d.message)||'Speichern fehlgeschlagen.'; } render(); try{ window.scrollTo(0,0); }catch(e2){} })
+      .then(function(d){ S.ernEntryBusy=false; if(d&&d.ok){ DATA.nutri=d; S.ernEntryEdit=null; S.ernMsg='Aktualisiert ✓'; S.ernErr=false; } else { S.ernErr=true; S.ernMsg=(d&&d.message)||'Speichern fehlgeschlagen.'; } render(); })
       .catch(function(){ S.ernEntryBusy=false; S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); }); },
     ernEEDup:function(){ if(S.ernEntryBusy) return; var e=S.ernEntryEdit; if(!e) return;
       S.ernEntryBusy=true; render();
       api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'entry-duplicate',id:e.id,date:e.date,toDate:isoToday()})})
-      .then(function(d){ S.ernEntryBusy=false; if(d&&d.ok){ DATA.nutri=d; S.ernEntryEdit=null; S.ernViewDate=''; S.ernMsg='Auf heute übernommen ✓'; S.ernErr=false; } render(); try{ window.scrollTo(0,0); }catch(e2){} })
+      .then(function(d){ S.ernEntryBusy=false; if(d&&d.ok){ DATA.nutri=d; S.ernEntryEdit=null; S.ernViewDate=''; S.ernMsg='Auf heute übernommen ✓'; S.ernErr=false; } render(); })
       .catch(function(){ S.ernEntryBusy=false; render(); }); },
     ernEEDelete:function(){ if(S.ernEntryBusy) return; var e=S.ernEntryEdit; if(!e) return;
       S.ernEntryBusy=true; render();
       api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'delete',id:e.id,date:e.date})})
-      .then(function(d){ S.ernEntryBusy=false; if(d&&d.ok){ DATA.nutri=d; S.ernEntryEdit=null; S.ernMsg='Eintrag gelöscht'; S.ernErr=false; } render(); try{ window.scrollTo(0,0); }catch(e2){} })
+      .then(function(d){ S.ernEntryBusy=false; if(d&&d.ok){ DATA.nutri=d; S.ernEntryEdit=null; S.ernMsg='Eintrag gelöscht'; S.ernErr=false; } render(); })
       .catch(function(){ S.ernEntryBusy=false; render(); }); },
     ernEEFav:function(){ if(S.ernFavBusy) return; var e=S.ernEntryEdit; if(!e) return;
       if(!(e.kcal>0||e.p>0||e.c>0||e.f>0)){ S.ernErr=true; S.ernMsg='Bitte gib zumindest Kalorien oder Makros an.'; render(); return; }
@@ -9693,7 +9734,7 @@
     ernUpgradeOpen:function(){ setS({ernUpgrade:true, ernMsg:'', ernErr:false}); ernEnsureModulePrice(); },
     ernModulePriceRetry:function(){ DATA.modules=null; try{ loadModules(); }catch(e){} render(); },
     // Aus dem Profil-Bereich „FINN-Nutzung": ins Ernährungsmodul wechseln und Upgrade öffnen.
-    ernUsageUpgrade:function(){ nav('ern'); S.ernUpgrade=true; ernEnsureModulePrice(); render(); try{ window.scrollTo(0,0); }catch(e){} },
+    ernUsageUpgrade:function(){ nav('ern'); S.ernUpgrade=true; ernEnsureModulePrice(); render(); },
     ernUpgradeClose:function(){ setS({ernUpgrade:false, ernMsg:'', ernErr:false}); },
     ernBuyConsentToggle:function(){ setQuiet({ernBuyConsent:!S.ernBuyConsent, ernErr:false, ernMsg:''}); },
     // Rechts-Screen: Widerruf-Ablauf.
@@ -9703,7 +9744,7 @@
     wdSubmit:function(){ if(S.wdBusy) return; S.wdBusy=true; S.wdErr=false; S.wdMsg=''; render();
       api('/api/member/nutrition-billing',{method:'POST',body:JSON.stringify({action:'widerruf'})})
       .then(function(d){ S.wdBusy=false;
-        if(d&&d.ok){ S.wdStep=2; S.wdDoneAt=d.at||Date.now(); DATA.ernBilling=null; DATA.ernSub=undefined; loadErnBilling(); loadNutri(); loadSubInfo(); render(); try{ window.scrollTo(0,0); }catch(e){} }
+        if(d&&d.ok){ S.wdStep=2; S.wdDoneAt=d.at||Date.now(); DATA.ernBilling=null; DATA.ernSub=undefined; loadErnBilling(); loadNutri(); loadSubInfo(); render(); }
         else { S.wdErr=true; S.wdMsg=(d&&d.message)||'Widerruf konnte nicht abgesendet werden – bitte später erneut oder melde dich im Studio.'; render(); } })
       .catch(function(){ S.wdBusy=false; S.wdErr=true; S.wdMsg='Verbindung gerade nicht möglich.'; render(); }); },
     ernUpgradeGo:function(){
@@ -9736,13 +9777,13 @@
       api('/api/member/nutrition-coach',{method:'POST',body:JSON.stringify({action:'enroll'})})
       .then(function(d){ S.ernEnrollBusy=false; if(d&&d.ok){ DATA.coach=d; S.ernMsg='Willkommen an Bord! Los geht’s mit Woche 1. 🎉'; S.ernErr=false; } else { S.ernErr=true; S.ernMsg=(d&&d.message)||'Konnte nicht starten – bitte später erneut.'; } render(); })
       .catch(function(){ S.ernEnrollBusy=false; S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); }); },
-    ernLessonNext:function(){ setS({ernLessonStep:(S.ernLessonStep||0)+1}); try{ window.scrollTo(0,0); }catch(e){} },
-    ernLessonPrev:function(){ setS({ernLessonStep:Math.max(0,(S.ernLessonStep||0)-1)}); try{ window.scrollTo(0,0); }catch(e){} },
+    ernLessonNext:function(){ setS({ernLessonStep:(S.ernLessonStep||0)+1}); },
+    ernLessonPrev:function(){ setS({ernLessonStep:Math.max(0,(S.ernLessonStep||0)-1)}); },
     ernQuizPick:function(a){ var p=String(a).split(':'); var qi=parseInt(p[0],10), oi=parseInt(p[1],10); if(isNaN(qi)||isNaN(oi)) return; S.ernQuizAns=S.ernQuizAns||{}; if(S.ernQuizAns[qi]!=null) return; S.ernQuizAns[qi]=oi; render(); },
     ernLessonOpen:function(a){ var week=parseInt(a,10)||1; S.ernLesson=week; S.ernLessonData=null; S.ernLessonBusy=true; S.ernLessonStep=0; S.ernQuizAns={}; S.ernMsg=''; S.ernErr=false; render();
       api('/api/member/nutrition-coach',{method:'POST',body:JSON.stringify({action:'lesson-get',week:week})})
       .then(function(d){ if(d&&d.error==='premium_required'){ S.ernLesson=null; S.ernLessonData=null; S.ernLessonBusy=false; setS({ernUpgrade:true}); return; }
-        S.ernLessonBusy=false; S.ernLessonData=(d&&d.ok)?d:{ok:false}; try{ window.scrollTo(0,0); }catch(e){} render(); })
+        S.ernLessonBusy=false; S.ernLessonData=(d&&d.ok)?d:{ok:false}; render(); })
       .catch(function(){ S.ernLessonBusy=false; S.ernLessonData={ok:false}; render(); }); },
     ernLessonClose:function(){ S.ernLesson=null; S.ernVert=null; S.ernLessonData=null; S.ernLessonBusy=false; S.ernLessonStep=0; S.ernQuizAns={}; render(); },
     // Aus dem Coach-Trainings-Fokus in die Übungs-Detailansicht springen (öffnet den Trainings-Hub mit der Übung).
@@ -9756,7 +9797,7 @@
     ernVertOpen:function(a){ var id=String(a); S.ernVert=id; S.ernLesson=null; S.ernLessonData=null; S.ernLessonBusy=true; S.ernLessonStep=0; S.ernQuizAns={}; S.ernMsg=''; S.ernErr=false; render();
       api('/api/member/nutrition-coach',{method:'POST',body:JSON.stringify({action:'vertiefung-get',id:id})})
       .then(function(d){ if(d&&d.error==='premium_required'){ S.ernVert=null; S.ernLessonData=null; S.ernLessonBusy=false; setS({ernUpgrade:true}); return; }
-        S.ernLessonBusy=false; S.ernLessonData=(d&&d.ok)?d:{ok:false}; try{ window.scrollTo(0,0); }catch(e){} render(); })
+        S.ernLessonBusy=false; S.ernLessonData=(d&&d.ok)?d:{ok:false}; render(); })
       .catch(function(){ S.ernLessonBusy=false; S.ernLessonData={ok:false}; render(); }); },
     ernVertComplete:function(a){ if(S.ernLessonBusy) return; var id=String(a); S.ernLessonBusy=true; render();
       api('/api/member/nutrition-coach',{method:'POST',body:JSON.stringify({action:'vertiefung-complete',id:id})})
@@ -9774,7 +9815,7 @@
     // ── Erfolgskontrolle (14-Tage-Check-in) ──
     // Aus dem „Fortschritt messen"-Chooser (z. B. von der Fortschritt-Seite): erst zum Coach, dann Check-in öffnen.
     progressErfolg:function(){ nav('coach'); try{ if(ACT.ernCheckinOpen) ACT.ernCheckinOpen(); }catch(e){} },
-    ernCheckinOpen:function(){ S.ernCk=true; S.ernCkResult=null; S.ernCkHelp=false; S.ernCkMood=3; S.ernCkAdh=50; S.ernCkW=''; S.ernCkWaist=''; S.ernCkNote=''; S.ernMsg=''; S.ernErr=false; S.ernCkHist=null; try{ window.scrollTo(0,0); }catch(e){} render();
+    ernCheckinOpen:function(){ S.ernCk=true; S.ernCkResult=null; S.ernCkHelp=false; S.ernCkMood=3; S.ernCkAdh=50; S.ernCkW=''; S.ernCkWaist=''; S.ernCkNote=''; S.ernMsg=''; S.ernErr=false; S.ernCkHist=null; render();
       api('/api/member/nutrition-coach',{method:'POST',body:JSON.stringify({action:'checkin-history'})}).then(function(d){ var h=(d&&d.ok&&Array.isArray(d.history))?d.history:[]; S.ernCkHist=h; if(h.length&&!S.ernCkW) S.ernCkW=String(h[h.length-1].weight); render(); }).catch(function(){ S.ernCkHist=[]; render(); }); },
     ernCheckinClose:function(){ S.ernCk=false; S.ernCkResult=null; S.ernMsg=''; S.ernErr=false; loadCoach(); },
     ernCkMood:function(a){ setQuiet({ernCkMood:parseInt(a,10)||3}); },
@@ -9788,9 +9829,9 @@
       var waist=(S.ernCkWaist!=='')?parseFloat(String(S.ernCkWaist).replace(',','.')):'';
       S.ernCkBusy=true; S.ernErr=false; S.ernMsg=''; render();
       api('/api/member/nutrition-coach',{method:'POST',body:JSON.stringify({action:'checkin-submit',weight:wv,waist:waist,mood:S.ernCkMood,adherence:S.ernCkAdh,note:S.ernCkNote,help:S.ernCkHelp})})
-      .then(function(d){ S.ernCkBusy=false; if(d&&d.ok){ DATA.coach=d; S.ernCkResult={review:d.review||null,reviewLocked:!!d.reviewLocked,teamLooped:!!d.teamLooped,history:d.history||[]}; S.ernCkHist=d.history||S.ernCkHist; try{ window.scrollTo(0,0); }catch(e){} } else { S.ernErr=true; S.ernMsg=(d&&d.message)||'Konnte nicht speichern.'; } render(); })
+      .then(function(d){ S.ernCkBusy=false; if(d&&d.ok){ DATA.coach=d; S.ernCkResult={review:d.review||null,reviewLocked:!!d.reviewLocked,teamLooped:!!d.teamLooped,history:d.history||[]}; S.ernCkHist=d.history||S.ernCkHist; } else { S.ernErr=true; S.ernMsg=(d&&d.message)||'Konnte nicht speichern.'; } render(); })
       .catch(function(){ S.ernCkBusy=false; S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); }); },
-    ernCoachChatOpen:function(){ setS({ernChatOpen:true}); try{ window.scrollTo(0,0); }catch(e){} },
+    ernCoachChatOpen:function(){ setS({ernChatOpen:true}); },
     ernCoachChatClose:function(){ setS({ernChatOpen:false}); },
     // ── Etappe 6: Datenschutz – Export / Tag löschen / alles löschen ──
     ernDataOpen:function(){ DATA.ernSub=undefined; DATA.ernInvoices=undefined; setS({ernData:true, ernMsg:'', ernErr:false}); if(ernPremium()&&!ernViaModule()){ loadSubInfo(); loadErnInvoices(); } },
@@ -9871,7 +9912,7 @@
     ernRecipeDel:function(a){ api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'recipe-delete',id:a})}).then(function(d){ if(d&&d.ok){ DATA.nutriSaved=d.saved; render(); } }).catch(function(){}); },
     ernRecipeLog:function(){ var r=S.ernRecipeSel; if(!r||S.ernBusy) return; var serv=Math.max(1,Math.min(12,parseInt(S.ernRecipeServ,10)||1)); S.ernBusy=true; render();
       api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'recipe-log',recipe:r,servings:serv,date:ernActiveDate()})})
-      .then(function(d){ S.ernBusy=false; if(d&&d.ok){ DATA.nutri=d; S.ernRecipeSel=null; S.ernTab='heute'; S.ernMsg='Ins Protokoll übernommen: '+r.title; S.ernErr=false; } else { S.ernErr=true; S.ernMsg=(d&&d.message)||'Konnte nicht übernehmen – bitte erneut.'; } render(); try{ window.scrollTo(0,0); }catch(e){} })
+      .then(function(d){ S.ernBusy=false; if(d&&d.ok){ DATA.nutri=d; S.ernRecipeSel=null; S.ernTab='heute'; S.ernMsg='Ins Protokoll übernommen: '+r.title; S.ernErr=false; } else { S.ernErr=true; S.ernMsg=(d&&d.message)||'Konnte nicht übernehmen – bitte erneut.'; } render(); })
       .catch(function(){ S.ernBusy=false; S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); }); },
     // ── Koch-Plan (was wann kochen) + Einkaufsliste ──
     ernCookPick:function(){ setQuiet({ernCookPick:true,ernCookDay:'0'}); },
@@ -9880,7 +9921,7 @@
     ernCookAdd:function(){ var r=S.ernRecipeSel; if(!r||S.ernBusy) return; var serv=Math.max(1,Math.min(12,parseInt(S.ernRecipeServ,10)||1)); var off=parseInt(S.ernCookDay,10)||0; var d=new Date(); d.setDate(d.getDate()+off); var p=function(n){return(n<10?'0':'')+n;}; var ymd=d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());
       S.ernBusy=true; render();
       api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'cookplan-add',recipe:r,servings:serv,date:ymd})})
-      .then(function(res){ S.ernBusy=false; if(res&&res.ok){ DATA.nutriCook={cookplan:res.cookplan||[],shopping:res.shopping||[]}; S.ernCookPick=false; S.ernRecipeSel=null; S.ernTab='plan'; S.ernPlanTab='woche'; S.ernMsg='Zum Koch-Plan hinzugefügt: '+r.title; S.ernErr=false; } else { S.ernErr=true; S.ernMsg=(res&&res.message)||'Konnte nicht hinzufügen – bitte erneut.'; } render(); try{ window.scrollTo(0,0); }catch(e){} })
+      .then(function(res){ S.ernBusy=false; if(res&&res.ok){ DATA.nutriCook={cookplan:res.cookplan||[],shopping:res.shopping||[]}; S.ernCookPick=false; S.ernRecipeSel=null; S.ernTab='plan'; S.ernPlanTab='woche'; S.ernMsg='Zum Koch-Plan hinzugefügt: '+r.title; S.ernErr=false; } else { S.ernErr=true; S.ernMsg=(res&&res.message)||'Konnte nicht hinzufügen – bitte erneut.'; } render(); })
       .catch(function(){ S.ernBusy=false; S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); }); },
     ernCookRemove:function(a){ api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'cookplan-remove',id:a})}).then(function(d){ if(d&&d.ok){ DATA.nutriCook={cookplan:d.cookplan||[],shopping:d.shopping||[]}; } render(); }).catch(function(){}); },
     ernCookDone:function(a){ api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'cookplan-done',id:a})}).then(function(d){ if(d&&d.ok){ DATA.nutriCook={cookplan:d.cookplan||[],shopping:d.shopping||[]}; } render(); }).catch(function(){}); },
@@ -9914,7 +9955,7 @@
           S.ernPlanDraft=d.recipes.map(function(r){ return {recipe:r, meal:(r.meal||null), dayOffset:Math.max(0,Math.min(13,parseInt(r.dayOffset,10)||0)), servings:1}; });
           S.ernPlanQuiz=null; S.ernTab='plan'; S.ernPlanTab='woche'; DATA.nutriLib=null; loadLib();
         } else { S.ernErr=true; S.ernMsg=(d&&d.message)||'FINN kann gerade nicht planen. Versuch es gleich nochmal.'; }
-        render(); try{ window.scrollTo(0,0); }catch(e){}
+        render();
       })
       .catch(function(){ S.ernPlanDraftBusy=false; S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); }); },
     ernPlanReplace:function(a){ var idx=parseInt(a,10); if(S.ernPlanDraftBusy||!S.ernPlanDraft||!S.ernPlanDraft[idx]) return; if(ernNeedPremium()) return;
@@ -9932,7 +9973,7 @@
     ernPlanSave:function(){ if(S.ernBusy||!S.ernPlanDraft||!S.ernPlanDraft.length) return; S.ernBusy=true; render();
       var items=S.ernPlanDraft.map(function(s){ return {recipe:s.recipe, servings:s.servings, date:ernOffsetDate(s.dayOffset), meal:(s.meal||undefined)}; });
       api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'cookplan-add-many',items:items})})
-      .then(function(d){ S.ernBusy=false; if(d&&d.ok){ DATA.nutriCook={cookplan:d.cookplan||[],shopping:d.shopping||[]}; S.ernPlanDraft=null; S.ernMsg='Plan gespeichert – deine Einkaufsliste ist bereit.'; S.ernErr=false; } else { S.ernErr=true; S.ernMsg=(d&&d.message)||'Plan konnte nicht gespeichert werden – bitte erneut.'; } render(); try{ window.scrollTo(0,0); }catch(e){} })
+      .then(function(d){ S.ernBusy=false; if(d&&d.ok){ DATA.nutriCook={cookplan:d.cookplan||[],shopping:d.shopping||[]}; S.ernPlanDraft=null; S.ernMsg='Plan gespeichert – deine Einkaufsliste ist bereit.'; S.ernErr=false; } else { S.ernErr=true; S.ernMsg=(d&&d.message)||'Plan konnte nicht gespeichert werden – bitte erneut.'; } render(); })
       .catch(function(){ S.ernBusy=false; S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); }); },
     // ── Koch-Modus (Schritt-für-Schritt) ──
     ernKochStart:function(){ if(!(S.ernRecipeSel&&S.ernRecipeSel.steps&&S.ernRecipeSel.steps.length)) return; setQuiet({ernKoch:-1}); },   // -1 = Vorbereitung zuerst
@@ -9946,7 +9987,7 @@
       .then(function(d){ S.ernBusy=false; if(d&&d.ok){ DATA.nutri=d; DATA.nutriCook={cookplan:d.cookplan||[],shopping:d.shopping||[]}; S.ernMsg=(d.added&&d.added[0])?('Ins Protokoll: '+d.added[0].name):'Als gegessen übernommen.'; S.ernErr=false; } else { S.ernErr=true; S.ernMsg=(d&&d.message)||'Konnte nicht übernehmen – bitte erneut.'; } render(); }).catch(function(){ S.ernBusy=false; S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); }); },
     // Koch-Modus direkt von der Heute-/Plan-Ansicht starten (Rezept aus dem Koch-Plan).
     ernCookCook:function(a){ var list=(DATA.nutriCook&&DATA.nutriCook.cookplan)||[]; var it=list.filter(function(x){ return String(x.id)===String(a); })[0]; if(!it||!(it.steps&&it.steps.length)) return; setQuiet({ernRecipeSel:it, ernRecipeServ:Math.max(1,Math.min(12,parseInt(it.servings,10)||1)), ernKoch:-1, ernKochDirect:true}); },
-    openBlog:function(a){ closeMenu(); S.blogSel=a; S.blogPost=null; setS({screen:'blog'}); try{ window.scrollTo(0,0); }catch(e){} api('/api/member/blog?id='+encodeURIComponent(a)).then(function(d){ if(d&&d.ok&&d.post){ S.blogPost=d.post; if(S.blogSel===a&&S.screen==='blog') render(); } }).catch(function(){}); },
+    openBlog:function(a){ closeMenu(); S.blogSel=a; S.blogPost=null; setS({screen:'blog'}); api('/api/member/blog?id='+encodeURIComponent(a)).then(function(d){ if(d&&d.ok&&d.post){ S.blogPost=d.post; if(S.blogSel===a&&S.screen==='blog') render(); } }).catch(function(){}); },
     openInsta:function(a){ closeMenu(); S.instaSel=a; setS({screen:'insta'}); loadInsta(); },
     doCheckin:function(){
       if(S.checkinBusy||S.checkedInAt) return;
@@ -10348,7 +10389,7 @@
     socShare:function(a){ var link=a||''; try{ if(navigator.share){ navigator.share({title:'Trainingspartner bei Fit-Inn',text:'Verbinde dich als mein Trainingspartner 💪',url:link}).catch(function(){}); return; } }catch(e){} copyText(link); setS({socCopied:true}); setTimeout(function(){ S.socCopied=false; render(); },1800); },
     socOpenChat:function(a){ S.socChat=String(a); DATA.socDm=null; S.socChatBusy=false; S.socMsg=''; S.socErr=false; render(); loadDm(String(a)); setTimeout(function(){ var t=$('soc_msg'); if(t) t.focus(); },60); },
     socChatBack:function(){ S.socChat=null; DATA.socDm=null; S.socMsg=''; S.socErr=false; render(); loadSocial(); },
-    socRulesOpen:function(){ S.socRules=true; try{ if(window.scrollTo) window.scrollTo(0,0); }catch(e){} render(); },
+    socRulesOpen:function(){ S.socRules=true; render(); },
     socRulesClose:function(){ S.socRules=false; render(); },
     socChatSend:function(){ if(S.socChatBusy||!S.socChat) return; var el=$('soc_msg'); var t=el?(el.value||'').trim():''; if(!t) return; var bid=S.socChat; S.socChatBusy=true; S.socErr=false; S.socMsg='';
       if(DATA.socDm&&String(DATA.socDm.buddyId)===String(bid)){ DATA.socDm.messages.push({mine:true,text:t,at:Date.now()}); }
