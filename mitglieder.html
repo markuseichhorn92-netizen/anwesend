@@ -2004,6 +2004,44 @@
       '<div style="flex:1;min-width:0"><div style="font-size:10.5px;font-weight:900;color:#8fd4c4;text-transform:uppercase;letter-spacing:.5px">Training</div><div style="font-size:15.5px;font-weight:900;color:#fff;margin-top:1px">Heutige Einheit</div><div style="font-size:12px;font-weight:600;color:#bfe0e6;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(status)+'</div></div>'+
       svg('<path d="M9 6l6 6-6 6"></path>',{c:'#bfe0e6',w:2.4,s:18})+'</button>';
   }
+  // ═══ Dynamische Startseite (Etappe D): Kontext-Hero nach Tageszeit + Zustand ═══
+  // Wählt den sinnvollsten „nächsten Schritt" abhängig von Uhrzeit, Vital-Check,
+  // Ernährungsstand und ob heute schon trainiert wurde.
+  function homeCtx(){
+    var h=berlinHour();
+    var mo=DATA.morning;
+    var measuredToday=!!(mo&&mo.ok&&mo.latest&&String(mo.latest.date).slice(0,10)===isoToday());
+    var vitalAvail=!!(mo&&mo.ok&&mo.premium);
+    var n=DATA.nutri; var kcalNow=(n&&n.today&&n.today.totals&&n.today.totals.kcal)||0; var kcalTgt=(n&&n.targets&&n.targets.kcal)||0;
+    var sess=(DATA.trainSess&&DATA.trainSess.items)||{}; var trainedToday=Object.keys(sess).some(function(k){ return sess[k]&&sess[k].done; });
+    var ci=Array.isArray(DATA.checkins)?DATA.checkins:[]; if(ci.some(function(x){ return x&&x.in&&String(x.in).slice(0,10)===isoToday(); })) trainedToday=true;
+    if(S.checkedInAt) return {ic:'🔥',t:'Viel Erfolg beim Training',s:'Du bist im Studio – zieh dein Ding durch. 💪',nav:'tag',label:'Zur Einheit'};
+    if(h<5||h>=22) return {ic:'🌙',t:'Zeit zum Runterfahren',s:'Guter Schlaf ist deine beste Regeneration – morgen greifst du wieder an.',nav:''};
+    if(h<11){
+      if(vitalAvail&&!measuredToday) return {ic:'❤️',t:'Starte mit deinem Vital-Check',s:'Miss deinen Puls – FINN steuert dein Training nach deiner Erholung.',nav:'morning',label:'Jetzt messen'};
+      return {ic:'🏋️',t:'Bereit für den Tag',s:trainedToday?'Stark – heute schon aktiv gewesen!':'Dein Trainingstag wartet – leg los, wenn du bereit bist.',nav:'tag',label:'Zum Training'};
+    }
+    if(h<17){
+      if(ERN_ON&&kcalTgt&&kcalNow<kcalTgt*0.5) return {ic:'🍽️',t:'Zeit für eine Mahlzeit?',s:'Halte dein Tagesziel im Blick – logge einfach, was du isst.',nav:'ern',label:'Essen erfassen'};
+      if(!trainedToday) return {ic:'🏋️',t:'Noch Zeit für dein Training',s:'Ein guter Moment, deine heutige Einheit anzugehen.',nav:'tag',label:'Zum Training'};
+      return {ic:'💧',t:'Bleib auf Kurs',s:'Trink genug und halte dein Ziel – du machst das gut.',nav:'ern',label:'Ernährung'};
+    }
+    // Abend (17–21)
+    if(!trainedToday) return {ic:'🏋️',t:'Heute noch nicht trainiert?',s:'Auch eine kurze Einheit zählt – oder plane schon den morgigen Tag.',nav:'tag',label:'Zum Training'};
+    return {ic:'🌆',t:'Tag ausklingen lassen',s:'Starker Tag! Iss ausreichend Eiweiß und gönn dir Erholung für morgen.',nav:'ern',label:'Ernährung'};
+  }
+  function homeContextHero(){
+    // Erholungsphase hat auf der Startseite absoluten Vorrang.
+    if(moRecoveryActive()) return '<div style="margin-bottom:16px">'+moRecoveryActiveCard()+'</div>';
+    var p=DATA.profile||{}; var name=p.firstName||'';
+    var c=homeCtx();
+    var greet=greetWord()+(name?(', '+esc(name)):'');
+    return '<button '+(c.nav?('data-act="nav" data-arg="'+c.nav+'" '):'')+'style="width:100%;text-align:left;border:none;font-family:inherit;background:var(--surface);border-radius:20px;box-shadow:0 12px 30px rgba(4,33,40,.09);padding:17px 18px;margin-bottom:16px'+(c.nav?';cursor:pointer':'')+'">'+
+      '<div style="font-size:12.5px;font-weight:800;color:var(--text-soft)">'+greet+'</div>'+
+      '<div style="display:flex;align-items:center;gap:13px;margin-top:10px"><div style="width:44px;height:44px;border-radius:14px;background:var(--surface-2);display:flex;align-items:center;justify-content:center;font-size:23px;flex-shrink:0">'+c.ic+'</div>'+
+      '<div style="flex:1;min-width:0"><div style="font-size:15.5px;font-weight:900;color:var(--text)">'+esc(c.t)+'</div><div style="font-size:12.5px;font-weight:600;color:var(--text-soft);line-height:1.4;margin-top:2px">'+esc(c.s)+'</div></div>'+
+      (c.nav?svg('<path d="M9 6l6 6-6 6"></path>',{c:'var(--text-soft)',w:2.2,s:18}):'')+'</div></button>';
+  }
   function scrHome(){
     if(isFormer()) return scrRejoin();
     loadFinnTip(); loadInsta(); loadTypical(); loadLive(); loadHours();
@@ -2012,6 +2050,7 @@
     if(DATA.checkins==null) loadCheckins();      // fürs Vitalalter (Aktivität) auf der Startseite
     if(DATA.training==null) loadTraining();      // fürs Vitalalter (Einheiten)
     if(DATA.mprofile==null) loadMemberProfile(); // fürs Vitalalter (Lebensstil)
+    if(DATA.morning==null) loadMorning();        // Kontext-Hero (Vital-Check-Vorschlag/Erholungsphase)
     var p=DATA.profile||{}; var name=p.firstName||'';
     // Schnellzugriff – 4 Kacheln mit Live-Daten (wie im Design). Rest liegt im Profil-Hub + Bottom-Nav.
     if(DATA.account===null) loadAccount();
@@ -2050,11 +2089,17 @@
     // Übersichtlich in klare Abschnitte gegliedert – „Heute" (aktionsorientiert) zuerst.
     // Ein leerer Abschnitt (z. B. Community ohne SOCIAL_ON) erzeugt keine verwaiste Überschrift.
     var sec=function(t,inner){ return (inner&&inner.trim())?(hdr(t)+inner):''; };
+    // Dynamische Reihenfolge nach Tageszeit: morgens steht der Vital-Check/Coach oben
+    // (sinnvollster Einstieg), tagsüber & abends das aktionsorientierte „Heute" zuerst.
+    var secHeute=sec('Heute', homeMeinTagHero()+homeTodayStrip());
+    var secCoach=sec('Coach & Fortschritt', homeCoachHero()+morningHomeCard()+homeVitalCard()+premNudgeHome());
+    var hh=berlinHour();
+    var mainBlock=(hh>=5&&hh<11)?(secCoach+secHeute):(secHeute+secCoach);
     return ''+
       dupBanner+                                                   // Konto-Warnung ganz oben (falls vorhanden)
       checkinBtn()+                                                // kontextuell: im Studio / eingecheckt
-      sec('Heute', homeMeinTagHero()+homeTodayStrip())+            // heutiges Training + Ernährung
-      sec('Coach & Fortschritt', homeCoachHero()+morningHomeCard()+homeVitalCard()+premNudgeHome())+  // FINN-Tipp + Bereitschaft + Vitalalter
+      homeContextHero()+                                           // Tageszeit-Begrüßung + sinnvollster nächster Schritt
+      mainBlock+                                                   // Heute + Coach/Fortschritt (Reihenfolge tageszeitabhängig)
       sec('Community', homeBuddyCard())+                           // Trainingspartner (nur bei SOCIAL_ON)
       sec('Dein Studio', auslastungChart()+hoursCard()+wifiBtn())+ // Auslastung, Öffnungszeiten, WLAN
       sec('Schnellzugriff', '<div class="gTiles">'+tiles+'</div>')+// Funktions-Kacheln
