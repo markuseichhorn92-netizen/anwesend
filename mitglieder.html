@@ -5827,7 +5827,7 @@
   // Gesundheits-Kennzahlen (Ruhepuls, HRV, Schlaf, Gewicht, Körperfett, VO2max, Schritte) aus Apple Health.
   function woHealthFetchMetrics(){
     var P=woNativePlugin(); if(!P||!P.getHealthMetrics){ DATA.healthMetrics={ok:false,err:'Plugin ohne getHealthMetrics – App aktualisieren/neu bauen',t:Date.now()}; return; }
-    var done=function(r){ DATA.healthMetrics=Object.assign({t:Date.now()},(r&&typeof r==='object')?r:{ok:false,err:'leere Antwort'}); rIf(['tag','morning','fort','home','figur']); };
+    var done=function(r){ DATA.healthMetrics=Object.assign({t:Date.now()},(r&&typeof r==='object')?r:{ok:false,err:'leere Antwort'}); if(DATA.healthMetrics.ok!==false) woVitalsPush(DATA.healthMetrics); rIf(['tag','morning','fort','home','figur']); };
     var go=function(){ try{ P.getHealthMetrics().then(done).catch(function(e){ done({ok:false,err:String((e&&(e.message||e.errorMessage))||e)}); }); }catch(e){ done({ok:false,err:String(e)}); } };
     // Erst Freigabe sicherstellen (fragt bei bereits Verbundenen die NEUEN Kategorien nach), dann lesen.
     try{ if(P.healthAuth){ P.healthAuth().then(go).catch(go); } else { go(); } }catch(e){ go(); }
@@ -5852,21 +5852,48 @@
     return '<div style="margin-top:12px;background:var(--surface-2);border-radius:12px;padding:11px 12px;font-size:11.5px;font-weight:700;color:var(--text-soft);line-height:1.45">Noch keine Werte aus Apple Health. <b>Ruhepuls, HRV, Schlaf &amp; VO₂max</b> brauchen eine <b>Apple&nbsp;Watch</b>; <b>Gewicht/Körperfett</b> eine verbundene <b>Waage</b>. Schritte kommen vom iPhone.<div style="font-size:9.5px;color:var(--placeholder);margin-top:6px">'+esc(diag)+'</div></div>';
   }
   // Kleine Diagnose für die Health-Karte (nur in der nativen App sichtbar).
-  // Kompakte Apple-Health-Kontextkarte für den Vital-Check: zeigt die Werte der Apple Watch
-  // (Ruhepuls, HRV, Schlaf) ergänzend zur Gurt-Messung. Nur in der nativen App bei Verbindung.
+  // Passive Vitalwerte an den Server schicken (Baseline, Morgen-Briefing & FINN) –
+  // nur mit Vital-Check-Einwilligung, höchstens alle 2 Minuten, deduped serverseitig je Tag.
+  var woVitalsPushT=0;
+  function woVitalsPush(m){
+    if(!m||m.ok===false) return;
+    if(!(DATA.morning&&DATA.morning.ok&&DATA.morning.consent)) return;   // nur mit Einwilligung
+    var now=Date.now(); if(now-woVitalsPushT<120000) return;             // höchstens alle 2 min
+    var v={ restingHr:m.restingHr, hrv:m.hrv, sleepMin:m.sleepMin, vo2max:m.vo2max, steps:m.steps, weightKg:m.weightKg, bodyFatPct:m.bodyFatPct };
+    var any=false; for(var k in v){ if(v[k]!=null){ any=true; break; } } if(!any) return;
+    woVitalsPushT=now;
+    api('/api/member/morning',{method:'POST',body:JSON.stringify({action:'vitals',vitals:v})}).then(function(r){ if(r&&r.ok){ DATA.morning=r; rIf(['morning','fort','tag','home','coach']); } }).catch(function(){});
+  }
+  // Kompakte Apple-Health-Kontextkarte für den Vital-Check: Werte der Apple Watch
+  // (Ruhepuls, HRV, Schlaf) + passive Erholungs-Ampel & Schlaf-Referenz (Whoop/Oura-artig),
+  // sobald die Baseline kalibriert ist. Nur in der nativen App bei Verbindung.
   function woHealthVitalCard(){
     if(!(woHealthCap()&&woHealthConnected())) return '';
     if(DATA.healthMetrics==null){ DATA.healthMetrics=false; woHealthFetchMetrics(); }
     var m=(DATA.healthMetrics&&DATA.healthMetrics.ok)?DATA.healthMetrics:null; if(!m) return '';
+    woVitalsPush(m);   // an den Server (Baseline/Briefing/FINN)
     var items=[];
     if(m.restingHr) items.push(['❤️','Ruhepuls',Math.round(m.restingHr)+' bpm']);
     if(m.hrv) items.push(['〰️','HRV',Math.round(m.hrv)+' ms']);
     if(m.sleepMin) items.push(['😴','Schlaf',(Math.floor(m.sleepMin/60))+'h '+(m.sleepMin%60)+'m']);
     if(!items.length) return '';
     var cells=items.map(function(c){ return '<div style="flex:1 1 30%;min-width:88px;background:var(--surface-2);border-radius:12px;padding:9px 8px"><div style="font-size:10px;font-weight:800;color:var(--text-soft)">'+c[0]+' '+esc(c[1])+'</div><div style="font-size:15px;font-weight:900;color:var(--text);margin-top:1px">'+esc(String(c[2]))+'</div></div>'; }).join('');
+    // Passive Erholungs-Ampel + Schlaf-Referenz aus dem Server-Briefing.
+    var vb=(DATA.morning&&DATA.morning.ok&&DATA.morning.vitals)?DATA.morning.vitals:null;
+    var extra='';
+    if(vb){
+      var col={gruen:'#1c9b5e',gelb:'#9a5a18',rot:'#b4552f'},bgc={gruen:'#E7F6EC',gelb:'#FBF0E3',rot:'#FBECE8'},emoM={gruen:'🟢',gelb:'🟡',rot:'🔴'};
+      var rd=vb.readiness;
+      if(rd&&rd.level&&rd.level!=='kalibrierung'){
+        extra+='<div style="display:flex;align-items:center;gap:9px;margin-top:11px;background:'+(bgc[rd.level]||'var(--surface-2)')+';border-radius:12px;padding:10px 12px"><span style="font-size:17px">'+(emoM[rd.level]||'📈')+'</span><div style="flex:1;min-width:0"><div style="font-size:12.5px;font-weight:900;color:'+(col[rd.level]||'var(--text)')+'">Erholung: '+esc(rd.headline)+'</div><div style="font-size:10.5px;font-weight:700;color:var(--text-soft)">Passiv aus Ruhepuls, HRV &amp; Schlaf · Score '+rd.score+'/100</div></div></div>';
+      } else if(rd&&rd.calibrating){
+        extra+='<div style="font-size:10.5px;font-weight:700;color:var(--text-soft);margin-top:9px">Erholungs-Baseline kalibriert noch – nach ein paar Tagen erscheint hier deine passive Ampel (ganz ohne Gurt).</div>';
+      }
+      if(vb.sleep&&vb.sleep.note){ extra+='<div style="font-size:10.5px;font-weight:700;color:var(--text-soft);margin-top:7px">😴 '+esc(vb.sleep.label)+' – '+esc(vb.sleep.note)+(vb.sleep.ref?(' ('+esc(vb.sleep.ref)+')'):'')+'</div>'; }
+    }
     return '<div style="'+MO_CARD+'"><div style="font-size:13.5px;font-weight:900;color:var(--text)">⌚ Aus deiner Apple Watch</div>'+
-      '<div style="font-size:11.5px;color:var(--text-soft);font-weight:600;line-height:1.45;margin:5px 0 10px">Ergänzend zur Gurt-Messung – so sieht deine Uhr deine Erholung. Fließt in dein Vitalalter ein.</div>'+
-      '<div style="display:flex;flex-wrap:wrap;gap:7px">'+cells+'</div></div>';
+      '<div style="font-size:11.5px;color:var(--text-soft);font-weight:600;line-height:1.45;margin:5px 0 10px">Ergänzend zur Gurt-Messung – so sieht deine Uhr deine Erholung. Fließt in dein Vitalalter, dein Briefing und FINN ein.</div>'+
+      '<div style="display:flex;flex-wrap:wrap;gap:7px">'+cells+'</div>'+extra+'</div>';
   }
   function woHealthDiag(){ try{ var c=window.Capacitor; var keys=(c&&c.Plugins)?Object.keys(c.Plugins).join(', '):'—'; return 'Cap:'+(c?1:0)+' · nativ:'+((c&&c.isNativePlatform&&c.isNativePlatform())?1:0)+' · FitInnNative-Plugin:'+(woNativePlugin()?'JA':'nein')+' · Plugins:['+keys+']'; }catch(e){ return 'diag:'+e; } }
 

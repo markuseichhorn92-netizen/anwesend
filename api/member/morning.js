@@ -23,6 +23,7 @@
 
 const M = require('../../lib/members');
 const MO = require('../../lib/morning');
+const V = require('../../lib/vitals');
 const AI = require('../../lib/ai');
 const Ent = require('../../lib/entitlements');
 const Coaching = require('../../lib/coaching');
@@ -53,6 +54,25 @@ async function readState(id) {
   const readiness = latest ? MO.readiness(latest, base) : null;
   const trList = await MO.trList(id);
   const trLatest = trList[0] || null;
+  // Passive Vitalwerte aus Apple Health (Apple Watch/Waage) – nur bei Einwilligung.
+  let vitalsBlock = null;
+  try {
+    if (consent) {
+      const vList = await V.list(id);
+      if (vList.length) {
+        const vLatest = V.latest(vList);
+        const vBase = V.baseline(vList);
+        vitalsBlock = {
+          latest: vLatest, baseline: vBase,
+          readiness: V.readiness(vLatest, vBase),
+          sleep: V.sleepRef(vLatest, vBase),
+          eval: V.evaluate(vLatest, vBase),
+          trend: V.trend(vList),
+          days: vList.length,
+        };
+      }
+    }
+  } catch (e) {}
   return {
     ok: true, available: true,
     premium: !!tier.premium, tier: tier.tier, trialing: tier.trialing,
@@ -85,6 +105,7 @@ async function readState(id) {
       readiness: trLatest ? MO.trainReadiness(trLatest, base) : null,
       hasBaseline: base.rhr != null || base.hrv != null,
     },
+    vitals: vitalsBlock,
   };
 }
 
@@ -117,6 +138,17 @@ module.exports = async function handler(req, res) {
       const on = body.value === true || body.value === 'true' || body.value === 1;
       if (on && !premium) return j(res, 200, { ok: false, error: 'premium_required', message: PREMIUM_MSG });
       await MO.setConsent(id, on);
+      if (!on) { try { await V.clear(id); } catch (e) {} }   // Widerruf löscht auch die Apple-Health-Vitalwerte
+      return j(res, 200, Object.assign({ ok: true }, await readState(id)));
+    }
+
+    // Passive Vitalwerte aus Apple Health (Apple Watch/Waage) speichern. Gesundheitsdaten
+    // (Art. 9) -> Premium + dieselbe Einwilligung wie der Vital-Check. Ein Eintrag pro Tag.
+    if (action === 'vitals') {
+      if (!premium) return j(res, 200, { ok: false, error: 'premium_required', message: PREMIUM_MSG });
+      if (!(await MO.getConsent(id))) return j(res, 200, { ok: false, error: 'consent_required', message: 'Bitte stimme zuerst der Verarbeitung deiner Herzdaten zu.' });
+      const r = await V.add(id, body.vitals || {}, Date.now());
+      if (!r.ok) return j(res, 200, { ok: false, error: r.error || 'save_failed' });
       return j(res, 200, Object.assign({ ok: true }, await readState(id)));
     }
 

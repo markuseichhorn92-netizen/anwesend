@@ -197,13 +197,14 @@ module.exports = async function handler(req, res) {
     // Vital-Check: FINN bekommt das ganze Bild – Ampel, Balance, HRV-Alter, Cardio-/Kraft-Empfehlung,
     // Trainings-Check-in, Übertrainings-Signal und erkannte Muster (nur bei Einwilligung).
     let morningText = '';
-    try { const MO = require('../../lib/morning'); if (await MO.getConsent(sess.id)) morningText = MO.toPromptText(await MO.list(sess.id), { trList: await MO.trList(sess.id), age: (mprof && mprof.age) || 0 }); } catch (e) {}
+    let vitalsText = '';
+    try { const MO = require('../../lib/morning'); if (await MO.getConsent(sess.id)) { morningText = MO.toPromptText(await MO.list(sess.id), { trList: await MO.trList(sess.id), age: (mprof && mprof.age) || 0 }); const V = require('../../lib/vitals'); vitalsText = V.toPromptText(await V.list(sess.id)); } } catch (e) {}
     // Datenminimierung: nur Vorname + Tarif + aggregierte Live-Daten (+ ggf. Profil/Gemerktes) an die KI –
     // Nachname/Mitgliedsnummer sind für die Antwort nicht erforderlich.
     const member = {
       firstName: m.firstName,
       rateName: det.rateName,
-      details: det.text + (topicHint ? ('\n\n' + topicHint) : '') + (profileText ? ('\n\n' + profileText) : '') + (inbodyText ? ('\n\n' + inbodyText) : '') + (morningText ? ('\n\n' + morningText) : '') + (memoryText ? ('\n\n' + memoryText) : ''),
+      details: det.text + (topicHint ? ('\n\n' + topicHint) : '') + (profileText ? ('\n\n' + profileText) : '') + (inbodyText ? ('\n\n' + inbodyText) : '') + (morningText ? ('\n\n' + morningText) : '') + (vitalsText ? ('\n\n' + vitalsText) : '') + (memoryText ? ('\n\n' + memoryText) : ''),
       memoDirective: mem.on ? FinnMemory.MEMO_DIRECTIVE : '',
     };
     const r = await AI.coachReply(member, Array.isArray(body.history) ? body.history : [], question, HELP);
