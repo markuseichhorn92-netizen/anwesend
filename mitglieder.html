@@ -4568,6 +4568,7 @@
     '</button>';
   }
   function ernDash(){
+    if(DATA.morning==null) loadMorning();   // Vital-Signal-Banner (Erholung wirkt auf den Ernährungs-Fokus)
     var n=DATA.nutri, t=n.targets||{}, td=n.today||{}, tot=td.totals||{kcal:0,p:0,c:0,f:0};
     var kcalLeft=Math.max(0,(t.kcal||0)-tot.kcal), kcalDeg=t.kcal?Math.min(360,Math.round(tot.kcal/t.kcal*360)):0;
     var CARD='background:var(--surface);border-radius:20px;box-shadow:0 12px 30px rgba(4,33,40,.09);padding:18px;margin-bottom:14px';
@@ -4670,7 +4671,7 @@
     if(!viewIsToday) return ernDayNav()+ring+msg+water+mealsBlock;
     // Heute: klare Reihenfolge – Überblick, Einkaufen-Check, für heute geplant, Wasser, Mahlzeiten, Schnell-Add, Fasten, Mehr.
     // Das Coaching-Programm (Wochen-Lern-Einheiten) lebt jetzt im Coach-Bereich, nicht mehr hier im Essen-Tab.
-    return ernDayNav()+ring+msg+checkin+shopEntry+sosEntry+planned+water+mealsBlock+quickAdd+fasting+more;
+    return ernDayNav()+ring+ernVitalBanner()+msg+checkin+shopEntry+sosEntry+planned+water+mealsBlock+quickAdd+fasting+more;
   }
   // Fasten-Helfer (Client-Countdown; Server hält plan+start)
   function ernFastMs(){
@@ -5045,15 +5046,10 @@
   // Reine Coaching-Erkenntnisse: ganzheitlicher Blick + Abschnitt Training + Abschnitt Ernährung.
   // Datenbasiert (sofort, datensparsam) – die FINN-Analyse (KI) ergänzt den ganzheitlichen Blick auf Tipp.
   function coachHolistic(){
-    // Vital-Check steuert den Tages-Blick: Übertraining/Rot/Grün haben Vorrang vor allem anderen.
-    var mo=(DATA.morning&&DATA.morning.ok)?DATA.morning:null;
-    if(mo){
-      var ot=mo.overtraining;
-      if(ot&&ot.level==='alert') return 'Dein Vital-Check schlägt Alarm: die Erholung ist seit Tagen unter deiner Baseline. Heute bewusst regenerieren – leichte Bewegung, guter Schlaf – und morgen neu bewerten.';
-      var rd=mo.readiness, mlat=mo.latest;
-      if(rd&&mlat&&rd.level==='rot') return 'Dein Vital-Check steht heute auf Rot – dein Körper ist noch nicht erholt. Nimm die Intensität raus: leichtes Cardio (Zone 1–2) oder ein Ruhetag bringen dich heute weiter als ein harter Reiz.';
-      if(rd&&mlat&&rd.level==='gruen') return 'Grünes Licht vom Vital-Check: du bist top erholt. Heute darf es ein intensiver Reiz sein – schwere Sätze oder ein forderndes Cardio nutzen dein Erholungsfenster.';
-    }
+    // Vital-Check steuert den Tages-Blick: Übertraining/Rot/Gelb/Grün haben Vorrang vor allem anderen.
+    // Gemeinsame Quelle vitalToday(), damit Coach, Training und Ernährung dasselbe Signal zeigen.
+    var v=vitalToday();
+    if(v && v.coach && (v.level==='rot'||v.level==='gruen'||v.alert)) return v.coach;
     var d=DATA.training||{}, mp=d.myPlan&&d.myPlan.plan, n=DATA.nutri;
     var visits=0; try{ var cutoff=Date.now()-7*864e5; (DATA.checkins||[]).forEach(function(x){ if(x&&x.in&&Date.parse(x.in)>=cutoff) visits++; }); }catch(e){}
     var goal=(mp&&mp.daysPerWeek)||3;
@@ -5615,12 +5611,45 @@
     return trainWeekCard()+visits+unitsCard;
   }
   // Bereitschafts-Banner fürs Training: Vital-Check-Ampel + heutige Cardio-/Kraft-Intensität.
+  // ═══ Vital-Signal des Tages – EINE Quelle für Training, Ernährung und Coach ═══
+  // Der Vital-Check (Morgen-Check) schlägt damit überall konsistent durch: Trainings-Empfehlung,
+  // Ernährungs-Fokus und Coach-Tagesblick lesen alle aus dieser Funktion.
+  function vitalToday(){
+    var d=(DATA.morning&&DATA.morning.ok)?DATA.morning:null; if(!d) return null;
+    var r=d.readiness, m=d.latest, ot=d.overtraining;
+    var alert=!!(ot&&ot.level==='alert');
+    var warn=!!(ot&&ot.level==='warn');
+    var level=(r&&m&&r.level)?r.level:null;         // gruen | gelb | rot | kalibrierung
+    if(level==='kalibrierung') level=null;          // noch nicht aussagekräftig
+    if(!alert && !level) return null;
+    var eff=alert?'rot':level;                        // Übertraining-Alarm überschreibt zu Rot
+    var MAP={
+      gruen:{emo:'🟢',col:'#176b37',bg:'#E7F6EC',
+        trainT:'Bereit für Vollgas', trainS:'Cardio Zone 3–5 · Kraft schwer (85–95 %) möglich',
+        ernT:'Top erholt – Energie einplanen', ernS:'Wenn du heute intensiv trainierst: Kohlenhydrate + Eiweiß rund ums Training.',
+        coach:'Grünes Licht vom Vital-Check: du bist top erholt. Heute darf es ein intensiver Reiz sein – schwere Sätze oder ein forderndes Cardio nutzen dein Erholungsfenster.'},
+      gelb:{emo:'🟡',col:'#9a5a18',bg:'#FBF0E3',
+        trainT:'Moderat starten', trainS:'Cardio Zone 2–3 · Kraft moderat (70–80 %)',
+        ernT:'Solide – gut versorgen', ernS:'Ausgewogen essen, genug Eiweiß und ausreichend trinken – halte dein Ziel stabil.',
+        coach:'Dein Vital-Check steht auf Gelb – erholt, aber nicht auf 100 %. Starte moderat: kontrolliertes Cardio (Zone 2–3) oder ein solides Krafttraining ohne Maximalversuche.'},
+      rot:{emo:'🔴',col:'#b4552f',bg:'#FBECE8',
+        trainT:(alert?'Erholung hat Vorrang':'Heute erholen'), trainS:'Cardio Zone 1–2 · Kraft leicht (≤60 %) oder Ruhetag',
+        ernT:'Regeneration unterstützen', ernS:'Keine harte Diät heute: genug Eiweiß (Muskelerhalt), viel trinken, nährstoffreich essen.',
+        coach:(alert?'Dein Vital-Check schlägt Alarm: die Erholung ist seit Tagen unter deiner Baseline. Heute bewusst regenerieren – leichte Bewegung, guter Schlaf – und morgen neu bewerten.':'Dein Vital-Check steht heute auf Rot – dein Körper ist noch nicht erholt. Nimm die Intensität raus: leichtes Cardio (Zone 1–2) oder ein Ruhetag bringen dich heute weiter als ein harter Reiz.')}
+    };
+    var s=MAP[eff]; if(!s) return null;
+    return { level:eff, rawLevel:level, alert:alert, warn:warn, emo:s.emo, col:s.col, bg:s.bg,
+      trainT:s.trainT, trainS:s.trainS, ernT:s.ernT, ernS:s.ernS, coach:s.coach,
+      headline:(r&&r.headline)||'', otNote:(ot&&ot.note)||'', date:(m&&m.date)||'' };
+  }
   function meinTagReadyBanner(){
-    var d=(DATA.morning&&DATA.morning.ok)?DATA.morning:null; if(!d) return '';
-    var r=d.readiness, m=d.latest; if(!m||!r||!r.level) return '';
-    var map={gruen:{emo:'🟢',col:'#176b37',bg:'#E7F6EC',t:'Bereit für Vollgas',s:'Cardio Zone 3–5 · Kraft schwer (85–95 %) möglich'},gelb:{emo:'🟡',col:'#9a5a18',bg:'#FBF0E3',t:'Moderat starten',s:'Cardio Zone 2–3 · Kraft moderat (70–80 %)'},rot:{emo:'🔴',col:'#b4552f',bg:'#FBECE8',t:'Heute erholen',s:'Cardio Zone 1–2 · Kraft leicht (≤60 %) oder Ruhetag'}};
-    var s=map[r.level]; if(!s) return '';
-    return '<div data-act="nav" data-arg="morning" style="display:flex;align-items:center;gap:11px;background:'+s.bg+';border-radius:15px;padding:12px 14px;margin-bottom:12px;cursor:pointer"><span style="font-size:20px">'+s.emo+'</span><div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:900;color:'+s.col+'">Vital-Check: '+esc(s.t)+'</div><div style="font-size:11.5px;font-weight:600;color:var(--text-2);margin-top:1px">'+esc(s.s)+'</div></div>'+svg('<path d="M9 18l6-6-6-6"></path>',{c:s.col,w:2.2,s:16})+'</div>';
+    var v=vitalToday(); if(!v) return '';
+    return '<div data-act="nav" data-arg="morning" style="display:flex;align-items:center;gap:11px;background:'+v.bg+';border-radius:15px;padding:12px 14px;margin-bottom:12px;cursor:pointer"><span style="font-size:20px">'+v.emo+'</span><div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:900;color:'+v.col+'">Vital-Check: '+esc(v.trainT)+'</div><div style="font-size:11.5px;font-weight:600;color:var(--text-2);margin-top:1px">'+esc(v.trainS)+'</div></div>'+svg('<path d="M9 18l6-6-6-6"></path>',{c:v.col,w:2.2,s:16})+'</div>';
+  }
+  // Vital-Signal-Banner für den Ernährungs-Screen (Fokus je nach Erholung).
+  function ernVitalBanner(){
+    var v=vitalToday(); if(!v) return '';
+    return '<div data-act="nav" data-arg="morning" style="display:flex;align-items:center;gap:11px;background:'+v.bg+';border-radius:16px;padding:13px 15px;margin-bottom:14px;cursor:pointer"><span style="font-size:20px">'+v.emo+'</span><div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:900;color:'+v.col+'">Vital-Check: '+esc(v.ernT)+'</div><div style="font-size:11.5px;font-weight:600;color:var(--text-2);line-height:1.4;margin-top:2px">'+esc(v.ernS)+'</div></div>'+svg('<path d="M9 18l6-6-6-6"></path>',{c:v.col,w:2.2,s:16})+'</div>';
   }
   function scrMeinTag(){
     if(DATA.training==null) loadTraining();
@@ -6924,8 +6953,8 @@
   function moWakeVis(){ if(document.visibilityState==='visible' && moMeasuring()) moAcquireWake(); }
   function loadMorning(){
     if(DATA.morning==null) DATA.morning=false;
-    api('/api/member/morning',{method:'GET'}).then(function(d){ DATA.morning=(d&&typeof d==='object'&&(d.ok||d.available===false))?d:{ok:false,available:!!(d&&d.available)}; rIf(['morning','fort','coach','home']); })
-    .catch(function(){ DATA.morning={ok:false,available:false}; rIf(['morning','fort','coach','home']); });
+    api('/api/member/morning',{method:'GET'}).then(function(d){ DATA.morning=(d&&typeof d==='object'&&(d.ok||d.available===false))?d:{ok:false,available:!!(d&&d.available)}; rIf(['morning','fort','coach','home','ern','tag']); })
+    .catch(function(){ DATA.morning={ok:false,available:false}; rIf(['morning','fort','coach','home','ern','tag']); });
   }
   function morningData(){ var d=DATA.morning; return (d&&d.ok)?d:null; }
   function moBleAvail(){ try{ if(window.FitInnNative&&FitInnNative.available&&FitInnNative.available.hr) return true; }catch(e){} try{ return !!(navigator.bluetooth&&navigator.bluetooth.requestDevice); }catch(e){ return false; } }
