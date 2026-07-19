@@ -15,29 +15,32 @@ der Health-Sync.
 
 | Datei | Zweck |
 |---|---|
-| `ios/FitInnNativePlugin.swift` | Das Plugin: HealthKit + CoreBluetooth + CoreLocation |
+| `ios/MainViewController.swift` | App-Startseite (Storyboard `customClass`); spielt den `window.FitInnNative`-Shim in die WebView ein (Shim ist eingebettet) |
+| `ios/FitInnNativePlugin.swift` | Das Plugin: HealthKit + CoreBluetooth + CoreLocation (nur die nativen Methoden) |
 | `ios/FitInnNativePlugin.m` | Registriert das Plugin bei Capacitor als `FitInnNative` |
-| `fitinn-native-bridge.js` | JS-Shim: baut `window.FitInnNative` aus dem Plugin |
+| `fitinn-native-bridge.js` | Reine **Referenz** des Shims (der echte Code steckt eingebettet in `MainViewController.swift`) |
 
-## Einbau in 6 Schritten
+## Einbau
 
 1. **iOS-Projekt erzeugen** (falls noch nicht geschehen), aus `nativeapp/`:
    ```bash
    npm install
    npx cap add ios
-   npx cap sync
-   npx cap open ios
+   npm run ios      # sync + patch-native.js + Xcode öffnen
    ```
 
-2. **Plugin-Dateien hinzufügen:** In Xcode die beiden Dateien aus `ios/` per
-   Drag-&-Drop in die Gruppe **App › App** ziehen (⚠️ „Copy items if needed" **an**,
-   Target **App** anhaken). Beim ersten `.m`/`.swift`-Import bietet Xcode an, einen
-   *Bridging Header* anzulegen → **Ja**.
+2. **`MainViewController.swift`** gehört an den festen Pfad
+   `ios/App/App/MainViewController.swift` (das Storyboard verweist bereits darauf).
+   Am einfachsten per Terminal kopieren:
+   ```bash
+   cp native-plugin/ios/MainViewController.swift ios/App/App/MainViewController.swift
+   ```
+   (Xcode kennt den Verweis schon – sonst die Datei einmal in **App › App** ziehen.)
 
-3. **JS-Shim ins Bundle:** `fitinn-native-bridge.js` ebenfalls in **App › App**
-   ziehen und sicherstellen, dass sie unter **Target › Build Phases › Copy Bundle
-   Resources** auftaucht. (Das Plugin lädt sie in `load()` und injiziert sie in die
-   WebView.)
+3. **Plugin hinzufügen:** In Xcode `FitInnNativePlugin.swift` **und**
+   `FitInnNativePlugin.m` per Drag-&-Drop in die Gruppe **App › App** ziehen
+   (⚠️ „Copy items if needed" **an**, Target **App** anhaken). Beim ersten `.m`-Import
+   bietet Xcode an, einen *Bridging Header* anzulegen → **Ja**.
 
 4. **HealthKit-Capability aktivieren:** Target **App** › Reiter **Signing &
    Capabilities** › **+ Capability** › **HealthKit**. Damit setzt Xcode das
@@ -51,10 +54,15 @@ der Health-Sync.
    node ../patch-native.js
    ```
 
-6. **Bauen & auf echtem iPhone testen:** Gerät wählen, ▶︎. Prüfen:
+6. **Bauen & auf echtem iPhone testen:** Clean Build Folder (⇧⌘K), Gerät wählen, ▶︎.
    - Morgen-Check / „Training mit Puls" → fragt Bluetooth, verbindet den Gurt, zeigt Live-Puls.
    - Outdoor-Training → fragt Standort, Strecke/Tempo laufen mit.
    - Training › Verlauf › „Apple Health verbinden" → HealthKit-Dialog, danach werden Einheiten importiert.
+
+> Hinweis: Der Shim steckt eingebettet in `MainViewController.swift` – die Datei
+> `fitinn-native-bridge.js` muss **nicht** ins Bundle. Sie dient nur als lesbare
+> Referenz; Änderungen dort bitte auch im String in `MainViewController.swift`
+> nachziehen.
 
 ## Wenn ihr schon ein `FitInnNative` habt (Face-ID / Push)
 

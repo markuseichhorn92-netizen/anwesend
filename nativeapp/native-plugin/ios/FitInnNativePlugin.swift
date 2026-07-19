@@ -1,6 +1,5 @@
 import Foundation
 import Capacitor
-import WebKit
 import HealthKit
 import CoreBluetooth
 import CoreLocation
@@ -20,26 +19,12 @@ import CoreLocation
  * ⚠️ Dieses Gerüst ist gegen den Vertrag geschrieben, aber NICHT auf Gerät getestet.
  *    Auf einem Mac in Xcode kompilieren und auf einem echten iPhone prüfen.
  *    HealthKit + Bluetooth laufen NICHT im iOS-Simulator.
+ *
+ * Das globale window.FitInnNative (der Shim) wird von MainViewController.swift in die
+ * WebView eingespielt – dieses Plugin liefert nur die nativen Methoden dahinter.
  */
 @objc(FitInnNativePlugin)
 public class FitInnNativePlugin: CAPPlugin, CBCentralManagerDelegate, CBPeripheralDelegate, CLLocationManagerDelegate {
-
-    // MARK: - Shim-Injektion
-
-    public override func load() {
-        // window.FitInnNative-Shim bei jedem Seitenaufbau (document-start) einspielen.
-        // Die Datei fitinn-native-bridge.js muss den App-Ressourcen hinzugefügt sein
-        // (Xcode: Target › Build Phases › Copy Bundle Resources).
-        guard let url = Bundle.main.url(forResource: "fitinn-native-bridge", withExtension: "js"),
-              let js = try? String(contentsOf: url, encoding: .utf8) else {
-            NSLog("FitInnNative: fitinn-native-bridge.js nicht im Bundle gefunden – Shim nicht injiziert.")
-            return
-        }
-        let script = WKUserScript(source: js, injectionTime: .atDocumentStart, forMainFrameOnly: false)
-        DispatchQueue.main.async {
-            self.bridge?.webView?.configuration.userContentController.addUserScript(script)
-        }
-    }
 
     // MARK: - Apple Health (HealthKit)
 
