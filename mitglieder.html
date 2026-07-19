@@ -4634,6 +4634,49 @@
       '<div style="display:flex;align-items:center;gap:8px;margin-top:14px">'+pills+'<span style="margin-left:auto;display:inline-flex;align-items:center;gap:4px;font-size:13.5px;font-weight:900">'+(cur&&!cur.completed?'Weiterlernen':'Zum Coach')+arrow+'</span></div>'+
     '</button>';
   }
+  // ══ „GLP-1 natürlich" ══ Körpereigene Sättigung über Ernährung & Bewegung anregen –
+  // ohne Medikament/Spritze. Hebel: Eiweiß, lösliche Ballaststoffe, gesunde Fette,
+  // Fermentiertes, Reihenfolge (Gemüse/Eiweiß zuerst), Bewegung nach dem Essen.
+  // Tages-Booster-Check (localStorage, pro Tag). Wellness, kein Medizinprodukt.
+  function glp1On(){ try{ return !!(JSON.parse(localStorage.getItem('fi_glp1_v1')||'{}').on); }catch(e){ return false; } }
+  function glp1SetOn(v){ try{ localStorage.setItem('fi_glp1_v1',JSON.stringify({on:!!v})); }catch(e){} }
+  function glp1Checks(){ try{ var o=JSON.parse(localStorage.getItem('fi_glp1_checks_v1')||'{}'); return (o&&o.date===isoToday())?o:{date:isoToday()}; }catch(e){ return {date:isoToday()}; } }
+  function glp1ToggleCheck(key){ var o=glp1Checks(); o.date=isoToday(); o[key]=o[key]?0:1; try{ localStorage.setItem('fi_glp1_checks_v1',JSON.stringify(o)); }catch(e){} }
+  function glp1ProteinMet(){ var n=DATA.nutri; if(!(n&&n.ok)) return false; var t=n.targets||{}, tot=(n.today&&n.today.totals)||{p:0}; return !!(t.protein&&(tot.p||0)>=t.protein*0.9); }
+  function glp1Card(){
+    if(!ERN_ON) return '';
+    var n=DATA.nutri; if(!(n&&n.ok&&n.onboarded)) return '';
+    var CARD='background:var(--surface);border-radius:20px;box-shadow:0 12px 30px rgba(4,33,40,.09);padding:18px;margin-bottom:14px';
+    if(!glp1On()){
+      return '<div style="'+CARD+'"><div style="display:flex;align-items:center;gap:12px"><div style="width:44px;height:44px;border-radius:13px;background:#E7F6EC;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:22px">🌿</div>'+
+        '<div style="flex:1;min-width:0"><div style="display:flex;align-items:center;gap:7px"><span style="font-size:15px;font-weight:900;color:var(--text)">GLP-1 natürlich</span><span style="font-size:9px;font-weight:900;color:#176b37;background:#E7F6EC;padding:2px 7px;border-radius:7px;text-transform:uppercase;letter-spacing:.3px">Neu</span></div><div style="font-size:12px;font-weight:600;color:var(--text-soft);line-height:1.4;margin-top:2px">Deine körpereigene Sättigung stärken – ganz ohne Spritze, nur über Ernährung &amp; Bewegung.</div></div></div>'+
+        '<button data-act="glp1Activate" style="width:100%;margin-top:13px;padding:12px;border:none;border-radius:13px;background:'+ERN_G+';color:#fff;font-weight:900;font-size:14px;cursor:pointer">Aktivieren</button></div>';
+    }
+    var ch=glp1Checks();
+    var items=[
+      {key:'protein',ic:'🥩',t:'Eiweiß zu jeder Mahlzeit',s:'Stärkster natürlicher GLP-1-Reiz',auto:true,done:glp1ProteinMet()},
+      {key:'fiber',ic:'🌾',t:'Ballaststoffe (~30 g)',s:'Hafer, Hülsenfrüchte, Gemüse → kurzkettige Fettsäuren',done:!!ch.fiber},
+      {key:'fats',ic:'🥑',t:'Gesunde Fette',s:'Olivenöl, Nüsse, Avocado',done:!!ch.fats},
+      {key:'ferment',ic:'🥛',t:'Fermentiertes',s:'Joghurt, Kefir, Sauerkraut → Mikrobiom',done:!!ch.ferment},
+      {key:'order',ic:'🥗',t:'Reihenfolge beachtet',s:'Gemüse &amp; Eiweiß zuerst, Kohlenhydrate zuletzt',done:!!ch.order},
+      {key:'move',ic:'🚶',t:'Nach dem Essen bewegt',s:'10 Min Spaziergang senkt die Zuckerspitze',done:!!ch.move}
+    ];
+    var doneN=items.filter(function(x){return x.done;}).length;
+    var col=doneN>=5?'#1c9b5e':(doneN>=3?'#3f9ec4':'#d98a3a');
+    var ring='<div style="width:64px;height:64px;border-radius:50%;background:conic-gradient('+col+' '+Math.round(doneN/6*360)+'deg,var(--surface-2) 0);display:flex;align-items:center;justify-content:center;flex-shrink:0"><div style="width:50px;height:50px;border-radius:50%;background:var(--surface);display:flex;align-items:center;justify-content:center"><span style="font-size:16px;font-weight:900;color:'+col+';line-height:1">'+doneN+'/6</span></div></div>';
+    var rows=items.map(function(it){
+      var box='<span style="width:24px;height:24px;border-radius:8px;background:'+(it.done?ERN_G:'var(--surface-2)')+';border:1.5px solid '+(it.done?ERN_G:'var(--border-strong)')+';display:flex;align-items:center;justify-content:center;flex-shrink:0">'+(it.done?svg('<path d="M5 13l4 4L19 7"></path>',{c:'#fff',w:3,s:14}):'')+'</span>';
+      var inner='<span style="font-size:19px;flex-shrink:0">'+it.ic+'</span><span style="flex:1;min-width:0"><span style="display:block;font-size:13px;font-weight:800;color:var(--text)">'+it.t+(it.auto?' <span style="font-size:9.5px;font-weight:800;color:var(--ern-acc)">· auto</span>':'')+'</span><span style="display:block;font-size:10.5px;font-weight:600;color:var(--text-soft);line-height:1.35;margin-top:1px">'+it.s+'</span></span>'+box;
+      if(it.auto) return '<div style="display:flex;align-items:center;gap:11px;padding:11px 0;border-top:1px solid var(--border)">'+inner+'</div>';
+      return '<button data-act="glp1Check" data-arg="'+it.key+'" style="display:flex;align-items:center;gap:11px;width:100%;text-align:left;border:none;background:none;font-family:inherit;padding:11px 0;border-top:1px solid var(--border);cursor:pointer">'+inner+'</button>';
+    }).join('');
+    var msg=doneN>=5?'Stark! Deine Sättigungs-Hormone laufen heute auf Hochtouren.':(doneN>=3?'Guter Weg – noch ein paar Bausteine für mehr Sättigung.':'Sammle heute deine Booster für mehr natürliche Sättigung.');
+    return '<div style="'+CARD+'"><div style="display:flex;align-items:center;gap:14px">'+ring+
+      '<div style="flex:1;min-width:0"><div style="font-size:15.5px;font-weight:900;color:var(--text)">🌿 GLP-1 natürlich</div><div style="font-size:11.5px;font-weight:600;color:var(--text-soft);line-height:1.4;margin-top:2px">'+msg+'</div></div></div>'+
+      '<div style="margin-top:6px">'+rows+'</div>'+
+      '<div style="font-size:9.5px;font-weight:600;color:var(--placeholder);line-height:1.45;margin-top:12px;border-top:1px solid var(--border);padding-top:10px">Unterstützt die <b>körpereigene</b> GLP-1-Ausschüttung &amp; Sättigung über Ernährung und Bewegung – ein Wellness-Ansatz, <b>kein Medikament</b> und kein Ersatz für ärztliche Behandlung. Fragen zu Abnehmspritzen bitte mit deiner Ärztin/deinem Arzt klären.</div>'+
+      '<button data-act="glp1Deactivate" style="width:100%;margin-top:11px;padding:9px;border:1.5px solid var(--border);border-radius:11px;background:var(--surface);color:var(--text-soft);font-weight:800;font-size:12px;cursor:pointer">Modus ausschalten</button></div>';
+  }
   function ernDash(){
     if(DATA.morning==null) loadMorning();   // Vital-Signal-Banner (Erholung wirkt auf den Ernährungs-Fokus)
     var n=DATA.nutri, t=n.targets||{}, td=n.today||{}, tot=td.totals||{kcal:0,p:0,c:0,f:0};
@@ -4738,7 +4781,7 @@
     if(!viewIsToday) return ernDayNav()+ring+msg+water+mealsBlock;
     // Heute: klare Reihenfolge – Überblick, Einkaufen-Check, für heute geplant, Wasser, Mahlzeiten, Schnell-Add, Fasten, Mehr.
     // Das Coaching-Programm (Wochen-Lern-Einheiten) lebt jetzt im Coach-Bereich, nicht mehr hier im Essen-Tab.
-    return ernDayNav()+ring+ernVitalBanner()+msg+checkin+shopEntry+sosEntry+planned+water+mealsBlock+quickAdd+fasting+more;
+    return ernDayNav()+ring+ernVitalBanner()+glp1Card()+msg+checkin+shopEntry+sosEntry+planned+water+mealsBlock+quickAdd+fasting+more;
   }
   // Fasten-Helfer (Client-Countdown; Server hält plan+start)
   function ernFastMs(){
@@ -10529,6 +10572,9 @@
       .catch(function(){ S.ernCoachBusy=false; render(); }); },
     // ── Ernährung · Sub-Navigation + Zusatz-Screens ──
     ernTab:function(a){ S.ernTab=a; S.ernMsg=''; S.ernErr=false; S.ernRecipeSel=null; S.ernChatOpen=false; S.ernLesson=null; S.ernVert=null; S.ernLessonData=null; S.ernCk=false; S.ernCkResult=null; if(a==='heute'&&S.ernViewDate){ S.ernViewDate=''; loadNutri(); } if(a==='plan'){ if(DATA.nutriCook==null) loadCook(); if((S.ernPlanTab==='woche'||S.ernPlanTab==='einkauf')&&DATA.nutriPlan==null) loadNutriPlan(); } if(a==='rezepte'){ if(DATA.nutriSaved==null) loadSaved(); if(DATA.nutriLib==null) loadLib(); if(DATA.nutriCook==null) loadCook(); } if(a==='coach') loadCoach(); if(a==='verlauf') loadWeek(); setQuiet({}); },
+    glp1Activate:function(){ glp1SetOn(true); setS({}); },
+    glp1Deactivate:function(){ glp1SetOn(false); setS({}); },
+    glp1Check:function(a){ if(a) glp1ToggleCheck(a); setS({}); },
     ernFastPlan:function(a){ api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'fast',do:'plan',plan:a})}).then(function(d){ if(d&&d.ok) DATA.nutri=d; render(); }).catch(function(){}); },
     ernFastToggle:function(){ if(S.ernFastBusy) return; var act=ernFastMs().active?'stop':'start'; S.ernFastBusy=true; api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'fast',do:act})}).then(function(d){ S.ernFastBusy=false; if(d&&d.ok){ DATA.nutri=d; } else { S.ernErr=true; S.ernMsg=(d&&d.message)||'Fasten-Timer konnte nicht umgeschaltet werden.'; } render(); }).catch(function(){ S.ernFastBusy=false; S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); }); },
     ernPlanTab:function(a){ if(DATA.nutriCook==null) loadCook(); if(a!=='einkauf'&&DATA.nutriPlan==null) loadNutriPlan(); setQuiet({ernPlanTab:a}); },
