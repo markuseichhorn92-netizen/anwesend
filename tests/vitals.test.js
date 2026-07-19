@@ -50,6 +50,8 @@ function run() {
   ok('7g. sleepDetail: Score 0–100 plausibel', sd.score >= 0 && sd.score <= 100 && sd.score >= 70);
   ok('7h. sleepDetail: ohne Phasen -> hasStages false, Score da', (function () { var x = V.sleepDetail(V.sanitize({ sleepMin: 300 })); return x && x.hasStages === false && x.deepMin === null && x.score != null; })());
   ok('7i. sleepDetail: kein Schlaf -> null', V.sleepDetail(V.sanitize({ restingHr: 55 })) === null);
+  // 7j. Ohne echten Wach-/Bett-Überhang keine Schein-Effizienz (kein glattes 100 %).
+  ok('7j. sleepDetail: Wach 0 & inBed=Schlaf -> Effizienz null', (function () { var x = V.sleepDetail(V.sanitize({ sleepMin: 310, sleepDeepMin: 21, sleepRemMin: 98, sleepLightMin: 189, sleepAwakeMin: 0, sleepInBedMin: 310 })); return x && x.efficiency === null; })());
 
   // 8. Trend seit Vortag
   const tr = V.trend(list);
