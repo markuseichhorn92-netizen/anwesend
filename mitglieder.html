@@ -5811,25 +5811,28 @@
   // ── Apple Health / Google Fit ── Sync über die native Bridge (Vertrag: docs/NATIVE-BRIDGE.md).
   // Im WebView/Browser ist die Bridge nicht da -> „nur in der App"-Hinweis (kein Fehler).
   function woHealthCap(){ try{ if(woNativeBind()) return true; return !!(window.FitInnNative&&FitInnNative.available&&FitInnNative.available.health); }catch(e){ return false; } }
-  function woHealthWriteCap(){ try{ return !!(woHealthCap()&&FitInnNative.saveHealthWorkout); }catch(e){ return false; } }
+  function woHealthWriteCap(){ return woHealthCap(); }
   function woHealthPlatform(){ try{ return ((window.FitInnNative&&FitInnNative.platform)==='android')?'Google Fit':'Apple Health'; }catch(e){ return 'Health'; } }
   function woHealthPref(){ try{ return JSON.parse(localStorage.getItem('fi_health_v1')||'{}')||{}; }catch(e){ return {}; } }
   function woHealthSetPref(p){ try{ localStorage.setItem('fi_health_v1',JSON.stringify(Object.assign(woHealthPref(),p))); }catch(e){} }
   function woHealthConnected(){ return !!(woHealthCap()&&woHealthPref().connected); }
   function woHealthWriteOn(){ return woHealthConnected()&&woHealthWriteCap()&&woHealthPref().write!==false; }
   // Verbinden: Freigabe anfragen -> bei Erfolg merken + sofort einmal importieren.
+  function woHealthErr(e){ try{ return (e&&(e.message||e.errorMessage||e.error))||String(e||'unbekannt'); }catch(_){ return 'unbekannt'; } }
   function woHealthConnect(){
-    if(!woHealthCap()){ setS({woHealthMsg:'Health-Sync geht nur in der Fit-Inn-App ('+woHealthPlatform()+').'}); return; }
+    var P=woNativePlugin();
+    if(!P){ setS({woHealthMsg:'Health-Sync geht nur in der Fit-Inn-App ('+woHealthPlatform()+').'}); return; }
     if(S.woHealthBusy) return; S.woHealthBusy=true; S.woHealthMsg=''; render();
-    try{ FitInnNative.healthAuth().then(function(r){ S.woHealthBusy=false;
+    try{ P.healthAuth().then(function(r){ S.woHealthBusy=false;
       if(r&&r.ok&&(r.read||r.write)){ woHealthSetPref({connected:true,write:(r.write!==false),read:(r.read!==false)}); S.woHealthMsg=''; setS({}); woHealthImport(true); }
-      else { S.woHealthMsg='Kein Zugriff auf '+woHealthPlatform()+' – bitte die Freigabe in den Einstellungen erlauben.'; setS({}); }
-    }).catch(function(){ S.woHealthBusy=false; S.woHealthMsg='Verbindung zu '+woHealthPlatform()+' fehlgeschlagen.'; setS({}); }); }
-    catch(e){ S.woHealthBusy=false; S.woHealthMsg='Health-Sync ist in dieser App-Version noch nicht aktiv – bitte App aktualisieren.'; setS({}); }
+      else { S.woHealthMsg='Kein Zugriff auf '+woHealthPlatform()+' – bitte die Freigabe erlauben. ('+woHealthErr(r&&r.error)+')'; setS({}); }
+    }).catch(function(err){ S.woHealthBusy=false; S.woHealthMsg='Verbindung fehlgeschlagen: '+woHealthErr(err); setS({}); }); }
+    catch(e){ S.woHealthBusy=false; S.woHealthMsg='Health-Fehler: '+woHealthErr(e); setS({}); }
   }
   // Import: liest seit dem letzten Sync (erstmalig 90 Tage) und übergibt dem Server (dedupliziert per extId).
   function woHealthImport(silent){
-    if(!woHealthCap()){ if(!silent) setS({woHealthMsg:'Health-Sync geht nur in der Fit-Inn-App.'}); return; }
+    var P=woNativePlugin();
+    if(!P){ if(!silent) setS({woHealthMsg:'Health-Sync geht nur in der Fit-Inn-App.'}); return; }
     if(S.woHealthBusy) return; S.woHealthBusy=true; if(!silent) S.woHealthMsg=''; render();
     var since=woHealthPref().lastSync||(Date.now()-90*864e5);
     var send=function(list){
@@ -5842,15 +5845,15 @@
           setS({});
         }).catch(function(){ S.woHealthBusy=false; S.woHealthMsg='Netzwerkfehler beim Import.'; setS({}); });
     };
-    try{ FitInnNative.getHealthWorkouts(since).then(function(r){ send((r&&r.workouts)||[]); })
-      .catch(function(){ S.woHealthBusy=false; S.woHealthMsg='Konnte '+woHealthPlatform()+' nicht lesen.'; setS({}); }); }
-    catch(e){ S.woHealthBusy=false; S.woHealthMsg='Health-Sync ist in dieser App-Version noch nicht aktiv.'; setS({}); }
+    try{ P.getHealthWorkouts({sinceTs:since}).then(function(r){ send((r&&r.workouts)||[]); })
+      .catch(function(err){ S.woHealthBusy=false; S.woHealthMsg='Konnte '+woHealthPlatform()+' nicht lesen: '+woHealthErr(err); setS({}); }); }
+    catch(e){ S.woHealthBusy=false; S.woHealthMsg='Health-Fehler: '+woHealthErr(e); setS({}); }
   }
   function woHealthDisconnect(){ woHealthSetPref({connected:false}); setS({woHealthMsg:''}); }
   // Aufgezeichnete Einheit zusätzlich nach Apple Health / Google Fit schreiben (still, wenn verbunden + write).
   function woHealthPush(s){
-    try{ if(!s||!woHealthWriteOn()) return; var end=s.ts||Date.now(); var start=end-(s.durationSec||0)*1000;
-      FitInnNative.saveHealthWorkout({start:start,end:end,activity:s.activity,kind:s.kind,kcal:s.kcal,avgHr:s.avgHr,maxHr:s.maxHr,distanceM:s.distanceM||null}).then(function(){}).catch(function(){});
+    try{ if(!s||!woHealthWriteOn()) return; var P=woNativePlugin(); if(!P) return; var end=s.ts||Date.now(); var start=end-(s.durationSec||0)*1000;
+      P.saveHealthWorkout({start:start,end:end,activity:s.activity,kind:s.kind,kcal:s.kcal,avgHr:s.avgHr,maxHr:s.maxHr,distanceM:s.distanceM||null}).then(function(){}).catch(function(){});
     }catch(e){}
   }
   // Sync-Karte im Verlauf: verbinden / synchronisieren / Status – oder „nur in der App"-Hinweis.
