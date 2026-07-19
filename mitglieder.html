@@ -5776,7 +5776,13 @@
   // Robust: greift in der nativen App auch dann, wenn die Shim-Injektion nicht rechtzeitig lief.
   // Idempotent; setzt window.FitInnNative additiv zusammen (Face-ID/Push bleiben, falls vorhanden).
   var woNativeBound=false;
-  function woNativePlugin(){ try{ return (window.Capacitor&&Capacitor.Plugins&&Capacitor.Plugins.FitInnNative)||null; }catch(e){ return null; } }
+  function woNativePlugin(){ try{
+    var c=window.Capacitor; if(!c||!c.Plugins||!c.Plugins.FitInnNative) return null;   // nur wenn nativ registriert
+    // Aufrufbaren Proxy über registerPlugin holen (Capacitor 6+/8) – der direkte Plugins-Eintrag
+    // trägt die Methoden dort nicht mehr. Fallback: der Plugins-Eintrag selbst.
+    if(typeof c.registerPlugin==='function'){ try{ return c.registerPlugin('FitInnNative'); }catch(e){} }
+    return c.Plugins.FitInnNative;
+  }catch(e){ return null; } }
   function woNativeBind(){
     if(woNativeBound) return true;
     var P=woNativePlugin(); if(!P) return false;
