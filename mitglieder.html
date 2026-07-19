@@ -7021,12 +7021,18 @@
     var formOpen=(count===0)||S.figurAdd;
     var form='';
     if(formOpen){
+      // Werte aus Apple Health laden (falls verbunden), damit Gewicht/Körperfett angeboten werden können.
+      if(woHealthCap()&&woHealthConnected()&&DATA.healthMetrics==null){ DATA.healthMetrics=false; woHealthFetchMetrics(); }
+      var hm=(DATA.healthMetrics&&DATA.healthMetrics.ok)?DATA.healthMetrics:null;
       var fields=metrics.map(function(m){
         var last=latestOf[m.key]; var ph=last?('zuletzt '+figFmt(last.latest,m.dec)):('z. B. '+(m.key==='weight'?'82':(m.key==='bodyFat'?'22':'90')));
+        // Chip „aus Apple Health übernehmen" nur bei Gewicht/Körperfett und vorhandenem Wert.
+        var hv=hm?((m.key==='weight'&&hm.weightKg)?(Math.round(hm.weightKg*10)/10):((m.key==='bodyFat'&&hm.bodyFatPct)?(Math.round(hm.bodyFatPct*10)/10):null)):null;
+        var chip=(hv!=null)?'<button type="button" data-act="figHealthFill" data-arg="'+m.key+':'+hv+'" style="display:block;margin:3px 0 0 auto;border:1px solid var(--border);border-radius:9px;background:var(--surface);color:var(--ern-acc);font-size:10.5px;font-weight:800;padding:4px 9px;cursor:pointer">❤️ '+hv+' '+esc(m.unit)+' aus Apple Health</button>':'';
         return '<label style="display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--border)">'+
           '<span style="flex:1;font-size:14px;font-weight:600;color:var(--text)">'+esc(m.label)+'</span>'+
           '<input id="fig_'+m.key+'" type="number" inputmode="decimal" step="0.1" min="'+m.lo+'" max="'+m.hi+'" placeholder="'+esc(ph)+'" style="width:96px;border:1.5px solid var(--border);border-radius:11px;background:var(--surface-2);color:var(--text);font-size:15px;font-weight:700;padding:9px 10px;text-align:right">'+
-          '<span style="width:26px;font-size:12.5px;color:var(--text-soft)">'+esc(m.unit)+'</span></label>';
+          '<span style="width:26px;font-size:12.5px;color:var(--text-soft)">'+esc(m.unit)+'</span></label>'+chip;
       }).join('');
       form='<div style="'+CARD+'"><div style="font-size:15px;font-weight:800;color:var(--text)">'+(count===0?'Deine erste Messung':'Neuer Eintrag')+'</div>'+
         '<div style="font-size:12.5px;color:var(--text-soft);margin-top:3px;margin-bottom:2px">Fülle nur aus, was du gemessen hast – ein Wert genügt.</div>'+
@@ -9521,6 +9527,7 @@
     nav:function(a){ nav(a); },
     // ── Figur-Check (Maße erfassen / Verlauf / FINN-Auswertung) ──
     figurAddToggle:function(){ S.figurAdd=!S.figurAdd; S.figurMsg=''; S.figurErr=false; setS({}); },
+    figHealthFill:function(a){ try{ var p=String(a||'').split(':'); var el=$('fig_'+p[0]); if(el&&p[1]!=null){ el.value=p[1]; el.focus(); } }catch(e){} },
     figurSave:function(){
       if(S.figurBusy) return;
       var keys=(figurData()&&figurData().metrics||[]).map(function(m){ return m.key; });
