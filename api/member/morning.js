@@ -66,6 +66,7 @@ async function readState(id) {
           latest: vLatest, baseline: vBase,
           readiness: V.readiness(vLatest, vBase),
           sleep: V.sleepRef(vLatest, vBase),
+          sleepDetail: V.sleepDetail(vLatest),
           eval: V.evaluate(vLatest, vBase),
           trend: V.trend(vList),
           days: vList.length,

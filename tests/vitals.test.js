@@ -43,6 +43,14 @@ function run() {
   ok('7c. sleepRef 5 h -> bad', V.sleepRef(mk('x', 55, 60, 300), base).cat === 'bad');
   ok('7d. sleepRef Label + Ref', V.sleepRef(list[0], base).label === '7h 40m' && /Schnitt 7h 30m/.test(V.sleepRef(list[0], base).ref));
 
+  // 7e. sleepDetail: Phasen + Score + Effizienz
+  const sd = V.sleepDetail(V.sanitize({ sleepMin: 420, sleepDeepMin: 70, sleepRemMin: 100, sleepLightMin: 250, sleepAwakeMin: 25, sleepInBedMin: 450 }));
+  ok('7e. sleepDetail: Phasen übernommen + hasStages', sd && sd.deepMin === 70 && sd.remMin === 100 && sd.hasStages === true);
+  ok('7f. sleepDetail: Effizienz = asleep/inBed (~93%)', sd.efficiency === 93);
+  ok('7g. sleepDetail: Score 0–100 plausibel', sd.score >= 0 && sd.score <= 100 && sd.score >= 70);
+  ok('7h. sleepDetail: ohne Phasen -> hasStages false, Score da', (function () { var x = V.sleepDetail(V.sanitize({ sleepMin: 300 })); return x && x.hasStages === false && x.deepMin === null && x.score != null; })());
+  ok('7i. sleepDetail: kein Schlaf -> null', V.sleepDetail(V.sanitize({ restingHr: 55 })) === null);
+
   // 8. Trend seit Vortag
   const tr = V.trend(list);
   ok('8. trend: Ruhepuls -1 seit gestern', tr && tr.since && tr.since.rhr === -1);

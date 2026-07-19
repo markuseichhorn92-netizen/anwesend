@@ -217,18 +217,47 @@ public class FitInnNativePlugin: CAPPlugin, CAPBridgedPlugin, CBCentralManagerDe
             healthStore.execute(sq)
         }
 
-        // Schlaf der letzten Nacht (Summe echter Schlafphasen der letzten 18 h).
-        // Kategorie-Rohwerte: 0 = im Bett, 2 = wach; alles andere zählt als schlafend.
+        // Schlaf der letzten Nacht INKL. Phasen (Tief/REM/Leicht/Wach) – für die Oura-artige
+        // Auswertung. Kategorie-Rohwerte (HKCategoryValueSleepAnalysis):
+        //   0 = im Bett, 1 = asleep (unspez., Alt-Format), 2 = wach,
+        //   3 = Core/Leicht, 4 = Tiefschlaf, 5 = REM  (Phasen ab iOS 16 / watchOS 9).
+        // Ältere Quellen liefern nur „asleep" (1) -> dann bleibt nur die Gesamtdauer.
         if let sleepType = HKObjectType.categoryType(forIdentifier: .sleepAnalysis) {
             group.enter()
             let since = Date().addingTimeInterval(-18 * 3600)
             let pred = HKQuery.predicateForSamples(withStart: since, end: Date(), options: [])
             let sq = HKSampleQuery(sampleType: sleepType, predicate: pred, limit: HKObjectQueryNoLimit, sortDescriptors: nil) { _, samples, _ in
-                var sec = 0.0
+                var deep = 0.0, rem = 0.0, core = 0.0, unspec = 0.0, awake = 0.0, inBed = 0.0
+                var sMin = Date.distantFuture, sMax = Date.distantPast
                 for case let s as HKCategorySample in (samples ?? []) {
-                    if s.value != 0 && s.value != 2 { sec += s.endDate.timeIntervalSince(s.startDate) }
+                    let d = s.endDate.timeIntervalSince(s.startDate)
+                    switch s.value {
+                    case 0: inBed += d
+                    case 2: awake += d
+                    case 3: core += d
+                    case 4: deep += d
+                    case 5: rem += d
+                    default: unspec += d   // 1 = asleepUnspecified
+                    }
+                    if s.value != 0 && s.value != 2 {   // echte Schlafphase -> Zeitfenster spannen
+                        if s.startDate < sMin { sMin = s.startDate }
+                        if s.endDate > sMax { sMax = s.endDate }
+                    }
                 }
-                syncQ.async { out["sleepMin"] = Int(sec / 60.0); group.leave() }
+                let asleep = deep + rem + core + unspec
+                syncQ.async {
+                    out["sleepMin"] = Int(asleep / 60.0)
+                    out["sleepDeepMin"] = Int(deep / 60.0)
+                    out["sleepRemMin"] = Int(rem / 60.0)
+                    out["sleepLightMin"] = Int((core + unspec) / 60.0)
+                    out["sleepAwakeMin"] = Int(awake / 60.0)
+                    out["sleepInBedMin"] = Int(inBed / 60.0)
+                    if sMax > sMin {
+                        out["sleepStart"] = sMin.timeIntervalSince1970 * 1000.0
+                        out["sleepEnd"] = sMax.timeIntervalSince1970 * 1000.0
+                    }
+                    group.leave()
+                }
             }
             healthStore.execute(sq)
         }
