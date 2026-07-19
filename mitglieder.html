@@ -5808,13 +5808,14 @@
   }
   // Gesundheits-Kennzahlen (Ruhepuls, HRV, Schlaf, Gewicht, Körperfett, VO2max, Schritte) aus Apple Health.
   function woHealthFetchMetrics(){
-    var P=woNativePlugin(); if(!P||!P.getHealthMetrics) return;
-    var go=function(){ try{ P.getHealthMetrics().then(function(r){ if(r&&r.ok){ DATA.healthMetrics=Object.assign({t:Date.now()},r); rIf(['tag','morning','fort','home','figur']); } }).catch(function(){}); }catch(e){} };
+    var P=woNativePlugin(); if(!P||!P.getHealthMetrics){ DATA.healthMetrics={ok:false,err:'Plugin ohne getHealthMetrics – App aktualisieren/neu bauen',t:Date.now()}; return; }
+    var done=function(r){ DATA.healthMetrics=Object.assign({t:Date.now()},(r&&typeof r==='object')?r:{ok:false,err:'leere Antwort'}); rIf(['tag','morning','fort','home','figur']); };
+    var go=function(){ try{ P.getHealthMetrics().then(done).catch(function(e){ done({ok:false,err:String((e&&(e.message||e.errorMessage))||e)}); }); }catch(e){ done({ok:false,err:String(e)}); } };
     // Erst Freigabe sicherstellen (fragt bei bereits Verbundenen die NEUEN Kategorien nach), dann lesen.
     try{ if(P.healthAuth){ P.healthAuth().then(go).catch(go); } else { go(); } }catch(e){ go(); }
   }
   function woHealthMetricsRow(){
-    var m=DATA.healthMetrics; if(!m||!m.ok) return '';
+    var m=DATA.healthMetrics; if(m==null||m===false) return '';   // lädt noch
     var items=[];
     if(m.restingHr) items.push(['❤️','Ruhepuls',Math.round(m.restingHr)+' bpm']);
     if(m.hrv) items.push(['〰️','HRV',Math.round(m.hrv)+' ms']);
@@ -5823,9 +5824,14 @@
     if(m.weightKg) items.push(['⚖️','Gewicht',(Math.round(m.weightKg*10)/10)+' kg']);
     if(m.bodyFatPct) items.push(['📊','Körperfett',(Math.round(m.bodyFatPct*10)/10)+' %']);
     if(m.steps) items.push(['👟','Schritte',m.steps.toLocaleString('de-DE')]);
-    if(!items.length) return '';
-    var cells=items.map(function(c){ return '<div style="flex:1 1 30%;min-width:90px;background:var(--surface-2);border-radius:12px;padding:9px 8px"><div style="font-size:10px;font-weight:800;color:var(--text-soft)">'+c[0]+' '+esc(c[1])+'</div><div style="font-size:15px;font-weight:900;color:var(--text);margin-top:1px">'+esc(String(c[2]))+'</div></div>'; }).join('');
-    return '<div style="margin-top:13px"><div style="font-size:11px;font-weight:900;color:var(--text-soft);text-transform:uppercase;letter-spacing:.4px;margin-bottom:7px">Aus Apple Health</div><div style="display:flex;flex-wrap:wrap;gap:7px">'+cells+'</div></div>';
+    if(items.length){
+      var cells=items.map(function(c){ return '<div style="flex:1 1 30%;min-width:90px;background:var(--surface-2);border-radius:12px;padding:9px 8px"><div style="font-size:10px;font-weight:800;color:var(--text-soft)">'+c[0]+' '+esc(c[1])+'</div><div style="font-size:15px;font-weight:900;color:var(--text);margin-top:1px">'+esc(String(c[2]))+'</div></div>'; }).join('');
+      return '<div style="margin-top:13px"><div style="font-size:11px;font-weight:900;color:var(--text-soft);text-transform:uppercase;letter-spacing:.4px;margin-bottom:7px">Aus Apple Health</div><div style="display:flex;flex-wrap:wrap;gap:7px">'+cells+'</div></div>';
+    }
+    // Geladen, aber keine Werte -> ehrlicher Hinweis + Mini-Diagnose.
+    var keys=['restingHr','hrv','sleepMin','vo2max','weightKg','bodyFatPct','steps'].filter(function(k){ return m[k]!=null; });
+    var diag=(m.ok===false&&m.err)?('Abruf: '+m.err):('geliefert: '+(keys.join(', ')||'—'));
+    return '<div style="margin-top:12px;background:var(--surface-2);border-radius:12px;padding:11px 12px;font-size:11.5px;font-weight:700;color:var(--text-soft);line-height:1.45">Noch keine Werte aus Apple Health. <b>Ruhepuls, HRV, Schlaf &amp; VO₂max</b> brauchen eine <b>Apple&nbsp;Watch</b>; <b>Gewicht/Körperfett</b> eine verbundene <b>Waage</b>. Schritte kommen vom iPhone.<div style="font-size:9.5px;color:var(--placeholder);margin-top:6px">'+esc(diag)+'</div></div>';
   }
   // Kleine Diagnose für die Health-Karte (nur in der nativen App sichtbar).
   function woHealthDiag(){ try{ var c=window.Capacitor; var keys=(c&&c.Plugins)?Object.keys(c.Plugins).join(', '):'—'; return 'Cap:'+(c?1:0)+' · nativ:'+((c&&c.isNativePlatform&&c.isNativePlatform())?1:0)+' · FitInnNative-Plugin:'+(woNativePlugin()?'JA':'nein')+' · Plugins:['+keys+']'; }catch(e){ return 'diag:'+e; } }
