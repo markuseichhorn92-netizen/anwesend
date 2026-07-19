@@ -1,8 +1,9 @@
 # Ernährungs-Premium — Rechtstexte (ENTWURF zur anwaltlichen Prüfung)
 
 > **Wichtig:** Dieses Dokument ist ein **Entwurf/Vorlage** für die Erweiterung eurer
-> Website-AGB und -Datenschutzerklärung um das **digitale Premium-Abo** (Ernährungs-
-> Premium, Abrechnung über Stripe). Es ist **keine Rechtsberatung**. Vor dem
+> Website-AGB und -Datenschutzerklärung um das **Premium-Angebot** (Ernährungs-
+> Premium, Abrechnung als **Magicline-Zusatzmodul per SEPA-Lastschrift über den
+> Mitgliedsvertrag**). Es ist **keine Rechtsberatung**. Vor dem
 > Premium-Launch von einem Anwalt/Steuerberater prüfen und die **Platzhalter**
 > (`[...]`) mit den echten Firmendaten füllen.
 
@@ -10,13 +11,15 @@
 
 - **In-App-Rechtsscreen „Widerruf & Rechtliches"** (`nav 'recht'`, erreichbar aus der
   Fußzeile, aus dem Kauf-Screen und aus „Mein Abo"): §312j-Pflichtinfos,
-  Widerrufsbelehrung (amtliches Muster, digitale Dienstleistung), Muster-
-  Widerrufsformular und der **Pflicht-Widerrufsbutton**.
-- **Pflicht-Widerrufsbutton** (seit 2026 für online geschlossene B2C-Fernabsatz-
-  verträge): „Vertrag widerrufen" → Bestätigungsschritt → Absenden. Der Server
-  (`api/member/nutrition-billing.js`, Action `widerruf`) beendet das Abo **sofort**
-  (Stripe), erfasst den Widerruf als Vorgang, benachrichtigt das Studio und schickt
-  dem Mitglied eine **Eingangsbestätigung per E-Mail** (dauerhafter Datenträger).
+  Widerrufsbelehrung (amtliches Muster, digitale Dienstleistung) und das
+  Muster-Widerrufsformular.
+- **Kündigung & Widerruf:** Premium ist ein Magicline-Zusatzmodul; die Abrechnung wird
+  über die **Modul-Kündigung** in der App beendet
+  (`POST /api/member/modules { action:'cancel-premium' }`, SEPA über den
+  Mitgliedsvertrag). Ein Widerruf innerhalb der Frist wird über das
+  Muster-Widerrufsformular bzw. eine eindeutige Erklärung (z. B. E-Mail an das Studio)
+  erklärt und vom Studio als Vorgang bearbeitet; die Mitgliedschaft selbst bleibt
+  unberührt.
 - **§312j-Einwilligung** im Kauf-Flow: Checkbox „Ich verlange ausdrücklich, dass … sofort
   begonnen wird …" — ohne Häkchen startet der Kauf nicht.
 - **Firmendaten-Platzhalter** stehen zentral in `mitglieder.html` in `var LEGAL={…}`
@@ -38,8 +41,9 @@
 **§ A Vertragsgegenstand.** Ernährungs-Premium ist eine kostenpflichtige, digitale
 Zusatzleistung innerhalb der Mitglieder-App (KI-gestützte Ernährungsfunktionen: Foto-
 Analyse, KI-Chat „FINN", KI-Rezepte, Wochenplan, Auswertung). Die kostenlosen
-Basisfunktionen bleiben unberührt. Premium ist **kein** Bestandteil des Studio-
-Mitgliedsvertrags und wird separat abgeschlossen.
+Basisfunktionen bleiben unberührt. Premium wird als kostenpflichtiges **Zusatzmodul
+zum Mitgliedsvertrag** gebucht und ist eigenständig – unabhängig von der Mitgliedschaft
+– kündbar; die Mitgliedschaft selbst bleibt davon unberührt.
 
 **§ B Preise & Laufzeit.** Der Preis beträgt `[4,99 €]`/Monat inkl. gesetzlicher
 USt. Der Vertrag läuft **monatlich** und verlängert sich automatisch um je einen
@@ -51,9 +55,10 @@ Abrechnung.
 Abrechnungsmonats** kündbar — direkt in der App unter „Mein Abo". Der Zugang bleibt
 bis zum Periodenende erhalten.
 
-**§ D Zahlungsabwicklung.** Die Zahlung wird über den Zahlungsdienstleister **Stripe**
-abgewickelt. Es gelten die dort im Bezahlvorgang wählbaren Zahlungsarten. Der
-Anbieter erhält keine vollständigen Zahlungsdaten (keine Kartennummer im Klartext).
+**§ D Zahlungsabwicklung.** Die Abrechnung erfolgt als **Magicline-Zusatzmodul per
+SEPA-Lastschrift über den bestehenden Mitgliedsvertrag**. Es gelten die im
+Mitgliedsvertrag hinterlegten SEPA-Mandats-/Bankdaten. In der App werden keine
+Kartendaten erhoben oder gespeichert.
 
 **§ E Widerrufsrecht.** Verbraucher haben ein 14-tägiges Widerrufsrecht (siehe
 Widerrufsbelehrung, Abschnitt 4). Für die digitale Dienstleistung gilt: Verlangt der
@@ -69,19 +74,22 @@ Ankündigung/Sonderkündigungsrecht.]`
 **§ G Keine medizinische Beratung.** Die Inhalte dienen der allgemeinen
 Ernährungsbildung und ersetzen **keine** medizinische oder diätologische Beratung.
 
-## 3. Datenschutz-Zusatz „Premium/Stripe" (Entwurf)
+## 3. Datenschutz-Zusatz „Premium/Zahlung (SEPA)" (Entwurf)
 
 **Verantwortlicher:** siehe Impressum (Abschnitt 1).
 
-**Zahlungsabwicklung (Stripe).** Zur Abwicklung des Premium-Abos setzen wir **Stripe
-Payments Europe, Ltd.** ein. Verarbeitet werden u. a. Name, E-Mail, Zahlungsmittel-
-Daten, Betrag, Abo-/Rechnungsdaten sowie technische Metadaten. Rechtsgrundlage:
-Art. 6 Abs. 1 lit. b DSGVO (Vertragserfüllung) und lit. f (sichere Zahlungsabwicklung/
-Betrugsprävention). Es kann zu einer Übermittlung in Drittländer (u. a. USA) kommen;
-Grundlage sind die EU-Standardvertragsklauseln. Details: `[Link Stripe-Datenschutz]`.
+**Zahlungsabwicklung (SEPA über den Mitgliedsvertrag).** Die Abrechnung des Premium-
+Moduls erfolgt per SEPA-Lastschrift über den bestehenden Mitgliedsvertrag; die Buchung,
+Verwaltung und Abrechnung des Zusatzmoduls läuft über unser Studioverwaltungssystem
+**Magicline** (`[Anbieter/Anschrift ergänzen]`). Verarbeitet werden u. a. Name, die im
+Mitgliedsvertrag hinterlegten SEPA-/Bankdaten, Betrag sowie Vertrags-/Rechnungsdaten.
+Rechtsgrundlage: Art. 6 Abs. 1 lit. b DSGVO (Vertragserfüllung) und lit. f (sichere
+Zahlungsabwicklung). Eine Kartenzahlung in der App oder eine Übermittlung von
+Zahlungsdaten an einen externen Zahlungsdienstleister findet nicht statt.
 
 **Entitlement/Status.** Wir speichern zum Konto den Premium-Status (aktiv/Test/
-gekündigt, Laufzeitende, Stripe-Kennungen) zur Bereitstellung der Leistung.
+gekündigt, Laufzeitende, Kennung des gebuchten Zusatzmoduls) zur Bereitstellung der
+Leistung.
 
 **Widerruf/Vorgänge.** Ein erklärter Widerruf wird als Vorgang gespeichert und dem
 Studio zur Bearbeitung (Erstattung) übermittelt; die Eingangsbestätigung erfolgt per
@@ -100,8 +108,8 @@ diesen Vertrag zu widerrufen. Die Widerrufsfrist beträgt vierzehn Tage ab dem T
 Vertragsabschlusses. Um Ihr Widerrufsrecht auszuüben, müssen Sie uns
 (`[Firma, Anschrift, E-Mail]`) mittels einer eindeutigen Erklärung (z. B. Brief oder
 E-Mail) über Ihren Entschluss, diesen Vertrag zu widerrufen, informieren. Sie können
-dafür das Muster-Widerrufsformular verwenden oder den Widerrufsbutton in der App
-nutzen. Zur Wahrung der Frist genügt die rechtzeitige Absendung.
+dafür das Muster-Widerrufsformular verwenden. Zur Wahrung der Frist genügt die
+rechtzeitige Absendung.
 
 **Folgen des Widerrufs.** Im Falle eines wirksamen Widerrufs sind die beiderseits
 empfangenen Leistungen zurückzugewähren; Rückzahlung binnen vierzehn Tagen. Haben Sie
@@ -129,5 +137,5 @@ der folgenden Dienstleistung: Ernährungs-Premium (Abo)
       verlinkt; Website-„Widerruf"-Link zeigt nicht mehr fälschlich auf die
       Mitgliedschafts-Kündigungsbedingungen.
 - [ ] Anwaltliche Prüfung der AGB/Datenschutz/Widerruf-Texte erfolgt.
-- [ ] USt-Behandlung der digitalen Leistung mit Steuerberater bestätigt (ggf. Stripe Tax).
+- [ ] USt-Behandlung der digitalen Leistung mit Steuerberater bestätigt (Abrechnung über den Mitgliedsvertrag/Magicline).
 - [ ] `hasMail` in Produktion aktiv, damit die Widerruf-Eingangsbestätigung zugestellt wird.

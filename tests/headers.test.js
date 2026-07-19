@@ -30,7 +30,7 @@ function run() {
   ok('3. frame-ancestors self auf App-Seiten', /frame-ancestors 'self'/.test(headerFor('widget', 'Content-Security-Policy') || ''));
   const pp = headerFor('widget', 'Permissions-Policy') || '';
   ok('3b. Permissions-Policy gesetzt (Kamera/Mikro/Geo self)', /camera=\(self\)/.test(pp) && /geolocation=\(self\)/.test(pp));
-  ok('3c. Permissions-Policy sperrt payment NICHT (Stripe/Apple Pay unangetastet)', !/payment/.test(pp));
+  ok('3c. Permissions-Policy sperrt die Payment-API NICHT', !/payment/.test(pp));
   const cspro = headerFor('widget', 'Content-Security-Policy-Report-Only') || '';
   ok('3d. CSP-Report-Only vorhanden (Weg zur strikten CSP)', /default-src 'self'/.test(cspro) && /recaptcha|google\.com/.test(cspro));
 
@@ -47,13 +47,9 @@ function run() {
     });
   });
   // Zahlungsdateien wurden bewusst nicht angefasst -> vom Tripwire ausgenommen.
-  const payment = new Set(['api/member/nutrition-billing.js', 'api/member/payment-instrument.js', 'api/member/payment-session.js']);
+  const payment = new Set(['api/member/payment-instrument.js', 'api/member/payment-session.js']);
   const realMissing = missing.filter((f) => !payment.has(f));
   ok('5. alle Nicht-Zahlungs-Handler mit Cache-Control (fehlend: ' + (realMissing.join(',') || 'keine') + ')', realMissing.length === 0);
-
-  // 6) Zahlungs-/Stripe-Dateien in diesem Branch nicht veraendert (gegen main-Basis siehe Report)
-  //    Hier: statisch sicherstellen, dass kein Cache-Control-Sweep sie beruehrt hat.
-  ok('6. Zahlungsdateien ohne Sweep-Aenderung', true);
 
   console.log(pass ? 'HEADERS PASS' : 'HEADERS FAIL');
   process.exit(pass ? 0 : 1);

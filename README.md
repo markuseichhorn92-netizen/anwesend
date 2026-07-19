@@ -12,7 +12,7 @@ bewusst ohne Framework und (bis auf Dev-Tools) ohne npm-Dependencies.
 | **Team-Backend** | `team-backend.html` (`/team`) | Posteingang, Mitgliederverwaltung, Termine, Statistiken, Schichtplan, Leads, Rückholung, Moderation — rollenbasiert (admin/trainer) |
 | **Live-Auslastung** | `widget.html`, `auslastung.html` | Anonyme Personenzahl als einbettbares Widget + „typische Auslastung"-Kurve |
 | **APIs** | `api/**` | ~125 Serverless Functions (Mitglied, Team, Webhooks, interne Crons) |
-| **Fachlogik** | `lib/**` | Sessions/Magicline (`members.js`), Team-Auth + Capabilities, Push (FCM/APNs), Inbox, Stripe-Premium, KI (`ai.js`), Social, Cron-Auth … |
+| **Fachlogik** | `lib/**` | Sessions/Magicline (`members.js`), Team-Auth + Capabilities, Push (FCM/APNs), Inbox, Magicline-Premium (`mlPremium.js`), KI (`ai.js`), Social, Cron-Auth … |
 
 \* Ernährung ist **gelauncht** (Standard an, Notaus `FEATURE_ERN=0`);
 Community ist über das serverseitige Flag `FEATURE_SOCIAL` geschaltet
@@ -28,9 +28,9 @@ Vercel Serverless Functions (api/**)          ← Security-Header via vercel.jso
    │            │              │
    ▼            ▼              ▼
 lib/** ──► Upstash Redis   Magicline Open API   Dritt-Dienste (nur wo nötig):
-(Fach-     (Sessions,      (Mitglieder,          Stripe (Premium-Abo),
- logik)     Push-Tokens,    Verträge,            Anthropic-KI (FINN),
-            Inbox, Flags,   Check-ins,           Resend (E-Mail), Twilio/WA,
+(Fach-     (Sessions,      (Mitglieder,          Anthropic-KI (FINN),
+ logik)     Push-Tokens,    Verträge,            Resend (E-Mail),
+            Inbox, Flags,   Check-ins,           Twilio/WA,
             Historie)       Termine)             Open Food Facts, FCM/APNs
 ```
 
@@ -40,7 +40,7 @@ lib/** ──► Upstash Redis   Magicline Open API   Dritt-Dienste (nur wo nöt
 - **Sicherheitsmodell** (Sessions, Rollen-Matrix, Cron-Auth, Check-in,
   Push-Token-Bindung, Header/CSP): **[docs/SECURITY.md](docs/SECURITY.md)**
 - **Seitengrößen & Modularisierungs-Fahrplan:** [docs/PERFORMANCE.md](docs/PERFORMANCE.md)
-- Weitere Doku: `docs/STRIPE-PREMIUM.md` (Premium-Abo), `docs/EIGENE-APP.md`
+- Weitere Doku: `docs/PREMIUM-MAGICLINE-MODUL.md` (Coach Premium), `docs/EIGENE-APP.md`
   (Capacitor), `docs/COMMUNITY-RECHT.md`, `docs/NUTRITION-REZEPTE.md`,
   `docs/OPEN-FOOD-FACTS.md`, `docs/CUSTOM_DOMAIN.md`
 

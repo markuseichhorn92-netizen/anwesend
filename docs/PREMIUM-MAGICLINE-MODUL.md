@@ -1,9 +1,9 @@
 # Coach Premium über ein Magicline-Zusatzmodul (SEPA)
 
-Alternative (oder Ergänzung) zum Stripe-Abo: **Coach Premium** wird als
-**Magicline-Zusatzmodul** („App Premium") verkauft. Die Abrechnung läuft über den
-bestehenden **Mitgliedsvertrag per SEPA-Lastschrift** – kein Stripe, keine Kartendaten
-in der App.
+**Coach Premium** wird als **Magicline-Zusatzmodul** („App Premium") verkauft – das ist
+der **einzige** Weg, Premium zu erwerben. Die Abrechnung läuft über den bestehenden
+**Mitgliedsvertrag per SEPA-Lastschrift** – kein separater Zahlungsdienstleister, keine
+Kartendaten in der App.
 
 ## Umfang von „Coach Premium"
 
@@ -55,8 +55,9 @@ Der In-App-Kauf des Moduls erfüllt die Fernabsatz-Pflichten:
 ## Aktivierung
 
 Der Weg ist **nur aktiv, wenn `ML_PREMIUM_MODULE_ID` gesetzt ist.** Ohne die Variable
-bleibt alles beim Stripe‑Weg. Ein **aktives Stripe‑Abo hat immer Vorrang** und wird nie
-vom Modulstatus überschrieben (`lib/mlPremium.js`).
+kann in der App kein Premium hinzugebucht werden; bereits bestehende Berechtigungen
+(z. B. Team‑Comp, `source:'team*'`) bleiben unberührt. Der Premium‑Status wird
+server‑autoritativ aus dem Modulstatus abgeglichen (`lib/mlPremium.js`).
 
 ### 1. Zusatzmodul in Magicline anlegen
 
@@ -98,8 +99,8 @@ In Vercel unter *Project → Settings → Environment Variables* eintragen und n
 
 - **Buchen (in der App):** `POST /api/member/modules { action:'book', moduleId }` bucht das
   Modul über die Self‑Service‑API. Bei Erfolg wird das Premium **sofort freigeschaltet**
-  (`grantFromBooking`) und in denselben Entitlement‑Datensatz gespiegelt wie Stripe,
-  mit `source:'magicline'`. So muss keine einzige Premium‑Gate‑Stelle geändert werden.
+  (`grantFromBooking`) und in den Entitlement‑Datensatz mit `source:'magicline'`
+  geschrieben. So muss keine einzige Premium‑Gate‑Stelle geändert werden.
 - **Kündigen (in der App):** `POST /api/member/modules { action:'cancel-premium' }`. Die
   **Modul‑Vertrags‑ID kommt server‑autoritativ** aus dem Entitlement (nicht vom Client),
   Kündigungsgrund + nächstmögliches Datum werden bestimmt, dann `ordinary-cancelation`.
@@ -110,7 +111,7 @@ In Vercel unter *Project → Settings → Environment Variables* eintragen und n
   Inbox‑Vorgang + Studio‑Mail gesichert – er geht nie verloren.
 
 Alle Magicline‑Zugriffe sind 403‑/fehler‑sicher: ohne Scope/ohne Modul passiert nichts
-Schlimmes, der Stripe‑Weg bzw. der Studio‑Fallback bleibt bestehen.
+Schlimmes, der Studio‑Fallback bleibt bestehen.
 
 ## Test‑Checkliste
 

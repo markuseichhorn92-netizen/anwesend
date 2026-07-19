@@ -164,15 +164,14 @@ Gesundheits- oder Zahlungsdetails, keine Betreffzeilen privater Vorgänge)
   strict-origin-when-cross-origin`
 - `/api/*`: `Cache-Control: private, no-store` (zusätzlich setzen es die
   Member-/Team-Handler selbst)
-- App-Seiten: `Permissions-Policy` (Kamera/Mikro/Standort nur self;
-  **payment bewusst nicht eingeschränkt** – Stripe), Frame-Schutz über CSP
-  `frame-ancestors 'self'` (Widget/Auslastung ausgenommen – einbettbar)
+- App-Seiten: `Permissions-Policy` (Kamera/Mikro/Standort nur self), Frame-Schutz
+  über CSP `frame-ancestors 'self'` (Widget/Auslastung ausgenommen – einbettbar)
 - CSP läuft als **Content-Security-Policy-Report-Only**: Die App besteht aus
   großen Inline-Skripten; eine scharfe CSP würde sie sofort brechen. Weg zur
   scharfen CSP: Report-Only-Verstöße sammeln → Inline-Code in Module
   auslagern (siehe docs/PERFORMANCE.md) → Nonce-basierte `script-src` →
   Report-Only durch Enforcement ersetzen. Berücksichtigt: reCAPTCHA,
-  Google Fonts, Stripe.js.
+  Google Fonts.
 
 ## 7. Weitere Bausteine
 
