@@ -693,7 +693,7 @@
     if(ERN_ON&&(s==='home'||s==='fort')) loadNutri();   // Ernährungs-Vitalpunkte für Startseite/Fortschritt frisch halten
     if(s==='figur'){ S.figurAdd=false; S.figurMsg=''; S.figurErr=false; S.figurBusy=false; S.figurReviewBusy=false; loadFigur(); }
     if(s==='inbody'){ S.inbodyReview=null; S.inbodyMsg=''; S.inbodyErr=false; S.inbodyBusy=false; S.inbodyAssess=''; S.inbodyAssessBusy=false; S.ibMetric=null; S.ibAmpel=false; loadInbody(); }
-    if(s==='morning'){ moStopMeasure(); S.morningPhase='idle'; S.morningMsg=''; S.morningErr=false; S.morningBusy=false; S.morningLiveBpm=null; S.morningElapsed=0; S.morningAssess=null; S.morningAssessBusy=false; S.morningConsentBusy=false; S.morningBreathe=false; S.morningJournal={}; S.vitalMode='morgen'; S.morningMeasureKind='morgen'; S.morningShareBusy=false; S.morningStrapBusy=false; S.morningStrapReserved=false; S.morningStrapErr=''; S.moGuide=false; S.moGuideStep=0; loadMorning(); }
+    if(s==='morning'){ moStopMeasure(); S.morningPhase='idle'; S.morningMsg=''; S.morningErr=false; S.morningBusy=false; S.morningLiveBpm=null; S.morningElapsed=0; S.morningAssess=null; S.morningAssessBusy=false; S.morningConsentBusy=false; S.morningBreathe=false; S.morningJournal={}; S.vitalMode='morgen'; S.morningMeasureKind='morgen'; S.morningShareBusy=false; S.morningStrapBusy=false; S.morningStrapReserved=false; S.morningStrapErr=''; S.moGuide=false; S.moGuideStep=0; S.moMetric=null; loadMorning(); }
     if(SOCIAL_ON&&(s==='home'||s==='profil')) loadSocial();   // Trainingspartner-Snapshot für Startseite/Profil
     if(s==='social'){ S.socMsg=''; S.socErr=false; S.socBusy=false; S.socCopied=false; S.socChat=null; DATA.socDm=null; S.socRoom=null; DATA.socRoomThread=null; S.socRoomCreate=false; S.socRoomInvite=false; S.socRules=false; if(window.__socBuddy){ S.socCode=window.__socBuddy; window.__socBuddy=null; } if(window.__socOpenChat){ S.socChat=String(window.__socOpenChat); window.__socOpenChat=null; DATA.socDm=null; loadDm(S.socChat); } else if(window.__socOpenRoom){ S.socRoom=String(window.__socOpenRoom); window.__socOpenRoom=null; DATA.socRoomThread=null; loadRoomThread(S.socRoom); } loadSocial(); }
     if(s==='blog'){ S.blogSel=null; S.blogPost=null; loadBlog(); }
@@ -7377,12 +7377,45 @@
       '<button data-act="morningConsentCancel" style="width:100%;margin-top:8px;border:none;background:none;color:var(--text-soft);font-size:12.5px;font-weight:700;cursor:pointer;padding:6px">Später</button>'+
       '</div>';
   }
+  // Was jeder Messwert bedeutet + was er heute für dich heißt (für das Detail-Sheet beim Antippen).
+  var MO_METRIC_INFO={
+    rhr:{icon:'❤️',what:'Dein Ruhepuls ist die Anzahl der Herzschläge pro Minute in völliger Ruhe. Je erholter und fitter du bist, desto niedriger liegt er meist. Er reagiert empfindlich auf Schlaf, Stress, Alkohol und beginnende Infekte.',
+      day:{good:'Im grünen Bereich – dein Herz-Kreislauf-System ist erholt. Heute kannst du voll belasten.',warn:'Leicht erhöht: rechne heute mit etwas weniger Reserven. Moderat trainieren, gut trinken, früh schlafen.',bad:'Deutlich erhöht: dein Körper steht unter Last. Heute lieber locker, viel Ruhe – bei Krankheitsgefühl kein Training.',info:'Noch in Kalibrierung – nach ein paar Messungen ordnet FINN deinen Ruhepuls persönlich ein.'}},
+    hrv:{icon:'📈',what:'Die Herzratenvariabilität (HRV/RMSSD) misst die winzigen Schwankungen zwischen deinen Herzschlägen. Höhere HRV = aktiver Ruhenerv (Parasympathikus) und gute Erholung; niedrige HRV = Anspannung oder Belastung.',
+      day:{good:'Gute HRV – dein Nervensystem ist erholt und bereit. Heute darf es fordernd sein.',warn:'Etwas unter deinem Schnitt: du bist noch nicht ganz erholt. Halte die Intensität heute im Zaum.',bad:'Deutlich unter deinem Schnitt: dein Körper braucht Erholung. Setz heute auf Regeneration, Schlaf und Entspannung.',info:'Die HRV-Baseline entsteht über mehrere Messungen – bald wird die Einordnung persönlich.'}},
+    sdnn:{icon:'📊',what:'Die SDNN ist ein weiteres HRV-Maß und beschreibt die Gesamt-Variabilität deiner Herzschläge über die Messung. Sie ergänzt den RMSSD und reagiert etwas träger.',
+      day:{info:'Ein Zusatzwert zur HRV – je höher, desto mehr Reserve. Nutz ihn als Ergänzung zur RMSSD-Ampel.'}},
+    resp:{icon:'🫁',what:'Die Atemfrequenz ist die Anzahl deiner Atemzüge pro Minute in Ruhe (meist 12–20). Eine erhöhte Ruhe-Atemfrequenz kann auf Belastung, Stress oder einen beginnenden Infekt hindeuten.',
+      day:{info:'Deine Ruhe-Atmung ist unauffällig – ein gutes Zeichen.',warn:'Erhöhte Ruhe-Atemfrequenz: gönn dir heute Ruhe und beobachte, ob sich ein Infekt anbahnt.'}},
+    ortho:{icon:'🔄',what:'Die Orthostase misst, wie stark dein Puls beim Aufstehen ansteigt. Ein moderater Anstieg (≤ 30 bpm) ist normal; ein großer Sprung deutet oft auf Flüssigkeitsmangel oder Erschöpfung hin.',
+      day:{good:'Deine Kreislaufreaktion ist normal – gut so.',warn:'Großer Puls-Anstieg beim Aufstehen: trink heute genug und geh es ruhiger an.'}}
+  };
   function moEvalCard(){
     var d=morningData(); var ev=(d&&d.eval)||[]; if(!ev.length) return '';
-    var rows=ev.map(function(m,i){ var c=ibCat(m.cat);
-      return '<div style="display:flex;align-items:flex-start;gap:12px;padding:12px 0'+(i?';border-top:1px solid var(--border)':'')+'"><span style="width:11px;height:11px;border-radius:50%;background:'+c.dot+';flex-shrink:0;margin-top:5px"></span><div style="flex:1;min-width:0"><div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px"><span style="font-size:14px;font-weight:800;color:var(--text)">'+esc(m.label)+'</span><span style="font-size:15px;font-weight:900;color:'+c.fg+';white-space:nowrap">'+moNum(m.value)+esc(m.unit||'')+'</span></div>'+(m.note?'<div style="font-size:12px;color:var(--text-soft);font-weight:500;line-height:1.45;margin-top:3px">'+esc(m.note)+'</div>':'')+(m.ref?'<div style="font-size:10.5px;color:var(--text-soft);font-weight:700;margin-top:3px;opacity:.85">'+esc(m.ref)+'</div>':'')+'</div></div>';
+    var rows=ev.map(function(m,i){ var c=ibCat(m.cat); var tap=!!MO_METRIC_INFO[m.key];
+      return '<button '+(tap?'data-act="moMetric" data-arg="'+esc(m.key)+'"':'')+' style="display:flex;align-items:flex-start;gap:12px;padding:13px 0'+(i?';border-top:1px solid var(--border)':'')+';width:100%;background:none;border:none;text-align:left;cursor:'+(tap?'pointer':'default')+';font-family:inherit"><span style="width:11px;height:11px;border-radius:50%;background:'+c.dot+';flex-shrink:0;margin-top:5px"></span><div style="flex:1;min-width:0"><div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px"><span style="font-size:14px;font-weight:800;color:var(--text)">'+esc(m.label)+'</span><span style="font-size:15px;font-weight:900;color:'+c.fg+';white-space:nowrap">'+moNum(m.value)+esc(m.unit||'')+'</span></div>'+(m.note?'<div style="font-size:12px;color:var(--text-soft);font-weight:500;line-height:1.45;margin-top:3px">'+esc(m.note)+'</div>':'')+(m.ref?'<div style="font-size:10.5px;color:var(--text-soft);font-weight:700;margin-top:3px;opacity:.85">'+esc(m.ref)+'</div>':'')+'</div>'+(tap?svg('<path d="M9 18l6-6-6-6"></path>',{c:'var(--text-soft)',w:2.2,s:16}):'')+'</button>';
     }).join('');
-    return '<div style="'+MO_CARD+'"><div style="font-size:15px;font-weight:900;color:var(--text);margin-bottom:2px">Deine Werte heute</div>'+rows+'</div>';
+    return '<div style="'+MO_CARD+'"><div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:2px"><div style="font-size:15px;font-weight:900;color:var(--text)">Deine Werte heute</div><div style="font-size:11px;font-weight:700;color:var(--text-soft)">Tippen für Erklärung</div></div>'+rows+'</div>';
+  }
+  // Detail-Sheet: was der Messwert ist, was dein Wert bedeutet, was er heute für dich heißt.
+  function moMetricSheet(){
+    var key=S.moMetric; if(!key) return ''; var info=MO_METRIC_INFO[key]; if(!info) return '';
+    var d=morningData(); var ev=(d&&d.eval)||[]; var m=null; for(var i=0;i<ev.length;i++){ if(ev[i].key===key){ m=ev[i]; break; } }
+    if(!m) return '';
+    var c=ibCat(m.cat);
+    var dayTxt=(info.day&&(info.day[m.cat]||info.day.info))||'';
+    var refBox=m.ref?'<div style="font-size:12px;color:var(--text-soft);font-weight:700;margin-top:6px">'+esc(m.ref)+'</div>':'';
+    return '<div data-act="moMetricClose" style="position:fixed;inset:0;background:rgba(4,20,24,.55);z-index:120;display:flex;align-items:flex-end;justify-content:center" role="dialog" aria-modal="true" aria-label="Messwert-Erklärung">'+
+      '<div data-act="noop" style="width:100%;max-width:480px;max-height:92vh;overflow-y:auto;-webkit-overflow-scrolling:touch;background:var(--surface);border-radius:22px 22px 0 0;padding:18px 20px calc(20px + env(safe-area-inset-bottom))">'+
+        '<div style="width:40px;height:4px;border-radius:2px;background:var(--border);margin:0 auto 14px"></div>'+
+        '<div style="display:flex;align-items:center;gap:12px"><div style="width:46px;height:46px;border-radius:14px;background:var(--surface-2);display:flex;align-items:center;justify-content:center;font-size:23px;flex-shrink:0">'+info.icon+'</div><div style="flex:1;min-width:0"><div style="font-size:18px;font-weight:900;color:var(--text)">'+esc(m.label)+'</div><div style="font-size:22px;font-weight:900;color:'+c.fg+';line-height:1.1">'+moNum(m.value)+esc(m.unit||'')+'</div></div>'+
+        '<button data-act="moMetricClose" aria-label="Schließen" style="width:32px;height:32px;border-radius:10px;border:none;background:var(--surface-2);color:var(--text-soft);cursor:pointer;font-size:19px;line-height:1;flex-shrink:0">×</button></div>'+
+        '<div style="background:var(--surface-2);border-radius:14px;padding:13px 15px;margin-top:14px"><div style="display:flex;align-items:center;gap:7px;margin-bottom:5px"><span style="width:9px;height:9px;border-radius:50%;background:'+c.dot+'"></span><span style="font-size:13.5px;font-weight:800;color:'+c.fg+'">'+esc(m.note||'Dein aktueller Wert')+'</span></div>'+refBox+'</div>'+
+        '<div style="font-size:12px;font-weight:900;color:var(--text-soft);text-transform:uppercase;letter-spacing:.4px;margin:16px 0 6px">Was ist das?</div>'+
+        '<div style="font-size:13.5px;font-weight:600;color:var(--text-2);line-height:1.6">'+esc(info.what)+'</div>'+
+        (dayTxt?('<div style="font-size:12px;font-weight:900;color:var(--teal-ink);text-transform:uppercase;letter-spacing:.4px;margin:16px 0 6px">Was heißt das heute für dich?</div><div style="background:rgba(14,96,114,.08);border-radius:14px;padding:13px 15px;font-size:13.5px;font-weight:700;color:var(--text-2);line-height:1.55">🎯 '+esc(dayTxt)+'</div>'):'')+
+        '<div style="font-size:10.5px;color:var(--text-soft);font-weight:600;text-align:center;margin-top:16px;line-height:1.5">Wellness-Orientierung, keine medizinische Diagnose.</div>'+
+      '</div></div>';
   }
   var MO_TREND=[{k:'rhr',label:'Ruhepuls',unit:' bpm',downGood:true},{k:'hrvRmssd',label:'HRV (RMSSD)',unit:' ms',downGood:false},{k:'respRate',label:'Atemfrequenz',unit:' /min',downGood:true}];
   function moTrendCard(){
@@ -8806,6 +8839,7 @@
     if(S.ernUpgrade) html+=ernUpgradeScreen();   // Coach-Premium-Kauf als Bottom-Sheet-Popup über dem aktuellen Screen
     if(S.moGuide && S.screen==='morning') html+=moGuideOverlay();   // Vital-Check Schritt-für-Schritt-Anleitung (Pop-up)
     if(S.screen==='morning' && moMeasuring()) html+=moMeasureOverlay();   // Live-Messung im Vollbild-Popup (Bildschirm bleibt an)
+    if(S.moMetric && S.screen==='morning') html+=moMetricSheet();   // Messwert-Erklärung + Tages-Auswirkung (Detail-Sheet)
     if(S.screen==='ern'&&S.ernCapture) html+=ernErfassen();   // Erfassen-Popup (Bottom-Sheet) über dem Ernährungs-Screen
     if(S.screen==='ern'&&S.ernShop) html+=ernShopSheet();   // Produkt-Check: Scan-Sheet (Einkaufen-Modus)
     if(S.screen==='ern'&&S.ernShopProd) html+=ernShopVerdictSheet();   // Produkt-Check: Ampel-Ergebnis
@@ -8950,6 +8984,8 @@
     morningGuideNext:function(){ S.moGuideStep=Math.min(MO_GUIDE_STEPS.length-1,(parseInt(S.moGuideStep,10)||0)+1); setS({}); },
     morningGuidePrev:function(){ S.moGuideStep=Math.max(0,(parseInt(S.moGuideStep,10)||0)-1); setS({}); },
     morningGuideStart:function(){ var k=S.moGuideKind||'morgen'; S.moGuide=false; S.moGuideStep=0; render(); moBeginMeasure(k); },
+    moMetric:function(a){ if(a&&MO_METRIC_INFO[a]){ S.moMetric=a; try{ window.scrollTo(0,0); }catch(e){} setS({}); } },
+    moMetricClose:function(){ S.moMetric=null; setS({}); },
     morningJournalSet:function(a){ if(!a) return; var i=a.indexOf(':'); if(i<0) return; var f=a.slice(0,i), v=a.slice(i+1); S.morningJournal=S.morningJournal||{}; if(S.morningJournal[f]===v) delete S.morningJournal[f]; else S.morningJournal[f]=v; setS({}); },
     morningJournalNext:function(){ moStartMeasure('morgen'); },
     morningJournalSkip:function(){ moStartMeasure('morgen'); },
@@ -10432,10 +10468,11 @@
     function backTrig(){ return Math.min(window.innerWidth*0.28, 110); }
     function menuOpen(){ return document.body.classList.contains('menu-open'); }
     function overlayOpen(){
-      return !!(S.finnOpen||S.vaOpen||S.ciPopup||S.dp||S.qaOpen||S.ernUpgrade||S.ernCapture||S.ernConfirm||S.ernProd||S.ernShop||S.ernShopProd||S.sos||S.buyGuide||S.ernData||S.ernEdit||S.ernRecipeSel||S.ernFavMgr||S.ernEntryEdit||S.ernLesson||S.ernVert||S.ernCk||S.ernChatOpen||S.ernPlanQuiz||(S.ernKoch!=null)||S.welcomeGift||S.trainFinish||S.trainRun||S.trainDetail||S.trainGenOpen||S.morningBreathe||S.moGuide||(S.morningPhase&&S.morningPhase!=='idle')||S.socChat||S.socRoom||document.querySelector('.obOverlay'));
+      return !!(S.finnOpen||S.vaOpen||S.ciPopup||S.dp||S.qaOpen||S.ernUpgrade||S.ernCapture||S.ernConfirm||S.ernProd||S.ernShop||S.ernShopProd||S.sos||S.buyGuide||S.ernData||S.ernEdit||S.ernRecipeSel||S.ernFavMgr||S.ernEntryEdit||S.ernLesson||S.ernVert||S.ernCk||S.ernChatOpen||S.ernPlanQuiz||(S.ernKoch!=null)||S.welcomeGift||S.trainFinish||S.trainRun||S.trainDetail||S.trainGenOpen||S.morningBreathe||S.moGuide||S.moMetric||(S.morningPhase&&S.morningPhase!=='idle')||S.socChat||S.socRoom||document.querySelector('.obOverlay'));
     }
     function closeKnownOverlay(){
       if(moMeasuring()){ moStopMeasure(); S.morningPhase='idle'; S.morningLiveBpm=null; S.morningElapsed=0; render(); return true; }
+      if(S.moMetric){ S.moMetric=null; render(); return true; }
       if(S.moGuide){ S.moGuide=false; S.moGuideStep=0; render(); return true; }
       if(S.ernShopProd){ S.ernShopProd=null; S.ernShopAlt=null; S.ernShopFinn=null; render(); return true; }
       if(S.ernShop){ try{ window.__ernStopScan&&window.__ernStopScan(); }catch(e){} S.ernShop=false; S.ernScanPurpose='log'; render(); return true; }
