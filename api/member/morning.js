@@ -45,6 +45,7 @@ async function readState(id) {
   let consent = false; try { consent = await MO.getConsent(id); } catch (e) {}
   let teamShare = false; try { teamShare = await MO.getTeamShare(id); } catch (e) {}
   let strapReserved = false; try { strapReserved = await MO.getStrapReserved(id); } catch (e) {}
+  let recovery = null; try { recovery = await MO.getRecovery(id); } catch (e) {}
   let age = 0; try { const prof = (await Coaching.kvGetJson('nutri:p:' + id)) || {}; age = Number(prof.age) || 0; } catch (e) {}
   const tier = Ent.publicTier(await Ent.getEntitlement(id));
   const base = MO.baseline(list);
@@ -70,6 +71,9 @@ async function readState(id) {
     trainingLoad: readiness ? MO.trainingLoad(readiness, latest) : null,
     insights: MO.insights(list),
     overtraining: MO.overtraining(list),
+    // Erholungs-/Pausen-Steuerung: aktiver Modus + (falls keiner aktiv) der aktuelle Vorschlag.
+    recovery: recovery,
+    recoverySuggest: recovery ? { suggest: false } : MO.recoverySuggest(list),
     weekly: MO.weeklyReport(list),
     trend: MO.trend(list),
     minCalib: MO.MIN_CALIB,
@@ -178,6 +182,22 @@ module.exports = async function handler(req, res) {
       if (!ok) return j(res, 200, { ok: false, message: 'Reservierung konnte gerade nicht gespeichert werden – bitte später erneut oder frag an der Rezeption.' });
       try { await MO.setStrapReserved(id, true); } catch (e) {}
       return j(res, 200, { ok: true, reserved: true, message: 'Reserviert! Wir legen dir den Polar H9 an der Rezeption bereit – bezahlen und mitnehmen kannst du ihn direkt an der Theke.' });
+    }
+
+    // Erholungs-/Pausen-Modus annehmen. Dauer/Grund kommen aus dem SERVER-Vorschlag
+    // (nicht vom Client vertraut) – nur wenn aktuell ein Vorschlag aktiv ist.
+    if (action === 'recovery-start') {
+      const list = await MO.list(id);
+      const sug = MO.recoverySuggest(list);
+      if (!sug.suggest) return j(res, 200, { ok: false, error: 'no_suggestion', message: 'Aktuell ist keine Pause nötig.' });
+      const r = await MO.setRecovery(id, sug.days, sug.reason);
+      if (!r.ok) return j(res, 200, { ok: false, error: 'save_failed' });
+      return j(res, 200, Object.assign({ ok: true }, await readState(id)));
+    }
+    // Erholungsphase vorzeitig beenden (immer erlaubt – eigene Entscheidung).
+    if (action === 'recovery-end') {
+      await MO.clearRecovery(id);
+      return j(res, 200, Object.assign({ ok: true }, await readState(id)));
     }
 
     // Messung löschen (immer erlaubt – eigene Daten). scope:'training' -> Trainings-Check-in.

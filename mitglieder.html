@@ -5614,8 +5614,21 @@
   // ═══ Vital-Signal des Tages – EINE Quelle für Training, Ernährung und Coach ═══
   // Der Vital-Check (Morgen-Check) schlägt damit überall konsistent durch: Trainings-Empfehlung,
   // Ernährungs-Fokus und Coach-Tagesblick lesen alle aus dieser Funktion.
+  // Verbleibende Tage einer Erholungsphase (inkl. heute) aus dem „bis"-Datum.
+  function moRecDaysLeft(until){ try{ var u=Date.parse(String(until).slice(0,10)+'T12:00:00'); var t=Date.parse(isoToday()+'T12:00:00'); if(isNaN(u)||isNaN(t)) return 0; return Math.max(0,Math.round((u-t)/864e5)); }catch(e){ return 0; } }
+  function moRecoveryActive(){ var d=DATA.morning; return (d&&d.ok&&d.recovery&&d.recovery.active)?d.recovery:null; }
   function vitalToday(){
     var d=(DATA.morning&&DATA.morning.ok)?DATA.morning:null; if(!d) return null;
+    // Aktiver Erholungs-/Pausen-Modus überschreibt das Tages-Signal überall.
+    var rec=(d.recovery&&d.recovery.active)?d.recovery:null;
+    if(rec){
+      var untilStr=deDate(rec.until+'T12:00:00');
+      return { level:'rot', recovery:true, until:rec.until, untilStr:untilStr, reason:rec.reason||'', emo:'🛌', col:'#b4552f', bg:'#FBECE8',
+        trainT:'Erholungsphase aktiv', trainS:'Training pausiert bis '+untilStr+' · leichte Bewegung ist ok',
+        ernT:'Erholung unterstützen', ernS:'Kein Kaloriendefizit jetzt: iss auf Erhalt, genug Eiweiß und viel Flüssigkeit – dein Körper repariert sich.',
+        coach:'Du bist in einer bewussten Erholungsphase (bis '+untilStr+'). Gib deinem Körper diese Zeit – leichte Bewegung, gutes Essen und Schlaf sind jetzt dein Training.',
+        headline:'', otNote:'' };
+    }
     var r=d.readiness, m=d.latest, ot=d.overtraining;
     var alert=!!(ot&&ot.level==='alert');
     var warn=!!(ot&&ot.level==='warn');
@@ -5651,6 +5664,51 @@
     var v=vitalToday(); if(!v) return '';
     return '<div data-act="nav" data-arg="morning" style="display:flex;align-items:center;gap:11px;background:'+v.bg+';border-radius:16px;padding:13px 15px;margin-bottom:14px;cursor:pointer"><span style="font-size:20px">'+v.emo+'</span><div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:900;color:'+v.col+'">Vital-Check: '+esc(v.ernT)+'</div><div style="font-size:11.5px;font-weight:600;color:var(--text-2);line-height:1.4;margin-top:2px">'+esc(v.ernS)+'</div></div>'+svg('<path d="M9 18l6-6-6-6"></path>',{c:v.col,w:2.2,s:16})+'</div>';
   }
+  // ═══ Erholungs-/Pausen-Modus (Etappe C) ═══
+  var MO_REC_ICON={krank:'🤒',uebertraining:'🛌',erholung:'🛌'};
+  // Soll aktuell der Pausen-Vorschlag als Popup erscheinen? (Vorschlag da, kein Modus aktiv, nicht weggetippt)
+  function moRecSuggestOn(){ var d=DATA.morning; if(!(d&&d.ok)) return false; if(moRecoveryActive()) return false; var s=d.recoverySuggest; return !!(s&&s.suggest)&&S.moRecHide!==true; }
+  // Popup: „Pause empfohlen" – der Kunde stimmt zu oder verschiebt.
+  function moRecoveryOverlay(){
+    var d=DATA.morning; var s=(d&&d.recoverySuggest)||{}; if(!s.suggest) return '';
+    var ic=MO_REC_ICON[s.reason]||'🛌'; var busy=!!S.moRecBusy;
+    var body='<div style="background:var(--surface);border-radius:24px;max-width:400px;width:100%;padding:24px 22px;box-shadow:0 24px 60px rgba(4,20,25,.4)">'+
+      '<div style="width:60px;height:60px;border-radius:18px;background:#FBECE8;display:flex;align-items:center;justify-content:center;font-size:30px;margin:0 auto 14px">'+ic+'</div>'+
+      '<div style="font-size:19px;font-weight:900;color:var(--text);text-align:center;letter-spacing:-.3px">'+esc(s.headline||'Pause empfohlen')+'</div>'+
+      '<div style="font-size:13.5px;font-weight:600;color:var(--text-2);line-height:1.55;margin-top:10px;text-align:center">'+esc(s.detail||'')+'</div>'+
+      '<div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:16px;background:#FBECE8;border-radius:13px;padding:11px"><span style="font-size:18px">📅</span><span style="font-size:14px;font-weight:900;color:#b4552f">Empfohlene Pause: '+(s.days||2)+' '+((s.days||2)===1?'Tag':'Tage')+'</span></div>'+
+      '<button data-act="morningRecoveryAccept" '+(busy?'disabled ':'')+'style="width:100%;margin-top:16px;padding:15px;border:none;border-radius:15px;background:'+ERN_G+';color:#fff;font-weight:900;font-size:15px;cursor:pointer">'+(busy?'Wird eingerichtet …':'Pause annehmen')+'</button>'+
+      '<button data-act="morningRecoveryDismiss" '+(busy?'disabled ':'')+'style="width:100%;margin-top:9px;padding:13px;border:none;border-radius:13px;background:transparent;color:var(--text-soft);font-weight:800;font-size:13.5px;cursor:pointer">Jetzt nicht</button>'+
+    '</div>';
+    return '<div role="dialog" aria-label="Pause empfohlen" style="position:fixed;inset:0;z-index:140;background:rgba(6,24,29,.6);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;padding:20px">'+body+'</div>';
+  }
+  // Karte auf dem Vital-Check-Screen, wenn eine Erholungsphase läuft.
+  function moRecoveryActiveCard(){
+    var rec=moRecoveryActive(); if(!rec) return '';
+    var left=moRecDaysLeft(rec.until); var untilStr=deDate(rec.until+'T12:00:00');
+    var reasonTxt=({krank:'Dein Körper erholt sich von einem Infekt.',uebertraining:'Deine Erholung lag mehrere Tage unter der Baseline.',erholung:'Bewusste Regeneration.'})[rec.reason]||'Bewusste Regeneration.';
+    return '<div style="background:linear-gradient(160deg,#12879c,#0e6072 60%,#0a4958);border-radius:22px;padding:20px;color:#fff;margin-bottom:16px;box-shadow:0 16px 40px rgba(4,33,40,.22)">'+
+      '<div style="display:flex;align-items:center;gap:13px"><div style="width:50px;height:50px;border-radius:15px;background:rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center;font-size:26px;flex-shrink:0">🛌</div>'+
+      '<div style="flex:1;min-width:0"><div style="font-size:11px;font-weight:900;letter-spacing:.5px;color:#bfe6ec;text-transform:uppercase">Erholungsphase aktiv</div><div style="font-size:17px;font-weight:900;margin-top:2px">Noch '+left+' '+(left===1?'Tag':'Tage')+' Pause</div></div></div>'+
+      '<div style="font-size:12.5px;font-weight:600;color:#cfe8ee;line-height:1.45;margin-top:12px">'+esc(reasonTxt)+' Training ist bis <b style="color:#fff">'+esc(untilStr)+'</b> pausiert – leichte Bewegung, gutes Essen und Schlaf bringen dich jetzt weiter.</div>'+
+      '<button data-act="morningRecoveryEnd" '+(S.moRecBusy?'disabled ':'')+'style="width:100%;margin-top:15px;padding:13px;border:none;border-radius:13px;background:rgba(255,255,255,.16);color:#fff;font-weight:900;font-size:13.5px;cursor:pointer">'+(S.moRecBusy?'…':'Ich bin wieder fit – Pause beenden')+'</button>'+
+    '</div>';
+  }
+  // Trainings-Soft-Lock: Training pausiert, mit Override „trotzdem trainieren".
+  function moTrainLockCard(rec){
+    var left=moRecDaysLeft(rec.until); var untilStr=deDate(rec.until+'T12:00:00');
+    return '<div style="background:var(--surface);border-radius:22px;padding:22px 20px;box-shadow:0 14px 36px rgba(4,33,40,.12);margin-bottom:14px;text-align:center">'+
+      '<div style="width:64px;height:64px;border-radius:20px;background:#FBECE8;display:flex;align-items:center;justify-content:center;font-size:32px;margin:0 auto 14px">🛌</div>'+
+      '<div style="font-size:18px;font-weight:900;color:var(--text);letter-spacing:-.3px">Training pausiert</div>'+
+      '<div style="font-size:13px;font-weight:600;color:var(--text-2);line-height:1.5;margin-top:8px">Dein Vital-Check empfiehlt eine Erholungsphase – noch '+left+' '+(left===1?'Tag':'Tage')+' (bis '+esc(untilStr)+'). Dein Körper baut jetzt auf, nicht ab. Leichte Bewegung (Spaziergang, lockeres Mobility) ist völlig ok.</div>'+
+      '<button data-act="trainRecoveryOverride" style="width:100%;margin-top:18px;padding:13px;border:1.5px solid var(--border);border-radius:13px;background:var(--surface);color:var(--text-muted);font-weight:800;font-size:13.5px;cursor:pointer">Ich fühle mich fit – trotzdem trainieren</button>'+
+      '<button data-act="morningRecoveryEnd" '+(S.moRecBusy?'disabled ':'')+'style="width:100%;margin-top:9px;padding:12px;border:none;border-radius:12px;background:transparent;color:var(--ern-acc);font-weight:800;font-size:12.5px;cursor:pointer">Erholungsphase ganz beenden</button>'+
+    '</div>';
+  }
+  // Slim-Banner, wenn der Nutzer den Lock übersteuert hat.
+  function moTrainOverrideBanner(rec){
+    return '<div style="display:flex;align-items:center;gap:10px;background:#FBF0E3;border-radius:14px;padding:11px 14px;margin-bottom:12px"><span style="font-size:18px">⚠️</span><div style="flex:1;min-width:0;font-size:12px;font-weight:700;color:#9a5a18;line-height:1.4">Erholungsphase übersteuert. Geh es heute locker an – kein Maximaltraining.</div><button data-act="morningRecoveryEnd" style="border:none;background:rgba(154,90,24,.14);color:#9a5a18;border-radius:9px;padding:6px 10px;font-size:11.5px;font-weight:800;cursor:pointer;flex-shrink:0">Pause beenden</button></div>';
+  }
   function scrMeinTag(){
     if(DATA.training==null) loadTraining();
     if(!DATA.checkins) loadCheckins();   // Wochen-Ring braucht die Studio-Besuche
@@ -5674,7 +5732,12 @@
     else if(seg==='plaene'){ body=trainingGenCta(d)+trainingLibrary(d)+trainingInspiration(d)+trainingBookCta(); }
     else if(seg==='uebungen'){ body=trainExSegment(d); }
     else if(seg==='verlauf'){ body=trainVerlauf(); }
-    else { var mp=d.myPlan&&d.myPlan.plan; body=meinTagReadyBanner()+coachTipStrip()+((mp&&mp.days&&mp.days.length)?meinTagTodayCard(mp):meinTagTrainCta()); }
+    else {
+      var mp=d.myPlan&&d.myPlan.plan;
+      var rec=moRecoveryActive();   // Erholungsphase -> Training soft-gesperrt (mit Override)
+      if(rec && !S.recoveryOverride){ body=moTrainLockCard(rec); }
+      else { body=(rec?moTrainOverrideBanner(rec):meinTagReadyBanner())+coachTipStrip()+((mp&&mp.days&&mp.days.length)?meinTagTodayCard(mp):meinTagTrainCta()); }
+    }
     return wrap(header+'<div style="padding:0 2px">'+finnAskRow('training')+body+'</div>');
   }
   // Übungen nach Suchtext + Muskelgruppe filtern (lokal aus dem GET-Payload).
@@ -7582,7 +7645,7 @@
         // Dynamische Kachel-Reihenfolge: das Relevanteste nach oben (Ampel → FINN → Tages-Auswirkung),
         // danach je nach Ampel priorisiert (Rot: Erholung/Atmen hoch; sonst Trainingszonen hoch).
         var lv=(d.readiness&&d.readiness.level)||'';
-        var ordered=[moReadinessHero(),moFinnCard(),moDayForecast(),moOvertrainingCard(),moLoadCard()];
+        var ordered=[moRecoveryActiveCard(),moReadinessHero(),moFinnCard(),moDayForecast(),moOvertrainingCard(),moLoadCard()];
         if(lv==='rot'){ ordered=ordered.concat([moBalanceCard(),moBreatheEntry(),moZonesCard(lv),moStrengthCard(lv)]); }
         else { ordered=ordered.concat([moZonesCard(lv),moStrengthCard(lv),moBalanceCard(),moBreatheEntry()]); }
         ordered=ordered.concat([moBioAgeCard(),moEvalCard(),moCheckinCard(),moWeeklyCard(),moTrendCard(),moInsightsCard(),moCurvesCard(),moHistoryCard(),moTeamShareCard()]);
@@ -8888,6 +8951,7 @@
     if(S.moGuide && S.screen==='morning') html+=moGuideOverlay();   // Vital-Check Schritt-für-Schritt-Anleitung (Pop-up)
     if(S.screen==='morning' && moMeasuring()) html+=moMeasureOverlay();   // Live-Messung im Vollbild-Popup (Bildschirm bleibt an)
     if(S.moMetric && S.screen==='morning') html+=moMetricSheet();   // Messwert-Erklärung + Tages-Auswirkung (Detail-Sheet)
+    if(S.screen==='morning' && moRecSuggestOn()) html+=moRecoveryOverlay();   // Pausen-Vorschlag (Popup) bei Krankheit/Übertraining
     if(S.screen==='ern'&&S.ernCapture) html+=ernErfassen();   // Erfassen-Popup (Bottom-Sheet) über dem Ernährungs-Screen
     if(S.screen==='ern'&&S.ernShop) html+=ernShopSheet();   // Produkt-Check: Scan-Sheet (Einkaufen-Modus)
     if(S.screen==='ern'&&S.ernShopProd) html+=ernShopVerdictSheet();   // Produkt-Check: Ampel-Ergebnis
@@ -9074,6 +9138,23 @@
         else { S.morningErr=true; S.morningMsg=(r&&r.message)||'Das hat gerade nicht geklappt – bitte erneut.'; }
         setS({});
       }).catch(function(){ S.morningAssessBusy=false; S.morningErr=true; S.morningMsg='Netzwerkfehler – bitte erneut.'; setS({}); }); },
+    // ── Erholungs-/Pausen-Modus (Etappe C) ──
+    morningRecoveryAccept:function(){ if(S.moRecBusy) return; S.moRecBusy=true; render();
+      api('/api/member/morning',{method:'POST',body:JSON.stringify({action:'recovery-start'})}).then(function(r){
+        S.moRecBusy=false;
+        if(r&&r.ok){ DATA.morning=r; S.moRecHide=false; S.recoveryOverride=false; S.morningMsg='Erholungsphase gestartet – gute Besserung! 🛌'; S.morningErr=false; }
+        else { S.morningErr=true; S.morningMsg=(r&&r.message)||'Das hat gerade nicht geklappt – bitte erneut.'; }
+        rIf(['morning','tag','ern','coach','home']); setS({});
+      }).catch(function(){ S.moRecBusy=false; S.morningErr=true; S.morningMsg='Netzwerkfehler – bitte erneut.'; setS({}); }); },
+    morningRecoveryDismiss:function(){ S.moRecHide=true; setS({}); },
+    morningRecoveryEnd:function(){ if(S.moRecBusy) return; S.moRecBusy=true; render();
+      api('/api/member/morning',{method:'POST',body:JSON.stringify({action:'recovery-end'})}).then(function(r){
+        S.moRecBusy=false;
+        if(r&&r.ok){ DATA.morning=r; S.recoveryOverride=false; S.moRecHide=false; }
+        rIf(['morning','tag','ern','coach','home']); setS({});
+      }).catch(function(){ S.moRecBusy=false; setS({}); }); },
+    // Training trotz Erholungsphase (Soft-Lock übersteuern – nur für diese Sitzung).
+    trainRecoveryOverride:function(){ S.recoveryOverride=true; setS({}); },
     trainReload:function(){ DATA.training=null; render(); loadTraining(); },
     trainSeg:function(a){ S.trainSeg=(a==='plaene'||a==='uebungen'||a==='verlauf')?a:'einheit'; S.trainDetail=null; S.trainDetailFull=null; S.trainGenOpen=false; S.trainMsg=''; setS({}); },
     trainQuickEx:function(){ S.trainSeg='uebungen'; S.trainDetail=null; S.trainGenOpen=false; setS({}); },
@@ -10516,9 +10597,10 @@
     function backTrig(){ return Math.min(window.innerWidth*0.28, 110); }
     function menuOpen(){ return document.body.classList.contains('menu-open'); }
     function overlayOpen(){
-      return !!(S.finnOpen||S.vaOpen||S.ciPopup||S.dp||S.qaOpen||S.ernUpgrade||S.ernCapture||S.ernConfirm||S.ernProd||S.ernShop||S.ernShopProd||S.sos||S.buyGuide||S.ernData||S.ernEdit||S.ernRecipeSel||S.ernFavMgr||S.ernEntryEdit||S.ernLesson||S.ernVert||S.ernCk||S.ernChatOpen||S.ernPlanQuiz||(S.ernKoch!=null)||S.welcomeGift||S.trainFinish||S.trainRun||S.trainDetail||S.trainGenOpen||S.morningBreathe||S.moGuide||S.moMetric||(S.morningPhase&&S.morningPhase!=='idle')||S.socChat||S.socRoom||document.querySelector('.obOverlay'));
+      return !!(S.finnOpen||S.vaOpen||S.ciPopup||S.dp||S.qaOpen||S.ernUpgrade||S.ernCapture||S.ernConfirm||S.ernProd||S.ernShop||S.ernShopProd||S.sos||S.buyGuide||S.ernData||S.ernEdit||S.ernRecipeSel||S.ernFavMgr||S.ernEntryEdit||S.ernLesson||S.ernVert||S.ernCk||S.ernChatOpen||S.ernPlanQuiz||(S.ernKoch!=null)||S.welcomeGift||S.trainFinish||S.trainRun||S.trainDetail||S.trainGenOpen||S.morningBreathe||S.moGuide||S.moMetric||(S.screen==='morning'&&moRecSuggestOn())||(S.morningPhase&&S.morningPhase!=='idle')||S.socChat||S.socRoom||document.querySelector('.obOverlay'));
     }
     function closeKnownOverlay(){
+      if(S.screen==='morning' && moRecSuggestOn()){ S.moRecHide=true; render(); return true; }
       if(moMeasuring()){ moStopMeasure(); S.morningPhase='idle'; S.morningLiveBpm=null; S.morningElapsed=0; render(); return true; }
       if(S.moMetric){ S.moMetric=null; render(); return true; }
       if(S.moGuide){ S.moGuide=false; S.moGuideStep=0; render(); return true; }
