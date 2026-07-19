@@ -5809,7 +5809,9 @@
   // Gesundheits-Kennzahlen (Ruhepuls, HRV, Schlaf, Gewicht, Körperfett, VO2max, Schritte) aus Apple Health.
   function woHealthFetchMetrics(){
     var P=woNativePlugin(); if(!P||!P.getHealthMetrics) return;
-    try{ P.getHealthMetrics().then(function(r){ if(r&&r.ok){ DATA.healthMetrics=Object.assign({t:Date.now()},r); rIf(['tag','morning','fort','home','figur']); } }).catch(function(){}); }catch(e){}
+    var go=function(){ try{ P.getHealthMetrics().then(function(r){ if(r&&r.ok){ DATA.healthMetrics=Object.assign({t:Date.now()},r); rIf(['tag','morning','fort','home','figur']); } }).catch(function(){}); }catch(e){} };
+    // Erst Freigabe sicherstellen (fragt bei bereits Verbundenen die NEUEN Kategorien nach), dann lesen.
+    try{ if(P.healthAuth){ P.healthAuth().then(go).catch(go); } else { go(); } }catch(e){ go(); }
   }
   function woHealthMetricsRow(){
     var m=DATA.healthMetrics; if(!m||!m.ok) return '';
