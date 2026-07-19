@@ -6316,9 +6316,18 @@
       var mp=d.myPlan&&d.myPlan.plan;
       var rec=moRecoveryActive();   // Erholungsphase -> Training soft-gesperrt (mit Override)
       if(rec && !S.recoveryOverride){ body=moTrainLockCard(rec); }
-      else { body=(rec?moTrainOverrideBanner(rec):meinTagReadyBanner())+coachTipStrip()+woEntryCard()+woHealthNudge()+((mp&&mp.days&&mp.days.length)?meinTagTodayCard(mp):meinTagTrainCta()); }
+      else {
+        // Aufgeräumt: die heutige Einheit steht ZUERST (schlanker Bereitschafts-Banner darüber);
+        // „mit Puls aufzeichnen", der FINN-Tipp und der Health-Hinweis kommen kompakt darunter.
+        var readyB=(rec?moTrainOverrideBanner(rec):meinTagReadyBanner());
+        var workout=(mp&&mp.days&&mp.days.length)?meinTagTodayCard(mp):meinTagTrainCta();
+        body=readyB+workout+woEntryCard()+coachTipStrip()+woHealthNudge();
+      }
     }
-    return wrap(header+'<div style="padding:0 2px">'+finnAskRow('training')+body+'</div>');
+    // „Frag FINN" nur auf den Nebentabs oben – auf „Heute" hat die Einheit Vorrang
+    // (FINN bleibt über den Tipp-Strip und den Chat-FAB erreichbar).
+    var topAsk=(seg==='einheit')?'':finnAskRow('training');
+    return wrap(header+'<div style="padding:0 2px">'+topAsk+body+'</div>');
   }
   // Übungen nach Suchtext + Muskelgruppe filtern (lokal aus dem GET-Payload).
   function trainExNorm(s){ try{ return String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,''); }catch(e){ return String(s||'').toLowerCase(); } }
