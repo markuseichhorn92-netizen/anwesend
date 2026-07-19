@@ -102,6 +102,8 @@
     html[data-theme="dark"] .app-in .btmnav{background:rgba(16,24,26,.55);border-color:rgba(255,255,255,.12);box-shadow:0 12px 34px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.08)}
     .app-in .body{padding-bottom:calc(94px + env(safe-area-inset-bottom,0px))}
     .app-in .legalfoot{padding-bottom:calc(104px + env(safe-area-inset-bottom,0px))}
+    /* Läuft eine Indoor-Aufzeichnung angedockt, Platz für die Puls-Leiste über der Nav lassen. */
+    .app-in.woDockOn .body{padding-bottom:calc(162px + env(safe-area-inset-bottom,0px))}
   }
   .app-guest .btmnav{display:none!important}
   /* FINN-FAB (schwebender Coach-Button, mobil) */
@@ -5723,7 +5725,7 @@
     woStopRec();
     woHR={ samples:[], timer:null, watchdog:null, stop:null, startTs:0 };
     woGeo={ points:[], distM:0, elevM:0, stop:null };
-    S.woKind=kind; S.woPhase='connecting'; S.woErr=false; S.woMsg=''; S.woLiveBpm=null; S.woElapsed=0; S.woResult=null; S.woReview=null; S.woGpsFix=false; render();
+    S.woKind=kind; S.woPhase='connecting'; S.woErr=false; S.woMsg=''; S.woLiveBpm=null; S.woElapsed=0; S.woResult=null; S.woReview=null; S.woGpsFix=false; S.woExpanded=false; render();
     moAcquireWake(); if(!woWakeBound){ try{ document.addEventListener('visibilitychange',function(){ if(document.visibilityState==='visible'&&woMeasuring()) moAcquireWake(); }); }catch(e){} woWakeBound=true; }
     // Puls: indoor erforderlich, outdoor optional (GPS ist primär).
     woHR.stop=moBleStart(function(bpm,rr){
@@ -5916,7 +5918,23 @@
         '<button data-act="woCancel" '+(saving?'disabled ':'')+'style="width:100%;margin-top:9px;padding:12px;border:none;background:transparent;color:#bfe0e6;font-weight:800;font-size:13px;cursor:pointer">Verwerfen</button>'+
       '</div>';
     }
-    return '<div role="dialog" aria-label="Training-Aufzeichnung" style="position:fixed;inset:0;z-index:130;background:linear-gradient(165deg,#0e5566,#062b34);display:flex;align-items:center;justify-content:center;padding:24px 20px calc(24px + env(safe-area-inset-bottom,0px))">'+inner+'</div>';
+    // Indoor (z. B. Kraft): „minimieren" -> kompakte Puls-Leiste, Trainingsplan bleibt sichtbar.
+    var mini=(!connecting && S.woKind==='indoor')?'<button data-act="woMinimize" aria-label="Minimieren – Plan zeigen" style="position:absolute;top:calc(env(safe-area-inset-top,0px) + 14px);right:16px;display:flex;align-items:center;gap:6px;padding:9px 13px;border:1.5px solid rgba(255,255,255,.35);border-radius:12px;background:rgba(255,255,255,.08);color:#fff;font-size:12px;font-weight:800;cursor:pointer">'+svg('<path d="M6 9l6 6 6-6"></path>',{c:'#fff',w:2.2,s:16})+'Plan</button>':'';
+    return '<div role="dialog" aria-label="Training-Aufzeichnung" style="position:fixed;inset:0;z-index:130;background:linear-gradient(165deg,#0e5566,#062b34);display:flex;align-items:center;justify-content:center;padding:24px 20px calc(24px + env(safe-area-inset-bottom,0px))">'+mini+inner+'</div>';
+  }
+  // Angedockte Puls-Leiste (Indoor/Kraft): läuft weiter, während der Trainingsplan sichtbar bleibt.
+  // Tippen auf die Werte öffnet wieder die Vollbild-Ansicht; „Beenden" speichert.
+  function woRecDock(){
+    var st=woLiveStats(); var bpm=S.woLiveBpm||(st?st.avg:null);
+    var cur=st?st.cur:-1; var col=(cur>=0)?WO_ZCOL[cur]:'#7fb8c4';
+    var saving=(S.woPhase==='saving');
+    var stats='<button data-act="woExpand" aria-label="Vollbild öffnen" style="flex:1;min-width:0;display:flex;align-items:center;gap:11px;border:none;background:transparent;cursor:pointer;font-family:inherit;text-align:left;padding:2px 0">'+
+      '<span style="width:40px;height:40px;border-radius:50%;border:3px solid '+col+';display:flex;align-items:center;justify-content:center;flex-shrink:0;background:rgba(255,255,255,.06)"><span style="font-size:15px;font-weight:900;color:#fff;line-height:1">'+(bpm||'–')+'</span></span>'+
+      '<div style="min-width:0;flex:1"><div style="font-size:16px;font-weight:900;color:#fff;font-variant-numeric:tabular-nums;line-height:1.05">'+woFmtDur(S.woElapsed)+'</div><div style="font-size:10.5px;font-weight:800;color:'+col+';white-space:nowrap;overflow:hidden;text-overflow:ellipsis">❤ '+esc(woActLabel(S.woActivity||'kraft'))+' · Zone '+(cur>=0?(cur+1):'–')+'</div></div>'+
+      svg('<path d="M18 15l-6-6-6 6"></path>',{c:'rgba(255,255,255,.55)',w:2.2,s:15})+
+    '</button>';
+    var fin='<button data-act="woFinish"'+(saving?' disabled':'')+' style="flex-shrink:0;border:none;border-radius:12px;background:#fff;color:#0a3d4a;font-weight:900;font-size:13px;padding:11px 16px;cursor:pointer">'+(saving?'…':'Beenden')+'</button>';
+    return '<div role="region" aria-label="Aufzeichnung läuft" style="position:fixed;left:12px;right:12px;bottom:calc(84px + env(safe-area-inset-bottom,0px));z-index:60;max-width:456px;margin:0 auto;display:flex;align-items:center;gap:10px;background:linear-gradient(120deg,#0e5566,#083b47);border-radius:18px;padding:9px 11px 9px 13px;box-shadow:0 14px 34px rgba(4,20,25,.42)">'+stats+fin+'</div>';
   }
   // Ergebnis nach dem Speichern (mit FINN-Auswertung).
   function woResultOverlay(){
@@ -9338,7 +9356,11 @@
     if(S.screen==='morning' && moMeasuring()) html+=moMeasureOverlay();   // Live-Messung im Vollbild-Popup (Bildschirm bleibt an)
     if(S.moMetric && S.screen==='morning') html+=moMetricSheet();   // Messwert-Erklärung + Tages-Auswirkung (Detail-Sheet)
     if(S.screen==='morning' && moRecSuggestOn()) html+=moRecoveryOverlay();   // Pausen-Vorschlag (Popup) bei Krankheit/Übertraining
-    if(S.screen==='tag' && woMeasuring()) html+=woRecOverlay();   // Trainings-Aufzeichnung (Vollbild, Bildschirm bleibt an)
+    // Trainings-Aufzeichnung: Outdoor + Verbinden + Vollbild-Wunsch = Vollbild; Indoor (z. B. Kraft)
+    // beim Messen = angedockte Puls-Leiste, damit der Trainingsplan sichtbar & bedienbar bleibt.
+    var woFull=(S.woKind==='outdoor') || (S.woPhase==='connecting') || S.woExpanded;
+    var woDockOn=(S.screen==='tag' && woMeasuring() && !woFull);
+    if(S.screen==='tag' && woMeasuring()) html+=(woFull?woRecOverlay():woRecDock());
     if(S.screen==='tag' && S.woResult) html+=woResultOverlay();   // Ergebnis nach dem Speichern (+ FINN)
     if(S.screen==='tag' && S.woOpen && !woMeasuring() && !S.woResult) html+=woStartSheet();   // Aktivitäts-Auswahl
     if(S.screen==='tag' && S.woDetail && !S.woResult) html+=woDetailSheet();   // Einheit-Detail (Verlauf)
@@ -9367,6 +9389,7 @@
     var _skY=_skLocked?0:(_skEl?_skEl.scrollTop:(window.pageYOffset||document.documentElement.scrollTop||0));
     if(_skPrev!=='' && !_skLocked) SCROLL_MEM[_skPrev]=_skY;
     $('app').innerHTML=html;
+    try{ document.body.classList.toggle('woDockOn', !!woDockOn); }catch(e){}   // Platz für die angedockte Puls-Leiste
     Object.keys(keep).forEach(function(id){ var e=$(id); if(!e) return; var k=keep[id]; e.value=k.v; if(k.h) e.style.height=k.h; if(k.f){ e.focus(); try{ e.setSelectionRange(k.ss,k.se); }catch(_){ } } });
     // Chat-Verläufe: unten angedockt bleiben (neueste Nachricht), außer der Nutzer hat
     // bewusst hochgescrollt (Stick-Flags pflegt der Scroll-Listener).
@@ -9567,8 +9590,10 @@
     woMode:function(a){ var m=(a==='outdoor')?'outdoor':'indoor'; S.woMode=m; S.woActivity=(m==='outdoor')?'laufen':'studio'; setS({}); },
     woActivity:function(a){ if(a) setS({woActivity:a}); },
     woBegin:function(){ var m=(S.woMode==='outdoor')?'outdoor':'indoor'; S.woOpen=false; S.woActivity=S.woActivity||(m==='outdoor'?'laufen':'studio'); render(); woStartRec(m); },
-    woCancel:function(){ woStopRec(); S.woPhase='idle'; S.woLiveBpm=null; S.woElapsed=0; setS({}); },
+    woCancel:function(){ woStopRec(); S.woPhase='idle'; S.woLiveBpm=null; S.woElapsed=0; S.woExpanded=false; setS({}); },
     woFinish:function(){ if(S.woPhase==='saving') return; woFinishRec(); },
+    woExpand:function(){ S.woExpanded=true; setS({}); },        // Puls-Leiste -> Vollbild
+    woMinimize:function(){ S.woExpanded=false; setS({}); },      // Vollbild -> angedockte Puls-Leiste (Plan sichtbar)
     woResultClose:function(){ S.woResult=null; S.woReview=null; setS({}); },
     woReviewRetry:function(){ S.woReview=null; woFetchReview(); },
     woDetail:function(a){ if(!a) return; S.woReview=null; setS({woDetail:a}); },
