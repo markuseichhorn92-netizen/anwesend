@@ -14,6 +14,10 @@ Fähigkeit nicht meldet, fällt die App **sauber** auf Web-Wege bzw. auf einen
 > Alle Methoden sind optional. Die App prüft vor jedem Aufruf `FitInnNative` und
 > das passende `available.*`-Flag bzw. die Existenz der Methode.
 
+> 🛠 **Umsetzung (iOS):** Ein fertiges Plugin-Gerüst für Health + BLE-Gurt + GPS
+> liegt in [`../nativeapp/native-plugin/`](../nativeapp/native-plugin/) inkl.
+> Einbau-Anleitung.
+
 ---
 
 ## Grundgerüst
