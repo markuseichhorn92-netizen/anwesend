@@ -5052,6 +5052,75 @@
   // (ernCoachHome). Lektionen/Check-ins/Chat werden per bestehender ern-Renderer angezeigt
   // (dieselbe helle Palette wie das Ernährungs-Modul; die ACT-Handler sind screen-unabhängig).
   // Heller Look der Sektion liegt als .ernwrap-Klasse im Stylesheet (Dark-Mode-fähig).
+  // ── „Dein Tag" (Coach-Übersicht): tageszeit- + datenbasierte Themen ──
+  // Sammelt aus ALLEN vorhandenen Signalen (passive Vitalwerte/Erholung, Schlaf, Vital-Check,
+  // Training, Ernährung, Schritte) die relevantesten Themen für JETZT und priorisiert sie
+  // nach Tageszeit (morgens/mittags/abends). Reines Client-Rendering aus DATA.*.
+  function coachTrainedToday(){
+    try{ var sess=(DATA.trainSess&&DATA.trainSess.items)||{}; if(Object.keys(sess).some(function(k){ return sess[k]&&sess[k].done; })) return true; }catch(e){}
+    var ci=Array.isArray(DATA.checkins)?DATA.checkins:[]; return ci.some(function(x){ return x&&x.in&&String(x.in).slice(0,10)===isoToday(); });
+  }
+  function coachDayTopics(){
+    var h=berlinHour();
+    var seg=(h<5||h>=22)?'nacht':(h<11?'morgens':(h<17?'mittags':'abends'));
+    var T=[]; var add=function(prio,ic,t,s,act,arg,tone){ T.push({prio:prio,ic:ic,t:t,s:s,act:act||'',arg:arg||'',tone:tone||''}); };
+    var mo=DATA.morning, vb=(mo&&mo.ok&&mo.vitals)||null, rd=(vb&&vb.readiness)||null;
+    var hm=(DATA.healthMetrics&&DATA.healthMetrics.ok)?DATA.healthMetrics:null;
+    // Erholung / Übertraining haben Vorrang.
+    if(typeof moRecoveryActive==='function'&&moRecoveryActive()) add(100,'🌱','Erholungsphase läuft','Dein Körper baut jetzt auf – heute bewusst leichter angehen.','nav','morning','warn');
+    var ot=(mo&&mo.ok&&mo.overtraining)||null; if(ot&&ot.level&&ot.level!=='ok') add(95,'⚠️','Übertrainings-Signal',ot.note||'Deine Werte deuten auf zu viel Last – plane Erholung ein.','nav','morning','warn');
+    // Passive Erholungs-Ampel (Apple Watch: Ruhepuls + HRV + Schlaf).
+    if(rd&&rd.level&&rd.level!=='kalibrierung'){
+      var M={gruen:['🟢','Top erholt – heute geht was','Nutz das Fenster für einen intensiveren Reiz.'],gelb:['🟡','Moderat erholt','Solide, aber nicht auf 100 %. Halte die Intensität mittel.'],rot:['🔴','Heute auf Erholung setzen','Deine Erholung liegt unter deinem Schnitt – nimm die Intensität raus.']};
+      var mm=M[rd.level]; add(90,mm[0],mm[1],mm[2]+' · Erholung '+rd.score+'/100','nav','morning',rd.level==='rot'?'warn':(rd.level==='gruen'?'good':''));
+    }
+    // Schlaf (morgens hoch priorisiert).
+    if(vb&&vb.sleep&&vb.sleep.note&&seg!=='nacht') add(seg==='morgens'?85:55,'😴','Schlaf: '+vb.sleep.label,vb.sleep.note,'nav','morning',vb.sleep.cat==='bad'?'warn':(vb.sleep.cat==='good'?'good':''));
+    // Vital-Check anstoßen, wenn heute noch nicht gemessen und kein passiver Wert vorliegt.
+    var measuredToday=!!(mo&&mo.ok&&mo.latest&&String(mo.latest.date).slice(0,10)===isoToday());
+    if(mo&&mo.ok&&mo.premium&&!measuredToday&&!rd&&seg!=='nacht') add(seg==='morgens'?80:40,'❤️','Vital-Check machen','Miss kurz deine Bereitschaft – FINN steuert dein Training danach.','nav','morning');
+    // Training.
+    var trainedToday=coachTrainedToday();
+    var hasPlan=!!(DATA.training&&DATA.training.myPlan);
+    if(trainedToday) add(50,'✅','Heute trainiert – stark!','Du warst aktiv. Achte jetzt auf Erholung und genug Eiweiß.','nav','tag','good');
+    else if(seg!=='nacht') add(seg==='abends'?70:60,'🏋️',hasPlan?'Deine Einheit steht noch aus':'Zeit fürs Training',hasPlan?'Zieh dein Programm durch, wenn du bereit bist.':'Hol dir einen Plan und leg los.','nav','tag');
+    // Ernährung.
+    if(ERN_ON&&DATA.nutri&&DATA.nutri.ok){
+      var n=DATA.nutri; var tot=(n.today&&n.today.totals)||{}; var tg=n.targets||{};
+      var kcal=Math.round(tot.kcal||0), kcalT=Math.round(tg.kcal||0);
+      if(kcalT){
+        var rem=Math.max(0,kcalT-kcal);
+        if(seg==='morgens') add(45,'🍽️','Heute '+kcalT+' kcal Ziel','Plane deine Mahlzeiten – logg einfach mit, was du isst.','nav','ern');
+        else if(kcal<kcalT*0.5&&seg==='mittags') add(58,'🍽️','Zeit für eine Mahlzeit?','Noch '+rem+' kcal bis zu deinem Tagesziel.','nav','ern');
+        else add(35,'🥗','Ernährung: '+kcal+' / '+kcalT+' kcal',rem>0?('Noch '+rem+' kcal – bleib auf Kurs.'):'Tagesziel erreicht – stark!','nav','ern',rem===0?'good':'');
+      }
+      if(seg==='abends'&&tg.protein){ var pr=Math.round(tot.p||0),prT=Math.round(tg.protein); if(pr<prT*0.8) add(48,'💪','Eiweiß: '+pr+' / '+prT+' g','Iss heute noch etwas Eiweißreiches für deine Regeneration.','nav','ern','warn'); }
+    }
+    // Schritte (aus Apple Health).
+    if(hm&&hm.steps){ var pct=Math.round(hm.steps/8000*100); add(seg==='abends'?42:30,'👟',hm.steps.toLocaleString('de-DE')+' Schritte'+(seg==='abends'?' heute':''),pct>=100?'Tagesziel (8.000) erreicht – top!':('Etwa '+pct+' % deines Tagesziels von 8.000.'),'','',pct>=100?'good':''); }
+    if(seg==='nacht'&&!T.length) add(10,'🌙','Zeit zum Runterfahren','Guter Schlaf ist deine beste Regeneration – morgen greifst du wieder an.','','');
+    T.sort(function(a,b){ return b.prio-a.prio; });
+    return {seg:seg,list:T};
+  }
+  function coachDailyBriefing(){
+    var d=coachDayTopics(); var seg=d.seg; var list=d.list.slice(0,5);
+    var p=DATA.profile||{}; var name=p.firstName||'';
+    var segLabel={morgens:'Guten Morgen',mittags:'Guten Tag',abends:'Guten Abend',nacht:'Gute Nacht'}[seg]||'Hallo';
+    var segIc={morgens:'🌅',mittags:'☀️',abends:'🌆',nacht:'🌙'}[seg]||'📅';
+    var dateStr=(typeof meinTagDateStr==='function')?meinTagDateStr():'';
+    var toneBg={good:'#E7F6EC',warn:'#FBECE8'}, toneCol={good:'#176b37',warn:'#b4552f'};
+    var rows=list.map(function(it){
+      var tap=!!it.act, tag=tap?'button':'div';
+      return '<'+tag+(tap?(' data-act="'+esc(it.act)+'" data-arg="'+esc(it.arg)+'"'):'')+' style="display:flex;align-items:center;gap:12px;width:100%;text-align:left;border:none;font-family:inherit;background:'+(toneBg[it.tone]||'var(--surface-2)')+';border-radius:14px;padding:12px 13px;margin-top:9px'+(tap?';cursor:pointer':'')+'">'+
+        '<span style="font-size:20px;flex-shrink:0">'+it.ic+'</span>'+
+        '<span style="flex:1;min-width:0"><span style="display:block;font-size:13.5px;font-weight:900;color:'+(toneCol[it.tone]||'var(--text)')+'">'+esc(it.t)+'</span><span style="display:block;font-size:11.5px;font-weight:600;color:var(--text-soft);line-height:1.4;margin-top:1px">'+esc(it.s)+'</span></span>'+
+        (tap?svg('<path d="M9 18l6-6-6-6"></path>',{c:'var(--text-soft)',w:2.2,s:16}):'')+'</'+tag+'>';
+    }).join('');
+    if(!rows) rows='<div style="font-size:12.5px;color:var(--text-soft);font-weight:600;margin-top:11px;line-height:1.5">Sobald Werte reinkommen (Training, Ernährung, Apple Health), zeige ich dir hier deine wichtigsten Themen für den Tag.</div>';
+    return '<div style="background:var(--surface);border-radius:22px;box-shadow:0 12px 34px rgba(4,33,40,.12);padding:18px;margin-bottom:16px">'+
+      '<div style="display:flex;align-items:center;gap:11px"><span style="font-size:23px">'+segIc+'</span><div style="flex:1;min-width:0"><div style="font-size:16.5px;font-weight:900;color:var(--text);letter-spacing:-.3px">'+esc(segLabel)+(name?(', '+esc(name)):'')+'</div>'+(dateStr?('<div style="font-size:11.5px;font-weight:700;color:var(--text-soft)">'+esc(dateStr)+' · dein Tag im Blick</div>'):'')+'</div></div>'+
+      rows+'</div>';
+  }
   function scrCoach(){
     var wrap=function(inner){ return '<div class="ernwrap" style="padding-bottom:40px">'+inner+'</div>'; };
     // Unteransichten (Lektion / Vertiefung / Check-in / Upgrade / Nutrition-Chat) – bestehende Renderer.
@@ -5073,12 +5142,12 @@
     else if(tab==='ern'){ body=coachInsights('ern')+themeCta('Zum Essen-Tagebuch','ern','🥗'); }
     else if(tab==='training'){ body=coachInsights('training')+themeCta('Zum Trainingsplan','tag','🏋️'); }
     else if(tab==='lifestyle'){ if(DATA.mprofile==null) loadMemberProfile(); if(DATA.morning==null) loadMorning(); body=vitalCard()+morningEntryCard()+vitalLifestyleForm()+progressPickCard(); }
-    else { if(DATA.checkins==null) loadCheckins(); if(DATA.mprofile==null) loadMemberProfile(); if(DATA.morning==null) loadMorning(); body=coachFinnHub()+coachVitalHero()+morningEntryCard()+ernPremiumCard(); }  // Übersicht: FINN-first + Vitalalter/Status-Fokus + Vital-Check
+    else { if(DATA.checkins==null) loadCheckins(); if(DATA.mprofile==null) loadMemberProfile(); if(DATA.morning==null) loadMorning(); if(woHealthCap()&&woHealthConnected()&&DATA.healthMetrics==null){ DATA.healthMetrics=false; woHealthFetchMetrics(); } body=coachDailyBriefing()+coachFinnHub()+coachVitalHero()+ernPremiumCard(); }  // Dein Tag: tagesrelevante Themen zuerst, dann FINN + Vitalalter
     return wrap(header+coachTabBar(tab)+body);
   }
   // Coach-Themen-Tabs (horizontal scrollbare Pills).
   function coachTabBar(tab){
-    var items=[['uebersicht','🧭','Übersicht'],['lernen','🎓','Lernen'],['ern','🥗','Ernährung'],['training','🏋️','Training'],['lifestyle','🌙','Lifestyle']];
+    var items=[['uebersicht','☀️','Dein Tag'],['lernen','🎓','Lernen'],['ern','🥗','Ernährung'],['training','🏋️','Training'],['lifestyle','🌙','Lifestyle']];
     return '<div style="display:flex;gap:7px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding:2px 2px 10px;margin:0 -2px 6px">'+items.map(function(it){ var sel=tab===it[0]; return '<button data-act="coachTab" data-arg="'+it[0]+'" style="flex:0 0 auto;border:1.5px solid '+(sel?ERN_G:'var(--border-strong)')+';border-radius:20px;background:'+(sel?ERN_G:'var(--surface)')+';color:'+(sel?'#fff':'var(--text-2)')+';font-size:13px;font-weight:800;padding:9px 14px;cursor:pointer;white-space:nowrap">'+it[1]+' '+it[2]+'</button>'; }).join('')+'</div>';
   }
   // FINN-first Coach-Hub: EINE dominante FINN-Karte – Tages-Blick (datenbasiert bzw. KI-Analyse),
