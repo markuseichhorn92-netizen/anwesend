@@ -9,6 +9,13 @@ import Capacitor
 // Der Shim ist bewusst DIREKT hier eingebettet, damit keine zusätzliche
 // Ressourcen-Datei ins Bundle muss.
 class MainViewController: CAPBridgeViewController {
+    // Das FitInnNativePlugin (Puls/GPS/Apple Health) explizit bei Capacitor anmelden.
+    // Nötig für app-lokale Plugins unter Capacitor 6+/8 – die reine CAPBridgedPlugin-
+    // Konformität allein wird hier nicht automatisch erkannt.
+    override func capacitorDidLoad() {
+        bridge?.registerPluginInstance(FitInnNativePlugin())
+    }
+
     override func viewDidLoad() {
         super.viewDidLoad()
         guard let webView = self.bridge?.webView else { return }
