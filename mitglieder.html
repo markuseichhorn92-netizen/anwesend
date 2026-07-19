@@ -697,7 +697,7 @@
     if(ERN_ON&&(s==='home'||s==='fort')) loadNutri();   // Ernährungs-Vitalpunkte für Startseite/Fortschritt frisch halten
     if(s==='figur'){ S.figurAdd=false; S.figurMsg=''; S.figurErr=false; S.figurBusy=false; S.figurReviewBusy=false; loadFigur(); }
     if(s==='inbody'){ S.inbodyReview=null; S.inbodyMsg=''; S.inbodyErr=false; S.inbodyBusy=false; S.inbodyAssess=''; S.inbodyAssessBusy=false; S.ibMetric=null; S.ibAmpel=false; loadInbody(); }
-    if(s==='morning'){ moStopMeasure(); S.morningPhase='idle'; S.morningMsg=''; S.morningErr=false; S.morningBusy=false; S.morningLiveBpm=null; S.morningElapsed=0; S.morningAssess=null; S.morningAssessBusy=false; S.morningConsentBusy=false; S.morningBreathe=false; S.morningJournal={}; S.moJournalPrefilled=false; S.moJournalAuto=false; S.vitalMode='morgen'; S.morningMeasureKind='morgen'; S.morningShareBusy=false; S.morningStrapBusy=false; S.morningStrapReserved=false; S.morningStrapErr=''; S.moGuide=false; S.moGuideStep=0; S.moMetric=null; loadMorning(); }
+    if(s==='morning'){ moStopMeasure(); S.morningPhase='idle'; S.morningMsg=''; S.morningErr=false; S.morningBusy=false; S.morningLiveBpm=null; S.morningElapsed=0; S.morningAssess=null; S.morningAssessBusy=false; S.morningConsentBusy=false; S.morningBreathe=false; S.morningJournal={}; S.moJournalPrefilled=false; S.moJournalAuto=false; S.moJournalAutoSleep=false; S.moJournalAutoMood=false; S.vitalMode='morgen'; S.morningMeasureKind='morgen'; S.morningShareBusy=false; S.morningStrapBusy=false; S.morningStrapReserved=false; S.morningStrapErr=''; S.moGuide=false; S.moGuideStep=0; S.moMetric=null; loadMorning(); }
     if(SOCIAL_ON&&(s==='home'||s==='profil')) loadSocial();   // Trainingspartner-Snapshot für Startseite/Profil
     if(s==='social'){ S.socMsg=''; S.socErr=false; S.socBusy=false; S.socCopied=false; S.socChat=null; DATA.socDm=null; S.socRoom=null; DATA.socRoomThread=null; S.socRoomCreate=false; S.socRoomInvite=false; S.socRules=false; if(window.__socBuddy){ S.socCode=window.__socBuddy; window.__socBuddy=null; } if(window.__socOpenChat){ S.socChat=String(window.__socOpenChat); window.__socOpenChat=null; DATA.socDm=null; loadDm(S.socChat); } else if(window.__socOpenRoom){ S.socRoom=String(window.__socOpenRoom); window.__socOpenRoom=null; DATA.socRoomThread=null; loadRoomThread(S.socRoom); } loadSocial(); }
     if(s==='blog'){ S.blogSel=null; S.blogPost=null; loadBlog(); }
@@ -2055,6 +2055,7 @@
     if(DATA.training==null) loadTraining();      // fürs Vitalalter (Einheiten)
     if(DATA.mprofile==null) loadMemberProfile(); // fürs Vitalalter (Lebensstil)
     if(DATA.morning==null) loadMorning();        // Kontext-Hero (Vital-Check-Vorschlag/Erholungsphase)
+    if(woHealthCap()&&woHealthConnected()&&DATA.healthMetrics==null){ DATA.healthMetrics=false; woHealthFetchMetrics(); } // VO₂max/Ruhepuls/Schlaf fürs Vitalalter (konsistent zu Fortschritt/Coach)
     var p=DATA.profile||{}; var name=p.firstName||'';
     // Schnellzugriff – 4 Kacheln mit Live-Daten (wie im Design). Rest liegt im Profil-Hub + Bottom-Nav.
     if(DATA.account===null) loadAccount();
@@ -4648,8 +4649,8 @@
     var n=DATA.nutri; if(!(n&&n.ok&&n.onboarded)) return '';
     var CARD='background:var(--surface);border-radius:20px;box-shadow:0 12px 30px rgba(4,33,40,.09);padding:18px;margin-bottom:14px';
     if(!glp1On()){
-      return '<div style="'+CARD+'"><div style="display:flex;align-items:center;gap:12px"><div style="width:44px;height:44px;border-radius:13px;background:#E7F6EC;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:22px">🌿</div>'+
-        '<div style="flex:1;min-width:0"><div style="display:flex;align-items:center;gap:7px"><span style="font-size:15px;font-weight:900;color:var(--text)">GLP-1 natürlich</span><span style="font-size:9px;font-weight:900;color:#176b37;background:#E7F6EC;padding:2px 7px;border-radius:7px;text-transform:uppercase;letter-spacing:.3px">Neu</span></div><div style="font-size:12px;font-weight:600;color:var(--text-soft);line-height:1.4;margin-top:2px">Deine körpereigene Sättigung stärken – ganz ohne Spritze, nur über Ernährung &amp; Bewegung.</div></div></div>'+
+      return '<div style="'+CARD+'"><div style="display:flex;align-items:center;gap:12px"><div style="width:44px;height:44px;border-radius:13px;background:rgba(28,155,94,.14);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:22px">🌿</div>'+
+        '<div style="flex:1;min-width:0"><div style="display:flex;align-items:center;gap:7px"><span style="font-size:15px;font-weight:900;color:var(--text)">GLP-1 natürlich</span><span style="font-size:9px;font-weight:900;color:#1c9b5e;background:rgba(28,155,94,.16);padding:2px 7px;border-radius:7px;text-transform:uppercase;letter-spacing:.3px">Neu</span></div><div style="font-size:12px;font-weight:600;color:var(--text-soft);line-height:1.4;margin-top:2px">Deine körpereigene Sättigung stärken – ganz ohne Spritze, nur über Ernährung &amp; Bewegung.</div></div></div>'+
         '<button data-act="glp1Activate" style="width:100%;margin-top:13px;padding:12px;border:none;border-radius:13px;background:'+ERN_G+';color:#fff;font-weight:900;font-size:14px;cursor:pointer">Aktivieren</button></div>';
     }
     var ch=glp1Checks();
@@ -5151,7 +5152,7 @@
     var segLabel={morgens:'Guten Morgen',mittags:'Guten Tag',abends:'Guten Abend',nacht:'Gute Nacht'}[seg]||'Hallo';
     var segIc={morgens:'🌅',mittags:'☀️',abends:'🌆',nacht:'🌙'}[seg]||'📅';
     var dateStr=(typeof meinTagDateStr==='function')?meinTagDateStr():'';
-    var toneBg={good:'#E7F6EC',warn:'#FBECE8'}, toneCol={good:'#176b37',warn:'#b4552f'};
+    var toneBg={good:'rgba(28,155,94,.13)',warn:'rgba(217,138,58,.15)'}, toneCol={good:'#1c9b5e',warn:'#c56a2f'};
     var rows=list.map(function(it){
       var tap=!!it.act, tag=tap?'button':'div';
       return '<'+tag+(tap?(' data-act="'+esc(it.act)+'" data-arg="'+esc(it.arg)+'"'):'')+' style="display:flex;align-items:center;gap:12px;width:100%;text-align:left;border:none;font-family:inherit;background:'+(toneBg[it.tone]||'var(--surface-2)')+';border-radius:14px;padding:12px 13px;margin-top:9px'+(tap?';cursor:pointer':'')+'">'+
@@ -5185,7 +5186,7 @@
     else if(tab==='ern'){ body=coachInsights('ern')+themeCta('Zum Essen-Tagebuch','ern','🥗'); }
     else if(tab==='training'){ body=coachInsights('training')+themeCta('Zum Trainingsplan','tag','🏋️'); }
     else if(tab==='lifestyle'){ if(DATA.mprofile==null) loadMemberProfile(); if(DATA.morning==null) loadMorning(); body=vitalCard()+morningEntryCard()+vitalLifestyleForm()+progressPickCard(); }
-    else { if(DATA.checkins==null) loadCheckins(); if(DATA.mprofile==null) loadMemberProfile(); if(DATA.morning==null) loadMorning(); if(woHealthCap()&&woHealthConnected()&&DATA.healthMetrics==null){ DATA.healthMetrics=false; woHealthFetchMetrics(); } body=woVitalRings()+coachDailyBriefing()+coachFinnHub()+coachVitalHero()+ernPremiumCard(); }  // Dein Tag: Oura-Ringe + tagesrelevante Themen, dann FINN + Vitalalter
+    else { if(DATA.checkins==null) loadCheckins(); if(DATA.mprofile==null) loadMemberProfile(); if(DATA.morning==null) loadMorning(); if(DATA.trainSess==null) loadTrainSession(); if(woHealthCap()&&woHealthConnected()&&DATA.healthMetrics==null){ DATA.healthMetrics=false; woHealthFetchMetrics(); } var ovr=woVitalRings(); body=(ovr?('<div style="margin-bottom:16px">'+ovr+'</div>'):'')+coachDailyBriefing()+coachFinnHub()+coachVitalHero()+ernPremiumCard(); }  // Dein Tag: Oura-Ringe + tagesrelevante Themen, dann FINN + Vitalalter
     return wrap(header+coachTabBar(tab)+body);
   }
   // Coach-Themen-Tabs (horizontal scrollbare Pills).
@@ -5739,7 +5740,7 @@
       (allDone?'<button data-act="trainRunGo" style="width:100%;margin-top:9px;padding:11px;border:1.5px solid rgba(255,255,255,.5);border-radius:12px;background:transparent;color:#fff;font-weight:800;font-size:13px;cursor:pointer">Nochmal trainieren (Zeit neu starten)</button>':'')+'</div>';
     var preview=exs.length?trainCardBox('<div style="font-size:12px;font-weight:900;color:var(--ern-acc);text-transform:uppercase;letter-spacing:.4px;margin-bottom:2px">Das erwartet dich <span style="color:var(--placeholder);font-weight:700;text-transform:none;letter-spacing:0">· antippen für Details</span></div>'+exs.map(function(e,ix){ var dn=trainSessItem('d'+di+'e'+ix).done; return '<button data-act="trExDetail" data-arg="d'+di+'e'+ix+'" style="display:flex;width:100%;text-align:left;align-items:center;gap:10px;padding:9px 0;border:none;border-top:1px solid var(--border);background:none;cursor:pointer;font-family:inherit"><span style="width:22px;height:22px;border-radius:50%;background:'+(dn?ERN_G:'var(--surface-2)')+';color:'+(dn?'#fff':'var(--text-soft)')+';font-size:11px;font-weight:900;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+(dn?'✓':(ix+1))+'</span><div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:800;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(e.name)+'</div>'+(e.machine?'<div style="font-size:11px;font-weight:700;color:var(--ern-acc);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">🔧 '+esc(e.machine)+(e.bio?' · 🤖 KI':'')+'</div>':'')+'</div>'+(e.bio?'':'<span style="font-size:11.5px;font-weight:800;color:var(--placeholder);flex-shrink:0">'+esc(e.sets)+'×'+esc(e.reps)+'</span>')+svg('<path d="M9 6l6 6-6 6"></path>',{c:'var(--placeholder)',w:2,s:13})+'</button>'; }).join(''),'16px'):'';
     var sec='border:1.5px solid var(--border-strong);background:var(--surface);border-radius:11px;font-size:12.5px;font-weight:800;padding:10px 12px;cursor:pointer;color:var(--teal-ink)';
-    var actions='<div style="display:flex;gap:8px;margin:2px 2px 0">'+
+    var actions='<div style="display:flex;gap:8px;margin:2px 2px 14px">'+
       '<button data-act="trainOpen" data-arg="'+esc(mp.id||'')+'" style="flex:1;'+sec+'">Plan ansehen</button>'+
       '<button data-act="trainSeg" data-arg="plaene" style="flex:1;'+sec+'">Plan wechseln</button>'+
       '<button data-act="trainStop"'+(S.trainBusy?' disabled':'')+' style="'+sec+';color:var(--err-fg);border-color:#e3b8b1">Beenden</button>'+
@@ -5939,7 +5940,7 @@
   // Gesundheits-Kennzahlen (Ruhepuls, HRV, Schlaf, Gewicht, Körperfett, VO2max, Schritte) aus Apple Health.
   function woHealthFetchMetrics(){
     var P=woNativePlugin(); if(!P||!P.getHealthMetrics){ DATA.healthMetrics={ok:false,err:'Plugin ohne getHealthMetrics – App aktualisieren/neu bauen',t:Date.now()}; return; }
-    var done=function(r){ DATA.healthMetrics=Object.assign({t:Date.now()},(r&&typeof r==='object')?r:{ok:false,err:'leere Antwort'}); if(DATA.healthMetrics.ok!==false) woVitalsPush(DATA.healthMetrics); rIf(['tag','morning','fort','home','figur']); };
+    var done=function(r){ DATA.healthMetrics=Object.assign({t:Date.now()},(r&&typeof r==='object')?r:{ok:false,err:'leere Antwort'}); if(DATA.healthMetrics.ok!==false) woVitalsPush(DATA.healthMetrics); rIf(['tag','morning','fort','home','figur','coach']); };
     var go=function(){ try{ P.getHealthMetrics().then(done).catch(function(e){ done({ok:false,err:String((e&&(e.message||e.errorMessage))||e)}); }); }catch(e){ done({ok:false,err:String(e)}); } };
     // Erst Freigabe sicherstellen (fragt bei bereits Verbundenen die NEUEN Kategorien nach), dann lesen.
     try{ if(P.healthAuth){ P.healthAuth().then(go).catch(go); } else { go(); } }catch(e){ go(); }
@@ -5976,41 +5977,11 @@
     woVitalsPushT=now;
     api('/api/member/morning',{method:'POST',body:JSON.stringify({action:'vitals',vitals:v})}).then(function(r){ if(r&&r.ok){ DATA.morning=r; rIf(['morning','fort','tag','home','coach']); } }).catch(function(){});
   }
-  // Kompakte Apple-Health-Kontextkarte für den Vital-Check: Werte der Apple Watch
-  // (Ruhepuls, HRV, Schlaf) + passive Erholungs-Ampel & Schlaf-Referenz (Whoop/Oura-artig),
-  // sobald die Baseline kalibriert ist. Nur in der nativen App bei Verbindung.
-  function woHealthVitalCard(){
-    if(!(woHealthCap()&&woHealthConnected())) return '';
-    if(DATA.healthMetrics==null){ DATA.healthMetrics=false; woHealthFetchMetrics(); }
-    var m=(DATA.healthMetrics&&DATA.healthMetrics.ok)?DATA.healthMetrics:null; if(!m) return '';
-    woVitalsPush(m);   // an den Server (Baseline/Briefing/FINN)
-    var items=[];
-    if(m.restingHr) items.push(['❤️','Ruhepuls',Math.round(m.restingHr)+' bpm']);
-    if(m.hrv) items.push(['〰️','HRV',Math.round(m.hrv)+' ms']);
-    if(m.sleepMin) items.push(['😴','Schlaf',(Math.floor(m.sleepMin/60))+'h '+(m.sleepMin%60)+'m']);
-    if(!items.length) return '';
-    var cells=items.map(function(c){ return '<div style="flex:1 1 30%;min-width:88px;background:var(--surface-2);border-radius:12px;padding:9px 8px"><div style="font-size:10px;font-weight:800;color:var(--text-soft)">'+c[0]+' '+esc(c[1])+'</div><div style="font-size:15px;font-weight:900;color:var(--text);margin-top:1px">'+esc(String(c[2]))+'</div></div>'; }).join('');
-    // Passive Erholungs-Ampel + Schlaf-Referenz aus dem Server-Briefing.
-    var vb=(DATA.morning&&DATA.morning.ok&&DATA.morning.vitals)?DATA.morning.vitals:null;
-    var extra='';
-    if(vb){
-      var col={gruen:'#1c9b5e',gelb:'#9a5a18',rot:'#b4552f'},bgc={gruen:'#E7F6EC',gelb:'#FBF0E3',rot:'#FBECE8'},emoM={gruen:'🟢',gelb:'🟡',rot:'🔴'};
-      var rd=vb.readiness;
-      if(rd&&rd.level&&rd.level!=='kalibrierung'){
-        extra+='<div style="display:flex;align-items:center;gap:9px;margin-top:11px;background:'+(bgc[rd.level]||'var(--surface-2)')+';border-radius:12px;padding:10px 12px"><span style="font-size:17px">'+(emoM[rd.level]||'📈')+'</span><div style="flex:1;min-width:0"><div style="font-size:12.5px;font-weight:900;color:'+(col[rd.level]||'var(--text)')+'">Erholung: '+esc(rd.headline)+'</div><div style="font-size:10.5px;font-weight:700;color:var(--text-soft)">Passiv aus Ruhepuls, HRV &amp; Schlaf · Score '+rd.score+'/100</div></div></div>';
-      } else if(rd&&rd.calibrating){
-        extra+='<div style="font-size:10.5px;font-weight:700;color:var(--text-soft);margin-top:9px">Erholungs-Baseline kalibriert noch – nach ein paar Tagen erscheint hier deine passive Ampel (ganz ohne Gurt).</div>';
-      }
-      if(vb.sleep&&vb.sleep.note){ extra+='<div style="font-size:10.5px;font-weight:700;color:var(--text-soft);margin-top:7px">😴 '+esc(vb.sleep.label)+' – '+esc(vb.sleep.note)+(vb.sleep.ref?(' ('+esc(vb.sleep.ref)+')'):'')+'</div>'; }
-    }
-    return '<div style="'+MO_CARD+'"><div style="font-size:13.5px;font-weight:900;color:var(--text)">⌚ Aus deiner Apple Watch</div>'+
-      '<div style="font-size:11.5px;color:var(--text-soft);font-weight:600;line-height:1.45;margin:5px 0 10px">Ergänzend zur Gurt-Messung – so sieht deine Uhr deine Erholung. Fließt in dein Vitalalter, dein Briefing und FINN ein.</div>'+
-      '<div style="display:flex;flex-wrap:wrap;gap:7px">'+cells+'</div>'+extra+'</div>';
-  }
+  // (woHealthVitalCard entfernt – ersetzt durch die Oura-artige woVitalRings-Karte.)
   // ── Oura-artige Tages-Auswertung: Erholungs- + Schlaf-Ring, Mini-Werte, Schlafphasen. ──
   function woVitalCol(score){ return score==null?'#9db4bb':(score>=80?'#1c9b5e':(score>=60?'#3f9ec4':'#d98a3a')); }
-  function woVitalRing(score,label){
-    var c=woVitalCol(score); var deg=Math.round((score||0)*3.6);
+  function woVitalRing(score,label,colOverride){
+    var c=colOverride||woVitalCol(score); var deg=Math.round((score||0)*3.6);
     var inner=(score!=null)?('<span style="font-size:24px;font-weight:900;color:'+c+';line-height:1">'+score+'</span>'):('<span style="font-size:22px;color:var(--text-soft)">–</span>');
     return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:8px"><div style="width:86px;height:86px;border-radius:50%;background:conic-gradient('+c+' '+deg+'deg,var(--surface-2) 0);display:flex;align-items:center;justify-content:center"><div style="width:68px;height:68px;border-radius:50%;background:var(--surface);display:flex;align-items:center;justify-content:center">'+inner+'</div></div><span style="font-size:12px;font-weight:900;color:var(--text)">'+esc(label)+'</span></div>';
   }
@@ -6024,7 +5995,16 @@
     var readyScore=(rd&&rd.level&&rd.level!=='kalibrierung')?rd.score:null;
     var sleepScore=sd?sd.score:null;
     var fmt=function(x){ return Math.floor(x/60)+'h '+(x%60)+'m'; };
-    var rings='<div style="display:flex;gap:10px;justify-content:center">'+woVitalRing(readyScore,'Erholung')+woVitalRing(sleepScore,'Schlaf')+'</div>';
+    // Erholungs-Ring: Farbe aus der Ampel des Servers (nicht aus den Ring-Schwellen), damit
+    // Farbe und Headline nicht auseinanderlaufen. Ringe nur zeigen, wenn ein Score da ist –
+    // ein leerer „–"-Ring würde dem befüllten Schlafblock darunter widersprechen.
+    var readyCol=(readyScore!=null&&rd)?(rd.level==='gruen'?'#1c9b5e':rd.level==='gelb'?'#3f9ec4':'#d98a3a'):null;
+    var ringEls=[];
+    if(readyScore!=null) ringEls.push(woVitalRing(readyScore,'Erholung',readyCol));
+    if(sleepScore!=null) ringEls.push(woVitalRing(sleepScore,'Schlaf'));
+    var rings;
+    if(ringEls.length){ rings='<div style="display:flex;gap:10px;justify-content:center">'+ringEls.join('')+'</div>'; }
+    else { var calib=!!(rd&&rd.calibrating); rings='<div style="background:var(--surface-2);border-radius:12px;padding:11px 13px;font-size:11px;font-weight:700;color:var(--text-soft);line-height:1.45">'+(calib?'Erholungs- &amp; Schlaf-Score werden kalibriert – nach ein paar Tagen erscheinen hier deine Ringe.':'Aktiviere den Vital-Check, damit dein Erholungs- &amp; Schlaf-Score hier als Ring erscheint.')+'</div>'; }
     var stat=function(ic,label,val){ return val?('<div style="flex:1;background:var(--surface-2);border-radius:12px;padding:8px 9px;text-align:center"><div style="font-size:9.5px;font-weight:800;color:var(--text-soft)">'+ic+' '+label+'</div><div style="font-size:14px;font-weight:900;color:var(--text);margin-top:1px">'+esc(val)+'</div></div>'):''; };
     var stats='<div style="display:flex;gap:7px;margin-top:14px">'+stat('❤️','Ruhepuls',m.restingHr?(Math.round(m.restingHr)+' bpm'):'')+stat('〰️','HRV',m.hrv?(Math.round(m.hrv)+' ms'):'')+stat('👟','Schritte',m.steps?m.steps.toLocaleString('de-DE'):'')+'</div>';
     var sleepBlock='';
@@ -7987,18 +7967,19 @@
     if(S.morningJournal.sleepSelf==null){
       var cat=(vb&&vb.sleep&&vb.sleep.cat)||null;
       var sv=cat?({good:'gut',warn:'ok',bad:'schlecht'}[cat]):((m&&m.sleepMin>0)?(m.sleepMin>=420?'gut':(m.sleepMin>=360?'ok':'schlecht')):null);
-      if(sv){ S.morningJournal.sleepSelf=sv; S.moJournalAuto=true; }
+      if(sv){ S.morningJournal.sleepSelf=sv; S.moJournalAuto=true; S.moJournalAutoSleep=true; }
     }
     if(S.morningJournal.moodSelf==null && vb&&vb.readiness&&vb.readiness.level&&vb.readiness.level!=='kalibrierung'){
       var mv={gruen:'gut',gelb:'ok',rot:'schlecht'}[vb.readiness.level];
-      if(mv){ S.morningJournal.moodSelf=mv; S.moJournalAuto=true; }
+      if(mv){ S.morningJournal.moodSelf=mv; S.moJournalAuto=true; S.moJournalAutoMood=true; }
     }
     S.moJournalPrefilled=true;
   }
   function moJournalCard(){
     moJournalPrefill();
     var head=subHeader('Morgen-Check-in','Wie fühlst du dich heute?','morning');
-    var autoHint=S.moJournalAuto?'<div style="display:flex;align-items:center;gap:7px;margin-top:11px;background:var(--surface-2);border-radius:11px;padding:9px 11px;font-size:11.5px;font-weight:700;color:var(--ern-acc)"><span>❤️</span><span>Schlaf &amp; Energie aus Apple Health vorbelegt – tippe zum Anpassen.</span></div>':'';
+    var _al=[]; if(S.moJournalAutoSleep) _al.push('Schlaf'); if(S.moJournalAutoMood) _al.push('Energie');
+    var autoHint=_al.length?('<div style="display:flex;align-items:center;gap:7px;margin-top:11px;background:var(--surface-2);border-radius:11px;padding:9px 11px;font-size:11.5px;font-weight:700;color:var(--ern-acc)"><span>❤️</span><span>'+_al.join(' &amp; ')+' aus Apple Health vorbelegt – tippe zum Anpassen.</span></div>'):'';
     var row=function(label,field,opts){ return '<div style="padding:13px 0;border-top:1px solid var(--border)"><div style="font-size:13.5px;font-weight:800;color:var(--text)">'+label+'</div>'+moChips(field,opts)+'</div>'; };
     var body='<div style="'+MO_CARD+'">'+
       '<div style="font-size:16px;font-weight:900;color:var(--text)">Kurzer Check-in vor der Messung</div>'+
