@@ -5772,6 +5772,36 @@
       .catch(function(){ S.woReviewBusy=false; setS({}); }); }
   function woFindSession(ts){ var d=woData(); var l=(d&&d.list)||[]; for(var i=0;i<l.length;i++) if(String(l[i].ts)===String(ts)) return l[i]; return null; }
 
+  // ── Native Trainings-Brücke (Puls/GPS/Health) aus Capacitor.Plugins.FitInnNative bauen ──
+  // Robust: greift in der nativen App auch dann, wenn die Shim-Injektion nicht rechtzeitig lief.
+  // Idempotent; setzt window.FitInnNative additiv zusammen (Face-ID/Push bleiben, falls vorhanden).
+  var woNativeBound=false;
+  function woNativePlugin(){ try{ return (window.Capacitor&&Capacitor.Plugins&&Capacitor.Plugins.FitInnNative)||null; }catch(e){ return null; } }
+  function woNativeBind(){
+    if(woNativeBound) return true;
+    var P=woNativePlugin(); if(!P) return false;
+    woNativeBound=true;
+    var api=window.FitInnNative||{};
+    api.isNative=true; api.__ver=Math.max(3,api.__ver||0);
+    try{ api.platform=(window.Capacitor.getPlatform&&Capacitor.getPlatform())||api.platform||'ios'; }catch(e){}
+    api.available=Object.assign({},api.available||{},{hr:true,geo:true,health:true});
+    var hrCb=null,hrBound=false;
+    api.startHeartRate=function(cb){ hrCb=cb; if(!hrBound){ hrBound=true; try{ P.addListener('heartRate',function(d){ if(hrCb&&d&&d.bpm) hrCb({bpm:d.bpm,rr:d.rr||[]}); }); }catch(e){} } return P.startHeartRate(); };
+    api.stopHeartRate=function(){ hrCb=null; try{ P.stopHeartRate(); }catch(e){} };
+    var geoCbs={},geoNext=1,geoBound=false;
+    function bindGeo(){ if(geoBound) return; geoBound=true; try{ P.addListener('location',function(d){ var cb=d&&geoCbs[d.watchId]; if(cb) cb({lat:d.lat,lng:d.lng,alt:d.alt,acc:d.acc}); }); }catch(e){} }
+    api.getPosition=function(){ return P.getPosition(); };
+    api.watchPosition=function(cb){ bindGeo(); var id=geoNext++; geoCbs[id]=cb; P.watchPosition({watchId:id}); return id; };
+    api.clearWatch=function(id){ delete geoCbs[id]; try{ P.clearWatch({watchId:id}); }catch(e){} };
+    api.healthAuth=function(){ return P.healthAuth(); };
+    api.getHealthWorkouts=function(sinceTs){ return P.getHealthWorkouts({sinceTs:sinceTs||0}); };
+    api.saveHealthWorkout=function(s){ return P.saveHealthWorkout(s||{}); };
+    window.FitInnNative=api;
+    return true;
+  }
+  // Kleine Diagnose für die Health-Karte (nur in der nativen App sichtbar).
+  function woHealthDiag(){ try{ var c=window.Capacitor; var keys=(c&&c.Plugins)?Object.keys(c.Plugins).join(', '):'—'; return 'Cap:'+(c?1:0)+' · nativ:'+((c&&c.isNativePlatform&&c.isNativePlatform())?1:0)+' · FitInnNative-Plugin:'+(woNativePlugin()?'JA':'nein')+' · Plugins:['+keys+']'; }catch(e){ return 'diag:'+e; } }
+
   // ── Apple Health / Google Fit ── Sync über die native Bridge (Vertrag: docs/NATIVE-BRIDGE.md).
   // Im WebView/Browser ist die Bridge nicht da -> „nur in der App"-Hinweis (kein Fehler).
   function woHealthCap(){ try{ return !!(window.FitInnNative&&FitInnNative.available&&FitInnNative.available.health); }catch(e){ return false; } }
@@ -5826,6 +5856,8 @@
     var body;
     if(!cap){
       body='<div style="margin-top:12px;background:var(--surface-2);border-radius:12px;padding:11px 12px;font-size:12px;font-weight:700;color:var(--text-soft);line-height:1.45">📱 In der <b style="color:var(--teal-ink)">Fit-Inn-App</b> verfügbar: verbinde '+esc(plat)+', dann erscheinen deine Einheiten aus anderen Apps automatisch hier.</div>';
+      // Diagnose (nur in der App sichtbar): zeigt, ob das native Plugin erkannt wird.
+      if(window.Capacitor){ body+='<div style="font-size:9.5px;color:var(--placeholder);margin-top:8px;word-break:break-word;line-height:1.35">'+esc(woHealthDiag())+'</div>'; }
     } else if(!connected){
       body='<button data-act="woHealthConnect"'+(busy?' disabled':'')+' style="width:100%;margin-top:13px;padding:14px;border:none;border-radius:14px;background:'+ERN_G+';color:#fff;font-weight:900;font-size:14px;cursor:pointer">'+(busy?'Verbinde …':('Mit '+esc(plat)+' verbinden'))+'</button>';
     } else {
@@ -11401,6 +11433,10 @@
   }
   window.addEventListener('fitinn-native-ready', onNativeReady);
   if(window.FitInnNative && FitInnNative.isNative) onNativeReady();
+
+  // Native Trainings-Brücke (Puls/GPS/Health) verbinden, sobald das Capacitor-Plugin bereitsteht
+  // (mit kurzem Nachlauf, falls es minimal verzögert lädt). Danach neu zeichnen.
+  (function(){ var n=0; (function poll(){ try{ if(woNativeBind()){ try{ onNativeReady(); }catch(e){} try{ rIf(['tag','morning','home','coach','fort','ern']); }catch(e){} return; } }catch(e){} if(n++<80) setTimeout(poll,150); })(); })();
 
   // App/Tab wird wieder sichtbar oder erhält Fokus -> Daten automatisch aktualisieren.
   document.addEventListener('visibilitychange', function(){ if(document.visibilityState==='visible'){ maybeAutoRefresh(); checkArrival(true); } });
