@@ -14,8 +14,11 @@
  *                                 NSSpeechRecognitionUsageDescription,
  *                                 NSPhotoLibraryUsageDescription, NSPhotoLibraryAddUsageDescription,
  *                                 NSBluetoothAlwaysUsageDescription, NSBluetoothPeripheralUsageDescription
- *                                 (Bluetooth für den H9-Morgen-Check)
- *   - Android AndroidManifest.xml: CAMERA, RECORD_AUDIO, BLUETOOTH_SCAN, BLUETOOTH_CONNECT
+ *                                 (Bluetooth für den H9-Morgen-Check),
+ *                                 NSLocationWhenInUseUsageDescription (Outdoor-Training + Check-in),
+ *                                 NSHealthShareUsageDescription, NSHealthUpdateUsageDescription (Apple Health)
+ *   - Android AndroidManifest.xml: CAMERA, RECORD_AUDIO, BLUETOOTH_SCAN, BLUETOOTH_CONNECT,
+ *                                 ACCESS_FINE/COARSE_LOCATION (Outdoor), health.READ/WRITE_* (Health Connect)
  *                                 (+ Kamera als optionales Feature)
  *   - Android MainActivity.java:  (1) fragt CAMERA/RECORD_AUDIO zur LAUFZEIT an und
  *                                 (2) setzt einen WebChromeClient mit onPermissionRequest, der
@@ -62,6 +65,16 @@ const IOS_KEYS = {
   // Wake-Lock) genügt „WhenInUse"; daher hier bewusst nur der WhenInUse-Schlüssel.
   NSLocationWhenInUseUsageDescription:
     'Die App braucht deinen Standort, um Outdoor-Trainings (Laufen, Radfahren) mit Strecke, Distanz und Tempo aufzuzeichnen – und um dich beim Check-in in deinem Studio zu erkennen.',
+  // Apple Health (HealthKit): Trainings aus anderen Apps/Uhren übernehmen (lesen) und
+  // in der App aufgezeichnete Einheiten zurückschreiben (schreiben).
+  // Hinweis: HealthKit braucht ZUSÄTZLICH die HealthKit-Capability + das Entitlement
+  // (com.apple.developer.healthkit) in Xcode sowie native Read/Write-Methoden in
+  // FitInnNative (healthAuth/getHealthWorkouts/saveHealthWorkout, siehe docs/NATIVE-BRIDGE.md).
+  // Die reinen Info.plist-Schlüssel hier reichen ohne diese native Umsetzung NICHT.
+  NSHealthShareUsageDescription:
+    'Die App liest deine Trainings aus Apple Health (z. B. von Apple Watch oder Garmin), damit sie für deine Erholung und deine Vitalpunkte zählen.',
+  NSHealthUpdateUsageDescription:
+    'Die App schreibt deine in der App aufgezeichneten Trainings nach Apple Health, damit alle deine Einheiten an einem Ort zusammenlaufen.',
 };
 
 const ANDROID_PERMISSIONS = [
@@ -74,6 +87,16 @@ const ANDROID_PERMISSIONS = [
   // Standort für Outdoor-Trainings (Strecke/Distanz/Tempo) + Studio-Check-in.
   'android.permission.ACCESS_FINE_LOCATION',
   'android.permission.ACCESS_COARSE_LOCATION',
+  // Health Connect (Google Fit-Nachfolger): Trainings lesen/schreiben.
+  // Hinweis: Health Connect braucht ZUSÄTZLICH das androidx.health.connect-SDK, eine
+  // PermissionsRationaleActivity mit Intent-Filter (ACTION_SHOW_PERMISSIONS_RATIONALE) und
+  // eine veröffentlichte Datenschutzerklärung – plus native Read/Write-Methoden in
+  // FitInnNative (siehe docs/NATIVE-BRIDGE.md). Die Manifest-Rechte hier allein genügen NICHT.
+  'android.permission.health.READ_EXERCISE',
+  'android.permission.health.WRITE_EXERCISE',
+  'android.permission.health.READ_HEART_RATE',
+  'android.permission.health.READ_DISTANCE',
+  'android.permission.health.READ_ACTIVE_CALORIES_BURNED',
 ];
 const ANDROID_FEATURES = [
   // Kamera/Mikro nur „optional" verlangen, damit Geräte ohne Kamera die App

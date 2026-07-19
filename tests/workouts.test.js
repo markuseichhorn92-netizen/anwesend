@@ -50,6 +50,24 @@ function run() {
   ok('14. valid: kurz/ohne Puls ungültig', !WO.validSession({ durationSec: 3, avgHr: 0 }) && WO.validSession({ durationSec: 30, avgHr: 120 }));
   ok('14b. valid: Outdoor ohne Puls, aber mit Strecke gültig', WO.validSession({ kind: 'outdoor', durationSec: 600, avgHr: 0, distanceM: 4000 }) && !WO.validSession({ kind: 'indoor', durationSec: 600, avgHr: 0, distanceM: 4000 }));
 
+  // 6b. Health/Fit-Import: fromExternal + importMerge (Dedup per extId)
+  const ext1 = { extId: 'HK-1', start: t0, end: t0 + 1800 * 1000, activity: 'laufen', kcal: 320, avgHr: 148, maxHr: 170, distanceM: 5200 };
+  const fe = WO.fromExternal(ext1);
+  ok('17. fromExternal: Dauer aus start/end, source=health, outdoor', fe.durationSec === 1800 && fe.source === 'health' && fe.kind === 'outdoor' && fe.extId === 'HK-1');
+  const feSan = WO.sanitizeSession(fe, fe.ts);
+  ok('17b. sanitize erhält source/extId/Distanz', feSan.source === 'health' && feSan.extId === 'HK-1' && feSan.distanceM === 5200 && WO.validSession(feSan));
+  // Studio-Import ohne Puls, aber mit kcal -> gültig (Zusammenfassung reicht bei Import)
+  const ext2 = { extId: 'HK-2', start: t0 + 999, end: t0 + 999 + 2700 * 1000, activity: 'studio', kind: 'indoor', kcal: 260, avgHr: 0 };
+  ok('18. Import Studio ohne Puls, mit kcal -> gültig', WO.validSession(WO.sanitizeSession(WO.fromExternal(ext2), t0 + 999)));
+  // Merge dedupliziert: HK-1 bereits vorhanden -> nur HK-2 neu
+  const merged = WO.importMerge([feSan], [ext1, ext2], t0);
+  ok('19. importMerge: nur neue (dedup per extId)', merged.added === 1 && merged.list.length === 2 && merged.list.some((s) => s.extId === 'HK-2'));
+  // Erneuter Merge mit denselben -> nichts neu
+  const merged2 = WO.importMerge(merged.list, [ext1, ext2], t0);
+  ok('19b. importMerge idempotent', merged2.added === 0 && merged2.list.length === 2);
+  // App-Session ohne extId bleibt (source app implizit)
+  ok('20. sanitize Default-Source app', WO.sanitizeSession({ durationSec: 100, avgHr: 120 }).source === 'app');
+
   // 7. weeklyLoad: nur letzte 7 Tage
   const now = Date.now();
   const wl = WO.weeklyLoad([

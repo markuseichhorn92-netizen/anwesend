@@ -10,6 +10,7 @@
  *
  *  GET                                   -> { ok, available, premium, consent, list, weekly, zones, activities }
  *  POST { action:'save', samples, activity, kind, outdoor } -> Einheit aggregieren + speichern
+ *  POST { action:'import', workouts }    -> Einheiten aus Apple Health / Google Fit übernehmen (dedupliziert)
  *  POST { action:'assess', ts }          -> FINN-Auswertung einer Einheit (Premium)
  *  POST { action:'delete', ts }          -> Einheit löschen
  *
@@ -98,6 +99,16 @@ module.exports = async function handler(req, res) {
       if (!r.ok) return j(res, 200, { ok: false, error: r.error || 'save_failed', message: 'Speichern hat nicht geklappt – bitte erneut.' });
       const st = await readState(id);
       return j(res, 200, Object.assign({ ok: true, saved: r.saved, session: r.session, vpAdded: WO.VP_PER_WORKOUT }, st));
+    }
+
+    // Einheiten aus Apple Health / Google Fit übernehmen (Premium + Einwilligung, dedupliziert per extId).
+    if (action === 'import') {
+      if (!premium) return j(res, 200, { ok: false, error: 'premium_required', message: PREMIUM_MSG });
+      if (!(await MO.getConsent(id))) return j(res, 200, { ok: false, error: 'consent_required', message: 'Bitte aktiviere zuerst den Vital-Check (Einwilligung für Herzdaten).' });
+      const incoming = Array.isArray(body.workouts) ? body.workouts.slice(0, 200) : [];
+      const r = await WO.importMany(id, incoming, Date.now());
+      const st = await readState(id);
+      return j(res, 200, Object.assign({ ok: r.ok !== false, imported: r.added || 0, vpAdded: (r.added || 0) * WO.VP_PER_WORKOUT }, st));
     }
 
     // FINN-Auswertung einer Einheit (Premium).

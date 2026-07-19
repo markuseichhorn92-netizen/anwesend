@@ -5655,7 +5655,7 @@
       }).join('');
       unitsCard='<div style="font-size:12px;font-weight:900;color:var(--ern-acc);text-transform:uppercase;letter-spacing:.4px;margin:18px 4px 10px">Absolvierte Einheiten</div>'+uRows;
     }
-    return trainWeekCard()+woHistoryCard()+visits+unitsCard;
+    return trainWeekCard()+woHistoryCard()+woHealthCard()+visits+unitsCard;
   }
 
   // ═══ Trainings-Aufzeichnung mit Puls (Gurt) – Indoor + Outdoor (GPS) ═══
@@ -5758,7 +5758,7 @@
     S.woPhase='saving'; S.woErr=false; S.woMsg=''; render();
     api('/api/member/workouts',{method:'POST',timeoutMs:30000,body:JSON.stringify(payload)})
       .then(function(r){ S.woPhase='idle';
-        if(r&&r.ok){ DATA.workouts=r; S.woResult=r.session||null; S.woReview=null; S.woMsg=''; S.woErr=false; if(S.woResult) woFetchReview(); }
+        if(r&&r.ok){ DATA.workouts=r; S.woResult=r.session||null; S.woReview=null; S.woMsg=''; S.woErr=false; if(S.woResult){ woFetchReview(); woHealthPush(S.woResult); } }
         else if(r&&r.error==='premium_required'){ ernEnsureModulePrice(); setS({ernUpgrade:true}); return; }
         else { S.woErr=true; S.woMsg=(r&&r.message)||'Speichern hat nicht geklappt – bitte erneut.'; }
         setS({});
@@ -5769,6 +5769,74 @@
       .then(function(r){ S.woReviewBusy=false; if(r&&r.ok&&r.review){ S.woReview=r.review; } else if(r&&r.error==='premium_required'){ ernEnsureModulePrice(); setS({ernUpgrade:true}); return; } setS({}); })
       .catch(function(){ S.woReviewBusy=false; setS({}); }); }
   function woFindSession(ts){ var d=woData(); var l=(d&&d.list)||[]; for(var i=0;i<l.length;i++) if(String(l[i].ts)===String(ts)) return l[i]; return null; }
+
+  // ── Apple Health / Google Fit ── Sync über die native Bridge (Vertrag: docs/NATIVE-BRIDGE.md).
+  // Im WebView/Browser ist die Bridge nicht da -> „nur in der App"-Hinweis (kein Fehler).
+  function woHealthCap(){ try{ return !!(window.FitInnNative&&FitInnNative.available&&FitInnNative.available.health); }catch(e){ return false; } }
+  function woHealthWriteCap(){ try{ return !!(woHealthCap()&&FitInnNative.saveHealthWorkout); }catch(e){ return false; } }
+  function woHealthPlatform(){ try{ return ((window.FitInnNative&&FitInnNative.platform)==='android')?'Google Fit':'Apple Health'; }catch(e){ return 'Health'; } }
+  function woHealthPref(){ try{ return JSON.parse(localStorage.getItem('fi_health_v1')||'{}')||{}; }catch(e){ return {}; } }
+  function woHealthSetPref(p){ try{ localStorage.setItem('fi_health_v1',JSON.stringify(Object.assign(woHealthPref(),p))); }catch(e){} }
+  function woHealthConnected(){ return !!(woHealthCap()&&woHealthPref().connected); }
+  function woHealthWriteOn(){ return woHealthConnected()&&woHealthWriteCap()&&woHealthPref().write!==false; }
+  // Verbinden: Freigabe anfragen -> bei Erfolg merken + sofort einmal importieren.
+  function woHealthConnect(){
+    if(!woHealthCap()){ setS({woHealthMsg:'Health-Sync geht nur in der Fit-Inn-App ('+woHealthPlatform()+').'}); return; }
+    if(S.woHealthBusy) return; S.woHealthBusy=true; S.woHealthMsg=''; render();
+    try{ FitInnNative.healthAuth().then(function(r){ S.woHealthBusy=false;
+      if(r&&r.ok&&(r.read||r.write)){ woHealthSetPref({connected:true,write:(r.write!==false),read:(r.read!==false)}); S.woHealthMsg=''; setS({}); woHealthImport(true); }
+      else { S.woHealthMsg='Kein Zugriff auf '+woHealthPlatform()+' – bitte die Freigabe in den Einstellungen erlauben.'; setS({}); }
+    }).catch(function(){ S.woHealthBusy=false; S.woHealthMsg='Verbindung zu '+woHealthPlatform()+' fehlgeschlagen.'; setS({}); }); }
+    catch(e){ S.woHealthBusy=false; S.woHealthMsg='Health-Sync ist in dieser App-Version noch nicht aktiv – bitte App aktualisieren.'; setS({}); }
+  }
+  // Import: liest seit dem letzten Sync (erstmalig 90 Tage) und übergibt dem Server (dedupliziert per extId).
+  function woHealthImport(silent){
+    if(!woHealthCap()){ if(!silent) setS({woHealthMsg:'Health-Sync geht nur in der Fit-Inn-App.'}); return; }
+    if(S.woHealthBusy) return; S.woHealthBusy=true; if(!silent) S.woHealthMsg=''; render();
+    var since=woHealthPref().lastSync||(Date.now()-90*864e5);
+    var send=function(list){
+      api('/api/member/workouts',{method:'POST',timeoutMs:30000,body:JSON.stringify({action:'import',workouts:(list||[]).slice(0,200)})})
+        .then(function(r){ S.woHealthBusy=false;
+          if(r&&r.ok){ DATA.workouts=r; woHealthSetPref({lastSync:Date.now()}); var n=r.imported||0; S.woHealthMsg=(n>0)?(n+' Einheit'+(n>1?'en':'')+' aus '+woHealthPlatform()+' übernommen (+'+(r.vpAdded||0)+' VP).'):'Alles aktuell – keine neuen Einheiten.'; rIf(['tag','home','fort','coach']); }
+          else if(r&&r.error==='premium_required'){ ernEnsureModulePrice(); setS({ernUpgrade:true}); return; }
+          else if(r&&r.error==='consent_required'){ S.woHealthMsg='Bitte zuerst den Vital-Check aktivieren (Einwilligung für Herzdaten).'; }
+          else { S.woHealthMsg=(r&&r.message)||'Import hat nicht geklappt – bitte erneut.'; }
+          setS({});
+        }).catch(function(){ S.woHealthBusy=false; S.woHealthMsg='Netzwerkfehler beim Import.'; setS({}); });
+    };
+    try{ FitInnNative.getHealthWorkouts(since).then(function(r){ send((r&&r.workouts)||[]); })
+      .catch(function(){ S.woHealthBusy=false; S.woHealthMsg='Konnte '+woHealthPlatform()+' nicht lesen.'; setS({}); }); }
+    catch(e){ S.woHealthBusy=false; S.woHealthMsg='Health-Sync ist in dieser App-Version noch nicht aktiv.'; setS({}); }
+  }
+  function woHealthDisconnect(){ woHealthSetPref({connected:false}); setS({woHealthMsg:''}); }
+  // Aufgezeichnete Einheit zusätzlich nach Apple Health / Google Fit schreiben (still, wenn verbunden + write).
+  function woHealthPush(s){
+    try{ if(!s||!woHealthWriteOn()) return; var end=s.ts||Date.now(); var start=end-(s.durationSec||0)*1000;
+      FitInnNative.saveHealthWorkout({start:start,end:end,activity:s.activity,kind:s.kind,kcal:s.kcal,avgHr:s.avgHr,maxHr:s.maxHr,distanceM:s.distanceM||null}).then(function(){}).catch(function(){});
+    }catch(e){}
+  }
+  // Sync-Karte im Verlauf: verbinden / synchronisieren / Status – oder „nur in der App"-Hinweis.
+  function woHealthCard(){
+    var plat=woHealthPlatform(); var cap=woHealthCap(); var connected=woHealthConnected(); var busy=S.woHealthBusy;
+    var msg=S.woHealthMsg?'<div style="font-size:12px;font-weight:700;color:var(--ern-acc);margin-top:11px;line-height:1.45">'+esc(S.woHealthMsg)+'</div>':'';
+    var icon='<div style="width:42px;height:42px;border-radius:13px;background:'+ERN_GD+';display:flex;align-items:center;justify-content:center;flex-shrink:0">'+svg('<path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z"></path>',{c:'#fff',w:1.8,s:22})+'</div>';
+    var head='<div style="display:flex;align-items:center;gap:12px"><span>'+icon+'</span><div style="flex:1;min-width:0"><div style="font-size:14.5px;font-weight:900;color:var(--text)">Apple Health &amp; Google Fit</div><div style="font-size:12px;font-weight:600;color:var(--text-soft);margin-top:2px;line-height:1.4">Einheiten von Apple&nbsp;Watch, Garmin &amp; Co. übernehmen – sie zählen für Erholung &amp; Vitalpunkte.</div></div></div>';
+    var body;
+    if(!cap){
+      body='<div style="margin-top:12px;background:var(--surface-2);border-radius:12px;padding:11px 12px;font-size:12px;font-weight:700;color:var(--text-soft);line-height:1.45">📱 In der <b style="color:var(--teal-ink)">Fit-Inn-App</b> verfügbar: verbinde '+esc(plat)+', dann erscheinen deine Einheiten aus anderen Apps automatisch hier.</div>';
+    } else if(!connected){
+      body='<button data-act="woHealthConnect"'+(busy?' disabled':'')+' style="width:100%;margin-top:13px;padding:14px;border:none;border-radius:14px;background:'+ERN_G+';color:#fff;font-weight:900;font-size:14px;cursor:pointer">'+(busy?'Verbinde …':('Mit '+esc(plat)+' verbinden'))+'</button>';
+    } else {
+      var pr=woHealthPref(); var last=pr.lastSync?('Zuletzt synchronisiert: '+deDate(new Date(pr.lastSync).toISOString())):'Noch nicht synchronisiert';
+      var wOn=woHealthWriteOn(); var wCap=woHealthWriteCap();
+      body='<div style="margin-top:12px;display:flex;align-items:center;gap:8px;font-size:12px;font-weight:800;color:var(--ok-fg,#1f8a54)">'+svg('<path d="M20 6L9 17l-5-5"></path>',{c:'currentColor',w:2.4,s:16})+'<span>Verbunden mit '+esc(plat)+'</span></div>'+
+        '<div style="font-size:11px;font-weight:600;color:var(--text-soft);margin-top:4px">'+esc(last)+'</div>'+
+        '<button data-act="woHealthImport"'+(busy?' disabled':'')+' style="width:100%;margin-top:12px;padding:13px;border:none;border-radius:13px;background:'+ERN_G+';color:#fff;font-weight:900;font-size:14px;cursor:pointer">'+(busy?'Synchronisiere …':'Jetzt synchronisieren')+'</button>'+
+        (wCap?('<button data-act="woHealthWrite" style="width:100%;margin-top:9px;padding:11px;border:1.5px solid var(--border-strong);border-radius:12px;background:var(--surface);color:var(--teal-ink);font-weight:800;font-size:12.5px;cursor:pointer">Aufgezeichnete Einheiten nach '+esc(plat)+' schreiben: '+(wOn?'AN':'AUS')+'</button>'):'')+
+        '<button data-act="woHealthOff" style="width:100%;margin-top:8px;padding:9px;border:none;background:transparent;color:var(--text-soft);font-weight:800;font-size:12px;cursor:pointer">Trennen</button>';
+    }
+    return trainCardBox(head+body+msg,'16px');
+  }
 
   // Einstiegskarte im Training (Einheit-Tab).
   function woEntryCard(){
@@ -9493,6 +9561,11 @@
     woDetailClose:function(){ setS({woDetail:null,woReview:null}); },
     woDelete:function(a){ if(!a) return; if(!window.confirm('Diese Einheit wirklich löschen?')) return;
       api('/api/member/workouts',{method:'POST',body:JSON.stringify({action:'delete',ts:a})}).then(function(r){ if(r&&r.ok){ DATA.workouts=r; } S.woDetail=null; S.woReview=null; rIf(['tag','home','fort','coach']); setS({}); }).catch(function(){ S.woDetail=null; setS({}); }); },
+    // Apple Health / Google Fit
+    woHealthConnect:function(){ woHealthConnect(); },
+    woHealthImport:function(){ woHealthImport(false); },
+    woHealthWrite:function(){ woHealthSetPref({write:(woHealthPref().write===false)}); setS({}); },
+    woHealthOff:function(){ if(window.confirm('Verbindung zu '+woHealthPlatform()+' trennen? Bereits importierte Einheiten bleiben erhalten.')) woHealthDisconnect(); },
     trainReload:function(){ DATA.training=null; render(); loadTraining(); },
     trainSeg:function(a){ S.trainSeg=(a==='plaene'||a==='uebungen'||a==='verlauf')?a:'einheit'; S.trainDetail=null; S.trainDetailFull=null; S.trainGenOpen=false; S.trainMsg=''; setS({}); },
     trainQuickEx:function(){ S.trainSeg='uebungen'; S.trainDetail=null; S.trainGenOpen=false; setS({}); },
