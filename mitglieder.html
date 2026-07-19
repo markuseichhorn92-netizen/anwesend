@@ -7011,12 +7011,23 @@
     api('/api/member/morning',{method:'POST',timeoutMs:30000,body:JSON.stringify({action:'save',measurement:meas})}).then(function(r){
       S.morningBusy=false; S.morningPhase='idle';
       var wasTrain=(S.morningMeasureKind==='training');
-      if(r&&r.ok&&r.list){ DATA.morning=r; S.morningAssess=null; S.morningErr=false; S.morningJournal={}; S.morningMsg=wasTrain?'Check-in gespeichert – deine Trainings-Bereitschaft steht.':'Gespeichert – deine Bereitschaft für heute steht.'; }
+      if(r&&r.ok&&r.list){ DATA.morning=r; S.morningAssess=null; S.morningErr=false; S.morningJournal={}; S.morningMsg=wasTrain?'Check-in gespeichert – deine Trainings-Bereitschaft steht.':'Gespeichert – deine Bereitschaft für heute steht.'; if(!wasTrain) moAutoAssess(); }
       else if(r&&r.error==='premium_required'){ ernEnsureModulePrice(); setS({ernUpgrade:true}); return; }
       else if(r&&r.error==='consent_required'){ S.morningPhase='consent'; }
       else { S.morningErr=true; S.morningMsg=(r&&r.message)||'Speichern fehlgeschlagen – bitte erneut.'; }
       rIf(['morning','fort','coach','home']); setS({});
     }).catch(function(){ S.morningBusy=false; S.morningPhase='idle'; S.morningErr=true; S.morningMsg='Netzwerkfehler – bitte erneut.'; setS({}); });
+  }
+  // FINN wertet direkt nach der Messung automatisch aus (kein Knopfdruck nötig).
+  function moAutoAssess(){
+    var d=morningData(); if(!d||!d.premium||!d.consent||!(d.list&&d.list.length)) return;
+    if(S.morningAssess||S.morningAssessBusy) return;
+    S.morningAssessBusy=true;
+    api('/api/member/morning',{method:'POST',timeoutMs:45000,body:JSON.stringify({action:'assess'})}).then(function(r){
+      S.morningAssessBusy=false;
+      if(r&&r.ok&&r.check){ S.morningAssess=r.check; }
+      rIf(['morning']);
+    }).catch(function(){ S.morningAssessBusy=false; rIf(['morning']); });
   }
   // ── Karten ──
   var MO_LV={ gruen:{bg:'linear-gradient(150deg,#1c9b5e,#0f6b3f)',emo:'🟢',lab:'Bereit für Vollgas'}, gelb:{bg:'linear-gradient(150deg,#cf8a2f,#a5641a)',emo:'🟡',lab:'Moderat starten'}, rot:{bg:'linear-gradient(150deg,#d9603a,#a8401f)',emo:'🔴',lab:'Heute auf Erholung setzen'} };
@@ -7392,19 +7403,47 @@
   function moFinnCard(){
     var d=morningData(); if(!d||!(d.list&&d.list.length)) return '';
     var chk=S.morningAssess, busy=S.morningAssessBusy;
-    var body='';
     if(chk){
       var rd=chk.readiness||{};
-      var todos=(chk.todos||[]).map(function(t){ return '<li style="margin:4px 0">'+esc(t)+'</li>'; }).join('');
-      body='<div style="margin-top:12px;background:var(--surface-2);border-radius:14px;padding:14px;font-size:13.5px;color:var(--text);line-height:1.55">'+
-        (rd.why?'<div style="font-weight:600">'+esc(rd.why)+'</div>':'')+
-        (chk.trainingAdvice?'<div style="margin-top:10px;font-weight:800;color:var(--teal-ink)">🏋️ '+esc(chk.trainingAdvice)+'</div>':'')+
-        (todos?'<ul style="margin:10px 0 0;padding-left:20px;font-weight:600">'+todos+'</ul>':'')+
-        (chk.wellnessNote?'<div style="margin-top:10px;font-size:12.5px;color:var(--text-soft);font-weight:600;border-top:1px solid var(--border);padding-top:8px">💡 '+esc(chk.wellnessNote)+'</div>':'')+
-        '</div>';
+      var todos=(chk.todos||[]).map(function(t){ return '<li style="margin:5px 0">'+esc(t)+'</li>'; }).join('');
+      return '<div style="'+MO_CARD+';background:linear-gradient(150deg,#0e6072,#0a3f4c);color:#fff">'+
+        '<div style="display:flex;align-items:center;gap:10px"><div style="width:34px;height:34px;border-radius:10px;background:rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center">'+svg(IC.spark,{c:'#fff',w:1.8,s:19})+'</div><div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:900">FINNs Auswertung für heute</div><div style="font-size:11.5px;color:#aed0d6;font-weight:600">Automatisch aus deiner Messung</div></div></div>'+
+        (rd.why?'<div style="font-size:14px;font-weight:600;color:#eaf6f8;line-height:1.6;margin-top:12px">'+esc(rd.why)+'</div>':'')+
+        (chk.trainingAdvice?'<div style="margin-top:11px;background:rgba(255,255,255,.1);border-radius:12px;padding:11px 13px;font-size:13px;font-weight:800;color:#fff">🏋️ '+esc(chk.trainingAdvice)+'</div>':'')+
+        (todos?'<div style="font-size:11px;font-weight:800;color:#aed0d6;text-transform:uppercase;letter-spacing:.4px;margin-top:14px">Heute konkret</div><ul style="margin:6px 0 0;padding-left:20px;font-weight:600;font-size:13px;color:#eaf6f8;line-height:1.5">'+todos+'</ul>':'')+
+        (chk.wellnessNote?'<div style="margin-top:12px;font-size:12px;color:#cfe8ec;font-weight:600;border-top:1px solid rgba(255,255,255,.15);padding-top:10px;line-height:1.5">💡 '+esc(chk.wellnessNote)+'</div>':'')+
+        '<button data-act="morningAssess" '+(busy?'disabled ':'')+'style="margin-top:13px;border:none;background:rgba(255,255,255,.12);color:#fff;font-weight:800;font-size:12px;border-radius:10px;padding:8px 12px;cursor:pointer">'+(busy?'…':'↻ Neu auswerten')+'</button>'+
+      '</div>';
+    }
+    if(busy){
+      return '<div style="'+MO_CARD+';background:linear-gradient(150deg,#0e6072,#0a3f4c);color:#fff"><div style="display:flex;align-items:center;gap:11px"><span style="width:22px;height:22px;border:2.6px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:50%;display:inline-block;animation:ernspin .8s linear infinite;flex-shrink:0"></span><div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:900">FINN wertet deine Bereitschaft aus …</div><div style="font-size:12px;color:#aed0d6;font-weight:600;margin-top:1px">Einen Moment – gleich hast du deine Tages-Einschätzung.</div></div></div></div>';
     }
     return '<div style="'+MO_CARD+'"><div style="display:flex;align-items:center;gap:9px"><div style="width:34px;height:34px;border-radius:10px;background:var(--surface-2);display:flex;align-items:center;justify-content:center">'+svg(IC.spark,{c:TEAL,w:1.8,s:19})+'</div><div style="flex:1;min-width:0"><div style="font-size:14.5px;font-weight:800;color:var(--text)">FINN wertet deine Bereitschaft aus</div><div style="font-size:12px;color:var(--text-soft)">Teil deiner Coach-Premium-Mitgliedschaft</div></div></div>'+
-      '<button data-act="morningAssess" '+(busy?'disabled':'')+' style="width:100%;margin-top:13px;border:none;border-radius:13px;background:'+(busy?'var(--surface-2)':'var(--teal)')+';color:'+(busy?'var(--text-soft)':'#fff')+';font-weight:800;font-size:14.5px;padding:13px;cursor:'+(busy?'default':'pointer')+'">'+(busy?'FINN denkt nach …':(chk?'Neu auswerten':'FINN-Auswertung holen'))+'</button>'+body+'</div>';
+      '<button data-act="morningAssess" style="width:100%;margin-top:13px;border:none;border-radius:13px;background:var(--teal);color:#fff;font-weight:800;font-size:14.5px;padding:13px;cursor:pointer">FINN-Auswertung holen</button></div>';
+  }
+  // „Was heute auf dich zukommt" – konkrete Tages-Auswirkung aus der Ampel + Werten (regelbasiert, kostenlos).
+  function moDayForecast(){
+    var d=morningData(); if(!d||!d.latest) return ''; var r=d.readiness||{}; var lv=r.level; if(!MO_LV[lv]) return '';
+    var m=d.latest, base=d.baseline||{};
+    var head,intro,col,bg,items;
+    if(lv==='gruen'){ head='Guter Tag für Vollgas'; col='#176b37'; bg='#E7F6EC'; intro='Dein Körper ist erholt – Energie, Fokus und Belastbarkeit sollten heute hoch sein.';
+      items=['💪 Plane dein intensivstes Training ein – heute verträgst du hohe Reize.','🎯 Nutz die gute Konzentration für fordernde Aufgaben früh am Tag.','😴 Bleib bei gutem Schlaf, um den Zustand zu halten.']; }
+    else if(lv==='gelb'){ head='Solide – aber nicht am Limit'; col='#9a5a18'; bg='#FBF0E3'; intro='Du bist okay erholt, aber nicht auf dem Höhepunkt. Halte die Intensität heute moderat.';
+      items=['⚖️ Moderat trainieren (Grundlage/Technik) statt Maximalreize.','💧 Achte auf Wasser, Pausen und eine ordentliche Mahlzeit.','🧘 Kurze Entspannung (Atmung, Spaziergang) bringt dich wieder ins Grüne.']; }
+    else { head='Heute auf Erholung setzen'; col='#b4552f'; bg='#FBECE8'; intro='Dein Körper steht unter Last – fordere ihn heute nicht, sondern gib ihm Zeit zurückzukommen.';
+      items=['🌙 Kein Maximaltraining – lieber locker: Spaziergang, Mobility, leichtes Cardio.','😴 Früh runterfahren, gut schlafen, Stress reduzieren.','🥗 Nährstoffreich essen und viel trinken – das unterstützt die Erholung.']; }
+    var extra='';
+    if(m.rhr!=null&&base.rhr!=null&&(m.rhr-base.rhr)>=4){ extra='Dein Ruhepuls liegt heute '+(m.rhr-base.rhr)+' bpm über deinem Schnitt – oft ein Zeichen von Stress, wenig Schlaf oder beginnender Belastung. Rechne mit etwas weniger Reserven.'; }
+    else if(m.hrvRmssd!=null&&base.hrv!=null&&(base.hrv-m.hrvRmssd)>=6){ extra='Deine HRV ist heute niedriger als sonst – dein Nervensystem ist eher angespannt. Plane bewusst Ruhepausen ein.'; }
+    else if(m.hrvRmssd!=null&&base.hrv!=null&&(m.hrvRmssd-base.hrv)>=6){ extra='Deine HRV ist heute höher als dein Schnitt – ein gutes Zeichen für Erholung. Nutz den Schwung.'; }
+    var rows=items.map(function(t){ return '<div style="display:flex;gap:9px;align-items:flex-start;padding:8px 0;border-top:1px solid rgba(0,0,0,.06)"><span style="font-size:14px;line-height:1.3;flex-shrink:0">'+t.slice(0,2)+'</span><span style="font-size:13px;font-weight:600;color:#33413f;line-height:1.5">'+t.slice(2).trim()+'</span></div>'; }).join('');
+    return '<div style="'+MO_CARD+';background:'+bg+';border:1px solid rgba(0,0,0,.05)">'+
+      '<div style="display:flex;align-items:center;gap:9px"><span style="font-size:20px">📅</span><div style="font-size:11px;font-weight:900;color:'+col+';text-transform:uppercase;letter-spacing:.5px">Was heute auf dich zukommt</div></div>'+
+      '<div style="font-size:16.5px;font-weight:900;color:'+col+';letter-spacing:-.2px;margin-top:7px">'+esc(head)+'</div>'+
+      '<div style="font-size:13px;font-weight:700;color:#33413f;line-height:1.55;margin-top:6px">'+esc(intro)+'</div>'+
+      (extra?'<div style="font-size:12.5px;font-weight:600;color:#5a6664;line-height:1.5;margin-top:8px;background:rgba(255,255,255,.55);border-radius:11px;padding:10px 12px">'+esc(extra)+'</div>':'')+
+      '<div style="margin-top:10px">'+rows+'</div>'+
+    '</div>';
   }
   function moHistoryCard(){
     var d=morningData(); if(!d) return ''; var list=d.list||[]; if(!list.length) return '';
@@ -7459,8 +7498,14 @@
     } else {
       blocks.push(moMeasureCard('morgen'));
       if(d.latest){
-        blocks.push(moReadinessHero()); blocks.push(moOvertrainingCard()); blocks.push(moLoadCard()); blocks.push(moZonesCard(d.readiness&&d.readiness.level)); blocks.push(moStrengthCard(d.readiness&&d.readiness.level)); blocks.push(moBalanceCard()); blocks.push(moBioAgeCard());
-        blocks.push(moEvalCard()); blocks.push(moCheckinCard()); blocks.push(moBreatheEntry()); blocks.push(moWeeklyCard()); blocks.push(moTrendCard()); blocks.push(moInsightsCard()); blocks.push(moCurvesCard()); blocks.push(moFinnCard()); blocks.push(moHistoryCard()); blocks.push(moTeamShareCard());
+        // Dynamische Kachel-Reihenfolge: das Relevanteste nach oben (Ampel → FINN → Tages-Auswirkung),
+        // danach je nach Ampel priorisiert (Rot: Erholung/Atmen hoch; sonst Trainingszonen hoch).
+        var lv=(d.readiness&&d.readiness.level)||'';
+        var ordered=[moReadinessHero(),moFinnCard(),moDayForecast(),moOvertrainingCard(),moLoadCard()];
+        if(lv==='rot'){ ordered=ordered.concat([moBalanceCard(),moBreatheEntry(),moZonesCard(lv),moStrengthCard(lv)]); }
+        else { ordered=ordered.concat([moZonesCard(lv),moStrengthCard(lv),moBalanceCard(),moBreatheEntry()]); }
+        ordered=ordered.concat([moBioAgeCard(),moEvalCard(),moCheckinCard(),moWeeklyCard(),moTrendCard(),moInsightsCard(),moCurvesCard(),moHistoryCard(),moTeamShareCard()]);
+        ordered.forEach(function(b){ blocks.push(b); });
         if(strapAd) blocks.push(strapAd);
       } else { blocks.push(intro); if(strapAd) blocks.push(strapAd); blocks.push(moBreatheEntry()); }
     }
