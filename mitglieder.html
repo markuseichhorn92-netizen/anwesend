@@ -2946,6 +2946,11 @@
   // ── Vitalalter: geschätztes „Alter" aus Aktivität + Lebensstil (Motivations-Wert, keine Messung) ──
   // Faktoren aus vorhandenen Daten (Training, Ernährung, Figur) + freiwilliger Selbstauskunft.
   function vaLifestyle(){ var p=DATA.mprofile; var l=p&&typeof p==='object'&&p.lifestyle; return (l&&l.consent)?l:null; }
+  // Geschlecht robust aus Profil/Member-Profil (für alters-/geschlechtsabhängige Normwerte).
+  function vaSex(){ var p=DATA.profile, mp=DATA.mprofile; var s=(p&&p.sex)||(mp&&typeof mp==='object'&&mp.sex)||''; s=String(s).toLowerCase(); if(s.charAt(0)==='m') return 'm'; if(s.charAt(0)==='w'||s.charAt(0)==='f') return 'w'; return ''; }
+  // VO₂max → äquivalentes Fitness-Alter (Orientierung, keine medizinische Messung).
+  // Alters-Median VO₂max linear genähert: m 50 ml/kg/min @20 J (−0,40/J), w 42 (−0,35/J).
+  function vo2FitAge(vo2,sex){ if(!(vo2>0)) return null; var base=(sex==='m')?50:(sex==='w')?42:46, slope=(sex==='m')?0.40:(sex==='w')?0.35:0.375; return Math.max(16,Math.min(85,Math.round(20+(base-vo2)/slope))); }
   function vitalAge(){
     var v=vitalsData(); var real=v.age;
     if(real==null) return {age:null,real:null};
@@ -2986,9 +2991,21 @@
     // Vital-Check: das HRV-Fitnessalter fließt als physiologischer Baustein ins Vitalalter ein.
     var moBa=(DATA.morning&&DATA.morning.ok&&DATA.morning.bioAge)||null;
     if(moBa && moBa.age!=null){ add('hrv','Herz-Fitness (Vital-Check)', Math.max(-3,Math.min(3,(moBa.age-real)*0.4)), 'HRV-Fitnessalter '+moBa.age+' J.'); }
+    // Apple Health (Apple Watch): reale Ausdauer (VO₂max) + Ruhepuls schlagen Schätzungen und
+    // fließen als physiologische Bausteine ins Vitalalter ein. Nur wenn Health verbunden & geladen.
+    var hm=(DATA.healthMetrics&&DATA.healthMetrics.ok)?DATA.healthMetrics:null;
+    var hmSleep=!!(hm&&hm.sleepMin>0);
+    if(hm){
+      var hmSex=vaSex();
+      if(hm.vo2max>0){ var vAge=vo2FitAge(hm.vo2max,hmSex); if(vAge!=null) add('vo2max','Ausdauer (VO₂max)', Math.max(-4,Math.min(4,(vAge-real)*0.5)), 'VO₂max '+(Math.round(hm.vo2max*10)/10)+' · Apple Health'); }
+      // Ruhepuls-Norm ~60 bpm; niedriger = fitter. ±0,15 J/bpm, gedeckelt ±2,5.
+      if(hm.restingHr>0){ add('rhr', hm.restingHr<=60?'Niedriger Ruhepuls':'Ruhepuls', Math.max(-2.5,Math.min(2.5,(hm.restingHr-60)*0.15)), 'Ruhepuls '+Math.round(hm.restingHr)+' bpm · Apple Health'); }
+      // Realer Schlaf ersetzt die Selbstauskunft: 7–9,5 h optimal, <6 h zehrt.
+      if(hmSleep){ var slH=hm.sleepMin/60; var slY=(slH>=7&&slH<=9.5)?-1:(slH>=6?0:1.5); add('ahsleep', slY<0?'Guter Schlaf':(slY>0?'Wenig Schlaf':'Schlaf'), slY, (Math.floor(hm.sleepMin/60))+'h '+(hm.sleepMin%60)+'m · Apple Health'); }
+    }
     var ls=vaLifestyle();
     if(ls){
-      var sl={wenig:1.5,mittel:0,gut:-1}[ls.sleep]; if(sl!=null) add('sleep', sl<0?'Guter Schlaf':'Wenig Schlaf', sl, '');
+      var sl=hmSleep?null:{wenig:1.5,mittel:0,gut:-1}[ls.sleep]; if(sl!=null) add('sleep', sl<0?'Guter Schlaf':'Wenig Schlaf', sl, '');
       var si={wenig:-0.5,mittel:0,viel:1.5}[ls.sitting]; if(si!=null) add('sitting', si<0?'Wenig Sitzen':'Viel Sitzen', si, '');
       var st={niedrig:-0.5,mittel:0,hoch:1.5}[ls.stress]; if(st!=null) add('stress', st<0?'Wenig Stress':'Hoher Stress', st, '');
       var sm={nein:0,gelegentlich:1.5,ja:3}[ls.smoking]; if(sm!=null) add('smoke','Rauchen', sm, '');
@@ -3118,6 +3135,7 @@
     if(DATA.inbody==null) loadInbody();          // InBody-Analyse fürs Vitalalter + Einstiegskarte
     if(DATA.morning==null) loadMorning();        // Morgen-Check (H9) fürs Vitalalter + Einstiegskarte
     if(DATA.mprofile==null) loadMemberProfile(); // Lebensstil-Selbstauskunft
+    if(woHealthCap()&&woHealthConnected()&&DATA.healthMetrics==null){ DATA.healthMetrics=false; woHealthFetchMetrics(); } // VO₂max/Ruhepuls/Schlaf fürs Vitalalter
     var v=vitalsData();
     var CARD='background:var(--surface);border-radius:20px;box-shadow:0 14px 38px rgba(4,33,40,.10);padding:20px';
     // 1) Vitalpunkte-Ring
@@ -5834,6 +5852,22 @@
     return '<div style="margin-top:12px;background:var(--surface-2);border-radius:12px;padding:11px 12px;font-size:11.5px;font-weight:700;color:var(--text-soft);line-height:1.45">Noch keine Werte aus Apple Health. <b>Ruhepuls, HRV, Schlaf &amp; VO₂max</b> brauchen eine <b>Apple&nbsp;Watch</b>; <b>Gewicht/Körperfett</b> eine verbundene <b>Waage</b>. Schritte kommen vom iPhone.<div style="font-size:9.5px;color:var(--placeholder);margin-top:6px">'+esc(diag)+'</div></div>';
   }
   // Kleine Diagnose für die Health-Karte (nur in der nativen App sichtbar).
+  // Kompakte Apple-Health-Kontextkarte für den Vital-Check: zeigt die Werte der Apple Watch
+  // (Ruhepuls, HRV, Schlaf) ergänzend zur Gurt-Messung. Nur in der nativen App bei Verbindung.
+  function woHealthVitalCard(){
+    if(!(woHealthCap()&&woHealthConnected())) return '';
+    if(DATA.healthMetrics==null){ DATA.healthMetrics=false; woHealthFetchMetrics(); }
+    var m=(DATA.healthMetrics&&DATA.healthMetrics.ok)?DATA.healthMetrics:null; if(!m) return '';
+    var items=[];
+    if(m.restingHr) items.push(['❤️','Ruhepuls',Math.round(m.restingHr)+' bpm']);
+    if(m.hrv) items.push(['〰️','HRV',Math.round(m.hrv)+' ms']);
+    if(m.sleepMin) items.push(['😴','Schlaf',(Math.floor(m.sleepMin/60))+'h '+(m.sleepMin%60)+'m']);
+    if(!items.length) return '';
+    var cells=items.map(function(c){ return '<div style="flex:1 1 30%;min-width:88px;background:var(--surface-2);border-radius:12px;padding:9px 8px"><div style="font-size:10px;font-weight:800;color:var(--text-soft)">'+c[0]+' '+esc(c[1])+'</div><div style="font-size:15px;font-weight:900;color:var(--text);margin-top:1px">'+esc(String(c[2]))+'</div></div>'; }).join('');
+    return '<div style="'+MO_CARD+'"><div style="font-size:13.5px;font-weight:900;color:var(--text)">⌚ Aus deiner Apple Watch</div>'+
+      '<div style="font-size:11.5px;color:var(--text-soft);font-weight:600;line-height:1.45;margin:5px 0 10px">Ergänzend zur Gurt-Messung – so sieht deine Uhr deine Erholung. Fließt in dein Vitalalter ein.</div>'+
+      '<div style="display:flex;flex-wrap:wrap;gap:7px">'+cells+'</div></div>';
+  }
   function woHealthDiag(){ try{ var c=window.Capacitor; var keys=(c&&c.Plugins)?Object.keys(c.Plugins).join(', '):'—'; return 'Cap:'+(c?1:0)+' · nativ:'+((c&&c.isNativePlatform&&c.isNativePlatform())?1:0)+' · FitInnNative-Plugin:'+(woNativePlugin()?'JA':'nein')+' · Plugins:['+keys+']'; }catch(e){ return 'diag:'+e; } }
 
   // ── Apple Health / Google Fit ── Sync über die native Bridge (Vertrag: docs/NATIVE-BRIDGE.md).
@@ -8090,6 +8124,7 @@
     blocks.push(vitalSegment());
     if(mode==='training'){
       blocks.push(moMeasureCard('training'));
+      var ahT=woHealthVitalCard(); if(ahT) blocks.push(ahT);
       if(strapAd) blocks.push(strapAd);
       var tr=d.training||{};
       if(tr.latest){ blocks.push(moTrainVerdictCard()); blocks.push(moZonesCard(tr.readiness&&tr.readiness.level)); blocks.push(moStrengthCard(tr.readiness&&tr.readiness.level)); }
@@ -8097,6 +8132,7 @@
       blocks.push(moTrainHistoryCard());
     } else {
       blocks.push(moMeasureCard('morgen'));
+      var ahM=woHealthVitalCard(); if(ahM) blocks.push(ahM);
       if(d.latest){
         // Dynamische Kachel-Reihenfolge: das Relevanteste nach oben (Ampel → FINN → Tages-Auswirkung),
         // danach je nach Ampel priorisiert (Rot: Erholung/Atmen hoch; sonst Trainingszonen hoch).
