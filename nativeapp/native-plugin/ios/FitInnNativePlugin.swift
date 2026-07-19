@@ -32,15 +32,17 @@ public class FitInnNativePlugin: CAPPlugin, CBCentralManagerDelegate, CBPeripher
 
     private func hkReadTypes() -> Set<HKObjectType> {
         var s: Set<HKObjectType> = [HKObjectType.workoutType()]
-        [.heartRate, .distanceWalkingRunning, .distanceCycling, .activeEnergyBurned].forEach {
-            if let t = HKObjectType.quantityType(forIdentifier: $0) { s.insert(t) }
+        let ids: [HKQuantityTypeIdentifier] = [.heartRate, .distanceWalkingRunning, .distanceCycling, .activeEnergyBurned]
+        for id in ids {
+            if let t = HKObjectType.quantityType(forIdentifier: id) { s.insert(t) }
         }
         return s
     }
     private func hkShareTypes() -> Set<HKSampleType> {
         var s: Set<HKSampleType> = [HKObjectType.workoutType()]
-        [.activeEnergyBurned, .distanceWalkingRunning, .distanceCycling].forEach {
-            if let t = HKObjectType.quantityType(forIdentifier: $0) { s.insert(t) }
+        let ids: [HKQuantityTypeIdentifier] = [.activeEnergyBurned, .distanceWalkingRunning, .distanceCycling]
+        for id in ids {
+            if let t = HKObjectType.quantityType(forIdentifier: id) { s.insert(t) }
         }
         return s
     }
@@ -82,6 +84,7 @@ public class FitInnNativePlugin: CAPPlugin, CBCentralManagerDelegate, CBPeripher
         guard let hrType = HKObjectType.quantityType(forIdentifier: .heartRate) else { done([]); return }
         let bpmUnit = HKUnit.count().unitDivided(by: .minute())
         let group = DispatchGroup()
+        let syncQ = DispatchQueue(label: "de.fitinn.workoutmap")   // Schreibzugriffe auf result serialisieren
         var result = [[String: Any]?](repeating: nil, count: workouts.count)
 
         for (i, w) in workouts.enumerated() {
@@ -103,8 +106,7 @@ public class FitInnNativePlugin: CAPPlugin, CBCentralManagerDelegate, CBPeripher
                                          options: [.discreteAverage, .discreteMax]) { _, stats, _ in
                 if let avg = stats?.averageQuantity()?.doubleValue(for: bpmUnit) { dict["avgHr"] = Int(avg) }
                 if let mx = stats?.maximumQuantity()?.doubleValue(for: bpmUnit) { dict["maxHr"] = Int(mx) }
-                result[i] = dict
-                group.leave()
+                syncQ.async { result[i] = dict; group.leave() }
             }
             self.healthStore.execute(stat)
         }
@@ -132,13 +134,13 @@ public class FitInnNativePlugin: CAPPlugin, CBCentralManagerDelegate, CBPeripher
             if let kcal = call.getInt("kcal"), kcal > 0,
                let et = HKQuantityType.quantityType(forIdentifier: .activeEnergyBurned) {
                 let q = HKQuantity(unit: .kilocalorie(), doubleValue: Double(kcal))
-                samples.append(HKCumulativeQuantitySample(type: et, quantity: q, start: start, end: end))
+                samples.append(HKQuantitySample(type: et, quantity: q, start: start, end: end))
             }
             if let dist = call.getInt("distanceM"), dist > 0 {
                 let idType: HKQuantityTypeIdentifier = (cfg.activityType == .cycling) ? .distanceCycling : .distanceWalkingRunning
                 if let dt = HKQuantityType.quantityType(forIdentifier: idType) {
                     let q = HKQuantity(unit: .meter(), doubleValue: Double(dist))
-                    samples.append(HKCumulativeQuantitySample(type: dt, quantity: q, start: start, end: end))
+                    samples.append(HKQuantitySample(type: dt, quantity: q, start: start, end: end))
                 }
             }
 
