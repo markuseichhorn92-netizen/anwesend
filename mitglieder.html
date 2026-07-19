@@ -5837,6 +5837,20 @@
     }
     return trainCardBox(head+body+msg,'16px');
   }
+  // Sanfter Hinweis auf der Trainings-Startseite: nur nativ (Health real verfügbar),
+  // solange nicht verbunden und nicht weggetippt. Führt in den Verlauf und verbindet.
+  function woHealthNudge(){
+    if(!woHealthCap()||woHealthConnected()) return '';
+    try{ if(localStorage.getItem('fi_health_nudge_v1')==='1') return ''; }catch(e){}
+    var plat=woHealthPlatform();
+    var heart=svg('<path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z"></path>',{c:'#fff',w:1.8,s:19});
+    return '<div style="display:flex;align-items:center;gap:11px;background:var(--surface);border:1.5px solid var(--border);border-radius:16px;padding:11px 13px;margin-bottom:14px;box-shadow:0 6px 18px rgba(4,33,40,.05)">'+
+      '<div style="width:38px;height:38px;border-radius:11px;background:'+ERN_GD+';display:flex;align-items:center;justify-content:center;flex-shrink:0">'+heart+'</div>'+
+      '<div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:900;color:var(--text)">'+esc(plat)+' verbinden</div><div style="font-size:11.5px;font-weight:600;color:var(--text-soft);margin-top:1px;line-height:1.35">Einheiten von Apple&nbsp;Watch, Garmin &amp; Co. automatisch übernehmen.</div></div>'+
+      '<button data-act="woHealthNudgeGo" style="flex-shrink:0;border:none;border-radius:11px;background:'+ERN_G+';color:#fff;font-size:12px;font-weight:900;padding:9px 13px;cursor:pointer">Verbinden</button>'+
+      '<button data-act="woHealthNudgeX" aria-label="Ausblenden" style="flex-shrink:0;border:none;background:transparent;color:var(--text-soft);cursor:pointer;padding:4px;display:flex;align-items:center">'+svg('<path d="M18 6L6 18M6 6l12 12"></path>',{c:'var(--text-soft)',w:2.2,s:15})+'</button>'+
+    '</div>';
+  }
 
   // Einstiegskarte im Training (Einheit-Tab).
   function woEntryCard(){
@@ -6083,7 +6097,7 @@
       var mp=d.myPlan&&d.myPlan.plan;
       var rec=moRecoveryActive();   // Erholungsphase -> Training soft-gesperrt (mit Override)
       if(rec && !S.recoveryOverride){ body=moTrainLockCard(rec); }
-      else { body=(rec?moTrainOverrideBanner(rec):meinTagReadyBanner())+coachTipStrip()+woEntryCard()+((mp&&mp.days&&mp.days.length)?meinTagTodayCard(mp):meinTagTrainCta()); }
+      else { body=(rec?moTrainOverrideBanner(rec):meinTagReadyBanner())+coachTipStrip()+woEntryCard()+woHealthNudge()+((mp&&mp.days&&mp.days.length)?meinTagTodayCard(mp):meinTagTrainCta()); }
     }
     return wrap(header+'<div style="padding:0 2px">'+finnAskRow('training')+body+'</div>');
   }
@@ -9566,6 +9580,8 @@
     woHealthImport:function(){ woHealthImport(false); },
     woHealthWrite:function(){ woHealthSetPref({write:(woHealthPref().write===false)}); setS({}); },
     woHealthOff:function(){ if(window.confirm('Verbindung zu '+woHealthPlatform()+' trennen? Bereits importierte Einheiten bleiben erhalten.')) woHealthDisconnect(); },
+    woHealthNudgeGo:function(){ S.trainSeg='verlauf'; setS({}); woHealthConnect(); },
+    woHealthNudgeX:function(){ try{ localStorage.setItem('fi_health_nudge_v1','1'); }catch(e){} setS({}); },
     trainReload:function(){ DATA.training=null; render(); loadTraining(); },
     trainSeg:function(a){ S.trainSeg=(a==='plaene'||a==='uebungen'||a==='verlauf')?a:'einheit'; S.trainDetail=null; S.trainDetailFull=null; S.trainGenOpen=false; S.trainMsg=''; setS({}); },
     trainQuickEx:function(){ S.trainSeg='uebungen'; S.trainDetail=null; S.trainGenOpen=false; setS({}); },
