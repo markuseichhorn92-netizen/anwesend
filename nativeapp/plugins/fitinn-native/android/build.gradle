@@ -2,16 +2,9 @@
 // Wird von Capacitor als Library-Modul eingebunden (npm-Paket "fitinn-native" in
 // nativeapp/package.json -> `npx cap sync android` zieht es automatisch ein).
 //
-// Health Connect setzt minSdk 26 voraus -> die App muss ebenfalls minSdk >= 26
-// laufen. `patch-native.js` hebt android/variables.gradle bei Bedarf auf 26 an.
-
-ext {
-    fitinnHealthConnectVersion = '1.1.0'
-    fitinnCoroutinesVersion = '1.8.1'
-    fitinnPlayLocationVersion = '21.3.0'
-    fitinnCoreKtxVersion = '1.13.1'
-}
-
+// WICHTIG: `buildscript {}` MUSS der erste Block der Datei sein (vor jedem anderen
+// Statement) – sonst wird das Android-Gradle-Plugin nicht korrekt initialisiert und
+// der android{}-Block "verpufft" (Fehler: "does not specify compileSdk").
 buildscript {
     repositories {
         google()
@@ -29,12 +22,11 @@ apply plugin: 'com.android.library'
 apply plugin: 'kotlin-android'
 
 android {
-    namespace "de.fitinn.native"
-    // Feste Werte (Capacitor 8 nutzt 35). Bewusst NICHT ueber rootProject.ext gelesen,
-    // da der ternaere Ausdruck im Plugin-Kontext zu "compileSdk not specified" fuehren kann.
+    namespace 'de.fitinn.native'
+    // Feste Werte (Capacitor 8 nutzt 35). Health Connect (androidx.health.connect)
+    // erfordert minSdk 26.
     compileSdk 35
     defaultConfig {
-        // Health Connect (androidx.health.connect) erfordert API 26.
         minSdk 26
         targetSdk 35
     }
@@ -45,7 +37,7 @@ android {
     kotlinOptions {
         jvmTarget = '17'
     }
-    lintOptions {
+    lint {
         abortOnError false
     }
 }
@@ -57,11 +49,11 @@ repositories {
 
 dependencies {
     implementation project(':capacitor-android')
-    implementation "androidx.core:core-ktx:${fitinnCoreKtxVersion}"
+    implementation 'androidx.core:core-ktx:1.13.1'
     // Health Connect (Google-Fit-Nachfolger): Trainings + Vitalwerte lesen/schreiben.
-    implementation "androidx.health.connect:connect-client:${fitinnHealthConnectVersion}"
+    implementation 'androidx.health.connect:connect-client:1.1.0'
     // Coroutinen fuer die suspend-basierte Health-Connect-API.
-    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:${fitinnCoroutinesVersion}"
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1'
     // GPS ueber die Fused-Location-API (Google Play Services).
-    implementation "com.google.android.gms:play-services-location:${fitinnPlayLocationVersion}"
+    implementation 'com.google.android.gms:play-services-location:21.3.0'
 }
