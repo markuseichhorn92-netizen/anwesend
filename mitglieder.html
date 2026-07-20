@@ -177,6 +177,7 @@
   .ernCapSheet{position:fixed;left:0;right:0;bottom:0;z-index:63;max-width:480px;margin:0 auto;display:flex;flex-direction:column;max-height:92vh;background:#eef2f3;border-radius:26px 26px 0 0;box-shadow:0 -16px 50px rgba(4,33,40,.4);animation:ernCapUp .3s cubic-bezier(.22,.61,.36,1);padding-bottom:calc(14px + env(safe-area-inset-bottom,0px))}
   .ernCapGrip{width:40px;height:5px;border-radius:3px;background:#cfd8db;margin:9px auto 2px;flex-shrink:0}
   @keyframes ernCapUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
+  .ernCapScrim.noAnim,.ernCapSheet.noAnim{animation:none}
   .ernCapRow:active{transform:scale(.985)}
   /* Coach Premium – Upgrade als schönes Bottom-Sheet-Popup (Overlay, kein Vollbild) */
   .upScrim{position:fixed;inset:0;z-index:64;background:rgba(6,24,29,.62);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);animation:qaFade .2s ease}
@@ -4286,7 +4287,7 @@
     var capTitle=addMode?'Zur Mahlzeit hinzufügen':'Essen erfassen';
     var capSub=addMode?'Suchen, scannen oder Barcode – wird angehängt':(tab==='menu'?'Wie möchtest du erfassen?':(S.ernCapTarget||'Wähle oben eine andere Methode'));
     var capHead='<div style="display:flex;align-items:center;gap:11px;padding:2px 2px 14px">'+capBack+'<div style="flex:1;min-width:0"><div style="font-size:19px;font-weight:900;color:var(--text);letter-spacing:-.3px">'+esc(capTitle)+'</div><div style="font-size:12.5px;font-weight:600;color:var(--text-soft);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(capSub)+'</div></div>'+capClose+'</div>';
-    var capShell=function(bodyHtml){ return '<div class="ernCapScrim" data-act="ernCloseCapture"></div><div class="ernCapSheet" role="dialog" aria-modal="true" aria-label="'+esc(capTitle)+'"><div class="ernCapGrip"></div><div style="padding:6px 18px 0">'+capHead+'</div><div style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:0 16px 6px">'+bodyHtml+'</div></div>'; };
+    var capShell=function(bodyHtml){ var na=window.__ernCapAnim?'':' noAnim'; window.__ernCapAnim=false; return '<div class="ernCapScrim'+na+'" data-act="ernCloseCapture"></div><div class="ernCapSheet'+na+'" role="dialog" aria-modal="true" aria-label="'+esc(capTitle)+'"><div class="ernCapGrip"></div><div style="padding:6px 18px 0">'+capHead+'</div><div style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:0 16px 6px">'+bodyHtml+'</div></div>'; };
     // ── Auswahl-Popup (Methoden-Picker) ──
     if(tab==='menu'){
       var mkPick=function(act,arg,icon,label,sub,accent){ return '<button class="ernCapRow" data-act="'+act+'"'+(arg?' data-arg="'+arg+'"':'')+' style="display:flex;align-items:center;gap:13px;width:100%;background:var(--surface);border:none;border-radius:16px;padding:14px 15px;cursor:pointer;text-align:left;box-shadow:0 4px 14px rgba(4,33,40,.06);transition:transform .08s ease">'+
@@ -10100,7 +10101,7 @@
       .catch(function(){ S.ernBusy=false; S.ernErr=true; S.ernMsg='Konnte nicht speichern. Bitte später erneut.'; render(); }); },
     ernLog:function(){ if(S.ernBusy) return; var t=$('ern_log'); var q=t?(t.value||'').trim():''; if(q.length>=2) ernLogText(q); },
     ernCapSearch:function(){ if(S.ernBusy) return; var t=$('ern_capq'); var q=t?(t.value||'').trim():''; if(q.length>=2) ernLogText(q); },
-    ernOpenCapture:function(a){ setS({ernCapture:true,ernCapTab:'menu',ernCapTarget:a||'',ernScanPurpose:'log',ernMsg:'',ernErr:false}); },
+    ernOpenCapture:function(a){ try{window.__ernCapAnim=true;}catch(e){} setS({ernCapture:true,ernCapTab:'menu',ernCapTarget:a||'',ernScanPurpose:'log',ernMsg:'',ernErr:false}); },
     // Produkt-Check „Beim Einkaufen" (Barcode → Ampel, kein Log-Zwang)
     ernShopOpen:function(){ try{ window.__ernStopScan&&window.__ernStopScan(); }catch(e){} setS({ernShop:true,ernScanPurpose:'shop',ernShopProd:null,ernScanErr:'',ernScanNotFound:false,ernScanCode:'',ernMsg:'',ernErr:false}); },
     ernShopClose:function(){ try{ window.__ernStopScan&&window.__ernStopScan(); }catch(e){} setS({ernShop:false,ernScanPurpose:'log'}); },
@@ -10127,7 +10128,7 @@
     ernCFRemove:function(a){ var cf=S.ernConfirm; if(!cf) return; cf.items.splice(parseInt(a,10),1); if(!cf.items.length){ ernCloseConfirm(); return; } render(); },
     // „+ Eintrag hinzufügen" -> Suche/Scan/Barcode/KI im Erfassen-Sheet; das Ergebnis wird an
     // die laufende Mahlzeit angehängt (statt eine neue zu beginnen). „manuell" bleibt als Fallback.
-    ernCFAdd:function(){ if(!S.ernConfirm) return; S.ernAddToConfirm=true; S.ernCapTab='search'; S.ernSearchResults=null; S.ernSearchQ=''; S.ernSearchErr=''; S.ernScanErr=''; S.ernScanNotFound=false; setS({ernCapture:true}); },
+    ernCFAdd:function(){ if(!S.ernConfirm) return; try{window.__ernCapAnim=true;}catch(e){} S.ernAddToConfirm=true; S.ernCapTab='search'; S.ernSearchResults=null; S.ernSearchQ=''; S.ernSearchErr=''; S.ernScanErr=''; S.ernScanNotFound=false; setS({ernCapture:true}); },
     ernCFAddManual:function(){ var cf=S.ernConfirm; if(!cf) return; cf.items.push({name:'',portion:'',meal:'snack',kcal:0,p:0,c:0,f:0,estimated:false,source:'manual'}); render(); },
     ernCFCancel:function(){ ernCloseConfirm(); },
     // Einen falsch erkannten Eintrag austauschen: Beschreibung -> FINN erkennt ihn neu.
