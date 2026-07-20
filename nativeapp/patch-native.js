@@ -181,8 +181,10 @@ function patchAndroidMainActivity() {
   }(base));
   if (!found) { console.log('· Android MainActivity.java nicht gefunden – übersprungen.'); return; }
   let src = fs.readFileSync(found, 'utf8');
-  if (src.indexOf('onPermissionRequest') >= 0) { console.log('✓ Android: MainActivity gibt Kamera im WebView bereits frei (onPermissionRequest vorhanden).'); return; }
-  if (src.indexOf('extends BridgeActivity') < 0) { console.log('· Android: MainActivity ist individuell angepasst – Kamera-Freigabe (onPermissionRequest) bitte manuell ergänzen.'); return; }
+  const hasCam = src.indexOf('onPermissionRequest') >= 0;
+  const hasReg = src.indexOf('registerPlugin(FitInnNativePlugin') >= 0;
+  if (hasCam && hasReg) { console.log('✓ Android: MainActivity vollständig gepatcht (FitInnNative-Registrierung + Kamera-Freigabe).'); return; }
+  if (src.indexOf('extends BridgeActivity') < 0) { console.log('· Android: MainActivity ist individuell angepasst – FitInnNative-Registrierung + onPermissionRequest bitte manuell ergänzen.'); return; }
   const pkgMatch = src.match(/package\s+([\w.]+)\s*;/);
   const pkg = pkgMatch ? pkgMatch[1] : 'de.fitinn.portal';
   const patched = 'package ' + pkg + ';\n\n'
@@ -194,10 +196,15 @@ function patchAndroidMainActivity() {
     + 'import androidx.core.content.ContextCompat;\n'
     + 'import com.getcapacitor.Bridge;\n'
     + 'import com.getcapacitor.BridgeActivity;\n'
-    + 'import com.getcapacitor.BridgeWebChromeClient;\n\n'
+    + 'import com.getcapacitor.BridgeWebChromeClient;\n'
+    + 'import de.fitinn.nativeplugin.FitInnNativePlugin;\n\n'
     + 'public class MainActivity extends BridgeActivity {\n'
     + '    @Override\n'
     + '    public void onCreate(Bundle savedInstanceState) {\n'
+    + '        // 0) Natives Plugin (Health Connect + BLE-Herzgurt + GPS) registrieren.\n'
+    + '        //    MUSS vor super.onCreate stehen – sonst fehlt Capacitor.Plugins.FitInnNative\n'
+    + '        //    in der WebView (window.FitInnNative wird nicht gebaut, Health/BLE/GPS gehen nicht).\n'
+    + '        registerPlugin(FitInnNativePlugin.class);\n\n'
     + '        super.onCreate(savedInstanceState);\n\n'
     + '        // 1) App-Laufzeitrechte für Kamera/Mikrofon anfragen (nötige Voraussetzung).\n'
     + '        String[] perms = { Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO };\n'
@@ -229,7 +236,7 @@ function patchAndroidMainActivity() {
     + '    }\n'
     + '}\n';
   fs.writeFileSync(found, patched, 'utf8');
-  console.log('✓ Android: MainActivity ergänzt → Laufzeit-Rechte + WebView-Kamerafreigabe (onPermissionRequest) (' + found + ')');
+  console.log('✓ Android: MainActivity ergänzt → FitInnNative-Registrierung + Laufzeit-Rechte + WebView-Kamerafreigabe (' + found + ')');
 }
 
 // Android: minSdkVersion auf mindestens 26 anheben. Das native Plugin (Health Connect,

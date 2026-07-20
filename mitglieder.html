@@ -5931,12 +5931,13 @@
     if(m.steps) items.push(['👟','Schritte',m.steps.toLocaleString('de-DE')]);
     if(items.length){
       var cells=items.map(function(c){ return '<div style="flex:1 1 30%;min-width:90px;background:var(--surface-2);border-radius:12px;padding:9px 8px"><div style="font-size:10px;font-weight:800;color:var(--text-soft)">'+c[0]+' '+esc(c[1])+'</div><div style="font-size:15px;font-weight:900;color:var(--text);margin-top:1px">'+esc(String(c[2]))+'</div></div>'; }).join('');
-      return '<div style="margin-top:13px"><div style="font-size:11px;font-weight:900;color:var(--text-soft);text-transform:uppercase;letter-spacing:.4px;margin-bottom:7px">Aus Apple Health</div><div style="display:flex;flex-wrap:wrap;gap:7px">'+cells+'</div></div>';
+      return '<div style="margin-top:13px"><div style="font-size:11px;font-weight:900;color:var(--text-soft);text-transform:uppercase;letter-spacing:.4px;margin-bottom:7px">Aus '+esc(woHealthPlatform())+'</div><div style="display:flex;flex-wrap:wrap;gap:7px">'+cells+'</div></div>';
     }
     // Geladen, aber keine Werte -> ehrlicher Hinweis + Mini-Diagnose.
     var keys=['restingHr','hrv','sleepMin','vo2max','weightKg','bodyFatPct','steps'].filter(function(k){ return m[k]!=null; });
     var diag=(m.ok===false&&m.err)?('Abruf: '+m.err):('geliefert: '+(keys.join(', ')||'—'));
-    return '<div style="margin-top:12px;background:var(--surface-2);border-radius:12px;padding:11px 12px;font-size:11.5px;font-weight:700;color:var(--text-soft);line-height:1.45">Noch keine Werte aus Apple Health. <b>Ruhepuls, HRV, Schlaf &amp; VO₂max</b> brauchen eine <b>Apple&nbsp;Watch</b>; <b>Gewicht/Körperfett</b> eine verbundene <b>Waage</b>. Schritte kommen vom iPhone.<div style="font-size:9.5px;color:var(--placeholder);margin-top:6px">'+esc(diag)+'</div></div>';
+    var isAnd=woHealthAndroid(); var watch=isAnd?'Smartwatch':'Apple&nbsp;Watch'; var phone=isAnd?'Handy':'iPhone';
+    return '<div style="margin-top:12px;background:var(--surface-2);border-radius:12px;padding:11px 12px;font-size:11.5px;font-weight:700;color:var(--text-soft);line-height:1.45">Noch keine Werte aus '+esc(woHealthPlatform())+'. <b>Ruhepuls, HRV, Schlaf &amp; VO₂max</b> brauchen eine <b>'+watch+'</b>; <b>Gewicht/Körperfett</b> eine verbundene <b>Waage</b>. Schritte kommen vom '+phone+'.<div style="font-size:9.5px;color:var(--placeholder);margin-top:6px">'+esc(diag)+'</div></div>';
   }
   // Kleine Diagnose für die Health-Karte (nur in der nativen App sichtbar).
   // Passive Vitalwerte an den Server schicken (Baseline, Morgen-Briefing & FINN) –
@@ -6000,11 +6001,12 @@
   }
   function woHealthDiag(){ try{ var c=window.Capacitor; var keys=(c&&c.Plugins)?Object.keys(c.Plugins).join(', '):'—'; return 'Cap:'+(c?1:0)+' · nativ:'+((c&&c.isNativePlatform&&c.isNativePlatform())?1:0)+' · FitInnNative-Plugin:'+(woNativePlugin()?'JA':'nein')+' · Plugins:['+keys+']'; }catch(e){ return 'diag:'+e; } }
 
-  // ── Apple Health / Google Fit ── Sync über die native Bridge (Vertrag: docs/NATIVE-BRIDGE.md).
+  // ── Apple Health / Health Connect ── Sync über die native Bridge (Vertrag: docs/NATIVE-BRIDGE.md).
   // Im WebView/Browser ist die Bridge nicht da -> „nur in der App"-Hinweis (kein Fehler).
   function woHealthCap(){ try{ if(woNativeBind()) return true; return !!(window.FitInnNative&&FitInnNative.available&&FitInnNative.available.health); }catch(e){ return false; } }
   function woHealthWriteCap(){ return woHealthCap(); }
-  function woHealthPlatform(){ try{ return ((window.FitInnNative&&FitInnNative.platform)==='android')?'Google Fit':'Apple Health'; }catch(e){ return 'Health'; } }
+  function woHealthAndroid(){ try{ var p=(window.FitInnNative&&FitInnNative.platform)||(window.Capacitor&&Capacitor.getPlatform&&Capacitor.getPlatform())||''; if(p) return p==='android'; return /Android/i.test(navigator.userAgent||''); }catch(e){ return false; } }
+  function woHealthPlatform(){ return woHealthAndroid()?'Health Connect':'Apple Health'; }
   function woHealthPref(){ try{ return JSON.parse(localStorage.getItem('fi_health_v1')||'{}')||{}; }catch(e){ return {}; } }
   function woHealthSetPref(p){ try{ localStorage.setItem('fi_health_v1',JSON.stringify(Object.assign(woHealthPref(),p))); }catch(e){} }
   function woHealthConnected(){ return !!(woHealthCap()&&woHealthPref().connected); }
@@ -6042,7 +6044,7 @@
     catch(e){ S.woHealthBusy=false; S.woHealthMsg='Health-Fehler: '+woHealthErr(e); setS({}); }
   }
   function woHealthDisconnect(){ woHealthSetPref({connected:false}); setS({woHealthMsg:''}); }
-  // Aufgezeichnete Einheit zusätzlich nach Apple Health / Google Fit schreiben (still, wenn verbunden + write).
+  // Aufgezeichnete Einheit zusätzlich nach Apple Health / Health Connect schreiben (still, wenn verbunden + write).
   function woHealthPush(s){
     try{ if(!s||!woHealthWriteOn()) return; var P=woNativePlugin(); if(!P) return; var end=s.ts||Date.now(); var start=end-(s.durationSec||0)*1000;
       P.saveHealthWorkout({start:start,end:end,activity:s.activity,kind:s.kind,kcal:s.kcal,avgHr:s.avgHr,maxHr:s.maxHr,distanceM:s.distanceM||null}).then(function(){}).catch(function(){});
@@ -6053,7 +6055,8 @@
     var plat=woHealthPlatform(); var cap=woHealthCap(); var connected=woHealthConnected(); var busy=S.woHealthBusy;
     var msg=S.woHealthMsg?'<div style="font-size:12px;font-weight:700;color:var(--ern-acc);margin-top:11px;line-height:1.45">'+esc(S.woHealthMsg)+'</div>':'';
     var icon='<div style="width:42px;height:42px;border-radius:13px;background:'+ERN_GD+';display:flex;align-items:center;justify-content:center;flex-shrink:0">'+svg('<path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z"></path>',{c:'#fff',w:1.8,s:22})+'</div>';
-    var head='<div style="display:flex;align-items:center;gap:12px"><span>'+icon+'</span><div style="flex:1;min-width:0"><div style="font-size:14.5px;font-weight:900;color:var(--text)">Apple Health &amp; Google Fit</div><div style="font-size:12px;font-weight:600;color:var(--text-soft);margin-top:2px;line-height:1.4">Einheiten von Apple&nbsp;Watch, Garmin &amp; Co. übernehmen – sie zählen für Erholung &amp; Vitalpunkte.</div></div></div>';
+    var isAnd=plat==='Health Connect'; var wearable=isAnd?'Smartwatch, Garmin &amp; Co.':'Apple&nbsp;Watch, Garmin &amp; Co.';
+    var head='<div style="display:flex;align-items:center;gap:12px"><span>'+icon+'</span><div style="flex:1;min-width:0"><div style="font-size:14.5px;font-weight:900;color:var(--text)">'+esc(plat)+'</div><div style="font-size:12px;font-weight:600;color:var(--text-soft);margin-top:2px;line-height:1.4">Einheiten von '+wearable+' übernehmen – sie zählen für Erholung &amp; Vitalpunkte.</div></div></div>';
     var body;
     if(!cap){
       body='<div style="margin-top:12px;background:var(--surface-2);border-radius:12px;padding:11px 12px;font-size:12px;font-weight:700;color:var(--text-soft);line-height:1.45">📱 In der <b style="color:var(--teal-ink)">Fit-Inn-App</b> verfügbar: verbinde '+esc(plat)+', dann erscheinen deine Einheiten aus anderen Apps automatisch hier.</div>';
@@ -9883,7 +9886,7 @@
     woDetailClose:function(){ setS({woDetail:null,woReview:null}); },
     woDelete:function(a){ if(!a) return; if(!window.confirm('Diese Einheit wirklich löschen?')) return;
       api('/api/member/workouts',{method:'POST',body:JSON.stringify({action:'delete',ts:a})}).then(function(r){ if(r&&r.ok){ DATA.workouts=r; } S.woDetail=null; S.woReview=null; rIf(['tag','home','fort','coach']); setS({}); }).catch(function(){ S.woDetail=null; setS({}); }); },
-    // Apple Health / Google Fit
+    // Apple Health / Health Connect
     woHealthConnect:function(){ woHealthConnect(); },
     woHealthImport:function(){ woHealthImport(false); },
     woHealthWrite:function(){ woHealthSetPref({write:(woHealthPref().write===false)}); setS({}); },
