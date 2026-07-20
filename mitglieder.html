@@ -744,6 +744,7 @@
     if(SOCIAL_ON&&(s==='home'||s==='social'||s==='profil')) loadSocial();
     if(s==='coach'){ loadCoach(); loadTraining(); }
     if(s==='checkins'||s==='fort') loadCheckins();
+    woHealthAutoSync();   // neue Wearable-/Health-Einheiten still im Hintergrund holen
   }
   // Mehrere Magicline-Konten zu denselben Daten? -> Hinweis-Banner im Portal.
   function checkDup(){
@@ -6028,21 +6029,36 @@
   function woHealthImport(silent){
     var P=woNativePlugin();
     if(!P){ if(!silent) setS({woHealthMsg:'Health-Sync geht nur in der Fit-Inn-App.'}); return; }
-    if(S.woHealthBusy) return; S.woHealthBusy=true; if(!silent) S.woHealthMsg=''; render();
+    if(S.woHealthBusy) return; S.woHealthBusy=true; if(!silent){ S.woHealthMsg=''; render(); }
     var since=woHealthPref().lastSync||(Date.now()-90*864e5);
     var send=function(list){
       api('/api/member/workouts',{method:'POST',timeoutMs:30000,body:JSON.stringify({action:'import',workouts:(list||[]).slice(0,200)})})
         .then(function(r){ S.woHealthBusy=false;
-          if(r&&r.ok){ DATA.workouts=r; woHealthSetPref({lastSync:Date.now()}); var n=r.imported||0; S.woHealthMsg=(n>0)?(n+' Einheit'+(n>1?'en':'')+' aus '+woHealthPlatform()+' übernommen (+'+(r.vpAdded||0)+' VP).'):'Alles aktuell – keine neuen Einheiten.'; woHealthFetchMetrics(); rIf(['tag','home','fort','coach']); }
+          if(r&&r.ok){ DATA.workouts=r; woHealthSetPref({lastSync:Date.now()}); var n=r.imported||0; if(!silent) S.woHealthMsg=(n>0)?(n+' Einheit'+(n>1?'en':'')+' aus '+woHealthPlatform()+' übernommen (+'+(r.vpAdded||0)+' VP).'):'Alles aktuell – keine neuen Einheiten.'; woHealthFetchMetrics(); rIf(['tag','home','fort','coach']); }
+          else if(silent){ setS({}); return; }   // Auto-Sync: Fehler still schlucken, keine Modals/Meldungen
           else if(r&&r.error==='premium_required'){ ernEnsureModulePrice(); setS({ernUpgrade:true}); return; }
           else if(r&&r.error==='consent_required'){ S.woHealthMsg='Bitte zuerst den Vital-Check aktivieren (Einwilligung für Herzdaten).'; }
           else { S.woHealthMsg=(r&&r.message)||'Import hat nicht geklappt – bitte erneut.'; }
           setS({});
-        }).catch(function(){ S.woHealthBusy=false; S.woHealthMsg='Netzwerkfehler beim Import.'; setS({}); });
+        }).catch(function(){ S.woHealthBusy=false; if(!silent) S.woHealthMsg='Netzwerkfehler beim Import.'; setS({}); });
     };
     try{ P.getHealthWorkouts({sinceTs:since}).then(function(r){ send((r&&r.workouts)||[]); })
-      .catch(function(err){ S.woHealthBusy=false; S.woHealthMsg='Konnte '+woHealthPlatform()+' nicht lesen: '+woHealthErr(err); setS({}); }); }
-    catch(e){ S.woHealthBusy=false; S.woHealthMsg='Health-Fehler: '+woHealthErr(e); setS({}); }
+      .catch(function(err){ S.woHealthBusy=false; if(!silent) S.woHealthMsg='Konnte '+woHealthPlatform()+' nicht lesen: '+woHealthErr(err); setS({}); }); }
+    catch(e){ S.woHealthBusy=false; if(!silent) S.woHealthMsg='Health-Fehler: '+woHealthErr(e); setS({}); }
+  }
+  // Automatischer, stiller Health-Sync: holt im Hintergrund neue Einheiten, sobald verbunden.
+  // Gedrosselt (min. 5 Min seit letztem Lauf UND seit letztem Sync), damit beim App-Öffnen /
+  // Zurückkehren automatisch aktualisiert wird, ohne den Nutzer zu stören oder Akku zu ziehen.
+  var __healthAutoTs=0;
+  function woHealthAutoSync(){
+    try{
+      if(!woHealthConnected()||!woNativePlugin()||S.woHealthBusy) return;
+      var now=Date.now();
+      if(now-__healthAutoTs<300000) return;             // max. alle 5 Min ein Auto-Lauf
+      if(now-(woHealthPref().lastSync||0)<300000) return; // erst wieder nach 5 Min seit letztem Sync
+      __healthAutoTs=now;
+      woHealthImport(true);
+    }catch(e){}
   }
   function woHealthDisconnect(){ woHealthSetPref({connected:false}); setS({woHealthMsg:''}); }
   // Aufgezeichnete Einheit zusätzlich nach Apple Health / Health Connect schreiben (still, wenn verbunden + write).
@@ -11641,7 +11657,7 @@
     // (WLAN-Button etc.) erscheinen, auch wenn native.js nach dem ersten Render lud.
     try{ if(S.screen!=='login') render(); }catch(e){}
     // Push-Setup nachholen, falls native.js erst nach dem Login-/Boot-Render kam.
-    if(TOKEN){ try{ if(window.FitInnNative && FitInnNative.onAuthed) FitInnNative.onAuthed(TOKEN); }catch(e){} try{ checkArrival(); }catch(e){} }
+    if(TOKEN){ try{ if(window.FitInnNative && FitInnNative.onAuthed) FitInnNative.onAuthed(TOKEN); }catch(e){} try{ checkArrival(); }catch(e){} try{ woHealthAutoSync(); }catch(e){} }
     if(MLT) return;
     if(S.screen==='login' && window.FitInnNative && FitInnNative.hasBiometricLogin && FitInnNative.hasBiometricLogin()){
       render();
