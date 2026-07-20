@@ -167,6 +167,14 @@
   .dpCol.dpColY{flex:0 0 30%}
   .dpItem{height:44px;line-height:44px;scroll-snap-align:center;font-size:20px;font-weight:600;color:var(--text-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 4px}
   .dpItem.on{color:var(--text);font-weight:800}
+  /* Android-Variante der Geburtstags-Auswahl: klare native Dropdowns (Tag/Monat/Jahr)
+     statt der Scroll-Trommel – öffnet die native Material-Liste, hakt nie. */
+  .dpSelWrap{display:flex;gap:10px;padding:10px 16px 20px}
+  .dpSelBox{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px}
+  .dpSelBox.dpSelD{flex:0 0 24%}
+  .dpSelCap{font-size:11.5px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.4px;padding-left:2px}
+  .dpSel{width:100%;min-height:54px;border:1.5px solid var(--border);border-radius:13px;background:var(--surface-2);color:var(--text);font-size:17px;font-weight:700;padding:12px 12px;font-family:inherit;-webkit-appearance:menulist;appearance:menulist}
+  .dpSel:focus{outline:none;border-color:var(--teal-ink)}
   /* Schnellaktionen-Popup („+\"-Button in der Leiste, Kaiora-Anregung) */
   .qaScrim{position:fixed;inset:0;z-index:48;background:rgba(6,24,29,.52);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);animation:qaFade .2s ease}
   @keyframes qaFade{from{opacity:0}to{opacity:1}}
@@ -953,20 +961,38 @@
     var lis=items.map(function(it,i){ return '<div class="dpItem'+(i===selIdx?' on':'')+'">'+esc(it)+'</div>'; }).join('');
     return '<div class="dpCol dpCol'+kind+'" id="dpCol'+kind+'" data-dpcol="'+kind+'">'+lis+'</div>';
   }
+  // Scroll-Rad auf iOS/Desktop; auf Android native Dropdowns (die Trommel-Physik
+  // ist in Android-WebViews hakelig -> klare, verlässliche <select>-Felder).
+  function dpUseWheel(){ try{ return !/Android/i.test(navigator.userAgent||''); }catch(e){ return true; } }
+  function dpSelects(dp){
+    var dim=dpDaysIn(dp.y,dp.m); var dCur=Math.min(dp.d,dim);
+    var dOpts=''; for(var i=1;i<=31;i++){ dOpts+='<option value="'+i+'"'+(i===dCur?' selected':'')+'>'+i+'.</option>'; }
+    var mOpts=''; for(var mi=1;mi<=12;mi++){ mOpts+='<option value="'+mi+'"'+(mi===dp.m?' selected':'')+'>'+DP_MONTHS[mi-1]+'</option>'; }
+    var yOpts=''; for(var yy=dp.maxY;yy>=dp.minY;yy--){ yOpts+='<option value="'+yy+'"'+(yy===dp.y?' selected':'')+'>'+yy+'</option>'; }
+    return '<div class="dpSelWrap">'+
+      '<label class="dpSelBox dpSelD"><span class="dpSelCap">Tag</span><select id="dpSelD" class="dpSel" aria-label="Tag">'+dOpts+'</select></label>'+
+      '<label class="dpSelBox"><span class="dpSelCap">Monat</span><select id="dpSelM" class="dpSel" aria-label="Monat">'+mOpts+'</select></label>'+
+      '<label class="dpSelBox"><span class="dpSelCap">Jahr</span><select id="dpSelY" class="dpSel" aria-label="Jahr">'+yOpts+'</select></label>'+
+    '</div>';
+  }
   function wheelOverlay(){
     var dp=S.dp; if(!dp) return '';
-    var days=[]; var dim=dpDaysIn(dp.y,dp.m); for(var i=1;i<=dim;i++) days.push(String(i)+'.');
-    var years=[]; for(var yy=dp.minY;yy<=dp.maxY;yy++) years.push(String(yy));
-    var dIdx=Math.min(dp.d,dim)-1, mIdx=dp.m-1, yIdx=dp.y-dp.minY;
+    var body;
+    if(dpUseWheel()){
+      var days=[]; var dim=dpDaysIn(dp.y,dp.m); for(var i=1;i<=dim;i++) days.push(String(i)+'.');
+      var years=[]; for(var yy=dp.minY;yy<=dp.maxY;yy++) years.push(String(yy));
+      var dIdx=Math.min(dp.d,dim)-1, mIdx=dp.m-1, yIdx=dp.y-dp.minY;
+      body='<div class="dpCols"><div class="dpBand"></div>'+dpColHtml('D',days,dIdx)+dpColHtml('M',DP_MONTHS,mIdx)+dpColHtml('Y',years,yIdx)+'</div>';
+    } else {
+      body=dpSelects(dp);
+    }
     return '<div class="dpSheetWrap" role="dialog" aria-label="'+esc(dp.title)+'">'+
       '<div class="dpScrim" data-act="dpCancel"></div>'+
       '<div class="dpSheet">'+
         '<div class="dpHead"><button type="button" class="dpCancel" data-act="dpCancel">Abbrechen</button>'+
           '<span class="dpTitle">'+esc(dp.title)+'</span>'+
           '<button type="button" class="dpDone" data-act="dpDone">Fertig</button></div>'+
-        '<div class="dpCols"><div class="dpBand"></div>'+
-          dpColHtml('D',days,dIdx)+dpColHtml('M',DP_MONTHS,mIdx)+dpColHtml('Y',years,yIdx)+
-        '</div>'+
+        body+
       '</div></div>';
   }
   // Nach dem Zeichnen: Spalten auf die gewählten Indizes scrollen + Rasten-Listener,
@@ -10099,10 +10125,16 @@
     dpCancel:function(){ setQuiet({dp:null}); },
     dpDone:function(){
       var dp=S.dp; if(!dp){ return; }
-      var cD=$('dpColD'), cM=$('dpColM'), cY=$('dpColY');
-      var idxOf=function(col){ return col?Math.max(0,Math.round(col.scrollTop/DP_IH)):0; };
-      var y=cY?(dp.minY+idxOf(cY)):dp.y, m=cM?(idxOf(cM)+1):dp.m;
-      var dim=dpDaysIn(y,m); var d=Math.min(cD?(idxOf(cD)+1):dp.d, dim);
+      var y,m,d;
+      var sY=$('dpSelY'), sM=$('dpSelM'), sD=$('dpSelD');
+      if(sY&&sM&&sD){   // Android: Dropdown-Werte
+        y=+sY.value||dp.y; m=+sM.value||dp.m; d=+sD.value||dp.d;
+      } else {          // iOS/Desktop: Scroll-Rad
+        var cD=$('dpColD'), cM=$('dpColM'), cY=$('dpColY');
+        var idxOf=function(col){ return col?Math.max(0,Math.round(col.scrollTop/DP_IH)):0; };
+        y=cY?(dp.minY+idxOf(cY)):dp.y; m=cM?(idxOf(cM)+1):dp.m; d=cD?(idxOf(cD)+1):dp.d;
+      }
+      var dim=dpDaysIn(y,m); d=Math.min(d, dim);
       var p=function(n){ return (n<10?'0':'')+n; };
       var iso=y+'-'+p(m)+'-'+p(d);
       var cfg=dpConfig(dp.field);
