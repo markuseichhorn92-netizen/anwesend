@@ -26,8 +26,8 @@ nativ um – analog zum iOS-Plugin in [`../../native-plugin/`](../../native-plug
 | `package.json` | macht den Ordner zu einem lokalen Capacitor-Plugin (`jsName = "FitInnNative"`) |
 | `android/build.gradle` | Library-Modul + Abhängigkeiten (Health Connect, Coroutinen, Play-Location) |
 | `android/src/main/AndroidManifest.xml` | Berechtigungen, Health-Connect-`<queries>` + Rationale-Activity (wird ins App-Manifest gemerged) |
-| `android/src/main/java/de/fitinn/native/FitInnNativePlugin.kt` | Das Plugin (Health/BLE/GPS) |
-| `android/src/main/java/de/fitinn/native/HealthConnectRationaleActivity.kt` | Pflicht-Activity, die beim Health-Connect-Dialog die Datenschutzerklärung öffnet |
+| `android/src/main/java/de/fitinn/nativeplugin/FitInnNativePlugin.kt` | Das Plugin (Health/BLE/GPS) |
+| `android/src/main/java/de/fitinn/nativeplugin/HealthConnectRationaleActivity.kt` | Pflicht-Activity, die beim Health-Connect-Dialog die Datenschutzerklärung öffnet |
 
 ## Einbau (aus `nativeapp/`)
 

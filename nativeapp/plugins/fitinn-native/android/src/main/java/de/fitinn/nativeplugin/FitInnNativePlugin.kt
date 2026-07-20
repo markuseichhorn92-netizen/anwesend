@@ -1,4 +1,4 @@
-package de.fitinn.native
+package de.fitinn.nativeplugin
 
 import android.Manifest
 import android.bluetooth.BluetoothDevice

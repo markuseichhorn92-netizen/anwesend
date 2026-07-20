@@ -1,4 +1,4 @@
-package de.fitinn.native
+package de.fitinn.nativeplugin
 
 import android.app.Activity
 import android.content.Intent
