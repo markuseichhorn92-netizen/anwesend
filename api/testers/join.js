@@ -2,41 +2,25 @@
 
 /**
  * POST /api/testers/join   { email, name?, consent }
- * Anmeldung für den GESCHLOSSENEN App-Test (Google Play / optional iOS-TestFlight).
+ * Anmeldung für den GESCHLOSSENEN App-Test (Google Play).
  *
- * Zweck: die (Google-/Gmail-)Adresse des Testers einsammeln, damit das Studio sie
- * in der Play Console als Tester freischalten kann. Beim geschlossenen Test zeigt
- * Google die App NUR Konten, die vorher als Tester hinterlegt wurden – deshalb
- * braucht es genau diese E-Mail.
+ * ABLAUF (zweistufig – der Beitritts-Link funktioniert erst NACH der Freischaltung):
+ *  1) Hier: Adresse mit Status "pending" speichern, Studio informieren, dem Tester
+ *     eine Bestätigung OHNE Link schicken („wir schalten dich frei und melden uns").
+ *  2) Später im Team-Backend („App-Tester"): das Studio trägt die Adresse in der
+ *     Play Console ein und tippt auf „Freischalten" -> Status "approved" + zweite
+ *     Mail MIT Beitritts-Link (siehe lib/testers.js / api/team/testers.js).
  *
- * Ablauf:
- *  - E-Mail validieren, Einwilligung verlangen, pro IP + pro E-Mail rate-limiten.
- *  - Adresse in einem Redis-Set (Dedup) + Info-Hash (Name/Zeit) ablegen.
- *  - Studio per Mail informieren (nur bei NEUER Anmeldung).
- *  - Tester eine Bestätigung mit dem Beitritts-Link schicken (falls konfiguriert).
- *
- * Datenschutz/Robustheit: Antwort ist immer gleich (ok:true) – nach außen ist nicht
- * erkennbar, ob die Adresse neu war. Speicher-/Mail-Fehler werden geschluckt.
- *
- * Konfiguration (Vercel-Env, alle optional – für Play sind Standards hinterlegt):
- *   PLAY_TEST_OPTIN_URL  – Beitritts-Link aus der Play Console (Tester werden)
- *   PLAY_TEST_STORE_URL  – Play-Store-Link der App (nach dem Beitritt installieren)
- *   IOS_TEST_URL         – TestFlight-Einladungslink (optional, iOS)
+ * Datenschutz/Robustheit: Antwort immer gleich (ok:true). Rate-Limit pro IP + E-Mail.
+ * Speicher-/Mail-Fehler werden geschluckt.
  */
 
 const M = require('../../lib/members');
-const { redisPipeline, hasStore } = require('../../lib/store');
+const Testers = require('../../lib/testers');
 const { sendMail, sendMailRaw, hasMail } = require('../../lib/mail');
 const { renderEmail } = require('../../lib/emailTemplate');
 
-// Öffentliche Links des geschlossenen Play-Tests – als Standard fest hinterlegt,
-// damit die Seite ohne Vercel-Konfiguration sofort funktioniert. Env überschreibt.
-const OPTIN_URL = String(process.env.PLAY_TEST_OPTIN_URL || 'https://play.google.com/apps/testing/de.fitinn.portal').trim();
-const STORE_URL = String(process.env.PLAY_TEST_STORE_URL || 'https://play.google.com/store/apps/details?id=de.fitinn.portal').trim();
-const IOS_URL = String(process.env.IOS_TEST_URL || '').trim();
-
-// Bewusst simpel: ein @, ein Punkt danach, keine Leerzeichen. Reicht als Vorfilter;
-// die endgültige Gültigkeit klärt sich ohnehin erst beim Freischalten in Play.
+// Bewusst simpel: ein @, ein Punkt danach, keine Leerzeichen. Reicht als Vorfilter.
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function clean(s, max) { return String(s || '').replace(/[\r\n\t]+/g, ' ').trim().slice(0, max || 120); }
@@ -54,8 +38,6 @@ module.exports = async function handler(req, res) {
   const name = clean(d.name, 80);
   const consent = d.consent === true || d.consent === 'true' || d.consent === 1 || d.consent === '1';
 
-  const links = { optInUrl: OPTIN_URL || null, storeUrl: STORE_URL || null, iosUrl: IOS_URL || null };
-
   if (!EMAIL_RE.test(email) || email.length > 160) { res.statusCode = 400; return res.end(JSON.stringify({ ok: false, error: 'invalid_email' })); }
   if (!consent) { res.statusCode = 400; return res.end(JSON.stringify({ ok: false, error: 'consent_required' })); }
 
@@ -63,55 +45,47 @@ module.exports = async function handler(req, res) {
   await M.rateLimit('tester:e:' + email, 5, 86400);
 
   let firstTime = true;
-  try {
-    if (hasStore) {
-      const rec = JSON.stringify({ name: name || null, joinedAt: new Date().toISOString() });
-      const [added] = await redisPipeline([['SADD', 'tester:emails', email]]);
-      firstTime = Number(added) === 1;                 // 1 = war neu, 0 = schon dabei
-      await redisPipeline([['HSET', 'tester:info', email, rec]]);
-    }
-  } catch (e) { /* Speicher-Fehler nicht nach außen zeigen */ }
+  try { const r = await Testers.recordSignup(email, name); firstTime = !r || r.firstTime !== false; }
+  catch (e) { /* Speicher-Fehler nicht nach außen zeigen */ }
 
   // Studio benachrichtigen – nur bei NEUER Anmeldung (keine Doppel-Mails).
   try {
     if (hasMail && firstTime) {
+      const host = req.headers['host'] || 'mitglieder.fit-inn-trier.de';
       await sendMail(
-        'Neuer App-Tester: ' + email,
+        'Neuer App-Tester (freischalten): ' + email,
         'Neue Anmeldung für den geschlossenen App-Test.\n\n' +
           'Name: ' + (name || '—') + '\n' +
           'E-Mail (Google/Gmail): ' + email + '\n\n' +
-          'Bitte diese Adresse in der Play Console freischalten:\n' +
-          'Testen → Geschlossener Test → Tester → E-Mail-Liste.\n' +
-          'Die komplette Liste gibt es als CSV unter /api/testers/list (Bearer-Token).',
+          'So schaltest du frei:\n' +
+          '1) Adresse in der Play Console eintragen: Testen → Geschlossener Test → Tester → E-Mail-Liste.\n' +
+          '2) Dann im Team-Backend unter „App-Tester" auf „Freischalten" tippen – der Tester bekommt\n' +
+          '   automatisch die zweite E-Mail mit dem Beitritts-Link.\n\n' +
+          'App-Tester öffnen: https://' + host + '/team/tester',
         null,
       );
     }
   } catch (e) {}
 
-  // Bestätigung an den Tester – mit Beitritts-Link, falls konfiguriert.
+  // Bestätigung an den Tester – OHNE Link (kommt erst nach der Freischaltung).
   try {
-    if (hasMail) {
-      const steps = [];
-      if (links.optInUrl) steps.push('1. Öffne auf deinem Android-Handy den Button „Tester werden" und bestätige die Teilnahme.');
-      if (links.storeUrl) steps.push((steps.length ? '2.' : '1.') + ' Installiere die App anschließend über Google Play – fertig!');
-      const intro = links.optInUrl
-        ? ['Danke, dass du die neue Fit-Inn-App vorab testest! In wenigen Schritten bist du dabei:'].concat(steps)
-        : ['Danke für deine Anmeldung zum App-Test! Wir schalten dich in Kürze frei und schicken dir dann den Beitritts-Link. Du kannst diese E-Mail einfach aufbewahren.'];
+    if (hasMail && firstTime) {
       const mail = renderEmail({
-        preheader: 'Danke – so kommst du in den Test der Fit-Inn-App.',
+        preheader: 'Danke für deine Anmeldung zum Test der Fit-Inn-App.',
         name: name || '',
         eyebrow: 'App-Test',
-        headline: 'Willkommen im Tester-Kreis',
-        intro: intro,
-        button: links.optInUrl ? { label: 'Tester werden', href: links.optInUrl, full: true } : null,
-        secondary: links.storeUrl ? { label: 'App bei Google Play öffnen', href: links.storeUrl } : null,
-        note: 'Wichtig: Nutze auf dem Handy dieselbe Google-Adresse (' + email + '), mit der du dich hier angemeldet hast – sonst blendet Google den Test nicht ein.',
+        headline: 'Danke – du stehst auf der Liste!',
+        intro: [
+          'Danke, dass du die neue Fit-Inn-App vorab testen möchtest!',
+          'Wir schalten dich in Kürze frei. Sobald der Test für dich bereit ist, bekommst du von uns eine zweite E-Mail mit dem Beitritts-Link und der Anleitung. Das dauert meist 1–2 Tage – du musst jetzt nichts weiter tun.',
+        ],
+        note: 'Wichtig: Nutze später auf dem Handy dieselbe Google-Adresse (' + email + '), mit der du dich hier angemeldet hast – sonst blendet Google den Test nicht ein.',
         footer: 'security',
       });
-      await sendMailRaw({ to: email, subject: 'Du bist dabei: Test der Fit-Inn-App', text: mail.text, html: mail.html });
+      await sendMailRaw({ to: email, subject: 'Deine Anmeldung zum Fit-Inn-App-Test', text: mail.text, html: mail.html });
     }
   } catch (e) {}
 
   res.statusCode = 200;
-  return res.end(JSON.stringify({ ok: true, links: links }));
+  return res.end(JSON.stringify({ ok: true, status: 'pending' }));
 };
