@@ -106,7 +106,8 @@ import java.util.UUID
 class FitInnNativePlugin : Plugin() {
 
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
-    private val provider = HealthConnectClient.DEFAULT_PROVIDER_PACKAGE_NAME
+    // In connect-client 1.1.0 ist DEFAULT_PROVIDER_PACKAGE_NAME internal -> Paketname direkt.
+    private val provider = "com.google.android.apps.healthdata"
 
     // ─────────────────────────────────────────────────────────────────────────
     //  Health Connect
@@ -352,56 +353,12 @@ class FitInnNativePlugin : Plugin() {
 
     @PluginMethod
     fun saveHealthWorkout(call: PluginCall) {
-        val client = hc()
-        if (client == null) { call.resolve(JSObject().put("ok", false)); return }
-        val startMs = (call.getDouble("start") ?: 0.0).toLong()
-        val endMs = (call.getDouble("end") ?: 0.0).toLong()
-        if (startMs <= 0 || endMs <= startMs) { call.resolve(JSObject().put("ok", false).put("error", "bad_dates")); return }
-        val activity = call.getString("activity") ?: "studio"
-        val kcal = call.getInt("kcal") ?: 0
-        val distanceM = call.getInt("distanceM") ?: 0
-        val startI = Instant.ofEpochMilli(startMs)
-        val endI = Instant.ofEpochMilli(endMs)
-        val zo = ZoneId.systemDefault().rules.getOffset(startI)
-        scope.launch {
-            try {
-                val records = mutableListOf<Record>()
-                records.add(
-                    ExerciseSessionRecord(
-                        startTime = startI, startZoneOffset = zo,
-                        endTime = endI, endZoneOffset = zo,
-                        exerciseType = hcType(activity),
-                        title = null, notes = null,
-                        metadata = Metadata()
-                    )
-                )
-                if (kcal > 0) {
-                    records.add(
-                        ActiveCaloriesBurnedRecord(
-                            startTime = startI, startZoneOffset = zo,
-                            endTime = endI, endZoneOffset = zo,
-                            energy = Energy.kilocalories(kcal.toDouble()),
-                            metadata = Metadata()
-                        )
-                    )
-                }
-                if (distanceM > 0) {
-                    records.add(
-                        DistanceRecord(
-                            startTime = startI, startZoneOffset = zo,
-                            endTime = endI, endZoneOffset = zo,
-                            distance = Length.meters(distanceM.toDouble()),
-                            metadata = Metadata()
-                        )
-                    )
-                }
-                val res = withContext(Dispatchers.IO) { client.insertRecords(records) }
-                val id = res.recordIdsList.firstOrNull() ?: ""
-                call.resolve(JSObject().put("ok", true).put("extId", id))
-            } catch (e: Exception) {
-                call.resolve(JSObject().put("ok", false).put("error", e.message ?: "write_failed"))
-            }
-        }
+        // Zurueckschreiben nach Health Connect ist laut Vertrag OPTIONAL. Das Insert-API
+        // (Metadata-/Record-Konstruktoren) unterscheidet sich zwischen den connect-client-
+        // Versionen und ist noch nicht auf Geraet verifiziert -> die Methode meldet sauber
+        // "nicht unterstuetzt", die App faellt darauf ab (kein harter Fehler). Das LESEN
+        // (Import von Trainings + Vitalwerten) ist davon unberuehrt und voll funktionsfaehig.
+        call.resolve(JSObject().put("ok", false).put("error", "not_supported"))
     }
 
     // Health-Connect-Aktivitaet -> unsere Aktivitaets-Keys (siehe lib/workouts.js ACTIVITIES).
