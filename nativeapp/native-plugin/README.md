@@ -88,6 +88,18 @@ Dann NICHT zwei Plugins parallel betreiben. Zwei saubere Wege:
 
 ## Android (Health Connect)
 
-Der Vertrag gilt 1:1 auch für Android (Health Connect + BLE + FusedLocation), die
-Manifest-Rechte trägt `patch-native.js` bereits ein. Das Kotlin-Pendant ist noch
-nicht gebaut – auf Zuruf lege ich es analog an.
+Der Vertrag gilt 1:1 auch für Android (Health Connect + BLE + FusedLocation). Das
+Kotlin-Pendant ist gebaut und liegt als eigenes lokales Capacitor-Plugin in
+[`../plugins/fitinn-native/`](../plugins/fitinn-native/) – inkl. eigener
+Einbau-Anleitung. Einbau in Kürze (aus `nativeapp/`):
+
+```bash
+npm install
+npx cap add android
+npm run android     # cap sync (bindet das Plugin automatisch ein) + patch-native.js + Android Studio
+```
+
+Anders als bei iOS ist **keine** manuelle Registrierung nötig: Capacitor findet das
+`@CapacitorPlugin`-Plugin selbst, und die Health-Connect-Berechtigungen +
+Rationale-Activity kommen per Manifest-Merge aus dem Plugin-Manifest.
+`patch-native.js` hebt zusätzlich `minSdkVersion` auf 26 an (Health-Connect-Pflicht).

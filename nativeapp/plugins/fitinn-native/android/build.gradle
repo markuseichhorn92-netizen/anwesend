@@ -1,0 +1,65 @@
+// Fit-Inn · natives Android-Plugin (Health Connect + BLE-Herzgurt + GPS).
+// Wird von Capacitor als Library-Modul eingebunden (npm-Paket "fitinn-native" in
+// nativeapp/package.json -> `npx cap sync android` zieht es automatisch ein).
+//
+// Health Connect setzt minSdk 26 voraus -> die App muss ebenfalls minSdk >= 26
+// laufen. `patch-native.js` hebt android/variables.gradle bei Bedarf auf 26 an.
+
+ext {
+    fitinnHealthConnectVersion = '1.1.0'
+    fitinnCoroutinesVersion = '1.8.1'
+    fitinnPlayLocationVersion = '21.3.0'
+    fitinnCoreKtxVersion = '1.13.1'
+}
+
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        // Auf die Toolchain von Capacitor 8 abgestimmt. Falls euer Projekt eine
+        // andere AGP-/Kotlin-Version nutzt, hier an die des App-Moduls angleichen.
+        classpath 'com.android.tools.build:gradle:8.7.2'
+        classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.25'
+    }
+}
+
+apply plugin: 'com.android.library'
+apply plugin: 'kotlin-android'
+
+android {
+    namespace "de.fitinn.native"
+    compileSdk project.hasProperty('compileSdkVersion') ? rootProject.ext.compileSdkVersion : 35
+    defaultConfig {
+        // Health Connect (androidx.health.connect) erfordert API 26.
+        minSdkVersion 26
+        targetSdkVersion project.hasProperty('targetSdkVersion') ? rootProject.ext.targetSdkVersion : 35
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    kotlinOptions {
+        jvmTarget = '17'
+    }
+    lintOptions {
+        abortOnError false
+    }
+}
+
+repositories {
+    google()
+    mavenCentral()
+}
+
+dependencies {
+    implementation project(':capacitor-android')
+    implementation "androidx.core:core-ktx:${fitinnCoreKtxVersion}"
+    // Health Connect (Google-Fit-Nachfolger): Trainings + Vitalwerte lesen/schreiben.
+    implementation "androidx.health.connect:connect-client:${fitinnHealthConnectVersion}"
+    // Coroutinen fuer die suspend-basierte Health-Connect-API.
+    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:${fitinnCoroutinesVersion}"
+    // GPS ueber die Fused-Location-API (Google Play Services).
+    implementation "com.google.android.gms:play-services-location:${fitinnPlayLocationVersion}"
+}

@@ -17,6 +17,12 @@ Fähigkeit nicht meldet, fällt die App **sauber** auf Web-Wege bzw. auf einen
 > 🛠 **Umsetzung (iOS):** Ein fertiges Plugin-Gerüst für Health + BLE-Gurt + GPS
 > liegt in [`../nativeapp/native-plugin/`](../nativeapp/native-plugin/) inkl.
 > Einbau-Anleitung.
+>
+> 🤖 **Umsetzung (Android):** Das Kotlin-Pendant (Health Connect + BLE + Fused
+> Location) liegt als eigenes lokales Capacitor-Plugin in
+> [`../nativeapp/plugins/fitinn-native/`](../nativeapp/plugins/fitinn-native/) –
+> wird über `npx cap sync android` automatisch eingebunden (keine manuelle
+> Registrierung). Einbau-Anleitung im dortigen `README.md`.
 
 ---
 

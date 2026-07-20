@@ -20,6 +20,8 @@
  *   - Android AndroidManifest.xml: CAMERA, RECORD_AUDIO, BLUETOOTH_SCAN, BLUETOOTH_CONNECT,
  *                                 ACCESS_FINE/COARSE_LOCATION (Outdoor), health.READ/WRITE_* (Health Connect)
  *                                 (+ Kamera als optionales Feature)
+ *   - Android variables.gradle:   hebt minSdkVersion auf mind. 26 an (Health Connect
+ *                                 im nativen Plugin verlangt API 26).
  *   - Android MainActivity.java:  (1) fragt CAMERA/RECORD_AUDIO zur LAUFZEIT an und
  *                                 (2) setzt einen WebChromeClient mit onPermissionRequest, der
  *                                 die Kamera/Mikro für die eigene Domain im WebView freigibt.
@@ -230,11 +232,29 @@ function patchAndroidMainActivity() {
   console.log('✓ Android: MainActivity ergänzt → Laufzeit-Rechte + WebView-Kamerafreigabe (onPermissionRequest) (' + found + ')');
 }
 
+// Android: minSdkVersion auf mindestens 26 anheben. Das native Plugin (Health Connect,
+// androidx.health.connect) setzt API 26 voraus; ist die App niedriger, scheitert der
+// Manifest-Merge ("uses-sdk:minSdkVersion 23 cannot be smaller than 26"). API 26
+// (Android 8.0) ist 2026 eine sehr sichere Untergrenze. Idempotent.
+function patchAndroidMinSdk() {
+  const p = path.join(ROOT, 'android', 'variables.gradle');
+  if (!fs.existsSync(p)) { console.log('· Android variables.gradle noch nicht vorhanden – übersprungen.'); return; }
+  let src = fs.readFileSync(p, 'utf8');
+  const m = src.match(/minSdkVersion\s*=\s*(\d+)/);
+  if (!m) { console.log('· Android: minSdkVersion nicht in variables.gradle gefunden – bitte manuell auf 26 setzen (Health Connect).'); return; }
+  const cur = parseInt(m[1], 10);
+  if (cur >= 26) { console.log('✓ Android: minSdkVersion ' + cur + ' erfüllt Health-Connect-Anforderung (>=26).'); return; }
+  src = src.replace(/minSdkVersion\s*=\s*\d+/, 'minSdkVersion = 26');
+  fs.writeFileSync(p, src, 'utf8');
+  console.log('✓ Android: minSdkVersion ' + cur + ' → 26 angehoben (Health Connect braucht API 26).');
+}
+
 function main() {
   console.log('Fit-Inn · native Kamera/Mikro-Berechtigungen prüfen …');
   try { patchInfoPlist(); } catch (e) { console.error('✗ iOS-Patch fehlgeschlagen:', e && e.message); }
   try { patchAndroidManifest(); } catch (e) { console.error('✗ Android-Patch fehlgeschlagen:', e && e.message); }
   try { patchAndroidMainActivity(); } catch (e) { console.error('✗ Android-MainActivity-Patch fehlgeschlagen:', e && e.message); }
+  try { patchAndroidMinSdk(); } catch (e) { console.error('✗ Android-minSdk-Patch fehlgeschlagen:', e && e.message); }
   console.log('Fertig.');
 }
 
