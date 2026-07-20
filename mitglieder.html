@@ -802,8 +802,13 @@
   // ===== Standort-Ankunft (Vordergrund): erkennt, ob das Mitglied im Studio ist =====
   var STUDIO_LAT=49.7242701, STUDIO_LNG=6.6303178, GEO_RADIUS=160; // Meter (Auf Hirtenberg 8, 54296 Trier)
   function geoDist(la1,lo1,la2,lo2){ var R=6371000,rad=Math.PI/180; var dLa=(la2-la1)*rad,dLo=(lo2-lo1)*rad; var a=Math.sin(dLa/2)*Math.sin(dLa/2)+Math.cos(la1*rad)*Math.cos(la2*rad)*Math.sin(dLo/2)*Math.sin(dLo/2); return 2*R*Math.atan2(Math.sqrt(a),Math.sqrt(1-a)); }
+  // Auto-Check-in braucht den Standort. Wir fragen ihn NIE ungefragt ab, sondern erst
+  // nach einmaliger Einwilligung (Karte auf der Startseite). fi_geoci_v1: '1'=ja, '0'=nein.
+  function geoCiAllowed(){ try{ return localStorage.getItem('fi_geoci_v1')==='1'; }catch(e){ return false; } }
+  function geoCiDecided(){ try{ var v=localStorage.getItem('fi_geoci_v1'); return v==='1'||v==='0'; }catch(e){ return false; } }
   function checkArrival(force){
     if(!TOKEN || S.checkedInAt) return;                       // nur eingeloggt & noch nicht eingecheckt
+    if(!geoCiAllowed()) return;                               // kein Standort-Abruf ohne Einwilligung
     // Damit der Check-in-Button SOFORT erscheint, wenn man im Studio ankommt:
     // beim App-Öffnen/In-den-Vordergrund-Holen (force) immer prüfen, sonst
     // höchstens alle 2 Minuten.
@@ -2135,8 +2140,20 @@
         +'</div>'
         +(S.checkinMsg && !S.checkinOk ? '<div class="err" style="margin-bottom:14px">'+svg(IC.warn,{c:'var(--err-fg)',w:2,s:17})+'<span>'+esc(S.checkinMsg)+'</span></div>' : '');
     }
-    // Check-in läuft jetzt über den Mittel-Button der Bottom-Nav – kein großer Button mehr.
-    return (S.checkinMsg && !S.checkinOk ? '<div class="err" style="margin-bottom:14px">'+svg(IC.warn,{c:'var(--err-fg)',w:2,s:17})+'<span>'+esc(S.checkinMsg)+'</span></div>' : '');
+    var ciErr=(S.checkinMsg && !S.checkinOk ? '<div class="err" style="margin-bottom:14px">'+svg(IC.warn,{c:'var(--err-fg)',w:2,s:17})+'<span>'+esc(S.checkinMsg)+'</span></div>' : '');
+    // Einmaliger Standort-Opt-in: erklärt WARUM, fragt erst nach dem Tipp ab (kein stiller Prompt).
+    if(!geoCiDecided()){
+      return '<div style="background:var(--surface);border-radius:18px;box-shadow:0 12px 32px rgba(4,33,40,.10);padding:18px;margin-bottom:14px">'
+        +'<div style="display:flex;align-items:center;gap:11px"><div style="width:40px;height:40px;border-radius:12px;background:rgba(14,96,114,.10);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:20px">📍</div>'
+        +'<div style="flex:1;min-width:0"><div style="font-size:14.5px;font-weight:900;color:var(--text)">Auto-Check-in</div>'
+        +'<div style="font-size:12.5px;color:var(--text-muted);line-height:1.45;margin-top:2px">Erlaube deinen Standort, damit dein Check-in-Button automatisch erscheint, sobald du im Studio bist. Sonst checkst du wie gewohnt über den <b>+</b>-Button ein.</div></div></div>'
+        +'<div style="display:flex;gap:8px;margin-top:13px">'
+        +'<button data-act="geoCiDeny" style="flex:1;padding:11px;border:1.5px solid var(--border);border-radius:12px;background:var(--surface);color:var(--text-2);font-weight:800;font-size:13.5px;cursor:pointer">Nicht jetzt</button>'
+        +'<button data-act="geoCiAllow" style="flex:1.4;padding:11px;border:none;border-radius:12px;background:'+TEALBG+';color:#fff;font-weight:800;font-size:13.5px;cursor:pointer">Standort erlauben</button>'
+        +'</div></div>'+ciErr;
+    }
+    // Check-in läuft sonst über den Mittel-Button der Bottom-Nav – kein großer Button mehr.
+    return ciErr;
   }
   function statCard(eyebrow, icon, value, sub, attrs){
     return '<div class="statCard" '+(attrs||'')+' style="cursor:pointer;background:var(--surface);border-radius:18px;box-shadow:0 12px 32px rgba(4,33,40,.10);padding:18px 18px 20px">'+
@@ -10505,6 +10522,9 @@
     ernCookCook:function(a){ var list=(DATA.nutriCook&&DATA.nutriCook.cookplan)||[]; var it=list.filter(function(x){ return String(x.id)===String(a); })[0]; if(!it||!(it.steps&&it.steps.length)) return; setQuiet({ernRecipeSel:it, ernRecipeServ:Math.max(1,Math.min(12,parseInt(it.servings,10)||1)), ernKoch:-1, ernKochDirect:true}); },
     openBlog:function(a){ closeMenu(); S.blogSel=a; S.blogPost=null; setS({screen:'blog'}); api('/api/member/blog?id='+encodeURIComponent(a)).then(function(d){ if(d&&d.ok&&d.post){ S.blogPost=d.post; if(S.blogSel===a&&S.screen==='blog') render(); } }).catch(function(){}); },
     openInsta:function(a){ closeMenu(); S.instaSel=a; setS({screen:'insta'}); loadInsta(); },
+    // Standort-Opt-in fürs Auto-Erscheinen des Check-in-Buttons (fragt erst NACH dem Tipp ab).
+    geoCiAllow:function(){ try{ localStorage.setItem('fi_geoci_v1','1'); }catch(e){} try{ window.__geoLast=0; checkArrival(true); }catch(e){} render(); },
+    geoCiDeny:function(){ try{ localStorage.setItem('fi_geoci_v1','0'); }catch(e){} render(); },
     doCheckin:function(){
       if(S.checkinBusy||S.checkedInAt) return;
       function go(){
