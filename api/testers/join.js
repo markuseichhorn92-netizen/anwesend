@@ -18,7 +18,7 @@
  * Datenschutz/Robustheit: Antwort ist immer gleich (ok:true) – nach außen ist nicht
  * erkennbar, ob die Adresse neu war. Speicher-/Mail-Fehler werden geschluckt.
  *
- * Konfiguration (Vercel-Env, alle optional):
+ * Konfiguration (Vercel-Env, alle optional – für Play sind Standards hinterlegt):
  *   PLAY_TEST_OPTIN_URL  – Beitritts-Link aus der Play Console (Tester werden)
  *   PLAY_TEST_STORE_URL  – Play-Store-Link der App (nach dem Beitritt installieren)
  *   IOS_TEST_URL         – TestFlight-Einladungslink (optional, iOS)
@@ -29,8 +29,10 @@ const { redisPipeline, hasStore } = require('../../lib/store');
 const { sendMail, sendMailRaw, hasMail } = require('../../lib/mail');
 const { renderEmail } = require('../../lib/emailTemplate');
 
-const OPTIN_URL = String(process.env.PLAY_TEST_OPTIN_URL || '').trim();
-const STORE_URL = String(process.env.PLAY_TEST_STORE_URL || '').trim();
+// Öffentliche Links des geschlossenen Play-Tests – als Standard fest hinterlegt,
+// damit die Seite ohne Vercel-Konfiguration sofort funktioniert. Env überschreibt.
+const OPTIN_URL = String(process.env.PLAY_TEST_OPTIN_URL || 'https://play.google.com/apps/testing/de.fitinn.portal').trim();
+const STORE_URL = String(process.env.PLAY_TEST_STORE_URL || 'https://play.google.com/store/apps/details?id=de.fitinn.portal').trim();
 const IOS_URL = String(process.env.IOS_TEST_URL || '').trim();
 
 // Bewusst simpel: ein @, ein Punkt danach, keine Leerzeichen. Reicht als Vorfilter;
