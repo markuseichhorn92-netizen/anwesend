@@ -77,7 +77,7 @@ module.exports = async function handler(req, res) {
       // hinterlegte Adresse schicken und zur Code-Eingabe weiterleiten.
       const r = await sendLoginCode(m, req.headers['host']);
       res.statusCode = 200;
-      return res.end(JSON.stringify({ ok: true, needsCode: true, challenge: r.challenge }));
+      return res.end(JSON.stringify({ ok: true, needsCode: true, challenge: r.challenge, via: (r && r.channel) || 'email', delivered: !!(r && r.channel) }));
     }
     // Wissensbasierter Login: Sitzung bewusst kurz. remember=true verlängert nur
     // auf 24 h (statt vormals 30 Tage) – lange Sitzungen erfordern einen

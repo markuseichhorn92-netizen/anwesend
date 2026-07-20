@@ -110,16 +110,20 @@ module.exports = async function handler(req, res) {
         return send(res, { ok: true, step: 'channel', channels: channels });
       }
 
-      // Senden über den gewählten Kanal.
+      // Senden über den gewählten Kanal (mit automatischem Fallback auf den anderen).
+      // via = tatsächlich genutzter Weg; delivered=false, wenn die Zustellung nirgends griff
+      // (dann kann die App „erneut senden / anderen Weg wählen" anbieten).
       if (chosen && chosen.id != null) {
         const r = await sendLoginCode(chosen, req.headers['host'], { channel: deliver, phone: deliver === 'whatsapp' ? phone : undefined });
         if (r && r.challenge) challenge = r.challenge;
+        const actualVia = (r && r.channel) || null;
+        return send(res, { ok: true, step: 'code', challenge: challenge, via: actualVia || deliver, delivered: !!actualVia });
       }
-      return send(res, { ok: true, step: 'code', challenge: challenge, via: deliver });
+      return send(res, { ok: true, step: 'code', challenge: challenge, via: deliver, delivered: false });
     }
   } catch (e) { /* still respond normally to avoid leaking */ }
 
   // Fallback (0 Treffer / Rate-Limit pro E-Mail): wie ein normaler Ablauf aussehen lassen.
   if (!deliver) return send(res, { ok: true, step: 'channel', channels: [{ type: 'email', hint: maskEmail(email) }] });
-  return send(res, { ok: true, step: 'code', challenge: challenge, via: deliver });
+  return send(res, { ok: true, step: 'code', challenge: challenge, via: deliver, delivered: false });
 };

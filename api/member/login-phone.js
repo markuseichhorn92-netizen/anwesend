@@ -31,6 +31,8 @@ module.exports = async function handler(req, res) {
   const phone = String(d.phone || '').replace(/[^\d+]/g, '');
   const phoneKey = phone.replace(/\D/g, '');
   let challenge = crypto.randomBytes(24).toString('hex');
+  let via = 'whatsapp';       // tatsächlich genutzter Kanal (kann auf E-Mail zurückfallen)
+  let delivered = false;      // ob die Zustellung wirklich griff
 
   try {
     // Pro Nummer begrenzen (SMS/WhatsApp-Bombing verhindern) – ohne nach außen zu verraten.
@@ -41,10 +43,11 @@ module.exports = async function handler(req, res) {
       if (m && m.id != null && M.isoDate(m.dateOfBirth) === M.isoDate(d.dob)) {
         const r = await sendLoginCode(m, req.headers['host'], { channel: 'whatsapp' });
         if (r && r.challenge) challenge = r.challenge;
+        if (r && r.channel) { via = r.channel; delivered = true; }
       }
     }
   } catch (e) { /* still return ok to avoid leaking */ }
 
   res.statusCode = 200;
-  return res.end(JSON.stringify({ ok: true, challenge: challenge, via: 'whatsapp' }));
+  return res.end(JSON.stringify({ ok: true, challenge: challenge, via: via, delivered: delivered }));
 };
