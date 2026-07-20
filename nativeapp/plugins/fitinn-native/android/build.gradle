@@ -2,43 +2,56 @@
 // Wird von Capacitor als Library-Modul eingebunden (npm-Paket "fitinn-native" in
 // nativeapp/package.json -> `npx cap sync android` zieht es automatisch ein).
 //
-// WICHTIG: `buildscript {}` MUSS der erste Block der Datei sein (vor jedem anderen
-// Statement) – sonst wird das Android-Gradle-Plugin nicht korrekt initialisiert und
-// der android{}-Block "verpufft" (Fehler: "does not specify compileSdk").
+// Struktur/Versionen bewusst 1:1 an @capacitor-community/bluetooth-le (v8.2.0)
+// angelehnt, das in diesem Projekt bereits laeuft. WICHTIG: compileSdk und
+// namespace MUeSSEN bei AGP 8 mit "=" gesetzt werden (Property-Zuweisung) – die
+// Methoden-Schreibweise ohne "=" fuehrt zu "does not specify compileSdk".
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
+ext {
+    coreKtx = project.hasProperty('coreKtx') ? rootProject.ext.coreKtx : '1.12.0'
+}
+
 buildscript {
+    ext.kotlin_version = project.hasProperty("kotlin_version") ? rootProject.ext.kotlin_version : '2.2.20'
+
     repositories {
         google()
         mavenCentral()
     }
     dependencies {
-        // Auf die Toolchain von Capacitor 8 abgestimmt. Falls euer Projekt eine
-        // andere AGP-/Kotlin-Version nutzt, hier an die des App-Moduls angleichen.
-        classpath 'com.android.tools.build:gradle:8.7.2'
-        classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.25'
+        // Uebernehmen die AGP-/Kotlin-Version des Projekts, wenn gesetzt – sonst dieselben
+        // Defaults wie bluetooth-le (keine Versionskonflikte).
+        classpath "com.android.tools.build:gradle:${project.findProperty('agpVersion') ?: '8.13.0'}"
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
     }
 }
 
 apply plugin: 'com.android.library'
-apply plugin: 'kotlin-android'
+if (project.extensions.findByName('kotlin') == null) {
+    apply plugin: 'kotlin-android'
+}
 
 android {
-    namespace 'de.fitinn.native'
-    // Feste Werte (Capacitor 8 nutzt 35). Health Connect (androidx.health.connect)
-    // erfordert minSdk 26.
-    compileSdk 35
+    namespace = "de.fitinn.native"
+    compileSdk = project.hasProperty('compileSdkVersion') ? rootProject.ext.compileSdkVersion : 36
     defaultConfig {
-        minSdk 26
-        targetSdk 35
+        // Health Connect (androidx.health.connect) erfordert minSdk 26.
+        minSdkVersion 26
+        targetSdkVersion project.hasProperty('targetSdkVersion') ? rootProject.ext.targetSdkVersion : 36
+    }
+    lintOptions {
+        abortOnError = false
     }
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_17
-        targetCompatibility JavaVersion.VERSION_17
+        sourceCompatibility JavaVersion.VERSION_21
+        targetCompatibility JavaVersion.VERSION_21
     }
-    kotlinOptions {
-        jvmTarget = '17'
-    }
-    lint {
-        abortOnError false
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget = JvmTarget.JVM_21
     }
 }
 
@@ -49,7 +62,8 @@ repositories {
 
 dependencies {
     implementation project(':capacitor-android')
-    implementation 'androidx.core:core-ktx:1.13.1'
+    implementation "androidx.core:core-ktx:$coreKtx"
+    implementation "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version"
     // Health Connect (Google-Fit-Nachfolger): Trainings + Vitalwerte lesen/schreiben.
     implementation 'androidx.health.connect:connect-client:1.1.0'
     // Coroutinen fuer die suspend-basierte Health-Connect-API.
