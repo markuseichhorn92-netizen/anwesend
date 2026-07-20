@@ -352,6 +352,28 @@
     }
   };
 
+  // ── Deep-Links / Universal Links (iOS) & App-Links (Android) ────────────────
+  // Öffnet ein https-Link die App (Login-Magic-Link „Jetzt anmelden", Postfach,
+  // geteilter Link …), landet hier der VOLLE URL. Wir übernehmen ihn in die WebView,
+  // damit der Nutzer sofort auf der richtigen Seite ist – statt auf dem zuletzt
+  // offenen Screen. Nur die eigene fit-inn-trier.de-Domain wird übernommen.
+  // Voraussetzung, damit der Link ÜBERHAUPT die App erreicht: die veröffentlichten
+  // /.well-known-Dateien (APPLE_APP_ID bzw. ANDROID_PACKAGE+ANDROID_SHA256 in Vercel),
+  // iOS „Associated Domains" in Xcode und der Android-Intent-Filter (patch-native.js).
+  (function setupDeepLinks() {
+    var App = getPlugin('App');
+    if (!App || !App.addListener) return;
+    try {
+      App.addListener('appUrlOpen', function (ev) {
+        try {
+          var url = ev && ev.url; if (!url) return;
+          var u = new URL(url);
+          if (u.protocol === 'https:' && /(^|\.)fit-inn-trier\.de$/i.test(u.hostname)) location.assign(url);
+        } catch (e) {}
+      });
+    } catch (e) {}
+  })();
+
   // Bekommt das Portal sofort mit, dass es nativ läuft.
   try { window.dispatchEvent(new Event('fitinn-native-ready')); } catch (e) {}
 })();

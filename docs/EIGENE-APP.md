@@ -306,17 +306,36 @@ Desktop; in der iOS‑App läuft es über das Plugin.
 
 ---
 
-## 9. Deep-Links (optional, aber empfohlen)
+## 9. Deep-Links / Universal Links (damit `https`-Links die App öffnen)
 
-Damit ein Tipp auf eine Push-Nachricht direkt die richtige Seite öffnet bzw. `https`-Links die
-App öffnen:
+Ohne diese Einrichtung öffnet ein `https`-Link (Login-Magic-Link „Jetzt anmelden", ein
+geteilter Link ins Postfach o. Ä.) auf dem Handy **den Browser statt der App** – selbst wenn
+die App installiert ist. Drei Bausteine müssen zusammenkommen (alle drei sind nötig):
 
-- In **Vercel** setzen (dann liefern `api/well-known/*` die Dateien automatisch aus):
-  - `APPLE_APP_ID` = `TEAMID.de.fitinn.portal` (Team-ID + Bundle-ID)
-  - `ANDROID_PACKAGE` = `de.fitinn.portal`
-  - `ANDROID_SHA256` = SHA-256-Fingerabdruck deines Signaturschlüssels (mehrere mit Komma)
-- iOS: in Xcode **Associated Domains** → `applinks:mitglieder.fit-inn-trier.de`.
-- Android: Capacitor richtet den Intent-Filter beim `cap sync` ein; prüfe `AndroidManifest.xml`.
+**1) Zuordnungs-Dateien veröffentlichen** – in **Vercel** als Environment-Variablen setzen,
+dann liefern `api/well-known/*` die Dateien automatisch aus (vorher `404`, absichtlich):
+- `APPLE_APP_ID` = `TEAMID.de.fitinn.portal` (Apple-Team-ID + Bundle-ID)
+- `ANDROID_PACKAGE` = `de.fitinn.portal`
+- `ANDROID_SHA256` = SHA-256-Fingerabdruck deines Signaturschlüssels (Abschnitt 10; bei
+  Play App Signing der Wert aus **Play Console → Release → Setup → App-Signatur**; mehrere
+  mit Komma). Prüfen: `https://mitglieder.fit-inn-trier.de/.well-known/assetlinks.json` und
+  `…/.well-known/apple-app-site-association` müssen echtes JSON liefern (kein `{}`/`[]`).
+
+**2) Die App muss die Domain „besitzen"**:
+- **iOS**: in Xcode beim Target **App → Signing & Capabilities → + Capability →
+  Associated Domains** hinzufügen und `applinks:mitglieder.fit-inn-trier.de` eintragen.
+  (Das aktiviert die Capability auch am Apple-Developer-App-ID – daher der Xcode-Weg.)
+- **Android**: erledigt `patch-native.js` automatisch – es trägt beim `cap sync` einen
+  `<intent-filter android:autoVerify="true">` für `https://mitglieder.fit-inn-trier.de`
+  in `AndroidManifest.xml` ein (idempotent). Nur prüfen, nicht von Hand ergänzen.
+
+**3) Routing in der App**: `assets/native.js` hört auf `appUrlOpen` (Plugin `@capacitor/app`)
+und lädt den Link-Pfad in die WebView – so landet man direkt auf der richtigen Seite. Ein
+Tipp auf eine **Push-Nachricht** mit `data.url` funktioniert bereits ohne diese Einrichtung
+(wird in `native.js` separat behandelt).
+
+> Nach dem Setzen der Env-Variablen und dem Xcode-Schritt **einmal neu bauen** (`npm run ios`
+> bzw. `npm run android`) und neu installieren. Erst dann greifen die Links.
 
 ---
 

@@ -239,6 +239,43 @@ function patchAndroidMainActivity() {
   console.log('✓ Android: MainActivity ergänzt → FitInnNative-Registrierung + Laufzeit-Rechte + WebView-Kamerafreigabe (' + found + ')');
 }
 
+// Android: App-Links-Intent-Filter für die eigene https-Domain nachtragen, damit
+// Links (Login-Magic-Link „Jetzt anmelden", Postfach, geteilte Links) DIREKT die App
+// öffnen statt des Browsers. Damit die Verifizierung greift, sind DREI Dinge nötig:
+//   (1) dieser Intent-Filter mit android:autoVerify="true" (macht dieses Skript),
+//   (2) die unter /.well-known/assetlinks.json ausgelieferte Datei – dafür ANDROID_PACKAGE
+//       und ANDROID_SHA256 (Signatur-Fingerabdruck) in Vercel setzen,
+//   (3) ein Rebuild der App.
+// Capacitor legt für einen entfernten server.url KEINEN solchen Filter automatisch an –
+// deshalb tragen wir ihn hier idempotent nach. iOS nutzt statt dessen „Associated Domains"
+// (in Xcode: applinks:mitglieder.fit-inn-trier.de) + die apple-app-site-association-Datei.
+const APP_LINK_HOST = 'mitglieder.fit-inn-trier.de';
+function patchAndroidAppLinks() {
+  const p = path.join(ROOT, 'android', 'app', 'src', 'main', 'AndroidManifest.xml');
+  if (!fs.existsSync(p)) { console.log('· Android AndroidManifest.xml (App-Links) noch nicht vorhanden – übersprungen.'); return; }
+  let xml = fs.readFileSync(p, 'utf8');
+  if (xml.indexOf('android:host="' + APP_LINK_HOST + '"') >= 0) { console.log('✓ Android: App-Links-Intent-Filter bereits vorhanden.'); return; }
+  // Direkt nach dem LAUNCHER-Intent-Filter der MainActivity einen zweiten VIEW-Filter setzen.
+  const marker = 'android.intent.category.LAUNCHER';
+  const mi = xml.indexOf(marker);
+  if (mi < 0) { console.log('· Android: LAUNCHER-Intent-Filter nicht gefunden – App-Links bitte manuell ergänzen.'); return; }
+  const closeTag = '</intent-filter>';
+  const closeAt = xml.indexOf(closeTag, mi);
+  if (closeAt < 0) { console.log('· Android: Intent-Filter-Ende nicht gefunden – App-Links bitte manuell ergänzen.'); return; }
+  const insertPos = closeAt + closeTag.length;
+  const filter = '\n\n'
+    + '            <!-- App-Links: https-Links auf die eigene Domain öffnen die App (assetlinks.json nötig). -->\n'
+    + '            <intent-filter android:autoVerify="true">\n'
+    + '                <action android:name="android.intent.action.VIEW" />\n'
+    + '                <category android:name="android.intent.category.DEFAULT" />\n'
+    + '                <category android:name="android.intent.category.BROWSABLE" />\n'
+    + '                <data android:scheme="https" android:host="' + APP_LINK_HOST + '" />\n'
+    + '            </intent-filter>';
+  xml = xml.slice(0, insertPos) + filter + xml.slice(insertPos);
+  fs.writeFileSync(p, xml, 'utf8');
+  console.log('✓ Android: App-Links-Intent-Filter für https://' + APP_LINK_HOST + ' ergänzt (autoVerify).');
+}
+
 // Android: minSdkVersion auf mindestens 26 anheben. Das native Plugin (Health Connect,
 // androidx.health.connect) setzt API 26 voraus; ist die App niedriger, scheitert der
 // Manifest-Merge ("uses-sdk:minSdkVersion 23 cannot be smaller than 26"). API 26
@@ -261,6 +298,7 @@ function main() {
   try { patchInfoPlist(); } catch (e) { console.error('✗ iOS-Patch fehlgeschlagen:', e && e.message); }
   try { patchAndroidManifest(); } catch (e) { console.error('✗ Android-Patch fehlgeschlagen:', e && e.message); }
   try { patchAndroidMainActivity(); } catch (e) { console.error('✗ Android-MainActivity-Patch fehlgeschlagen:', e && e.message); }
+  try { patchAndroidAppLinks(); } catch (e) { console.error('✗ Android-App-Links-Patch fehlgeschlagen:', e && e.message); }
   try { patchAndroidMinSdk(); } catch (e) { console.error('✗ Android-minSdk-Patch fehlgeschlagen:', e && e.message); }
   console.log('Fertig.');
 }
