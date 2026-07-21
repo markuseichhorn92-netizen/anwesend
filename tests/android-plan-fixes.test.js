@@ -30,4 +30,10 @@ assert.ok(
   'plan requests must wait for the extended server runtime'
 );
 
+assert.ok(member.includes("function finnPlanLoadingView(days,kind)"));
+assert.ok(member.includes("function trainingPlanLoadingView(days)"));
+assert.ok(member.includes("trainingPlanLoadingView(S.trainGenDays)"));
+assert.ok(member.includes("role=\"status\" aria-live=\"polite\" aria-label=\"FINN erstellt deinen Trainingsplan\""));
+assert.ok(member.includes("FINN wählt passende Übungen …"));
+
 console.log('android plan fixes test passed');
