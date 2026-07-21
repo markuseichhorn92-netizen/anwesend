@@ -5,6 +5,8 @@ process.env.AWS_ROLE_ARN = 'arn:aws:iam::123456789012:role/test';
 process.env.BEDROCK_MODEL_ID = 'eu.anthropic.claude-haiku-4-5-20251001-v1:0';
 process.env.BEDROCK_GUARDRAIL_ID = 'guardrail-test-id';
 process.env.BEDROCK_GUARDRAIL_VERSION = '1';
+process.env.BEDROCK_TEAM_GUARDRAIL_ID = 'team-guardrail-test-id';
+process.env.BEDROCK_TEAM_GUARDRAIL_VERSION = '2';
 
 const Module = require('module');
 const path = require('path');
@@ -57,6 +59,17 @@ async function run() {
   ok('8. Antwort wird kompatibel geparst', result.ok === true && result.answer === 'ok');
   ok('8b. Bedrock-Guardrail wird bei Converse erzwungen', converseInput && converseInput.guardrailConfig && converseInput.guardrailConfig.guardrailIdentifier === process.env.BEDROCK_GUARDRAIL_ID);
   ok('8c. Nutzereingabe ist für den Prompt-Attack-Filter markiert', /amazon-bedrock-guardrails-guardContent_finn/.test(converseInput.messages[0].content[0].text));
+  converseInput = null;
+  const teamResult = await AI.messagesRaw({
+    system: 'Team-Test',
+    messages: [{ role: 'user', content: 'Fasse den Datensatz des ausgewaehlten Mitglieds zusammen.' }],
+    securityScope: 'team',
+  });
+  ok('8d. Team-Anfragen verwenden ausschliesslich den Team-Guardrail', teamResult.ok === true
+    && converseInput && converseInput.guardrailConfig
+    && converseInput.guardrailConfig.guardrailIdentifier === process.env.BEDROCK_TEAM_GUARDRAIL_ID
+    && converseInput.guardrailConfig.guardrailVersion === process.env.BEDROCK_TEAM_GUARDRAIL_VERSION);
+
 
   delete require.cache[aiPath];
   process.env.AWS_REGION = 'us-east-1';
@@ -77,6 +90,19 @@ async function run() {
   delete process.env.BEDROCK_GUARDRAIL_VERSION;
   const AIMissingGuardrail = require(aiPath);
   ok('11. Production ohne verlangten Guardrail wird fail-closed abgelehnt', AIMissingGuardrail.hasAI === false);
+
+  delete require.cache[aiPath];
+  process.env.BEDROCK_GUARDRAIL_ID = 'guardrail-test-id';
+  process.env.BEDROCK_GUARDRAIL_VERSION = '1';
+  delete process.env.BEDROCK_TEAM_GUARDRAIL_ID;
+  delete process.env.BEDROCK_TEAM_GUARDRAIL_VERSION;
+  const AIMissingTeamGuardrail = require(aiPath);
+  const missingTeamResult = await AIMissingTeamGuardrail.messagesRaw({
+    messages: [{ role: 'user', content: 'Team-Test' }],
+    securityScope: 'team',
+  });
+  ok('12. Production-Teamaufrufe ohne Team-Guardrail werden fail-closed abgelehnt',
+    missingTeamResult.ok === false && missingTeamResult.error === 'team_guardrail_missing');
 
   Module._load = originalLoad;
   console.log(pass ? 'AI-BEDROCK PASS' : 'AI-BEDROCK FAIL');
