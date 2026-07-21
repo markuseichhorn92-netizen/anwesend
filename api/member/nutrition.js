@@ -823,7 +823,10 @@ module.exports = async function handler(req, res) {
     const planGoalKey = GOALS[body.goal] ? body.goal : (profile && profile.goal);
     const planDiet = String(body.diet || (profile && profile.diet) || 'omnivor').slice(0, 30);
     const r = await AI.nutritionWeekPlan({ goal: GOALS[planGoalKey] || 'ausgewogen', kcalTarget: t.kcal, protein: t.protein, diet: planDiet });
-    if (!r.ok) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'FINN kann gerade keinen Plan erstellen. Versuch es gleich nochmal.' })); }
+    if (!r.ok) {
+      console.warn('[nutrition-plan-generate]', JSON.stringify({ error: r.error || 'missing_plan', status: r.status || 0 }));
+      res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'FINN kann gerade keinen Plan erstellen. Versuch es gleich nochmal.' }));
+    }
     const plan = { days: r.days, createdAt: Date.now() };
     const shop = (r.shopping || []).map(function (s, i) { return { i: i, name: s.name, amount: s.amount, category: s.category || 'Sonstiges', checked: false }; });
     try { await redisPipeline([['SET', PLANKEY(id), JSON.stringify(plan)], ['SET', SHOPKEY(id), JSON.stringify(shop)]]); } catch (e) {}

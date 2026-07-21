@@ -365,7 +365,10 @@ module.exports = async function handler(req, res) {
         firstName: (sess && sess.firstName) || '',
         equipmentContext: T.STUDIO_EQUIPMENT,
       });
-      if (!r.ok || !r.plan) return j(res, 200, { ok: false, error: 'gen_failed', message: 'Das hat gerade nicht geklappt – bitte versuch es gleich noch einmal.' });
+      if (!r.ok || !r.plan) {
+        console.warn('[training-generate]', JSON.stringify({ error: r.error || 'missing_plan', status: r.status || 0 }));
+        return j(res, 200, { ok: false, error: 'gen_failed', message: 'Das hat gerade nicht geklappt – bitte versuch es gleich noch einmal.' });
+      }
       const plan = T.normalizePlan(r.plan, 'finn');
       if (!plan) return j(res, 200, { ok: false, error: 'gen_failed', message: 'Das hat gerade nicht geklappt – bitte versuch es gleich noch einmal.' });
       // Erst JETZT (nach Erfolg) das Geschenk einlösen bzw. das Kontingent abbuchen –
