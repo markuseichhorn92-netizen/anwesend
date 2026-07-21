@@ -405,7 +405,13 @@ async function runLoop(req, sess, msgs) {
   const system = buildSystem(sess, frame);
   const convo = msgs.slice();
   for (let step = 0; step < 6; step++) {
-    const r = await AI.messagesRaw({ system: system, messages: convo, tools: toolSpecs(), maxTokens: 1300 });
+    const r = await AI.messagesRaw({
+      system: system,
+      messages: convo,
+      tools: toolSpecs(),
+      maxTokens: 1300,
+      securityScope: 'team'
+    });
     if (!r.ok) return { ok: false, kind: 'message', text: 'Der Assistent kommt gerade nicht weiter. Bitte gleich noch einmal.' };
     const content = r.content;
     const textOut = content.filter(function (b) { return b.type === 'text'; }).map(function (b) { return b.text; }).join('\n').trim();
