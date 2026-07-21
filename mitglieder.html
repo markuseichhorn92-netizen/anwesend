@@ -11286,33 +11286,97 @@
     });
   }
   // ── Mitgliedschaftsbestätigung (PDF): Nachweis „Mitglied seit … bis heute", mit Logo. ──
+  // Zertifikats-Layout: Teal-Kopf + Orange-Akzent, Name als Held, Status-Pille,
+  // 2-spaltiges Daten-Panel, dezentes Siegel, klarer Fuß.
   function buildMembershipPdfDoc(){
     var ns=window.jspdf; if(!ns||!ns.jsPDF){ return null; }
     var p=DATA.profile||{}; var c=DATA.contract||{};
-    var doc=new ns.jsPDF({unit:'mm',format:'a4'}); var W=210, M=14;
-    doc.setFillColor(10,73,88); doc.rect(0,0,W,26,'F');
-    var lh=11, lw=lh*(LOGO_RATIO||3.6); if(lw>72) lw=72;
-    if(LOGO_DATAURL){ try{ doc.addImage(LOGO_DATAURL,'PNG',M,8,lw,lh); }catch(e){ logoTxt(doc,M); } } else logoTxt(doc,M);
-    doc.setTextColor(21,23,27); doc.setFont('helvetica','bold'); doc.setFontSize(18); doc.text('Mitgliedschaftsbestätigung',M,40);
-    var y=50; doc.setFontSize(11);
-    var status=(c.active===false)?'Beendet':(c.cancelled?'Gekündigt – Laufzeit läuft noch':'Aktiv');
-    var wk=Number(c.weeklyPrice)||0; var eur=function(n){ return (Math.round(n*100)/100).toFixed(2).replace('.',',')+' €'; };
-    var rows=[['Name',p.lastName],['Vorname',p.firstName],['Mitgliedsnummer',p.customerNumber],['Geburtsdatum',deDateFull(p.dateOfBirth)],['Tarif',c.rateName],['Mitglied seit',c.startDate]];
-    if(wk>0){ rows.push(['Beitrag pro Woche',eur(wk)]); rows.push(['Gesamt 52 Wochen (1 Jahr)',eur(wk*52)]); }
-    rows.push(['Status',status]);
-    rows.forEach(function(r){ doc.setFont('helvetica','bold'); doc.setTextColor(60,66,72); doc.text(r[0]+':',M,y); doc.setFont('helvetica','normal'); doc.setTextColor(21,23,27); doc.text(String(r[1]||'—'),62,y); y+=7; });
-    y+=4; doc.setFont('helvetica','normal'); doc.setTextColor(60,66,72); doc.setFontSize(10.5);
-    var name=((p.firstName||'')+' '+(p.lastName||'')).trim()||'das oben genannte Mitglied';
+    var doc=new ns.jsPDF({unit:'mm',format:'a4'});
+    var W=210, M=16;
+    var eur=function(n){ return (Math.round(n*100)/100).toFixed(2).replace('.',',')+' €'; };
+    // Marken-Farben
+    var TEAL=[14,96,114], ORANGE=[246,169,100], INK=[21,23,27], MUT=[90,99,106], LT=[140,146,152], PANEL=[244,247,248], LINE=[224,230,232];
+    var sF=function(a){ doc.setFillColor(a[0],a[1],a[2]); };
+    var sT=function(a){ doc.setTextColor(a[0],a[1],a[2]); };
+    var sD=function(a){ doc.setDrawColor(a[0],a[1],a[2]); };
+
+    // Kopf: Teal-Band + Orange-Akzentlinie + Logo + Ausstellungsdatum
+    sF(TEAL); doc.rect(0,0,W,34,'F');
+    sF(ORANGE); doc.rect(0,34,W,1.3,'F');
+    var lh=13, lw=lh*(LOGO_RATIO||3.6); if(lw>66) lw=66;
+    if(LOGO_DATAURL){ try{ doc.addImage(LOGO_DATAURL,'PNG',M,9.5,lw,lh); }catch(e){ logoTxt(doc,M); } } else logoTxt(doc,M);
+    doc.setFont('helvetica','normal'); doc.setFontSize(9); sT([255,255,255]);
+    doc.text('Ausgestellt am '+todayStr(), W-M, 15, {align:'right'});
+    if(p.customerNumber){ doc.setFontSize(8.5); sT([201,224,230]); doc.text('Mitglied-Nr. '+p.customerNumber, W-M, 20.5, {align:'right'}); }
+
+    // Titelblock: Eyebrow, Titel, Name (Held)
+    var y=48;
+    doc.setFont('helvetica','bold'); doc.setFontSize(8.5); sT(TEAL);
+    doc.text('NACHWEIS DER MITGLIEDSCHAFT', M, y, {charSpace:0.6});
+    doc.setFont('helvetica','bold'); doc.setFontSize(21); sT(INK);
+    doc.text('Mitgliedschaftsbestätigung', M, y+8.5);
+    var fullName=((p.firstName||'')+' '+(p.lastName||'')).trim()||'—';
+    doc.setFont('helvetica','normal'); doc.setFontSize(13); sT(MUT);
+    doc.text(fullName, M, y+16);
+
+    // Status-Pille rechts oben
+    var status=(c.active===false)?'Beendet':(c.cancelled?'Gekündigt':'Aktiv');
+    var pill=(status==='Aktiv')?{bg:[231,246,236],fg:[23,107,55]}:(status==='Beendet'?{bg:[238,241,242],fg:[90,99,106]}:{bg:[251,240,227],fg:[176,90,20]});
+    var plabel=(status==='Gekündigt')?'Gekündigt · Laufzeit läuft':status;
+    doc.setFont('helvetica','bold'); doc.setFontSize(9.5);
+    var pw=doc.getTextWidth(plabel)+11, ph=8.5, px=W-M-pw, py=44.5;
+    sF(pill.bg); doc.roundedRect(px,py,pw,ph,ph/2,ph/2,'F');
+    sT(pill.fg); doc.text(plabel, px+pw/2, py+ph/2+1.4, {align:'center'});
+
+    y+=24;
+
+    // Bestätigungssatz
     var since=c.startDate||'—';
     var intro=(c.active===false && c.endDate)
-      ? ('Hiermit bestätigt das Fit-Inn Trier, dass '+name+' vom '+since+' bis zum '+c.endDate+' Mitglied im Fit-Inn Trier war.')
-      : ('Hiermit bestätigt das Fit-Inn Trier, dass '+name+' seit dem '+since+' Mitglied im Fit-Inn Trier ist. Die Mitgliedschaft besteht zum Ausstellungsdatum dieser Bescheinigung ('+todayStr()+') fort.');
-    var lines=doc.splitTextToSize(intro,W-2*M); doc.text(lines,M,y); y+=lines.length*5.5+7;
+      ? ('Hiermit bestätigt das Fit-Inn Trier, dass '+fullName+' vom '+since+' bis zum '+c.endDate+' Mitglied im Fit-Inn Trier war.')
+      : ('Hiermit bestätigt das Fit-Inn Trier, dass '+fullName+' seit dem '+since+' Mitglied im Fit-Inn Trier ist. Die Mitgliedschaft besteht zum Ausstellungsdatum ('+todayStr()+') fort.');
+    doc.setFont('helvetica','normal'); doc.setFontSize(11); sT([50,56,62]);
+    var il=doc.splitTextToSize(intro,W-2*M); doc.text(il,M,y); y+=il.length*5.6+7;
+
+    // Daten-Panel (2 Spalten, gestapelte Zellen: LABEL oben, Wert darunter)
+    var fields=[['Name',p.lastName],['Vorname',p.firstName],['Mitgliedsnummer',p.customerNumber],['Geburtsdatum',deDateFull(p.dateOfBirth)],['Tarif',c.rateName],['Mitglied seit',c.startDate]];
+    var wk=Number(c.weeklyPrice)||0;
+    if(wk>0){ fields.push(['Beitrag pro Woche',eur(wk)]); fields.push(['Gesamt 52 Wochen (1 Jahr)',eur(wk*52)]); }
+    var padX=9, padY=8, cellH=13, cols=2, rowsN=Math.ceil(fields.length/cols);
+    var panelW=W-2*M, panelH=padY*2+rowsN*cellH-3;
+    sF(PANEL); doc.roundedRect(M,y,panelW,panelH,3.5,3.5,'F');
+    var colW=(panelW-padX*2-6)/cols;
+    fields.forEach(function(f,i){
+      var col=i%cols, r=Math.floor(i/cols), cx=M+padX+col*(colW+6), cy=y+padY+r*cellH;
+      doc.setFont('helvetica','bold'); doc.setFontSize(7.6); sT(LT);
+      doc.text(String(f[0]).toUpperCase(), cx, cy+2, {charSpace:0.3});
+      doc.setFont('helvetica','bold'); doc.setFontSize(11.5); sT(INK);
+      doc.text(String(f[1]||'—'), cx, cy+8);
+    });
+    y+=panelH+10;
+
+    // Hinweis (Zweck der Bescheinigung)
     var note='Diese Bescheinigung wurde auf Wunsch des Mitglieds ausgestellt und dient als Nachweis der Mitgliedschaft (z. B. für Arbeitgeber, Krankenkasse oder Behörden).';
-    var nl=doc.splitTextToSize(note,W-2*M); doc.text(nl,M,y); y+=nl.length*5.5+14;
-    doc.setFont('helvetica','bold'); doc.setFontSize(10.5); doc.setTextColor(21,23,27); doc.text('Fit-Inn Trier',M,y);
-    doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(110); doc.text('Auf Hirtenberg 8 · 54296 Trier · info@fit-inn-trier.de',M,y+5.5);
-    doc.setFontSize(8.5); doc.setTextColor(150); var vl=doc.splitTextToSize('Dieses Dokument wurde maschinell erstellt und ist auch ohne Unterschrift gültig. Ausgestellt am '+todayStr()+'.',W-2*M); doc.text(vl,M,286);
+    doc.setFont('helvetica','normal'); doc.setFontSize(9.5); sT(MUT);
+    var nl=doc.splitTextToSize(note,W-2*M); doc.text(nl,M,y); y+=nl.length*5+12;
+
+    // Studio-Block (links) + dezentes Siegel (rechts)
+    var sy=Math.max(y+4, 238);
+    doc.setFont('helvetica','bold'); doc.setFontSize(11); sT(INK); doc.text('Fit-Inn Trier',M,sy);
+    doc.setFont('helvetica','normal'); doc.setFontSize(9); sT(MUT);
+    doc.text('Auf Hirtenberg 8 · 54296 Trier',M,sy+5.5);
+    doc.text('info@fit-inn-trier.de · fit-inn-trier.de',M,sy+10.5);
+    var scx=W-M-15, scy=sy+3, R=15;
+    doc.setLineWidth(0.7); sD(TEAL); doc.circle(scx,scy,R,'S');
+    doc.setLineWidth(0.3); doc.circle(scx,scy,R-2.2,'S');
+    doc.setFont('helvetica','bold'); doc.setFontSize(13); sT(TEAL); doc.text('FI',scx,scy-0.3,{align:'center'});
+    doc.setFontSize(5.6); doc.text('FIT-INN TRIER',scx,scy+4.2,{align:'center',charSpace:0.3});
+
+    // Fuß: Trennlinie + maschinell-Hinweis
+    sD(LINE); doc.setLineWidth(0.3); doc.line(M,281,W-M,281);
+    doc.setFont('helvetica','normal'); doc.setFontSize(8.5); sT(LT);
+    var vl=doc.splitTextToSize('Dieses Dokument wurde maschinell erstellt und ist auch ohne Unterschrift gültig. Ausgestellt am '+todayStr()+'.',W-2*M);
+    doc.text(vl,M,286);
     return doc;
   }
   function downloadMembershipPdf(){
