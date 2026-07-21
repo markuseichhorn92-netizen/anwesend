@@ -24,6 +24,7 @@ const AI = require('../../lib/ai');
 const Ent = require('../../lib/entitlements');
 const Quota = require('../../lib/nutriquota');
 const Profile = require('../../lib/memberProfile');
+const Privacy = require('../../lib/privacy');
 const { hasStore } = require('../../lib/store');
 
 function berlinDate() {
@@ -51,6 +52,7 @@ async function readState(id) {
     trend: IB.trend(list),
     premium: !!tier.premium,
     quota: Quota.publicQuota(qUsed, tier.premium, qMonth),
+    healthConsent: !!((await Privacy.currentConsents(id)).body_analysis_health || {}).granted,
   };
 }
 
@@ -74,6 +76,14 @@ module.exports = async function handler(req, res) {
   const action = String((body && body.action) || '');
 
   try {
+    if (['scan', 'save', 'assess'].indexOf(action) >= 0) {
+      const current = (await Privacy.currentConsents(id)).body_analysis_health;
+      if (!(current && current.granted)) {
+        if (body.consent !== true) return j(res, 200, { ok: false, error: 'health_consent_required', message: 'Bitte bestätige zuerst ausdrücklich die Verarbeitung deiner Körper- und Gesundheitsdaten.' });
+        await Privacy.recordConsent(id, 'body_analysis_health', true, { source: 'inbody' });
+      }
+    }
+
     // Bogen fotografieren -> KI liest aus (gated: Premium unbegrenzt, sonst Gratis-Kontingent).
     if (action === 'scan') {
       if (!AI.hasAI) return j(res, 200, { ok: false, error: 'no_ai', message: 'Die Foto-Auslese ist gerade nicht verfügbar – du kannst die Werte auch von Hand eintragen.' });
@@ -87,7 +97,7 @@ module.exports = async function handler(req, res) {
       if (!r.ok || !r.data) return j(res, 200, { ok: false, error: 'scan_failed', message: 'Der Bogen konnte nicht sicher gelesen werden. Versuch ein schärferes, gerades Foto – oder trag die Werte von Hand ein.' });
       const used = premium ? await Quota.getUsed(id, month) : await Quota.incr(id, month);
       // Als vorbelegtes (noch nicht gespeichertes) Messobjekt zurückgeben – das Mitglied prüft/korrigiert.
-      return j(res, 200, { ok: true, parsed: IB.sanitize(r.data), quota: Quota.publicQuota(used, premium, month) });
+      return j(res, 200, { ok: true, parsed: IB.sanitize(r.data), quota: Quota.publicQuota(used, premium, month), healthConsent: true });
     }
 
     // Geprüfte Messung speichern.

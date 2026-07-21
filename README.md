@@ -123,3 +123,4 @@ Ein kleiner Proxy hält den Magicline-Key serverseitig, fragt höchstens alle
 - `.env` ist gitignored; `.env.example` enthält keine echten Werte; CI
   führt einen Secret-Scan aus.
 - Auslastungs-Widget liefert ausschließlich anonyme Aggregate.
+- Die vollständige Datenschutz-/KI-Umsetzung, DSFA, VVT/TOM, das AVV-Register und die AWS-Nullspeicherungs-Guardrail beginnen in [docs/DATENSCHUTZ-KI-UMSETZUNG.md](docs/DATENSCHUTZ-KI-UMSETZUNG.md).

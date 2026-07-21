@@ -3,6 +3,8 @@ process.env.AI_PROVIDER = 'bedrock';
 process.env.AWS_REGION = 'eu-central-1';
 process.env.AWS_ROLE_ARN = 'arn:aws:iam::123456789012:role/test';
 process.env.BEDROCK_MODEL_ID = 'eu.anthropic.claude-haiku-4-5-20251001-v1:0';
+process.env.BEDROCK_GUARDRAIL_ID = 'guardrail-test-id';
+process.env.BEDROCK_GUARDRAIL_VERSION = '1';
 
 const Module = require('module');
 const path = require('path');
@@ -53,6 +55,8 @@ async function run() {
   ok('6. Nachrichten werden AWS-nativ aufgebaut', converseInput && converseInput.messages[0].content[0].text.includes('Wann offen?'));
   ok('7. Converse-Payload enthaelt keine Anthropic-Cache-Marker', !JSON.stringify(converseInput).includes('cache_control'));
   ok('8. Antwort wird kompatibel geparst', result.ok === true && result.answer === 'ok');
+  ok('8b. Bedrock-Guardrail wird bei Converse erzwungen', converseInput && converseInput.guardrailConfig && converseInput.guardrailConfig.guardrailIdentifier === process.env.BEDROCK_GUARDRAIL_ID);
+  ok('8c. Nutzereingabe ist für den Prompt-Attack-Filter markiert', /amazon-bedrock-guardrails-guardContent_finn/.test(converseInput.messages[0].content[0].text));
 
   delete require.cache[aiPath];
   process.env.AWS_REGION = 'us-east-1';
@@ -64,6 +68,15 @@ async function run() {
   process.env.BEDROCK_MODEL_ID = 'anthropic.claude-haiku-4-5-20251001-v1:0';
   const AIDirectModel = require(aiPath);
   ok('10. Direkte oder globale Modell-IDs werden fail-closed abgelehnt', AIDirectModel.hasAI === false);
+
+  delete require.cache[aiPath];
+  process.env.BEDROCK_MODEL_ID = 'eu.anthropic.claude-haiku-4-5-20251001-v1:0';
+  process.env.VERCEL_ENV = 'production';
+  process.env.AI_REQUIRE_GUARDRAIL = '1';
+  delete process.env.BEDROCK_GUARDRAIL_ID;
+  delete process.env.BEDROCK_GUARDRAIL_VERSION;
+  const AIMissingGuardrail = require(aiPath);
+  ok('11. Production ohne verlangten Guardrail wird fail-closed abgelehnt', AIMissingGuardrail.hasAI === false);
 
   Module._load = originalLoad;
   console.log(pass ? 'AI-BEDROCK PASS' : 'AI-BEDROCK FAIL');

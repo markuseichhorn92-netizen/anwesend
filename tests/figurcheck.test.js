@@ -69,7 +69,7 @@ async function run() {
   ok('B2. GET leerer Verlauf', Array.isArray(j.history) && j.history.length === 0 && j.summary.count === 0);
 
   // save
-  r = res0(); await H(reqFor('POST', { action: 'save', weight: 90, waist: 95, note: 'Start' }), r); j = JSON.parse(r.body);
+  r = res0(); await H(reqFor('POST', { action: 'save', weight: 90, waist: 95, note: 'Start', consent: true }), r); j = JSON.parse(r.body);
   ok('B3. save persistiert (count 1, Gewicht 90)', j.ok === true && j.saved === true && j.summary.count === 1 && j.summary.metrics.find((m) => m.key === 'weight').latest === 90);
 
   // save bad_input

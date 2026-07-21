@@ -21,6 +21,7 @@ const AI = require('../../lib/ai');
 const Ent = require('../../lib/entitlements');
 const Quota = require('../../lib/nutriquota');
 const Figur = require('../../lib/figurcheck');
+const Privacy = require('../../lib/privacy');
 const { hasStore, redisPipeline } = require('../../lib/store');
 
 function j(res, code, obj) { res.statusCode = code; return res.end(JSON.stringify(obj)); }
@@ -52,6 +53,7 @@ async function snapshot(id) {
     history: Figur.history(rec),
     summary: Figur.summary(rec),
     quota: Quota.publicQuota(used, tf.premium, month),
+    healthConsent: !!((await Privacy.currentConsents(id)).body_analysis_health || {}).granted,
   }, tf);
 }
 
@@ -74,6 +76,13 @@ module.exports = async function handler(req, res) {
   const action = String((body && body.action) || '');
 
   try {
+    if (['save', 'review'].indexOf(action) >= 0) {
+      const current = (await Privacy.currentConsents(id)).body_analysis_health;
+      if (!(current && current.granted)) {
+        if (body.consent !== true) return j(res, 200, { ok: false, error: 'health_consent_required', message: 'Bitte bestätige zuerst ausdrücklich die Verarbeitung deiner Körper- und Gesundheitsdaten.' });
+        await Privacy.recordConsent(id, 'body_analysis_health', true, { source: 'figurcheck' });
+      }
+    }
     if (action === 'save') {
       if (!(await M.rateLimit('figur-save:' + id, 30, 86400))) {
         return j(res, 200, { ok: false, error: 'rate_limited', message: 'Kurz warten und erneut versuchen.' });
