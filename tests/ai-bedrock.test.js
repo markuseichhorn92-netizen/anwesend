@@ -8,21 +8,28 @@ const Module = require('module');
 const path = require('path');
 const originalLoad = Module._load;
 let commandInput = null;
+let converseInput = null;
 let clientConfig = null;
 let oidcOptions = null;
 
 class InvokeModelCommand {
   constructor(input) { commandInput = input; }
 }
+class ConverseCommand {
+  constructor(input) { converseInput = input; }
+}
 class BedrockRuntimeClient {
   constructor(config) { clientConfig = config; }
-  async send() {
+  async send(command) {
+    if (command instanceof ConverseCommand) {
+      return { output: { message: { content: [{ text: 'ok' }] } }, stopReason: 'end_turn' };
+    }
     return { body: Buffer.from(JSON.stringify({ content: [{ type: 'text', text: 'ok' }], stop_reason: 'end_turn' })) };
   }
 }
 
 Module._load = function (request, parent, isMain) {
-  if (request === '@aws-sdk/client-bedrock-runtime') return { InvokeModelCommand, BedrockRuntimeClient };
+  if (request === '@aws-sdk/client-bedrock-runtime') return { InvokeModelCommand, ConverseCommand, BedrockRuntimeClient };
   if (request === '@vercel/oidc-aws-credentials-provider') {
     return { awsCredentialsProvider: function (opts) { oidcOptions = opts; return async function () { return {}; }; } };
   }
@@ -38,15 +45,13 @@ async function run() {
   const aiPath = path.resolve(__dirname, '..', 'lib', 'ai.js');
   const AI = require(aiPath);
   const result = await AI.askHelp('Wann offen?', [{ t: 'Test', body: 'Immer.' }]);
-  const body = JSON.parse(Buffer.from(commandInput.body).toString('utf8'));
-
   ok('1. Bedrock ist konfiguriert', AI.hasAI === true);
   ok('2. Client ist fest auf Frankfurt gesetzt', clientConfig && clientConfig.region === 'eu-central-1');
   ok('3. OIDC nutzt nur die konfigurierte Rolle', oidcOptions && oidcOptions.roleArn === process.env.AWS_ROLE_ARN);
-  ok('4. Nur das konfigurierte Modell wird aufgerufen', commandInput && commandInput.modelId === process.env.BEDROCK_MODEL_ID);
-  ok('5. Bedrock-Anthropic-Version ist gesetzt', body.anthropic_version === 'bedrock-2023-05-31');
-  ok('6. Modell-ID steht nicht im Prompt-Payload', !Object.prototype.hasOwnProperty.call(body, 'model'));
-  ok('7. Bedrock-Payload enthaelt keine inkompatiblen Cache-Marker', !JSON.stringify(body).includes('cache_control'));
+  ok('4. Textanfragen nutzen AWS Converse mit dem EU-Profil', converseInput && converseInput.modelId === process.env.BEDROCK_MODEL_ID && commandInput === null);
+  ok('5. System-Prompt wird AWS-nativ als Textblock gesendet', converseInput && Array.isArray(converseInput.system) && typeof converseInput.system[0].text === 'string');
+  ok('6. Nachrichten werden AWS-nativ aufgebaut', converseInput && converseInput.messages[0].content[0].text.includes('Wann offen?'));
+  ok('7. Converse-Payload enthaelt keine Anthropic-Cache-Marker', !JSON.stringify(converseInput).includes('cache_control'));
   ok('8. Antwort wird kompatibel geparst', result.ok === true && result.answer === 'ok');
 
   delete require.cache[aiPath];
