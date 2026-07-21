@@ -5141,6 +5141,40 @@
       '<div style="display:flex;align-items:center;gap:11px"><span style="font-size:23px">'+segIc+'</span><div style="flex:1;min-width:0"><div style="font-size:16.5px;font-weight:900;color:var(--text);letter-spacing:-.3px">'+esc(segLabel)+(name?(', '+esc(name)):'')+'</div>'+(dateStr?('<div style="font-size:11.5px;font-weight:700;color:var(--text-soft)">'+esc(dateStr)+' · dein Tag im Blick</div>'):'')+'</div></div>'+
       rows+'</div>';
   }
+  // Vital-Akku: kleine Batterie-Grafik, Füllstand = level%, Farbe nach tone.
+  function batterySvg(level,col){
+    var lv=Math.max(0,Math.min(100,level||0)); var bodyW=104, h=52, tx=bodyW+3, fillMax=bodyW-10;
+    var fw=Math.max(7,Math.round(fillMax*lv/100));
+    return '<svg width="'+(bodyW+12)+'" height="'+h+'" viewBox="0 0 '+(bodyW+12)+' '+h+'" fill="none" aria-hidden="true" style="flex-shrink:0">'
+      +'<rect x="2" y="2" width="'+bodyW+'" height="'+(h-4)+'" rx="12" fill="var(--surface-2)" stroke="'+col+'" stroke-width="3"/>'
+      +'<rect x="'+tx+'" y="'+(h/2-9)+'" width="7" height="18" rx="3" fill="'+col+'"/>'
+      +'<rect x="7" y="7" width="'+fw+'" height="'+(h-14)+'" rx="7" fill="'+col+'"/></svg>';
+  }
+  // Vital-Akku-Karte im Coach (Tab „Dein Tag"): Tagesenergie aus DATA.morning.battery.
+  // Nur mit echten Messwerten; sonst Teaser zum Vital-Check (bei Premium+Einwilligung).
+  function coachBatteryCard(){
+    var b=DATA.morning&&DATA.morning.battery;
+    if(!b||!b.hasData){
+      var mo=DATA.morning;
+      if(mo&&mo.available&&mo.premium&&mo.consent){
+        return '<button data-act="nav" data-arg="morning" style="width:100%;text-align:left;border:none;cursor:pointer;font-family:inherit;background:var(--surface);border-radius:20px;box-shadow:0 12px 34px rgba(4,33,40,.12);padding:16px 18px;margin-bottom:16px;display:flex;align-items:center;gap:13px">'
+          +'<span style="font-size:26px">🔋</span>'
+          +'<span style="flex:1;min-width:0"><span style="display:block;font-size:14.5px;font-weight:900;color:var(--text)">Vital-Akku</span><span style="display:block;font-size:12.5px;font-weight:600;color:var(--text-soft);margin-top:2px;line-height:1.4">Miss deine Bereitschaft im Vital-Check – dann siehst du hier deine Tagesenergie.</span></span>'
+          +svg('<path d="M9 6l6 6-6 6"></path>',{c:'var(--text-muted)',w:2.2,s:18})+'</button>';
+      }
+      return '';
+    }
+    var col=b.tone==='gruen'?'#2f9e5f':b.tone==='gelb'?'#d98a2b':'#cf4b3f';
+    var chips=(b.factors||[]).slice(0,3).map(function(f){ var pos=f.dir==='+';
+      return '<span style="display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:700;color:'+(pos?'#1d7a3e':'var(--text-soft)')+';background:'+(pos?'rgba(47,158,95,.13)':'var(--surface-2)')+';border-radius:999px;padding:4px 10px">'+(pos?'▲':'▼')+' '+esc(f.label)+'</span>'; }).join('');
+    return '<button data-act="nav" data-arg="morning" style="width:100%;text-align:left;border:none;cursor:pointer;font-family:inherit;background:var(--surface);border-radius:22px;box-shadow:0 12px 34px rgba(4,33,40,.12);padding:18px;margin-bottom:16px">'
+      +'<div style="display:flex;align-items:center;gap:16px">'+batterySvg(b.level,col)
+      +'<div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.5px">Vital-Akku</div>'
+      +'<div style="display:flex;align-items:baseline;gap:9px;margin-top:2px"><span style="font-size:30px;font-weight:900;color:'+col+';line-height:1">'+b.level+'<span style="font-size:16px">%</span></span><span style="font-size:14px;font-weight:800;color:var(--text)">'+esc(b.label||'')+'</span></div></div></div>'
+      +(b.headline?('<div style="font-size:13px;font-weight:600;color:var(--text-soft);margin-top:12px;line-height:1.5">'+esc(b.headline)+'</div>'):'')
+      +(chips?('<div style="display:flex;flex-wrap:wrap;gap:7px;margin-top:12px">'+chips+'</div>'):'')
+      +'</button>';
+  }
   function scrCoach(){
     var wrap=function(inner){ return '<div class="ernwrap" style="padding-bottom:40px">'+inner+'</div>'; };
     // Unteransichten (Lektion / Vertiefung / Check-in / Upgrade / Nutrition-Chat) – bestehende Renderer.
@@ -5162,7 +5196,7 @@
     else if(tab==='ern'){ body=coachInsights('ern')+themeCta('Zum Essen-Tagebuch','ern','🥗'); }
     else if(tab==='training'){ body=coachInsights('training')+themeCta('Zum Trainingsplan','tag','🏋️'); }
     else if(tab==='lifestyle'){ if(DATA.mprofile==null) loadMemberProfile(); if(DATA.morning==null) loadMorning(); body=vitalCard()+morningEntryCard()+vitalLifestyleForm()+progressPickCard(); }
-    else { if(DATA.checkins==null) loadCheckins(); if(DATA.mprofile==null) loadMemberProfile(); if(DATA.morning==null) loadMorning(); if(DATA.trainSess==null) loadTrainSession(); if(woHealthCap()&&woHealthConnected()&&DATA.healthMetrics==null){ DATA.healthMetrics=false; woHealthFetchMetrics(); } var ovr=woVitalRings(); body=(ovr?('<div style="margin-bottom:16px">'+ovr+'</div>'):'')+coachDailyBriefing()+coachFinnHub()+coachVitalHero()+ernPremiumCard(); }  // Dein Tag: Oura-Ringe + tagesrelevante Themen, dann FINN + Vitalalter
+    else { if(DATA.checkins==null) loadCheckins(); if(DATA.mprofile==null) loadMemberProfile(); if(DATA.morning==null) loadMorning(); if(DATA.trainSess==null) loadTrainSession(); if(woHealthCap()&&woHealthConnected()&&DATA.healthMetrics==null){ DATA.healthMetrics=false; woHealthFetchMetrics(); } var ovr=woVitalRings(); body=coachBatteryCard()+(ovr?('<div style="margin-bottom:16px">'+ovr+'</div>'):'')+coachDailyBriefing()+coachFinnHub()+coachVitalHero()+ernPremiumCard(); }  // Dein Tag: Oura-Ringe + tagesrelevante Themen, dann FINN + Vitalalter
     return wrap(header+coachTabBar(tab)+body);
   }
   // Coach-Themen-Tabs (horizontal scrollbare Pills).

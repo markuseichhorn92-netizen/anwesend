@@ -24,6 +24,8 @@
 const M = require('../../lib/members');
 const MO = require('../../lib/morning');
 const V = require('../../lib/vitals');
+const WO = require('../../lib/workouts');
+const Battery = require('../../lib/battery');
 const AI = require('../../lib/ai');
 const Ent = require('../../lib/entitlements');
 const Coaching = require('../../lib/coaching');
@@ -74,6 +76,27 @@ async function readState(id) {
       }
     }
   } catch (e) {}
+  // Vital-Akku: modellierte Tagesenergie aus Erholung + Schlaf minus Trainingslast.
+  // Nur mit echtem Erholungs-Score (HRV/Ruhepuls) und Einwilligung – sonst null (Client zeigt Teaser).
+  let battery = null;
+  try {
+    if (consent) {
+      let best = null, src = null;
+      if (readiness && readiness.score != null) { best = readiness; src = 'morgen'; }
+      else if (vitalsBlock && vitalsBlock.readiness && vitalsBlock.readiness.score != null) { best = vitalsBlock.readiness; src = 'passiv'; }
+      if (best) {
+        let weekLoad = null; try { weekLoad = WO.weeklyLoad(await WO.list(id)); } catch (e) {}
+        battery = Battery.compute({
+          readiness: best,
+          sleepDetail: vitalsBlock ? vitalsBlock.sleepDetail : null,
+          weekLoad: weekLoad,
+          recoveryActive: !!recovery,
+          overtraining: MO.overtraining(list),
+          source: src,
+        });
+      }
+    }
+  } catch (e) {}
   return {
     ok: true, available: true,
     premium: !!tier.premium, tier: tier.tier, trialing: tier.trialing,
@@ -107,6 +130,7 @@ async function readState(id) {
       hasBaseline: base.rhr != null || base.hrv != null,
     },
     vitals: vitalsBlock,
+    battery: battery,
   };
 }
 
