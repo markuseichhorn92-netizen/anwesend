@@ -53,5 +53,12 @@ ok('6. source durchgereicht', B.compute({ readiness: { score: 75 }, source: 'pas
 const noSleep = B.compute({ readiness: { score: 64 }, now: NOW });
 ok('7. ohne Schlaf: Ladung = Erholung', noSleep.charge === 64);
 
+// 8) dayCharge (7-Tage-Kurve): Blend, null ohne Erholung, = Erholung ohne Schlaf.
+ok('8. dayCharge ohne Score -> null', B.dayCharge(null, 80) === null);
+ok('8b. dayCharge ohne Schlaf = Erholung', B.dayCharge(70, null) === 70);
+ok('8c. dayCharge Blend 0.65/0.35', B.dayCharge(80, 60) === Math.round(0.65 * 80 + 0.35 * 60));
+ok('8d. dayCharge klemmt (120/120 -> 100)', B.dayCharge(120, 120) === 100);
+ok('8e. charge == dayCharge(r,sleep)', B.compute({ readiness: { score: 80 }, sleepDetail: { score: 60 }, now: NOW }).charge === B.dayCharge(80, 60));
+
 console.log(pass ? 'BATTERY PASS' : 'BATTERY FAIL');
 process.exit(pass ? 0 : 1);

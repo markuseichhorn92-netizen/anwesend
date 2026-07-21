@@ -198,13 +198,36 @@ module.exports = async function handler(req, res) {
     // Trainings-Check-in, Übertrainings-Signal und erkannte Muster (nur bei Einwilligung).
     let morningText = '';
     let vitalsText = '';
-    try { const MO = require('../../lib/morning'); if (await MO.getConsent(sess.id)) { morningText = MO.toPromptText(await MO.list(sess.id), { trList: await MO.trList(sess.id), age: (mprof && mprof.age) || 0 }); const V = require('../../lib/vitals'); vitalsText = V.toPromptText(await V.list(sess.id)); } } catch (e) {}
+    let batteryText = '';
+    try {
+      const MO = require('../../lib/morning');
+      if (await MO.getConsent(sess.id)) {
+        const mlist = await MO.list(sess.id);
+        morningText = MO.toPromptText(mlist, { trList: await MO.trList(sess.id), age: (mprof && mprof.age) || 0 });
+        const V = require('../../lib/vitals');
+        const vlist = await V.list(sess.id);
+        vitalsText = V.toPromptText(vlist);
+        // Vital-Akku (Tagesenergie) als kompakte Zeile – FINN kann darauf eingehen.
+        try {
+          const Battery = require('../../lib/battery');
+          const WO = require('../../lib/workouts');
+          const mR = mlist[0] ? MO.readiness(mlist[0], MO.baseline(mlist)) : null;
+          let best = (mR && mR.score != null) ? mR : null;
+          let sleepDetail = null;
+          if (vlist && vlist.length) { const vLatest = V.latest(vlist), vBase = V.baseline(vlist); if (!best) { const vR = V.readiness(vLatest, vBase); if (vR && vR.score != null) best = vR; } sleepDetail = V.sleepDetail(vLatest); }
+          if (best) {
+            const bat = Battery.compute({ readiness: best, sleepDetail: sleepDetail, weekLoad: WO.weeklyLoad(await WO.list(sess.id)), recoveryActive: !!(await MO.getRecovery(sess.id)), overtraining: MO.overtraining(mlist) });
+            if (bat && bat.hasData) batteryText = 'Vital-Akku (Tagesenergie, 0–100 %): ' + bat.level + '% – ' + bat.label + '. ' + bat.headline;
+          }
+        } catch (e) {}
+      }
+    } catch (e) {}
     // Datenminimierung: nur Vorname + Tarif + aggregierte Live-Daten (+ ggf. Profil/Gemerktes) an die KI –
     // Nachname/Mitgliedsnummer sind für die Antwort nicht erforderlich.
     const member = {
       firstName: m.firstName,
       rateName: det.rateName,
-      details: det.text + (topicHint ? ('\n\n' + topicHint) : '') + (profileText ? ('\n\n' + profileText) : '') + (inbodyText ? ('\n\n' + inbodyText) : '') + (morningText ? ('\n\n' + morningText) : '') + (vitalsText ? ('\n\n' + vitalsText) : '') + (memoryText ? ('\n\n' + memoryText) : ''),
+      details: det.text + (topicHint ? ('\n\n' + topicHint) : '') + (profileText ? ('\n\n' + profileText) : '') + (inbodyText ? ('\n\n' + inbodyText) : '') + (morningText ? ('\n\n' + morningText) : '') + (vitalsText ? ('\n\n' + vitalsText) : '') + (batteryText ? ('\n\n' + batteryText) : '') + (memoryText ? ('\n\n' + memoryText) : ''),
       memoDirective: mem.on ? FinnMemory.MEMO_DIRECTIVE : '',
     };
     const r = await AI.coachReply(member, Array.isArray(body.history) ? body.history : [], question, HELP);

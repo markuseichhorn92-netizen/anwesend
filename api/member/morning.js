@@ -57,23 +57,22 @@ async function readState(id) {
   const trList = await MO.trList(id);
   const trLatest = trList[0] || null;
   // Passive Vitalwerte aus Apple Health (Apple Watch/Waage) – nur bei Einwilligung.
+  let vList = [];
+  try { if (consent) vList = await V.list(id); } catch (e) {}
   let vitalsBlock = null;
   try {
-    if (consent) {
-      const vList = await V.list(id);
-      if (vList.length) {
-        const vLatest = V.latest(vList);
-        const vBase = V.baseline(vList);
-        vitalsBlock = {
-          latest: vLatest, baseline: vBase,
-          readiness: V.readiness(vLatest, vBase),
-          sleep: V.sleepRef(vLatest, vBase),
-          sleepDetail: V.sleepDetail(vLatest),
-          eval: V.evaluate(vLatest, vBase),
-          trend: V.trend(vList),
-          days: vList.length,
-        };
-      }
+    if (consent && vList.length) {
+      const vLatest = V.latest(vList);
+      const vBase = V.baseline(vList);
+      vitalsBlock = {
+        latest: vLatest, baseline: vBase,
+        readiness: V.readiness(vLatest, vBase),
+        sleep: V.sleepRef(vLatest, vBase),
+        sleepDetail: V.sleepDetail(vLatest),
+        eval: V.evaluate(vLatest, vBase),
+        trend: V.trend(vList),
+        days: vList.length,
+      };
     }
   } catch (e) {}
   // Vital-Akku: modellierte Tagesenergie aus Erholung + Schlaf minus Trainingslast.
@@ -94,6 +93,19 @@ async function readState(id) {
           overtraining: MO.overtraining(list),
           source: src,
         });
+        // 7-Tage-Mini-Kurve: pro Tag die Ladung (Erholung + Schlaf) aus den passiven
+        // Vitalwerten – nur als Trend (Ladehöhe je Morgen), ohne Tages-Entladung.
+        if (battery && battery.hasData && vList.length >= 3) {
+          try {
+            const vBase = V.baseline(vList);
+            const series = vList.slice().sort((a, b) => (b.ts || 0) - (a.ts || 0)).slice(0, 7).map((d) => {
+              const rr = V.readiness(d, vBase); const sd = V.sleepDetail(d);
+              const lvl = Battery.dayCharge(rr && rr.score, sd && sd.score);
+              return (lvl == null) ? null : { date: d.date, level: lvl };
+            }).filter(Boolean).reverse();   // ältester zuerst (links)
+            if (series.length >= 3) battery.series = series;
+          } catch (e) {}
+        }
       }
     }
   } catch (e) {}
