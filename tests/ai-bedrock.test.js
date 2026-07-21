@@ -2,7 +2,7 @@
 process.env.AI_PROVIDER = 'bedrock';
 process.env.AWS_REGION = 'eu-central-1';
 process.env.AWS_ROLE_ARN = 'arn:aws:iam::123456789012:role/test';
-process.env.BEDROCK_MODEL_ID = 'anthropic.claude-haiku-4-5-20251001-v1:0';
+process.env.BEDROCK_MODEL_ID = 'eu.anthropic.claude-haiku-4-5-20251001-v1:0';
 
 const Module = require('module');
 const path = require('path');
@@ -46,12 +46,19 @@ async function run() {
   ok('4. Nur das konfigurierte Modell wird aufgerufen', commandInput && commandInput.modelId === process.env.BEDROCK_MODEL_ID);
   ok('5. Bedrock-Anthropic-Version ist gesetzt', body.anthropic_version === 'bedrock-2023-05-31');
   ok('6. Modell-ID steht nicht im Prompt-Payload', !Object.prototype.hasOwnProperty.call(body, 'model'));
-  ok('7. Antwort wird kompatibel geparst', result.ok === true && result.answer === 'ok');
+  ok('7. Bedrock-Payload enthaelt keine inkompatiblen Cache-Marker', !JSON.stringify(body).includes('cache_control'));
+  ok('8. Antwort wird kompatibel geparst', result.ok === true && result.answer === 'ok');
 
   delete require.cache[aiPath];
   process.env.AWS_REGION = 'us-east-1';
   const AIWrongRegion = require(aiPath);
-  ok('8. Andere AWS-Regionen werden fail-closed abgelehnt', AIWrongRegion.hasAI === false);
+  ok('9. Andere AWS-Regionen werden fail-closed abgelehnt', AIWrongRegion.hasAI === false);
+
+  delete require.cache[aiPath];
+  process.env.AWS_REGION = 'eu-central-1';
+  process.env.BEDROCK_MODEL_ID = 'anthropic.claude-haiku-4-5-20251001-v1:0';
+  const AIDirectModel = require(aiPath);
+  ok('10. Direkte oder globale Modell-IDs werden fail-closed abgelehnt', AIDirectModel.hasAI === false);
 
   Module._load = originalLoad;
   console.log(pass ? 'AI-BEDROCK PASS' : 'AI-BEDROCK FAIL');
