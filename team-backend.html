@@ -156,6 +156,8 @@ var S={ token:null, role:null, meName:null, screen:'dash', convs:[], counts:{}, 
         leads:[], leadsLoaded:false, leadsLoading:false, leadFilter:'all', leadBusy:'',
         // App-Tester: Anmeldungen für den geschlossenen Google-Play-Test
         testers:[], testersLoaded:false, testersLoading:false, testersErr:false, testersPending:0, testerBusy:'', testerMsg:'',
+        // Neue Mitglieder: zuletzt beigetreten (aus Magicline-Webhook CONTRACT_CREATED)
+        newMembers:[], newMembersLoaded:false, newMembersLoading:false, newMembersErr:false, newMembersDisabled:false,
         // Aufgaben: interne To-do-Liste (getrennt von Kunden-Vorgängen)
         todos:[], todosLoaded:false, todosLoading:false, todoFilter:'open', todoBusy:'',
         todoText:'', todoAssignee:'', todoDue:'', todoAddBusy:false,
@@ -1848,6 +1850,7 @@ var IC={
   msg:'<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l18-5v12L3 14z"/><path d="M11.5 16.5a3 3 0 0 1-5.6-1.5"/></svg>',
   leads:'<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h18l-7 8v6l-4 2v-8z"/></svg>',
   tester:'<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2" width="12" height="20" rx="3"/><path d="M11 5h2"/><path d="M9.5 12.5l1.8 1.8 3.4-3.6"/></svg>',
+  newmembers:'<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6"/><path d="M22 11h-6"/></svg>',
   todo:'<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>',
   shift:'<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="3"/><path d="M16 2v4M8 2v4M3 10h18"/><path d="M12 13.5v2.5l1.8 1.2"/></svg>',
   logout:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>',
@@ -1880,6 +1883,7 @@ function renderShell(content, title, sub){
       (canSee('assist')?navItem('assist','Assistent',IC.assist):'')+
       navItem('inbox','Posteingang',IC.inbox, open||'')+
       navItem('members','Mitglieder',IC.members)+
+      navItem('newmembers','Neue Mitglieder',IC.newmembers)+
       navItem('appts','Termine',IC.appts, apptOpen||'')+
       navItem('trial','Probetraining',IC.appts)+
       navItem('help','Hilfe-Artikel',IC.help)+
@@ -1928,7 +1932,7 @@ function renderShell(content, title, sub){
     {k:'dash',l:'Übersicht',ic:IC.dash,on:sc==='dash'},
     {k:'inbox',l:'Posteingang',ic:IC.inbox,on:(sc==='inbox'||sc==='thread'),badge:open},
     {k:'members',l:'Mitglieder',ic:IC.members,on:(sc==='members'||sc==='profile')},
-    {k:'__more',l:'Mehr',ic:IC.dots,on:(['appts','trial','help','stats','msg','leads','tester','todo','schicht','assist','wb'].indexOf(sc)>=0)}
+    {k:'__more',l:'Mehr',ic:IC.dots,on:(['newmembers','appts','trial','help','stats','msg','leads','tester','todo','schicht','assist','wb'].indexOf(sc)>=0)}
   ];
   var bnav=el('<nav class="bottomnav" style="align-items:stretch;padding:6px 8px"></nav>');
   bnav.innerHTML=bnDefs.map(function(it){ var c=it.on?'#0a4958':'#9aa6aa';
@@ -1945,7 +1949,7 @@ function renderShell(content, title, sub){
   side.querySelector('[data-logout]').onclick=logout;
   var toApp=side.querySelector('[data-toapp]'); if(toApp) toApp.onclick=function(){ location.assign('/mitglieder'); };
   var bg=head.querySelector('[data-burger]'); if(bg) bg.onclick=function(){ S.navOpen=true; render(); };
-  head.querySelector('[data-refresh]').onclick=function(){ if(S.screen==='members') loadMembers(); else if(S.screen==='inbox'||S.screen==='appts') loadInbox(); else if(S.screen==='help') loadArticles(); else if(S.screen==='stats') loadStats(); else if(S.screen==='msg') loadBroadcastCount(); else if(S.screen==='leads') loadLeads(); else if(S.screen==='tester') loadTesters(); else if(S.screen==='todo') loadTodos(); else if(S.screen==='schicht'){ loadShifts(); if(S.shTab==='tausch') loadShSwaps(); } else render(); };
+  head.querySelector('[data-refresh]').onclick=function(){ if(S.screen==='members') loadMembers(); else if(S.screen==='inbox'||S.screen==='appts') loadInbox(); else if(S.screen==='help') loadArticles(); else if(S.screen==='stats') loadStats(); else if(S.screen==='msg') loadBroadcastCount(); else if(S.screen==='leads') loadLeads(); else if(S.screen==='tester') loadTesters(); else if(S.screen==='newmembers') loadNewMembers(); else if(S.screen==='todo') loadTodos(); else if(S.screen==='schicht'){ loadShifts(); if(S.shTab==='tausch') loadShSwaps(); } else render(); };
   var bell=head.querySelector('[data-bell]'); if(bell) bell.onclick=function(){ goScreen('inbox'); };
   // Haupt-Inhalt-Scroll über Voll-Renders hinweg erhalten (sonst springt z. B. das
   // Mitgliedsprofil bei jeder Aktion/jedem Loader nach oben).
@@ -3092,6 +3096,67 @@ function testerNode(){
   var cp=node.querySelector('[data-copypend]'); if(cp) cp.onclick=copyPendingTesters;
   var aa=node.querySelector('[data-appall]'); if(aa) aa.onclick=approveAllTesters;
   node.querySelectorAll('[data-appone]').forEach(function(b){ b.onclick=function(){ approveTester(b.getAttribute('data-appone')); }; });
+  return node;
+}
+
+// ---------- Neue Mitglieder (zuletzt beigetreten, aus Magicline-Webhook) ----------
+async function loadNewMembers(){
+  S.newMembersLoading=true; render();
+  try{ var r=await tapi('/api/team/new-members');
+    if(r && r.ok){ S.newMembers=r.members||[]; S.newMembersDisabled=!!r.disabled; S.newMembersErr=false; }
+    else S.newMembersErr=!(S.newMembers&&S.newMembers.length);
+    S.newMembersLoaded=true;
+  }
+  catch(e){ S.newMembersErr=!(S.newMembers&&S.newMembers.length); }
+  S.newMembersLoading=false; render();
+}
+function nmRelDays(iso){
+  var d=iso?new Date(iso):null; if(!d || isNaN(d.getTime())) return '';
+  var diff=Math.floor((Date.now()-d.getTime())/86400000);
+  if(diff<=0) return 'heute'; if(diff===1) return 'gestern'; if(diff<7) return 'vor '+diff+' Tagen';
+  if(diff<14) return 'vor 1 Woche'; if(diff<31) return 'vor '+Math.floor(diff/7)+' Wochen'; return 'vor '+Math.floor(diff/30)+' Monaten';
+}
+function newMembersNode(){
+  var node=el('<div style="flex:1;overflow-y:auto;padding:20px 22px 90px"></div>');
+  if(S.newMembersLoading && !(S.newMembers&&S.newMembers.length)){ node.innerHTML='<div style="padding:60px 22px;text-align:center;color:#8a929a;font-weight:700">Lade neue Mitglieder …</div>'; return node; }
+  if(S.newMembersErr && !(S.newMembers&&S.newMembers.length)){
+    node.innerHTML='<div style="padding:60px 22px;text-align:center"><div style="font-size:14px;color:#42454b;font-weight:700;margin-bottom:12px">Liste konnte nicht geladen werden.</div><button data-nmretry="1" style="border:1.5px solid #d6dee0;background:#fff;border-radius:11px;font-size:13px;font-weight:800;padding:9px 16px;color:'+TEAL+';cursor:pointer">Erneut laden</button></div>';
+    var rb=node.querySelector('[data-nmretry]'); if(rb) rb.onclick=function(){ S.newMembersErr=false; loadNewMembers(); }; return node;
+  }
+  var list=S.newMembers||[];
+
+  var intro='<div style="background:#fff;border:1px solid #e1e8ea;border-radius:16px;padding:15px 17px;margin-bottom:16px">'+
+    '<div style="display:flex;align-items:center;gap:9px;margin-bottom:5px"><span style="color:'+TEAL+'">'+IC.newmembers+'</span><span style="font-size:14px;font-weight:900;color:#15171b">Zuletzt Mitglied geworden</span></div>'+
+    '<div style="font-size:12.5px;color:#5a636a;font-weight:600;line-height:1.6">Erscheint automatisch, sobald jemand einen <b>Vertrag abschließt</b> – echte Mitglieder, keine bloßen Leads/Probetrainings. Ideal für die persönliche Begrüßung vor Ort.</div>'+
+  '</div>';
+
+  var body='';
+  if(S.newMembersDisabled){
+    body='<div style="padding:34px 22px;text-align:center;color:#8a929a;font-weight:700;background:#fff;border:1px solid #e1e8ea;border-radius:16px">Der Speicher für neue Mitglieder ist nicht aktiv.<div style="font-size:12px;font-weight:600;color:#9aa2a8;margin-top:6px">Sobald der KV-Store konfiguriert ist, werden Beitritte hier gesammelt.</div></div>';
+  } else if(!list.length){
+    body='<div style="padding:34px 22px;text-align:center;color:#8a929a;font-weight:700;background:#fff;border:1px solid #e1e8ea;border-radius:16px">Noch keine neuen Mitglieder erfasst.<div style="font-size:12px;font-weight:600;color:#9aa2a8;margin-top:6px;line-height:1.6">Sobald ein neuer Vertrag abgeschlossen wird, erscheint das Mitglied hier automatisch.<br>Voraussetzung: aktiver Magicline-Webhook (<b>CONTRACT_CREATED</b>).</div></div>';
+  } else {
+    body='<div style="font-size:12px;font-weight:800;color:#8a929a;text-transform:uppercase;letter-spacing:.4px;margin:4px 2px 9px">Neu ('+list.length+')</div>'+list.map(function(m){
+      var nm=m.name||(m.customerNumber?('Mitglied '+m.customerNumber):'Neues Mitglied');
+      var ini=(m.name||'?').trim().charAt(0).toUpperCase()||'?';
+      var when=m.joinedAt?new Date(m.joinedAt):null;
+      var whenStr=(when && !isNaN(when.getTime()))?when.toLocaleDateString('de-DE'):'';
+      var rel=nmRelDays(m.joinedAt);
+      var sub=[m.customerNumber?('Nr. '+m.customerNumber):'', whenStr?('beigetreten '+whenStr):''].filter(Boolean).join(' · ');
+      return '<button data-nmopen="'+esc(m.id)+'" style="display:flex;align-items:center;gap:12px;width:100%;text-align:left;background:#fff;border:1px solid #e6ecee;border-radius:14px;padding:12px 14px;margin-bottom:9px;cursor:pointer">'+
+        '<div style="width:40px;height:40px;border-radius:12px;background:#e7f6ec;color:#1d7a3e;font-weight:900;font-size:15px;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+esc(ini)+'</div>'+
+        '<div style="flex:1;min-width:0">'+
+          '<div style="font-size:13.5px;font-weight:800;color:#15171b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(nm)+'</div>'+
+          (sub?'<div style="font-size:12px;color:#6b7780;font-weight:600;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(sub)+'</div>':'')+
+        '</div>'+
+        (rel?'<span style="font-size:11px;font-weight:800;color:'+TEAL+';background:#e7f1f3;border-radius:8px;padding:4px 9px;flex-shrink:0">'+esc(rel)+'</span>':'')+
+        '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#c2cace" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M9 18l6-6-6-6"/></svg>'+
+      '</button>';
+    }).join('');
+  }
+
+  node.innerHTML=intro+body;
+  node.querySelectorAll('[data-nmopen]').forEach(function(b){ b.onclick=function(){ S.screen='members'; openProfile(b.getAttribute('data-nmopen')); }; });
   return node;
 }
 function replaceLead(lead){ for(var i=0;i<S.leads.length;i++){ if(S.leads[i].id===lead.id){ S.leads[i]=lead; return; } } S.leads.unshift(lead); }
@@ -5030,8 +5095,8 @@ function wbNode(){
 function render(){
   if(!S.token){ renderLogin(); return; }
   if(!canSee(S.screen)) S.screen='dash';   // kein Admin-Bereich für Angestellte (Sicherheitsnetz)
-  var titles={dash:'Übersicht',inbox:'Posteingang',members:'Mitglieder',appts:'Termine',trial:'Probetraining',help:'Hilfe-Artikel',stats:'Statistiken',msg:'Nachrichten',leads:'Leads',tester:'App-Tester',todo:'Aufgaben',schicht:'Schichtplan',assist:'Assistent',wb:'Rückholung',community:'Community'};
-  var subs={dash:'Dein Studio auf einen Blick',inbox:'Alle Vorgänge & Anfragen',members:'Mitgliederverwaltung',appts:'Anfragen & Buchungen',trial:'Schnell ein Probetraining buchen',help:'Wissensdatenbank verwalten',stats:'Auswertungen & Trends',msg:'Rundnachricht & Direktnachricht',leads:'Interessenten-Pipeline',tester:'Anmeldungen für den geschlossenen App-Test',todo:'Interne Aufgaben fürs Team',schicht:'Dienstplan, Tausch & Verfügbarkeiten',assist:'Sag mir, was zu tun ist – ich bereite es vor, du bestätigst',wb:'Angebots-Rahmen für die KI-Rückholung',community:'Trainingspartner moderieren'};
+  var titles={dash:'Übersicht',inbox:'Posteingang',members:'Mitglieder',newmembers:'Neue Mitglieder',appts:'Termine',trial:'Probetraining',help:'Hilfe-Artikel',stats:'Statistiken',msg:'Nachrichten',leads:'Leads',tester:'App-Tester',todo:'Aufgaben',schicht:'Schichtplan',assist:'Assistent',wb:'Rückholung',community:'Community'};
+  var subs={dash:'Dein Studio auf einen Blick',inbox:'Alle Vorgänge & Anfragen',members:'Mitgliederverwaltung',newmembers:'Zuletzt beigetreten – automatisch aus Magicline',appts:'Anfragen & Buchungen',trial:'Schnell ein Probetraining buchen',help:'Wissensdatenbank verwalten',stats:'Auswertungen & Trends',msg:'Rundnachricht & Direktnachricht',leads:'Interessenten-Pipeline',tester:'Anmeldungen für den geschlossenen App-Test',todo:'Interne Aufgaben fürs Team',schicht:'Dienstplan, Tausch & Verfügbarkeiten',assist:'Sag mir, was zu tun ist – ich bereite es vor, du bestätigst',wb:'Angebots-Rahmen für die KI-Rückholung',community:'Trainingspartner moderieren'};
   var content;
   if(S.screen==='inbox') content=inboxNode();
   else if(S.screen==='dash') content=dashNode();
@@ -5043,6 +5108,7 @@ function render(){
   else if(S.screen==='msg') content=msgNode();
   else if(S.screen==='leads') content=leadsNode();
   else if(S.screen==='tester') content=testerNode();
+  else if(S.screen==='newmembers') content=newMembersNode();
   else if(S.screen==='todo') content=todoNode();
   else if(S.screen==='schicht') content=schichtNode();
   else if(S.screen==='assist') content=assistNode();
@@ -5056,7 +5122,7 @@ function render(){
 // Profil zu /team/mitglieder/<interne-id>. So sind Ansichten teilbar/bookmarkbar
 // und Reload/Zurück führen wieder dorthin. Greift nur, wenn die Seite wirklich
 // unter /team ausgeliefert wird (Guard) – beim direkten Öffnen der Datei bleibt die URL unberührt.
-var SCREEN2SLUG={ dash:'', inbox:'posteingang', members:'mitglieder', appts:'termine', trial:'probetraining', help:'hilfe', stats:'statistiken', msg:'nachrichten', leads:'leads', tester:'tester', todo:'aufgaben', schicht:'schichtplan', assist:'assistent', wb:'rueckholung', community:'community' };
+var SCREEN2SLUG={ dash:'', inbox:'posteingang', members:'mitglieder', newmembers:'neue-mitglieder', appts:'termine', trial:'probetraining', help:'hilfe', stats:'statistiken', msg:'nachrichten', leads:'leads', tester:'tester', todo:'aufgaben', schicht:'schichtplan', assist:'assistent', wb:'rueckholung', community:'community' };
 var SLUG2SCREEN={}; Object.keys(SCREEN2SLUG).forEach(function(k){ if(SCREEN2SLUG[k]) SLUG2SCREEN[SCREEN2SLUG[k]]=k; });
 var urlRestoring=false;   // true während Boot/Popstate/Login-Restore -> replaceState statt pushState
 function underTeam(){ try{ return /^\/team(\/|$)/.test(location.pathname||''); }catch(e){ return false; } }
@@ -5108,6 +5174,7 @@ function goScreen(k){
   if(k==='msg'){ S.bcResult=null; }
   if(k==='leads'){ if(!S.leadsLoaded){ loadLeads(); return; } }
   if(k==='tester'){ if(!S.testersLoaded){ loadTesters(); return; } }
+  if(k==='newmembers'){ if(!S.newMembersLoaded){ loadNewMembers(); return; } }
   if(k==='todo'){ if(!S.todosLoaded){ loadTodos(); return; } }
   if(k==='schicht'){ if(!S.shLoaded){ loadShifts(); return; } }
   if(k==='wb'){ if(!S.wbLoaded){ loadWb(); return; } }

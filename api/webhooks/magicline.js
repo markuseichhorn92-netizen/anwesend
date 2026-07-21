@@ -23,6 +23,7 @@
  */
 
 const W = require('../../lib/welcome');
+const NM = require('../../lib/newMembers');
 
 const SECRET = process.env.MAGICLINE_WEBHOOK_KEY || process.env.MAGICLINE_WEBHOOK_SECRET || '';
 const MAX_EVENTS = 50;   // Sicherheitskappe
@@ -82,10 +83,12 @@ async function handleWebhook(req, res, opts) {
     const type = typeOf(e);
     const cid = customerIdOf(e);
     let action = 'ignored';
-    // NUR echter Vertragsabschluss -> Willkommens-/Zugangs-Mail (mit Dedup).
+    // NUR echter Vertragsabschluss -> Willkommens-/Zugangs-Mail (mit Dedup) + für die
+    // „Neue Mitglieder"-Liste im Team-Backend vormerken (datensparsam: nur ID + Zeit).
     if (type === 'CONTRACT_CREATED' && cid) {
       try { const r = await W.sendAccessInfoOnce(cid); action = r.sent ? 'welcome_sent' : ('welcome_' + (r.reason || 'skip')); }
       catch (e2) { action = 'error'; }
+      try { await NM.recordJoin(cid); } catch (e3) {}
     }
     summary.push({ type: type || null, cid: cid || null, action });
   }
