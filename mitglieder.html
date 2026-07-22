@@ -726,6 +726,7 @@
     if(s==='appt'){ if(!DATA.appts) loadAppts(); if(DATA.bookable===null) loadBookable(); }
     if(s==='tag'){ S.trainRunDay=null; S.trainRestKey=''; S.trainRestStart=0; S.trainSeg='einheit'; S.trainDetail=null; S.trainDetailFull=null; S.trainGenOpen=false; S.woOpen=false; S.woResult=null; S.woDetail=null; S.woReview=null; if(DATA.training==null) loadTraining(); loadTrainSession(); loadWorkouts(); if(ERN_ON&&DATA.nutri==null) loadNutri(); }
     if(s==='home'||s==='checkin') checkArrival(true);   // frisch prüfen: Button soll sofort da sein, wenn man vor Ort ist
+    try{ if(window.__armBackBarrier) window.__armBackBarrier(); }catch(e){}   // System-Zurück (Browser/PWA) scharf halten
     setS({}); }
 
   // ---- data loading ----
@@ -11730,6 +11731,47 @@
     // Auch touchcancel abschließen: iOS bricht Wische am Rand gern ab – trotzdem auslösen, wenn die Schwelle erreicht war.
     document.addEventListener('touchend',endGesture,{passive:true});
     document.addEventListener('touchcancel',endGesture,{passive:true});
+
+    // ── Android-System-Zurück (Hardware-Taste / Zurück-Geste) abfangen ──
+    // Bisher schloss der System-Zurück die App: die WebView hat keinen eigenen
+    // Verlauf für die In-App-Screens, also gab es „nichts zum Zurückgehen" und
+    // Android beendete die App. Jetzt nutzt der System-Zurück dieselbe Hierarchie
+    // wie die Wischgeste (doBack): erst Overlays/Menü schließen, dann Screen zurück
+    // (APPBAR_BACK/-ROOTS), und NUR auf der Startseite darf die App schließen.
+    // Zwei Wege, damit es überall greift:
+    //   1) native App (Capacitor @capacitor/app) über das backButton-Event,
+    //   2) Browser/Homescreen-App über eine History-Barriere + popstate.
+    var vib=function(){ try{ navigator.vibrate&&navigator.vibrate(8); }catch(e){} };
+    var AppP=null; try{ var _c=window.Capacitor; AppP=_c&&_c.Plugins&&_c.Plugins.App; }catch(e){}
+    var nativeBack=false;
+    if(AppP&&AppP.addListener){
+      try{
+        AppP.addListener('backButton',function(){
+          try{
+            if(!TOKEN||S.screen==='login'){ if(AppP.exitApp) AppP.exitApp(); return; }
+            if(canBack()){ vib(); doBack(); return; }
+            if(AppP.exitApp) AppP.exitApp();   // Startseite -> App verlassen (kein stiller Absturz)
+          }catch(err){ try{ if(AppP.exitApp) AppP.exitApp(); }catch(_e){} }
+        });
+        nativeBack=true;
+      }catch(e){}
+    }
+    if(!nativeBack){
+      // History-Barriere: immer EIN zusätzlicher Verlaufseintrag, solange man
+      // eingeloggt und nicht auf der Startseite ist. Ein System-Zurück verbraucht
+      // ihn (popstate) -> wir navigieren in der App zurück und setzen ihn neu.
+      var armed=false;
+      var arm=function(){ if(armed) return; armed=true; try{ history.pushState({fiBack:1},''); }catch(e){} };
+      window.__armBackBarrier=function(){ if(TOKEN&&S.screen!=='login'&&S.screen!=='home') arm(); };
+      window.addEventListener('popstate',function(){
+        armed=false;                                 // dieser Zurück hat die Barriere verbraucht
+        if(!TOKEN||S.screen==='login') return;       // ausgeloggt/Login: normaler Zurück (Seite darf raus)
+        if(canBack()){ vib(); doBack(); }            // In-App zurück (doBack->nav setzt Barriere via __armBackBarrier neu)
+        try{ if(window.__armBackBarrier) window.__armBackBarrier(); }catch(e){}
+        // Startseite ohne Overlay: canBack()=false, keine neue Barriere -> weiterer Zurück verlässt (gewollt).
+      });
+      try{ window.__armBackBarrier(); }catch(e){}
+    }
   })();
   // ── iOS-Tastatur-Fix (VisualViewport) ─────────────────────────────
   // iOS staucht das Layout NICHT, wenn die Tastatur aufgeht (interactive-widget

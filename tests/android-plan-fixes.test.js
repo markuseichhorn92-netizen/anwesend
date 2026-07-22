@@ -61,4 +61,16 @@ assert.ok(member.includes('return ernWeightCard()+stripCard'), 'Gewicht-Karte mu
 assert.ok(member.includes("mkPick('ernCapWeight',"), 'Ernaehrungs-Erfassen muss einen Gewicht-Eintrag haben');
 assert.ok(/ernCapWeight:function\(\)\{[\s\S]*?nav\('figur'\)/.test(member), "ernCapWeight muss in den Figur-Check fuehren");
 
+// ── Android-System-Zurück fängt statt App zu schließen (Rueckmeldung Samsung) ──
+// Native App: Capacitor backButton -> doBack(); nur Startseite exitApp.
+// Browser/PWA: History-Barriere + popstate -> doBack().
+assert.ok(member.includes("addListener('backButton'"), 'Capacitor backButton muss abgefangen werden');
+assert.ok(/backButton'[\s\S]*?if\(canBack\(\)\)\{[^}]*doBack\(\)/.test(member), 'backButton muss doBack() nutzen');
+assert.ok(/backButton'[\s\S]*?exitApp\(\)/.test(member), 'backButton darf nur am Ende exitApp aufrufen');
+assert.ok(member.includes('window.__armBackBarrier'), 'History-Barriere fuer den Browser-Zurueck muss existieren');
+assert.ok(member.includes("addEventListener('popstate'"), 'popstate muss den System-Zurueck abfangen');
+assert.ok(/popstate'[\s\S]*?if\(canBack\(\)\)\{[^}]*doBack\(\)/.test(member), 'popstate muss doBack() nutzen');
+assert.ok((member.match(/if\(window\.__armBackBarrier\) window\.__armBackBarrier\(\)/g) || []).length >= 1,
+  'nav() muss die Zurueck-Barriere scharf halten');
+
 console.log('android plan fixes test passed');
