@@ -1,0 +1,124 @@
+'use strict';
+
+/**
+ * Team-Backend: Kassenbuch (Studio-Barkasse) – nur Admin (admin.manage, Finanzen).
+ *   GET                          -> aktueller/letzter Monat + berechnete Werte + Preise + Monatsliste
+ *   GET ?month=YYYY-MM           -> diesen Monat laden (mit Berechnung)
+ *   GET ?month=YYYY-MM&pdf=1     -> gespeichertes PDF (nur abgeschlossene Monate), { ok, pdf }
+ *   POST { action:'save', month, data }   -> Monat speichern (nur wenn nicht abgeschlossen)
+ *   POST { action:'prices', prices }      -> Standard-Preisliste setzen
+ *   POST { action:'check', month }        -> FINN prüft Plausibilität + Steuerliches
+ *   POST { action:'close', month, pdf }   -> Monat abschließen (sperren) + PDF-Beleg ablegen
+ *   POST { action:'reopen', month }       -> Abschluss zurücknehmen (Korrektur)
+ */
+
+const TA = require('../../lib/teamAuth');
+const Cap = require('../../lib/capabilities');
+const M = require('../../lib/members');
+const KB = require('../../lib/kassenbuch');
+const AI = require('../../lib/ai');
+
+function j(res, code, obj) { res.statusCode = code; return res.end(JSON.stringify(obj)); }
+function curMonthKey() { const d = new Date(); return d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0'); }
+
+async function monthPayload(key) {
+  const stored = await KB.getMonth(key);
+  const prices = await KB.getPrices();
+  let base, carried = null;
+  if (stored) {
+    base = stored;
+  } else {
+    // Noch nicht erfasster Monat: Anfangsbestand + Blatt-Nr. aus dem Vormonat vorbelegen.
+    const sug = await KB.suggestOpening(key);
+    base = { key: key, year: parseInt(key.slice(0, 4), 10), month: parseInt(key.slice(5, 7), 10),
+      blattNr: sug.blattNr || '', anfangsbestand: sug.anfangsbestand || 0, gezaehlterEndbestand: '', prices: prices, days: {} };
+    if (sug.carried) carried = { anfangsbestand: sug.anfangsbestand, blattNr: sug.blattNr, fromMonth: sug.fromMonth };
+  }
+  const totals = KB.computeMonth(base);
+  return {
+    key: key, year: base.year, month: base.month,
+    blattNr: base.blattNr || '', anfangsbestand: base.anfangsbestand || 0,
+    gezaehlterEndbestand: (base.gezaehlterEndbestand == null ? '' : base.gezaehlterEndbestand),
+    prices: totals.prices, days: base.days || {},
+    closed: !!base.closed, closedAt: base.closedAt || null, closedBy: base.closedBy || null,
+    updatedAt: base.updatedAt || null, check: base.check || null, exists: !!stored,
+    carried: carried, totals: totals,
+  };
+}
+
+module.exports = async function handler(req, res) {
+  res.setHeader('Content-Type', 'application/json');
+  res.setHeader('Cache-Control', 'private, no-store');
+
+  const sess = await TA.requireTeam(req);
+  if (!sess) return j(res, 401, { ok: false, error: 'unauthorized' });
+  if (!Cap.requireCap(sess, 'admin.manage', res)) return;
+
+  const url = (() => { try { return new URL(req.url, 'http://x'); } catch (e) { return { searchParams: new Map() }; } })();
+  const qMonth = (url.searchParams.get && url.searchParams.get('month')) || '';
+  const wantPdf = (url.searchParams.get && url.searchParams.get('pdf')) || '';
+
+  if (req.method === 'GET') {
+    if (qMonth && wantPdf) {
+      if (!KB.isMonthKey(qMonth)) return j(res, 400, { ok: false, error: 'bad_month' });
+      const pdf = await KB.getPdf(qMonth);
+      return j(res, 200, { ok: true, month: qMonth, pdf: pdf || null });
+    }
+    const key = KB.isMonthKey(qMonth) ? qMonth : curMonthKey();
+    let list = []; try { list = await KB.listMonths(); } catch (e) {}
+    const payload = await monthPayload(key);
+    return j(res, 200, { ok: true, hasStore: KB.hasStore, current: payload, months: list });
+  }
+
+  if (req.method !== 'POST') return j(res, 405, { ok: false, error: 'method_not_allowed' });
+
+  let body = {}; try { body = await M.readBody(req); } catch (e) { body = {}; }
+  const action = String((body && body.action) || '');
+  const month = String((body && body.month) || '');
+
+  if (action === 'prices') {
+    const p = await KB.setPrices(body.prices || {});
+    return j(res, 200, { ok: true, prices: p });
+  }
+
+  if (!KB.isMonthKey(month)) return j(res, 400, { ok: false, error: 'bad_month' });
+
+  if (action === 'save') {
+    if (!KB.hasStore) return j(res, 200, { ok: false, disabled: true, message: 'Kassenbuch-Speicher nicht verfügbar.' });
+    const r = await KB.saveMonth(month, body.data || {});
+    if (!r.ok) return j(res, 200, { ok: false, error: r.error, message: r.error === 'closed' ? 'Dieser Monat ist abgeschlossen und kann nicht geändert werden.' : 'Konnte nicht gespeichert werden.' });
+    const payload = await monthPayload(month);
+    return j(res, 200, { ok: true, current: payload });
+  }
+
+  if (action === 'check') {
+    const stored = await KB.getMonth(month);
+    const prices = await KB.getPrices();
+    const base = stored || { key: month, year: parseInt(month.slice(0, 4), 10), month: parseInt(month.slice(5, 7), 10), anfangsbestand: 0, prices: prices, days: {} };
+    const totals = KB.computeMonth(base);
+    if (!totals.entriesCount) return j(res, 200, { ok: false, message: 'Für diesen Monat sind noch keine Buchungen erfasst.' });
+    const text = KB.toPromptText(base, totals);
+    let r; try { r = await AI.kassenbuchCheck({ text: text }); } catch (e) { r = { ok: false, error: 'ai_failed' }; }
+    if (!r || !r.ok) return j(res, 200, { ok: false, message: (r && r.error === 'no_ai_key') ? 'FINN ist gerade nicht verfügbar.' : 'Die Prüfung hat nicht geklappt – bitte später erneut.' });
+    try { await KB.saveCheck(month, { text: r.answer }); } catch (e) {}
+    return j(res, 200, { ok: true, answer: r.answer, checkedAt: new Date().toISOString() });
+  }
+
+  if (action === 'close') {
+    if (!KB.hasStore) return j(res, 200, { ok: false, disabled: true, message: 'Kassenbuch-Speicher nicht verfügbar.' });
+    const name = (sess && (sess.name || sess.user)) || '';
+    const r = await KB.closeMonth(month, String(body.pdf || ''), name);
+    if (!r.ok) return j(res, 200, { ok: false, error: r.error, message: r.error === 'already_closed' ? 'Der Monat ist bereits abgeschlossen.' : 'Abschluss nicht möglich (Monat zuerst speichern).' });
+    const payload = await monthPayload(month);
+    return j(res, 200, { ok: true, current: payload });
+  }
+
+  if (action === 'reopen') {
+    if (!KB.hasStore) return j(res, 200, { ok: false, disabled: true });
+    await KB.reopenMonth(month);
+    const payload = await monthPayload(month);
+    return j(res, 200, { ok: true, current: payload });
+  }
+
+  return j(res, 400, { ok: false, error: 'unknown_action' });
+};

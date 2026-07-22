@@ -158,6 +158,9 @@ var S={ token:null, role:null, meName:null, screen:'dash', convs:[], counts:{}, 
         testers:[], testersLoaded:false, testersLoading:false, testersErr:false, testersPending:0, testerBusy:'', testerMsg:'',
         // Neue Mitglieder: zuletzt beigetreten (aus Magicline-Webhook CONTRACT_CREATED)
         newMembers:[], newMembersLoaded:false, newMembersLoading:false, newMembersErr:false, newMembersDisabled:false,
+        // Kassenbuch: Barkasse pro Monat (nur Admin) – editierbarer Entwurf + gespeicherte Monate
+        kb:null, kbDraft:null, kbMonth:'', kbMonths:[], kbLoaded:false, kbLoading:false, kbErr:false, kbHasStore:true,
+        kbDirty:false, kbBusy:'', kbMsg:'', kbCheck:null, kbCheckBusy:false, kbShowPrices:false,
         // Aufgaben: interne To-do-Liste (getrennt von Kunden-Vorgängen)
         todos:[], todosLoaded:false, todosLoading:false, todoFilter:'open', todoBusy:'',
         todoText:'', todoAssignee:'', todoDue:'', todoAddBusy:false,
@@ -308,7 +311,7 @@ function logout(){ try{ if(window.FitInnNative&&FitInnNative.onTeamLogout) FitIn
 // Angestellte (Trainer-Login) sehen nur das Tagesgeschäft. Diese Bereiche
 // bleiben dem Admin (Passwort-Login) vorbehalten. Die eigentliche Sperre
 // sitzt serverseitig – das hier steuert nur, was in der Oberfläche erscheint.
-var ADMIN_ONLY_SCREENS={ stats:1, msg:1, leads:1, assist:1, wb:1, community:1, tester:1 };
+var ADMIN_ONLY_SCREENS={ stats:1, msg:1, leads:1, assist:1, wb:1, community:1, tester:1, kassenbuch:1 };
 function isAdmin(){ return S.role==='admin'; }
 function canSee(k){ return !ADMIN_ONLY_SCREENS[k] || isAdmin(); }
 function meInitials(){ var n=String(S.meName||'').trim(); if(!n) return 'FI'; var p=n.split(/\s+/).filter(Boolean); var i=((p[0]&&p[0][0])||'')+((p[1]&&p[1][0])||''); return (i||n.slice(0,2)||'FI').toUpperCase(); }
@@ -1850,6 +1853,7 @@ var IC={
   msg:'<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l18-5v12L3 14z"/><path d="M11.5 16.5a3 3 0 0 1-5.6-1.5"/></svg>',
   leads:'<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h18l-7 8v6l-4 2v-8z"/></svg>',
   tester:'<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2" width="12" height="20" rx="3"/><path d="M11 5h2"/><path d="M9.5 12.5l1.8 1.8 3.4-3.6"/></svg>',
+  kassenbuch:'<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4.5A1.5 1.5 0 0 1 5.5 3H19a1 1 0 0 1 1 1v15a1 1 0 0 1-1 1H5.5A1.5 1.5 0 0 1 4 18.5z"/><path d="M8 3v17"/><path d="M15.5 8.3a2.4 2.4 0 1 0 0 4"/><path d="M11.3 10.3h4"/></svg>',
   newmembers:'<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6"/><path d="M22 11h-6"/></svg>',
   todo:'<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>',
   shift:'<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="3"/><path d="M16 2v4M8 2v4M3 10h18"/><path d="M12 13.5v2.5l1.8 1.2"/></svg>',
@@ -1891,6 +1895,7 @@ function renderShell(content, title, sub){
       (canSee('msg')?navItem('msg','Nachrichten',IC.msg):'')+
       (canSee('leads')?navItem('leads','Leads',IC.leads):'')+
       (canSee('tester')?navItem('tester','App-Tester',IC.tester):'')+
+      (canSee('kassenbuch')?navItem('kassenbuch','Kassenbuch',IC.kassenbuch):'')+
       (canSee('wb')?navItem('wb','Rückholung',IC.wb):'')+
       navItem('todo','Aufgaben',IC.todo)+
       navItem('schicht','Schichtplan',IC.shift)+
@@ -1932,7 +1937,7 @@ function renderShell(content, title, sub){
     {k:'dash',l:'Übersicht',ic:IC.dash,on:sc==='dash'},
     {k:'inbox',l:'Posteingang',ic:IC.inbox,on:(sc==='inbox'||sc==='thread'),badge:open},
     {k:'members',l:'Mitglieder',ic:IC.members,on:(sc==='members'||sc==='profile')},
-    {k:'__more',l:'Mehr',ic:IC.dots,on:(['newmembers','appts','trial','help','stats','msg','leads','tester','todo','schicht','assist','wb'].indexOf(sc)>=0)}
+    {k:'__more',l:'Mehr',ic:IC.dots,on:(['newmembers','appts','trial','help','stats','msg','leads','tester','kassenbuch','todo','schicht','assist','wb'].indexOf(sc)>=0)}
   ];
   var bnav=el('<nav class="bottomnav" style="align-items:stretch;padding:6px 8px"></nav>');
   bnav.innerHTML=bnDefs.map(function(it){ var c=it.on?'#0a4958':'#9aa6aa';
@@ -1949,7 +1954,7 @@ function renderShell(content, title, sub){
   side.querySelector('[data-logout]').onclick=logout;
   var toApp=side.querySelector('[data-toapp]'); if(toApp) toApp.onclick=function(){ location.assign('/mitglieder'); };
   var bg=head.querySelector('[data-burger]'); if(bg) bg.onclick=function(){ S.navOpen=true; render(); };
-  head.querySelector('[data-refresh]').onclick=function(){ if(S.screen==='members') loadMembers(); else if(S.screen==='inbox'||S.screen==='appts') loadInbox(); else if(S.screen==='help') loadArticles(); else if(S.screen==='stats') loadStats(); else if(S.screen==='msg') loadBroadcastCount(); else if(S.screen==='leads') loadLeads(); else if(S.screen==='tester') loadTesters(); else if(S.screen==='newmembers') loadNewMembers(); else if(S.screen==='todo') loadTodos(); else if(S.screen==='schicht'){ loadShifts(); if(S.shTab==='tausch') loadShSwaps(); } else render(); };
+  head.querySelector('[data-refresh]').onclick=function(){ if(S.screen==='members') loadMembers(); else if(S.screen==='inbox'||S.screen==='appts') loadInbox(); else if(S.screen==='help') loadArticles(); else if(S.screen==='stats') loadStats(); else if(S.screen==='msg') loadBroadcastCount(); else if(S.screen==='leads') loadLeads(); else if(S.screen==='tester') loadTesters(); else if(S.screen==='kassenbuch') loadKassenbuch(S.kbMonth); else if(S.screen==='newmembers') loadNewMembers(); else if(S.screen==='todo') loadTodos(); else if(S.screen==='schicht'){ loadShifts(); if(S.shTab==='tausch') loadShSwaps(); } else render(); };
   var bell=head.querySelector('[data-bell]'); if(bell) bell.onclick=function(){ goScreen('inbox'); };
   // Haupt-Inhalt-Scroll über Voll-Renders hinweg erhalten (sonst springt z. B. das
   // Mitgliedsprofil bei jeder Aktion/jedem Loader nach oben).
@@ -3157,6 +3162,372 @@ function newMembersNode(){
 
   node.innerHTML=intro+body;
   node.querySelectorAll('[data-nmopen]').forEach(function(b){ b.onclick=function(){ S.screen='members'; openProfile(b.getAttribute('data-nmopen')); }; });
+  return node;
+}
+
+// ---------- Kassenbuch (Barkasse, nur Admin) ----------
+// Bildet die Excel-Vorlage nach: pro Tag verkaufte Artikel + Sonstiges + Ausgaben;
+// Einnahmen/Bestand werden live berechnet (Spiegel von lib/kassenbuch.js). Monate werden
+// gespeichert, sind abrufbar, FINN prüft steuerlich/plausibel, PDF-Export + Druck, Abschluss.
+var KB_ART=['kaffee','eiweissshake','eiweissbeutel'];
+var KB_PDEF={kaffee:1.5,eiweissshake:2.5,eiweissbeutel:20.5};
+var KB_MON=['','Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
+function kbNum(v){ var n=parseFloat(String(v==null?'':v).replace(',','.')); return isFinite(n)?n:0; }
+function kbInt(v){ var n=parseInt(String(v==null?'':v).replace(',','.'),10); return isFinite(n)&&n>0?n:0; }
+function kbR2(n){ return Math.round((Number(n)||0)*100)/100; }
+function kbEuro(n){ return kbR2(n).toFixed(2).replace('.',',')+' €'; }
+function kbMonthLabel(key){ var p=String(key||'').split('-'); if(p.length<2) return String(key||''); return (KB_MON[parseInt(p[1],10)]||p[1])+' '+p[0]; }
+function kbDaysInMonth(y,m){ var d=new Date(Date.UTC(y,m,0)).getUTCDate(); return (d>=28&&d<=31)?d:31; }
+// Reine Berechnung – identisch zur Server-Logik, für die sofortige Live-Vorschau.
+function kbCompute(m){
+  m=m||{};
+  var prices={}; KB_ART.forEach(function(a){ var p=kbR2(kbNum((m.prices||{})[a])); prices[a]=p>0?p:KB_PDEF[a]; });
+  var days=m.days||{}, anfang=kbR2(kbNum(m.anfangsbestand)), running=anfang, sumEin=0, sumAus=0, rows=[];
+  for(var d=1;d<=31;d++){
+    var e=days[String(d)]||{};
+    var kaffee=kbInt(e.kaffee), shake=kbInt(e.eiweissshake), beutel=kbInt(e.eiweissbeutel);
+    var sonst=Math.max(0,kbR2(kbNum(e.sonstigesBetrag))), aus=Math.max(0,kbR2(kbNum(e.ausgaben)));
+    var einn=kbR2(kaffee*prices.kaffee+shake*prices.eiweissshake+beutel*prices.eiweissbeutel+sonst);
+    var parts=[]; if(kaffee) parts.push(kaffee+' Kaffee'); if(shake) parts.push(shake+' Eiweißshake'); if(beutel) parts.push(beutel+' Eiweißbeutel');
+    if(e.sonstigesText&&String(e.sonstigesText).trim()) parts.push(String(e.sonstigesText).trim());
+    var ausText=(e.ausgabenText&&String(e.ausgabenText).trim())?String(e.ausgabenText).trim():'';
+    var hasEntry=!!(kaffee||shake||beutel||sonst||aus||parts.length||ausText);
+    running=kbR2(running+einn-aus); sumEin=kbR2(sumEin+einn); sumAus=kbR2(sumAus+aus);
+    rows.push({day:d,einnahmen:einn,ausgaben:aus,beschreibung:parts.join(' + '),ausgabenText:ausText,bestand:running,hasEntry:hasEntry});
+  }
+  var end=kbR2(anfang+sumEin-sumAus);
+  var gez=(m.gezaehlterEndbestand===''||m.gezaehlterEndbestand==null)?null:kbR2(kbNum(m.gezaehlterEndbestand));
+  var diff=gez==null?null:kbR2(gez-end);
+  return {prices:prices,anfangsbestand:anfang,rows:rows,sumEinnahmen:kbR2(sumEin),sumAusgaben:kbR2(sumAus),endbestand:end,gezaehlterEndbestand:gez,differenz:diff,kontrolleOk:diff==null?true:Math.abs(diff)<0.005,entriesCount:rows.filter(function(r){return r.hasEntry;}).length};
+}
+// Server-Monat -> editierbarer Entwurf (Zahlen als Eingabetexte, 0 wird zu leer).
+function kbSeedDraft(c){
+  c=c||{};
+  var sInt=function(v){ v=kbInt(v); return v?String(v):''; };
+  var sEur=function(v){ v=kbNum(v); return v?String(v).replace('.',','):''; };
+  var days={}, src=c.days||{};
+  Object.keys(src).forEach(function(k){ var e=src[k]||{}; days[k]={kaffee:sInt(e.kaffee),eiweissshake:sInt(e.eiweissshake),eiweissbeutel:sInt(e.eiweissbeutel),sonstigesText:e.sonstigesText||'',sonstigesBetrag:sEur(e.sonstigesBetrag),ausgaben:sEur(e.ausgaben),ausgabenText:e.ausgabenText||''}; });
+  var pr=c.prices||{};
+  return { blattNr:c.blattNr||'', anfangsbestand:sEur(c.anfangsbestand),
+    gezaehlterEndbestand:(c.gezaehlterEndbestand===''||c.gezaehlterEndbestand==null)?'':sEur(c.gezaehlterEndbestand),
+    prices:{kaffee:sEur(pr.kaffee||KB_PDEF.kaffee),eiweissshake:sEur(pr.eiweissshake||KB_PDEF.eiweissshake),eiweissbeutel:sEur(pr.eiweissbeutel||KB_PDEF.eiweissbeutel)},
+    days:days };
+}
+async function loadKassenbuch(month){
+  S.kbLoading=true; S.kbErr=false; render();
+  try{
+    var q=(month&&/^\d{4}-\d{2}$/.test(month))?('?month='+encodeURIComponent(month)):'';
+    var r=await tapi('/api/team/kassenbuch'+q);
+    if(r && r.ok && r.current){
+      S.kb=r.current; S.kbMonth=r.current.key; S.kbMonths=r.months||[]; S.kbHasStore=r.hasStore!==false;
+      S.kbDraft=kbSeedDraft(r.current); S.kbDirty=false; S.kbMsg='';
+      S.kbCheck=(r.current.check&&r.current.check.text)?r.current.check:null;
+    } else S.kbErr=!S.kb;
+    S.kbLoaded=true;
+  }catch(e){ S.kbErr=!S.kb; }
+  S.kbLoading=false; render();
+}
+function kbSetField(day,field,val){
+  if(!S.kbDraft) return;
+  if(day==='_top'){ S.kbDraft[field]=val; }
+  else if(day==='_price'){ S.kbDraft.prices=S.kbDraft.prices||{}; S.kbDraft.prices[field]=val; }
+  else { var k=String(day); S.kbDraft.days=S.kbDraft.days||{}; S.kbDraft.days[k]=S.kbDraft.days[k]||{}; S.kbDraft.days[k][field]=val; }
+  S.kbDirty=true; kbRepaint();
+}
+// Live-Neuberechnung ohne Voll-Render (behält den Tastaturfokus in der Zelle).
+function kbRepaint(){
+  if(!S.kbDraft) return;
+  var t=kbCompute(S.kbDraft);
+  t.rows.forEach(function(r){
+    var ce=document.getElementById('kbein-'+r.day); if(ce) ce.textContent=r.einnahmen?kbEuro(r.einnahmen):'—';
+    var cb=document.getElementById('kbbes-'+r.day); if(cb) cb.textContent=kbEuro(r.bestand);
+    var tr=document.getElementById('kbrow-'+r.day); if(tr) tr.style.background=r.hasEntry?'#f6faf7':'transparent';
+  });
+  var set=function(id,txt){ var x=document.getElementById(id); if(x) x.textContent=txt; };
+  set('kbsum-ein',kbEuro(t.sumEinnahmen)); set('kbsum-aus',kbEuro(t.sumAusgaben)); set('kbsum-end',kbEuro(t.endbestand));
+  set('kbsum-anf',kbEuro(t.anfangsbestand));
+  var dd=document.getElementById('kbdiff');
+  if(dd){ if(t.differenz==null){ dd.textContent='—'; dd.style.color='#8a929a'; } else { dd.textContent=(t.differenz>0?'+':'')+kbEuro(t.differenz); dd.style.color=t.kontrolleOk?'#1d7a3e':'#b53a2c'; } }
+  var gz=document.getElementById('kbsum-gez'); if(gz) gz.textContent=(t.gezaehlterEndbestand==null?'—':kbEuro(t.gezaehlterEndbestand));
+  var sv=document.getElementById('kbSaveBtn'); if(sv){ var en=S.kbHasStore&&!(S.kb&&S.kb.closed); sv.disabled=!en; sv.style.opacity=en?'1':'.5'; sv.style.cursor=en?'pointer':'default'; }
+}
+async function kbSave(silent){
+  if(S.kbBusy) return false;
+  if(S.kb && S.kb.closed) return false;
+  if(!S.kbHasStore){ S.kbMsg='Speicher nicht aktiv – Eingaben können nicht gesichert werden.'; if(!silent) render(); return false; }
+  S.kbBusy='save'; if(!silent){ S.kbMsg=''; render(); }
+  try{
+    var r=await tapi('/api/team/kassenbuch',{method:'POST',body:{action:'save',month:S.kbMonth,data:S.kbDraft}});
+    if(r && r.ok && r.current){ S.kb=r.current; S.kbDraft=kbSeedDraft(r.current); S.kbDirty=false; S.kbBusy=''; if(!silent){ S.kbMsg='Gespeichert.'; render(); } return true; }
+    S.kbMsg=(r&&r.message)||'Konnte nicht gespeichert werden.'; S.kbBusy=''; render(); return false;
+  }catch(e){ S.kbMsg='Verbindung fehlgeschlagen.'; S.kbBusy=''; render(); return false; }
+}
+async function kbDoCheck(){
+  if(S.kbCheckBusy||S.kbBusy) return;
+  if(S.kbDirty){ var okS=await kbSave(true); if(!okS){ render(); return; } }
+  S.kbCheckBusy=true; S.kbMsg=''; render();
+  try{
+    var r=await tapi('/api/team/kassenbuch',{method:'POST',body:{action:'check',month:S.kbMonth}});
+    if(r && r.ok && r.answer){ S.kbCheck={text:r.answer,at:r.checkedAt}; }
+    else S.kbMsg=(r&&r.message)||'Die Prüfung hat nicht geklappt.';
+  }catch(e){ S.kbMsg='Verbindung fehlgeschlagen.'; }
+  S.kbCheckBusy=false; render();
+}
+function kbCurTotals(){ return kbCompute(S.kbDraft||kbSeedDraft(S.kb||{})); }
+function kbExportPdf(){
+  S.kbMsg='PDF wird erstellt …'; render();
+  loadPdfLib().then(function(ok){
+    var doc=ok?buildKassenbuchPdf(S.kb,kbCurTotals()):null;
+    if(!doc){ S.kbMsg=PDF_LOAD_ERR; render(); return; }
+    doc.save('kassenbuch-'+S.kbMonth+'.pdf'); S.kbMsg='PDF heruntergeladen.'; render();
+  });
+}
+function kbPrint(){
+  S.kbMsg='Druckansicht wird vorbereitet …'; render();
+  loadPdfLib().then(function(ok){
+    var doc=ok?buildKassenbuchPdf(S.kb,kbCurTotals()):null;
+    if(!doc){ S.kbMsg=PDF_LOAD_ERR; render(); return; }
+    try{ doc.autoPrint(); var w=window.open(doc.output('bloburl'),'_blank'); if(!w){ doc.save('kassenbuch-'+S.kbMonth+'.pdf'); S.kbMsg='Pop-up blockiert – PDF wurde stattdessen heruntergeladen.'; } else S.kbMsg=''; }
+    catch(e){ doc.save('kassenbuch-'+S.kbMonth+'.pdf'); S.kbMsg='Druck nicht möglich – PDF heruntergeladen.'; }
+    render();
+  });
+}
+async function kbClose(){
+  if(S.kbBusy) return;
+  if(!confirm('Monat '+kbMonthLabel(S.kbMonth)+' abschließen?\n\nDanach sind keine Änderungen mehr möglich – der Monat bleibt aber abrufbar und als PDF hinterlegt.')) return;
+  if(S.kbDirty){ var okS=await kbSave(true); if(!okS){ render(); return; } }
+  S.kbBusy='close'; S.kbMsg='PDF-Beleg wird erstellt …'; render();
+  var ok=await loadPdfLib();
+  var b64=''; var doc=ok?buildKassenbuchPdf(S.kb,kbCurTotals()):null;
+  if(doc){ try{ var du=doc.output('datauristring'); var ix=du.indexOf('base64,'); b64=ix>=0?du.slice(ix+7):''; }catch(e){ b64=''; } }
+  try{
+    var r=await tapi('/api/team/kassenbuch',{method:'POST',body:{action:'close',month:S.kbMonth,pdf:b64}});
+    if(r && r.ok && r.current){ S.kb=r.current; S.kbDraft=kbSeedDraft(r.current); S.kbDirty=false; S.kbMsg='Monat abgeschlossen und als PDF hinterlegt.';
+      try{ var lr=await tapi('/api/team/kassenbuch'); if(lr&&lr.ok) S.kbMonths=lr.months||S.kbMonths; }catch(e2){}
+    } else S.kbMsg=(r&&r.message)||'Abschluss nicht möglich.';
+  }catch(e){ S.kbMsg='Verbindung fehlgeschlagen.'; }
+  S.kbBusy=''; render();
+}
+async function kbReopen(){
+  if(S.kbBusy) return;
+  if(!confirm('Abschluss von '+kbMonthLabel(S.kbMonth)+' zurücknehmen?\n\nDer Monat wird wieder bearbeitbar; der hinterlegte PDF-Beleg wird entfernt.')) return;
+  S.kbBusy='reopen'; S.kbMsg=''; render();
+  try{
+    var r=await tapi('/api/team/kassenbuch',{method:'POST',body:{action:'reopen',month:S.kbMonth}});
+    if(r && r.ok && r.current){ S.kb=r.current; S.kbDraft=kbSeedDraft(r.current); S.kbDirty=false; S.kbMsg='Monat wieder geöffnet.';
+      try{ var lr=await tapi('/api/team/kassenbuch'); if(lr&&lr.ok) S.kbMonths=lr.months||S.kbMonths; }catch(e2){}
+    } else S.kbMsg='Konnte nicht geöffnet werden.';
+  }catch(e){ S.kbMsg='Verbindung fehlgeschlagen.'; }
+  S.kbBusy=''; render();
+}
+async function kbStoredPdf(monthKey){
+  S.kbMsg='PDF wird geladen …'; render();
+  try{
+    var r=await tapi('/api/team/kassenbuch?month='+encodeURIComponent(monthKey)+'&pdf=1');
+    if(r && r.ok && r.pdf){ var a=document.createElement('a'); a.href='data:application/pdf;base64,'+r.pdf; a.download='kassenbuch-'+monthKey+'.pdf'; document.body.appendChild(a); a.click(); a.remove(); S.kbMsg=''; }
+    else S.kbMsg='Für diesen Monat ist kein PDF hinterlegt.';
+  }catch(e){ S.kbMsg='PDF konnte nicht geladen werden.'; }
+  render();
+}
+function kbShiftMonth(delta){
+  if(S.kbDirty && !confirm('Es gibt ungespeicherte Änderungen. Trotzdem den Monat wechseln? Nicht gespeicherte Eingaben gehen verloren.')) return;
+  var p=String(S.kbMonth||'').split('-'); var y=parseInt(p[0],10), m=parseInt(p[1],10); if(!y||!m) return;
+  var idx=(y*12+(m-1))+delta; var ny=Math.floor(idx/12), nm=(idx%12)+1;
+  loadKassenbuch(ny+'-'+String(nm).padStart(2,'0'));
+}
+function kbOpenMonth(key){
+  if(S.kbDirty && !confirm('Es gibt ungespeicherte Änderungen. Trotzdem wechseln? Nicht gespeicherte Eingaben gehen verloren.')) return;
+  loadKassenbuch(key);
+}
+// PDF: das offizielle Kassenbuch-Blatt (Kopf, gebuchte Tage, Summen, Kassensturz).
+function buildKassenbuchPdf(payload,t){
+  var ns=window.jspdf; if(!ns||!ns.jsPDF) return null;
+  payload=payload||{}; t=t||kbCurTotals();
+  var doc=new ns.jsPDF({unit:'mm',format:'a4'}); var W=210, M=14;
+  var TEAL=[14,96,114], INK=[21,23,27], MUT=[90,99,106], LT=[140,146,152], PANEL=[244,247,248], LINE=[224,230,232], RED=[181,58,44], GREEN=[29,122,62];
+  var sF=function(a){doc.setFillColor(a[0],a[1],a[2]);}, sT=function(a){doc.setTextColor(a[0],a[1],a[2]);}, sD=function(a){doc.setDrawColor(a[0],a[1],a[2]);};
+  var EIN=138, AUS=166, BES=196;
+  sF(TEAL); doc.rect(0,0,W,26,'F'); ciLogoImg(doc,M);
+  doc.setFont('helvetica','bold'); doc.setFontSize(9); sT([255,255,255]); doc.text('Ausgestellt am '+ciToday(), W-M, 15, {align:'right'});
+  doc.setFont('helvetica','bold'); doc.setFontSize(17); sT(INK); doc.text('Kassenbuch Fit-Inn Trier', M, 39);
+  if(payload.closed){ doc.setFont('helvetica','bold'); doc.setFontSize(8.5); var pl='ABGESCHLOSSEN', pw=doc.getTextWidth(pl)+8; sF([231,246,236]); doc.roundedRect(W-M-pw,34.5,pw,7,3.5,3.5,'F'); sT(GREEN); doc.text(pl,W-M-pw/2,39.2,{align:'center'}); }
+  // Meta-Zeilen wie auf dem Steuerberater-Blatt: Monat/Jahr/Blatt-Nr. + Anfangs-/Endbestand.
+  var lbl=function(x,y,l,v){ doc.setFont('helvetica','normal'); doc.setFontSize(9.5); sT(MUT); doc.text(l,x,y); var lw=doc.getTextWidth(l); doc.setFont('helvetica','bold'); sT(INK); doc.text(v,x+lw+1.5,y); };
+  lbl(M,46.5,'Monat: ',(KB_MON[payload.month]||'')); lbl(M+52,46.5,'Jahr: ',String(payload.year||'')); lbl(M+96,46.5,'Blatt-Nr.: ',String(payload.blattNr||'—'));
+  lbl(M,52.5,'Anfangsbestand: ',kbEuro(t.anfangsbestand)); lbl(M+70,52.5,'Endbestand: ',kbEuro(t.endbestand));
+  doc.setFont('helvetica','normal'); doc.setFontSize(9); sT(LT); doc.text('Preise:  Kaffee '+kbEuro(t.prices.kaffee)+'   ·   Eiweißshake '+kbEuro(t.prices.eiweissshake)+'   ·   Eiweißbeutel '+kbEuro(t.prices.eiweissbeutel), M, 58.5);
+  var y=67;
+  doc.setFont('helvetica','bold'); doc.setFontSize(8.5); sT(INK);
+  doc.text('Tag',M,y); doc.text('Beschreibung',M+11,y); doc.text('Einnahme',EIN,y,{align:'right'}); doc.text('Ausgabe',AUS,y,{align:'right'}); doc.text('Bestand',BES,y,{align:'right'});
+  y+=2; sD(LINE); doc.setLineWidth(0.3); doc.line(M,y,W-M,y); y+=5;
+  doc.setFont('helvetica','italic'); doc.setFontSize(9); sT(MUT); doc.text('Anfangsbestand',M+11,y); doc.setFont('helvetica','bold'); sT(INK); doc.text(kbEuro(t.anfangsbestand),BES,y,{align:'right'}); y+=6;
+  doc.setFont('helvetica','normal'); doc.setFontSize(9);
+  var any=false;
+  t.rows.forEach(function(r){
+    if(!r.hasEntry) return; any=true;
+    if(y>276){ doc.addPage(); y=20; }
+    sT(MUT); doc.text(String(r.day)+'.',M,y);
+    var desc=(r.beschreibung||'')+(r.ausgabenText?((r.beschreibung?'  ·  ':'')+'Ausgabe: '+r.ausgabenText):''); if(!desc) desc='—';
+    sT(INK); doc.text(doc.splitTextToSize(desc,EIN-(M+11)-3)[0]||'—',M+11,y);
+    if(r.einnahmen){ sT(GREEN); doc.text(kbEuro(r.einnahmen),EIN,y,{align:'right'}); }
+    if(r.ausgaben){ sT(RED); doc.text('-'+kbEuro(r.ausgaben),AUS,y,{align:'right'}); }
+    sT(INK); doc.text(kbEuro(r.bestand),BES,y,{align:'right'});
+    y+=5.4;
+  });
+  if(!any){ sT(LT); doc.setFont('helvetica','italic'); doc.text('Für diesen Monat sind keine Buchungen erfasst.',M+11,y); y+=6; }
+  y+=3; if(y>250){ doc.addPage(); y=20; }
+  sD(LINE); doc.line(M,y,W-M,y); y+=6;
+  var line=function(lbl,val,col,bold){ doc.setFont('helvetica',bold?'bold':'normal'); doc.setFontSize(bold?11:10); sT(MUT); doc.text(lbl,M+11,y); sT(col||INK); doc.text(val,BES,y,{align:'right'}); y+=(bold?7.5:6); };
+  line('Summe Einnahmen',kbEuro(t.sumEinnahmen),GREEN,false);
+  line('Summe Ausgaben','-'+kbEuro(t.sumAusgaben),RED,false);
+  line('Rechnerischer Endbestand',kbEuro(t.endbestand),INK,true);
+  if(t.gezaehlterEndbestand!=null){
+    line('Gezählter Kassenbestand',kbEuro(t.gezaehlterEndbestand),INK,false);
+    line('Differenz (Kassensturz)',(t.differenz>0?'+':'')+kbEuro(t.differenz),(t.kontrolleOk?GREEN:RED),true);
+  }
+  sD(LINE); doc.setLineWidth(0.3); doc.line(M,283,W-M,283);
+  doc.setFont('helvetica','normal'); doc.setFontSize(8); sT(LT);
+  doc.text('Bar-Nebenkasse · Fit-Inn Trier · maschinell erstellt am '+ciToday()+(payload.closedBy?('  ·  abgeschlossen von '+payload.closedBy):''), M, 288);
+  return doc;
+}
+function kassenbuchNode(){
+  var node=el('<div style="flex:1;overflow-y:auto;padding:18px 20px 96px"></div>');
+  if(S.kbLoading && !S.kb){ node.innerHTML='<div style="padding:60px 22px;text-align:center;color:#8a929a;font-weight:700">Lade Kassenbuch …</div>'; return node; }
+  if(S.kbErr && !S.kb){
+    node.innerHTML='<div style="padding:60px 22px;text-align:center"><div style="font-size:14px;color:#42454b;font-weight:700;margin-bottom:12px">Kassenbuch konnte nicht geladen werden.</div><button data-kbretry="1" style="border:1.5px solid #d6dee0;background:#fff;border-radius:11px;font-size:13px;font-weight:800;padding:9px 16px;color:'+TEAL+';cursor:pointer">Erneut laden</button></div>';
+    var rb=node.querySelector('[data-kbretry]'); if(rb) rb.onclick=function(){ S.kbErr=false; loadKassenbuch(S.kbMonth); }; return node;
+  }
+  var cur=S.kb; if(!cur){ node.innerHTML='<div style="padding:60px 22px;text-align:center;color:#8a929a;font-weight:700">Kein Monat geladen.</div>'; var rb0=null; loadKassenbuch(); return node; }
+  var closed=!!cur.closed;
+  if(!S.kbDraft) S.kbDraft=kbSeedDraft(cur);
+  var draft=S.kbDraft, t=kbCompute(draft);
+  var dim=kbDaysInMonth(cur.year,cur.month);
+  var H='';
+
+  // Kopf: Monatsnavigation
+  H+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">'+
+    '<button data-kbnav="prev" title="Vormonat" style="width:38px;height:38px;flex-shrink:0;border:1px solid #dfe6e8;background:#fff;border-radius:11px;display:flex;align-items:center;justify-content:center;cursor:pointer"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#42454b" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button>'+
+    '<div style="flex:1;text-align:center"><div style="font-size:16px;font-weight:900;color:#15171b">'+esc(kbMonthLabel(cur.key))+'</div><div style="font-size:11px;color:#9aa2a8;font-weight:700">'+(closed?'Abgeschlossen':(cur.exists?'Entwurf gespeichert':'Neuer Monat'))+'</div></div>'+
+    '<button data-kbnav="next" title="Folgemonat" style="width:38px;height:38px;flex-shrink:0;border:1px solid #dfe6e8;background:#fff;border-radius:11px;display:flex;align-items:center;justify-content:center;cursor:pointer"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#42454b" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg></button>'+
+  '</div>';
+
+  if(!S.kbHasStore) H+='<div style="background:#fbf0e3;border:1px solid #f0d8b8;color:#8a5a10;border-radius:12px;padding:11px 14px;font-size:12.5px;font-weight:700;margin-bottom:12px">Der Kassenbuch-Speicher ist nicht aktiv. Du kannst rechnen und ein PDF erzeugen, aber noch nichts dauerhaft speichern oder abschließen.</div>';
+  if(S.kbMsg) H+='<div style="background:#e7f1f3;border:1px solid #cfe0e3;color:#0a4958;border-radius:12px;padding:11px 14px;font-size:13px;font-weight:700;margin-bottom:12px">'+esc(S.kbMsg)+'</div>';
+  if(closed) H+='<div style="background:#e7f6ec;border:1px solid #bfe3cd;color:#176b37;border-radius:12px;padding:11px 14px;font-size:12.5px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;gap:10px"><span>Dieser Monat ist abgeschlossen'+(cur.closedBy?(' (von '+esc(cur.closedBy)+')'):'')+' und schreibgeschützt.</span><button data-kbreopen="1"'+(S.kbBusy?' disabled':'')+' style="flex-shrink:0;border:1px solid #bfe3cd;background:#fff;border-radius:9px;font-size:12px;font-weight:800;padding:7px 12px;color:#176b37;cursor:pointer">Wieder öffnen</button></div>';
+
+  // Meta-Karte: Blatt-Nr, Anfangsbestand, gezählter Bestand
+  var dis=closed?' disabled':'';
+  var metaInp=function(field,val,ph,mode){ return '<input data-kbd="_top" data-kbf="'+field+'" value="'+esc(val)+'" placeholder="'+esc(ph)+'" inputmode="'+(mode==='dec'?'decimal':'text')+'"'+dis+' style="width:100%;border:1px solid '+(closed?'#e6ebee':'#dfe6e8')+';border-radius:9px;padding:9px 10px;font-size:13.5px;font-weight:800;color:#15171b;background:'+(closed?'#f4f6f7':'#fff')+';font-family:inherit;box-sizing:border-box" />'; };
+  var carriedHint='';
+  if(cur.carried && !cur.exists){ carriedHint='<div style="background:#e7f1f3;border:1px solid #cfe0e3;color:#0a4958;border-radius:10px;padding:8px 11px;font-size:11.5px;font-weight:700;margin-top:10px">Aus '+esc(kbMonthLabel(cur.carried.fromMonth))+' übernommen: Anfangsbestand = Endbestand des Vormonats'+(cur.carried.blattNr?(', Blatt-Nr. '+esc(cur.carried.blattNr)):'')+'. Du kannst beides anpassen.</div>'; }
+  H+='<div style="background:#fff;border:1px solid #e1e8ea;border-radius:16px;padding:14px 16px;margin-bottom:12px">'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">'+
+      '<div><div style="font-size:11px;font-weight:800;color:#8a929a;text-transform:uppercase;letter-spacing:.3px;margin-bottom:5px">Anfangsbestand</div>'+metaInp('anfangsbestand',draft.anfangsbestand,'0,00','dec')+'</div>'+
+      '<div><div style="font-size:11px;font-weight:800;color:#8a929a;text-transform:uppercase;letter-spacing:.3px;margin-bottom:5px">Blatt-Nr.</div>'+metaInp('blattNr',draft.blattNr,'z. B. 844')+'</div>'+
+    '</div>'+
+    carriedHint+
+    '<div style="margin-top:10px"><div style="font-size:11px;font-weight:800;color:#8a929a;text-transform:uppercase;letter-spacing:.3px;margin-bottom:5px">Gezählter Kassenbestand am Monatsende (Kassensturz)</div>'+metaInp('gezaehlterEndbestand',draft.gezaehlterEndbestand,'leer lassen, wenn nicht gezählt','dec')+'<div style="font-size:11px;color:#9aa2a8;font-weight:600;margin-top:5px">Trag hier ein, was du am Ende real in der Kasse zählst – daraus ergibt sich die Differenz zum rechnerischen Bestand.</div></div>'+
+  '</div>';
+
+  // Preisliste (einklappbar)
+  H+='<div style="background:#fff;border:1px solid #e1e8ea;border-radius:16px;margin-bottom:12px;overflow:hidden">'+
+    '<button data-kbtog="1" style="width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;background:none;border:none;padding:13px 16px;cursor:pointer;text-align:left">'+
+      '<span style="font-size:13.5px;font-weight:900;color:#15171b">Preisliste</span>'+
+      '<span style="font-size:12px;font-weight:700;color:#8a929a">'+esc('Kaffee '+kbEuro(t.prices.kaffee)+' · Shake '+kbEuro(t.prices.eiweissshake)+' · Beutel '+kbEuro(t.prices.eiweissbeutel))+' '+(S.kbShowPrices?'▲':'▼')+'</span>'+
+    '</button>';
+  if(S.kbShowPrices){
+    var priceInp=function(a,val){ return '<div style="flex:1;min-width:96px"><div style="font-size:11px;font-weight:800;color:#8a929a;margin-bottom:4px">'+({kaffee:'Kaffee',eiweissshake:'Eiweißshake',eiweissbeutel:'Eiweißbeutel'})[a]+'</div><input data-kbd="_price" data-kbf="'+a+'" value="'+esc(val)+'" inputmode="decimal"'+dis+' style="width:100%;border:1px solid '+(closed?'#e6ebee':'#dfe6e8')+';border-radius:9px;padding:8px 10px;font-size:13px;font-weight:800;color:#15171b;background:'+(closed?'#f4f6f7':'#fff')+';font-family:inherit;box-sizing:border-box" /></div>'; };
+    H+='<div style="display:flex;gap:10px;flex-wrap:wrap;padding:2px 16px 15px">'+priceInp('kaffee',draft.prices.kaffee)+priceInp('eiweissshake',draft.prices.eiweissshake)+priceInp('eiweissbeutel',draft.prices.eiweissbeutel)+'</div>';
+  }
+  H+='</div>';
+
+  // Tages-Tabelle (horizontal scrollbar auf schmalen Displays)
+  var th=function(l,w){ return '<th style="position:sticky;top:0;background:#0e6072;color:#fff;font-size:10.5px;font-weight:800;padding:8px 5px;white-space:nowrap;min-width:'+w+'px">'+l+'</th>'; };
+  var cell=function(dayN,field,val,w,mode){ return '<td style="padding:3px 3px"><input data-kbd="'+dayN+'" data-kbf="'+field+'" value="'+esc(val)+'" inputmode="'+(mode==='dec'?'decimal':(mode==='int'?'numeric':'text'))+'"'+dis+' style="width:'+w+'px;max-width:'+w+'px;border:1px solid '+(closed?'#eef1f2':'#e1e8ea')+';border-radius:7px;padding:6px 4px;font-size:12px;font-weight:700;color:#15171b;background:'+(closed?'#f7f9fa':'#fff')+';text-align:'+(mode==='text'?'left':'center')+';font-family:inherit;box-sizing:border-box" /></td>'; };
+  var rowsHtml='';
+  for(var d=1; d<=dim; d++){
+    var e=(draft.days&&draft.days[String(d)])||{};
+    var rr=t.rows[d-1];
+    rowsHtml+='<tr id="kbrow-'+d+'" style="background:'+(rr.hasEntry?'#f6faf7':'transparent')+';border-bottom:1px solid #eef2f3">'+
+      '<td style="text-align:center;font-size:12px;font-weight:800;color:#6b7780;padding:3px 4px">'+d+'.</td>'+
+      cell(d,'kaffee',e.kaffee||'',40,'int')+cell(d,'eiweissshake',e.eiweissshake||'',40,'int')+cell(d,'eiweissbeutel',e.eiweissbeutel||'',40,'int')+
+      cell(d,'sonstigesText',e.sonstigesText||'',96,'text')+cell(d,'sonstigesBetrag',e.sonstigesBetrag||'',56,'dec')+
+      cell(d,'ausgaben',e.ausgaben||'',56,'dec')+cell(d,'ausgabenText',e.ausgabenText||'',96,'text')+
+      '<td id="kbein-'+d+'" style="text-align:right;font-size:12px;font-weight:800;color:#1d7a3e;padding:3px 8px;white-space:nowrap">'+(rr.einnahmen?kbEuro(rr.einnahmen):'—')+'</td>'+
+      '<td id="kbbes-'+d+'" style="text-align:right;font-size:12px;font-weight:800;color:#15171b;padding:3px 8px;white-space:nowrap">'+kbEuro(rr.bestand)+'</td>'+
+    '</tr>';
+  }
+  H+='<div style="background:#fff;border:1px solid #e1e8ea;border-radius:16px;overflow:hidden;margin-bottom:12px">'+
+    '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch"><table style="border-collapse:collapse;width:100%;min-width:640px">'+
+      '<thead><tr>'+th('Tag',34)+th('Kaffee',48)+th('Shake',48)+th('Beutel',48)+th('Sonstiges',104)+th('Sonst. €',64)+th('Ausgabe €',64)+th('Ausgabe-Notiz',104)+th('Einnahme',70)+th('Bestand',72)+'</tr></thead>'+
+      '<tbody>'+rowsHtml+'</tbody>'+
+    '</table></div>'+
+    '<div style="font-size:11px;color:#9aa2a8;font-weight:600;padding:8px 14px;border-top:1px solid #eef2f3">Anzahl Kaffee/Shakes/Beutel eintragen – Einnahme &amp; laufender Bestand rechnen sich automatisch. Nach rechts wischen zeigt Ausgaben &amp; Bestand.</div>'+
+  '</div>';
+
+  // Zusammenfassung
+  var sumRow=function(l,id,val,col,strong){ return '<div style="display:flex;align-items:center;justify-content:space-between;padding:'+(strong?'10px':'7px')+' 0'+(strong?';border-top:1px solid #e6ecee':'')+'"><span style="font-size:'+(strong?'13.5':'12.5')+'px;font-weight:'+(strong?'800':'700')+';color:'+(strong?'#15171b':'#6b7780')+'">'+l+'</span><span id="'+id+'" style="font-size:'+(strong?'15':'13')+'px;font-weight:900;color:'+(col||'#15171b')+'">'+val+'</span></div>'; };
+  H+='<div style="background:#fff;border:1px solid #e1e8ea;border-radius:16px;padding:8px 16px 12px;margin-bottom:12px">'+
+    sumRow('Anfangsbestand','kbsum-anf',kbEuro(t.anfangsbestand),'#6b7780',false)+
+    sumRow('Summe Einnahmen','kbsum-ein',kbEuro(t.sumEinnahmen),'#1d7a3e',false)+
+    sumRow('Summe Ausgaben','kbsum-aus',kbEuro(t.sumAusgaben),'#b53a2c',false)+
+    sumRow('Rechnerischer Endbestand','kbsum-end',kbEuro(t.endbestand),'#15171b',true)+
+    sumRow('Gezählt (Kassensturz)','kbsum-gez',(t.gezaehlterEndbestand==null?'—':kbEuro(t.gezaehlterEndbestand)),'#6b7780',false)+
+    sumRow('Differenz','kbdiff',(t.differenz==null?'—':((t.differenz>0?'+':'')+kbEuro(t.differenz))),(t.differenz==null?'#8a929a':(t.kontrolleOk?'#1d7a3e':'#b53a2c')),true)+
+  '</div>';
+
+  // FINN-Prüfung
+  H+='<div style="background:#fff;border:1px solid #e1e8ea;border-radius:16px;padding:15px 16px;margin-bottom:12px">'+
+    '<div style="display:flex;align-items:center;gap:9px;margin-bottom:5px"><span style="width:26px;height:26px;border-radius:8px;background:#e7f1f3;color:'+TEAL+';display:flex;align-items:center;justify-content:center;font-weight:900;font-size:13px;flex-shrink:0">F</span><span style="font-size:14px;font-weight:900;color:#15171b">FINN prüft dein Kassenbuch</span></div>'+
+    '<div style="font-size:12.5px;color:#5a636a;font-weight:600;line-height:1.6;margin-bottom:11px">Plausibilität &amp; Rechenkontrolle sowie steuerlich/formelle Punkte (GoBD, Kassensturz, Belege, USt). Unverbindliche Orientierung – keine Steuerberatung.</div>'+
+    '<button data-kbcheck="1"'+((S.kbCheckBusy||S.kbBusy)?' disabled':'')+' style="width:100%;border:none;background:'+TEAL+';border-radius:12px;font-size:13.5px;font-weight:900;padding:12px 14px;color:#fff;cursor:'+((S.kbCheckBusy||S.kbBusy)?'default':'pointer')+';opacity:'+((S.kbCheckBusy||S.kbBusy)?'.6':'1')+'">'+(S.kbCheckBusy?'FINN prüft …':(S.kbCheck?'Erneut von FINN prüfen lassen':'Von FINN prüfen lassen'))+'</button>';
+  if(S.kbCheck && S.kbCheck.text){
+    var when=''; try{ if(S.kbCheck.at){ var da=new Date(S.kbCheck.at); if(!isNaN(da.getTime())) when=da.toLocaleDateString('de-DE')+', '+da.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'}); } }catch(e){}
+    H+='<div style="background:#f4f7f8;border:1px solid #e1e8ea;border-radius:12px;padding:13px 15px;margin-top:12px;font-size:13px;color:#2a2f34;font-weight:600;line-height:1.62;white-space:pre-wrap">'+esc(S.kbCheck.text)+'</div>'+
+      (when?'<div style="font-size:11px;color:#9aa2a8;font-weight:700;margin-top:7px">Geprüft am '+esc(when)+'</div>':'');
+  }
+  H+='</div>';
+
+  // Aktionen
+  var btn=function(attr,label,primary,disabled){ return '<button '+attr+(disabled?' disabled':'')+' style="flex:1;min-width:140px;border:'+(primary?'none':'1.5px solid #cfe0e3')+';background:'+(primary?TEAL:'#fff')+';border-radius:12px;font-size:13px;font-weight:'+(primary?'900':'800')+';padding:12px 14px;color:'+(primary?'#fff':TEAL)+';cursor:'+(disabled?'default':'pointer')+';opacity:'+(disabled?'.5':'1')+'">'+label+'</button>'; };
+  H+='<div style="display:flex;gap:9px;flex-wrap:wrap;margin-bottom:8px">';
+  if(!closed) H+='<button id="kbSaveBtn" data-kbsave="1"'+((!S.kbHasStore||!S.kbDirty||S.kbBusy)?' disabled':'')+' style="flex:1;min-width:140px;border:none;background:'+TEAL+';border-radius:12px;font-size:13px;font-weight:900;padding:12px 14px;color:#fff;cursor:'+((!S.kbHasStore||!S.kbDirty)?'default':'pointer')+';opacity:'+((!S.kbHasStore||!S.kbDirty||S.kbBusy)?'.5':'1')+'">'+(S.kbBusy==='save'?'Speichere …':'Speichern')+'</button>';
+  H+=btn('data-kbpdf="1"','PDF exportieren',false,false);
+  H+=btn('data-kbprint="1"','Drucken',false,false);
+  if(!closed) H+=btn('data-kbclose="1"','Monat abschließen',false,(S.kbBusy||!S.kbHasStore||!t.entriesCount));
+  H+='</div>';
+  if(!closed && !t.entriesCount) H+='<div style="font-size:11.5px;color:#9aa2a8;font-weight:600;margin-bottom:8px">Zum Abschließen mindestens eine Buchung erfassen.</div>';
+
+  // Gespeicherte Monate
+  var months=(S.kbMonths||[]).filter(function(mm){ return mm.key!==cur.key; });
+  if(months.length){
+    H+='<div style="font-size:12px;font-weight:800;color:#8a929a;text-transform:uppercase;letter-spacing:.4px;margin:16px 2px 9px">Gespeicherte Monate</div>';
+    H+=months.map(function(mm){
+      return '<div style="display:flex;align-items:center;gap:11px;background:#fff;border:1px solid #e6ecee;border-radius:14px;padding:11px 14px;margin-bottom:9px">'+
+        '<div style="width:38px;height:38px;border-radius:11px;background:'+(mm.closed?'#e7f6ec':'#eef2f3')+';color:'+(mm.closed?'#1d7a3e':'#6b7780')+';font-weight:900;font-size:11px;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+esc(String(mm.month).padStart(2,'0'))+'</div>'+
+        '<div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:800;color:#15171b">'+esc(kbMonthLabel(mm.key))+'</div>'+
+          '<div style="font-size:11.5px;color:#8a929a;font-weight:700;margin-top:2px">Endbestand '+esc(kbEuro(mm.endbestand))+' · '+(mm.closed?'abgeschlossen':'Entwurf')+'</div></div>'+
+        (mm.closed?'<button data-kbpdfm="'+esc(mm.key)+'" title="PDF" style="border:1px solid #cfe0e3;background:#fff;border-radius:9px;font-size:12px;font-weight:800;padding:7px 11px;color:'+TEAL+';cursor:pointer;flex-shrink:0">PDF</button>':'')+
+        '<button data-kbopen="'+esc(mm.key)+'" style="border:none;background:'+TEAL+';border-radius:9px;font-size:12px;font-weight:800;padding:7px 12px;color:#fff;cursor:pointer;flex-shrink:0">Öffnen</button>'+
+      '</div>';
+    }).join('');
+  }
+
+  node.innerHTML=H;
+  // Eingaben live verrechnen (ohne Voll-Render -> Fokus bleibt).
+  node.querySelectorAll('[data-kbd]').forEach(function(inp){ inp.oninput=function(){ var da=inp.getAttribute('data-kbd'); var f=inp.getAttribute('data-kbf'); var day=(da==='_top'||da==='_price')?da:parseInt(da,10); kbSetField(day,f,inp.value); }; });
+  var q=function(sel){ return node.querySelector(sel); };
+  var w1=q('[data-kbnav="prev"]'); if(w1) w1.onclick=function(){ kbShiftMonth(-1); };
+  var w2=q('[data-kbnav="next"]'); if(w2) w2.onclick=function(){ kbShiftMonth(1); };
+  var tg=q('[data-kbtog]'); if(tg) tg.onclick=function(){ S.kbShowPrices=!S.kbShowPrices; render(); };
+  var sv=q('[data-kbsave]'); if(sv) sv.onclick=function(){ kbSave(false); };
+  var ck=q('[data-kbcheck]'); if(ck) ck.onclick=kbDoCheck;
+  var pd=q('[data-kbpdf]'); if(pd) pd.onclick=kbExportPdf;
+  var pr=q('[data-kbprint]'); if(pr) pr.onclick=kbPrint;
+  var cl=q('[data-kbclose]'); if(cl) cl.onclick=kbClose;
+  var ro=q('[data-kbreopen]'); if(ro) ro.onclick=kbReopen;
+  node.querySelectorAll('[data-kbopen]').forEach(function(b){ b.onclick=function(){ kbOpenMonth(b.getAttribute('data-kbopen')); }; });
+  node.querySelectorAll('[data-kbpdfm]').forEach(function(b){ b.onclick=function(){ kbStoredPdf(b.getAttribute('data-kbpdfm')); }; });
   return node;
 }
 function replaceLead(lead){ for(var i=0;i<S.leads.length;i++){ if(S.leads[i].id===lead.id){ S.leads[i]=lead; return; } } S.leads.unshift(lead); }
@@ -5095,8 +5466,8 @@ function wbNode(){
 function render(){
   if(!S.token){ renderLogin(); return; }
   if(!canSee(S.screen)) S.screen='dash';   // kein Admin-Bereich für Angestellte (Sicherheitsnetz)
-  var titles={dash:'Übersicht',inbox:'Posteingang',members:'Mitglieder',newmembers:'Neue Mitglieder',appts:'Termine',trial:'Probetraining',help:'Hilfe-Artikel',stats:'Statistiken',msg:'Nachrichten',leads:'Leads',tester:'App-Tester',todo:'Aufgaben',schicht:'Schichtplan',assist:'Assistent',wb:'Rückholung',community:'Community'};
-  var subs={dash:'Dein Studio auf einen Blick',inbox:'Alle Vorgänge & Anfragen',members:'Mitgliederverwaltung',newmembers:'Zuletzt beigetreten – automatisch aus Magicline',appts:'Anfragen & Buchungen',trial:'Schnell ein Probetraining buchen',help:'Wissensdatenbank verwalten',stats:'Auswertungen & Trends',msg:'Rundnachricht & Direktnachricht',leads:'Interessenten-Pipeline',tester:'Anmeldungen für den geschlossenen App-Test',todo:'Interne Aufgaben fürs Team',schicht:'Dienstplan, Tausch & Verfügbarkeiten',assist:'Sag mir, was zu tun ist – ich bereite es vor, du bestätigst',wb:'Angebots-Rahmen für die KI-Rückholung',community:'Trainingspartner moderieren'};
+  var titles={dash:'Übersicht',inbox:'Posteingang',members:'Mitglieder',newmembers:'Neue Mitglieder',appts:'Termine',trial:'Probetraining',help:'Hilfe-Artikel',stats:'Statistiken',msg:'Nachrichten',leads:'Leads',tester:'App-Tester',kassenbuch:'Kassenbuch',todo:'Aufgaben',schicht:'Schichtplan',assist:'Assistent',wb:'Rückholung',community:'Community'};
+  var subs={dash:'Dein Studio auf einen Blick',inbox:'Alle Vorgänge & Anfragen',members:'Mitgliederverwaltung',newmembers:'Zuletzt beigetreten – automatisch aus Magicline',appts:'Anfragen & Buchungen',trial:'Schnell ein Probetraining buchen',help:'Wissensdatenbank verwalten',stats:'Auswertungen & Trends',msg:'Rundnachricht & Direktnachricht',leads:'Interessenten-Pipeline',tester:'Anmeldungen für den geschlossenen App-Test',kassenbuch:'Barkasse führen, prüfen & Monate abschließen',todo:'Interne Aufgaben fürs Team',schicht:'Dienstplan, Tausch & Verfügbarkeiten',assist:'Sag mir, was zu tun ist – ich bereite es vor, du bestätigst',wb:'Angebots-Rahmen für die KI-Rückholung',community:'Trainingspartner moderieren'};
   var content;
   if(S.screen==='inbox') content=inboxNode();
   else if(S.screen==='dash') content=dashNode();
@@ -5108,6 +5479,7 @@ function render(){
   else if(S.screen==='msg') content=msgNode();
   else if(S.screen==='leads') content=leadsNode();
   else if(S.screen==='tester') content=testerNode();
+  else if(S.screen==='kassenbuch') content=kassenbuchNode();
   else if(S.screen==='newmembers') content=newMembersNode();
   else if(S.screen==='todo') content=todoNode();
   else if(S.screen==='schicht') content=schichtNode();
@@ -5122,7 +5494,7 @@ function render(){
 // Profil zu /team/mitglieder/<interne-id>. So sind Ansichten teilbar/bookmarkbar
 // und Reload/Zurück führen wieder dorthin. Greift nur, wenn die Seite wirklich
 // unter /team ausgeliefert wird (Guard) – beim direkten Öffnen der Datei bleibt die URL unberührt.
-var SCREEN2SLUG={ dash:'', inbox:'posteingang', members:'mitglieder', newmembers:'neue-mitglieder', appts:'termine', trial:'probetraining', help:'hilfe', stats:'statistiken', msg:'nachrichten', leads:'leads', tester:'tester', todo:'aufgaben', schicht:'schichtplan', assist:'assistent', wb:'rueckholung', community:'community' };
+var SCREEN2SLUG={ dash:'', inbox:'posteingang', members:'mitglieder', newmembers:'neue-mitglieder', appts:'termine', trial:'probetraining', help:'hilfe', stats:'statistiken', msg:'nachrichten', leads:'leads', tester:'tester', kassenbuch:'kassenbuch', todo:'aufgaben', schicht:'schichtplan', assist:'assistent', wb:'rueckholung', community:'community' };
 var SLUG2SCREEN={}; Object.keys(SCREEN2SLUG).forEach(function(k){ if(SCREEN2SLUG[k]) SLUG2SCREEN[SCREEN2SLUG[k]]=k; });
 var urlRestoring=false;   // true während Boot/Popstate/Login-Restore -> replaceState statt pushState
 function underTeam(){ try{ return /^\/team(\/|$)/.test(location.pathname||''); }catch(e){ return false; } }
@@ -5174,6 +5546,7 @@ function goScreen(k){
   if(k==='msg'){ S.bcResult=null; }
   if(k==='leads'){ if(!S.leadsLoaded){ loadLeads(); return; } }
   if(k==='tester'){ if(!S.testersLoaded){ loadTesters(); return; } }
+  if(k==='kassenbuch'){ if(!S.kbLoaded){ loadKassenbuch(); return; } }
   if(k==='newmembers'){ if(!S.newMembersLoaded){ loadNewMembers(); return; } }
   if(k==='todo'){ if(!S.todosLoaded){ loadTodos(); return; } }
   if(k==='schicht'){ if(!S.shLoaded){ loadShifts(); return; } }
