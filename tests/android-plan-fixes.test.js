@@ -73,4 +73,15 @@ assert.ok(/popstate'[\s\S]*?if\(canBack\(\)\)\{[^}]*doBack\(\)/.test(member), 'p
 assert.ok((member.match(/if\(window\.__armBackBarrier\) window\.__armBackBarrier\(\)/g) || []).length >= 1,
   'nav() muss die Zurueck-Barriere scharf halten');
 
+// ── System-Zurück darf die App NIE beenden ausser am echten Wurzel-Screen ──
+// (Video: Erfassen-Sheet -> Zurück schloss die ganze App). doBack faengt Fehler ab,
+// das Erfassen-Sheet wird ueber closeAnyOverlay geschlossen, und der native Listener
+// ruft exitApp NICHT mehr im catch auf.
+assert.ok(member.includes('function closeAnyOverlay()'), 'Overlay-Fallback muss existieren');
+assert.ok(member.includes('if(!closeKnownOverlay()) closeAnyOverlay()'), 'doBack muss Overlays immer schliessen');
+assert.ok(/function closeAnyOverlay\(\)\{[\s\S]*?S\.ernCapture[\s\S]*?ernCloseCapture/.test(member), 'closeAnyOverlay muss das Erfassen-Sheet schliessen');
+assert.ok(member.includes('try{ atRoot=!canBack(); }catch(e){ atRoot=false; }'), 'backButton: Fehler != Wurzel (kein Exit im Fehlerfall)');
+assert.ok(!member.includes('catch(err){ try{ if(AppP.exitApp) AppP.exitApp(); }catch(_e){} }'),
+  'backButton darf im catch NICHT mehr exitApp aufrufen');
+
 console.log('android plan fixes test passed');

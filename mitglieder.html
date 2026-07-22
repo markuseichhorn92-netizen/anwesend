@@ -11711,12 +11711,35 @@
       return false;   // sonst: Overlay hat eigenen Schließen-Button
     }
     function canBack(){ return menuOpen()||overlayOpen()||S.screen!=='home'; }
+    // Fallback: schließt das oberste bekannte Overlay/Sheet, das closeKnownOverlay NICHT
+    // abdeckt (z. B. das Ernährungs-Erfassen-Sheet). So schließt der System-Zurück IMMER
+    // erst das Popup, statt „nichts zu tun" oder – im Fehlerfall – die App zu beenden.
+    function closeAnyOverlay(){
+      try{
+        if(S.ernCapture){   // Erfassen-Sheet: erst zur Methoden-Auswahl, dann schließen
+          if((S.ernCapTab||'menu')!=='menu'){ try{ ACT.ernCapMenu(); }catch(e){ setS({ernCapTab:'menu'}); } }
+          else { try{ ACT.ernCloseCapture(); }catch(e){ setS({ernCapture:false}); } }
+          return true;
+        }
+        var order=['ernConfirm','ernProd','ernEntryEdit','ernEdit','ernData','ernFavMgr','ernPlanQuiz','ernKoch',
+          'ernLesson','ernVert','ernCk','ernChatOpen','ernUpgrade','ernShopProd','ernShop','sos','buyGuide',
+          'socChat','socRoom','trainFinish','trainRun','trainDetail','trainGenOpen','welcomeGift',
+          'moMetric','moGuide','morningBreathe','woResult','woDetail','woOpen',
+          'finnOpen','vaOpen','qaOpen','fbOpen','ciPopup','dp'];
+        for(var i=0;i<order.length;i++){ var k=order[i];
+          if(S[k]){ try{ window.__ernStopScan&&window.__ernStopScan(); window.__ernStopCam&&window.__ernStopCam(); }catch(e){}
+            S[k]=(typeof S[k]==='boolean')?false:null; render(); return true; } }
+      }catch(e){}
+      return false;
+    }
     function doBack(){
-      if(menuOpen()){ closeMenu(); return; }
-      if(overlayOpen()){ closeKnownOverlay(); return; }
-      if(S.screen==='home') return;
-      var t=APPBAR_ROOTS[S.screen]?'home':(APPBAR_BACK[S.screen]||'home');
-      try{ navigator.vibrate&&navigator.vibrate(8); }catch(e){} nav(t);
+      try{
+        if(menuOpen()){ closeMenu(); return; }
+        if(overlayOpen()){ if(!closeKnownOverlay()) closeAnyOverlay(); return; }   // Overlay immer schließen
+        if(S.screen==='home') return;
+        var t=APPBAR_ROOTS[S.screen]?'home':(APPBAR_BACK[S.screen]||'home');
+        try{ navigator.vibrate&&navigator.vibrate(8); }catch(e){} nav(t);
+      }catch(e){ /* Zurück darf NIE crashen -> im Zweifel nichts tun (App bleibt offen) */ }
     }
     function scroller(){ var m=document.querySelector('.maincol'); if(document.body.classList.contains('app-in')&&m) return m; return document.scrollingElement||document.documentElement; }
     // Startet der Wisch auf einem horizontal scrollbaren Element (oder Eingabefeld)? Dann kein Zurück.
@@ -11812,11 +11835,14 @@
     if(AppP&&AppP.addListener){
       try{
         AppP.addListener('backButton',function(){
-          try{
-            if(!TOKEN||S.screen==='login'){ if(AppP.exitApp) AppP.exitApp(); return; }
-            if(canBack()){ vib(); doBack(); return; }
-            if(AppP.exitApp) AppP.exitApp();   // Startseite -> App verlassen (kein stiller Absturz)
-          }catch(err){ try{ if(AppP.exitApp) AppP.exitApp(); }catch(_e){} }
+          // Fail-SAFE: die App wird NUR verlassen, wenn wir sicher am Wurzel-Screen
+          // (Start, nichts offen) sind. Jeder Fehler in canBack()/doBack() führt bewusst
+          // NICHT zum Schließen – sonst beendet ein beliebiger Fehler die ganze App.
+          if(!TOKEN || S.screen==='login'){ try{ AppP.exitApp&&AppP.exitApp(); }catch(e){} return; }
+          var atRoot=false;
+          try{ atRoot=!canBack(); }catch(e){ atRoot=false; }   // im Fehlerfall NICHT als Wurzel behandeln
+          if(!atRoot){ vib(); doBack(); return; }              // in-App zurück (doBack fängt Fehler selbst ab)
+          try{ AppP.exitApp&&AppP.exitApp(); }catch(e){}        // echter Start-Wurzel -> App verlassen
         });
         nativeBack=true;
       }catch(e){}
