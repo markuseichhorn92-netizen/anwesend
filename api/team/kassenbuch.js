@@ -16,6 +16,7 @@ const TA = require('../../lib/teamAuth');
 const Cap = require('../../lib/capabilities');
 const M = require('../../lib/members');
 const KB = require('../../lib/kassenbuch');
+const SEED = require('../../lib/kassenbuchSeed');
 const AI = require('../../lib/ai');
 
 function j(res, code, obj) { res.statusCode = code; return res.end(JSON.stringify(obj)); }
@@ -42,8 +43,17 @@ async function monthPayload(key) {
     prices: totals.prices, days: base.days || {},
     closed: !!base.closed, closedAt: base.closedAt || null, closedBy: base.closedBy || null,
     updatedAt: base.updatedAt || null, check: base.check || null, exists: !!stored,
+    imported: !!base.imported, source: base.source || null,
     carried: carried, totals: totals,
   };
+}
+
+// Wie viele Altbestands-Monate (Seed) sind noch NICHT hinterlegt?
+async function seedPendingCount() {
+  if (!KB.hasStore) return 0;
+  let n = 0;
+  for (const s of SEED.SEED_2026) { try { if (!(await KB.getMonth(s.key))) n++; } catch (e) {} }
+  return n;
 }
 
 module.exports = async function handler(req, res) {
@@ -66,8 +76,9 @@ module.exports = async function handler(req, res) {
     }
     const key = KB.isMonthKey(qMonth) ? qMonth : curMonthKey();
     let list = []; try { list = await KB.listMonths(); } catch (e) {}
+    let seedPending = 0; try { seedPending = await seedPendingCount(); } catch (e) {}
     const payload = await monthPayload(key);
-    return j(res, 200, { ok: true, hasStore: KB.hasStore, current: payload, months: list });
+    return j(res, 200, { ok: true, hasStore: KB.hasStore, current: payload, months: list, seedPending: seedPending });
   }
 
   if (req.method !== 'POST') return j(res, 405, { ok: false, error: 'method_not_allowed' });
@@ -79,6 +90,18 @@ module.exports = async function handler(req, res) {
   if (action === 'prices') {
     const p = await KB.setPrices(body.prices || {});
     return j(res, 200, { ok: true, prices: p });
+  }
+
+  if (action === 'importSeed') {
+    if (!KB.hasStore) return j(res, 200, { ok: false, disabled: true, message: 'Kassenbuch-Speicher nicht verfügbar.' });
+    let imported = 0, skipped = 0;
+    for (const s of SEED.SEED_2026) {
+      try { const r = await KB.importMonth(SEED.seedRecord(s)); if (r && r.ok) imported++; else skipped++; } catch (e) { skipped++; }
+    }
+    // Aktuelle Preisliste setzen, falls noch keine hinterlegt ist (Kaffee 2,00 seit Juni).
+    try { const cur = await KB.getPrices(); if (!cur || Number(cur.kaffee) === Number(KB.DEFAULT_PRICES.kaffee)) await KB.setPrices(SEED.SEED_PRICES); } catch (e) {}
+    let list = []; try { list = await KB.listMonths(); } catch (e) {}
+    return j(res, 200, { ok: true, imported: imported, skipped: skipped, months: list, message: imported ? (imported + ' Kassenbücher übernommen.') : 'Alle Altbestände waren bereits hinterlegt.' });
   }
 
   if (!KB.isMonthKey(month)) return j(res, 400, { ok: false, error: 'bad_month' });

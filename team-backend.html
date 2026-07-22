@@ -160,7 +160,7 @@ var S={ token:null, role:null, meName:null, screen:'dash', convs:[], counts:{}, 
         newMembers:[], newMembersLoaded:false, newMembersLoading:false, newMembersErr:false, newMembersDisabled:false,
         // Kassenbuch: Barkasse pro Monat (nur Admin) – editierbarer Entwurf + gespeicherte Monate
         kb:null, kbDraft:null, kbMonth:'', kbMonths:[], kbLoaded:false, kbLoading:false, kbErr:false, kbHasStore:true,
-        kbDirty:false, kbBusy:'', kbMsg:'', kbCheck:null, kbCheckBusy:false, kbShowPrices:false,
+        kbDirty:false, kbBusy:'', kbMsg:'', kbCheck:null, kbCheckBusy:false, kbShowPrices:false, kbSeedPending:0,
         // Aufgaben: interne To-do-Liste (getrennt von Kunden-Vorgängen)
         todos:[], todosLoaded:false, todosLoading:false, todoFilter:'open', todoBusy:'',
         todoText:'', todoAssignee:'', todoDue:'', todoAddBusy:false,
@@ -3195,10 +3195,18 @@ function kbCompute(m){
     running=kbR2(running+einn-aus); sumEin=kbR2(sumEin+einn); sumAus=kbR2(sumAus+aus);
     rows.push({day:d,einnahmen:einn,ausgaben:aus,beschreibung:parts.join(' + '),ausgabenText:ausText,bestand:running,hasEntry:hasEntry});
   }
+  var ent=rows.filter(function(r){return r.hasEntry;}).length;
+  // Archiv-/Import-Monat: erfasste Summen sind maßgeblich (Spiegel der Server-Logik).
+  if(m.imported && !ent){
+    var ie=kbR2(kbNum(m.imported.sumEinnahmen)), ia=kbR2(kbNum(m.imported.sumAusgaben));
+    var endI=(m.imported.endbestand==null)?kbR2(anfang+ie-ia):kbR2(kbNum(m.imported.endbestand));
+    var gezI=(m.gezaehlterEndbestand===''||m.gezaehlterEndbestand==null)?null:kbR2(kbNum(m.gezaehlterEndbestand));
+    return {prices:prices,anfangsbestand:anfang,rows:rows,sumEinnahmen:ie,sumAusgaben:ia,endbestand:endI,gezaehlterEndbestand:gezI,differenz:gezI==null?null:kbR2(gezI-endI),kontrolleOk:gezI==null?true:Math.abs(kbR2(gezI-endI))<0.005,entriesCount:0,imported:true};
+  }
   var end=kbR2(anfang+sumEin-sumAus);
   var gez=(m.gezaehlterEndbestand===''||m.gezaehlterEndbestand==null)?null:kbR2(kbNum(m.gezaehlterEndbestand));
   var diff=gez==null?null:kbR2(gez-end);
-  return {prices:prices,anfangsbestand:anfang,rows:rows,sumEinnahmen:kbR2(sumEin),sumAusgaben:kbR2(sumAus),endbestand:end,gezaehlterEndbestand:gez,differenz:diff,kontrolleOk:diff==null?true:Math.abs(diff)<0.005,entriesCount:rows.filter(function(r){return r.hasEntry;}).length};
+  return {prices:prices,anfangsbestand:anfang,rows:rows,sumEinnahmen:kbR2(sumEin),sumAusgaben:kbR2(sumAus),endbestand:end,gezaehlterEndbestand:gez,differenz:diff,kontrolleOk:diff==null?true:Math.abs(diff)<0.005,entriesCount:ent};
 }
 // Server-Monat -> editierbarer Entwurf (Zahlen als Eingabetexte, 0 wird zu leer).
 function kbSeedDraft(c){
@@ -3213,13 +3221,26 @@ function kbSeedDraft(c){
     prices:{kaffee:sEur(pr.kaffee||KB_PDEF.kaffee),eiweissshake:sEur(pr.eiweissshake||KB_PDEF.eiweissshake),eiweissbeutel:sEur(pr.eiweissbeutel||KB_PDEF.eiweissbeutel)},
     days:days };
 }
+async function kbImportSeed(){
+  if(S.kbBusy) return;
+  if(!confirm('Die bisherigen Kassenbücher (Januar–Juni 2026) als abgeschlossene Archiv-Monate übernehmen?\n\nDer laufende Monat schließt danach nahtlos an (Anfangsbestand & Blatt-Nr. aus Juni).')) return;
+  S.kbBusy='import'; S.kbMsg=''; render();
+  var msg='';
+  try{
+    var r=await tapi('/api/team/kassenbuch',{method:'POST',body:{action:'importSeed'}});
+    if(r && r.ok){ msg=r.message||'Übernommen.'; S.kbSeedPending=0; } else msg=(r&&r.message)||'Übernahme nicht möglich.';
+  }catch(e){ msg='Verbindung fehlgeschlagen.'; }
+  S.kbBusy='';
+  await loadKassenbuch(S.kbMonth);   // aktuellen Monat neu laden -> Anfangsbestand/Blatt-Nr. aus Juni
+  S.kbMsg=msg; render();
+}
 async function loadKassenbuch(month){
   S.kbLoading=true; S.kbErr=false; render();
   try{
     var q=(month&&/^\d{4}-\d{2}$/.test(month))?('?month='+encodeURIComponent(month)):'';
     var r=await tapi('/api/team/kassenbuch'+q);
     if(r && r.ok && r.current){
-      S.kb=r.current; S.kbMonth=r.current.key; S.kbMonths=r.months||[]; S.kbHasStore=r.hasStore!==false;
+      S.kb=r.current; S.kbMonth=r.current.key; S.kbMonths=r.months||[]; S.kbHasStore=r.hasStore!==false; S.kbSeedPending=r.seedPending||0;
       S.kbDraft=kbSeedDraft(r.current); S.kbDirty=false; S.kbMsg='';
       S.kbCheck=(r.current.check&&r.current.check.text)?r.current.check:null;
     } else S.kbErr=!S.kb;
@@ -3273,7 +3294,7 @@ async function kbDoCheck(){
   }catch(e){ S.kbMsg='Verbindung fehlgeschlagen.'; }
   S.kbCheckBusy=false; render();
 }
-function kbCurTotals(){ return kbCompute(S.kbDraft||kbSeedDraft(S.kb||{})); }
+function kbCurTotals(){ return (S.kb && S.kb.imported && S.kb.totals) ? S.kb.totals : kbCompute(S.kbDraft||kbSeedDraft(S.kb||{})); }
 function kbExportPdf(){
   S.kbMsg='PDF wird erstellt …'; render();
   loadPdfLib().then(function(ok){
@@ -3374,7 +3395,7 @@ function buildKassenbuchPdf(payload,t){
     sT(INK); doc.text(kbEuro(r.bestand),BES,y,{align:'right'});
     y+=5.4;
   });
-  if(!any){ sT(LT); doc.setFont('helvetica','italic'); doc.text('Für diesen Monat sind keine Buchungen erfasst.',M+11,y); y+=6; }
+  if(!any){ sT(LT); doc.setFont('helvetica','italic'); doc.text((t.imported||payload.imported)?'Archiv-Monat – Einzelbuchungen siehe Original-Beleg (HiDrive-Archiv). Es gelten die erfassten Summen.':'Für diesen Monat sind keine Buchungen erfasst.',M+11,y); y+=6; }
   y+=3; if(y>250){ doc.addPage(); y=20; }
   sD(LINE); doc.line(M,y,W-M,y); y+=6;
   var line=function(lbl,val,col,bold){ doc.setFont('helvetica',bold?'bold':'normal'); doc.setFontSize(bold?11:10); sT(MUT); doc.text(lbl,M+11,y); sT(col||INK); doc.text(val,BES,y,{align:'right'}); y+=(bold?7.5:6); };
@@ -3399,6 +3420,7 @@ function kassenbuchNode(){
   }
   var cur=S.kb; if(!cur){ node.innerHTML='<div style="padding:60px 22px;text-align:center;color:#8a929a;font-weight:700">Kein Monat geladen.</div>'; var rb0=null; loadKassenbuch(); return node; }
   var closed=!!cur.closed;
+  var archived=!!cur.imported;
   if(!S.kbDraft) S.kbDraft=kbSeedDraft(cur);
   var draft=S.kbDraft, t=kbCompute(draft);
   var dim=kbDaysInMonth(cur.year,cur.month);
@@ -3407,13 +3429,44 @@ function kassenbuchNode(){
   // Kopf: Monatsnavigation
   H+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">'+
     '<button data-kbnav="prev" title="Vormonat" style="width:38px;height:38px;flex-shrink:0;border:1px solid #dfe6e8;background:#fff;border-radius:11px;display:flex;align-items:center;justify-content:center;cursor:pointer"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#42454b" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button>'+
-    '<div style="flex:1;text-align:center"><div style="font-size:16px;font-weight:900;color:#15171b">'+esc(kbMonthLabel(cur.key))+'</div><div style="font-size:11px;color:#9aa2a8;font-weight:700">'+(closed?'Abgeschlossen':(cur.exists?'Entwurf gespeichert':'Neuer Monat'))+'</div></div>'+
+    '<div style="flex:1;text-align:center"><div style="font-size:16px;font-weight:900;color:#15171b">'+esc(kbMonthLabel(cur.key))+'</div><div style="font-size:11px;color:#9aa2a8;font-weight:700">'+(archived?'Archiv (Altbestand)':(closed?'Abgeschlossen':(cur.exists?'Entwurf gespeichert':'Neuer Monat')))+'</div></div>'+
     '<button data-kbnav="next" title="Folgemonat" style="width:38px;height:38px;flex-shrink:0;border:1px solid #dfe6e8;background:#fff;border-radius:11px;display:flex;align-items:center;justify-content:center;cursor:pointer"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#42454b" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg></button>'+
   '</div>';
 
   if(!S.kbHasStore) H+='<div style="background:#fbf0e3;border:1px solid #f0d8b8;color:#8a5a10;border-radius:12px;padding:11px 14px;font-size:12.5px;font-weight:700;margin-bottom:12px">Der Kassenbuch-Speicher ist nicht aktiv. Du kannst rechnen und ein PDF erzeugen, aber noch nichts dauerhaft speichern oder abschließen.</div>';
   if(S.kbMsg) H+='<div style="background:#e7f1f3;border:1px solid #cfe0e3;color:#0a4958;border-radius:12px;padding:11px 14px;font-size:13px;font-weight:700;margin-bottom:12px">'+esc(S.kbMsg)+'</div>';
-  if(closed) H+='<div style="background:#e7f6ec;border:1px solid #bfe3cd;color:#176b37;border-radius:12px;padding:11px 14px;font-size:12.5px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;gap:10px"><span>Dieser Monat ist abgeschlossen'+(cur.closedBy?(' (von '+esc(cur.closedBy)+')'):'')+' und schreibgeschützt.</span><button data-kbreopen="1"'+(S.kbBusy?' disabled':'')+' style="flex-shrink:0;border:1px solid #bfe3cd;background:#fff;border-radius:9px;font-size:12px;font-weight:800;padding:7px 12px;color:#176b37;cursor:pointer">Wieder öffnen</button></div>';
+  if(closed && !archived) H+='<div style="background:#e7f6ec;border:1px solid #bfe3cd;color:#176b37;border-radius:12px;padding:11px 14px;font-size:12.5px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;gap:10px"><span>Dieser Monat ist abgeschlossen'+(cur.closedBy?(' (von '+esc(cur.closedBy)+')'):'')+' und schreibgeschützt.</span><button data-kbreopen="1"'+(S.kbBusy?' disabled':'')+' style="flex-shrink:0;border:1px solid #bfe3cd;background:#fff;border-radius:9px;font-size:12px;font-weight:800;padding:7px 12px;color:#176b37;cursor:pointer">Wieder öffnen</button></div>';
+
+  // Alte Kassenbücher übernehmen (einmalig, solange noch Seed-Monate fehlen).
+  if(S.kbSeedPending>0){
+    H+='<div style="background:#eef6f8;border:1px solid #cfe0e3;border-radius:14px;padding:13px 15px;margin-bottom:12px">'+
+      '<div style="font-size:13px;font-weight:800;color:#0a4958;margin-bottom:4px">📥 Alte Kassenbücher übernehmen</div>'+
+      '<div style="font-size:12px;color:#5a636a;font-weight:600;line-height:1.55;margin-bottom:10px">'+S.kbSeedPending+' Monat(e) aus deinem bisherigen Kassenbuch (Januar–Juni 2026) sind noch nicht hinterlegt. Einmalig übernehmen – danach schließt der laufende Monat nahtlos an (Anfangsbestand &amp; Blatt-Nr. aus Juni).</div>'+
+      '<button data-kbimport="1"'+(S.kbBusy?' disabled':'')+' style="border:none;background:'+TEAL+';border-radius:11px;font-size:13px;font-weight:900;padding:11px 16px;color:#fff;cursor:pointer;opacity:'+(S.kbBusy?'.6':'1')+'">'+(S.kbBusy==='import'?'Übernehme …':'Kassenbücher übernehmen')+'</button>'+
+    '</div>';
+  }
+
+  if(archived){
+    // Archiv-/Import-Monat: schreibgeschützte Zusammenfassung (Tagesdetails im Original-Beleg).
+    var at=(cur.totals||t);
+    H+='<div style="background:#f4f7f8;border:1px solid #dbe6e8;color:#4a5560;border-radius:12px;padding:11px 14px;font-size:12px;font-weight:700;margin-bottom:12px">Archiv-Monat aus dem bisherigen Kassenbuch. Die Summen stammen vom Original-Beleg; die Einzelbuchungen liegen im HiDrive-Archiv.</div>';
+    var mrow=function(l,v,col,strong){ return '<div style="display:flex;align-items:center;justify-content:space-between;padding:'+(strong?'10px':'7px')+' 0'+(strong?';border-top:1px solid #e6ecee':'')+'"><span style="font-size:'+(strong?'13.5':'12.5')+'px;font-weight:'+(strong?'800':'700')+';color:'+(strong?'#15171b':'#6b7780')+'">'+l+'</span><span style="font-size:'+(strong?'15':'13')+'px;font-weight:900;color:'+(col||'#15171b')+'">'+v+'</span></div>'; };
+    H+='<div style="background:#fff;border:1px solid #e1e8ea;border-radius:16px;padding:14px 16px;margin-bottom:12px">'+
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 16px;margin-bottom:4px">'+
+        '<div><div style="font-size:11px;font-weight:800;color:#8a929a;text-transform:uppercase;letter-spacing:.3px">Blatt-Nr.</div><div style="font-size:15px;font-weight:900;color:#15171b">'+esc(cur.blattNr||'—')+'</div></div>'+
+        '<div><div style="font-size:11px;font-weight:800;color:#8a929a;text-transform:uppercase;letter-spacing:.3px">Anfangsbestand</div><div style="font-size:15px;font-weight:900;color:#15171b">'+kbEuro(at.anfangsbestand)+'</div></div>'+
+      '</div></div>';
+    H+='<div style="background:#fff;border:1px solid #e1e8ea;border-radius:16px;padding:8px 16px 12px;margin-bottom:12px">'+
+      mrow('Anfangsbestand',kbEuro(at.anfangsbestand),'#6b7780',false)+
+      mrow('Summe Einnahmen',kbEuro(at.sumEinnahmen),'#1d7a3e',false)+
+      mrow('Summe Ausgaben',kbEuro(at.sumAusgaben),'#b53a2c',false)+
+      mrow('Endbestand',kbEuro(at.endbestand),'#15171b',true)+
+    '</div>';
+    H+='<div style="display:flex;gap:9px;flex-wrap:wrap;margin-bottom:8px">'+
+      '<button data-kbpdf="1" style="flex:1;min-width:140px;border:1.5px solid #cfe0e3;background:#fff;border-radius:12px;font-size:13px;font-weight:800;padding:12px 14px;color:'+TEAL+';cursor:pointer">PDF exportieren</button>'+
+      '<button data-kbprint="1" style="flex:1;min-width:140px;border:1.5px solid #cfe0e3;background:#fff;border-radius:12px;font-size:13px;font-weight:800;padding:12px 14px;color:'+TEAL+';cursor:pointer">Drucken</button>'+
+    '</div>';
+  } else {
 
   // Meta-Karte: Blatt-Nr, Anfangsbestand, gezählter Bestand
   var dis=closed?' disabled':'';
@@ -3497,6 +3550,7 @@ function kassenbuchNode(){
   if(!closed) H+=btn('data-kbclose="1"','Monat abschließen',false,(S.kbBusy||!S.kbHasStore||!t.entriesCount));
   H+='</div>';
   if(!closed && !t.entriesCount) H+='<div style="font-size:11.5px;color:#9aa2a8;font-weight:600;margin-bottom:8px">Zum Abschließen mindestens eine Buchung erfassen.</div>';
+  } // Ende editierbarer Monat (nicht-Archiv)
 
   // Gespeicherte Monate
   var months=(S.kbMonths||[]).filter(function(mm){ return mm.key!==cur.key; });
@@ -3506,8 +3560,8 @@ function kassenbuchNode(){
       return '<div style="display:flex;align-items:center;gap:11px;background:#fff;border:1px solid #e6ecee;border-radius:14px;padding:11px 14px;margin-bottom:9px">'+
         '<div style="width:38px;height:38px;border-radius:11px;background:'+(mm.closed?'#e7f6ec':'#eef2f3')+';color:'+(mm.closed?'#1d7a3e':'#6b7780')+';font-weight:900;font-size:11px;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+esc(String(mm.month).padStart(2,'0'))+'</div>'+
         '<div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:800;color:#15171b">'+esc(kbMonthLabel(mm.key))+'</div>'+
-          '<div style="font-size:11.5px;color:#8a929a;font-weight:700;margin-top:2px">Endbestand '+esc(kbEuro(mm.endbestand))+' · '+(mm.closed?'abgeschlossen':'Entwurf')+'</div></div>'+
-        (mm.closed?'<button data-kbpdfm="'+esc(mm.key)+'" title="PDF" style="border:1px solid #cfe0e3;background:#fff;border-radius:9px;font-size:12px;font-weight:800;padding:7px 11px;color:'+TEAL+';cursor:pointer;flex-shrink:0">PDF</button>':'')+
+          '<div style="font-size:11.5px;color:#8a929a;font-weight:700;margin-top:2px">Endbestand '+esc(kbEuro(mm.endbestand))+' · '+(mm.imported?'Archiv':(mm.closed?'abgeschlossen':'Entwurf'))+(mm.blattNr?(' · Blatt '+esc(mm.blattNr)):'')+'</div></div>'+
+        (mm.hasPdf?'<button data-kbpdfm="'+esc(mm.key)+'" title="PDF" style="border:1px solid #cfe0e3;background:#fff;border-radius:9px;font-size:12px;font-weight:800;padding:7px 11px;color:'+TEAL+';cursor:pointer;flex-shrink:0">PDF</button>':'')+
         '<button data-kbopen="'+esc(mm.key)+'" style="border:none;background:'+TEAL+';border-radius:9px;font-size:12px;font-weight:800;padding:7px 12px;color:#fff;cursor:pointer;flex-shrink:0">Öffnen</button>'+
       '</div>';
     }).join('');
@@ -3520,6 +3574,7 @@ function kassenbuchNode(){
   var w1=q('[data-kbnav="prev"]'); if(w1) w1.onclick=function(){ kbShiftMonth(-1); };
   var w2=q('[data-kbnav="next"]'); if(w2) w2.onclick=function(){ kbShiftMonth(1); };
   var tg=q('[data-kbtog]'); if(tg) tg.onclick=function(){ S.kbShowPrices=!S.kbShowPrices; render(); };
+  var im=q('[data-kbimport]'); if(im) im.onclick=kbImportSeed;
   var sv=q('[data-kbsave]'); if(sv) sv.onclick=function(){ kbSave(false); };
   var ck=q('[data-kbcheck]'); if(ck) ck.onclick=kbDoCheck;
   var pd=q('[data-kbpdf]'); if(pd) pd.onclick=kbExportPdf;
