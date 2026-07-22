@@ -51,9 +51,14 @@ const vRec = MO.dayVerdict({ readiness: rRed, overtraining: MO.overtraining([red
 ok('5. Verdict: aktive Pause + heute rot -> ruhe', vRec.intensity === 'ruhe' && vRec.source === 'recovery');
 ok('5b. nicht stale', vRec.recoveryStale === false);
 
-// 6) Subjektive Kappung: heute grün, aber „schlecht geschlafen" -> moderat (nicht voll).
+// 6) Weiches subjektives Signal (schlecht geschlafen) kippt die objektiv gute Erholung NICHT
+//    nach unten (sonst „100-Score, aber moderat"-Widerspruch) – bleibt voll/grün + Hinweis.
 const vSubj = MO.dayVerdict({ readiness: r, overtraining: ot, recovery: null, latest: Object.assign({}, REAL[0], { sleepSelf: 'schlecht' }) });
-ok('6. grün + schlecht geschlafen -> moderat', vSubj.intensity === 'moderat' && vSubj.source === 'subjektiv');
+ok('6. grün + schlecht geschlafen -> bleibt voll/grün', vSubj.intensity === 'voll' && vSubj.level === 'gruen');
+ok('6b. subjektiver Hinweis als note (kein Level-Downgrade)', !!vSubj.note && /geschlafen/.test(vSubj.note) && vSubj.source === 'physio+hinweis');
+// 6c) Krankheit ist der EINZIGE subjektive Faktor, der überstimmt -> Ruhetag.
+const vSick = MO.dayVerdict({ readiness: r, overtraining: ot, recovery: null, latest: Object.assign({}, REAL[0], { sick: 1 }) });
+ok('6c. krank -> Ruhetag (Sicherheit)', vSick.intensity === 'ruhe' && vSick.source === 'krank');
 
 // 7) Echter Übertrainings-Alarm (nachhaltig gedämpfte HRV) -> ruhe.
 const strained = [

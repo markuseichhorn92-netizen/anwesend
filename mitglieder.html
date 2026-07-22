@@ -6326,7 +6326,9 @@
     var level=(r&&m&&r.level)?r.level:null;         // gruen | gelb | rot | kalibrierung
     if(level==='kalibrierung') level=null;          // noch nicht aussagekräftig
     if(!alert && !level) return null;
-    var eff=alert?'rot':level;                        // Übertraining-Alarm überschreibt zu Rot
+    // Effektive Ampel aus dem EINEN Tages-Urteil (moEff: inkl. Alarm + subjektiver Kappung),
+    // damit die Banner nie „Vollgas" zeigen, während die Vorhersage „moderat" sagt.
+    var eff=moEff().level||(alert?'rot':level);
     var MAP={
       gruen:{emo:'🟢',col:'#176b37',bg:'#E7F6EC',
         trainT:'Bereit für Vollgas', trainS:'Cardio Zone 3–5 · Kraft schwer (85–95 %) möglich',
@@ -7760,7 +7762,7 @@
   function moEff(){
     var d=morningData(); if(!d) return { level:null, intensity:null, headline:'', detail:'', recovery:false, recoveryStale:false, alert:false, source:null };
     var v=d.verdict;
-    if(v&&v.level){ var rec=(d.recovery&&d.recovery.active); return { level:v.level, intensity:v.intensity, headline:v.headline||'', detail:v.detail||'', recovery:!!rec, recoveryStale:!!v.recoveryStale, alert:(d.overtraining&&d.overtraining.level==='alert'), source:v.source||null }; }
+    if(v&&v.level){ var rec=(d.recovery&&d.recovery.active); return { level:v.level, intensity:v.intensity, headline:v.headline||'', detail:v.detail||'', note:v.note||'', recovery:!!rec, recoveryStale:!!v.recoveryStale, alert:(d.overtraining&&d.overtraining.level==='alert'), source:v.source||null }; }
     // Fallback (Server ohne verdict): Recovery > Alert > readiness.
     var recA=(d.recovery&&d.recovery.active); var alert=!!(d.overtraining&&d.overtraining.level==='alert');
     var r=d.readiness||{}; var lv=(r.level&&r.level!=='kalibrierung')?r.level:null;
@@ -7900,10 +7902,22 @@
         '<div style="font-size:20px;font-weight:900;margin-top:4px;line-height:1.15">📈 Kalibrierung läuft</div>'+
         '<div style="font-size:12px;color:rgba(255,255,255,.7);font-weight:600;margin-top:4px;line-height:1.4">'+(rem>0?('Noch '+rem+' Messung'+(rem===1?'':'en')+' bis zu deiner Baseline'):'Deine Baseline entsteht gerade')+'</div></div></div>'+chips+'</div>';
     }
-    var L=MO_LV[r.level];
-    return '<div style="'+CARD+'"><div style="display:flex;align-items:center;gap:18px">'+moRecoveryRing(r.score,r.level,122)+
+    // Hero trägt das EINE Tages-Urteil (moEff) – Ring-Farbe, Emoji und Headline zeigen die
+    // reconciled Empfehlung, NICHT die rohe Physiologie. So sagt der Hero nie „Vollgas",
+    // während die Vorhersage darunter „moderat" sagt. Die Recovery-ZAHL bleibt der
+    // physiologische Score; weicht die Empfehlung davon ab (z. B. top Werte, aber schlecht
+    // geschlafen), erklärt eine Zeile das „warum".
+    var e=moEff();
+    var effLv=(e.level&&MO_LV[e.level])?e.level:r.level;
+    var eL=MO_LV[effLv]||MO_LV[r.level];
+    var head=e.headline||r.headline||eL.lab;
+    // Notiz: bei Override (Pause/Alarm/krank) das „warum"; sonst der weiche subjektive Hinweis
+    // (schlecht geschlafen o. Ä.) – der die grüne Empfehlung NICHT kippt, aber erwähnt wird.
+    var noteTxt=e.note||((effLv!==r.level)?e.detail:'');
+    var note=noteTxt?('<div style="font-size:12px;color:rgba(255,255,255,.72);font-weight:600;margin-top:6px;line-height:1.45">'+esc(noteTxt)+'</div>'):'';
+    return '<div style="'+CARD+'"><div style="display:flex;align-items:center;gap:18px">'+moRecoveryRing(r.score,effLv,122)+
       '<div style="flex:1;min-width:0"><div style="font-size:11px;font-weight:800;color:rgba(255,255,255,.6);text-transform:uppercase;letter-spacing:.5px">Bereitschaft'+dateLab+'</div>'+
-      '<div style="font-size:21px;font-weight:900;letter-spacing:-.3px;line-height:1.12;margin-top:5px">'+L.emo+' '+esc(r.headline||L.lab)+'</div></div></div>'+chips+'</div>';
+      '<div style="font-size:21px;font-weight:900;letter-spacing:-.3px;line-height:1.12;margin-top:5px">'+eL.emo+' '+esc(head)+'</div>'+note+'</div></div>'+chips+'</div>';
   }
   // Übertrainings-/Erholungs-Frühwarnung (nur bei warn/alert).
   function moOvertrainingCard(){
