@@ -36,4 +36,23 @@ assert.ok(member.includes("trainingPlanLoadingView(S.trainGenDays)"));
 assert.ok(member.includes("role=\"status\" aria-live=\"polite\" aria-label=\"FINN erstellt deinen Trainingsplan\""));
 assert.ok(member.includes("FINN wählt passende Übungen …"));
 
+// ── Android: Kopf klebt an der System-Statusleiste (Samsung) ───────────────────
+// env(safe-area-inset-top) meldet auf Android 0 -> --sat=0 -> Kopf nicht antippbar.
+// Ein Mindestwert (Floor) NUR im immersiven Android-Kontext (App/Homescreen) hebt
+// den Kopf frei, ohne iOS (env korrekt) oder den Browser-Tab zu verändern.
+assert.ok(member.includes('function __immersiveTop()'), 'immersive-Erkennung fuer den --sat-Floor muss existieren');
+assert.ok(member.includes('function __satFloor()'), '--sat-Floor-Helfer muss existieren');
+assert.ok(/__satFloor\(\)\{[\s\S]*?\/Android\/i\.test\(navigator\.userAgent[\s\S]*?__immersiveTop\(\)[\s\S]*?return 28/.test(member),
+  'Floor nur fuer Android + immersiv, Wert 28px');
+assert.ok(member.includes('return Math.max(v, __satFloor());'), '__satRead muss den Floor anwenden');
+assert.ok(member.includes("min(env(safe-area-inset-top,0px), 60px)"), '60px-Deckel bleibt erhalten');
+
+// ── Gewicht-Eintrag auffindbar machen (Rueckmeldung: nicht gefunden) ───────────
+// Sichtbare Karte auf der Startseite + Eintrag im „+"-Schnellmenue, beide -> figur.
+assert.ok(member.includes('function homeFigurCard()'), 'Startseiten-Karte fuer Gewicht/Maße muss existieren');
+assert.ok(member.includes('homeVitalCard()+homeFigurCard()'), 'Gewicht-Karte muss in der Startseite eingehaengt sein');
+assert.ok(member.includes("qaRow('figur',"), 'Schnellmenue muss einen Gewicht-Eintrag haben');
+assert.ok(/var screens=\[[^\]]*'figur'[^\]]*\];/.test(member), "qaGo muss 'figur' als Ziel kennen");
+assert.ok(member.includes("rIf(['figur','home','fort'])"), 'loadFigur muss Home/Fortschritt mit-rendern');
+
 console.log('android plan fixes test passed');

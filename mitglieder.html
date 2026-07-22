@@ -1077,8 +1077,9 @@
       svg('<path d="M9 18l6-6-6-6"></path>',{c:'#bfe0e6',w:2,s:16})+'</button>';
     // Schnellaktionen – bewusst OHNE „Termin"/„Postfach" (die sind eigene Leisten-Tabs → keine Doppelung).
     var rows=
-      qaRow('assist','<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6M9 13h6M9 17h4"></path>','Mitgliedschaft & Vertrag','Verwalten, Optionen &amp; Fragen klären')+
+      qaRow('assist','<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6M9 13h6M9 17h4"></path>','Mitgliedschaft & Vertrag','Verwalten, Optionen & Fragen klären')+
       qaRow('checkin','<path d="M9 11l3 3L20 5"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>', ci?'Auschecken':'Check-in', ci?'Du bist gerade eingecheckt':'Im Studio einchecken', ci)+
+      qaRow('figur','<path d="M3 3v18h18"></path><path d="M7 14l4-4 3 3 5-6"></path>','Gewicht & Maße eintragen','Neuen Wert festhalten & Fortschritt sehen')+
       qaRow('referral','<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"></path>','Freund werben','Empfehlen & Prämie sichern');
     return '<div class="qaScrim" data-act="qaClose"></div><div class="qaSheet" role="menu" aria-label="Assistent">'+head+banner+chat+rows+'</div>';
   }
@@ -1087,7 +1088,7 @@
     S.qaOpen=false;
     if(a==='chat'){ if(ACT&&ACT.openFinn) ACT.openFinn(); else setS({finnOpen:true}); return; }
     if(a==='assist'){ nav('contract'); setTimeout(function(){ if(typeof openAssistant==='function') openAssistant(''); },140); return; }
-    var screens=['home','data','contract','account','appt','checkin','checkins','postfach','help','settings','card','fort','referral'];
+    var screens=['home','data','contract','account','appt','checkin','checkins','postfach','help','settings','card','fort','figur','referral'];
     if(screens.indexOf(a)>=0){ nav(a); return; }
     render();
   }
@@ -1969,6 +1970,30 @@
         '<div style="flex:1;min-width:0"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span style="font-size:15.5px;font-weight:900;color:var(--text)">Vitalalter</span>'+badge+'</div><div style="font-size:12.5px;color:var(--text-soft);font-weight:600;line-height:1.45;margin-top:3px">'+esc(sub)+'</div></div>'+chev+
       '</div></button>';
   }
+  // Gewicht & Maße prominent auf der Startseite: sichtbarer, direkter Einstieg zum Eintragen
+  // (Figur-Check). Rückmeldung von Testerinnen: der Gewichts-Eintrag war sonst nicht auffindbar.
+  // Zeigt – falls vorhanden – den zuletzt erfassten Wert, sonst eine klare Aufforderung.
+  function homeFigurCard(){
+    if(DATA.figur==null) loadFigur();
+    var d=DATA.figur;
+    if(d && d.ok===false && d.available===false) return '';   // Feature nicht freigeschaltet -> keine tote Karte
+    var latest=null, unit='kg', dateTxt='';
+    if(d&&d.ok&&d.summary&&Array.isArray(d.summary.metrics)){
+      d.summary.metrics.forEach(function(m){ if(m.key==='weight'){ latest=figFmt(m.latest,m.dec); unit=m.unit||'kg'; } });
+      if(latest&&Array.isArray(d.history)&&d.history.length){ var le=d.history[d.history.length-1]; if(le&&le.date) dateTxt=ernDeDate(le.date); }
+    }
+    var sub=latest
+      ? ('Zuletzt <b style="color:var(--text)">'+latest+' '+esc(unit)+'</b>'+(dateTxt?(' · '+esc(dateTxt)):'')+' – tippe zum Aktualisieren')
+      : 'Gewicht &amp; Umfänge eintragen – sieh deinen Fortschritt in Kurven &amp; Vorher-Nachher.';
+    var pill='<span style="background:var(--surface-2);color:var(--teal-ink);font-size:12px;font-weight:900;border-radius:20px;padding:6px 12px;white-space:nowrap;flex-shrink:0">➕ Eintragen</span>';
+    return '<button data-act="nav" data-arg="figur" style="width:100%;text-align:left;border:none;cursor:pointer;font-family:inherit;background:var(--surface);border-radius:20px;box-shadow:0 12px 30px rgba(4,33,40,.09);padding:16px 18px;margin-bottom:16px">'+
+      '<div style="display:flex;align-items:center;gap:14px">'+
+        '<div style="width:52px;height:52px;border-radius:14px;background:#FBEFE2;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+svg('<path d="M3 3v18h18"></path><path d="M7 14l4-4 3 3 5-6"></path>',{c:'#E08C53',w:1.9,s:24})+'</div>'+
+        '<div style="flex:1;min-width:0"><div style="font-size:15.5px;font-weight:900;color:var(--text)">Gewicht &amp; Maße</div>'+
+        '<div style="font-size:12.5px;color:var(--text-soft);font-weight:600;line-height:1.45;margin-top:2px">'+sub+'</div></div>'+
+        pill+
+      '</div></button>';
+  }
   // Ernährungs-Karte auf der Startseite – nur wenn das Modul freigeschaltet ist (ERN_ON).
   // Zeigt live: kcal übrig (Ring), Streak und die heute verdienten Vitalpunkte; führt ins Essen-Modul.
   function homeErnCard(){
@@ -2132,7 +2157,7 @@
     // Dynamische Reihenfolge nach Tageszeit: morgens steht der Vital-Check/Coach oben
     // (sinnvollster Einstieg), tagsüber & abends das aktionsorientierte „Heute" zuerst.
     var secHeute=sec('Heute', homeMeinTagHero()+homeTodayStrip());
-    var secCoach=sec('Coach & Fortschritt', homeCoachHero()+morningHomeCard()+homeVitalCard()+premNudgeHome());
+    var secCoach=sec('Coach & Fortschritt', homeCoachHero()+morningHomeCard()+homeVitalCard()+homeFigurCard()+premNudgeHome());
     var hh=berlinHour();
     var mainBlock=(hh>=5&&hh<11)?(secCoach+secHeute):(secHeute+secCoach);
     return ''+
@@ -7209,8 +7234,8 @@
   // ══════════════════════════════════════════════════════════════════════
   function loadFigur(){
     if(DATA.figur==null) DATA.figur=false;   // „lädt" bis Antwort da ist
-    api('/api/member/figurcheck').then(function(d){ DATA.figur=(d&&d.ok)?d:{ok:false,available:!!(d&&d.available)}; rIf(['figur']); })
-    .catch(function(){ DATA.figur={ok:false,available:false}; rIf(['figur']); });
+    api('/api/member/figurcheck').then(function(d){ DATA.figur=(d&&d.ok)?d:{ok:false,available:!!(d&&d.available)}; rIf(['figur','home','fort']); })
+    .catch(function(){ DATA.figur={ok:false,available:false}; rIf(['figur','home','fort']); });
   }
   function figurData(){ var d=DATA.figur; return (d&&d.ok)?d:null; }
   // Kleine Trendkurve (SVG-Polyline, dark-mode-fest über CSS-Variablen).
@@ -11819,6 +11844,25 @@
   // RE-ASSERTIERT (nie neu gemessen) -> die Leistenhöhe ändert sich nie mehr. Neu
   // eingerastet wird ausschließlich bei einem echten Orientierungswechsel.
   var __satProbe=null, __satLocked=null, __satFrozen=false;
+  // Android meldet env(safe-area-inset-top) meist mit 0 – obwohl der Inhalt in der eigenen
+  // App bzw. als Homescreen-App UNTER der System-Statusleiste (Uhr/Akku) liegt. Dann klebt
+  // der Kopf an der Leiste und ist oben nicht antippbar (Rückmeldung Samsung/Android). Dort
+  // setzen wir einen Mindestwert (Statusleisten-Höhe). NUR im immersiven Kontext (App oder
+  // Homescreen-App), NICHT im normalen Browser-Tab, und nicht auf iOS (dort meldet env
+  // korrekt und der Deckel min(env,60) greift). Der 60px-Deckel bleibt unberührt.
+  function __immersiveTop(){
+    try{
+      if(window.FitInnNative) return true;
+      if(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) return true;
+      if(navigator.standalone===true) return true;
+      if(window.matchMedia && (matchMedia('(display-mode: standalone)').matches || matchMedia('(display-mode: fullscreen)').matches)) return true;
+    }catch(e){}
+    return false;
+  }
+  function __satFloor(){
+    try{ if(/Android/i.test(navigator.userAgent||'') && __immersiveTop()) return 28; }catch(e){}
+    return 0;
+  }
   function __satRead(){
     try{
       if(!__satProbe){
@@ -11826,7 +11870,8 @@
         __satProbe.style.cssText='position:fixed;top:0;left:0;width:0;height:env(safe-area-inset-top,0px);visibility:hidden;pointer-events:none;z-index:-1';
         document.body.appendChild(__satProbe);
       }
-      return Math.max(0, Math.min(Math.round(__satProbe.getBoundingClientRect().height||0), 60));
+      var v=Math.max(0, Math.min(Math.round(__satProbe.getBoundingClientRect().height||0), 60));
+      return Math.max(v, __satFloor());
     }catch(e){ return null; }
   }
   function __satApply(){ try{ if(__satLocked!=null) document.documentElement.style.setProperty('--sat', __satLocked+'px'); }catch(e){} }
