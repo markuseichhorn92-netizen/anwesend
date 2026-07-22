@@ -3193,7 +3193,7 @@ function kbCompute(m){
     var ausText=(e.ausgabenText&&String(e.ausgabenText).trim())?String(e.ausgabenText).trim():'';
     var hasEntry=!!(kaffee||shake||beutel||sonst||aus||parts.length||ausText);
     running=kbR2(running+einn-aus); sumEin=kbR2(sumEin+einn); sumAus=kbR2(sumAus+aus);
-    rows.push({day:d,einnahmen:einn,ausgaben:aus,beschreibung:parts.join(' + '),ausgabenText:ausText,bestand:running,hasEntry:hasEntry});
+    rows.push({day:d,kaffee:kaffee,eiweissshake:shake,eiweissbeutel:beutel,sonstigesText:(e.sonstigesText||''),sonstigesBetrag:sonst,einnahmen:einn,ausgaben:aus,beschreibung:parts.join(' + '),ausgabenText:ausText,bestand:running,hasEntry:hasEntry});
   }
   var ent=rows.filter(function(r){return r.hasEntry;}).length;
   // Archiv-/Import-Monat: erfasste Summen sind maßgeblich (Spiegel der Server-Logik).
@@ -3361,54 +3361,115 @@ function kbOpenMonth(key){
   loadKassenbuch(key);
 }
 // PDF: das offizielle Kassenbuch-Blatt (Kopf, gebuchte Tage, Summen, Kassensturz).
+// PDF wie das Excel-Kassenbuch: Querformat (A4 quer), volle Tagesliste mit allen
+// Spalten + SUMME-Zeile – damit der Steuerberater es 1:1 nachvollziehen kann.
 function buildKassenbuchPdf(payload,t){
   var ns=window.jspdf; if(!ns||!ns.jsPDF) return null;
   payload=payload||{}; t=t||kbCurTotals();
-  var doc=new ns.jsPDF({unit:'mm',format:'a4'}); var W=210, M=14;
-  var TEAL=[14,96,114], INK=[21,23,27], MUT=[90,99,106], LT=[140,146,152], PANEL=[244,247,248], LINE=[224,230,232], RED=[181,58,44], GREEN=[29,122,62];
+  var doc=new ns.jsPDF({unit:'mm',format:'a4',orientation:'landscape'});
+  var W=297, H=210, M=10;
+  var TEAL=[14,96,114], HEAD=[74,123,167], INK=[21,23,27], MUT=[90,99,106], LT=[140,146,152], LINE=[200,210,214], ZEBRA=[247,250,251], RED=[181,58,44], GREEN=[29,122,62], BLUE=[38,95,184];
   var sF=function(a){doc.setFillColor(a[0],a[1],a[2]);}, sT=function(a){doc.setTextColor(a[0],a[1],a[2]);}, sD=function(a){doc.setDrawColor(a[0],a[1],a[2]);};
-  var EIN=138, AUS=166, BES=196;
-  sF(TEAL); doc.rect(0,0,W,26,'F'); ciLogoImg(doc,M);
-  doc.setFont('helvetica','bold'); doc.setFontSize(9); sT([255,255,255]); doc.text('Ausgestellt am '+ciToday(), W-M, 15, {align:'right'});
-  doc.setFont('helvetica','bold'); doc.setFontSize(17); sT(INK); doc.text('Kassenbuch Fit-Inn Trier', M, 39);
-  if(payload.closed){ doc.setFont('helvetica','bold'); doc.setFontSize(8.5); var pl='ABGESCHLOSSEN', pw=doc.getTextWidth(pl)+8; sF([231,246,236]); doc.roundedRect(W-M-pw,34.5,pw,7,3.5,3.5,'F'); sT(GREEN); doc.text(pl,W-M-pw/2,39.2,{align:'center'}); }
-  // Meta-Zeilen wie auf dem Steuerberater-Blatt: Monat/Jahr/Blatt-Nr. + Anfangs-/Endbestand.
-  var lbl=function(x,y,l,v){ doc.setFont('helvetica','normal'); doc.setFontSize(9.5); sT(MUT); doc.text(l,x,y); var lw=doc.getTextWidth(l); doc.setFont('helvetica','bold'); sT(INK); doc.text(v,x+lw+1.5,y); };
-  lbl(M,46.5,'Monat: ',(KB_MON[payload.month]||'')); lbl(M+52,46.5,'Jahr: ',String(payload.year||'')); lbl(M+96,46.5,'Blatt-Nr.: ',String(payload.blattNr||'—'));
-  lbl(M,52.5,'Anfangsbestand: ',kbEuro(t.anfangsbestand)); lbl(M+70,52.5,'Endbestand: ',kbEuro(t.endbestand));
-  doc.setFont('helvetica','normal'); doc.setFontSize(9); sT(LT); doc.text('Preise:  Kaffee '+kbEuro(t.prices.kaffee)+'   ·   Eiweißshake '+kbEuro(t.prices.eiweissshake)+'   ·   Eiweißbeutel '+kbEuro(t.prices.eiweissbeutel), M, 58.5);
-  var y=67;
-  doc.setFont('helvetica','bold'); doc.setFontSize(8.5); sT(INK);
-  doc.text('Tag',M,y); doc.text('Beschreibung',M+11,y); doc.text('Einnahme',EIN,y,{align:'right'}); doc.text('Ausgabe',AUS,y,{align:'right'}); doc.text('Bestand',BES,y,{align:'right'});
-  y+=2; sD(LINE); doc.setLineWidth(0.3); doc.line(M,y,W-M,y); y+=5;
-  doc.setFont('helvetica','italic'); doc.setFontSize(9); sT(MUT); doc.text('Anfangsbestand',M+11,y); doc.setFont('helvetica','bold'); sT(INK); doc.text(kbEuro(t.anfangsbestand),BES,y,{align:'right'}); y+=6;
-  doc.setFont('helvetica','normal'); doc.setFontSize(9);
-  var any=false;
-  t.rows.forEach(function(r){
-    if(!r.hasEntry) return; any=true;
-    if(y>276){ doc.addPage(); y=20; }
-    sT(MUT); doc.text(String(r.day)+'.',M,y);
-    var desc=(r.beschreibung||'')+(r.ausgabenText?((r.beschreibung?'  ·  ':'')+'Ausgabe: '+r.ausgabenText):''); if(!desc) desc='—';
-    sT(INK); doc.text(doc.splitTextToSize(desc,EIN-(M+11)-3)[0]||'—',M+11,y);
-    if(r.einnahmen){ sT(GREEN); doc.text(kbEuro(r.einnahmen),EIN,y,{align:'right'}); }
-    if(r.ausgaben){ sT(RED); doc.text('-'+kbEuro(r.ausgaben),AUS,y,{align:'right'}); }
-    sT(INK); doc.text(kbEuro(r.bestand),BES,y,{align:'right'});
-    y+=5.4;
-  });
-  if(!any){ sT(LT); doc.setFont('helvetica','italic'); doc.text((t.imported||payload.imported)?'Archiv-Monat – Einzelbuchungen siehe Original-Beleg (HiDrive-Archiv). Es gelten die erfassten Summen.':'Für diesen Monat sind keine Buchungen erfasst.',M+11,y); y+=6; }
-  y+=3; if(y>250){ doc.addPage(); y=20; }
-  sD(LINE); doc.line(M,y,W-M,y); y+=6;
-  var line=function(lbl,val,col,bold){ doc.setFont('helvetica',bold?'bold':'normal'); doc.setFontSize(bold?11:10); sT(MUT); doc.text(lbl,M+11,y); sT(col||INK); doc.text(val,BES,y,{align:'right'}); y+=(bold?7.5:6); };
-  line('Summe Einnahmen',kbEuro(t.sumEinnahmen),GREEN,false);
-  line('Summe Ausgaben','-'+kbEuro(t.sumAusgaben),RED,false);
-  line('Rechnerischer Endbestand',kbEuro(t.endbestand),INK,true);
-  if(t.gezaehlterEndbestand!=null){
-    line('Gezählter Kassenbestand',kbEuro(t.gezaehlterEndbestand),INK,false);
-    line('Differenz (Kassensturz)',(t.differenz>0?'+':'')+kbEuro(t.differenz),(t.kontrolleOk?GREEN:RED),true);
-  }
-  sD(LINE); doc.setLineWidth(0.3); doc.line(M,283,W-M,283);
+
+  // Kopfband + Meta (Monat/Jahr/Blatt-Nr./Anfangs-/Endbestand + Preise)
+  sF(TEAL); doc.rect(0,0,W,13,'F');
+  doc.setFont('helvetica','bold'); doc.setFontSize(13); sT([255,255,255]); doc.text('Kassenbuch Fit-Inn Trier', M, 8.7);
+  doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.text('Ausgestellt am '+ciToday(), W-M, 8.4, {align:'right'});
+  var lbl=function(x,y,l,v){ doc.setFont('helvetica','normal'); doc.setFontSize(9); sT(MUT); doc.text(l,x,y); var lw=doc.getTextWidth(l); doc.setFont('helvetica','bold'); sT(INK); doc.text(v,x+lw+1.2,y); };
+  lbl(M,20,'Monat: ',(KB_MON[payload.month]||'')+' '+(payload.year||''));
+  lbl(M+52,20,'Blatt-Nr.: ',String(payload.blattNr||'—'));
+  lbl(M+104,20,'Anfangsbestand: ',kbEuro(t.anfangsbestand));
+  lbl(M+172,20,'Endbestand: ',kbEuro(t.endbestand));
+  if(payload.closed){ doc.setFont('helvetica','bold'); doc.setFontSize(8); var pl=(payload.imported?'ARCHIV':'ABGESCHLOSSEN'); var pw=doc.getTextWidth(pl)+7; sF([231,246,236]); doc.roundedRect(W-M-pw,15,pw,6.5,3.2,3.2,'F'); sT(GREEN); doc.text(pl,W-M-pw/2,19.6,{align:'center'}); }
   doc.setFont('helvetica','normal'); doc.setFontSize(8); sT(LT);
-  doc.text('Bar-Nebenkasse · Fit-Inn Trier · maschinell erstellt am '+ciToday()+(payload.closedBy?('  ·  abgeschlossen von '+payload.closedBy):''), M, 288);
+  doc.text('Preise:  Kaffee '+kbEuro(t.prices.kaffee)+'   ·   Eiweißshake '+kbEuro(t.prices.eiweissshake)+'   ·   Eiweißbeutel '+kbEuro(t.prices.eiweissbeutel), M, 25);
+
+  // Archiv-/Import-Monat: nur Zusammenfassung (Einzelbuchungen im Original-Beleg)
+  if(payload.imported || t.imported){
+    var yy=40;
+    doc.setFont('helvetica','italic'); doc.setFontSize(9.5); sT(MUT);
+    doc.text(doc.splitTextToSize('Archiv-Monat aus dem bisherigen Kassenbuch – die Einzelbuchungen liegen im Original-Beleg (HiDrive-Archiv). Es gelten die erfassten Summen:', W-2*M), M, yy); yy+=12;
+    var sline=function(l,v,col,bold){ doc.setFont('helvetica',bold?'bold':'normal'); doc.setFontSize(bold?12:11); sT(MUT); doc.text(l,M,yy); sT(col||INK); doc.text(v,M+95,yy,{align:'right'}); yy+=(bold?9:7.5); };
+    sline('Anfangsbestand',kbEuro(t.anfangsbestand),MUT,false);
+    sline('Summe Einnahmen',kbEuro(t.sumEinnahmen),GREEN,false);
+    sline('Summe Ausgaben','-'+kbEuro(t.sumAusgaben),RED,false);
+    sline('Endbestand',kbEuro(t.endbestand),INK,true);
+    sD(LINE); doc.setLineWidth(0.3); doc.line(M,H-9,W-M,H-9);
+    doc.setFont('helvetica','normal'); doc.setFontSize(8); sT(LT);
+    doc.text('Bar-Nebenkasse · Fit-Inn Trier · maschinell erstellt am '+ciToday(), M, H-5);
+    return doc;
+  }
+
+  // Volle Tages-Tabelle (Spalten wie im Excel)
+  var cols=[
+    {t:['Tag'], x:M, w:11, a:'c'},
+    {t:['Anz.','Kaffee'], x:M+11, w:16, a:'c'},
+    {t:['Anz.','Eiweiß'], x:M+27, w:16, a:'c'},
+    {t:['Anz.','Eiweißbeutel'], x:M+43, w:18, a:'c'},
+    {t:['Sonstiges','(Beschreibung)'], x:M+61, w:38, a:'l'},
+    {t:['Sonstiges','(Betrag €)'], x:M+99, w:20, a:'r'},
+    {t:['Einnahmen','(berechnet)'], x:M+119, w:22, a:'r'},
+    {t:['Ausgaben',''], x:M+141, w:22, a:'r'},
+    {t:['Beschreibung','(automatisch)'], x:M+163, w:74, a:'l'},
+    {t:['Prüfung',''], x:M+237, w:14, a:'c'},
+    {t:['Bestand','(€)'], x:M+251, w:26, a:'r'}
+  ];
+  var TR=M+277;   // rechte Tabellenkante = W-M
+  var cellX=function(c){ return c.a==='r' ? (c.x+c.w-1.5) : (c.a==='c' ? (c.x+c.w/2) : (c.x+1.5)); };
+  var al=function(c){ return c.a==='r'?'right':(c.a==='c'?'center':'left'); };
+  var put=function(c,s,yy){ s=(s==null?'':String(s)); if(!s) return; doc.text(s, cellX(c), yy, {align:al(c)}); };
+
+  var top=29, headH=8.5, rowH=5.1;
+  // Kopfzeile
+  sF(HEAD); doc.rect(M, top, TR-M, headH, 'F');
+  doc.setFont('helvetica','bold'); doc.setFontSize(7.2); sT([255,255,255]);
+  cols.forEach(function(c){ var cx=c.x+c.w/2; c.t.forEach(function(ln,i){ if(ln) doc.text(ln, cx, top+3.5+i*3.1, {align:'center'}); }); });
+  var y=top+headH;
+
+  var dim=kbDaysInMonth(payload.year, payload.month);
+  doc.setFontSize(8);
+  for(var d=1; d<=dim; d++){
+    var r=t.rows[d-1]||{day:d,bestand:t.anfangsbestand};
+    if(r.hasEntry){ sF(ZEBRA); doc.rect(M, y, TR-M, rowH, 'F'); }
+    var cy=y+rowH-1.6, vy=y+rowH/2;
+    doc.setFont('helvetica','normal');
+    sT(INK); put(cols[0], d, cy);
+    put(cols[1], r.kaffee||'', cy); put(cols[2], r.eiweissshake||'', cy); put(cols[3], r.eiweissbeutel||'', cy);
+    var sb=(r.sonstigesText&&String(r.sonstigesText).trim())?String(r.sonstigesText).trim():((r.ausgabenText&&String(r.ausgabenText).trim())?String(r.ausgabenText).trim():'');
+    sT(BLUE); put(cols[4], sb?doc.splitTextToSize(sb, cols[4].w-2)[0]:'', cy);
+    sT(INK); put(cols[5], r.sonstigesBetrag?kbEuro(r.sonstigesBetrag):'', cy);
+    if(r.einnahmen){ sT(GREEN); put(cols[6], kbEuro(r.einnahmen), cy); }
+    if(r.ausgaben){ sT(RED); put(cols[7], kbEuro(r.ausgaben), cy); }
+    var desc=r.beschreibung||''; var at=(r.ausgabenText&&String(r.ausgabenText).trim())||'';
+    if(at && desc.indexOf(at)<0) desc=desc?(desc+' + '+at):at;
+    sT(INK); put(cols[8], desc?doc.splitTextToSize(desc, cols[8].w-2)[0]:'', cy);
+    if(r.einnahmen>0){ var pcx=cols[9].x+cols[9].w/2; sD(GREEN); doc.setLineWidth(0.5); doc.line(pcx-1.3, vy+0.1, pcx-0.4, vy+1.1); doc.line(pcx-0.4, vy+1.1, pcx+1.6, vy-1.4); }
+    sT(INK); put(cols[10], kbEuro(r.bestand), cy);
+    sD(LINE); doc.setLineWidth(0.2); doc.line(M, y+rowH, TR, y+rowH);
+    y+=rowH;
+  }
+  // SUMME / ENDBESTAND
+  sF(HEAD); doc.rect(M, y, TR-M, rowH+0.4, 'F');
+  doc.setFont('helvetica','bold'); doc.setFontSize(8); sT([255,255,255]);
+  var scy=y+rowH-1.3;
+  doc.text('SUMME / ENDBESTAND', cols[6].x-2, scy, {align:'right'});
+  put(cols[6], kbEuro(t.sumEinnahmen), scy); put(cols[7], kbEuro(t.sumAusgaben), scy); put(cols[10], kbEuro(t.endbestand), scy);
+  y+=rowH+0.4;
+  // Gitter: senkrechte Spaltenlinien + Außenrahmen
+  sD(LINE); doc.setLineWidth(0.2);
+  cols.forEach(function(c){ doc.line(c.x, top, c.x, y); }); doc.line(TR, top, TR, y);
+  sD([120,140,150]); doc.setLineWidth(0.3); doc.rect(M, top, TR-M, y-top);
+
+  // Kassensturz (falls gezählt) + Fuß
+  if(t.gezaehlterEndbestand!=null && y<H-14){
+    y+=5; doc.setFont('helvetica','normal'); doc.setFontSize(8.5); sT(MUT);
+    doc.text('Gezählter Kassenbestand (Kassensturz): ', M, y);
+    var w1=doc.getTextWidth('Gezählter Kassenbestand (Kassensturz): '); doc.setFont('helvetica','bold'); sT(INK); doc.text(kbEuro(t.gezaehlterEndbestand), M+w1, y);
+    doc.setFont('helvetica','normal'); sT(MUT); doc.text('   ·   Differenz: ', M+w1+doc.getTextWidth(kbEuro(t.gezaehlterEndbestand)), y);
+    doc.setFont('helvetica','bold'); sT(t.kontrolleOk?GREEN:RED); doc.text((t.differenz>0?'+':'')+kbEuro(t.differenz), M+w1+doc.getTextWidth(kbEuro(t.gezaehlterEndbestand))+doc.getTextWidth('   ·   Differenz: '), y);
+  }
+  doc.setFont('helvetica','normal'); doc.setFontSize(7.5); sT(LT);
+  doc.text('Bar-Nebenkasse · Fit-Inn Trier · Auf Hirtenberg 8 · 54296 Trier · maschinell erstellt am '+ciToday()+(payload.closedBy?('  ·  abgeschlossen von '+payload.closedBy):''), M, H-4);
   return doc;
 }
 function kassenbuchNode(){

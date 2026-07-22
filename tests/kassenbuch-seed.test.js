@@ -12,7 +12,7 @@ const ok = (l, c) => { if (!c) pass = false; console.log((c ? 'OK  ' : 'FAIL') +
 const r2 = (n) => Math.round(n * 100) / 100;
 
 // Erwartete Endbestände laut Original-Belegen (unabhängig gegengeprüft).
-const EXPECT_END = { '2026-01': 620.65, '2026-02': 920.65, '2026-03': 990.15, '2026-04': 1210.15, '2026-05': 1372.58, '2026-06': 139.56 };
+const EXPECT_END = { '2026-01': 620.65, '2026-02': 920.65, '2026-03': 990.15, '2026-04': 1210.15, '2026-05': 1372.58, '2026-06': 633.06 };
 
 // 1. Jede Zeile: Anfang + Ein − Aus === Endbestand.
 SEED.SEED_2026.forEach((s) => {
@@ -41,8 +41,9 @@ const byKey = {}; SEED.SEED_2026.forEach((s) => { byKey[s.key] = s; });
 // 5. seedRecord ist ein abgeschlossener Archiv-Monat mit Quelle 'import'.
 const rec = SEED.seedRecord(byKey['2026-06']);
 ok('5. seedRecord Juni: closed + source import + blattNr 843', rec.closed === true && rec.source === 'import' && rec.blattNr === '843');
-ok('5b. seedRecord hat imported-Summen', rec.imported && rec.imported.endbestand === 139.56);
+ok('5b. seedRecord hat imported-Summen', rec.imported && rec.imported.endbestand === 633.06);
 ok('5c. Juni Anfangsbestand 1372,58 -> Juli erbt das', rec.anfangsbestand === 1372.58);
+ok('5d. Juni Endbestand 633,06 -> Juli-Anfangsbestand', KB.computeMonth(rec).endbestand === 633.06);
 
 // 6. Aktuelle Preisliste = Kaffee 2,00 (Stand Juni).
 ok('6. Seed-Preis Kaffee 2,00', SEED.SEED_PRICES.kaffee === 2.0 && SEED.SEED_PRICES.eiweissshake === 2.5 && SEED.SEED_PRICES.eiweissbeutel === 20.5);
