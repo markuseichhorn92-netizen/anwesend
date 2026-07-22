@@ -26,11 +26,21 @@ async function monthPayload(key) {
   const stored = await KB.getMonth(key);
   const prices = await KB.getPrices();
   let base, carried = null;
+  const seedM = SEED.SEED_2026.find((s) => s.key === key);
   if (stored) {
     base = stored;
+  } else if (seedM) {
+    // Altbestands-Monat, der noch nicht gespeichert ist: direkt aus dem Seed zeigen.
+    base = SEED.seedRecord(seedM);
   } else {
     // Noch nicht erfasster Monat: Anfangsbestand + Blatt-Nr. aus dem Vormonat vorbelegen.
-    const sug = await KB.suggestOpening(key);
+    let sug = await KB.suggestOpening(key);
+    // Fallback auf die hinterlegten Altbestände (Seed), falls noch kein Monat gespeichert ist –
+    // so ist der laufende Monat sofort vorbelegt (z. B. Juli aus Juni), auch ohne vorherigen Import.
+    if (!sug.carried) {
+      const prev = SEED.SEED_2026.filter((s) => s.key < key).sort((a, b) => (a.key < b.key ? -1 : 1)).pop();
+      if (prev) sug = { carried: true, anfangsbestand: prev.endbestand, blattNr: KB.nextBlattNr(prev.blattNr), fromMonth: prev.key };
+    }
     base = { key: key, year: parseInt(key.slice(0, 4), 10), month: parseInt(key.slice(5, 7), 10),
       blattNr: sug.blattNr || '', anfangsbestand: sug.anfangsbestand || 0, gezaehlterEndbestand: '', prices: prices, days: {} };
     if (sug.carried) carried = { anfangsbestand: sug.anfangsbestand, blattNr: sug.blattNr, fromMonth: sug.fromMonth };
@@ -123,8 +133,9 @@ module.exports = async function handler(req, res) {
     const text = KB.toPromptText(base, totals);
     let r; try { r = await AI.kassenbuchCheck({ text: text }); } catch (e) { r = { ok: false, error: 'ai_failed' }; }
     if (!r || !r.ok) return j(res, 200, { ok: false, message: (r && r.error === 'no_ai_key') ? 'FINN ist gerade nicht verfügbar.' : 'Die Prüfung hat nicht geklappt – bitte später erneut.' });
-    try { await KB.saveCheck(month, { text: r.answer }); } catch (e) {}
-    return j(res, 200, { ok: true, answer: r.answer, checkedAt: new Date().toISOString() });
+    const findings = r.findings || [];
+    try { await KB.saveCheck(month, { findings: findings, text: r.raw || '' }); } catch (e) {}
+    return j(res, 200, { ok: true, findings: findings, raw: r.raw || '', checkedAt: new Date().toISOString() });
   }
 
   if (action === 'close') {

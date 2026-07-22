@@ -3242,7 +3242,7 @@ async function loadKassenbuch(month){
     if(r && r.ok && r.current){
       S.kb=r.current; S.kbMonth=r.current.key; S.kbMonths=r.months||[]; S.kbHasStore=r.hasStore!==false; S.kbSeedPending=r.seedPending||0;
       S.kbDraft=kbSeedDraft(r.current); S.kbDirty=false; S.kbMsg='';
-      S.kbCheck=(r.current.check&&r.current.check.text)?r.current.check:null;
+      S.kbCheck=(r.current.check&&((r.current.check.findings&&r.current.check.findings.length)||r.current.check.text))?{findings:r.current.check.findings||[],raw:r.current.check.text||'',at:r.current.check.at}:null;
     } else S.kbErr=!S.kb;
     S.kbLoaded=true;
   }catch(e){ S.kbErr=!S.kb; }
@@ -3289,10 +3289,26 @@ async function kbDoCheck(){
   S.kbCheckBusy=true; S.kbMsg=''; render();
   try{
     var r=await tapi('/api/team/kassenbuch',{method:'POST',body:{action:'check',month:S.kbMonth}});
-    if(r && r.ok && r.answer){ S.kbCheck={text:r.answer,at:r.checkedAt}; }
+    if(r && r.ok){ S.kbCheck={findings:r.findings||[],raw:r.raw||'',at:r.checkedAt}; if(!(r.findings&&r.findings.length)&&!r.raw) S.kbMsg='FINN hat nichts zu beanstanden – alles in Ordnung.'; }
     else S.kbMsg=(r&&r.message)||'Die Prüfung hat nicht geklappt.';
   }catch(e){ S.kbMsg='Verbindung fehlgeschlagen.'; }
   S.kbCheckBusy=false; render();
+}
+// FINN-Vorschlag mit einem Klick übernehmen (füllt das Feld + speichert).
+async function kbApplyFix(idx){
+  var f=S.kbCheck&&S.kbCheck.findings&&S.kbCheck.findings[idx];
+  if(!f||!f.aktion||f._done||S.kbBusy) return;
+  if(S.kb&&S.kb.closed){ S.kbMsg='Der Monat ist abgeschlossen – bitte zuerst „Wieder öffnen".'; render(); return; }
+  if(!S.kbHasStore){ S.kbMsg='Speicher nicht aktiv – Vorschlag kann nicht übernommen werden.'; render(); return; }
+  if(!S.kbDraft) S.kbDraft=kbSeedDraft(S.kb||{});
+  var a=f.aktion;
+  if(a.typ==='dayText'){ var k=String(a.tag); S.kbDraft.days=S.kbDraft.days||{}; S.kbDraft.days[k]=S.kbDraft.days[k]||{}; S.kbDraft.days[k][a.feld]=a.text; }
+  else if(a.typ==='gezaehlt'){ S.kbDraft.gezaehlterEndbestand=String(a.wert).replace('.',','); }
+  else return;
+  S.kbDirty=true;
+  var okS=await kbSave(true);
+  if(okS){ f._done=true; S.kbMsg='Vorschlag übernommen und gespeichert.'; } else S.kbMsg='Konnte nicht übernehmen.';
+  render();
 }
 function kbCurTotals(){ return (S.kb && S.kb.imported && S.kb.totals) ? S.kb.totals : kbCompute(S.kbDraft||kbSeedDraft(S.kb||{})); }
 function kbExportPdf(){
@@ -3594,11 +3610,34 @@ function kassenbuchNode(){
   H+='<div style="background:#fff;border:1px solid #e1e8ea;border-radius:16px;padding:15px 16px;margin-bottom:12px">'+
     '<div style="display:flex;align-items:center;gap:9px;margin-bottom:5px"><span style="width:26px;height:26px;border-radius:8px;background:#e7f1f3;color:'+TEAL+';display:flex;align-items:center;justify-content:center;font-weight:900;font-size:13px;flex-shrink:0">F</span><span style="font-size:14px;font-weight:900;color:#15171b">FINN prüft dein Kassenbuch</span></div>'+
     '<div style="font-size:12.5px;color:#5a636a;font-weight:600;line-height:1.6;margin-bottom:11px">Plausibilität &amp; Rechenkontrolle sowie steuerlich/formelle Punkte (GoBD, Kassensturz, Belege, USt). Unverbindliche Orientierung – keine Steuerberatung.</div>'+
-    '<button data-kbcheck="1"'+((S.kbCheckBusy||S.kbBusy)?' disabled':'')+' style="width:100%;border:none;background:'+TEAL+';border-radius:12px;font-size:13.5px;font-weight:900;padding:12px 14px;color:#fff;cursor:'+((S.kbCheckBusy||S.kbBusy)?'default':'pointer')+';opacity:'+((S.kbCheckBusy||S.kbBusy)?'.6':'1')+'">'+(S.kbCheckBusy?'FINN prüft …':(S.kbCheck?'Erneut von FINN prüfen lassen':'Von FINN prüfen lassen'))+'</button>';
-  if(S.kbCheck && S.kbCheck.text){
+    '<button data-kbcheck="1"'+((S.kbCheckBusy||S.kbBusy)?' disabled':'')+' style="width:100%;border:none;background:'+TEAL+';border-radius:12px;font-size:13.5px;font-weight:900;padding:12px 14px;color:#fff;cursor:'+((S.kbCheckBusy||S.kbBusy)?'default':'pointer')+';opacity:'+((S.kbCheckBusy||S.kbBusy)?'.6':'1')+'">'+(S.kbCheckBusy?'FINN prüft …':((S.kbCheck&&S.kbCheck.findings&&S.kbCheck.findings.length)?'Erneut prüfen':'Von FINN prüfen lassen'))+'</button>';
+  if(S.kbCheck){
     var when=''; try{ if(S.kbCheck.at){ var da=new Date(S.kbCheck.at); if(!isNaN(da.getTime())) when=da.toLocaleDateString('de-DE')+', '+da.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'}); } }catch(e){}
-    H+='<div style="background:#f4f7f8;border:1px solid #e1e8ea;border-radius:12px;padding:13px 15px;margin-top:12px;font-size:13px;color:#2a2f34;font-weight:600;line-height:1.62;white-space:pre-wrap">'+esc(S.kbCheck.text)+'</div>'+
-      (when?'<div style="font-size:11px;color:#9aa2a8;font-weight:700;margin-top:7px">Geprüft am '+esc(when)+'</div>':'');
+    var fnd=(S.kbCheck.findings||[]);
+    if(fnd.length){
+      var SEVc={hinweis:{d:'#0a4958',bg:'#e7f1f3',bd:'#cfe0e3',l:'Hinweis'},warnung:{d:'#a6651a',bg:'#fbf1e2',bd:'#f0dcbc',l:'Achtung'},kritisch:{d:'#b53a2c',bg:'#fbeae7',bd:'#f2cfc8',l:'Kritisch'}};
+      H+='<div style="margin-top:12px;display:flex;flex-direction:column;gap:9px">';
+      fnd.forEach(function(f,i){
+        var sv=SEVc[f.schwere]||SEVc.hinweis;
+        var loc=esc(f.spalte||'Allgemein')+(f.tag?(' · Tag '+f.tag):'');
+        H+='<div style="border:1px solid '+sv.bd+';background:'+sv.bg+';border-radius:12px;padding:11px 13px">'+
+          '<div style="display:flex;align-items:center;gap:7px;margin-bottom:4px;flex-wrap:wrap">'+
+            '<span style="font-size:9.5px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:#fff;background:'+sv.d+';border-radius:5px;padding:2px 6px">'+sv.l+'</span>'+
+            '<span style="font-size:11px;font-weight:800;color:'+sv.d+'">'+loc+'</span>'+
+            (f._done?'<span style="font-size:11px;font-weight:800;color:#1d7a3e;margin-left:auto">✓ übernommen</span>':'')+
+          '</div>'+
+          (f.titel?'<div style="font-size:13.5px;font-weight:900;color:#15171b;margin-bottom:2px">'+esc(f.titel)+'</div>':'')+
+          (f.problem?'<div style="font-size:12.5px;color:#3a4147;font-weight:600;line-height:1.5">'+esc(f.problem)+'</div>':'')+
+          (f.vorschlag?'<div style="font-size:12.5px;color:'+sv.d+';font-weight:700;line-height:1.5;margin-top:5px">➜ '+esc(f.vorschlag)+'</div>':'')+
+          ((f.aktion&&!f._done&&!closed)?('<button data-kbfix="'+i+'"'+(S.kbBusy?' disabled':'')+' style="margin-top:9px;border:none;background:'+sv.d+';border-radius:9px;font-size:12.5px;font-weight:800;padding:8px 14px;color:#fff;cursor:pointer;opacity:'+(S.kbBusy?'.6':'1')+'">'+(S.kbBusy==='save'?'Übernehme …':'Übernehmen')+'</button>'):'')+
+        '</div>';
+      });
+      H+='</div>'+(when?'<div style="font-size:11px;color:#9aa2a8;font-weight:700;margin-top:8px">Geprüft am '+esc(when)+'</div>':'');
+    } else if(S.kbCheck.raw){
+      H+='<div style="background:#f4f7f8;border:1px solid #e1e8ea;border-radius:12px;padding:13px 15px;margin-top:12px;font-size:13px;color:#2a2f34;font-weight:600;line-height:1.62;white-space:pre-wrap">'+esc(S.kbCheck.raw)+'</div>';
+    } else {
+      H+='<div style="background:#e7f6ec;border:1px solid #bfe3cd;color:#176b37;border-radius:12px;padding:12px 14px;margin-top:12px;font-size:13px;font-weight:800">✓ FINN hat nichts zu beanstanden.</div>';
+    }
   }
   H+='</div>';
 
@@ -3638,6 +3677,7 @@ function kassenbuchNode(){
   var im=q('[data-kbimport]'); if(im) im.onclick=kbImportSeed;
   var sv=q('[data-kbsave]'); if(sv) sv.onclick=function(){ kbSave(false); };
   var ck=q('[data-kbcheck]'); if(ck) ck.onclick=kbDoCheck;
+  node.querySelectorAll('[data-kbfix]').forEach(function(b){ b.onclick=function(){ kbApplyFix(parseInt(b.getAttribute('data-kbfix'),10)); }; });
   var pd=q('[data-kbpdf]'); if(pd) pd.onclick=kbExportPdf;
   var pr=q('[data-kbprint]'); if(pr) pr.onclick=kbPrint;
   var cl=q('[data-kbclose]'); if(cl) cl.onclick=kbClose;
