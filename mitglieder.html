@@ -3114,9 +3114,10 @@
   function moReadyStatus(){
     var d=(DATA.morning&&DATA.morning.ok)?DATA.morning:null; if(!d) return null;
     var r=d.readiness, m=d.latest; if(!m||!r||!r.level) return null;
+    var e=moEff();   // reconciled Tages-Urteil (nicht die rohe Physiologie) – konsistent mit allem
     var map={gruen:{emo:'🟢',col:'#1c9b5e',bg:'#E7F6EC'},gelb:{emo:'🟡',col:'#9a5a18',bg:'#FBF0E3'},rot:{emo:'🔴',col:'#b4552f',bg:'#FBECE8'}};
-    var s=map[r.level]; if(!s) return {emo:'📈',lab:'Kalibrierung läuft',col:'var(--text-soft)',bg:'var(--surface-2)',score:null};
-    return {emo:s.emo,lab:r.headline||'Bereitschaft',col:s.col,bg:s.bg,score:r.score};
+    var s=map[e.level]; if(!s) return {emo:'📈',lab:'Kalibrierung läuft',col:'var(--text-soft)',bg:'var(--surface-2)',score:null};
+    return {emo:s.emo,lab:e.headline||r.headline||'Bereitschaft',col:s.col,bg:s.bg,score:r.score};
   }
   // Coach-Übersicht-Hero: Vitalalter im Fokus + Bereitschafts-Status; Vitalpunkte sekundär.
   function coachVitalHero(){
@@ -6307,7 +6308,7 @@
   // Verbleibende Tage einer Erholungsphase (inkl. heute) aus dem „bis"-Datum.
   function moRecDaysLeft(until){ try{ var u=Date.parse(String(until).slice(0,10)+'T12:00:00'); var t=Date.parse(isoToday()+'T12:00:00'); if(isNaN(u)||isNaN(t)) return 0; return Math.max(0,Math.round((u-t)/864e5)); }catch(e){ return 0; } }
   function moRecoveryActive(){ var d=DATA.morning; return (d&&d.ok&&d.recovery&&d.recovery.active)?d.recovery:null; }
-  function vitalToday(){
+  function vitalToday(ctx){
     var d=(DATA.morning&&DATA.morning.ok)?DATA.morning:null; if(!d) return null;
     // Aktiver Erholungs-/Pausen-Modus überschreibt das Tages-Signal überall – AUSSER er ist
     // „stale" (heute wieder erholt): dann gilt wieder das echte Tages-Signal (kein Widerspruch).
@@ -6326,9 +6327,10 @@
     var level=(r&&m&&r.level)?r.level:null;         // gruen | gelb | rot | kalibrierung
     if(level==='kalibrierung') level=null;          // noch nicht aussagekräftig
     if(!alert && !level) return null;
-    // Effektive Ampel aus dem EINEN Tages-Urteil (moEff: inkl. Alarm + subjektiver Kappung),
-    // damit die Banner nie „Vollgas" zeigen, während die Vorhersage „moderat" sagt.
-    var eff=moEff().level||(alert?'rot':level);
+    // Effektive Ampel aus dem EINEN Tages-Urteil (moEff). Im Trainings-Kontext (ctx==='training')
+    // zusätzlich der Puls-Check vorm Workout (moTrainEff) – so zeigt der Training-Screen dasselbe
+    // Signal wie der Vital-Check-Training-Tab und nie „Vollgas", während der Puls-Check „locker" sagt.
+    var eff=((ctx==='training'?moTrainEff().level:moEff().level))||(alert?'rot':level);
     var MAP={
       gruen:{emo:'🟢',col:'#176b37',bg:'#E7F6EC',
         trainT:'Bereit für Vollgas', trainS:'Cardio Zone 3–5 · Kraft schwer (85–95 %) möglich',
@@ -6349,7 +6351,7 @@
       headline:(r&&r.headline)||'', otNote:(ot&&ot.note)||'', date:(m&&m.date)||'' };
   }
   function meinTagReadyBanner(){
-    var v=vitalToday(); if(!v) return '';
+    var v=vitalToday('training'); if(!v) return '';
     return '<div data-act="nav" data-arg="morning" style="display:flex;align-items:center;gap:11px;background:'+v.bg+';border-radius:15px;padding:12px 14px;margin-bottom:12px;cursor:pointer"><span style="font-size:20px">'+v.emo+'</span><div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:900;color:'+v.col+'">Vital-Check: '+esc(v.trainT)+'</div><div style="font-size:11.5px;font-weight:600;color:var(--text-2);margin-top:1px">'+esc(v.trainS)+'</div></div>'+svg('<path d="M9 18l6-6-6-6"></path>',{c:v.col,w:2.2,s:16})+'</div>';
   }
   // Vital-Signal-Banner für den Ernährungs-Screen (Fokus je nach Erholung).
@@ -8481,7 +8483,7 @@
     var d=DATA.morning; var latest=(d&&d.ok&&d.latest)||null; var prem=!!(d&&d.ok&&d.premium);
     var CARD='background:var(--surface);border-radius:20px;box-shadow:0 14px 38px rgba(4,33,40,.10);padding:18px';
     var sub;
-    if(latest){ var r=(d.readiness)||{}; var lv=r.level; var emo=(lv==='gruen')?'🟢':(lv==='gelb')?'🟡':(lv==='rot')?'🔴':'📈'; var txt=(lv&&MO_LV[lv])?(r.headline||MO_LV[lv].lab):'Kalibrierung läuft'; sub='<div style="font-size:12.5px;color:var(--text-soft);font-weight:700;margin-top:3px">'+emo+' '+esc(txt)+(latest.rhr!=null?(' · Ruhepuls '+moNum(latest.rhr)+' bpm'):'')+'</div>'; }
+    if(latest){ var e=moEff(); var lv=e.level; var emo=(lv==='gruen')?'🟢':(lv==='gelb')?'🟡':(lv==='rot')?'🔴':'📈'; var txt=(lv&&MO_LV[lv])?(e.headline||MO_LV[lv].lab):'Kalibrierung läuft'; sub='<div style="font-size:12.5px;color:var(--text-soft);font-weight:700;margin-top:3px">'+emo+' '+esc(txt)+(latest.rhr!=null?(' · Ruhepuls '+moNum(latest.rhr)+' bpm'):'')+'</div>'; }
     else { sub='<div style="font-size:12.5px;color:var(--text-soft);font-weight:600;margin-top:3px">'+(prem?'Miss deine Bereitschaft – Morgen- &amp; Trainings-Check-in':'Coach Premium · Herz &amp; Bereitschaft messen')+'</div>'; }
     return '<div data-act="nav" data-arg="morning" style="'+CARD+';cursor:pointer;display:flex;align-items:center;gap:14px"><div style="width:44px;height:44px;border-radius:13px;background:var(--surface-2);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:22px">❤️</div><div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:900;color:var(--text)">Vital-Check</div>'+sub+'</div>'+svg('<path d="M9 18l6-6-6-6"></path>',{c:'var(--text-soft)',w:2.2,s:20})+'</div>';
   }
