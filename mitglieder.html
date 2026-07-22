@@ -8145,6 +8145,24 @@
     var btn=function(k,emo,lab){ var on=mode===k; return '<button data-act="vitalMode" data-arg="'+k+'" style="flex:1;border:none;border-radius:12px;background:'+(on?'var(--teal)':'transparent')+';color:'+(on?'#fff':'var(--text-2)')+';font-weight:800;font-size:13px;padding:11px 6px;cursor:pointer;white-space:nowrap">'+emo+' '+lab+'</button>'; };
     return '<div style="display:flex;gap:5px;background:var(--surface-2);border-radius:15px;padding:5px">'+btn('morgen','🌅','Morgen')+btn('training','🏋️','Training')+'</div>';
   }
+  // Reconciled Trainings-Bereitschaft: der kurze Puls-Check VORM Workout verfeinert die
+  // Tages-Ampel (moEff), darf sie aber NIE überbieten. An einem Ruhetag (Erholungsphase,
+  // krank, echtes Übertraining) bleibt es beim Ruhetag; ein erhöhter Puls JETZT darf
+  // zusätzlich dämpfen. So sagt der Training-Tab nie „Vollgas", wenn der Tag Ruhe heißt –
+  // und die Abweichung „heute Morgen grün, jetzt Puls erhöht" wird erklärt statt widersprochen.
+  var MO_ORDER={ rot:0, gelb:1, gruen:2 };
+  function moTrainEff(){
+    var d=morningData(); var e=moEff();
+    var tr=(d&&d.training)||{}; var trLv=(tr.readiness&&tr.readiness.level&&tr.readiness.level!=='kalibrierung')?tr.readiness.level:null;
+    var dayLv=(e.level&&MO_ORDER[e.level]!=null)?e.level:null;
+    var lv;
+    if(dayLv!=null&&trLv!=null) lv=(MO_ORDER[trLv]<MO_ORDER[dayLv])?trLv:dayLv;
+    else lv=trLv||dayLv;
+    return { level:lv, dayLevel:dayLv, trainLevel:trLv,
+      cappedByDay:(dayLv!=null&&trLv!=null&&MO_ORDER[dayLv]<MO_ORDER[trLv]),   // Tag restriktiver (z. B. Erholungsphase)
+      loweredByPulse:(dayLv!=null&&trLv!=null&&MO_ORDER[trLv]<MO_ORDER[dayLv]), // Puls jetzt erhöht ggü. heute Morgen
+      dayHeadline:e.headline||'', dayDetail:e.detail||'' };
+  }
   // Trainings-Bereitschaft JETZT (Ergebnis des kurzen Puls-Checks vorm Workout).
   function moTrainVerdictCard(){
     var d=morningData(); if(!d) return ''; var tr=d.training||{}; var r=tr.readiness; var m=tr.latest;
@@ -8153,12 +8171,21 @@
     if(r.level==='kalibrierung'){
       return '<div style="'+MO_CARD+'"><div style="font-size:15px;font-weight:900;color:var(--text)">Noch keine Baseline</div><div style="font-size:12.5px;color:var(--text-soft);font-weight:500;margin-top:6px;line-height:1.5">'+esc(r.advice||'')+'</div></div>';
     }
-    var L=MO_LV[r.level]||MO_LV.gelb; var when=m.ts?moClock(m.ts):'';
+    var te=moTrainEff(); var effLv=te.level||r.level;
+    var L=MO_LV[effLv]||MO_LV.gelb; var when=m.ts?moClock(m.ts):'';
+    // Headline/Advice: ist der TAG der Begrenzer (Ruhetag), zeigen wir dessen Botschaft –
+    // sonst die des Puls-Checks. Zusatzzeile erklärt eine Abweichung Morgen↔jetzt.
+    var head=te.cappedByDay?(te.dayHeadline||r.headline):r.headline;
+    var advice=te.cappedByDay?(te.dayDetail||r.advice||''):(r.advice||'');
+    var relNote='';
+    if(te.cappedByDay){ relNote='Der Puls-Check ändert daran nichts – die Tages-Empfehlung hat heute Vorrang.'; }
+    else if(te.loweredByPulse){ var wMorning={gruen:'top erholt (grün)',gelb:'solide (gelb)',rot:'auf Erholung (rot)'}[te.dayLevel]||''; relNote='Heute Morgen warst du '+wMorning+' – dein Puls ist jetzt aber erhöht, deshalb heute lieber lockerer.'; }
     var chip=function(lab,val,sub){ return '<div style="flex:1;background:rgba(255,255,255,.14);border-radius:13px;padding:11px 12px"><div style="font-size:10.5px;font-weight:800;color:rgba(255,255,255,.75);text-transform:uppercase;letter-spacing:.4px">'+lab+'</div><div style="font-size:20px;font-weight:900;color:#fff;margin-top:2px">'+val+'</div>'+(sub?'<div style="font-size:10.5px;color:rgba(255,255,255,.7);font-weight:600">'+sub+'</div>':'')+'</div>'; };
     return '<div style="background:'+L.bg+';border-radius:22px;padding:22px;color:#fff;box-shadow:0 16px 40px rgba(4,33,40,.2)">'+
       '<div style="font-size:12px;font-weight:800;color:rgba(255,255,255,.8);text-transform:uppercase;letter-spacing:.5px">Trainings-Bereitschaft'+(when?(' · '+esc(when)):'')+'</div>'+
-      '<div style="display:flex;align-items:center;gap:14px;margin-top:8px"><div style="font-size:46px;line-height:1">'+L.emo+'</div><div style="min-width:0"><div style="font-size:22px;font-weight:900;letter-spacing:-.3px;line-height:1.1">'+esc(r.headline)+'</div><div style="font-size:13px;color:rgba(255,255,255,.85);font-weight:700;margin-top:2px">Score '+(r.score!=null?r.score:'—')+'/100</div></div></div>'+
-      '<div style="font-size:13px;color:rgba(255,255,255,.9);font-weight:600;line-height:1.5;margin-top:12px">'+esc(r.advice||'')+'</div>'+
+      '<div style="display:flex;align-items:center;gap:14px;margin-top:8px"><div style="font-size:46px;line-height:1">'+L.emo+'</div><div style="min-width:0"><div style="font-size:22px;font-weight:900;letter-spacing:-.3px;line-height:1.1">'+esc(head)+'</div><div style="font-size:13px;color:rgba(255,255,255,.85);font-weight:700;margin-top:2px">Score '+(r.score!=null?r.score:'—')+'/100</div></div></div>'+
+      '<div style="font-size:13px;color:rgba(255,255,255,.9);font-weight:600;line-height:1.5;margin-top:12px">'+esc(advice)+'</div>'+
+      (relNote?'<div style="font-size:12px;color:rgba(255,255,255,.82);font-weight:600;line-height:1.45;margin-top:8px;background:rgba(255,255,255,.12);border-radius:11px;padding:9px 12px">'+esc(relNote)+'</div>':'')+
       '<div style="display:flex;gap:10px;margin-top:14px">'+chip('Puls jetzt',moNum(m.rhr)+' bpm',base.rhr!=null?('Baseline '+moNum(base.rhr)):'')+(m.hrvRmssd!=null?chip('HRV',moNum(m.hrvRmssd)+' ms',base.hrv!=null?('Ø '+moNum(base.hrv)):''):'')+'</div>'+
     '</div>';
   }
@@ -8428,7 +8455,7 @@
       var ahT=woVitalRings(); if(ahT) blocks.push(ahT);
       if(strapAd) blocks.push(strapAd);
       var tr=d.training||{};
-      if(tr.latest){ blocks.push(moTrainVerdictCard()); blocks.push(moZonesCard(tr.readiness&&tr.readiness.level)); blocks.push(moStrengthCard(tr.readiness&&tr.readiness.level)); }
+      if(tr.latest){ var teLv=moTrainEff().level; blocks.push(moTrainVerdictCard()); blocks.push(moZonesCard(teLv)); blocks.push(moStrengthCard(teLv)); }
       else if(!tr.hasBaseline){ blocks.push('<div style="'+MO_CARD+'"><div style="font-size:13px;color:var(--text-soft);font-weight:600;line-height:1.55">Der Trainings-Check-in vergleicht deinen Puls mit deiner <b>Morgen-Baseline</b>. Mach zuerst ein paar Morgen-Check-ins – dann wird der Trainings-Check aussagekräftig.</div></div>'); }
       blocks.push(moTrainHistoryCard());
     } else {
