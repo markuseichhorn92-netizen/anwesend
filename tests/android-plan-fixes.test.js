@@ -53,6 +53,12 @@ assert.ok(member.includes('function homeFigurCard()'), 'Startseiten-Karte fuer G
 assert.ok(member.includes('homeVitalCard()+homeFigurCard()'), 'Gewicht-Karte muss in der Startseite eingehaengt sein');
 assert.ok(member.includes("qaRow('figur',"), 'Schnellmenue muss einen Gewicht-Eintrag haben');
 assert.ok(/var screens=\[[^\]]*'figur'[^\]]*\];/.test(member), "qaGo muss 'figur' als Ziel kennen");
-assert.ok(member.includes("rIf(['figur','home','fort'])"), 'loadFigur muss Home/Fortschritt mit-rendern');
+assert.ok(member.includes("rIf(['figur','home','fort','ern'])"), 'loadFigur muss Home/Fortschritt/Ernaehrung mit-rendern');
+
+// Gewicht auch im Ernaehrungs-Bereich (Verlauf-Tab + Erfassen-"+") – Nutzerwunsch.
+assert.ok(member.includes('function ernWeightCard()'), 'Gewicht-Karte im Ernaehrungs-Verlauf muss existieren');
+assert.ok(member.includes('return ernWeightCard()+stripCard'), 'Gewicht-Karte muss im Verlauf-Tab oben stehen');
+assert.ok(member.includes("mkPick('ernCapWeight',"), 'Ernaehrungs-Erfassen muss einen Gewicht-Eintrag haben');
+assert.ok(/ernCapWeight:function\(\)\{[\s\S]*?nav\('figur'\)/.test(member), "ernCapWeight muss in den Figur-Check fuehren");
 
 console.log('android plan fixes test passed');
