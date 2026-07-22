@@ -156,6 +156,8 @@ var S={ token:null, role:null, meName:null, screen:'dash', convs:[], counts:{}, 
         leads:[], leadsLoaded:false, leadsLoading:false, leadFilter:'all', leadBusy:'',
         // App-Tester: Anmeldungen für den geschlossenen Google-Play-Test
         testers:[], testersLoaded:false, testersLoading:false, testersErr:false, testersPending:0, testerBusy:'', testerMsg:'',
+        // App-Feedback (anonym aus der Mitglieder-App)
+        feedback:[], fbLoaded:false, fbLoading:false, fbErr:false, fbOpenCount:0, fbTotal:0, fbFilter:'open', fbBusy:'', fbMsg:'',
         // Neue Mitglieder: zuletzt beigetreten (aus Magicline-Webhook CONTRACT_CREATED)
         newMembers:[], newMembersLoaded:false, newMembersLoading:false, newMembersErr:false, newMembersDisabled:false,
         // Kassenbuch: Barkasse pro Monat (nur Admin) – editierbarer Entwurf + gespeicherte Monate
@@ -311,7 +313,7 @@ function logout(){ try{ if(window.FitInnNative&&FitInnNative.onTeamLogout) FitIn
 // Angestellte (Trainer-Login) sehen nur das Tagesgeschäft. Diese Bereiche
 // bleiben dem Admin (Passwort-Login) vorbehalten. Die eigentliche Sperre
 // sitzt serverseitig – das hier steuert nur, was in der Oberfläche erscheint.
-var ADMIN_ONLY_SCREENS={ stats:1, msg:1, leads:1, assist:1, wb:1, community:1, tester:1, kassenbuch:1 };
+var ADMIN_ONLY_SCREENS={ stats:1, msg:1, leads:1, assist:1, wb:1, community:1, tester:1, kassenbuch:1, feedback:1 };
 function isAdmin(){ return S.role==='admin'; }
 function canSee(k){ return !ADMIN_ONLY_SCREENS[k] || isAdmin(); }
 function meInitials(){ var n=String(S.meName||'').trim(); if(!n) return 'FI'; var p=n.split(/\s+/).filter(Boolean); var i=((p[0]&&p[0][0])||'')+((p[1]&&p[1][0])||''); return (i||n.slice(0,2)||'FI').toUpperCase(); }
@@ -1854,6 +1856,7 @@ var IC={
   leads:'<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h18l-7 8v6l-4 2v-8z"/></svg>',
   tester:'<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2" width="12" height="20" rx="3"/><path d="M11 5h2"/><path d="M9.5 12.5l1.8 1.8 3.4-3.6"/></svg>',
   kassenbuch:'<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4.5A1.5 1.5 0 0 1 5.5 3H19a1 1 0 0 1 1 1v15a1 1 0 0 1-1 1H5.5A1.5 1.5 0 0 1 4 18.5z"/><path d="M8 3v17"/><path d="M15.5 8.3a2.4 2.4 0 1 0 0 4"/><path d="M11.3 10.3h4"/></svg>',
+  feedback:'<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 9h8M8 13h5"/></svg>',
   newmembers:'<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6"/><path d="M22 11h-6"/></svg>',
   todo:'<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>',
   shift:'<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="3"/><path d="M16 2v4M8 2v4M3 10h18"/><path d="M12 13.5v2.5l1.8 1.2"/></svg>',
@@ -1896,6 +1899,7 @@ function renderShell(content, title, sub){
       (canSee('leads')?navItem('leads','Leads',IC.leads):'')+
       (canSee('tester')?navItem('tester','App-Tester',IC.tester):'')+
       (canSee('kassenbuch')?navItem('kassenbuch','Kassenbuch',IC.kassenbuch):'')+
+      (canSee('feedback')?navItem('feedback','App-Feedback',IC.feedback):'')+
       (canSee('wb')?navItem('wb','Rückholung',IC.wb):'')+
       navItem('todo','Aufgaben',IC.todo)+
       navItem('schicht','Schichtplan',IC.shift)+
@@ -1937,7 +1941,7 @@ function renderShell(content, title, sub){
     {k:'dash',l:'Übersicht',ic:IC.dash,on:sc==='dash'},
     {k:'inbox',l:'Posteingang',ic:IC.inbox,on:(sc==='inbox'||sc==='thread'),badge:open},
     {k:'members',l:'Mitglieder',ic:IC.members,on:(sc==='members'||sc==='profile')},
-    {k:'__more',l:'Mehr',ic:IC.dots,on:(['newmembers','appts','trial','help','stats','msg','leads','tester','kassenbuch','todo','schicht','assist','wb'].indexOf(sc)>=0)}
+    {k:'__more',l:'Mehr',ic:IC.dots,on:(['newmembers','appts','trial','help','stats','msg','leads','tester','kassenbuch','feedback','todo','schicht','assist','wb'].indexOf(sc)>=0)}
   ];
   var bnav=el('<nav class="bottomnav" style="align-items:stretch;padding:6px 8px"></nav>');
   bnav.innerHTML=bnDefs.map(function(it){ var c=it.on?'#0a4958':'#9aa6aa';
@@ -1954,7 +1958,7 @@ function renderShell(content, title, sub){
   side.querySelector('[data-logout]').onclick=logout;
   var toApp=side.querySelector('[data-toapp]'); if(toApp) toApp.onclick=function(){ location.assign('/mitglieder'); };
   var bg=head.querySelector('[data-burger]'); if(bg) bg.onclick=function(){ S.navOpen=true; render(); };
-  head.querySelector('[data-refresh]').onclick=function(){ if(S.screen==='members') loadMembers(); else if(S.screen==='inbox'||S.screen==='appts') loadInbox(); else if(S.screen==='help') loadArticles(); else if(S.screen==='stats') loadStats(); else if(S.screen==='msg') loadBroadcastCount(); else if(S.screen==='leads') loadLeads(); else if(S.screen==='tester') loadTesters(); else if(S.screen==='kassenbuch') loadKassenbuch(S.kbMonth); else if(S.screen==='newmembers') loadNewMembers(); else if(S.screen==='todo') loadTodos(); else if(S.screen==='schicht'){ loadShifts(); if(S.shTab==='tausch') loadShSwaps(); } else render(); };
+  head.querySelector('[data-refresh]').onclick=function(){ if(S.screen==='members') loadMembers(); else if(S.screen==='inbox'||S.screen==='appts') loadInbox(); else if(S.screen==='help') loadArticles(); else if(S.screen==='stats') loadStats(); else if(S.screen==='msg') loadBroadcastCount(); else if(S.screen==='leads') loadLeads(); else if(S.screen==='tester') loadTesters(); else if(S.screen==='kassenbuch') loadKassenbuch(S.kbMonth); else if(S.screen==='feedback') loadFeedback(); else if(S.screen==='newmembers') loadNewMembers(); else if(S.screen==='todo') loadTodos(); else if(S.screen==='schicht'){ loadShifts(); if(S.shTab==='tausch') loadShSwaps(); } else render(); };
   var bell=head.querySelector('[data-bell]'); if(bell) bell.onclick=function(){ goScreen('inbox'); };
   // Haupt-Inhalt-Scroll über Voll-Renders hinweg erhalten (sonst springt z. B. das
   // Mitgliedsprofil bei jeder Aktion/jedem Loader nach oben).
@@ -3101,6 +3105,93 @@ function testerNode(){
   var cp=node.querySelector('[data-copypend]'); if(cp) cp.onclick=copyPendingTesters;
   var aa=node.querySelector('[data-appall]'); if(aa) aa.onclick=approveAllTesters;
   node.querySelectorAll('[data-appone]').forEach(function(b){ b.onclick=function(){ approveTester(b.getAttribute('data-appone')); }; });
+  return node;
+}
+
+// ---------- App-Feedback (anonym aus der Mitglieder-App) ----------
+var FB_CAT={ bug:['🐞','Fehler','#FCEBEA','#b53a2c'], idee:['💡','Idee','#FFF7EC','#9a6112'], lob:['❤️','Lob','#E7F6EC','#1d7a3e'], sonstiges:['💬','Sonstiges','#eef2f3','#5a6b70'] };
+async function loadFeedback(){
+  S.fbLoading=true; render();
+  try{ var r=await tapi('/api/team/feedback'); if(r&&r.ok){ S.feedback=r.items||[]; S.fbOpenCount=r.open||0; S.fbTotal=r.total||0; S.fbErr=false; } else S.fbErr=!(S.feedback&&S.feedback.length); S.fbLoaded=true; }
+  catch(e){ S.fbErr=!(S.feedback&&S.feedback.length); }
+  S.fbLoading=false; render();
+}
+function fbDate(ts){ try{ var d=new Date(ts); if(isNaN(d.getTime())) return ''; return d.toLocaleString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}); }catch(e){ return ''; } }
+// Anonymen, kopierfertigen Report für den Chat mit Claude bauen (ein Feedback).
+function fbReport(f){
+  var cat=(FB_CAT[f.category]||FB_CAT.sonstiges); var m=f.meta||{}; var L=[];
+  L.push('[App-Feedback · '+cat[1]+']');
+  if(fbDate(f.ts)) L.push('Datum: '+fbDate(f.ts));
+  L.push(''); L.push(String(f.text||'').trim()); L.push('');
+  L.push('Technisch (anonym, nur zur Fehlersuche):');
+  var tech=[];
+  if(m.platform||m.appMode) tech.push('Plattform: '+(m.platform||'?')+(m.appMode?(' · Modus: '+m.appMode):''));
+  if(m.device||m.os) tech.push('Gerät: '+(m.device||'?')+(m.os?(' · System: '+m.os):''));
+  if(m.screen||m.viewport) tech.push('Bereich: '+(m.screen||'?')+(m.viewport?(' · Ansicht: '+m.viewport):'')+(m.dpr?(' · DPR: '+m.dpr):''));
+  var lo=[]; if(m.lang) lo.push('Sprache: '+m.lang); if(m.theme) lo.push('Theme: '+m.theme); if(m.online!=null) lo.push('Online: '+(m.online?'ja':'nein')); if(lo.length) tech.push(lo.join(' · '));
+  if(m.ua) tech.push('UA: '+m.ua);
+  tech.forEach(function(t){ L.push('- '+t); });
+  return L.join('\n');
+}
+function fbCopy(text, okMsg){
+  var done=function(){ S.fbMsg=okMsg||'Kopiert.'; render(); };
+  try{ if(navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(text).then(done,function(){ window.prompt('Kopieren (Strg/Cmd+C):',text); }); } else { window.prompt('Kopieren (Strg/Cmd+C):',text); } }
+  catch(e){ window.prompt('Kopieren (Strg/Cmd+C):',text); }
+}
+async function fbSetStatus(id,status){
+  if(S.fbBusy) return; S.fbBusy=id; S.fbMsg=''; render();
+  try{ var r=await tapi('/api/team/feedback',{method:'POST',body:{action:'status',id:id,status:status}}); if(r&&r.ok){ S.feedback=r.items||S.feedback; S.fbOpenCount=r.open||0; S.fbTotal=r.total||0; } else S.fbMsg=(r&&r.message)||'Konnte nicht ändern.'; }
+  catch(e){ S.fbMsg='Netzwerkfehler.'; }
+  S.fbBusy=''; render();
+}
+async function fbDelete(id){
+  if(S.fbBusy) return; if(!window.confirm('Dieses Feedback wirklich löschen?')) return; S.fbBusy=id; S.fbMsg=''; render();
+  try{ var r=await tapi('/api/team/feedback',{method:'POST',body:{action:'delete',id:id}}); if(r&&r.ok){ S.feedback=r.items||[]; S.fbOpenCount=r.open||0; S.fbTotal=r.total||0; } else S.fbMsg=(r&&r.message)||'Konnte nicht löschen.'; }
+  catch(e){ S.fbMsg='Netzwerkfehler.'; }
+  S.fbBusy=''; render();
+}
+function feedbackNode(){
+  var node=el('<div style="flex:1;overflow-y:auto;padding:20px 22px 90px"></div>');
+  if(S.fbLoading && !(S.feedback&&S.feedback.length)){ node.innerHTML='<div style="padding:60px 22px;text-align:center;color:#8a929a;font-weight:700">Lade Feedback …</div>'; return node; }
+  if(S.fbErr && !(S.feedback&&S.feedback.length)){
+    node.innerHTML='<div style="padding:60px 22px;text-align:center"><div style="font-size:14px;color:#42454b;font-weight:700;margin-bottom:12px">Feedback konnte nicht geladen werden.</div><button data-fbretry="1" style="border:1.5px solid #d6dee0;background:#fff;border-radius:11px;font-size:13px;font-weight:800;padding:9px 16px;color:'+TEAL+';cursor:pointer">Erneut laden</button></div>';
+    var rb=node.querySelector('[data-fbretry]'); if(rb) rb.onclick=function(){ S.fbErr=false; loadFeedback(); }; return node;
+  }
+  var all=S.feedback||[];
+  var filt=S.fbFilter||'open';
+  var list=all.filter(function(f){ return filt==='all'?true:(filt==='done'?f.status==='done':f.status!=='done'); });
+  var openList=all.filter(function(f){ return f.status!=='done'; });
+  var msg=S.fbMsg?'<div style="background:#e7f1f3;border:1px solid #cfe0e3;color:#0a4958;border-radius:12px;padding:11px 14px;font-size:13px;font-weight:700;margin-bottom:14px">'+esc(S.fbMsg)+'</div>':'';
+  var intro='<div style="background:#fff;border:1px solid #e1e8ea;border-radius:16px;padding:14px 16px;margin-bottom:14px;font-size:12.5px;color:#5a636a;font-weight:600;line-height:1.6">Feedback der Mitglieder aus der App – <b>anonym</b> (kein Name, keine Mitgliedsnummer). Mit dabei sind nur technische Angaben zur Fehlersuche. Mit <b>„Für Claude kopieren"</b> nimmst du ein Feedback (oder alle offenen) mit in den Chat.</div>';
+  var stat=function(n,l,c){ return '<div style="flex:1;min-width:84px;background:#fff;border:1px solid #e1e8ea;border-radius:14px;padding:13px 14px"><div style="font-size:22px;font-weight:900;color:'+(c||'#15171b')+'">'+n+'</div><div style="font-size:11.5px;color:#8a929a;font-weight:700;margin-top:2px">'+l+'</div></div>'; };
+  var stats='<div style="display:flex;gap:10px;margin-bottom:14px">'+stat(S.fbTotal||all.length,'Gesamt')+stat(S.fbOpenCount,'Offen',(S.fbOpenCount?'#C77A2E':'#8a929a'))+'</div>';
+  var actions=openList.length?('<div style="margin-bottom:14px"><button data-fbcopyall="1" style="width:100%;border:none;background:'+TEAL+';border-radius:12px;font-size:13px;font-weight:900;padding:12px 14px;color:#fff;cursor:pointer">Alle offenen für Claude kopieren ('+openList.length+')</button></div>'):'';
+  var tabBtn=function(k,l){ var on=filt===k; return '<button data-fbfilter="'+k+'" style="border:1.5px solid '+(on?TEAL:'#d6dee0')+';background:'+(on?'#e7f1f3':'#fff')+';color:'+(on?TEAL:'#5a636a')+';border-radius:10px;font-size:12.5px;font-weight:800;padding:8px 13px;cursor:pointer">'+l+'</button>'; };
+  var tabs='<div style="display:flex;gap:8px;margin-bottom:14px">'+tabBtn('open','Offen')+tabBtn('done','Erledigt')+tabBtn('all','Alle')+'</div>';
+  var chip=function(t,bg,fg){ return '<span style="display:inline-block;background:'+bg+';color:'+fg+';border-radius:20px;padding:3px 10px;font-size:11px;font-weight:800">'+esc(t)+'</span>'; };
+  var metaChips=function(m){ m=m||{}; var out=[]; if(m.platform) out.push(chip(m.platform+(m.appMode?(' · '+m.appMode):''),'#eef2f3','#42545a')); if(m.device) out.push(chip(m.device,'#eef2f3','#42545a')); if(m.os) out.push(chip(m.os,'#eef2f3','#42545a')); if(m.screen) out.push(chip('Bereich: '+m.screen,'#eef2f3','#42545a')); if(m.viewport) out.push(chip(m.viewport,'#eef2f3','#42545a')); return out.join(' '); };
+  var row=function(f){
+    var cat=FB_CAT[f.category]||FB_CAT.sonstiges; var done=f.status==='done'; var busy=S.fbBusy===f.id;
+    return '<div style="background:#fff;border:1px solid #e6ecee;border-radius:16px;padding:14px 16px;margin-bottom:11px;opacity:'+(done?'.72':'1')+'">'+
+      '<div style="display:flex;align-items:center;gap:9px;margin-bottom:8px">'+chip(cat[0]+' '+cat[1],cat[2],cat[3])+
+        (done?'<span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:800;color:#1d7a3e"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#1d7a3e" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>Erledigt</span>':'')+
+        '<span style="flex:1"></span><span style="font-size:11.5px;color:#9aa2a8;font-weight:700">'+esc(fbDate(f.ts))+'</span></div>'+
+      '<div style="font-size:14px;color:#15171b;font-weight:600;line-height:1.55;white-space:pre-wrap;word-break:break-word">'+esc(String(f.text||''))+'</div>'+
+      (metaChips(f.meta)?('<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px">'+metaChips(f.meta)+'</div>'):'')+
+      '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:12px">'+
+        '<button data-fbcopy="'+esc(f.id)+'" style="border:1.5px solid #cfe0e3;background:#fff;border-radius:10px;font-size:12.5px;font-weight:800;padding:8px 13px;color:'+TEAL+';cursor:pointer">Für Claude kopieren</button>'+
+        '<button data-fbtoggle="'+esc(f.id)+'" data-done="'+(done?'1':'0')+'"'+(busy?' disabled':'')+' style="border:1.5px solid #d6dee0;background:#fff;border-radius:10px;font-size:12.5px;font-weight:800;padding:8px 13px;color:#5a636a;cursor:pointer">'+(busy?'…':(done?'Wieder öffnen':'Als erledigt'))+'</button>'+
+        '<button data-fbdel="'+esc(f.id)+'"'+(busy?' disabled':'')+' style="border:1.5px solid #e3b8b1;background:#fff;border-radius:10px;font-size:12.5px;font-weight:800;padding:8px 13px;color:#b53a2c;cursor:pointer">Löschen</button>'+
+      '</div>'+
+    '</div>';
+  };
+  var listHtml=list.length?list.map(row).join(''):'<div style="padding:40px 22px;text-align:center;color:#8a929a;font-weight:700;background:#fff;border:1px solid #e1e8ea;border-radius:16px">'+(all.length?'Nichts in dieser Ansicht.':'Noch kein Feedback eingegangen.')+'</div>';
+  node.innerHTML=msg+intro+stats+actions+tabs+listHtml;
+  var ca=node.querySelector('[data-fbcopyall]'); if(ca) ca.onclick=function(){ var txt=openList.map(fbReport).join('\n\n──────────\n\n'); fbCopy(txt, openList.length+' offene Feedbacks kopiert – im Chat einfügen.'); };
+  node.querySelectorAll('[data-fbfilter]').forEach(function(b){ b.onclick=function(){ S.fbFilter=b.getAttribute('data-fbfilter'); render(); }; });
+  node.querySelectorAll('[data-fbcopy]').forEach(function(b){ b.onclick=function(){ var id=b.getAttribute('data-fbcopy'); var f=(S.feedback||[]).filter(function(x){ return x.id===id; })[0]; if(f) fbCopy(fbReport(f),'Feedback kopiert – im Chat einfügen.'); }; });
+  node.querySelectorAll('[data-fbtoggle]').forEach(function(b){ b.onclick=function(){ fbSetStatus(b.getAttribute('data-fbtoggle'), b.getAttribute('data-done')==='1'?'new':'done'); }; });
+  node.querySelectorAll('[data-fbdel]').forEach(function(b){ b.onclick=function(){ fbDelete(b.getAttribute('data-fbdel')); }; });
   return node;
 }
 
@@ -5622,8 +5713,8 @@ function wbNode(){
 function render(){
   if(!S.token){ renderLogin(); return; }
   if(!canSee(S.screen)) S.screen='dash';   // kein Admin-Bereich für Angestellte (Sicherheitsnetz)
-  var titles={dash:'Übersicht',inbox:'Posteingang',members:'Mitglieder',newmembers:'Neue Mitglieder',appts:'Termine',trial:'Probetraining',help:'Hilfe-Artikel',stats:'Statistiken',msg:'Nachrichten',leads:'Leads',tester:'App-Tester',kassenbuch:'Kassenbuch',todo:'Aufgaben',schicht:'Schichtplan',assist:'Assistent',wb:'Rückholung',community:'Community'};
-  var subs={dash:'Dein Studio auf einen Blick',inbox:'Alle Vorgänge & Anfragen',members:'Mitgliederverwaltung',newmembers:'Zuletzt beigetreten – automatisch aus Magicline',appts:'Anfragen & Buchungen',trial:'Schnell ein Probetraining buchen',help:'Wissensdatenbank verwalten',stats:'Auswertungen & Trends',msg:'Rundnachricht & Direktnachricht',leads:'Interessenten-Pipeline',tester:'Anmeldungen für den geschlossenen App-Test',kassenbuch:'Barkasse führen, prüfen & Monate abschließen',todo:'Interne Aufgaben fürs Team',schicht:'Dienstplan, Tausch & Verfügbarkeiten',assist:'Sag mir, was zu tun ist – ich bereite es vor, du bestätigst',wb:'Angebots-Rahmen für die KI-Rückholung',community:'Trainingspartner moderieren'};
+  var titles={dash:'Übersicht',inbox:'Posteingang',members:'Mitglieder',newmembers:'Neue Mitglieder',appts:'Termine',trial:'Probetraining',help:'Hilfe-Artikel',stats:'Statistiken',msg:'Nachrichten',leads:'Leads',tester:'App-Tester',kassenbuch:'Kassenbuch',feedback:'App-Feedback',todo:'Aufgaben',schicht:'Schichtplan',assist:'Assistent',wb:'Rückholung',community:'Community'};
+  var subs={dash:'Dein Studio auf einen Blick',inbox:'Alle Vorgänge & Anfragen',members:'Mitgliederverwaltung',newmembers:'Zuletzt beigetreten – automatisch aus Magicline',appts:'Anfragen & Buchungen',trial:'Schnell ein Probetraining buchen',help:'Wissensdatenbank verwalten',stats:'Auswertungen & Trends',msg:'Rundnachricht & Direktnachricht',leads:'Interessenten-Pipeline',tester:'Anmeldungen für den geschlossenen App-Test',kassenbuch:'Barkasse führen, prüfen & Monate abschließen',feedback:'Anonymes Kunden-Feedback aus der App',todo:'Interne Aufgaben fürs Team',schicht:'Dienstplan, Tausch & Verfügbarkeiten',assist:'Sag mir, was zu tun ist – ich bereite es vor, du bestätigst',wb:'Angebots-Rahmen für die KI-Rückholung',community:'Trainingspartner moderieren'};
   var content;
   if(S.screen==='inbox') content=inboxNode();
   else if(S.screen==='dash') content=dashNode();
@@ -5636,6 +5727,7 @@ function render(){
   else if(S.screen==='leads') content=leadsNode();
   else if(S.screen==='tester') content=testerNode();
   else if(S.screen==='kassenbuch') content=kassenbuchNode();
+  else if(S.screen==='feedback') content=feedbackNode();
   else if(S.screen==='newmembers') content=newMembersNode();
   else if(S.screen==='todo') content=todoNode();
   else if(S.screen==='schicht') content=schichtNode();
@@ -5650,7 +5742,7 @@ function render(){
 // Profil zu /team/mitglieder/<interne-id>. So sind Ansichten teilbar/bookmarkbar
 // und Reload/Zurück führen wieder dorthin. Greift nur, wenn die Seite wirklich
 // unter /team ausgeliefert wird (Guard) – beim direkten Öffnen der Datei bleibt die URL unberührt.
-var SCREEN2SLUG={ dash:'', inbox:'posteingang', members:'mitglieder', newmembers:'neue-mitglieder', appts:'termine', trial:'probetraining', help:'hilfe', stats:'statistiken', msg:'nachrichten', leads:'leads', tester:'tester', kassenbuch:'kassenbuch', todo:'aufgaben', schicht:'schichtplan', assist:'assistent', wb:'rueckholung', community:'community' };
+var SCREEN2SLUG={ dash:'', inbox:'posteingang', members:'mitglieder', newmembers:'neue-mitglieder', appts:'termine', trial:'probetraining', help:'hilfe', stats:'statistiken', msg:'nachrichten', leads:'leads', tester:'tester', kassenbuch:'kassenbuch', feedback:'feedback', todo:'aufgaben', schicht:'schichtplan', assist:'assistent', wb:'rueckholung', community:'community' };
 var SLUG2SCREEN={}; Object.keys(SCREEN2SLUG).forEach(function(k){ if(SCREEN2SLUG[k]) SLUG2SCREEN[SCREEN2SLUG[k]]=k; });
 var urlRestoring=false;   // true während Boot/Popstate/Login-Restore -> replaceState statt pushState
 function underTeam(){ try{ return /^\/team(\/|$)/.test(location.pathname||''); }catch(e){ return false; } }
@@ -5703,6 +5795,7 @@ function goScreen(k){
   if(k==='leads'){ if(!S.leadsLoaded){ loadLeads(); return; } }
   if(k==='tester'){ if(!S.testersLoaded){ loadTesters(); return; } }
   if(k==='kassenbuch'){ if(!S.kbLoaded){ loadKassenbuch(); return; } }
+  if(k==='feedback'){ if(!S.fbLoaded){ loadFeedback(); return; } }
   if(k==='newmembers'){ if(!S.newMembersLoaded){ loadNewMembers(); return; } }
   if(k==='todo'){ if(!S.todosLoaded){ loadTodos(); return; } }
   if(k==='schicht'){ if(!S.shLoaded){ loadShifts(); return; } }

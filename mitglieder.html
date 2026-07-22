@@ -513,6 +513,7 @@
     finnOpen:false, finnTopic:'', finnMsgs:[], finnBusy:false, finnTip:'', finnTipLoaded:false,
     vaOpen:false, vaMsgs:[], vaBusy:false, vaInput:'', vaIntent:'',
     qaOpen:false, dp:null,
+    fbOpen:false, fbCat:'bug', fbText:'', fbBusy:false, fbSent:false, fbErr:'',
     blogSel:null, blogPost:null, instaSel:null,
     obStep:0, obGoal:'Gesundheit & Longevity', obFreq:3, obAge:34, obExp:'gelegentlich', obMemConsent:false,
     obPrefilled:false, obServerChecked:false, obSex:'', obHeightCm:null, obWeightKg:null, obTargetWeight:null, obTrainTime:'', obLikes:[], obDislikes:[],
@@ -1791,7 +1792,7 @@
     if(ernPremium()||ernTrialing()) return false;           // nie Zahlende/Tester nerven
     if(!n.onboarded) return false;                          // erst wenn das Modul bekannt ist
     if(premNudgeSuppressed()) return false;                 // Frequenz-Cap
-    if(S.finnOpen||S.vaOpen||S.ernUpgrade||S.ernCapture||S.qaOpen||S.dp||S.ciPopup) return false;
+    if(S.finnOpen||S.vaOpen||S.ernUpgrade||S.ernCapture||S.qaOpen||S.fbOpen||S.dp||S.ciPopup) return false;
     return true;
   }
   function premNudgeHome(){
@@ -2107,6 +2108,54 @@
       '<div style="flex:1;min-width:0"><div style="font-size:15.5px;font-weight:900;color:var(--text)">'+esc(c.t)+'</div><div style="font-size:12.5px;font-weight:600;color:var(--text-soft);line-height:1.4;margin-top:2px">'+esc(c.s)+'</div></div>'+
       (c.nav?svg('<path d="M9 6l6 6-6 6"></path>',{c:'var(--text-soft)',w:2.2,s:18}):'')+'</div></button>';
   }
+  // ── App-Feedback: Banner auf der Startseite + Eingabe-Sheet ─────────────────
+  // Mitglieder melden Fehler/Ideen/Lob. Mitgesendet werden NUR anonyme technische
+  // Angaben (Plattform, grobes Gerät/OS, aktueller Bereich, Viewport) – KEIN Name,
+  // KEINE Mitgliedsnummer, KEINE E-Mail. Landet im Team-Backend (fb:*).
+  var FB_CATS=[['bug','🐞','Fehler'],['idee','💡','Idee'],['lob','❤️','Lob'],['sonstiges','💬','Sonstiges']];
+  function feedbackBanner(){
+    return '<button data-act="fbOpen" style="width:100%;text-align:left;border:none;cursor:pointer;font-family:inherit;background:linear-gradient(150deg,#12879c,#0a4958);border-radius:20px;box-shadow:0 14px 34px rgba(14,96,114,.24);padding:16px 18px;color:#fff;display:flex;align-items:center;gap:13px">'+
+      '<div style="width:44px;height:44px;border-radius:13px;background:rgba(255,255,255,.16);display:flex;align-items:center;justify-content:center;flex-shrink:0">'+svg('<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>',{c:'#fff',w:2,s:22})+'</div>'+
+      '<div style="flex:1;min-width:0"><div style="font-size:15.5px;font-weight:900">Deine Meinung zählt</div><div style="font-size:12.5px;font-weight:600;color:#cfe8ec;line-height:1.45;margin-top:2px">Fehler melden oder Idee teilen – hilft uns, die App besser zu machen.</div></div>'+
+      svg('<path d="M9 6l6 6-6 6"></path>',{c:'rgba(255,255,255,.85)',w:2.2,s:18})+'</button>';
+  }
+  // Anonyme technische Angaben fürs Feedback (nur was zur Fehlersuche nötig ist).
+  function fbMeta(){
+    var m={}; try{
+      var ua=navigator.userAgent||'';
+      m.ua=ua;
+      m.screen=S.screen||'';
+      m.lang=navigator.language||'';
+      m.viewport=(window.innerWidth||0)+'x'+(window.innerHeight||0);
+      m.dpr=window.devicePixelRatio||1;
+      m.online=navigator.onLine!==false;
+      m.theme=(document.documentElement.getAttribute('data-theme'))||'';
+      m.platform=/Android/i.test(ua)?'android':(/iPhone|iPad|iPod/i.test(ua)?'ios':'web');
+      m.appMode=(window.FitInnNative||(window.Capacitor&&Capacitor.isNativePlatform&&Capacitor.isNativePlatform()))?'native':((navigator.standalone===true||(window.matchMedia&&matchMedia('(display-mode: standalone)').matches))?'standalone':'browser');
+      var osM=ua.match(/Android \d+(?:\.\d+)?|(?:iPhone OS|CPU OS) \d+[_\d]*|Windows NT \d+\.\d+|Mac OS X \d+[_\d]*/i); if(osM) m.os=osM[0].replace(/_/g,'.');
+      var devM=ua.match(/;\s*([^;)]*(?:SM-|Pixel|iPhone|iPad|Redmi|POCO|moto|OnePlus|HUAWEI|Galaxy)[^;)]*)\)/i); if(devM) m.device=String(devM[1]||'').replace(/\bBuild\b.*$/i,'').trim();
+    }catch(e){}
+    return m;
+  }
+  function fbSheet(){
+    if(S.fbSent){
+      return '<div class="ciOverlay" data-act="fbClose"><div class="ciCard" data-act="noop"><div style="width:66px;height:66px;margin:0 auto;border-radius:50%;background:var(--ok-bg);display:flex;align-items:center;justify-content:center">'+svg('<path d="M5 12.5l4.5 4.5L19 7"></path>',{c:'var(--ok-fg)',w:2.6,s:34})+'</div>'+
+        '<div style="font-size:22px;font-weight:900;margin-top:14px">Danke dir!</div>'+
+        '<div style="font-size:14px;color:var(--text-muted);margin-top:8px;line-height:1.5">Dein Feedback ist beim Team gelandet. Genau das hilft uns, die App zu verbessern. 🙌</div>'+
+        '<button class="btn" data-act="fbClose" style="margin-top:20px">Schließen</button></div></div>';
+    }
+    var chips=FB_CATS.map(function(c){ var on=S.fbCat===c[0]; return '<button data-act="fbCat" data-arg="'+c[0]+'" style="flex:1;min-width:0;border:1.5px solid '+(on?TEAL:'var(--border)')+';background:'+(on?'var(--row-sel)':'var(--surface)')+';color:'+(on?'var(--teal-ink)':'var(--text-2)')+';border-radius:12px;padding:9px 6px;font-size:12.5px;font-weight:800;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px"><span style="font-size:17px">'+c[1]+'</span>'+c[2]+'</button>'; }).join('');
+    var err=S.fbErr?'<div class="err" style="margin-top:12px">'+svg(IC.warn,{c:'var(--err-fg)',w:2,s:17})+'<span>'+esc(S.fbErr)+'</span></div>':'';
+    return '<div class="ciOverlay" data-act="fbClose" style="align-items:flex-end;justify-content:center;padding:0">'+
+      '<div data-act="noop" style="width:100%;max-width:480px;background:var(--surface);border-radius:24px 24px 0 0;box-shadow:0 -14px 44px rgba(4,33,40,.35);padding:20px 18px calc(20px + env(safe-area-inset-bottom,0px));animation:fiUp .28s ease">'+
+      '<div style="display:flex;align-items:center;gap:11px;margin-bottom:6px"><div style="font-size:19px;font-weight:900;color:var(--text);flex:1">Feedback geben</div><button data-act="fbClose" aria-label="Schließen" style="width:34px;height:34px;border-radius:11px;border:none;background:var(--surface-2);display:flex;align-items:center;justify-content:center;cursor:pointer">'+svg('<path d="M6 6l12 12M6 18L18 6"></path>',{c:'var(--text-soft)',w:2.2,s:18})+'</button></div>'+
+      '<div style="display:flex;gap:8px;margin:10px 0 12px">'+chips+'</div>'+
+      '<textarea id="fb_text" rows="4" placeholder="Was ist dir aufgefallen? Je konkreter, desto besser können wir helfen." style="width:100%;border:1.5px solid var(--border);border-radius:14px;background:var(--surface-2);color:var(--text);font-size:14.5px;padding:13px;resize:vertical;box-sizing:border-box;font-family:inherit">'+esc(S.fbText||'')+'</textarea>'+
+      err+
+      '<div style="display:flex;align-items:flex-start;gap:8px;margin-top:12px;font-size:11.5px;color:var(--text-soft);font-weight:600;line-height:1.5">'+svg('<circle cx="12" cy="12" r="9"></circle><path d="M12 8h.01M11 12h1v4h1"></path>',{c:'var(--text-soft)',w:1.9,s:15})+'<span>Zur Fehlersuche senden wir <b>anonym</b> technische Angaben mit (z. B. Gerätetyp, System, Bildschirmgröße, aktueller Bereich). <b>Kein Name, keine Mitgliedsnummer.</b></span></div>'+
+      '<button class="btn" data-act="fbSubmit" '+(S.fbBusy?'disabled':'')+' style="margin-top:16px">'+(S.fbBusy?'Senden …':'Absenden')+'</button>'+
+      '</div></div>';
+  }
   function scrHome(){
     if(isFormer()) return scrRejoin();
     loadFinnTip(); loadInsta(); loadTypical(); loadLive(); loadHours();
@@ -2169,6 +2218,7 @@
       sec('Community', homeBuddyCard())+                           // Trainingspartner (nur bei SOCIAL_ON)
       sec('Dein Studio', auslastungChart()+hoursCard()+wifiBtn())+ // Auslastung, Öffnungszeiten, WLAN
       sec('Schnellzugriff', '<div class="gTiles">'+tiles+'</div>')+// Funktions-Kacheln
+      sec('App verbessern', feedbackBanner())+                     // Feedback-Banner (anonym, landet im Team-Backend)
       sec('Entdecken', homeInsta()+homeBlog());                    // Instagram + Blog
   }
   // ── Ein-Tipp-WLAN-Button (nur in der eigenen App, wenn das Plugin verfügbar ist) ──
@@ -9854,6 +9904,7 @@
     if(S.vaOpen) html+=vaOverlayHtml();
     if(S.dp) html+=wheelOverlay();
     if(S.qaOpen) html+=qaSheet();
+    if(S.fbOpen) html+=fbSheet();
     if(S.ernUpgrade) html+=ernUpgradeScreen();   // Coach-Premium-Kauf als Bottom-Sheet-Popup über dem aktuellen Screen
     if(S.moGuide && S.screen==='morning') html+=moGuideOverlay();   // Vital-Check Schritt-für-Schritt-Anleitung (Pop-up)
     if(S.screen==='morning' && moMeasuring()) html+=moMeasureOverlay();   // Live-Messung im Vollbild-Popup (Bildschirm bleibt an)
@@ -10341,6 +10392,19 @@
     // Assistent-Hub öffnen. Beitragskonto nachladen, damit der proaktive Vorschlag greifen kann.
     qaOpen:function(){ if(!DATA.account && typeof loadAccount==='function'){ try{ loadAccount(); }catch(e){} } setQuiet({qaOpen:true}); },
     qaClose:function(){ setQuiet({qaOpen:false}); },
+    // App-Feedback (anonym -> Team-Backend)
+    fbOpen:function(){ S.qaOpen=false; setS({fbOpen:true, fbSent:false, fbErr:'', fbBusy:false}); },
+    fbClose:function(){ setS({fbOpen:false, fbSent:false, fbErr:'', fbBusy:false}); },
+    fbCat:function(a){ for(var i=0;i<FB_CATS.length;i++){ if(FB_CATS[i][0]===a){ var el=document.getElementById('fb_text'); if(el) S.fbText=el.value; setS({fbCat:a}); return; } } },
+    fbSubmit:function(){
+      if(S.fbBusy) return;
+      var el=document.getElementById('fb_text'); var t=String((el?el.value:(S.fbText||''))||'').trim();
+      if(t.length<3){ setS({fbErr:'Bitte schreib kurz, worum es geht.'}); return; }
+      S.fbText=t; S.fbBusy=true; S.fbErr=''; render();
+      api('/api/member/feedback',{method:'POST',body:JSON.stringify({text:t, category:S.fbCat, meta:fbMeta()})})
+        .then(function(r){ if(r&&r.ok){ setS({fbBusy:false, fbSent:true, fbText:''}); } else { setS({fbBusy:false, fbErr:(r&&r.message)||'Konnte nicht gesendet werden – bitte später erneut.'}); } })
+        .catch(function(){ setS({fbBusy:false, fbErr:'Netzwerkfehler – bitte später erneut.'}); });
+    },
     qaGo:function(a){ qaGo(a); },
     // Rad-Datumsauswahl (Geburtstag)
     dpOpen:function(field){ openDp(field||'liDob'); },
@@ -11591,6 +11655,7 @@
     if(t.id==='pf_reply'){ S.pfDraft=t.value; autoGrow(t); }
     if(t.id==='ern_log'||t.id==='ern_ask'){ autoGrow(t); }
     if(t.id==='soc_msg'||t.id==='soc_rmsg'){ autoGrow(t); }
+    if(t.id==='fb_text'){ S.fbText=t.value; }   // Feedback-Text merken (kein Re-Render -> Fokus bleibt)
     if(t.id==='tr_exq'){ if(window.__trExFilter) window.__trExFilter(t.value); }   // Übungssuche live filtern
   });
   // Enter sendet (Shift+Enter = neue Zeile) – im FINN-Chat und im Postfach.
@@ -11623,7 +11688,7 @@
     function backTrig(){ return Math.min(window.innerWidth*0.28, 110); }
     function menuOpen(){ return document.body.classList.contains('menu-open'); }
     function overlayOpen(){
-      return !!(S.finnOpen||S.vaOpen||S.ciPopup||S.dp||S.qaOpen||S.ernUpgrade||S.ernCapture||S.ernConfirm||S.ernProd||S.ernShop||S.ernShopProd||S.sos||S.buyGuide||S.ernData||S.ernEdit||S.ernRecipeSel||S.ernFavMgr||S.ernEntryEdit||S.ernLesson||S.ernVert||S.ernCk||S.ernChatOpen||S.ernPlanQuiz||(S.ernKoch!=null)||S.welcomeGift||S.trainFinish||S.trainRun||S.trainDetail||S.trainGenOpen||S.morningBreathe||S.moGuide||S.moMetric||(S.screen==='morning'&&moRecSuggestOn())||(S.morningPhase&&S.morningPhase!=='idle')||(S.screen==='tag'&&woMeasuring())||S.woOpen||S.woResult||S.woDetail||S.socChat||S.socRoom||document.querySelector('.obOverlay'));
+      return !!(S.finnOpen||S.vaOpen||S.ciPopup||S.dp||S.qaOpen||S.fbOpen||S.ernUpgrade||S.ernCapture||S.ernConfirm||S.ernProd||S.ernShop||S.ernShopProd||S.sos||S.buyGuide||S.ernData||S.ernEdit||S.ernRecipeSel||S.ernFavMgr||S.ernEntryEdit||S.ernLesson||S.ernVert||S.ernCk||S.ernChatOpen||S.ernPlanQuiz||(S.ernKoch!=null)||S.welcomeGift||S.trainFinish||S.trainRun||S.trainDetail||S.trainGenOpen||S.morningBreathe||S.moGuide||S.moMetric||(S.screen==='morning'&&moRecSuggestOn())||(S.morningPhase&&S.morningPhase!=='idle')||(S.screen==='tag'&&woMeasuring())||S.woOpen||S.woResult||S.woDetail||S.socChat||S.socRoom||document.querySelector('.obOverlay'));
     }
     function closeKnownOverlay(){
       if(S.screen==='tag' && woMeasuring()){ return true; }   // laufende Aufzeichnung: nicht per Zurück abbrechen (nur über die Buttons)
@@ -11638,7 +11703,7 @@
       if(S.ernShop){ try{ window.__ernStopScan&&window.__ernStopScan(); }catch(e){} S.ernShop=false; S.ernScanPurpose='log'; render(); return true; }
       if(S.sos){ if(S.sosTrigger){ S.sosTrigger=''; S.sosFinn=null; } else if(S.sosCrave){ S.sosCrave=''; } else { S.sos=false; } render(); return true; }
       if(S.buyGuide){ S.buyGuide=false; render(); return true; }
-      var boolO=['finnOpen','qaOpen','vaOpen','ciPopup','ernUpgrade','ernChatOpen','morningBreathe'];
+      var boolO=['fbOpen','finnOpen','qaOpen','vaOpen','ciPopup','ernUpgrade','ernChatOpen','morningBreathe'];
       for(var i=0;i<boolO.length;i++){ if(S[boolO[i]]){ S[boolO[i]]=false; render(); return true; } }
       if(S.ernProd){ S.ernProd=null; render(); return true; }
       if(S.ernRecipeSel){ S.ernRecipeSel=null; render(); return true; }
