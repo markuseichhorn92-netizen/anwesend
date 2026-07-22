@@ -6019,7 +6019,11 @@
     woVitalsPush(m);
     var vb=(DATA.morning&&DATA.morning.ok&&DATA.morning.vitals)||null;
     var rd=vb&&vb.readiness, sd=vb&&vb.sleepDetail;
-    var readyScore=(rd&&rd.level&&rd.level!=='kalibrierung')?rd.score:null;
+    // EINE Quelle für Erholung & Herzwerte: existiert heute eine Gurt-Messung, gewinnt die
+    // (der Bereitschafts-Hero zeigt Score + Ruhepuls/HRV). Diese passive Health-Karte zeigt
+    // dann nur ihren Mehrwert (Schlaf + Aktivität) – KEIN zweiter, abweichender Erholungs-Score.
+    var beltToday=!!(DATA.morning&&DATA.morning.ok&&DATA.morning.latest);
+    var readyScore=(!beltToday&&rd&&rd.level&&rd.level!=='kalibrierung')?rd.score:null;
     var sleepScore=sd?sd.score:null;
     var fmt=function(x){ return Math.floor(x/60)+'h '+(x%60)+'m'; };
     // Erholungs-Ring: Farbe aus der Ampel des Servers (nicht aus den Ring-Schwellen), damit
@@ -6031,9 +6035,12 @@
     if(sleepScore!=null) ringEls.push(woVitalRing(sleepScore,'Schlaf'));
     var rings;
     if(ringEls.length){ rings='<div style="display:flex;gap:10px;justify-content:center">'+ringEls.join('')+'</div>'; }
-    else { var calib=!!(rd&&rd.calibrating); rings='<div style="background:var(--surface-2);border-radius:12px;padding:11px 13px;font-size:11px;font-weight:700;color:var(--text-soft);line-height:1.45">'+(calib?'Erholungs- &amp; Schlaf-Score werden kalibriert – nach ein paar Tagen erscheinen hier deine Ringe.':'Aktiviere den Vital-Check, damit dein Erholungs- &amp; Schlaf-Score hier als Ring erscheint.')+'</div>'; }
+    else if(!beltToday){ var calib=!!(rd&&rd.calibrating); rings='<div style="background:var(--surface-2);border-radius:12px;padding:11px 13px;font-size:11px;font-weight:700;color:var(--text-soft);line-height:1.45">'+(calib?'Erholungs- &amp; Schlaf-Score werden kalibriert – nach ein paar Tagen erscheinen hier deine Ringe.':'Aktiviere den Vital-Check, damit dein Erholungs- &amp; Schlaf-Score hier als Ring erscheint.')+'</div>'; }
+    else { rings=''; }
     var stat=function(ic,label,val){ return val?('<div style="flex:1;background:var(--surface-2);border-radius:12px;padding:8px 9px;text-align:center"><div style="font-size:9.5px;font-weight:800;color:var(--text-soft)">'+ic+' '+label+'</div><div style="font-size:14px;font-weight:900;color:var(--text);margin-top:1px">'+esc(val)+'</div></div>'):''; };
-    var stats='<div style="display:flex;gap:7px;margin-top:14px">'+stat('❤️','Ruhepuls',m.restingHr?(Math.round(m.restingHr)+' bpm'):'')+stat('〰️','HRV',m.hrv?(Math.round(m.hrv)+' ms'):'')+stat('👟','Schritte',m.steps?m.steps.toLocaleString('de-DE'):'')+'</div>';
+    // Herzwerte (Ruhepuls/HRV) NUR ohne Gurt-Messung – sonst zeigt sie der Bereitschafts-Hero
+    // (verhindert zwei abweichende Zahlen für denselben Tag). Schritte immer.
+    var stats='<div style="display:flex;gap:7px;margin-top:14px">'+(beltToday?'':(stat('❤️','Ruhepuls',m.restingHr?(Math.round(m.restingHr)+' bpm'):'')+stat('〰️','HRV',m.hrv?(Math.round(m.hrv)+' ms'):'')))+stat('👟','Schritte',m.steps?m.steps.toLocaleString('de-DE'):'')+'</div>';
     var sleepBlock='';
     if(m.sleepMin>0){
       var hasStages=!!(m.sleepDeepMin!=null||m.sleepRemMin!=null);
@@ -6049,7 +6056,7 @@
         sleepBlock=head+'<div style="font-size:10.5px;font-weight:700;color:var(--text-soft);margin-top:7px;line-height:1.45">Phasen (Tief/REM/Leicht) liefert eine <b>Apple Watch mit watchOS 9+</b> – dann erscheint hier deine volle Schlafanalyse.</div>';
       }
     }
-    return '<div style="'+MO_CARD+'"><div style="font-size:13.5px;font-weight:900;color:var(--text);margin-bottom:13px">⌚ Deine Erholung heute</div>'+rings+stats+sleepBlock+'</div>';
+    return '<div style="'+MO_CARD+'"><div style="font-size:13.5px;font-weight:900;color:var(--text);margin-bottom:13px">'+(beltToday?'⌚ Schlaf &amp; Aktivität':'⌚ Deine Erholung heute')+'</div>'+rings+stats+sleepBlock+'</div>';
   }
   function woHealthDiag(){ try{ var c=window.Capacitor; var keys=(c&&c.Plugins)?Object.keys(c.Plugins).join(', '):'—'; return 'Cap:'+(c?1:0)+' · nativ:'+((c&&c.isNativePlatform&&c.isNativePlatform())?1:0)+' · FitInnNative-Plugin:'+(woNativePlugin()?'JA':'nein')+' · Plugins:['+keys+']'; }catch(e){ return 'diag:'+e; } }
 
@@ -6302,8 +6309,9 @@
   function moRecoveryActive(){ var d=DATA.morning; return (d&&d.ok&&d.recovery&&d.recovery.active)?d.recovery:null; }
   function vitalToday(){
     var d=(DATA.morning&&DATA.morning.ok)?DATA.morning:null; if(!d) return null;
-    // Aktiver Erholungs-/Pausen-Modus überschreibt das Tages-Signal überall.
-    var rec=(d.recovery&&d.recovery.active)?d.recovery:null;
+    // Aktiver Erholungs-/Pausen-Modus überschreibt das Tages-Signal überall – AUSSER er ist
+    // „stale" (heute wieder erholt): dann gilt wieder das echte Tages-Signal (kein Widerspruch).
+    var rec=(d.recovery&&d.recovery.active&&!d.recovery.stale)?d.recovery:null;
     if(rec){
       var untilStr=deDate(rec.until+'T12:00:00');
       return { level:'rot', recovery:true, until:rec.until, untilStr:untilStr, reason:rec.reason||'', emo:'🛌', col:'#b4552f', bg:'#FBECE8',
@@ -6369,6 +6377,16 @@
   function moRecoveryActiveCard(){
     var rec=moRecoveryActive(); if(!rec) return '';
     var left=moRecDaysLeft(rec.until); var untilStr=deDate(rec.until+'T12:00:00');
+    // „Stale": die heutigen Werte sind wieder klar erholt – die alte Pause passt nicht mehr.
+    // Dann positive Karte + primärer „Pause beenden"-Button (kein Widerspruch zu grünen Karten).
+    if(rec.stale){
+      return '<div style="background:linear-gradient(160deg,#1c9b5e,#0f6b3f);border-radius:22px;padding:20px;color:#fff;margin-bottom:16px;box-shadow:0 16px 40px rgba(6,45,30,.22)">'+
+        '<div style="display:flex;align-items:center;gap:13px"><div style="width:50px;height:50px;border-radius:15px;background:rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;font-size:26px;flex-shrink:0">✅</div>'+
+        '<div style="flex:1;min-width:0"><div style="font-size:11px;font-weight:900;letter-spacing:.5px;color:#d6f3e3;text-transform:uppercase">Erholungsphase noch aktiv</div><div style="font-size:17px;font-weight:900;margin-top:2px">Du wirkst wieder erholt</div></div></div>'+
+        '<div style="font-size:12.5px;font-weight:600;color:#dff5e9;line-height:1.45;margin-top:12px">Deine heutige Messung ist wieder im grünen Bereich – die vor ein paar Tagen gestartete Pause passt nicht mehr. Beende sie und leg wieder los.</div>'+
+        '<button data-act="morningRecoveryEnd" '+(S.moRecBusy?'disabled ':'')+'style="width:100%;margin-top:15px;padding:13px;border:none;border-radius:13px;background:#fff;color:#0f6b3f;font-weight:900;font-size:13.5px;cursor:pointer">'+(S.moRecBusy?'…':'Pause beenden & loslegen')+'</button>'+
+      '</div>';
+    }
     var reasonTxt=({krank:'Dein Körper erholt sich von einem Infekt.',uebertraining:'Deine Erholung lag mehrere Tage unter der Baseline.',erholung:'Bewusste Regeneration.'})[rec.reason]||'Bewusste Regeneration.';
     return '<div style="background:linear-gradient(160deg,#12879c,#0e6072 60%,#0a4958);border-radius:22px;padding:20px;color:#fff;margin-bottom:16px;box-shadow:0 16px 40px rgba(4,33,40,.22)">'+
       '<div style="display:flex;align-items:center;gap:13px"><div style="width:50px;height:50px;border-radius:15px;background:rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center;font-size:26px;flex-shrink:0">🛌</div>'+
@@ -6419,6 +6437,7 @@
     else {
       var mp=d.myPlan&&d.myPlan.plan;
       var rec=moRecoveryActive();   // Erholungsphase -> Training soft-gesperrt (mit Override)
+      if(rec && rec.stale) rec=null;   // heute wieder erholt -> kein Soft-Lock mehr
       if(rec && !S.recoveryOverride){ body=moTrainLockCard(rec); }
       else {
         // Aufgeräumt: die heutige Einheit steht ZUERST (schlanker Bereitschafts-Banner darüber);
@@ -7734,6 +7753,22 @@
     .catch(function(){ DATA.morning={ok:false,available:false}; rIf(['morning','fort','coach','home','ern','tag']); });
   }
   function morningData(){ var d=DATA.morning; return (d&&d.ok)?d:null; }
+  // EIN widerspruchsfreies Tages-Urteil vom Server (dayVerdict). ALLE Tages-Karten
+  // (Vorhersage, Belastung, Zonen, Kraft) leiten ihre Ampel daraus ab – nie mehr direkt
+  // aus d.readiness. So kann nicht eine Karte „Vollgas" und eine andere „Ruhetag" zeigen.
+  // Fällt das Server-Feld (alte App-Version), rekonstruieren wir konservativ aus readiness.
+  function moEff(){
+    var d=morningData(); if(!d) return { level:null, intensity:null, headline:'', detail:'', recovery:false, recoveryStale:false, alert:false, source:null };
+    var v=d.verdict;
+    if(v&&v.level){ var rec=(d.recovery&&d.recovery.active); return { level:v.level, intensity:v.intensity, headline:v.headline||'', detail:v.detail||'', recovery:!!rec, recoveryStale:!!v.recoveryStale, alert:(d.overtraining&&d.overtraining.level==='alert'), source:v.source||null }; }
+    // Fallback (Server ohne verdict): Recovery > Alert > readiness.
+    var recA=(d.recovery&&d.recovery.active); var alert=!!(d.overtraining&&d.overtraining.level==='alert');
+    var r=d.readiness||{}; var lv=(r.level&&r.level!=='kalibrierung')?r.level:null;
+    if(recA) return { level:'rot', intensity:'ruhe', headline:'Erholungsphase aktiv', detail:'', recovery:true, recoveryStale:false, alert:alert, source:'recovery' };
+    if(alert) return { level:'rot', intensity:'ruhe', headline:'Erholung hat Vorrang', detail:(d.overtraining&&d.overtraining.note)||'', recovery:false, recoveryStale:false, alert:true, source:'alert' };
+    var intensity=lv==='gruen'?'voll':lv==='gelb'?'moderat':lv==='rot'?'ruhe':null;
+    return { level:lv, intensity:intensity, headline:(r.headline||''), detail:'', recovery:false, recoveryStale:false, alert:false, source:'physio' };
+  }
   function moBleAvail(){ try{ if(window.FitInnNative&&FitInnNative.available&&FitInnNative.available.hr) return true; }catch(e){} try{ return !!(navigator.bluetooth&&navigator.bluetooth.requestDevice); }catch(e){ return false; } }
   function moToday(){ try{ var d=new Date(); return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2); }catch(e){ return ''; } }
   function moNum(v){ return v==null?'—':String(Math.round(v)); }
@@ -7876,13 +7911,16 @@
     var alert=ot.level==='alert'; var col=alert?'#b4552f':'#9a5a18'; var bg=alert?'#FBECE8':'#FBF0E3'; var bd=alert?'#f0cabb':'#efd9b8'; var ic=alert?'🚨':'⚠️';
     return '<div style="'+MO_CARD+';background:'+bg+';border:1px solid '+bd+'"><div style="display:flex;align-items:flex-start;gap:12px"><span style="font-size:22px;line-height:1">'+ic+'</span><div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:900;color:'+col+'">'+(alert?'Erholung dringend nötig':'Achtung: Erholung sinkt')+'</div><div style="font-size:12.5px;color:var(--text-2);font-weight:600;line-height:1.5;margin-top:3px">'+esc(ot.note)+'</div></div></div></div>';
   }
-  // Belastungssteuerung (konkrete Trainings-Empfehlung aus der Ampel).
+  // Belastungssteuerung – leitet ihre Empfehlung aus dem EINEN Tages-Urteil (moEff) ab,
+  // damit sie NIE der Tages-Vorhersage/den Zonen widerspricht (früher: eigene Ampel).
   function moLoadCard(){
-    var d=morningData(); if(!d) return ''; var tl=d.trainingLoad; if(!tl||tl.key==='kalibrierung') return '';
-    var col=tl.key==='voll'?'#176b37':(tl.key==='moderat'?'#9a5a18':'#b4552f');
-    var bg=tl.key==='voll'?'#E7F6EC':(tl.key==='moderat'?'#FBF0E3':'#FBECE8');
-    var ic=tl.key==='voll'?'🚀':(tl.key==='moderat'?'⚖️':'🌙');
-    return '<div style="'+MO_CARD+';background:'+bg+'"><div style="display:flex;align-items:center;gap:12px"><div style="font-size:26px">'+ic+'</div><div style="flex:1;min-width:0"><div style="font-size:15.5px;font-weight:900;color:'+col+'">Belastung heute: '+esc(tl.title)+'</div><div style="font-size:12.5px;color:var(--text-2);font-weight:600;line-height:1.45;margin-top:2px">'+esc(tl.detail)+'</div></div></div></div>';
+    var d=morningData(); if(!d) return ''; var e=moEff(); if(!e.intensity||e.intensity==='kalibrierung') return '';
+    var tl=d.trainingLoad||{};
+    var col=e.intensity==='voll'?'#176b37':(e.intensity==='moderat'?'#9a5a18':'#b4552f');
+    var bg=e.intensity==='voll'?'#E7F6EC':(e.intensity==='moderat'?'#FBF0E3':'#FBECE8');
+    var ic=e.intensity==='voll'?'🚀':(e.intensity==='moderat'?'⚖️':'🌙');
+    var title=e.headline||tl.title||''; var detail=e.detail||tl.detail||'';
+    return '<div style="'+MO_CARD+';background:'+bg+'"><div style="display:flex;align-items:center;gap:12px"><div style="font-size:26px">'+ic+'</div><div style="flex:1;min-width:0"><div style="font-size:15.5px;font-weight:900;color:'+col+'">Belastung heute: '+esc(title)+'</div><div style="font-size:12.5px;color:var(--text-2);font-weight:600;line-height:1.45;margin-top:2px">'+esc(detail)+'</div></div></div></div>';
   }
   // Vegetative Balance „Anspannung ↔ Regeneration" als Farbbalken mit Marker.
   function moBalanceCard(){
@@ -8306,7 +8344,7 @@
   }
   // „Was heute auf dich zukommt" – konkrete Tages-Auswirkung aus der Ampel + Werten (regelbasiert, kostenlos).
   function moDayForecast(){
-    var d=morningData(); if(!d||!d.latest) return ''; var r=d.readiness||{}; var lv=r.level; if(!MO_LV[lv]) return '';
+    var d=morningData(); if(!d||!d.latest) return ''; var lv=moEff().level; if(!MO_LV[lv]) return '';
     var m=d.latest, base=d.baseline||{};
     var head,intro,col,bg,items;
     if(lv==='gruen'){ head='Guter Tag für Vollgas'; col='#176b37'; bg='#E7F6EC'; intro='Dein Körper ist erholt – Energie, Fokus und Belastbarkeit sollten heute hoch sein.';
@@ -8385,7 +8423,8 @@
       if(d.latest){
         // Dynamische Kachel-Reihenfolge: das Relevanteste nach oben (Ampel → FINN → Tages-Auswirkung),
         // danach je nach Ampel priorisiert (Rot: Erholung/Atmen hoch; sonst Trainingszonen hoch).
-        var lv=(d.readiness&&d.readiness.level)||'';
+        // WICHTIG: reconciled Ampel (moEff) – so zeigen Zonen/Kraft nie „Zone 3–5" an einem Ruhetag.
+        var lv=moEff().level||'';
         var ordered=[moRecoveryActiveCard(),moReadinessHero(),moFinnCard(),moDayForecast(),moOvertrainingCard(),moLoadCard()];
         if(lv==='rot'){ ordered=ordered.concat([moBalanceCard(),moBreatheEntry(),moZonesCard(lv),moStrengthCard(lv)]); }
         else { ordered=ordered.concat([moZonesCard(lv),moStrengthCard(lv),moBalanceCard(),moBreatheEntry()]); }

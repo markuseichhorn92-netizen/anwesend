@@ -54,6 +54,9 @@ async function readState(id) {
   const base = MO.baseline(list);
   const latest = list[0] || null;
   const readiness = latest ? MO.readiness(latest, base) : null;
+  const ot = MO.overtraining(list);
+  // EIN widerspruchsfreies Tages-Urteil – Basis für alle Tages-Karten + FINN.
+  const verdict = MO.dayVerdict({ readiness: readiness, overtraining: ot, recovery: recovery, latest: latest });
   const trList = await MO.trList(id);
   const trLatest = trList[0] || null;
   // Passive Vitalwerte aus Apple Health (Apple Watch/Waage) – nur bei Einwilligung.
@@ -90,7 +93,7 @@ async function readState(id) {
           sleepDetail: vitalsBlock ? vitalsBlock.sleepDetail : null,
           weekLoad: weekLoad,
           recoveryActive: !!recovery,
-          overtraining: MO.overtraining(list),
+          overtraining: ot,
           source: src,
         });
         // 7-Tage-Mini-Kurve: pro Tag die Ladung (Erholung + Schlaf) aus den passiven
@@ -126,9 +129,13 @@ async function readState(id) {
     zones: MO.trainingZones(age),
     trainingLoad: readiness ? MO.trainingLoad(readiness, latest) : null,
     insights: MO.insights(list),
-    overtraining: MO.overtraining(list),
-    // Erholungs-/Pausen-Steuerung: aktiver Modus + (falls keiner aktiv) der aktuelle Vorschlag.
-    recovery: recovery,
+    overtraining: ot,
+    // EIN widerspruchsfreies Tages-Urteil (Physiologie + Frühwarnung + Erholungsphase +
+    // subjektive Signale verrechnet). Client leitet ALLE Tages-Karten daraus ab.
+    verdict: verdict,
+    // Erholungs-/Pausen-Steuerung: aktiver Modus (+ „stale", wenn heute wieder erholt) +
+    // (falls keiner aktiv) der aktuelle Vorschlag.
+    recovery: recovery ? Object.assign({}, recovery, { stale: !!verdict.recoveryStale }) : recovery,
     recoverySuggest: recovery ? { suggest: false } : MO.recoverySuggest(list),
     weekly: MO.weeklyReport(list),
     trend: MO.trend(list),

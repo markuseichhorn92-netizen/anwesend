@@ -203,7 +203,8 @@ module.exports = async function handler(req, res) {
       const MO = require('../../lib/morning');
       if (await MO.getConsent(sess.id)) {
         const mlist = await MO.list(sess.id);
-        morningText = MO.toPromptText(mlist, { trList: await MO.trList(sess.id), age: (mprof && mprof.age) || 0 });
+        let mRecovery = null; try { mRecovery = await MO.getRecovery(sess.id); } catch (e) {}
+        morningText = MO.toPromptText(mlist, { trList: await MO.trList(sess.id), age: (mprof && mprof.age) || 0, recovery: mRecovery });
         const V = require('../../lib/vitals');
         const vlist = await V.list(sess.id);
         vitalsText = V.toPromptText(vlist);
