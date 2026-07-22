@@ -276,6 +276,33 @@ function patchAndroidAppLinks() {
   console.log('✓ Android: App-Links-Intent-Filter für https://' + APP_LINK_HOST + ' ergänzt (autoVerify).');
 }
 
+// Android: Predictive-Back („OnBackInvokedCallback") deaktivieren, damit der System-Zurück
+// zuverlässig über den klassischen onBackPressed-Weg läuft – auf JEDEM Hersteller.
+// ---------------------------------------------------------------------------
+// Problem in der Praxis: Auf Pixel/Stock-Android geht der Zurück-Wisch, auf Samsung One UI
+// schließt er die App. Ursache: Ab Android 13/14 (und je nach targetSdk standardmäßig ab
+// Android 15) kann der System-Zurück über die NEUE Predictive-Back-API laufen. Tut er das,
+// wird der klassische onBackPressed()-Weg NICHT mehr aufgerufen – und ohne registrierten
+// Callback beendet das System die Activity direkt (App schließt), OHNE den WebView-Verlauf
+// (canGoBack) zu prüfen. Dann greift WEDER der Capacitor-backButton-Listener NOCH unsere
+// Web-History-Barriere (popstate). Genau dieses Verhalten unterscheidet Samsung von Pixel.
+// Fix: android:enableOnBackInvokedCallback="false" im <application>-Tag erzwingt überall den
+// klassischen Weg -> @capacitor/app-backButton feuert zuverlässig -> unser doBack() greift.
+// (Kostet nur die Predictive-Back-Animation; die brauchen wir hier nicht.) Idempotent.
+// WICHTIG: greift erst nach einem NEUEN App-Build (Rebuild + Store-Update), nicht per Web-Deploy.
+function patchAndroidBackCallback() {
+  const p = path.join(ROOT, 'android', 'app', 'src', 'main', 'AndroidManifest.xml');
+  if (!fs.existsSync(p)) { console.log('· Android AndroidManifest.xml (Back-Callback) noch nicht vorhanden – übersprungen.'); return; }
+  let xml = fs.readFileSync(p, 'utf8');
+  if (xml.indexOf('android:enableOnBackInvokedCallback') >= 0) { console.log('✓ Android: enableOnBackInvokedCallback bereits gesetzt.'); return; }
+  const m = xml.match(/<application\b/);
+  if (!m) { console.log('· Android: <application>-Tag nicht gefunden – Back-Callback bitte manuell auf false setzen.'); return; }
+  const insertAt = m.index + m[0].length;
+  xml = xml.slice(0, insertAt) + ' android:enableOnBackInvokedCallback="false"' + xml.slice(insertAt);
+  fs.writeFileSync(p, xml, 'utf8');
+  console.log('✓ Android: android:enableOnBackInvokedCallback="false" im <application>-Tag ergänzt (Zurück zuverlässig auf allen Herstellern).');
+}
+
 // Android: minSdkVersion auf mindestens 26 anheben. Das native Plugin (Health Connect,
 // androidx.health.connect) setzt API 26 voraus; ist die App niedriger, scheitert der
 // Manifest-Merge ("uses-sdk:minSdkVersion 23 cannot be smaller than 26"). API 26
@@ -299,6 +326,7 @@ function main() {
   try { patchAndroidManifest(); } catch (e) { console.error('✗ Android-Patch fehlgeschlagen:', e && e.message); }
   try { patchAndroidMainActivity(); } catch (e) { console.error('✗ Android-MainActivity-Patch fehlgeschlagen:', e && e.message); }
   try { patchAndroidAppLinks(); } catch (e) { console.error('✗ Android-App-Links-Patch fehlgeschlagen:', e && e.message); }
+  try { patchAndroidBackCallback(); } catch (e) { console.error('✗ Android-Back-Callback-Patch fehlgeschlagen:', e && e.message); }
   try { patchAndroidMinSdk(); } catch (e) { console.error('✗ Android-minSdk-Patch fehlgeschlagen:', e && e.message); }
   console.log('Fertig.');
 }
