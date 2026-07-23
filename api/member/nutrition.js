@@ -115,6 +115,9 @@ const DIETS = ['omnivor', 'vegetarisch', 'vegan', 'lowcarb', 'highprotein'];
 
 function n0(v) { const n = Math.round(Number(v)); return (isNaN(n) || n < 0) ? 0 : n; }
 function clamp(v, lo, hi, def) { const n = Math.round(Number(v)); return isNaN(n) ? def : Math.max(lo, Math.min(hi, n)); }
+// Wie clamp, aber mit Nachkommastellen – für Nährwerte in Gramm, die auch <1 g sein
+// können (z. B. Salz 0,3 g). Absent/unlesbar/negativ -> 0.
+function clampF(v, lo, hi, dec) { const n = Number(v); if (isNaN(n) || n < lo) return 0; const c = Math.min(hi, Math.max(lo, n)); const m = Math.pow(10, dec || 0); return Math.round(c * m) / m; }
 
 const MEALS = ['fruehstueck', 'mittag', 'abend', 'snack'];
 const MAX_ITEMS_PER_CONFIRM = 12;   // pro Bestätigung höchstens so viele Einträge
@@ -178,9 +181,15 @@ function sanitizeEntry(raw, hour, keepId) {
     meal: validMeal(raw.meal, hour),
     ts: Date.now(),
   };
+  // Weitere Nährwerte (Nährwerttabelle) – nur ablegen, wenn angegeben (>0). Hält Einträge schlank.
+  const fiber = clampF(raw.fiber, 0, 200, 1); if (fiber > 0) e.fiber = fiber;
+  const sugar = clampF(raw.sugar, 0, 700, 1); if (sugar > 0) e.sugar = sugar;
+  const satFat = clampF(raw.satFat, 0, 500, 1); if (satFat > 0) e.satFat = satFat;
+  const salt = clampF(raw.salt, 0, 100, 2); if (salt > 0) e.salt = salt;
   const amount = cleanStr(raw.amount, 24);
   if (amount) e.amount = amount;
   if (raw.estimated) e.estimated = true;
+  if (raw.custom) e.custom = true;   // eigenes, manuell angelegtes Lebensmittel
   // Quellen-Metadaten (Punkt: korrekte Herkunft im Protokolleintrag).
   const SOURCES = ['ai', 'openfoodfacts', 'manual', 'favorite', 'recipe', 'meal'];
   if (SOURCES.indexOf(String(raw.source)) >= 0) e.source = String(raw.source);
@@ -274,7 +283,11 @@ function buildShopping(cook) {
 }
 
 function totalsOf(entries) {
-  return (entries || []).reduce(function (t, e) { return { kcal: t.kcal + n0(e.kcal), p: t.p + n0(e.p), c: t.c + n0(e.c), f: t.f + n0(e.f) }; }, { kcal: 0, p: 0, c: 0, f: 0 });
+  return (entries || []).reduce(function (t, e) {
+    return { kcal: t.kcal + n0(e.kcal), p: t.p + n0(e.p), c: t.c + n0(e.c), f: t.f + n0(e.f),
+      fiber: t.fiber + (Number(e.fiber) || 0), sugar: t.sugar + (Number(e.sugar) || 0),
+      satFat: t.satFat + (Number(e.satFat) || 0), salt: t.salt + (Number(e.salt) || 0) };
+  }, { kcal: 0, p: 0, c: 0, f: 0, fiber: 0, sugar: 0, satFat: 0, salt: 0 });
 }
 function waterGoalCups(t) { return Math.max(6, Math.round(((t && t.water) || 2) / 0.25)); }
 
@@ -332,6 +345,9 @@ async function buildState(id, profile, forDate) {
   const targets = targetsFor(profile || {});
   const day = await loadDay(id, date);
   const totals = totalsOf(day.entries);
+  // Weitere-Nährwerte-Summen fürs Display runden (Gleitkomma-Rest vermeiden).
+  totals.fiber = Math.round(totals.fiber * 10) / 10; totals.sugar = Math.round(totals.sugar * 10) / 10;
+  totals.satFat = Math.round(totals.satFat * 10) / 10; totals.salt = Math.round(totals.salt * 100) / 100;
   const vit = await computeVitals(id, todayYMD, targets);
   const fasting = await loadFasting(id);
   // Premium über das Magicline-Zusatzmodul (SEPA) mit dem Entitlement abgleichen –
@@ -497,7 +513,7 @@ module.exports = async function handler(req, res) {
   if (action === 'log-manual') {
     if (!(await M.rateLimit('nutri-log:' + id, 40, 3600))) { res.statusCode = 200; return res.end(JSON.stringify(await buildState(id, profile))); }
     const targetDate = validDate(body.date, date);
-    const entry = sanitizeEntry({ name: body.name || 'Snack', portion: body.portion, amount: body.amount, kcal: body.kcal, p: body.p, c: body.c, f: body.f, meal: body.meal }, hour);
+    const entry = sanitizeEntry({ name: body.name || 'Snack', portion: body.portion, amount: body.amount, kcal: body.kcal, p: body.p, c: body.c, f: body.f, fiber: body.fiber, sugar: body.sugar, satFat: body.satFat, salt: body.salt, custom: body.custom, meal: body.meal }, hour);
     const day = await loadDay(id, targetDate);
     day.entries.push(entry);
     await saveDay(id, targetDate, day);
@@ -528,7 +544,9 @@ module.exports = async function handler(req, res) {
         id: e.id, name: patch.name != null ? patch.name : e.name, portion: patch.portion != null ? patch.portion : e.portion,
         amount: patch.amount != null ? patch.amount : e.amount, kcal: patch.kcal != null ? patch.kcal : e.kcal,
         p: patch.p != null ? patch.p : e.p, c: patch.c != null ? patch.c : e.c, f: patch.f != null ? patch.f : e.f,
-        meal: patch.meal != null ? patch.meal : e.meal,
+        fiber: patch.fiber != null ? patch.fiber : e.fiber, sugar: patch.sugar != null ? patch.sugar : e.sugar,
+        satFat: patch.satFat != null ? patch.satFat : e.satFat, salt: patch.salt != null ? patch.salt : e.salt,
+        custom: e.custom, meal: patch.meal != null ? patch.meal : e.meal,
       }, hour, true);
       merged.ts = e.ts || merged.ts;
       return merged;
@@ -582,8 +600,10 @@ module.exports = async function handler(req, res) {
     res.statusCode = 200; return res.end(JSON.stringify({ ok: true, favorites: Array.isArray(saved) ? saved : [] }));
   }
   if (action === 'fav-save') {
-    const f = sanitizeEntry({ name: body.name, portion: body.portion, kcal: body.kcal, p: body.p, c: body.c, f: body.f }, hour);
+    const f = sanitizeEntry({ name: body.name, portion: body.portion, kcal: body.kcal, p: body.p, c: body.c, f: body.f, fiber: body.fiber, sugar: body.sugar, satFat: body.satFat, salt: body.salt, custom: body.custom }, hour);
     const fav = { id: f.id, name: f.name, portion: f.portion, kcal: f.kcal, p: f.p, c: f.c, f: f.f };
+    ['fiber', 'sugar', 'satFat', 'salt'].forEach(function (k) { if (f[k] != null) fav[k] = f[k]; });
+    if (f.custom) fav.custom = true;
     if (!(fav.kcal > 0 || fav.p > 0 || fav.c > 0 || fav.f > 0)) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'empty', message: 'Bitte gib zumindest Kalorien oder Makros an.' })); }
     const saved = await kvGetJson(FAVKEY(id)); const list = Array.isArray(saved) ? saved : [];
     const dupe = list.some(function (x) { return String(x.name).toLowerCase() === fav.name.toLowerCase() && n0(x.kcal) === fav.kcal; });
@@ -608,8 +628,9 @@ module.exports = async function handler(req, res) {
     // Menge anpassbar: Faktor 0,25–10 (z. B. halbe/doppelte Portion).
     const factor = Math.max(0.25, Math.min(10, Number(body.factor) || 1));
     const entry = sanitizeEntry({
-      name: fav.name, portion: fav.portion, meal: body.meal,
+      name: fav.name, portion: fav.portion, meal: body.meal, custom: fav.custom,
       kcal: Math.round(n0(fav.kcal) * factor), p: Math.round(n0(fav.p) * factor), c: Math.round(n0(fav.c) * factor), f: Math.round(n0(fav.f) * factor),
+      fiber: (Number(fav.fiber) || 0) * factor, sugar: (Number(fav.sugar) || 0) * factor, satFat: (Number(fav.satFat) || 0) * factor, salt: (Number(fav.salt) || 0) * factor,
     }, hour);
     const day = await loadDay(id, targetDate); day.entries.push(entry); await saveDay(id, targetDate, day);
     res.statusCode = 200; return res.end(JSON.stringify(Object.assign(await buildState(id, profile, targetDate), { added: [{ name: entry.name, kcal: entry.kcal }] })));
