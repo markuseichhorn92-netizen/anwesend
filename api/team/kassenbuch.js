@@ -10,6 +10,10 @@
  *   POST { action:'check', month }        -> FINN prüft Plausibilität + Steuerliches
  *   POST { action:'close', month, pdf }   -> Monat abschließen (sperren) + PDF-Beleg ablegen
  *   POST { action:'reopen', month }       -> Abschluss zurücknehmen (Korrektur)
+ *   POST { action:'beleg-scan', image }        -> FINN liest einen Kassenbon/Rechnung aus (Foto/PDF)
+ *   POST { action:'beleg-save', month, day, image } -> gescannten Beleg zu einem Tag ablegen
+ *   POST { action:'beleg-get',  month, day }   -> hinterlegten Beleg abrufen
+ *   POST { action:'beleg-del',  month, day }   -> hinterlegten Beleg löschen
  */
 
 const TA = require('../../lib/teamAuth');
@@ -46,8 +50,9 @@ async function monthPayload(key) {
     if (sug.carried) carried = { anfangsbestand: sug.anfangsbestand, blattNr: sug.blattNr, fromMonth: sug.fromMonth };
   }
   const totals = KB.computeMonth(base);
+  let belege = []; try { belege = await KB.listBelege(key); } catch (e) {}
   return {
-    key: key, year: base.year, month: base.month,
+    key: key, year: base.year, month: base.month, belege: belege,
     blattNr: base.blattNr || '', anfangsbestand: base.anfangsbestand || 0,
     gezaehlterEndbestand: (base.gezaehlterEndbestand == null ? '' : base.gezaehlterEndbestand),
     prices: totals.prices, days: base.days || {},
@@ -116,7 +121,37 @@ module.exports = async function handler(req, res) {
     return j(res, 200, { ok: true, imported: imported, skipped: skipped, months: list, message: imported ? (imported + ' Kassenbücher übernommen.') : 'Alle Altbestände waren bereits hinterlegt.' });
   }
 
+  // Beleg (Kassenbon/Rechnung) per Foto oder PDF von FINN auslesen lassen (kein Speichern).
+  if (action === 'beleg-scan') {
+    const img = String((body && body.image) || '');
+    const mm = img.match(/^data:(image\/(?:jpeg|png|webp)|application\/pdf);base64,(.+)$/);
+    if (!mm) return j(res, 200, { ok: false, message: 'Kein gültiges Bild/PDF.' });
+    if (img.length > 2.4e6) return j(res, 200, { ok: false, message: 'Datei zu groß – bitte ein kleineres Foto.' });
+    const today = new Date().toISOString().slice(0, 10);
+    let r; try { r = await AI.kassenbuchScanBeleg(mm[2], mm[1], { today: today }); } catch (e) { r = { ok: false }; }
+    if (!r || !r.ok) return j(res, 200, { ok: false, message: (r && r.error === 'no_ai_key') ? 'FINN ist gerade nicht verfügbar.' : 'Der Beleg konnte nicht gelesen werden – bitte Werte von Hand eintragen.' });
+    return j(res, 200, { ok: true, scan: { kind: r.kind, date: r.date, amount: r.amount, vendor: r.vendor, note: r.note, confidence: r.confidence } });
+  }
+
   if (!KB.isMonthKey(month)) return j(res, 400, { ok: false, error: 'bad_month' });
+
+  // Gescannten/hochgeladenen Beleg zu einem Tag ablegen / abrufen / löschen.
+  if (action === 'beleg-save') {
+    if (!KB.hasStore) return j(res, 200, { ok: false, disabled: true, message: 'Kassenbuch-Speicher nicht verfügbar.' });
+    const r = await KB.saveBeleg(month, body.day, String((body && body.image) || ''));
+    if (!r.ok) return j(res, 200, { ok: false, message: r.error === 'too_large' ? 'Beleg zu groß – bitte kleineres Foto.' : 'Beleg konnte nicht gespeichert werden.' });
+    let belege = []; try { belege = await KB.listBelege(month); } catch (e) {}
+    return j(res, 200, { ok: true, belege: belege });
+  }
+  if (action === 'beleg-get') {
+    const img = await KB.getBeleg(month, body.day);
+    return j(res, 200, { ok: true, image: img || null });
+  }
+  if (action === 'beleg-del') {
+    await KB.delBeleg(month, body.day);
+    let belege = []; try { belege = await KB.listBelege(month); } catch (e) {}
+    return j(res, 200, { ok: true, belege: belege });
+  }
 
   // Anfangsbestand/Blatt-Nr. aus dem Vormonat vorschlagen – auch für einen bereits
   // gespeicherten Monat (z. B. wenn der Vormonat nachträglich korrigiert wurde).
