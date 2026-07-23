@@ -492,7 +492,7 @@
 
   // ---- state ----
   var TOKEN = localStorage.getItem('fi_member_token') || sessionStorage.getItem('fi_member_token') || null;
-  var DATA = { profile:null, contract:null, checkins:null, appts:null, plan:null, planAgg:null, planAggTom:null, inbox:null, prefs:null, membershipActive:true, bookable:null, slots:null, account:null, blog:null, typical:null, hours:null, insta:null, live:null, pauseInfo:null, cancelReasons:null, documents:null, modules:null, commPrefs:null, nutri:null, nutriPlan:null, nutriSaved:null, nutriWeek:null, nutriFavs:null, nutriLib:null, nutriCook:null, finnMem:null };
+  var DATA = { profile:null, contract:null, checkins:null, appts:null, plan:null, planAgg:null, planAggTom:null, inbox:null, prefs:null, membershipActive:true, bookable:null, slots:null, account:null, blog:null, typical:null, hours:null, insta:null, live:null, pauseInfo:null, cancelReasons:null, documents:null, modules:null, commPrefs:null, nutri:null, nutriPlan:null, nutriSaved:null, nutriWeek:null, nutriFavs:null, nutriMeals:null, nutriLib:null, nutriCook:null, finnMem:null };
   // Erlaubte Screens für ehemalige Mitglieder (alles andere wird gesperrt)
   var FORMER_OK = ['home','checkins','help','postfach','settings','profil','recht','impressum','datenschutz','agb'];
   function isFormer(){ return DATA.membershipActive===false; }
@@ -540,6 +540,7 @@
     ernProd:null, ernGrams:100,
     ernViewDate:'', ernDayBusy:false, ernEntryEdit:null, ernEntryBusy:false,
     ernFavMgr:false, ernFavBusy:false, ernFavAddOpen:false,
+    ernMealMgr:false, ernMealBusy:false, ernMealDraft:null,
     ernChat:[], ernData:false, ernDataBusy:false, ernRecipeServ:1,
     ernUpgrade:false, ernUpgradeBusy:false,
     ernLesson:null, ernVert:null, ernLessonData:null, ernLessonBusy:false, ernChatOpen:false, ernEnrollBusy:false, ernLessonStep:0, ernQuizAns:{},
@@ -723,7 +724,7 @@
     if(s==='profil'||s==='data'||s==='account'||s==='abo') loadErnBilling();
     if(s==='abo'){ S.ernMsg=''; S.ernErr=false; loadNutri(); }
     if(s==='recht'){ loadErnBilling(); if(TOKEN){ loadNutri(); } }
-    if(s==='ern'){ try{ window.__ernStopScan&&window.__ernStopScan(); }catch(e){} S.ernMsg=''; S.ernErr=false; S.ernAsk=''; S.ernAnswer=''; S.ernRecipes=null; S.ernCoachSent=false; S.ernTab='heute'; S.ernRecipeSel=null; S.ernKoch=null; S.ernCookPick=false; S.ernPlanDraft=null; S.ernPlanReplaceIdx=-1; S.ernCapture=false; S.ernConfirm=null; S.ernProd=null; S.ernShop=false; S.ernShopProd=null; S.ernShopAlt=null; S.ernShopFinn=null; S.ernScanPurpose='log'; S.sos=false; S.sosCrave=''; S.sosTrigger=''; S.sosFinn=null; S.buyGuide=false; S.ernEntryEdit=null; S.ernViewDate=''; S.ernFavMgr=false; S.ernData=false; S.ernUpgrade=false; S.ernLesson=null; S.ernLessonData=null; S.ernChatOpen=false; S.ernCk=false; S.ernCkResult=null; S.ernObStep=0; S.ernChat=ernChatLoad(); loadNutri(); loadFavs(); loadCoach(); loadCook(); }
+    if(s==='ern'){ try{ window.__ernStopScan&&window.__ernStopScan(); }catch(e){} S.ernMsg=''; S.ernErr=false; S.ernAsk=''; S.ernAnswer=''; S.ernRecipes=null; S.ernCoachSent=false; S.ernTab='heute'; S.ernRecipeSel=null; S.ernKoch=null; S.ernCookPick=false; S.ernPlanDraft=null; S.ernPlanReplaceIdx=-1; S.ernCapture=false; S.ernConfirm=null; S.ernProd=null; S.ernShop=false; S.ernShopProd=null; S.ernShopAlt=null; S.ernShopFinn=null; S.ernScanPurpose='log'; S.sos=false; S.sosCrave=''; S.sosTrigger=''; S.sosFinn=null; S.buyGuide=false; S.ernEntryEdit=null; S.ernViewDate=''; S.ernFavMgr=false; S.ernMealMgr=false; S.ernMealDraft=null; S.ernData=false; S.ernUpgrade=false; S.ernLesson=null; S.ernLessonData=null; S.ernChatOpen=false; S.ernCk=false; S.ernCkResult=null; S.ernObStep=0; S.ernChat=ernChatLoad(); loadNutri(); loadFavs(); loadMeals(); loadCoach(); loadCook(); }
     if(s==='coach'){ S.ernLesson=null; S.ernVert=null; S.ernLessonData=null; S.ernCk=false; S.ernCkResult=null; S.ernChatOpen=false; S.ernUpgrade=false; S.ernMsg=''; S.ernErr=false; S.coachMapOpen=false; S.coachVertOpen=false; S.ernChat=ernChatLoad(); S.trainDetail=null; S.trainRun=false; S.trainRestKey=''; S.trainGenOpen=false; S.trainGenPlan=null; S.trainGenBusy=false; S.trainBusy=false; S.trainMsg=''; loadFinnTip(); loadCoach(); loadTraining(); if(!DATA.checkins) loadCheckins(); }
     if(s==='appt'){ if(!DATA.appts) loadAppts(); if(DATA.bookable===null) loadBookable(); }
     if(s==='tag'){ S.trainRunDay=null; S.trainRestKey=''; S.trainRestStart=0; S.trainSeg='einheit'; S.trainDetail=null; S.trainDetailFull=null; S.trainGenOpen=false; S.woOpen=false; S.woResult=null; S.woDetail=null; S.woReview=null; if(DATA.training==null) loadTraining(); loadTrainSession(); loadWorkouts(); if(ERN_ON&&DATA.nutri==null) loadNutri(); }
@@ -3778,6 +3779,8 @@
     }).catch(function(){ DATA.nutri={ok:false,available:false}; rIf(['ern','coach','abo','recht','finnusage','home','fort','tag']); });
   }
   function loadFavs(){ api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'fav-list'})}).then(function(d){ DATA.nutriFavs=(d&&d.ok&&Array.isArray(d.favorites))?d.favorites:[]; rIf(['ern']); }).catch(function(){ DATA.nutriFavs=[]; rIf(['ern']); }); }
+  // Gespeicherte Mahlzeiten (mehrere Produkte als 1 Vorlage – „Mein Frühstück" & Co.).
+  function loadMeals(){ api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'meal-list'})}).then(function(d){ DATA.nutriMeals=(d&&d.ok&&Array.isArray(d.meals))?d.meals:[]; rIf(['ern']); }).catch(function(){ DATA.nutriMeals=[]; rIf(['ern']); }); }
   // Trainingspartner-Snapshot laden (Opt-in/Buddys/Anfragen) – speist Screen, Startseite & Profil.
   function loadSocial(){
     if(DATA.social==null) DATA.social=false;   // „lädt" bis Antwort da ist
@@ -4409,6 +4412,7 @@
         mkPick('ernCapTab','cam',IC_CAM,'Teller scannen','Foto — FINN erkennt Zutaten &amp; Portion',gt)+
         mkPick('ernCapTab','voice',IC_FINN,'FINN beschreiben','Sag oder tippe – FINN schätzt deine Mahlzeit',gt)+
         mkPick('ernCapRecipe','',IC_REC,'Rezept kochen','Aus deiner Rezept-Bibliothek übernehmen',gt)+
+        mkPick('ernCapMeals','','<path d="M6 3v7a2 2 0 0 0 4 0V3"></path><path d="M8 10v11"></path><path d="M16 3c-1.7 0-3 1.8-3 4s1.3 4 3 4v10"></path>','Meine Mahlzeiten','Gespeicherte Mahlzeit komplett eintragen',gt)+
         mkPick('ernCapTab','search',IC_SRCH,'Produkt suchen','Datenbank nach Name oder Marke',gt)+
         mkPick('ernCapTab','barcode',IC_BAR,'Barcode scannen','Verpackung einscannen',gt)+
         mkPick('ernManualEntry','',IC_PEN,'Manuell eintragen','Nährwerte selbst eingeben','rgba(10,73,88,.08)')+
@@ -4615,6 +4619,46 @@
     var msg=S.ernMsg?'<div role="'+(S.ernErr?'alert':'status')+'" style="font-size:12.5px;font-weight:700;color:'+(S.ernErr?'var(--err-fg)':ERN_G)+';text-align:center;margin-top:12px">'+esc(S.ernMsg)+'</div>':'';
     return '<div style="padding:4px 2px 40px">'+head+addForm+list+msg+'</div>';
   }
+  // Chip-Reihe „Meine Mahlzeiten": eine gespeicherte Mahlzeit (mehrere Produkte) mit EINEM
+  // Tipp komplett loggen. Ist nichts gespeichert, zeigt nur der Verwalten-Chip den Einstieg.
+  function ernMealChips(){
+    var meals=Array.isArray(DATA.nutriMeals)?DATA.nutriMeals:null;
+    var wrap=function(inner){ return '<div style="display:flex;gap:8px;overflow-x:auto;padding:2px 0;margin-top:10px;scrollbar-width:none">'+inner+'</div>'; };
+    var mgrChip='<button data-act="ernMealMgrOpen" aria-label="Mahlzeiten verwalten" style="flex-shrink:0;display:flex;align-items:center;gap:6px;border:1.5px dashed #cfe0d6;background:var(--surface-2);border-radius:20px;padding:8px 13px;cursor:pointer;font-size:12.5px;font-weight:800;color:var(--ern-acc)">'+svg('<path d="M12 5v14M5 12h14"></path>',{c:'var(--ern-acc)',w:2.4,s:14})+'Mahlzeit</button>';
+    if(meals&&meals.length){
+      return wrap(meals.slice(0,24).map(function(m){ return '<button data-act="ernMealLog" data-arg="'+esc(m.id)+'" aria-label="'+esc(m.name)+' komplett eintragen" style="flex-shrink:0;display:flex;align-items:center;gap:7px;border:1.5px solid var(--border);background:var(--surface);border-radius:20px;padding:8px 13px;cursor:pointer;font-size:12.5px;font-weight:800;color:var(--text)"><span>🍽️</span>'+esc(m.name)+' <span style="color:var(--text-soft);font-weight:700">'+ernNum(m.kcal)+'</span></button>'; }).join('')+mgrChip);
+    }
+    return wrap(mgrChip);
+  }
+  // Verwalten-Screen „Meine Mahlzeiten": speichern (aus der Tagesliste vorbefüllt), loggen, löschen.
+  function ernMealMgrScreen(){
+    var meals=Array.isArray(DATA.nutriMeals)?DATA.nutriMeals:[];
+    var head='<div style="display:flex;align-items:center;gap:12px;padding:2px 2px 14px"><button data-act="ernMealMgrClose" aria-label="Zurück" style="width:38px;height:38px;border-radius:12px;border:none;background:var(--surface);box-shadow:0 4px 12px rgba(4,33,40,.08);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'+svg(IC.back,{c:'#0a4958',w:2.2,s:19})+'</button><div style="flex:1"><div style="font-size:20px;font-weight:900;color:var(--text);letter-spacing:-.4px">Meine Mahlzeiten</div><div style="font-size:12px;font-weight:700;color:var(--text-soft)">Deine feste Basis mit einem Tipp eintragen</div></div></div>';
+    // Speichern-Karte, wenn aus der Tagesliste eine Mahlzeit übernommen wurde (Entwurf).
+    var draft=S.ernMealDraft;
+    var saveCard='';
+    if(draft&&Array.isArray(draft.items)&&draft.items.length){
+      var dk=draft.items.reduce(function(a,it){ return a+(it.kcal||0); },0);
+      var prev=draft.items.map(function(it){ return '<div style="display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-top:1px solid var(--border)"><span style="font-size:12.5px;font-weight:600;color:var(--text-2);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(it.name)+'</span><span style="font-size:12px;font-weight:800;color:var(--text-soft);flex-shrink:0">'+ernNum(it.kcal||0)+'</span></div>'; }).join('');
+      saveCard='<div style="background:var(--surface);border-radius:16px;padding:16px;box-shadow:0 6px 18px rgba(4,33,40,.06);margin-bottom:16px;border:1.5px solid rgba(14,96,114,.18)">'+
+        '<div style="font-size:11px;font-weight:900;color:var(--ern-acc);text-transform:uppercase;letter-spacing:.4px">Neue Mahlzeit speichern</div>'+
+        '<input id="ern_mealn" value="'+esc(draft.name||'')+'" placeholder="Name (z. B. Mein Frühstück)" aria-label="Name der Mahlzeit" style="width:100%;border:none;border-bottom:1.5px solid var(--border);padding:8px 2px;font-size:17px;font-weight:800;color:var(--text);background:transparent;margin-top:6px">'+
+        '<div style="margin-top:8px">'+prev+'</div>'+
+        '<div style="font-size:12px;font-weight:800;color:var(--text-soft);text-align:right;margin-top:6px">'+draft.items.length+' Produkte · '+ernNum(dk)+' kcal</div>'+
+        '<div style="display:flex;gap:9px;margin-top:14px"><button data-act="ernMealSaveCancel" style="flex:1;padding:13px;border:1.5px solid var(--border);border-radius:13px;background:var(--surface);color:var(--text-muted);font-weight:800;font-size:14px;cursor:pointer">Abbrechen</button><button data-act="ernMealSave" '+(S.ernMealBusy?'disabled ':'')+'style="flex:2;padding:13px;border:none;border-radius:13px;background:#0e6072;color:#fff;font-weight:900;font-size:14px;cursor:pointer;opacity:'+(S.ernMealBusy?'.6':'1')+'">'+(S.ernMealBusy?'Speichert …':'Mahlzeit speichern')+'</button></div>'+
+      '</div>';
+    }
+    var list = meals.length
+      ? meals.map(function(m){ var items=Array.isArray(m.items)?m.items:[]; var names=items.slice(0,4).map(function(it){ return esc(it.name); }).join(' · ')+(items.length>4?' …':'');
+          return '<div style="background:var(--surface);border-radius:16px;padding:14px;box-shadow:0 6px 18px rgba(4,33,40,.06);margin-bottom:10px">'+
+          '<div style="display:flex;align-items:flex-start;gap:8px"><div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:900;color:var(--text)">🍽️ '+esc(m.name)+'</div><div style="font-size:11.5px;font-weight:600;color:var(--text-soft);margin-top:2px">'+(m.n||items.length)+' Produkte · '+ernNum(m.kcal)+' kcal · E '+(m.p||0)+' · K '+(m.c||0)+' · F '+(m.f||0)+'</div>'+(names?'<div style="font-size:11px;font-weight:600;color:var(--text-soft);margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+names+'</div>':'')+'</div>'+
+          '<button data-act="ernMealDelete" data-arg="'+esc(m.id)+'" aria-label="Mahlzeit löschen" style="width:30px;height:30px;border-radius:9px;border:none;background:var(--surface-2);cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center">'+svg('<path d="M18 6L6 18M6 6l12 12"></path>',{c:'var(--err-fg)',w:2.2,s:14})+'</button></div>'+
+          '<div style="display:flex;gap:7px;margin-top:12px">'+[['0.5','½'],['1','Eintragen'],['2','Doppelt']].map(function(x){ return '<button data-act="ernMealLog" data-arg="'+esc(m.id)+':'+x[0]+'" style="flex:'+(x[0]==='1'?'2':'1')+';padding:10px 4px;border:'+(x[0]==='1'?'none':'1.5px solid var(--border)')+';border-radius:11px;background:'+(x[0]==='1'?ERN_G:'var(--surface-2)')+';color:'+(x[0]==='1'?'#fff':'var(--ern-acc)')+';font-weight:800;font-size:12.5px;cursor:pointer">'+x[1]+'</button>'; }).join('')+'</div>'+
+        '</div>'; }).join('')
+      : '<div style="background:var(--surface);border-radius:16px;padding:28px 20px;text-align:center;box-shadow:0 6px 18px rgba(4,33,40,.06)"><div style="font-size:30px">🍽️</div><div style="font-size:14px;font-weight:800;color:var(--text);margin-top:8px">Noch keine Mahlzeiten</div><div style="font-size:12.5px;font-weight:500;color:var(--text-soft);margin-top:4px;line-height:1.5">Trag deine Basis einmal ein (z. B. dein Frühstück) und tippe darunter auf „⭐ Als Mahlzeit speichern". Danach loggst du alles zusammen mit einem Tipp.</div></div>';
+    var msg=S.ernMsg?'<div role="'+(S.ernErr?'alert':'status')+'" style="font-size:12.5px;font-weight:700;color:'+(S.ernErr?'var(--err-fg)':ERN_G)+';text-align:center;margin-top:12px">'+esc(S.ernMsg)+'</div>':'';
+    return '<div style="padding:4px 2px 40px">'+head+saveCard+list+msg+'</div>';
+  }
   // Prominente Coaching-Karte für „Heute" – rückt das Coach-Programm in den Fokus.
   function ernCoachCard(){
     var c=DATA.coach;
@@ -4723,7 +4767,7 @@
     // Status-Meldung + Favoriten-Schnellzugriff. Das Loggen läuft jetzt komplett über den
     // „+"-Button (Erfassen-Popup) – die alte „Mahlzeit loggen"-Karte entfällt (war doppelt).
     var msg=S.ernMsg?'<div style="font-size:12.5px;font-weight:700;color:'+(S.ernErr?'var(--err-fg)':ERN_G)+';margin:12px 2px 0;line-height:1.4">'+esc(S.ernMsg)+'</div>':'';
-    var quickAdd='<div style="font-size:12px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.4px;margin:22px 2px 0">Schnell hinzufügen</div>'+ernFavChips();
+    var quickAdd='<div style="font-size:12px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.4px;margin:22px 2px 0">Schnell hinzufügen</div>'+ernMealChips()+ernFavChips();
     // Heute gegessen
     var MEALS=[['fruehstueck','Frühstück','🌅'],['mittag','Mittagessen','☀️'],['abend','Abendessen','🌙'],['snack','Snacks','🍎']];
     var entries=Array.isArray(td.entries)?td.entries:[];
@@ -4733,7 +4777,7 @@
       if(!items.length) return;
       var sum=items.reduce(function(a,b){ return a+(b.kcal||0); },0);
       meals+='<div style="'+CARD.replace('padding:18px','padding:15px 16px')+'"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px"><div style="display:flex;align-items:center;gap:9px"><span style="font-size:18px">'+ml[2]+'</span><span style="font-size:14.5px;font-weight:900;color:var(--text)">'+ml[1]+'</span></div><span style="font-size:13.5px;font-weight:900;color:var(--text)">'+ernNum(sum)+' kcal</span></div>'+
-        items.map(function(it){ return '<div style="display:flex;align-items:center;gap:8px;padding:10px 0;border-top:1px solid var(--border)"><button data-act="ernEntryOpen" data-arg="'+esc(it.id)+'" aria-label="'+esc(it.name)+' bearbeiten" style="flex:1;min-width:0;text-align:left;border:none;background:transparent;padding:0;cursor:pointer;font-family:inherit"><div style="font-size:13.5px;font-weight:700;color:var(--text)">'+esc(it.name)+(it.source==='openfoodfacts'?' <span style="font-size:9px;font-weight:800;color:var(--teal-ink);background:var(--surface-2);padding:1px 5px;border-radius:6px;vertical-align:middle">OFF</span>':'')+'</div><div style="font-size:11px;font-weight:600;color:var(--text-soft);margin-top:1px">'+(it.portion?esc(it.portion)+' · ':'')+'E '+(it.p||0)+' · K '+(it.c||0)+' · F '+(it.f||0)+'</div></button><span style="font-size:13px;font-weight:800;color:var(--text-2)">'+ernNum(it.kcal||0)+'</span><button data-act="ernDelete" data-arg="'+esc(it.id)+'" aria-label="Entfernen" style="width:26px;height:26px;border-radius:8px;border:none;background:var(--surface-2);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'+svg('<path d="M18 6L6 18M6 6l12 12"></path>',{c:'var(--text-soft)',w:2.2,s:13})+'</button></div>'; }).join('')+'<button data-act="ernOpenCapture" data-arg="'+ml[1]+'" style="width:100%;margin:8px 0 10px;padding:10px;border:1.5px dashed #cfe0d6;background:var(--surface-2);color:var(--ern-acc);border-radius:12px;font-weight:800;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px">'+svg('<path d="M12 5v14M5 12h14"></path>',{c:'var(--ern-acc)',w:2.6,s:15})+'Zu '+ml[1]+' hinzufügen</button></div>';
+        items.map(function(it){ return '<div style="display:flex;align-items:center;gap:8px;padding:10px 0;border-top:1px solid var(--border)"><button data-act="ernEntryOpen" data-arg="'+esc(it.id)+'" aria-label="'+esc(it.name)+' bearbeiten" style="flex:1;min-width:0;text-align:left;border:none;background:transparent;padding:0;cursor:pointer;font-family:inherit"><div style="font-size:13.5px;font-weight:700;color:var(--text)">'+esc(it.name)+(it.source==='openfoodfacts'?' <span style="font-size:9px;font-weight:800;color:var(--teal-ink);background:var(--surface-2);padding:1px 5px;border-radius:6px;vertical-align:middle">OFF</span>':'')+'</div><div style="font-size:11px;font-weight:600;color:var(--text-soft);margin-top:1px">'+(it.portion?esc(it.portion)+' · ':'')+'E '+(it.p||0)+' · K '+(it.c||0)+' · F '+(it.f||0)+'</div></button><span style="font-size:13px;font-weight:800;color:var(--text-2)">'+ernNum(it.kcal||0)+'</span><button data-act="ernDelete" data-arg="'+esc(it.id)+'" aria-label="Entfernen" style="width:26px;height:26px;border-radius:8px;border:none;background:var(--surface-2);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'+svg('<path d="M18 6L6 18M6 6l12 12"></path>',{c:'var(--text-soft)',w:2.2,s:13})+'</button></div>'; }).join('')+'<button data-act="ernOpenCapture" data-arg="'+ml[1]+'" style="width:100%;margin:8px 0 10px;padding:10px;border:1.5px dashed #cfe0d6;background:var(--surface-2);color:var(--ern-acc);border-radius:12px;font-weight:800;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px">'+svg('<path d="M12 5v14M5 12h14"></path>',{c:'var(--ern-acc)',w:2.6,s:15})+'Zu '+ml[1]+' hinzufügen</button><button data-act="ernMealSaveOpen" data-arg="'+ml[0]+'" style="width:100%;margin:0 0 8px;padding:8px;border:none;background:transparent;color:var(--ern-acc);border-radius:10px;font-weight:800;font-size:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px">⭐ '+ml[1]+' als Mahlzeit speichern</button></div>';
     });
     if(!meals){ meals='<div style="'+CARD+';text-align:center"><div style="font-size:30px">🍽️</div><div style="font-size:13.5px;font-weight:700;color:var(--text);margin-top:6px">Noch nichts protokolliert</div><div style="font-size:12.5px;font-weight:500;color:var(--text-soft);margin:2px 0 12px">Erfasse deine erste Mahlzeit per Foto, Sprache oder Suche.</div><button data-act="ernOpenCapture" data-arg="Mahlzeit" style="padding:12px 20px;border:none;border-radius:13px;background:'+ERN_G+';color:#fff;font-weight:900;font-size:14px;cursor:pointer">Essen erfassen</button></div>'; }
     var viewIsToday=td.isToday!==false&&(td.date||isoToday())===isoToday();
@@ -6797,6 +6841,7 @@
     else if(S.ernConfirm){ inner=ernConfirmScreen(); }
     else if(S.ernData){ inner=ernDataScreen(); }
     else if(S.ernFavMgr){ inner=ernFavMgrScreen(); }
+    else if(S.ernMealMgr){ inner=ernMealMgrScreen(); }
     else if(S.ernEntryEdit){ inner=ernEntryEditScreen(); }
     else if(S.ernLesson||S.ernVert){ inner=ernLesson(); }
     else if(S.ernCk){ inner=ernCheckinScreen(); }
@@ -9694,7 +9739,7 @@
       var onErnTab=(S.screen==='ern')&&DATA.nutri&&DATA.nutri.ok&&DATA.nutri.onboarded&&
         !S.ernEdit&&!S.ernRecipeSel&&!S.ernCapture&&!S.ernConfirm&&!S.ernProd&&!S.ernData&&
         !S.ernShop&&!S.ernShopProd&&!S.sos&&!S.buyGuide&&
-        !S.ernFavMgr&&!S.ernEntryEdit&&!S.ernLesson&&!S.ernVert&&!S.ernCk&&!(S.ernKoch!=null);
+        !S.ernFavMgr&&!S.ernMealMgr&&!S.ernEntryEdit&&!S.ernLesson&&!S.ernVert&&!S.ernCk&&!(S.ernKoch!=null);
       var onTagTab=(S.screen==='tag')&&!S.trainRun&&!S.trainDetail&&!S.trainGenOpen;
       var miniBlock=S.finnOpen||S.qaOpen||S.ernChatOpen||S.ernUpgrade||S.dp||S.ciPopup||S.vaOpen;
       var showMini=(onErnTab||onTagTab)&&!miniBlock;
@@ -9963,7 +10008,7 @@
     // Login/Onboarding, in Vollbild-Chats, im Schnell-Popup und in Ernährungs-/Trainings-
     // Vollbild-Flows (die tragen ihren eigenen Kopf mit Zurück).
     var abFull=!!(S.ernLesson||S.ernVert||S.ernCk)
-      || (S.screen==='ern' && (S.ernCapture||S.ernEdit||S.ernProd||S.ernShop||S.ernShopProd||S.sos||S.buyGuide||S.ernConfirm||S.ernData||S.ernFavMgr||S.ernEntryEdit||!(DATA.nutri&&DATA.nutri.ok&&DATA.nutri.available!==false&&DATA.nutri.onboarded)))
+      || (S.screen==='ern' && (S.ernCapture||S.ernEdit||S.ernProd||S.ernShop||S.ernShopProd||S.sos||S.buyGuide||S.ernConfirm||S.ernData||S.ernFavMgr||S.ernMealMgr||S.ernEntryEdit||!(DATA.nutri&&DATA.nutri.ok&&DATA.nutri.available!==false&&DATA.nutri.onboarded)))
       || (S.screen==='tag' && (S.trainRun||S.trainGenOpen||S.trainDetail));
     var abOn = !!TOKEN && S.screen!=='login' && S.screen!=='alogin' && !chatFull && !S.qaOpen && !abFull && obDone() && !tourActive();
     var abar=$('appbar');
@@ -10674,6 +10719,28 @@
     ernFavLog:function(a){ a=String(a||''); var parts=a.split(':'), fid=parts[0], factor=parts[1]?parseFloat(parts[1]):1;
       api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'fav-log',id:fid,factor:factor,date:ernActiveDate()})})
       .then(function(d){ if(d&&d.ok){ DATA.nutri=d; var nm=(d.added&&d.added[0]&&d.added[0].name)||'Favorit'; S.ernMsg='Protokolliert: '+nm; S.ernErr=false; render(); } else { S.ernErr=true; S.ernMsg=(d&&d.message)||'Konnte nicht protokollieren – bitte erneut.'; render(); } }).catch(function(){ S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); }); },
+    // ── Gespeicherte Mahlzeiten (mehrere Produkte als 1 Vorlage) ──
+    ernMealMgrOpen:function(){ setS({ernMealMgr:true, ernMealDraft:null, ernMsg:'', ernErr:false}); if(DATA.nutriMeals==null) loadMeals(); },
+    ernMealMgrClose:function(){ setS({ernMealMgr:false, ernMealDraft:null, ernMsg:''}); },
+    // Aus dem Erfassen-Sheet: Sheet schließen und die Mahlzeiten-Verwaltung öffnen.
+    ernCapMeals:function(){ try{ window.__ernStopScan&&window.__ernStopScan(); window.__ernStopCam&&window.__ernStopCam(); }catch(e){} setS({ernCapture:false, ernMealMgr:true, ernMealDraft:null, ernMsg:'', ernErr:false}); if(DATA.nutriMeals==null) loadMeals(); },
+    // „Als Mahlzeit speichern" aus einer Tagesliste-Gruppe: deren Einträge übernehmen -> Entwurf.
+    ernMealSaveOpen:function(a){ var slot=String(a||'snack'); var LAB={fruehstueck:'Frühstück',mittag:'Mittagessen',abend:'Abendessen',snack:'Snacks'};
+      var td=(DATA.nutri&&DATA.nutri.today)||{}; var ents=Array.isArray(td.entries)?td.entries:[];
+      var items=ents.filter(function(e){ return (e.meal||'snack')===slot; }).map(function(e){ return {name:e.name,portion:e.portion||'',kcal:e.kcal||0,p:e.p||0,c:e.c||0,f:e.f||0,meal:slot}; });
+      if(!items.length){ S.ernErr=true; S.ernMsg='Für diese Mahlzeit ist noch nichts eingetragen.'; render(); return; }
+      setS({ernMealMgr:true, ernMealDraft:{name:(LAB[slot]||'Meine Mahlzeit'), items:items}, ernMsg:'', ernErr:false}); if(DATA.nutriMeals==null) loadMeals(); },
+    ernMealSaveCancel:function(){ setS({ernMealDraft:null, ernMsg:'', ernErr:false}); },
+    ernMealSave:function(){ if(S.ernMealBusy) return; var d=S.ernMealDraft; if(!d||!Array.isArray(d.items)||!d.items.length) return;
+      var el=$('ern_mealn'); var name=((el&&el.value)||'').trim(); if(name.length<2){ S.ernErr=true; S.ernMsg='Bitte gib der Mahlzeit einen Namen.'; render(); return; }
+      S.ernMealBusy=true; S.ernErr=false; S.ernMsg=''; render();
+      api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'meal-save',name:name,items:d.items})})
+      .then(function(r){ S.ernMealBusy=false; if(r&&r.ok){ DATA.nutriMeals=r.meals||DATA.nutriMeals; S.ernMealDraft=null; S.ernMsg='Mahlzeit „'+(r.name||name)+'" gespeichert 🍽️'; S.ernErr=false; } else { S.ernErr=true; S.ernMsg=(r&&r.message)||'Konnte nicht speichern.'; } render(); })
+      .catch(function(){ S.ernMealBusy=false; S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); }); },
+    ernMealDelete:function(a){ api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'meal-delete',id:a})}).then(function(r){ if(r&&r.ok){ DATA.nutriMeals=r.meals||[]; render(); } else { S.ernErr=true; S.ernMsg=(r&&r.message)||'Löschen fehlgeschlagen – bitte erneut.'; render(); } }).catch(function(){ S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); }); },
+    ernMealLog:function(a){ a=String(a||''); var parts=a.split(':'), mid=parts[0], factor=parts[1]?parseFloat(parts[1]):1;
+      api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'meal-log',id:mid,factor:factor,date:ernActiveDate()})})
+      .then(function(d){ if(d&&d.ok){ DATA.nutri=d; var nm=(d.mealName)||'Mahlzeit'; var cnt=(d.added&&d.added.length)||0; S.ernMsg='Eingetragen: '+nm+(cnt?(' · '+cnt+' Produkte'):''); S.ernErr=false; render(); } else { S.ernErr=true; S.ernMsg=(d&&d.message)||'Konnte nicht eintragen – bitte erneut.'; render(); } }).catch(function(){ S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); }); },
     // ── Premium (Freemium / Coach Premium über Zusatzmodul) ──
     ernUpgradeOpen:function(){ setS({ernUpgrade:true, ernMsg:'', ernErr:false}); ernEnsureModulePrice(); },
     ernModulePriceRetry:function(){ DATA.modules=null; try{ loadModules(); }catch(e){} render(); },
@@ -11689,7 +11756,7 @@
     function backTrig(){ return Math.min(window.innerWidth*0.28, 110); }
     function menuOpen(){ return document.body.classList.contains('menu-open'); }
     function overlayOpen(){
-      return !!(S.finnOpen||S.vaOpen||S.ciPopup||S.dp||S.qaOpen||S.fbOpen||S.ernUpgrade||S.ernCapture||S.ernConfirm||S.ernProd||S.ernShop||S.ernShopProd||S.sos||S.buyGuide||S.ernData||S.ernEdit||S.ernRecipeSel||S.ernFavMgr||S.ernEntryEdit||S.ernLesson||S.ernVert||S.ernCk||S.ernChatOpen||S.ernPlanQuiz||(S.ernKoch!=null)||S.welcomeGift||S.trainFinish||S.trainRun||S.trainDetail||S.trainGenOpen||S.morningBreathe||S.moGuide||S.moMetric||(S.screen==='morning'&&moRecSuggestOn())||(S.morningPhase&&S.morningPhase!=='idle')||(S.screen==='tag'&&woMeasuring())||S.woOpen||S.woResult||S.woDetail||S.socChat||S.socRoom||document.querySelector('.obOverlay'));
+      return !!(S.finnOpen||S.vaOpen||S.ciPopup||S.dp||S.qaOpen||S.fbOpen||S.ernUpgrade||S.ernCapture||S.ernConfirm||S.ernProd||S.ernShop||S.ernShopProd||S.sos||S.buyGuide||S.ernData||S.ernEdit||S.ernRecipeSel||S.ernFavMgr||S.ernMealMgr||S.ernEntryEdit||S.ernLesson||S.ernVert||S.ernCk||S.ernChatOpen||S.ernPlanQuiz||(S.ernKoch!=null)||S.welcomeGift||S.trainFinish||S.trainRun||S.trainDetail||S.trainGenOpen||S.morningBreathe||S.moGuide||S.moMetric||(S.screen==='morning'&&moRecSuggestOn())||(S.morningPhase&&S.morningPhase!=='idle')||(S.screen==='tag'&&woMeasuring())||S.woOpen||S.woResult||S.woDetail||S.socChat||S.socRoom||document.querySelector('.obOverlay'));
     }
     function closeKnownOverlay(){
       if(S.screen==='tag' && woMeasuring()){ return true; }   // laufende Aufzeichnung: nicht per Zurück abbrechen (nur über die Buttons)
@@ -11722,7 +11789,7 @@
           else { try{ ACT.ernCloseCapture(); }catch(e){ setS({ernCapture:false}); } }
           return true;
         }
-        var order=['ernConfirm','ernProd','ernEntryEdit','ernEdit','ernData','ernFavMgr','ernPlanQuiz','ernKoch',
+        var order=['ernConfirm','ernProd','ernEntryEdit','ernEdit','ernData','ernFavMgr','ernMealMgr','ernPlanQuiz','ernKoch',
           'ernLesson','ernVert','ernCk','ernChatOpen','ernUpgrade','ernShopProd','ernShop','sos','buyGuide',
           'socChat','socRoom','trainFinish','trainRun','trainDetail','trainGenOpen','welcomeGift',
           'moMetric','moGuide','morningBreathe','woResult','woDetail','woOpen',

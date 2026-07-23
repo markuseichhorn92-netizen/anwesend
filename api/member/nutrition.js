@@ -92,6 +92,7 @@ const PLANKEY = (id) => 'nutri:plan:' + String(id);
 const SHOPKEY = (id) => 'nutri:shop:' + String(id);
 const RECKEY = (id) => 'nutri:rec:' + String(id);
 const FAVKEY = (id) => 'nutri:fav:' + String(id);
+const MEALKEY = (id) => 'nutri:meal:' + String(id);   // gespeicherte Mahlzeiten (mehrere Produkte als 1 Vorlage)
 const COOKKEY = (id) => 'nutri:cook:' + String(id);   // Koch-Plan (was wann kochen) + Einkaufsliste
 const DAY_TTL = 400 * 86400;              // ~13 Monate
 
@@ -118,6 +119,8 @@ function clamp(v, lo, hi, def) { const n = Math.round(Number(v)); return isNaN(n
 const MEALS = ['fruehstueck', 'mittag', 'abend', 'snack'];
 const MAX_ITEMS_PER_CONFIRM = 12;   // pro Bestätigung höchstens so viele Einträge
 const MAX_FAVS = 60;
+const MAX_MEALS = 40;               // höchstens so viele gespeicherte Mahlzeiten je Mitglied
+const MAX_ITEMS_PER_MEAL = 20;      // eine gespeicherte Mahlzeit fasst höchstens so viele Produkte
 
 function cleanStr(v, max) { return String(v == null ? '' : v).replace(/\s+/g, ' ').trim().slice(0, max); }
 
@@ -179,7 +182,7 @@ function sanitizeEntry(raw, hour, keepId) {
   if (amount) e.amount = amount;
   if (raw.estimated) e.estimated = true;
   // Quellen-Metadaten (Punkt: korrekte Herkunft im Protokolleintrag).
-  const SOURCES = ['ai', 'openfoodfacts', 'manual', 'favorite', 'recipe'];
+  const SOURCES = ['ai', 'openfoodfacts', 'manual', 'favorite', 'recipe', 'meal'];
   if (SOURCES.indexOf(String(raw.source)) >= 0) e.source = String(raw.source);
   const bc = String(raw.barcode || '').replace(/\D/g, '');
   if (bc.length >= 8 && bc.length <= 14) e.barcode = bc;
@@ -612,6 +615,63 @@ module.exports = async function handler(req, res) {
     res.statusCode = 200; return res.end(JSON.stringify(Object.assign(await buildState(id, profile, targetDate), { added: [{ name: entry.name, kcal: entry.kcal }] })));
   }
 
+  // ── Gespeicherte Mahlzeiten (mehrere Produkte als eine Vorlage – z. B. „Mein Frühstück") ──
+  // Wie Favoriten, aber mit MEHREREN Einträgen: einmal zusammenstellen, jeden Morgen mit
+  // einem Tipp komplett protokollieren. Aggregat-Werte (kcal/p/c/f) für die Chip-Anzeige.
+  if (action === 'meal-list') {
+    const saved = await kvGetJson(MEALKEY(id));
+    res.statusCode = 200; return res.end(JSON.stringify({ ok: true, meals: Array.isArray(saved) ? saved : [] }));
+  }
+  if (action === 'meal-save') {
+    const name = cleanStr(body.name, 60) || 'Meine Mahlzeit';
+    const rawItems = Array.isArray(body.items) ? body.items.slice(0, MAX_ITEMS_PER_MEAL) : [];
+    // Jedes Produkt validieren/deckeln; nur der Anzeige-Teil wird als Vorlage gespeichert
+    // (keine id/ts – die entstehen frisch beim späteren Eintragen).
+    const items = rawItems.map(function (it) {
+      const e = sanitizeEntry(it, hour);
+      return { name: e.name, portion: e.portion, kcal: e.kcal, p: e.p, c: e.c, f: e.f, meal: e.meal };
+    }).filter(function (it) { return it.kcal > 0 || it.p > 0 || it.c > 0 || it.f > 0; });
+    if (!items.length) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'empty', message: 'Diese Mahlzeit hat keine Einträge zum Speichern.' })); }
+    const tot = items.reduce(function (a, it) { a.kcal += it.kcal; a.p += it.p; a.c += it.c; a.f += it.f; return a; }, { kcal: 0, p: 0, c: 0, f: 0 });
+    const meal = { id: newEntryId(), name: name, items: items, n: items.length, kcal: tot.kcal, p: tot.p, c: tot.c, f: tot.f };
+    const savedRaw = await kvGetJson(MEALKEY(id)); let list = Array.isArray(savedRaw) ? savedRaw : [];
+    // Gleicher Name -> ersetzen (erneutes Speichern aktualisiert die Vorlage statt Dubletten anzulegen).
+    list = list.filter(function (x) { return String(x.name).toLowerCase() !== meal.name.toLowerCase(); });
+    list.unshift(meal);
+    const trimmed = list.slice(0, MAX_MEALS);
+    try { await redisPipeline([['SET', MEALKEY(id), JSON.stringify(trimmed)]]); } catch (e) {}
+    res.statusCode = 200; return res.end(JSON.stringify({ ok: true, meals: trimmed, saved: true, name: meal.name }));
+  }
+  if (action === 'meal-delete') {
+    const mid = cleanStr(body.id, 24);
+    const savedRaw = await kvGetJson(MEALKEY(id)); let list = Array.isArray(savedRaw) ? savedRaw : [];
+    list = list.filter(function (x) { return String(x.id) !== mid; });
+    try { await redisPipeline([['SET', MEALKEY(id), JSON.stringify(list)]]); } catch (e) {}
+    res.statusCode = 200; return res.end(JSON.stringify({ ok: true, meals: list }));
+  }
+  if (action === 'meal-log') {
+    if (!(await M.rateLimit('nutri-log:' + id, 40, 3600))) { res.statusCode = 200; return res.end(JSON.stringify(await buildState(id, profile))); }
+    const targetDate = validDate(body.date, date);
+    const mid = cleanStr(body.id, 24);
+    const savedRaw = await kvGetJson(MEALKEY(id)); const list = Array.isArray(savedRaw) ? savedRaw : [];
+    const meal = list.filter(function (x) { return String(x.id) === mid; })[0];
+    if (!meal || !Array.isArray(meal.items) || !meal.items.length) { res.statusCode = 200; return res.end(JSON.stringify(Object.assign(await buildState(id, profile, targetDate), { added: [] }))); }
+    // Menge skalierbar (z. B. halbe/doppelte Mahlzeit); Ziel-Mahlzeit optional für alle Einträge überschreibbar.
+    const factor = Math.max(0.25, Math.min(10, Number(body.factor) || 1));
+    const mealOverride = MEALS.indexOf(String(body.meal || '')) >= 0 ? String(body.meal) : null;
+    const items = meal.items.slice(0, MAX_ITEMS_PER_MEAL).map(function (it) {
+      return sanitizeEntry({
+        name: it.name, portion: it.portion, meal: mealOverride || it.meal, source: 'meal',
+        kcal: Math.round(n0(it.kcal) * factor), p: Math.round(n0(it.p) * factor), c: Math.round(n0(it.c) * factor), f: Math.round(n0(it.f) * factor),
+      }, hour);
+    }).filter(function (it) { return it.kcal > 0 || it.p > 0 || it.c > 0 || it.f > 0; });
+    if (!items.length) { res.statusCode = 200; return res.end(JSON.stringify(Object.assign(await buildState(id, profile, targetDate), { added: [] }))); }
+    const day = await loadDay(id, targetDate);
+    day.entries = day.entries.concat(items);
+    await saveDay(id, targetDate, day);
+    res.statusCode = 200; return res.end(JSON.stringify(Object.assign(await buildState(id, profile, targetDate), { added: items.map(function (a) { return { name: a.name, kcal: a.kcal }; }), mealName: meal.name })));
+  }
+
   // ── FINN generiert Rezepte -> in die studioweite Bibliothek + Nutri-Score ──
   if (action === 'recipes') {
     // „Erster Plan aufs Haus": der erste FINN-Wochenplan ist gratis. Nur PRÜFEN – eingelöst
@@ -1028,6 +1088,7 @@ module.exports = async function handler(req, res) {
       subscription: Ent.publicTier(await Ent.getEntitlement(id)),   // Abo-Status (read-only; Kündigung über die Modul-Kündigung)
       days: days,
       favorites: (await kvGetJson(FAVKEY(id))) || [],
+      meals: (await kvGetJson(MEALKEY(id))) || [],
       plan: (await kvGetJson(PLANKEY(id))) || null,
       shopping: (await kvGetJson(SHOPKEY(id))) || [],
       recipes: (await kvGetJson(RECKEY(id))) || [],
@@ -1045,7 +1106,7 @@ module.exports = async function handler(req, res) {
   }
   if (action === 'delete-all') {
     if (String(body.confirm || '') !== 'LOESCHEN') { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'confirm_required', message: 'Bitte bestätige das vollständige Löschen.' })); }
-    const keys = [PKEY(id), FAVKEY(id), PLANKEY(id), SHOPKEY(id), RECKEY(id), COOKKEY(id), FASTKEY(id)];
+    const keys = [PKEY(id), FAVKEY(id), MEALKEY(id), PLANKEY(id), SHOPKEY(id), RECKEY(id), COOKKEY(id), FASTKEY(id)];
     Coaching.deleteKeys(id).forEach(function (k) { keys.push(k); });   // Coaching-Keys mitlöschen (nutri:prem bleibt bewusst außen vor)
     try { keys.push(require('../../lib/finnMemory').MKEY(id)); } catch (e) {}   // FINN-Gedächtnis (DSGVO) mitlöschen
     try { keys.push(require('../../lib/memberProfile').MKEY(id)); } catch (e) {}   // Onboarding-Profil inkl. Gesundheit (DSGVO) mitlöschen
