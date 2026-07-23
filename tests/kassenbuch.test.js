@@ -96,5 +96,22 @@ ok('11d. Monat/Jahr korrekt (07/2026)', /07\/2026/.test(txt) && !/07\/7\//.test(
 // 12) Determinismus: gleiche Eingabe -> gleiches Ergebnis.
 ok('12. deterministisch', JSON.stringify(KB.computeMonth(m1)) === JSON.stringify(KB.computeMonth(m1)));
 
+// 13) Beleg-Häkchen je Buchung (sanitizeDay als Boolean, Durchreichen in die Zeile).
+ok('13. sanitizeDay belegOk -> true', KB.sanitizeDay({ ausgaben: 5, belegOk: 1 }).belegOk === true);
+ok('13b. sanitizeDay ohne belegOk -> false', KB.sanitizeDay({ ausgaben: 5 }).belegOk === false);
+const mBeleg = { key: '2026-07', month: 7, year: 2026, anfangsbestand: 0, prices: KB.DEFAULT_PRICES,
+  days: { '5': { ausgaben: 30, ausgabenText: 'Hornbach', belegOk: true }, '6': { ausgaben: 12, ausgabenText: 'Post' } } };
+const tBeleg = KB.computeMonth(mBeleg);
+ok('13c. belegOk fließt in die Zeile', tBeleg.rows[4].belegOk === true && tBeleg.rows[5].belegOk === false);
+ok('13d. sanitizeMonth behält Tag mit nur belegOk+Ausgabe', !!KB.sanitizeMonth('2026-07', { days: { '5': { ausgaben: 30, belegOk: true } } }).days['5']);
+
+// 14) toPromptText: vollständiges Datum + Rahmenregeln (Datum/USt/Beleg/Kassensturz),
+//     damit FINN diese – vom Studio bereits geklärten – Punkte nicht mehr bemängelt.
+const txtB = KB.toPromptText(mBeleg, tBeleg);
+ok('14. vollständiges Datum je Buchung (05.07.2026 / 06.07.2026)', /05\.07\.2026/.test(txtB) && /06\.07\.2026/.test(txtB));
+ok('14b. USt pauschal 19 % genannt', /pauschal 19 %/.test(txtB));
+ok('14c. Beleg-Status je Ausgabe (ja/nein)', /Beleg: ja/.test(txtB) && /Beleg: nein/.test(txtB));
+ok('14d. Kassensturz als freiwillig markiert', /freiwillig/.test(txtB));
+
 console.log(pass ? 'KASSENBUCH PASS' : 'KASSENBUCH FAIL');
 process.exit(pass ? 0 : 1);

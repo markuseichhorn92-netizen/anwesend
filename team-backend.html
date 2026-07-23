@@ -3305,7 +3305,7 @@ function kbSeedDraft(c){
   var sInt=function(v){ v=kbInt(v); return v?String(v):''; };
   var sEur=function(v){ v=kbNum(v); return v?String(v).replace('.',','):''; };
   var days={}, src=c.days||{};
-  Object.keys(src).forEach(function(k){ var e=src[k]||{}; days[k]={kaffee:sInt(e.kaffee),eiweissshake:sInt(e.eiweissshake),eiweissbeutel:sInt(e.eiweissbeutel),sonstigesText:e.sonstigesText||'',sonstigesBetrag:sEur(e.sonstigesBetrag),ausgaben:sEur(e.ausgaben),ausgabenText:e.ausgabenText||''}; });
+  Object.keys(src).forEach(function(k){ var e=src[k]||{}; days[k]={kaffee:sInt(e.kaffee),eiweissshake:sInt(e.eiweissshake),eiweissbeutel:sInt(e.eiweissbeutel),sonstigesText:e.sonstigesText||'',sonstigesBetrag:sEur(e.sonstigesBetrag),ausgaben:sEur(e.ausgaben),ausgabenText:e.ausgabenText||'',belegOk:!!e.belegOk}; });
   var pr=c.prices||{};
   return { blattNr:c.blattNr||'', anfangsbestand:sEur(c.anfangsbestand),
     gezaehlterEndbestand:(c.gezaehlterEndbestand===''||c.gezaehlterEndbestand==null)?'':sEur(c.gezaehlterEndbestand),
@@ -3690,6 +3690,8 @@ function kassenbuchNode(){
   // Tages-Tabelle (horizontal scrollbar auf schmalen Displays)
   var th=function(l,w){ return '<th style="position:sticky;top:0;background:#0e6072;color:#fff;font-size:10.5px;font-weight:800;padding:8px 5px;white-space:nowrap;min-width:'+w+'px">'+l+'</th>'; };
   var cell=function(dayN,field,val,w,mode,col){ return '<td style="padding:3px 3px"><input data-kbd="'+dayN+'" data-kbf="'+field+'" value="'+esc(val)+'" inputmode="'+(mode==='dec'?'decimal':(mode==='int'?'numeric':'text'))+'"'+dis+' style="width:'+w+'px;max-width:'+w+'px;border:1px solid '+(closed?'#eef1f2':'#e1e8ea')+';border-radius:7px;padding:6px 4px;font-size:12px;font-weight:700;color:'+(col||'#15171b')+';background:'+(closed?'#f7f9fa':'#fff')+';text-align:'+(mode==='text'?'left':'center')+';font-family:inherit;box-sizing:border-box" /></td>'; };
+  // Beleg-Häkchen je Buchung: abhaken, sobald Kassenbon/Rechnung abgelegt ist.
+  var belegCell=function(dayN,onv){ return '<td style="text-align:center;padding:3px 4px"><input type="checkbox" data-kbbeleg="'+dayN+'"'+(onv?' checked':'')+(closed?' disabled':'')+' aria-label="Beleg vorhanden" style="width:17px;height:17px;accent-color:#0e6072;cursor:'+(closed?'default':'pointer')+'" /></td>'; };
   var rowsHtml='';
   for(var d=1; d<=dim; d++){
     var e=(draft.days&&draft.days[String(d)])||{};
@@ -3699,16 +3701,17 @@ function kassenbuchNode(){
       cell(d,'kaffee',e.kaffee||'',40,'int')+cell(d,'eiweissshake',e.eiweissshake||'',40,'int')+cell(d,'eiweissbeutel',e.eiweissbeutel||'',40,'int')+
       cell(d,'sonstigesText',e.sonstigesText||'',96,'text')+cell(d,'sonstigesBetrag',e.sonstigesBetrag||'',56,'dec')+
       cell(d,'ausgaben',e.ausgaben||'',56,'dec','#b53a2c')+cell(d,'ausgabenText',e.ausgabenText||'',96,'text','#b53a2c')+
+      belegCell(d,!!e.belegOk)+
       '<td id="kbein-'+d+'" style="text-align:right;font-size:12px;font-weight:800;color:#15171b;padding:3px 8px;white-space:nowrap">'+(rr.einnahmen?kbEuro(rr.einnahmen):'—')+'</td>'+
       '<td id="kbbes-'+d+'" style="text-align:right;font-size:12px;font-weight:800;color:#15171b;padding:3px 8px;white-space:nowrap">'+kbEuro(rr.bestand)+'</td>'+
     '</tr>';
   }
   H+='<div style="background:#fff;border:1px solid #e1e8ea;border-radius:16px;overflow:hidden;margin-bottom:12px">'+
-    '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch"><table style="border-collapse:collapse;width:100%;min-width:640px">'+
-      '<thead><tr>'+th('Tag',34)+th('Kaffee',48)+th('Shake',48)+th('Beutel',48)+th('Sonstiges',104)+th('Sonst. €',64)+th('Ausgabe €',64)+th('Ausgabe-Notiz',104)+th('Einnahme',70)+th('Bestand',72)+'</tr></thead>'+
+    '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch"><table style="border-collapse:collapse;width:100%;min-width:690px">'+
+      '<thead><tr>'+th('Tag',34)+th('Kaffee',48)+th('Shake',48)+th('Beutel',48)+th('Sonstiges',104)+th('Sonst. €',64)+th('Ausgabe €',64)+th('Ausgabe-Notiz',104)+th('Beleg',44)+th('Einnahme',70)+th('Bestand',72)+'</tr></thead>'+
       '<tbody>'+rowsHtml+'</tbody>'+
     '</table></div>'+
-    '<div style="font-size:11px;color:#9aa2a8;font-weight:600;padding:8px 14px;border-top:1px solid #eef2f3">Anzahl Kaffee/Shakes/Beutel eintragen – Einnahme &amp; laufender Bestand rechnen sich automatisch. Nach rechts wischen zeigt Ausgaben &amp; Bestand.</div>'+
+    '<div style="font-size:11px;color:#9aa2a8;font-weight:600;padding:8px 14px;border-top:1px solid #eef2f3">Anzahl Kaffee/Shakes/Beutel eintragen – Einnahme &amp; laufender Bestand rechnen sich automatisch. Nach rechts wischen zeigt Ausgaben &amp; Bestand. Häkchen in „Beleg" setzen, sobald der Kassenbon/die Rechnung abgelegt ist.</div>'+
   '</div>';
 
   // Zusammenfassung
@@ -3793,6 +3796,7 @@ function kassenbuchNode(){
   node.innerHTML=H;
   // Eingaben live verrechnen (ohne Voll-Render -> Fokus bleibt).
   node.querySelectorAll('[data-kbd]').forEach(function(inp){ inp.oninput=function(){ var da=inp.getAttribute('data-kbd'); var f=inp.getAttribute('data-kbf'); var day=(da==='_top'||da==='_price')?da:parseInt(da,10); kbSetField(day,f,inp.value); }; });
+  node.querySelectorAll('[data-kbbeleg]').forEach(function(cb){ cb.onchange=function(){ kbSetField(parseInt(cb.getAttribute('data-kbbeleg'),10),'belegOk',cb.checked); }; });
   var q=function(sel){ return node.querySelector(sel); };
   var w1=q('[data-kbnav="prev"]'); if(w1) w1.onclick=function(){ kbShiftMonth(-1); };
   var w2=q('[data-kbnav="next"]'); if(w2) w2.onclick=function(){ kbShiftMonth(1); };
