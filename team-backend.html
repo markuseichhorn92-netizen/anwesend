@@ -163,6 +163,7 @@ var S={ token:null, role:null, meName:null, screen:'dash', convs:[], counts:{}, 
         // Kassenbuch: Barkasse pro Monat (nur Admin) – editierbarer Entwurf + gespeicherte Monate
         kb:null, kbDraft:null, kbMonth:'', kbMonths:[], kbLoaded:false, kbLoading:false, kbErr:false, kbHasStore:true,
         kbDirty:false, kbBusy:'', kbMsg:'', kbCheck:null, kbCheckBusy:false, kbShowPrices:false, kbSeedPending:0,
+        kbBelegBusy:'', kbBelegScan:null, kbBelegView:null,
         // Aufgaben: interne To-do-Liste (getrennt von Kunden-Vorgängen)
         todos:[], todosLoaded:false, todosLoading:false, todoFilter:'open', todoBusy:'',
         todoText:'', todoAssignee:'', todoDue:'', todoAddBusy:false,
@@ -3425,23 +3426,26 @@ async function kbApplyFix(idx){
   render();
 }
 function kbCurTotals(){ return (S.kb && S.kb.imported && S.kb.totals) ? S.kb.totals : kbCompute(S.kbDraft||kbSeedDraft(S.kb||{})); }
-function kbExportPdf(){
+async function kbExportPdf(){
   S.kbMsg='PDF wird erstellt …'; render();
-  loadPdfLib().then(function(ok){
-    var doc=ok?buildKassenbuchPdf(S.kb,kbCurTotals()):null;
-    if(!doc){ S.kbMsg=PDF_LOAD_ERR; render(); return; }
-    doc.save('kassenbuch-'+S.kbMonth+'.pdf'); S.kbMsg='PDF heruntergeladen.'; render();
-  });
+  var ok=await loadPdfLib();
+  var doc=ok?buildKassenbuchPdf(S.kb,kbCurTotals()):null;
+  if(!doc){ S.kbMsg=PDF_LOAD_ERR; render(); return; }
+  var belege=(S.kb&&S.kb.belege)||[];
+  if(belege.length){ S.kbMsg='PDF wird erstellt (inkl. '+belege.length+' Beleg'+(belege.length>1?'en':'')+') …'; render(); try{ await kbAppendBelege(doc,S.kbMonth,belege); }catch(e){} }
+  try{ doc.save('kassenbuch-'+S.kbMonth+'.pdf'); S.kbMsg='PDF heruntergeladen'+(belege.length?(' – mit '+belege.length+' Beleg'+(belege.length>1?'en':'')):'')+'.'; }
+  catch(e){ S.kbMsg='PDF konnte nicht erstellt werden.'; }
+  render();
 }
-function kbPrint(){
+async function kbPrint(){
   S.kbMsg='Druckansicht wird vorbereitet …'; render();
-  loadPdfLib().then(function(ok){
-    var doc=ok?buildKassenbuchPdf(S.kb,kbCurTotals()):null;
-    if(!doc){ S.kbMsg=PDF_LOAD_ERR; render(); return; }
-    try{ doc.autoPrint(); var w=window.open(doc.output('bloburl'),'_blank'); if(!w){ doc.save('kassenbuch-'+S.kbMonth+'.pdf'); S.kbMsg='Pop-up blockiert – PDF wurde stattdessen heruntergeladen.'; } else S.kbMsg=''; }
-    catch(e){ doc.save('kassenbuch-'+S.kbMonth+'.pdf'); S.kbMsg='Druck nicht möglich – PDF heruntergeladen.'; }
-    render();
-  });
+  var ok=await loadPdfLib();
+  var doc=ok?buildKassenbuchPdf(S.kb,kbCurTotals()):null;
+  if(!doc){ S.kbMsg=PDF_LOAD_ERR; render(); return; }
+  try{ await kbAppendBelege(doc,S.kbMonth,(S.kb&&S.kb.belege)||[]); }catch(e){}
+  try{ doc.autoPrint(); var w=window.open(doc.output('bloburl'),'_blank'); if(!w){ doc.save('kassenbuch-'+S.kbMonth+'.pdf'); S.kbMsg='Pop-up blockiert – PDF wurde stattdessen heruntergeladen.'; } else S.kbMsg=''; }
+  catch(e){ doc.save('kassenbuch-'+S.kbMonth+'.pdf'); S.kbMsg='Druck nicht möglich – PDF heruntergeladen.'; }
+  render();
 }
 async function kbClose(){
   if(S.kbBusy) return;
@@ -3479,6 +3483,106 @@ async function kbStoredPdf(monthKey){
     else S.kbMsg='Für diesen Monat ist kein PDF hinterlegt.';
   }catch(e){ S.kbMsg='PDF konnte nicht geladen werden.'; }
   render();
+}
+// ── Beleg scannen / hochladen / anhängen ──
+function kbBelegFile(file){
+  if(!file || S.kbBelegBusy) return;
+  var okType=/^image\//.test(file.type)||file.type==='application/pdf';
+  if(!okType){ S.kbMsg='Bitte ein Foto oder PDF wählen.'; render(); return; }
+  if(file.size>12*1024*1024){ S.kbMsg='Datei zu groß (max. 12 MB).'; render(); return; }
+  S.kbBelegBusy='scan'; S.kbMsg=''; render();
+  kbBelegCompress(file,function(dataUrl,mime){
+    if(!dataUrl){ S.kbBelegBusy=''; S.kbMsg='Datei konnte nicht gelesen werden.'; render(); return; }
+    kbBelegDoScan(dataUrl,mime);
+  });
+}
+function kbBelegCompress(file,cb){
+  try{
+    var fr=new FileReader();
+    fr.onload=function(){
+      if(file.type==='application/pdf'){ cb(fr.result,'application/pdf'); return; }
+      var img=new Image();
+      img.onload=function(){
+        try{
+          var mx=1500,w=img.width,h=img.height;
+          if(w>mx||h>mx){ var s=Math.min(mx/w,mx/h); w=Math.round(w*s); h=Math.round(h*s); }
+          var c=document.createElement('canvas'); c.width=w; c.height=h;
+          c.getContext('2d').drawImage(img,0,0,w,h);
+          cb(c.toDataURL('image/jpeg',0.72),'image/jpeg');
+        }catch(e){ cb(fr.result,file.type||'image/jpeg'); }
+      };
+      img.onerror=function(){ cb(fr.result,file.type||'image/jpeg'); };
+      img.src=fr.result;
+    };
+    fr.onerror=function(){ cb(null); };
+    fr.readAsDataURL(file);
+  }catch(e){ cb(null); }
+}
+async function kbBelegDoScan(dataUrl){
+  var scan=null;
+  try{ var r=await tapi('/api/team/kassenbuch',{method:'POST',body:{action:'beleg-scan',image:dataUrl}});
+    if(r&&r.ok&&r.scan) scan=r.scan; else { S.kbBelegBusy=''; S.kbMsg=(r&&r.message)||'Der Beleg konnte nicht gelesen werden.'; render(); return; }
+  }catch(e){ S.kbBelegBusy=''; S.kbMsg='Verbindung fehlgeschlagen.'; render(); return; }
+  S.kbBelegScan={ image:dataUrl, kind:scan.kind, date:scan.date, amount:scan.amount, vendor:scan.vendor, note:scan.note, confidence:scan.confidence, day:kbBelegDayFromDate(scan.date) };
+  S.kbBelegBusy=''; render();
+}
+function kbBelegDayFromDate(iso){
+  var cur=S.kb||{}, y=cur.year, m=cur.month;
+  if(/^\d{4}-\d{2}-\d{2}$/.test(String(iso||''))){ var p=iso.split('-'); if(parseInt(p[0],10)===y && parseInt(p[1],10)===m){ var d=parseInt(p[2],10); if(d>=1&&d<=31) return d; } }
+  var now=new Date(); if(now.getFullYear()===y && (now.getMonth()+1)===m) return now.getDate();
+  return 1;
+}
+async function kbBelegApply(){
+  if(S.kbBelegBusy) return;
+  var bs=S.kbBelegScan; if(!bs) return;
+  var dEl=document.getElementById('kbbs_day'), aEl=document.getElementById('kbbs_amount'), nEl=document.getElementById('kbbs_note');
+  var day=parseInt(dEl&&dEl.value,10); if(!(day>=1&&day<=31)){ S.kbMsg='Bitte einen gültigen Tag angeben.'; return; }
+  var amount=((aEl&&aEl.value)||'').trim(), note=((nEl&&nEl.value)||'').trim().slice(0,120);
+  if(!S.kbDraft) S.kbDraft=kbSeedDraft(S.kb||{});
+  var k=String(day); S.kbDraft.days=S.kbDraft.days||{}; S.kbDraft.days[k]=S.kbDraft.days[k]||{};
+  if(bs.kind==='einnahme'){ if(amount) S.kbDraft.days[k].sonstigesBetrag=amount; if(note) S.kbDraft.days[k].sonstigesText=note; }
+  else { if(amount) S.kbDraft.days[k].ausgaben=amount; if(note) S.kbDraft.days[k].ausgabenText=note; }
+  S.kbDraft.days[k].belegOk=true; S.kbDirty=true;
+  S.kbBelegBusy='save'; render();
+  var savedImg=false;
+  try{ var r=await tapi('/api/team/kassenbuch',{method:'POST',body:{action:'beleg-save',month:S.kbMonth,day:day,image:bs.image}});
+    if(r&&r.ok){ savedImg=true; if(S.kb) S.kb.belege=r.belege||S.kb.belege; }
+  }catch(e){}
+  var okS=await kbSave(true);
+  S.kbBelegBusy=''; S.kbBelegScan=null;
+  S.kbMsg=okS?(savedImg?'Beleg übernommen und gespeichert.':'Eintrag übernommen – Beleg-Bild konnte nicht gespeichert werden.'):'Eintrag übernommen, Speichern fehlgeschlagen.';
+  render();
+}
+async function kbBelegOpenView(day){
+  S.kbBelegView={day:day,image:null}; S.kbMsg='Beleg wird geladen …'; render();
+  try{ var r=await tapi('/api/team/kassenbuch',{method:'POST',body:{action:'beleg-get',month:S.kbMonth,day:day}});
+    if(r&&r.ok&&r.image){ S.kbBelegView={day:day,image:r.image}; S.kbMsg=''; } else { S.kbBelegView=null; S.kbMsg='Beleg nicht gefunden.'; }
+  }catch(e){ S.kbBelegView=null; S.kbMsg='Beleg konnte nicht geladen werden.'; }
+  render();
+}
+async function kbBelegRemove(day){
+  if(!confirm('Beleg zu Tag '+day+' entfernen?')) return;
+  try{ var r=await tapi('/api/team/kassenbuch',{method:'POST',body:{action:'beleg-del',month:S.kbMonth,day:day}});
+    if(r&&r.ok&&S.kb) S.kb.belege=r.belege||[];
+  }catch(e){}
+  S.kbBelegView=null; S.kbMsg='Beleg entfernt.'; render();
+}
+async function kbAppendBelege(doc,monthKey,belege){
+  var days=(belege||[]).slice().sort(function(a,b){return a-b;});
+  for(var i=0;i<days.length;i++){
+    var d=days[i], img=null;
+    try{ var r=await tapi('/api/team/kassenbuch',{method:'POST',body:{action:'beleg-get',month:monthKey,day:d}}); if(r&&r.ok) img=r.image; }catch(e){}
+    if(!img) continue;
+    if(/^data:application\/pdf/.test(img)){ try{ doc.addPage('a4','portrait'); doc.setFontSize(11); doc.setTextColor(20); doc.text('Beleg – '+kbMonthLabel(monthKey)+', Tag '+d+' (liegt als separate PDF-Datei vor).',14,16); }catch(e){} continue; }
+    var mm=String(img).match(/^data:image\/(jpeg|png|webp);base64,/); if(!mm) continue;
+    try{
+      doc.addPage('a4','portrait');
+      doc.setFontSize(11); doc.setTextColor(20); doc.text('Beleg – '+kbMonthLabel(monthKey)+', Tag '+d,14,14);
+      var maxW=210-28, maxH=297-30, w=maxW, h=maxH;
+      try{ var pr=doc.getImageProperties(img); var sc=Math.min(maxW/pr.width,maxH/pr.height); w=pr.width*sc; h=pr.height*sc; }catch(e2){}
+      doc.addImage(img,(mm[1]==='png'?'PNG':'JPEG'),14+((maxW-w)/2),22,w,h,undefined,'FAST');
+    }catch(e){}
+  }
 }
 function kbShiftMonth(delta){
   if(S.kbDirty && !confirm('Es gibt ungespeicherte Änderungen. Trotzdem den Monat wechseln? Nicht gespeicherte Eingaben gehen verloren.')) return;
@@ -3687,11 +3791,22 @@ function kassenbuchNode(){
   }
   H+='</div>';
 
+  // Beleg-Scan: Kassenbon/Rechnung fotografieren oder hochladen -> FINN erfasst automatisch.
+  var belegSet={}; ((cur.belege)||[]).forEach(function(x){ belegSet[x]=1; });
+  if(!closed && !archived){
+    H+='<div style="background:#fff;border:1px solid #e1e8ea;border-radius:16px;padding:14px 16px;margin-bottom:12px">'+
+      '<div style="display:flex;align-items:center;gap:9px;margin-bottom:5px"><span style="width:26px;height:26px;border-radius:8px;background:#e7f1f3;color:'+TEAL+';display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0">📷</span><span style="font-size:14px;font-weight:900;color:#15171b">Beleg scannen &amp; automatisch erfassen</span></div>'+
+      '<div style="font-size:12.5px;color:#5a636a;font-weight:600;line-height:1.55;margin-bottom:11px">Kassenbon oder Rechnung fotografieren oder hochladen – FINN liest Betrag, Datum &amp; Händler aus und trägt die Ausgabe ein. Der Beleg wird gespeichert und beim PDF-Export angehängt.</div>'+
+      '<input type="file" id="kbBelegInput" accept="image/*,application/pdf" capture="environment" style="display:none" />'+
+      '<button data-kbbelegpick="1"'+(S.kbBelegBusy?' disabled':'')+' style="width:100%;border:none;background:'+TEAL+';border-radius:12px;font-size:13.5px;font-weight:900;padding:12px 14px;color:#fff;cursor:'+(S.kbBelegBusy?'default':'pointer')+';opacity:'+(S.kbBelegBusy?'.6':'1')+'">'+(S.kbBelegBusy==='scan'?'FINN liest den Beleg …':(S.kbBelegBusy==='save'?'Speichere …':'📷 Beleg fotografieren / hochladen'))+'</button>'+
+    '</div>';
+  }
+
   // Tages-Tabelle (horizontal scrollbar auf schmalen Displays)
   var th=function(l,w){ return '<th style="position:sticky;top:0;background:#0e6072;color:#fff;font-size:10.5px;font-weight:800;padding:8px 5px;white-space:nowrap;min-width:'+w+'px">'+l+'</th>'; };
   var cell=function(dayN,field,val,w,mode,col){ return '<td style="padding:3px 3px"><input data-kbd="'+dayN+'" data-kbf="'+field+'" value="'+esc(val)+'" inputmode="'+(mode==='dec'?'decimal':(mode==='int'?'numeric':'text'))+'"'+dis+' style="width:'+w+'px;max-width:'+w+'px;border:1px solid '+(closed?'#eef1f2':'#e1e8ea')+';border-radius:7px;padding:6px 4px;font-size:12px;font-weight:700;color:'+(col||'#15171b')+';background:'+(closed?'#f7f9fa':'#fff')+';text-align:'+(mode==='text'?'left':'center')+';font-family:inherit;box-sizing:border-box" /></td>'; };
-  // Beleg-Häkchen je Buchung: abhaken, sobald Kassenbon/Rechnung abgelegt ist.
-  var belegCell=function(dayN,onv){ return '<td style="text-align:center;padding:3px 4px"><input type="checkbox" data-kbbeleg="'+dayN+'"'+(onv?' checked':'')+(closed?' disabled':'')+' aria-label="Beleg vorhanden" style="width:17px;height:17px;accent-color:#0e6072;cursor:'+(closed?'default':'pointer')+'" /></td>'; };
+  // Beleg-Häkchen je Buchung: abhaken, sobald Kassenbon/Rechnung abgelegt ist. 📎 = gescannter Beleg hinterlegt.
+  var belegCell=function(dayN,onv,hasImg){ return '<td style="padding:3px 4px"><div style="display:flex;align-items:center;justify-content:center;gap:5px"><input type="checkbox" data-kbbeleg="'+dayN+'"'+(onv?' checked':'')+(closed?' disabled':'')+' aria-label="Beleg vorhanden" style="width:17px;height:17px;accent-color:#0e6072;cursor:'+(closed?'default':'pointer')+'" />'+(hasImg?('<button data-kbbelegview="'+dayN+'" title="Beleg ansehen" style="border:none;background:none;padding:0;font-size:14px;line-height:1;cursor:pointer">📎</button>'):'')+'</div></td>'; };
   var rowsHtml='';
   for(var d=1; d<=dim; d++){
     var e=(draft.days&&draft.days[String(d)])||{};
@@ -3701,7 +3816,7 @@ function kassenbuchNode(){
       cell(d,'kaffee',e.kaffee||'',40,'int')+cell(d,'eiweissshake',e.eiweissshake||'',40,'int')+cell(d,'eiweissbeutel',e.eiweissbeutel||'',40,'int')+
       cell(d,'sonstigesText',e.sonstigesText||'',96,'text')+cell(d,'sonstigesBetrag',e.sonstigesBetrag||'',56,'dec')+
       cell(d,'ausgaben',e.ausgaben||'',56,'dec','#b53a2c')+cell(d,'ausgabenText',e.ausgabenText||'',96,'text','#b53a2c')+
-      belegCell(d,!!e.belegOk)+
+      belegCell(d,!!e.belegOk,!!belegSet[d])+
       '<td id="kbein-'+d+'" style="text-align:right;font-size:12px;font-weight:800;color:#15171b;padding:3px 8px;white-space:nowrap">'+(rr.einnahmen?kbEuro(rr.einnahmen):'—')+'</td>'+
       '<td id="kbbes-'+d+'" style="text-align:right;font-size:12px;font-weight:800;color:#15171b;padding:3px 8px;white-space:nowrap">'+kbEuro(rr.bestand)+'</td>'+
     '</tr>';
@@ -3793,10 +3908,56 @@ function kassenbuchNode(){
     }).join('');
   }
 
+  // Beleg-Scan-Ergebnis: Review-Sheet (bearbeitbar) vor Übernahme.
+  if(S.kbBelegScan){
+    var bs=S.kbBelegScan;
+    var bsImg=/^data:image\//.test(bs.image||'');
+    var bsConf=({high:'sicher erkannt',medium:'bitte kurz prüfen',low:'unsicher – bitte prüfen'})[bs.confidence]||'bitte prüfen';
+    var bsPrefill=[bs.vendor,bs.note].filter(Boolean).join(' – ').slice(0,96);
+    H+='<div data-kbbsback="1" style="position:fixed;inset:0;z-index:80;background:rgba(10,20,24,.55);display:flex;align-items:flex-end;justify-content:center">'+
+      '<div style="background:#fff;width:100%;max-width:520px;border-radius:18px 18px 0 0;padding:18px 18px calc(18px + env(safe-area-inset-bottom,0px));max-height:90vh;overflow:auto">'+
+        '<div style="display:flex;align-items:center;gap:9px;margin-bottom:12px"><span style="width:28px;height:28px;border-radius:8px;background:#e7f1f3;color:'+TEAL+';display:flex;align-items:center;justify-content:center;font-size:15px">📷</span><div style="flex:1"><div style="font-size:15px;font-weight:900;color:#15171b">Beleg übernehmen</div><div style="font-size:11.5px;color:#8a929a;font-weight:700">FINN: '+esc(bsConf)+' · '+(bs.kind==='einnahme'?'Einnahme':'Ausgabe')+'</div></div></div>'+
+        (bsImg?('<img src="'+esc(bs.image)+'" alt="Beleg" style="width:100%;max-height:180px;object-fit:contain;background:#f4f7f8;border:1px solid #e1e8ea;border-radius:12px;margin-bottom:14px" />'):'<div style="background:#f4f7f8;border:1px solid #e1e8ea;border-radius:12px;padding:14px;font-size:12.5px;color:#5a636a;font-weight:700;margin-bottom:14px">📄 PDF-Beleg – wird gespeichert und beim Export angehängt.</div>')+
+        '<div style="display:flex;gap:10px;margin-bottom:11px">'+
+          '<div style="width:82px"><div style="font-size:11px;font-weight:800;color:#8a929a;margin-bottom:4px">Tag</div><input id="kbbs_day" type="number" min="1" max="'+dim+'" value="'+esc(String(bs.day||''))+'" style="width:100%;border:1px solid #dfe6e8;border-radius:9px;padding:9px 8px;font-size:14px;font-weight:800;color:#15171b;font-family:inherit;box-sizing:border-box;text-align:center" /></div>'+
+          '<div style="flex:1"><div style="font-size:11px;font-weight:800;color:#8a929a;margin-bottom:4px">'+(bs.kind==='einnahme'?'Betrag (Einnahme €)':'Betrag (Ausgabe €)')+'</div><input id="kbbs_amount" inputmode="decimal" value="'+esc(bs.amount!=null?String(bs.amount).replace('.',','):'')+'" placeholder="0,00" style="width:100%;border:1px solid #dfe6e8;border-radius:9px;padding:9px 10px;font-size:14px;font-weight:800;color:'+(bs.kind==='einnahme'?'#1d7a3e':'#b53a2c')+';font-family:inherit;box-sizing:border-box" /></div>'+
+        '</div>'+
+        '<div style="margin-bottom:13px"><div style="font-size:11px;font-weight:800;color:#8a929a;margin-bottom:4px">Zweck / Händler</div><input id="kbbs_note" value="'+esc(bsPrefill)+'" placeholder="z. B. Hornbach – Reinigungsmittel" style="width:100%;border:1px solid #dfe6e8;border-radius:9px;padding:9px 10px;font-size:13.5px;font-weight:700;color:#15171b;font-family:inherit;box-sizing:border-box" /></div>'+
+        '<div style="font-size:11px;color:#9aa2a8;font-weight:600;line-height:1.5;margin-bottom:14px">Bitte kurz prüfen und ggf. korrigieren. „Übernehmen" trägt die Buchung ein, setzt das Beleg-Häkchen und hängt den Beleg beim PDF-Export an.</div>'+
+        '<div style="display:flex;gap:9px">'+
+          '<button data-kbbscancel="1" style="flex:1;border:1.5px solid #d6dee0;background:#fff;border-radius:12px;font-size:13.5px;font-weight:800;padding:12px;color:#5a636a;cursor:pointer">Abbrechen</button>'+
+          '<button data-kbbsapply="1"'+(S.kbBelegBusy?' disabled':'')+' style="flex:2;border:none;background:'+TEAL+';border-radius:12px;font-size:13.5px;font-weight:900;padding:12px;color:#fff;cursor:pointer;opacity:'+(S.kbBelegBusy?'.6':'1')+'">'+(S.kbBelegBusy==='save'?'Übernehme …':'Übernehmen')+'</button>'+
+        '</div>'+
+      '</div>'+
+    '</div>';
+  }
+  // Beleg-Ansicht (Lightbox).
+  if(S.kbBelegView){
+    var bvImg=/^data:image\//.test(S.kbBelegView.image||'');
+    H+='<div data-kbbvback="1" style="position:fixed;inset:0;z-index:82;background:rgba(10,20,24,.82);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px">'+
+      '<div style="max-width:640px;width:100%;text-align:center">'+
+        (bvImg?('<img src="'+esc(S.kbBelegView.image)+'" alt="Beleg" style="max-width:100%;max-height:74vh;border-radius:12px;background:#fff" />'):(S.kbBelegView.image?'<div style="background:#fff;border-radius:12px;padding:30px;font-size:14px;font-weight:800;color:#42454b">📄 PDF-Beleg (Tag '+esc(String(S.kbBelegView.day))+') – wird beim Export angehängt.</div>':'<div style="color:#fff;font-weight:700;padding:30px">Beleg wird geladen …</div>'))+
+        '<div style="display:flex;gap:9px;justify-content:center;margin-top:16px">'+
+          (closed?'':'<button data-kbbvdel="'+esc(String(S.kbBelegView.day))+'" style="border:1.5px solid #e3b8b1;background:#fff;color:#b5402f;border-radius:11px;font-size:13px;font-weight:800;padding:10px 16px;cursor:pointer">Beleg entfernen</button>')+
+          '<button data-kbbvclose="1" style="border:none;background:#fff;color:#15171b;border-radius:11px;font-size:13px;font-weight:900;padding:10px 20px;cursor:pointer">Schließen</button>'+
+        '</div>'+
+      '</div>'+
+    '</div>';
+  }
+
   node.innerHTML=H;
   // Eingaben live verrechnen (ohne Voll-Render -> Fokus bleibt).
   node.querySelectorAll('[data-kbd]').forEach(function(inp){ inp.oninput=function(){ var da=inp.getAttribute('data-kbd'); var f=inp.getAttribute('data-kbf'); var day=(da==='_top'||da==='_price')?da:parseInt(da,10); kbSetField(day,f,inp.value); }; });
   node.querySelectorAll('[data-kbbeleg]').forEach(function(cb){ cb.onchange=function(){ kbSetField(parseInt(cb.getAttribute('data-kbbeleg'),10),'belegOk',cb.checked); }; });
+  var bpk=node.querySelector('#kbBelegInput'), bpb=node.querySelector('[data-kbbelegpick]');
+  if(bpb&&bpk){ bpb.onclick=function(){ bpk.click(); }; bpk.onchange=function(){ if(bpk.files&&bpk.files[0]) kbBelegFile(bpk.files[0]); }; }
+  node.querySelectorAll('[data-kbbelegview]').forEach(function(b){ b.onclick=function(){ kbBelegOpenView(parseInt(b.getAttribute('data-kbbelegview'),10)); }; });
+  var bsa=node.querySelector('[data-kbbsapply]'); if(bsa) bsa.onclick=kbBelegApply;
+  var bsc=node.querySelector('[data-kbbscancel]'); if(bsc) bsc.onclick=function(){ S.kbBelegScan=null; render(); };
+  var bsbk=node.querySelector('[data-kbbsback]'); if(bsbk) bsbk.onclick=function(ev){ if(ev.target===bsbk){ S.kbBelegScan=null; render(); } };
+  var bvcl=node.querySelector('[data-kbbvclose]'); if(bvcl) bvcl.onclick=function(){ S.kbBelegView=null; render(); };
+  var bvbk=node.querySelector('[data-kbbvback]'); if(bvbk) bvbk.onclick=function(ev){ if(ev.target===bvbk){ S.kbBelegView=null; render(); } };
+  var bvdl=node.querySelector('[data-kbbvdel]'); if(bvdl) bvdl.onclick=function(){ kbBelegRemove(parseInt(bvdl.getAttribute('data-kbbvdel'),10)); };
   var q=function(sel){ return node.querySelector(sel); };
   var w1=q('[data-kbnav="prev"]'); if(w1) w1.onclick=function(){ kbShiftMonth(-1); };
   var w2=q('[data-kbnav="next"]'); if(w2) w2.onclick=function(){ kbShiftMonth(1); };
