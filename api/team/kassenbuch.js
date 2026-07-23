@@ -85,6 +85,8 @@ module.exports = async function handler(req, res) {
       return j(res, 200, { ok: true, month: qMonth, pdf: pdf || null });
     }
     const key = KB.isMonthKey(qMonth) ? qMonth : curMonthKey();
+    // Selbstheilung: abweichende Archiv-Monate einmalig auf die geprüften Seed-Werte bringen.
+    try { await KB.reconcileSeed(); } catch (e) {}
     let list = []; try { list = await KB.listMonths(); } catch (e) {}
     let seedPending = 0; try { seedPending = await seedPendingCount(); } catch (e) {}
     const payload = await monthPayload(key);
