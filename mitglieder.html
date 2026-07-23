@@ -3692,6 +3692,7 @@
     if(field==='kcal'||field==='p'||field==='c'||field==='f'){ var n=parseInt(value,10); cf.items[idx][field]=(isNaN(n)||n<0)?0:Math.min(9999,n); }
     else if(field==='fiber'||field==='sugar'||field==='satFat'||field==='salt'){ var g=parseFloat(String(value).replace(',','.')); cf.items[idx][field]=(isNaN(g)||g<0)?0:Math.min(999,Math.round(g*100)/100); }
     else if(field==='saveFav'){ cf.items[idx].saveFav=!!value; }
+    else if(field==='barcode'){ cf.items[idx].barcode=String(value).replace(/\D/g,'').slice(0,14); }
     else cf.items[idx][field]=String(value); };
   window.__ernCFDate=function(v){ if(S.ernConfirm&&/^\d{4}-\d{2}-\d{2}$/.test(v)) S.ernConfirm.date=v; };
   // Bild eines eigenen Lebensmittels: clientseitig auf ~240 px verkleinern (kleines Thumbnail).
@@ -3763,7 +3764,9 @@
           var imgCtrl=(it.source==='manual'||it.custom)?(it.image
             ? '<div style="display:flex;align-items:center;gap:11px;margin-top:11px"><img src="'+esc(it.image)+'" alt="Bild" style="width:52px;height:52px;object-fit:cover;border-radius:11px;border:1px solid var(--border);flex-shrink:0"><button data-act="ernCFImgDel" data-arg="'+idx+'" style="border:none;background:transparent;color:var(--err-fg);font-weight:800;font-size:12.5px;cursor:pointer;padding:4px 2px">Bild entfernen</button></div>'
             : '<label style="display:inline-flex;align-items:center;gap:7px;margin-top:11px;padding:9px 13px;border:1.5px dashed var(--border);border-radius:11px;color:var(--teal-ink);font-weight:800;font-size:12.5px;cursor:pointer">📷 Bild hinzufügen<input type="file" accept="image/*" capture="environment" style="display:none" onchange="window.__ernCFImgPick('+idx+',this)"></label>'):'';
-          return toggle+body+favChk+imgCtrl;
+          // Optionaler Barcode – zum Wiederfinden per Scan. Beim Scan-„nicht gefunden" bereits vorbefüllt.
+          var bcCtrl=(it.source==='manual'||it.custom)?('<div style="margin-top:11px"><label style="font-size:9.5px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.3px">Barcode (optional)</label><input inputmode="numeric" placeholder="z. B. 4000417025005" value="'+esc(it.barcode||'')+'" oninput="window.__ernCF('+idx+',\'barcode\',this.value)" style="width:100%;border:1.5px solid var(--border);border-radius:10px;padding:8px 10px;font-size:13.5px;font-weight:700;color:var(--text-2);background:var(--surface);margin-top:3px;font-variant-numeric:tabular-nums"><div style="font-size:10px;color:var(--text-soft);font-weight:600;margin-top:4px;line-height:1.4">Wenn du den Barcode einträgst, findet der Scan dein Lebensmittel beim nächsten Mal automatisch.</div></div>'):'';
+          return toggle+body+favChk+imgCtrl+bcCtrl;
         }())+
         swapBox+
       '</div>';
@@ -4164,10 +4167,16 @@
   window.__ernGrams=function(v){ var n=parseInt(v,10); S.ernGrams=(isNaN(n)||n<1)?1:Math.min(3000,n); ernUpdatePickerPreview(); };
   // Portions-Eingabe (Anzahl Portionen -> Gramm) im „Portion"-Modus.
   window.__ernServ=function(v){ var p=S.ernProd; var sg=p?ernServingGrams(p):null; if(!sg) return; var s=parseFloat(String(v).replace(',','.')); if(isNaN(s)||s<=0) s=1; S.ernGrams=Math.max(1,Math.min(3000,Math.round(s*sg))); ernUpdatePickerPreview(); };
+  // Eigenes Lebensmittel (Favorit) mit passendem Barcode finden – für die Scan-Wiedererkennung.
+  function ernFindOwnFood(bc){ bc=String(bc||'').replace(/\D/g,''); if(bc.length<8) return null; var favs=Array.isArray(DATA.nutriFavs)?DATA.nutriFavs:[]; for(var i=0;i<favs.length;i++){ if(String(favs[i].barcode||'').replace(/\D/g,'')===bc) return favs[i]; } return null; }
   function ernScanLookup(code){
     try{ if(window.__ernStopScan) window.__ernStopScan(); }catch(e){}
     var bc=String(code||'').replace(/\D/g,'');
     if(bc.length<8){ setS({ernScanErr:'Bitte einen gültigen Barcode (mind. 8 Ziffern) eingeben.',ernScanNotFound:false}); return; }
+    // Zuerst die eigenen Lebensmittel prüfen (sofort, ohne Netz) – Scan erkennt selbst angelegte Produkte wieder.
+    if(S.ernScanPurpose!=='shop'){ var own=ernFindOwnFood(bc);
+      if(own){ S.ernScanCode=bc; S.ernScanBusy=false; S.ernScanNotFound=false; S.ernMsg='Dein Lebensmittel erkannt: '+own.name; S.ernErr=false;
+        ernOpenConfirm([{name:own.name,portion:own.portion||'1 Portion',meal:ernCurrentMeal(),kcal:own.kcal,p:own.p,c:own.c,f:own.f,fiber:own.fiber,sugar:own.sugar,satFat:own.satFat,salt:own.salt,image:own.img||'',barcode:bc,estimated:false,source:'manual',custom:true,_micOpen:false,saveFav:false}],'manual'); return; } }
     S.ernScanBusy=true; S.ernScanErr=''; S.ernScanNotFound=false; render();
     api('/api/member/food-products',{method:'POST',body:JSON.stringify({action:'barcode',barcode:bc})})
     .then(function(d){ S.ernScanBusy=false; S.ernScanCode=bc;
@@ -10695,7 +10704,7 @@
       .then(function(d){
         if(!(d&&d.ok!==false&&d.today)){ S.ernConfirmBusy=false; S.ernErr=true; S.ernMsg=(d&&d.message)||'Speichern fehlgeschlagen.'; render(); return; }
         var chain=Promise.resolve();
-        favItems.forEach(function(it){ chain=chain.then(function(){ return api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'fav-save',name:it.name,portion:it.portion,kcal:it.kcal,p:it.p,c:it.c,f:it.f,fiber:it.fiber,sugar:it.sugar,satFat:it.satFat,salt:it.salt,image:it.image||'',custom:true})}).catch(function(){}); }); });
+        favItems.forEach(function(it){ chain=chain.then(function(){ return api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'fav-save',name:it.name,portion:it.portion,kcal:it.kcal,p:it.p,c:it.c,f:it.f,fiber:it.fiber,sugar:it.sugar,satFat:it.satFat,salt:it.salt,image:it.image||'',barcode:it.barcode||'',custom:true})}).catch(function(){}); }); });
         chain.then(function(){ S.ernConfirmBusy=false; S.ernConfirm=null; S.ernTab='heute'; S.ernErr=false; S.ernMsg=favItems.length?'Gespeichert ✓ · als eigenes Lebensmittel gemerkt':'Gespeichert ✓'; loadNutri(); if(favItems.length) loadFavs(); });
       })
       .catch(function(){ S.ernConfirmBusy=false; S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); }); },
@@ -10724,7 +10733,7 @@
     ernProdSearchBtn:function(){ window.__ernProdSearch&&window.__ernProdSearch(); },
     ernSearchPick:function(a){ var p=(S.ernSearchResults||[])[parseInt(a,10)]; if(p) ernOpenProduct(p, false); },
     ernSearchToAI:function(){ var q=S.ernSearchQ||''; if(q&&q.length>=2){ setS({ernCapTab:'cam'}); ernLogText(q); } },
-    ernManualEntry:function(){ setS({ernCapture:false, ernScanNotFound:false, ernScanErr:'', ernSearchErr:''}); ernOpenConfirm([{name:'',portion:'1 Portion',meal:ernCurrentMeal(),kcal:0,p:0,c:0,f:0,fiber:0,sugar:0,satFat:0,salt:0,estimated:false,source:'manual',custom:true,_micOpen:true,saveFav:true}],'manual'); },
+    ernManualEntry:function(){ var bc=(S.ernScanNotFound&&S.ernScanCode)?String(S.ernScanCode).replace(/\D/g,''):''; setS({ernCapture:false, ernScanNotFound:false, ernScanErr:'', ernSearchErr:''}); ernOpenConfirm([{name:'',portion:'1 Portion',meal:ernCurrentMeal(),kcal:0,p:0,c:0,f:0,fiber:0,sugar:0,satFat:0,salt:0,barcode:bc,estimated:false,source:'manual',custom:true,_micOpen:true,saveFav:true}],'manual'); },
     ernCFMicros:function(a){ var cf=S.ernConfirm; var i=parseInt(a,10); if(cf&&cf.items[i]){ cf.items[i]._micOpen=!(cf.items[i]._micOpen||cf.items[i].source==='manual'||cf.items[i].custom); render(); } },
     ernCFImgDel:function(a){ var cf=S.ernConfirm; var i=parseInt(a,10); if(cf&&cf.items[i]){ cf.items[i].image=''; render(); } },
     // Aus dem Erfassen-Sheet direkt zu den Rezepten – Rezept wählen und ins Protokoll übernehmen.

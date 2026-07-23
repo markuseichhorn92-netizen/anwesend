@@ -604,6 +604,9 @@ module.exports = async function handler(req, res) {
     const fav = { id: f.id, name: f.name, portion: f.portion, kcal: f.kcal, p: f.p, c: f.c, f: f.f };
     ['fiber', 'sugar', 'satFat', 'salt'].forEach(function (k) { if (f[k] != null) fav[k] = f[k]; });
     if (f.custom) fav.custom = true;
+    // Optionaler Barcode (EAN/GTIN) des eigenen Lebensmittels – zum späteren Wiederfinden per Scan.
+    const bc = String(body.barcode || '').replace(/\D/g, '');
+    if (bc.length >= 8 && bc.length <= 14) fav.barcode = bc;
     // Optionales, bereits clientseitig verkleinertes Bild (Thumbnail) des Lebensmittels.
     const img = String(body.image || '');
     if (/^data:image\/(jpeg|png|webp);base64,/.test(img) && img.length <= 60000) fav.img = img;
