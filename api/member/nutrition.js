@@ -951,6 +951,41 @@ module.exports = async function handler(req, res) {
     const day = await loadDay(id, targetDate); day.entries.push(entry); await saveDay(id, targetDate, day);
     res.statusCode = 200; return res.end(JSON.stringify(Object.assign(await buildState(id, profile, targetDate), { added: [{ name: entry.name, kcal: entry.kcal }] })));
   }
+  // ── Eigenes Rezept: Mitglied gibt Titel/Ziel + Zutaten (mit Nährwerten je Zutat) vor,
+  //    FINN schreibt NUR die Zubereitung. Nährwerte kommen aus den Zutaten – NICHT von der KI. ──
+  if (action === 'recipe-create') {
+    if (!(await gateAI())) return;
+    if (!AI.hasAI) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'no_ai', message: 'FINN ist gerade nicht verfügbar – versuch es gleich nochmal.' })); }
+    if (!(await M.rateLimit('nutri-recipe-create:' + id, 20, 3600))) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'rate_limited', message: 'Kurz durchatmen – gleich wieder versuchen.' })); }
+    const title = cleanStr(body.title, 80) || 'Mein Rezept';
+    const goal = cleanStr(body.goal, 160);
+    const servings = clamp(body.servings, 1, 12, 1);
+    // Jede Zutat trägt schon ihre Nährwerte (Client: per-100g × Gramm). Serverseitig gedeckelt.
+    const rawIngs = Array.isArray(body.ingredients) ? body.ingredients.slice(0, 20) : [];
+    const ings = rawIngs.map(function (x) {
+      x = x || {};
+      return { name: cleanStr(x.name, 80), grams: clamp(x.grams, 0, 5000, 0),
+        kcal: clamp(x.kcal, 0, 8000, 0), p: clamp(x.p, 0, 900, 0), c: clamp(x.c, 0, 1200, 0), f: clamp(x.f, 0, 900, 0) };
+    }).filter(function (x) { return x.name && (x.kcal > 0 || x.p > 0 || x.c > 0 || x.f > 0 || x.grams > 0); });
+    if (!ings.length) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'no_ingredients', message: 'Bitte füge zuerst Zutaten hinzu.' })); }
+    const tot = ings.reduce(function (a, x) { a.kcal += x.kcal; a.p += x.p; a.c += x.c; a.f += x.f; a.g += x.grams; return a; }, { kcal: 0, p: 0, c: 0, f: 0, g: 0 });
+    const raw = {
+      title: title, source: 'member', servings: servings, minutes: 0, fruitVegPct: 0,
+      kcal: Math.round(tot.kcal / servings), protein: Math.round(tot.p / servings), carbs: Math.round(tot.c / servings), fat: Math.round(tot.f / servings),
+      weightG: Math.round(tot.g / servings),
+      ingredients: ings.map(function (x) { return { name: x.name, grams: x.grams }; }),
+      steps: [], utensils: [],
+    };
+    // FINN schreibt die Zubereitung aus den (festen) Zutaten.
+    const stepsR = await AI.nutritionRecipeSteps({ title: title, goal: goal, servings: servings, diet: (profile && profile.diet) || '', ingredients: raw.ingredients });
+    if (!stepsR.ok) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'ai_failed', message: 'FINN konnte die Zubereitung gerade nicht erstellen. Versuch es gleich nochmal.' })); }
+    raw.steps = stepsR.steps; raw.utensils = stepsR.utensils || []; raw.minutes = stepsR.minutes || 0;
+    const recipe = Recipes.normalizeRecipe(raw, 'member');
+    if (!recipe.id) recipe.id = newEntryId();
+    try { require('../../lib/handled').record('ai', id, 'nutri'); } catch (e) {}
+    const quota = await chargeAI();
+    res.statusCode = 200; return res.end(JSON.stringify({ ok: true, recipe: recipe, quota: quota }));
+  }
 
   // ── Koch-Plan: „wann koche ich was" + daraus abgeleitete, abhakbare Einkaufsliste ──
   if (action === 'cookplan-get') {
