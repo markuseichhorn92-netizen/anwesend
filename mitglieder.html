@@ -3764,8 +3764,13 @@
           var imgCtrl=(it.source==='manual'||it.custom)?(it.image
             ? '<div style="display:flex;align-items:center;gap:11px;margin-top:11px"><img src="'+esc(it.image)+'" alt="Bild" style="width:52px;height:52px;object-fit:cover;border-radius:11px;border:1px solid var(--border);flex-shrink:0"><button data-act="ernCFImgDel" data-arg="'+idx+'" style="border:none;background:transparent;color:var(--err-fg);font-weight:800;font-size:12.5px;cursor:pointer;padding:4px 2px">Bild entfernen</button></div>'
             : '<label style="display:inline-flex;align-items:center;gap:7px;margin-top:11px;padding:9px 13px;border:1.5px dashed var(--border);border-radius:11px;color:var(--teal-ink);font-weight:800;font-size:12.5px;cursor:pointer">📷 Bild hinzufügen<input type="file" accept="image/*" capture="environment" style="display:none" onchange="window.__ernCFImgPick('+idx+',this)"></label>'):'';
-          // Optionaler Barcode – zum Wiederfinden per Scan. Beim Scan-„nicht gefunden" bereits vorbefüllt.
-          var bcCtrl=(it.source==='manual'||it.custom)?('<div style="margin-top:11px"><label style="font-size:9.5px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.3px">Barcode (optional)</label><input inputmode="numeric" placeholder="z. B. 4000417025005" value="'+esc(it.barcode||'')+'" oninput="window.__ernCF('+idx+',\'barcode\',this.value)" style="width:100%;border:1.5px solid var(--border);border-radius:10px;padding:8px 10px;font-size:13.5px;font-weight:700;color:var(--text-2);background:var(--surface);margin-top:3px;font-variant-numeric:tabular-nums"><div style="font-size:10px;color:var(--text-soft);font-weight:600;margin-top:4px;line-height:1.4">Wenn du den Barcode einträgst, findet der Scan dein Lebensmittel beim nächsten Mal automatisch.</div></div>'):'';
+          // Optionaler Barcode – per Kamera scannen oder eintippen. Beim Scan-„nicht gefunden" bereits vorbefüllt.
+          var bcBusy=it._bcBusy===true;
+          var bcScan='<label aria-label="Barcode scannen" style="display:inline-flex;align-items:center;justify-content:center;gap:6px;flex-shrink:0;padding:0 14px;border:1.5px solid var(--border);border-radius:10px;background:var(--surface-2);color:var(--teal-ink);font-weight:800;font-size:12.5px;cursor:'+(bcBusy?'default':'pointer')+';white-space:nowrap">'+(bcBusy?'… liest':'📷 Scannen')+'<input type="file" accept="image/*" capture="environment" style="display:none" '+(bcBusy?'disabled ':'')+'onchange="window.__ernCFScanPhoto('+idx+',this)"></label>';
+          var bcMsg=it._bcErr
+            ? '<div style="font-size:10.5px;color:var(--err-fg);font-weight:700;margin-top:5px;line-height:1.4">'+esc(it._bcErr)+'</div>'
+            : '<div style="font-size:10px;color:var(--text-soft);font-weight:600;margin-top:4px;line-height:1.4">Barcode scannen oder eintippen – dann findet der Scan dein Lebensmittel beim nächsten Mal automatisch.</div>';
+          var bcCtrl=(it.source==='manual'||it.custom)?('<div style="margin-top:11px"><label style="font-size:9.5px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.3px">Barcode (optional)</label><div style="display:flex;gap:7px;margin-top:3px"><input inputmode="numeric" placeholder="z. B. 4000417025005" value="'+esc(it.barcode||'')+'" oninput="window.__ernCF('+idx+',\'barcode\',this.value)" style="flex:1;min-width:0;border:1.5px solid var(--border);border-radius:10px;padding:8px 10px;font-size:13.5px;font-weight:700;color:var(--text-2);background:var(--surface);font-variant-numeric:tabular-nums">'+bcScan+'</div>'+bcMsg+'</div>'):'';
           return toggle+body+favChk+imgCtrl+bcCtrl;
         }())+
         swapBox+
@@ -4288,17 +4293,15 @@
   // Barcode aus einem FOTO lesen (robuster Fallback für Geräte, auf denen die Live-Kamera
   // im WebView blockiert ist – v. a. Android). Nutzt den nativen BarcodeDetector, sonst ZXing,
   // beides auf dem Standbild. Kein getUserMedia nötig -> funktioniert in jedem WebView.
-  window.__ernScanPhoto=function(input){
-    var f=input&&input.files&&input.files[0]; try{ if(input) input.value=''; }catch(e){}
-    if(!f) return;
-    if(!/^image\//.test(f.type||'')){ setS({ernScanErr:'Bitte ein Foto auswählen.'}); return; }
-    setS({ernScanErr:'',ernScanBusy:true,ernScanNotFound:false});
+  // cb(digits,err): digits='' mit err='none' (kein Code erkennbar) bzw. err='read' (Foto unlesbar).
+  function ernReadBarcodeFile(f, cb){
+    if(!f || !/^image\//.test(f.type||'')){ cb('','read'); return; }
     var rd=new FileReader();
     rd.onload=function(e){
       var src=String((e.target&&e.target.result)||'');
       var img=new Image();
       img.onload=function(){
-        var done=function(code){ var d=String(code||'').replace(/\D/g,''); if(d.length>=8){ ernScanLookup(d); } else { setS({ernScanBusy:false,ernScanErr:'Auf dem Foto war kein Barcode erkennbar – bitte tippe die Nummer unten ein.'}); } };
+        var done=function(code){ var d=String(code||'').replace(/\D/g,''); cb(d, d.length>=8?'':'none'); };
         function zx(){ ernLoadZXing().then(function(ZX){ var reader=null; try{ reader=new ZX.BrowserMultiFormatReader(); }catch(e3){ reader=null; } if(!reader){ done(''); return; }
           var p=null; try{ if(typeof reader.decodeFromImageUrl==='function') p=reader.decodeFromImageUrl(src);
             else if(typeof reader.decodeFromImageElement==='function') p=reader.decodeFromImageElement(img);
@@ -4314,11 +4317,37 @@
         }
         zx();
       };
-      img.onerror=function(){ setS({ernScanBusy:false,ernScanErr:'Foto konnte nicht gelesen werden.'}); };
+      img.onerror=function(){ cb('','read'); };
       img.src=src;
     };
-    rd.onerror=function(){ setS({ernScanBusy:false,ernScanErr:'Foto konnte nicht gelesen werden.'}); };
+    rd.onerror=function(){ cb('','read'); };
     rd.readAsDataURL(f);
+  }
+  window.__ernScanPhoto=function(input){
+    var f=input&&input.files&&input.files[0]; try{ if(input) input.value=''; }catch(e){}
+    if(!f) return;
+    if(!/^image\//.test(f.type||'')){ setS({ernScanErr:'Bitte ein Foto auswählen.'}); return; }
+    setS({ernScanErr:'',ernScanBusy:true,ernScanNotFound:false});
+    ernReadBarcodeFile(f, function(d, err){
+      if(err==='read'){ setS({ernScanBusy:false,ernScanErr:'Foto konnte nicht gelesen werden.'}); return; }
+      if(d.length>=8){ ernScanLookup(d); }
+      else { setS({ernScanBusy:false,ernScanErr:'Auf dem Foto war kein Barcode erkennbar – bitte tippe die Nummer unten ein.'}); }
+    });
+  };
+  // Barcode fürs EIGENE Lebensmittel per Kamera/Foto erfassen und direkt ins Feld schreiben
+  // (keine Produktsuche, keine Navigation) – analog zum Bild-Hinzufügen im Prüfen-Screen.
+  window.__ernCFScanPhoto=function(idx,input){
+    var f=input&&input.files&&input.files[0]; try{ if(input) input.value=''; }catch(e){}
+    if(!f) return;
+    var cf=S.ernConfirm; if(!cf||!cf.items||!cf.items[idx]) return;
+    cf.items[idx]._bcBusy=true; cf.items[idx]._bcErr=''; render();
+    ernReadBarcodeFile(f, function(d, err){
+      var c=S.ernConfirm; var it=(c&&c.items)?c.items[idx]:null; if(!it) return;
+      it._bcBusy=false;
+      if(d.length>=8){ it.barcode=d.slice(0,14); it._bcErr=''; }
+      else { it._bcErr=(err==='read')?'Foto konnte nicht gelesen werden – bitte die Nummer eintippen.':'Kein Barcode erkennbar – bitte die Nummer eintippen.'; }
+      render();
+    });
   };
   window.__ernProdSearch=function(){ var el=document.getElementById('ern_prodq'); if(ernSearchTimer){ try{ clearTimeout(ernSearchTimer); }catch(e){} ernSearchTimer=null; } ernSearchGo(el?el.value:''); };
   // ── Live-Suche: tippt der Nutzer, wird nach kurzer Pause automatisch gesucht (debounced) ──
