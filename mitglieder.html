@@ -3776,11 +3776,13 @@
             ? bcVideo+'<button data-act="ernCFScanStop" style="width:100%;margin-top:8px;padding:11px;border:1.5px solid rgba(10,73,88,.25);border-radius:12px;background:var(--surface);color:var(--teal-ink);font-weight:800;font-size:13.5px;cursor:pointer">Kamera stoppen</button><div style="text-align:center;font-size:11px;font-weight:600;color:var(--text-soft);margin-top:6px">Barcode in den Rahmen halten – wird automatisch erkannt …</div>'
             : ('<div style="display:flex;gap:7px;margin-top:3px">'+bcInput+bcPhoto+'</div>'+bcScanBtn);
           var bcMsg=bcScanning ? ''
-            : (it._bcErr
-              ? '<div style="font-size:10.5px;color:var(--err-fg);font-weight:700;margin-top:6px;line-height:1.4">'+esc(it._bcErr)+'</div>'
-              : (it._bcOk
-                ? '<div style="font-size:10.5px;color:#0e6072;font-weight:800;margin-top:6px;line-height:1.4">✓ Barcode erkannt und übernommen.</div>'
-                : '<div style="font-size:10px;color:var(--text-soft);font-weight:600;margin-top:6px;line-height:1.4">Scannen oder eintippen – dann findet der Scan dein Lebensmittel beim nächsten Mal automatisch.</div>'));
+            : ((S.ernCFScanIdx===idx&&S.ernScanErr)
+              ? '<div style="font-size:10.5px;color:var(--err-fg);font-weight:700;margin-top:6px;line-height:1.4">'+esc(S.ernScanErr)+'</div>'
+              : (it._bcErr
+                ? '<div style="font-size:10.5px;color:var(--err-fg);font-weight:700;margin-top:6px;line-height:1.4">'+esc(it._bcErr)+'</div>'
+                : (it._bcOk
+                  ? '<div style="font-size:10.5px;color:#0e6072;font-weight:800;margin-top:6px;line-height:1.4">✓ Barcode erkannt und übernommen.</div>'
+                  : '<div style="font-size:10px;color:var(--text-soft);font-weight:600;margin-top:6px;line-height:1.4">Scannen oder eintippen – dann findet der Scan dein Lebensmittel beim nächsten Mal automatisch.</div>')));
           var bcCtrl=(it.source==='manual'||it.custom)?('<div style="margin-top:11px"><label style="font-size:9.5px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.3px">Barcode (optional)</label>'+bcArea+bcMsg+'</div>'):'';
           return toggle+body+favChk+imgCtrl+bcCtrl;
         }())+
@@ -4277,6 +4279,11 @@
       if(!ernScanDet){ ernStartZxScan(v); return; }   // Detector doch nicht nutzbar -> ZXing
       var st={last:'',at:0};
       var loop=function(){ if(!ernScanActive||!ernScanDet) return;
+        // Re-Render überstehen: Element ggf. neu holen und den Stream wieder anhängen,
+        // sonst bliebe die Vorschau nach einem UI-Update schwarz.
+        var vv=document.getElementById('ern_scan_video');
+        if(vv&&vv!==v){ v=vv; }
+        if(v&&ernScanStream&&v.srcObject!==ernScanStream){ try{ v.srcObject=ernScanStream; v.setAttribute('playsinline','true'); v.muted=true; var pp=v.play&&v.play(); if(pp&&pp.catch) pp.catch(function(){}); }catch(e){} }
         ernScanDet.detect(v).then(function(codes){ if(!ernScanActive) return;
           if(codes&&codes.length && ernScanHit(codes[0].rawValue,st)) return;
           ernScanRAF=requestAnimationFrame(loop);
@@ -10711,10 +10718,10 @@
     // Aus dem Ernährungs-Erfassen direkt in den Figur-Check (Gewicht & Maße) wechseln.
     ernCapWeight:function(){ try{ window.__ernStopScan&&window.__ernStopScan(); window.__ernStopCam&&window.__ernStopCam(); }catch(e){} S.ernAddToConfirm=false; S.ernCapture=false; nav('figur'); },
     // Bestätigen-Screen (Punkt 1)
-    ernCFRemove:function(a){ var cf=S.ernConfirm; if(!cf) return; cf.items.splice(parseInt(a,10),1); if(!cf.items.length){ ernCloseConfirm(); return; } render(); },
+    ernCFRemove:function(a){ var cf=S.ernConfirm; if(!cf) return; try{ window.__ernStopScan&&window.__ernStopScan(); }catch(e){} S.ernCFScanIdx=null; cf.items.splice(parseInt(a,10),1); if(!cf.items.length){ ernCloseConfirm(); return; } render(); },
     // „+ Eintrag hinzufügen" -> Suche/Scan/Barcode/KI im Erfassen-Sheet; das Ergebnis wird an
     // die laufende Mahlzeit angehängt (statt eine neue zu beginnen). „manuell" bleibt als Fallback.
-    ernCFAdd:function(){ if(!S.ernConfirm) return; try{window.__ernCapAnim=true;}catch(e){} S.ernAddToConfirm=true; S.ernCapTab='search'; S.ernSearchResults=null; S.ernSearchQ=''; S.ernSearchErr=''; S.ernScanErr=''; S.ernScanNotFound=false; setS({ernCapture:true}); },
+    ernCFAdd:function(){ if(!S.ernConfirm) return; try{window.__ernCapAnim=true;}catch(e){} try{ window.__ernStopScan&&window.__ernStopScan(); }catch(e){} S.ernCFScanIdx=null; S.ernAddToConfirm=true; S.ernCapTab='search'; S.ernSearchResults=null; S.ernSearchQ=''; S.ernSearchErr=''; S.ernScanErr=''; S.ernScanNotFound=false; setS({ernCapture:true}); },
     ernCFAddManual:function(){ var cf=S.ernConfirm; if(!cf) return; cf.items.push({name:'',portion:'',meal:'snack',kcal:0,p:0,c:0,f:0,estimated:false,source:'manual'}); render(); },
     ernCFCancel:function(){ ernCloseConfirm(); },
     // Einen falsch erkannten Eintrag austauschen: Beschreibung -> FINN erkennt ihn neu.
@@ -10723,13 +10730,15 @@
     ernCFSwapGo:function(){ var idx=S.ernCFSwapIdx; var cf=S.ernConfirm; if(idx<0||!cf||!cf.items[idx]||S.ernCFSwapBusy) return;
       var el=$('ern_cf_swap'); var t=el?(el.value||'').trim():(S.ernCFSwapTxt||''); if(t.length<2){ S.ernErr=true; S.ernMsg='Sag FINN, was es wirklich war.'; render(); return; }
       if(ernNeedPremium()) return;
+      try{ window.__ernStopScan&&window.__ernStopScan(); }catch(e){} S.ernCFScanIdx=null;
       S.ernCFSwapBusy=true; S.ernErr=false; S.ernMsg=''; render();
       api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'estimate',text:t})})
       .then(function(d){ S.ernCFSwapBusy=false;
         if(d&&d.error==='premium_required'){ setS({ernUpgrade:true}); return; }
         ernQuotaApply(d);
         if(d&&d.ok&&d.items&&d.items.length){ var ni=d.items[0]; var cur=cf.items[idx]||{};
-          cf.items[idx]={ name:String(ni.name||''), portion:String(ni.portion||''), meal:cur.meal||ni.meal||'snack', kcal:Math.max(0,parseInt(ni.kcal,10)||0), p:Math.max(0,parseInt(ni.p,10)||0), c:Math.max(0,parseInt(ni.c,10)||0), f:Math.max(0,parseInt(ni.f,10)||0), estimated:true, source:'ai' };
+          // Eigenes-Lebensmittel-Kennzeichen (custom/merken/Bild/Barcode) beim Austausch NICHT verlieren.
+          cf.items[idx]={ name:String(ni.name||''), portion:String(ni.portion||''), meal:cur.meal||ni.meal||'snack', kcal:Math.max(0,parseInt(ni.kcal,10)||0), p:Math.max(0,parseInt(ni.p,10)||0), c:Math.max(0,parseInt(ni.c,10)||0), f:Math.max(0,parseInt(ni.f,10)||0), estimated:true, source:cur.custom?'manual':'ai', custom:cur.custom===true, saveFav:cur.saveFav===true, image:cur.image||'', barcode:cur.barcode||'', _micOpen:cur._micOpen===true };
           S.ernCFSwapIdx=-1; S.ernCFSwapTxt=''; S.ernEval=null; S.ernMsg='Ausgetauscht ✓'; S.ernErr=false;
         } else { S.ernErr=true; S.ernMsg=(d&&d.message)||'Konnte es nicht erkennen – beschreib es genauer.'; }
         render();
@@ -10797,7 +10806,7 @@
     ernCFScanStop:function(){ try{ window.__ernStopScan&&window.__ernStopScan(); }catch(e){} S.ernCFScanIdx=null; render(); },
     // Aus dem Erfassen-Sheet direkt zu den Rezepten – Rezept wählen und ins Protokoll übernehmen.
     ernCapRecipe:function(){ try{ window.__ernStopScan&&window.__ernStopScan(); window.__ernStopCam&&window.__ernStopCam(); }catch(e){} if(DATA.nutriLib==null) loadLib(); if(DATA.nutriSaved==null) loadSaved(); if(DATA.nutriCook==null) loadCook(); setS({ernCapture:false, ernTab:'rezepte', ernRecipeSel:null, ernKoch:null, ernCookPick:false, ernMsg:'', ernErr:false}); },
-    ernScanStart:function(){ window.__ernStartScan&&window.__ernStartScan(); },
+    ernScanStart:function(){ S.ernCFScanIdx=null; window.__ernStartScan&&window.__ernStartScan(); },
     ernScanStop:function(){ try{ window.__ernStopScan&&window.__ernStopScan(); }catch(e){} render(); },
     ernScanManualBtn:function(){ window.__ernScanManual&&window.__ernScanManual(); },
     ernCheckinDismiss:function(){ setS({ernCheckinDismissed:true}); },
