@@ -3677,7 +3677,7 @@
       return { name:String(it.name||''), portion:String(it.portion||''), meal:it.meal||'snack',
         kcal:Math.max(0,parseInt(it.kcal,10)||0), p:Math.max(0,parseInt(it.p,10)||0), c:Math.max(0,parseInt(it.c,10)||0), f:Math.max(0,parseInt(it.f,10)||0),
         fiber:g1(it.fiber), sugar:g1(it.sugar), satFat:g1(it.satFat), salt:g1(it.salt),
-        custom:it.custom===true, saveFav:it.saveFav===true, _micOpen:it._micOpen===true,
+        custom:it.custom===true, saveFav:it.saveFav===true, _micOpen:it._micOpen===true, image:String(it.image||''),
         estimated:it.estimated!==false, barcode:it.barcode||undefined, source:it.source||source }; });
     // „Hinzufügen"-Modus: an die laufende Mahlzeit anhängen statt neu zu beginnen.
     if(S.ernAddToConfirm && S.ernConfirm){ S.ernConfirm.items=S.ernConfirm.items.concat(mapped); if(mapped.length&&mapped[0].meal) { /* Mahlzeit vom letzten Eintrag übernehmen, wenn gesetzt */ } }
@@ -3694,6 +3694,19 @@
     else if(field==='saveFav'){ cf.items[idx].saveFav=!!value; }
     else cf.items[idx][field]=String(value); };
   window.__ernCFDate=function(v){ if(S.ernConfirm&&/^\d{4}-\d{2}-\d{2}$/.test(v)) S.ernConfirm.date=v; };
+  // Bild eines eigenen Lebensmittels: clientseitig auf ~240 px verkleinern (kleines Thumbnail).
+  function ernImgCompress(file,cb){
+    try{ if(!file||!/^image\//.test(file.type)){ cb(null); return; }
+      var fr=new FileReader();
+      fr.onload=function(){ var img=new Image();
+        img.onload=function(){ try{ var mx=240,w=img.width,h=img.height; if(w>mx||h>mx){ var s=Math.min(mx/w,mx/h); w=Math.round(w*s); h=Math.round(h*s); } var c=document.createElement('canvas'); c.width=w; c.height=h; c.getContext('2d').drawImage(img,0,0,w,h); cb(c.toDataURL('image/jpeg',0.6)); }catch(e){ cb(null); } };
+        img.onerror=function(){ cb(null); }; img.src=fr.result; };
+      fr.onerror=function(){ cb(null); }; fr.readAsDataURL(file);
+    }catch(e){ cb(null); }
+  }
+  window.__ernCFImgPick=function(idx,inp){ var f=inp&&inp.files&&inp.files[0]; if(!f) return;
+    if(f.size>12*1024*1024){ S.ernMsg='Bild zu groß (max. 12 MB).'; S.ernErr=true; render(); return; }
+    ernImgCompress(f,function(u){ var cf=S.ernConfirm; if(u&&cf&&cf.items[idx]){ cf.items[idx].image=u; render(); } else if(!u){ S.ernMsg='Bild konnte nicht gelesen werden.'; S.ernErr=true; render(); } }); };
   // Austausch-/Nachschärf-Text ohne Re-Render mitschreiben (Tastatur bleibt offen).
   window.__ernCFSwapTxt=function(v){ S.ernCFSwapTxt=String(v||''); };
   window.__ernCFRefine=function(v){ S.ernCFRefine=String(v||''); };
@@ -3746,7 +3759,11 @@
           var toggle='<button data-act="ernCFMicros" data-arg="'+idx+'" aria-expanded="'+(micOpen?'true':'false')+'" style="width:100%;margin-top:11px;padding:8px 4px;border:1px dashed var(--border);border-radius:11px;background:transparent;color:var(--text-soft);font-weight:800;font-size:11.5px;cursor:pointer;text-align:left;display:flex;align-items:center;justify-content:space-between">weitere Nährwerte (Ballaststoffe · Zucker · ges. Fett · Salz)<span>'+(micOpen?'▲':'▼')+'</span></button>';
           var body=micOpen?('<div style="display:flex;gap:7px;margin-top:8px">'+numFm('fiber','Ballast.',it.fiber)+numFm('sugar','Zucker',it.sugar)+numFm('satFat','ges.Fett',it.satFat)+numFm('salt','Salz',it.salt)+'</div><div style="font-size:10px;color:var(--text-soft);font-weight:600;margin-top:5px;line-height:1.4">Gramm je Portion – optional, wie auf der Nährwerttabelle.</div>'):'';
           var favChk=(it.source==='manual'||it.custom)?('<label style="display:flex;align-items:center;gap:9px;margin-top:12px;cursor:pointer"><input type="checkbox" '+(it.saveFav?'checked':'')+' onchange="window.__ernCF('+idx+',\'saveFav\',this.checked)" style="width:18px;height:18px;accent-color:#0e6072;flex-shrink:0"><span style="font-size:12.5px;font-weight:700;color:var(--text-2)">Als eigenes Lebensmittel merken (für später)</span></label>'):'';
-          return toggle+body+favChk;
+          // Bild eines eigenen Lebensmittels (optional): fotografieren/hochladen -> Vorschau -> beim Merken gespeichert.
+          var imgCtrl=(it.source==='manual'||it.custom)?(it.image
+            ? '<div style="display:flex;align-items:center;gap:11px;margin-top:11px"><img src="'+esc(it.image)+'" alt="Bild" style="width:52px;height:52px;object-fit:cover;border-radius:11px;border:1px solid var(--border);flex-shrink:0"><button data-act="ernCFImgDel" data-arg="'+idx+'" style="border:none;background:transparent;color:var(--err-fg);font-weight:800;font-size:12.5px;cursor:pointer;padding:4px 2px">Bild entfernen</button></div>'
+            : '<label style="display:inline-flex;align-items:center;gap:7px;margin-top:11px;padding:9px 13px;border:1.5px dashed var(--border);border-radius:11px;color:var(--teal-ink);font-weight:800;font-size:12.5px;cursor:pointer">📷 Bild hinzufügen<input type="file" accept="image/*" capture="environment" style="display:none" onchange="window.__ernCFImgPick('+idx+',this)"></label>'):'';
+          return toggle+body+favChk+imgCtrl;
         }())+
         swapBox+
       '</div>';
@@ -4613,7 +4630,7 @@
     var wrap=function(inner){ return '<div style="display:flex;gap:8px;overflow-x:auto;padding:2px 0;margin-top:12px;scrollbar-width:none">'+inner+'</div>'; };
     var mgrChip='<button data-act="ernFavMgrOpen" aria-label="Favoriten verwalten" style="flex-shrink:0;display:flex;align-items:center;gap:6px;border:1.5px dashed #cfe0d6;background:var(--surface-2);border-radius:20px;padding:8px 13px;cursor:pointer;font-size:12.5px;font-weight:800;color:var(--ern-acc)">'+svg('<path d="M12 5v14M5 12h14"></path>',{c:'var(--ern-acc)',w:2.4,s:14})+'Favoriten</button>';
     if(favs&&favs.length){
-      return wrap(favs.slice(0,24).map(function(f){ return '<button data-act="ernFavLog" data-arg="'+esc(f.id)+'" style="flex-shrink:0;display:flex;align-items:center;gap:7px;border:1.5px solid var(--border);background:var(--surface);border-radius:20px;padding:8px 13px;cursor:pointer;font-size:12.5px;font-weight:800;color:var(--text)"><span>⭐</span>'+esc(f.name)+' <span style="color:var(--text-soft);font-weight:700">'+ernNum(f.kcal)+'</span></button>'; }).join('')+mgrChip);
+      return wrap(favs.slice(0,24).map(function(f){ return '<button data-act="ernFavLog" data-arg="'+esc(f.id)+'" style="flex-shrink:0;display:flex;align-items:center;gap:7px;border:1.5px solid var(--border);background:var(--surface);border-radius:20px;padding:'+(f.img?'5px 13px 5px 5px':'8px 13px')+';cursor:pointer;font-size:12.5px;font-weight:800;color:var(--text)">'+(f.img?'<img src="'+esc(f.img)+'" alt="" style="width:24px;height:24px;object-fit:cover;border-radius:50%;flex-shrink:0">':'<span>⭐</span>')+esc(f.name)+' <span style="color:var(--text-soft);font-weight:700">'+ernNum(f.kcal)+'</span></button>'; }).join('')+mgrChip);
     }
     return wrap(ERN_FAVS.map(function(f,idx){ return '<button data-act="ernFav" data-arg="'+idx+'" style="flex-shrink:0;display:flex;align-items:center;gap:7px;border:1.5px solid var(--border);background:var(--surface);border-radius:20px;padding:8px 13px;cursor:pointer;font-size:12.5px;font-weight:800;color:var(--text)"><span>'+f.e+'</span>'+esc(f.name)+' <span style="color:var(--text-soft);font-weight:700">'+f.kcal+'</span></button>'; }).join('')+mgrChip);
   }
@@ -4632,7 +4649,7 @@
       : '<button data-act="ernFavAddOpen" style="width:100%;padding:14px;border:1.5px dashed #c2d3d6;border-radius:14px;background:transparent;color:var(--teal-ink);font-weight:800;font-size:14px;cursor:pointer;margin-bottom:14px">+ Neuer Favorit</button>';
     var list = favs.length
       ? favs.map(function(f){ return '<div style="background:var(--surface);border-radius:16px;padding:14px;box-shadow:0 6px 18px rgba(4,33,40,.06);margin-bottom:10px">'+
-          '<div style="display:flex;align-items:flex-start;gap:8px"><div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:900;color:var(--text)">⭐ '+esc(f.name)+'</div><div style="font-size:11.5px;font-weight:600;color:var(--text-soft);margin-top:2px">'+(f.portion?esc(f.portion)+' · ':'')+ernNum(f.kcal)+' kcal · E '+(f.p||0)+' · K '+(f.c||0)+' · F '+(f.f||0)+'</div></div>'+
+          '<div style="display:flex;align-items:flex-start;gap:10px">'+(f.img?'<img src="'+esc(f.img)+'" alt="" style="width:46px;height:46px;object-fit:cover;border-radius:11px;border:1px solid var(--border);flex-shrink:0">':'')+'<div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:900;color:var(--text)">'+(f.img?'':'⭐ ')+esc(f.name)+'</div><div style="font-size:11.5px;font-weight:600;color:var(--text-soft);margin-top:2px">'+(f.portion?esc(f.portion)+' · ':'')+ernNum(f.kcal)+' kcal · E '+(f.p||0)+' · K '+(f.c||0)+' · F '+(f.f||0)+(((f.fiber||0)||(f.sugar||0)||(f.salt||0))?(' · Ballast. '+(f.fiber||0)+' g · Salz '+(f.salt||0)+' g'):'')+'</div></div>'+
           '<button data-act="ernFavDelete" data-arg="'+esc(f.id)+'" aria-label="Favorit löschen" style="width:30px;height:30px;border-radius:9px;border:none;background:var(--surface-2);cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center">'+svg('<path d="M18 6L6 18M6 6l12 12"></path>',{c:'var(--err-fg)',w:2.2,s:14})+'</button></div>'+
           '<div style="display:flex;gap:7px;margin-top:12px">'+[['0.5','½ Portion'],['1','1 Portion'],['2','Doppelt']].map(function(x){ return '<button data-act="ernFavLog" data-arg="'+esc(f.id)+':'+x[0]+'" style="flex:1;padding:10px 4px;border:1.5px solid var(--border);border-radius:11px;background:var(--surface-2);color:var(--ern-acc);font-weight:800;font-size:12.5px;cursor:pointer">'+x[1]+'</button>'; }).join('')+'</div>'+
         '</div>'; }).join('')
@@ -10678,7 +10695,7 @@
       .then(function(d){
         if(!(d&&d.ok!==false&&d.today)){ S.ernConfirmBusy=false; S.ernErr=true; S.ernMsg=(d&&d.message)||'Speichern fehlgeschlagen.'; render(); return; }
         var chain=Promise.resolve();
-        favItems.forEach(function(it){ chain=chain.then(function(){ return api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'fav-save',name:it.name,portion:it.portion,kcal:it.kcal,p:it.p,c:it.c,f:it.f,fiber:it.fiber,sugar:it.sugar,satFat:it.satFat,salt:it.salt,custom:true})}).catch(function(){}); }); });
+        favItems.forEach(function(it){ chain=chain.then(function(){ return api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'fav-save',name:it.name,portion:it.portion,kcal:it.kcal,p:it.p,c:it.c,f:it.f,fiber:it.fiber,sugar:it.sugar,satFat:it.satFat,salt:it.salt,image:it.image||'',custom:true})}).catch(function(){}); }); });
         chain.then(function(){ S.ernConfirmBusy=false; S.ernConfirm=null; S.ernTab='heute'; S.ernErr=false; S.ernMsg=favItems.length?'Gespeichert ✓ · als eigenes Lebensmittel gemerkt':'Gespeichert ✓'; loadNutri(); if(favItems.length) loadFavs(); });
       })
       .catch(function(){ S.ernConfirmBusy=false; S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); }); },
@@ -10709,6 +10726,7 @@
     ernSearchToAI:function(){ var q=S.ernSearchQ||''; if(q&&q.length>=2){ setS({ernCapTab:'cam'}); ernLogText(q); } },
     ernManualEntry:function(){ setS({ernCapture:false, ernScanNotFound:false, ernScanErr:'', ernSearchErr:''}); ernOpenConfirm([{name:'',portion:'1 Portion',meal:ernCurrentMeal(),kcal:0,p:0,c:0,f:0,fiber:0,sugar:0,satFat:0,salt:0,estimated:false,source:'manual',custom:true,_micOpen:true,saveFav:true}],'manual'); },
     ernCFMicros:function(a){ var cf=S.ernConfirm; var i=parseInt(a,10); if(cf&&cf.items[i]){ cf.items[i]._micOpen=!(cf.items[i]._micOpen||cf.items[i].source==='manual'||cf.items[i].custom); render(); } },
+    ernCFImgDel:function(a){ var cf=S.ernConfirm; var i=parseInt(a,10); if(cf&&cf.items[i]){ cf.items[i].image=''; render(); } },
     // Aus dem Erfassen-Sheet direkt zu den Rezepten – Rezept wählen und ins Protokoll übernehmen.
     ernCapRecipe:function(){ try{ window.__ernStopScan&&window.__ernStopScan(); window.__ernStopCam&&window.__ernStopCam(); }catch(e){} if(DATA.nutriLib==null) loadLib(); if(DATA.nutriSaved==null) loadSaved(); if(DATA.nutriCook==null) loadCook(); setS({ernCapture:false, ernTab:'rezepte', ernRecipeSel:null, ernKoch:null, ernCookPick:false, ernMsg:'', ernErr:false}); },
     ernScanStart:function(){ window.__ernStartScan&&window.__ernStartScan(); },

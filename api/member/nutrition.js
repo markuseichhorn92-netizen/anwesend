@@ -604,6 +604,9 @@ module.exports = async function handler(req, res) {
     const fav = { id: f.id, name: f.name, portion: f.portion, kcal: f.kcal, p: f.p, c: f.c, f: f.f };
     ['fiber', 'sugar', 'satFat', 'salt'].forEach(function (k) { if (f[k] != null) fav[k] = f[k]; });
     if (f.custom) fav.custom = true;
+    // Optionales, bereits clientseitig verkleinertes Bild (Thumbnail) des Lebensmittels.
+    const img = String(body.image || '');
+    if (/^data:image\/(jpeg|png|webp);base64,/.test(img) && img.length <= 60000) fav.img = img;
     if (!(fav.kcal > 0 || fav.p > 0 || fav.c > 0 || fav.f > 0)) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'empty', message: 'Bitte gib zumindest Kalorien oder Makros an.' })); }
     const saved = await kvGetJson(FAVKEY(id)); const list = Array.isArray(saved) ? saved : [];
     const dupe = list.some(function (x) { return String(x.name).toLowerCase() === fav.name.toLowerCase() && n0(x.kcal) === fav.kcal; });
