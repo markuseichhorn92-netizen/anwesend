@@ -3527,16 +3527,20 @@ async function kbBelegDoScan(dataUrl){
   S.kbBelegBusy=''; render();
 }
 function kbBelegDayFromDate(iso){
-  var cur=S.kb||{}, y=cur.year, m=cur.month;
-  if(/^\d{4}-\d{2}-\d{2}$/.test(String(iso||''))){ var p=iso.split('-'); if(parseInt(p[0],10)===y && parseInt(p[1],10)===m){ var d=parseInt(p[2],10); if(d>=1&&d<=31) return d; } }
-  var now=new Date(); if(now.getFullYear()===y && (now.getMonth()+1)===m) return now.getDate();
+  // Tag IMMER aus dem erkannten Belegdatum übernehmen (auch wenn der Monat abweicht –
+  // die Warnung im Sheet weist darauf hin). Nur ohne lesbares Datum: heute bzw. 1.
+  if(/^\d{4}-\d{2}-\d{2}$/.test(String(iso||''))){ var d=parseInt(String(iso).split('-')[2],10); if(d>=1&&d<=31) return d; }
+  var cur=S.kb||{}, now=new Date(); if(now.getFullYear()===cur.year && (now.getMonth()+1)===cur.month) return now.getDate();
   return 1;
 }
 async function kbBelegApply(){
   if(S.kbBelegBusy) return;
   var bs=S.kbBelegScan; if(!bs) return;
-  var dEl=document.getElementById('kbbs_day'), aEl=document.getElementById('kbbs_amount'), nEl=document.getElementById('kbbs_note');
-  var day=parseInt(dEl&&dEl.value,10); if(!(day>=1&&day<=31)){ S.kbMsg='Bitte einen gültigen Tag angeben.'; return; }
+  var dEl=document.getElementById('kbbs_date'), aEl=document.getElementById('kbbs_amount'), nEl=document.getElementById('kbbs_note');
+  var dateStr=((dEl&&dEl.value)||'').trim();
+  var day=/^\d{4}-\d{2}-\d{2}$/.test(dateStr)?parseInt(dateStr.split('-')[2],10):0;
+  if(!(day>=1&&day<=31)){ S.kbMsg='Bitte ein gültiges Belegdatum angeben.'; render(); return; }
+  var cur=S.kb||{}, dim=kbDaysInMonth(cur.year,cur.month); if(day>dim) day=dim;   // Tag in den offenen Monat einpassen
   var amount=((aEl&&aEl.value)||'').trim(), note=((nEl&&nEl.value)||'').trim().slice(0,120);
   if(!S.kbDraft) S.kbDraft=kbSeedDraft(S.kb||{});
   var k=String(day); S.kbDraft.days=S.kbDraft.days||{}; S.kbDraft.days[k]=S.kbDraft.days[k]||{};
@@ -3914,14 +3918,19 @@ function kassenbuchNode(){
     var bsImg=/^data:image\//.test(bs.image||'');
     var bsConf=({high:'sicher erkannt',medium:'bitte kurz prüfen',low:'unsicher – bitte prüfen'})[bs.confidence]||'bitte prüfen';
     var bsPrefill=[bs.vendor,bs.note].filter(Boolean).join(' – ').slice(0,96);
+    var bsPad=function(n){ return ('0'+n).slice(-2); };
+    var bsDateOk=/^\d{4}-\d{2}-\d{2}$/.test(String(bs.date||''));
+    var bsDateVal=bsDateOk?bs.date:(cur.year+'-'+bsPad(cur.month)+'-'+bsPad(bs.day||1));
+    var bsMismatch=bsDateOk && (parseInt(bs.date.split('-')[0],10)!==cur.year || parseInt(bs.date.split('-')[1],10)!==cur.month);
     H+='<div data-kbbsback="1" style="position:fixed;inset:0;z-index:80;background:rgba(10,20,24,.55);display:flex;align-items:flex-end;justify-content:center">'+
       '<div style="background:#fff;width:100%;max-width:520px;border-radius:18px 18px 0 0;padding:18px 18px calc(18px + env(safe-area-inset-bottom,0px));max-height:90vh;overflow:auto">'+
         '<div style="display:flex;align-items:center;gap:9px;margin-bottom:12px"><span style="width:28px;height:28px;border-radius:8px;background:#e7f1f3;color:'+TEAL+';display:flex;align-items:center;justify-content:center;font-size:15px">📷</span><div style="flex:1"><div style="font-size:15px;font-weight:900;color:#15171b">Beleg übernehmen</div><div style="font-size:11.5px;color:#8a929a;font-weight:700">FINN: '+esc(bsConf)+' · '+(bs.kind==='einnahme'?'Einnahme':'Ausgabe')+'</div></div></div>'+
         (bsImg?('<img src="'+esc(bs.image)+'" alt="Beleg" style="width:100%;max-height:180px;object-fit:contain;background:#f4f7f8;border:1px solid #e1e8ea;border-radius:12px;margin-bottom:14px" />'):'<div style="background:#f4f7f8;border:1px solid #e1e8ea;border-radius:12px;padding:14px;font-size:12.5px;color:#5a636a;font-weight:700;margin-bottom:14px">📄 PDF-Beleg – wird gespeichert und beim Export angehängt.</div>')+
-        '<div style="display:flex;gap:10px;margin-bottom:11px">'+
-          '<div style="width:82px"><div style="font-size:11px;font-weight:800;color:#8a929a;margin-bottom:4px">Tag</div><input id="kbbs_day" type="number" min="1" max="'+dim+'" value="'+esc(String(bs.day||''))+'" style="width:100%;border:1px solid #dfe6e8;border-radius:9px;padding:9px 8px;font-size:14px;font-weight:800;color:#15171b;font-family:inherit;box-sizing:border-box;text-align:center" /></div>'+
+        '<div style="display:flex;gap:10px;margin-bottom:'+(bsMismatch?'8':'11')+'px">'+
+          '<div style="flex:1.2"><div style="font-size:11px;font-weight:800;color:#8a929a;margin-bottom:4px">Belegdatum</div><input id="kbbs_date" type="date" value="'+esc(bsDateVal)+'" style="width:100%;border:1px solid #dfe6e8;border-radius:9px;padding:9px 10px;font-size:14px;font-weight:800;color:#15171b;font-family:inherit;box-sizing:border-box" /></div>'+
           '<div style="flex:1"><div style="font-size:11px;font-weight:800;color:#8a929a;margin-bottom:4px">'+(bs.kind==='einnahme'?'Betrag (Einnahme €)':'Betrag (Ausgabe €)')+'</div><input id="kbbs_amount" inputmode="decimal" value="'+esc(bs.amount!=null?String(bs.amount).replace('.',','):'')+'" placeholder="0,00" style="width:100%;border:1px solid #dfe6e8;border-radius:9px;padding:9px 10px;font-size:14px;font-weight:800;color:'+(bs.kind==='einnahme'?'#1d7a3e':'#b53a2c')+';font-family:inherit;box-sizing:border-box" /></div>'+
         '</div>'+
+        (bsMismatch?('<div style="background:#fbf1e2;border:1px solid #f0dcbc;color:#a6651a;border-radius:9px;padding:8px 11px;font-size:11.5px;font-weight:700;line-height:1.45;margin-bottom:11px">⚠️ FINN hat den '+esc(String(bs.date).split('-').reverse().join('.'))+' gelesen – dieses Buch ist '+esc(kbMonthLabel(cur.key))+'. Für einen Beleg aus einem anderen Monat bitte oben den Monat wechseln.</div>'):'')+
         '<div style="margin-bottom:13px"><div style="font-size:11px;font-weight:800;color:#8a929a;margin-bottom:4px">Zweck / Händler</div><input id="kbbs_note" value="'+esc(bsPrefill)+'" placeholder="z. B. Hornbach – Reinigungsmittel" style="width:100%;border:1px solid #dfe6e8;border-radius:9px;padding:9px 10px;font-size:13.5px;font-weight:700;color:#15171b;font-family:inherit;box-sizing:border-box" /></div>'+
         '<div style="font-size:11px;color:#9aa2a8;font-weight:600;line-height:1.5;margin-bottom:14px">Bitte kurz prüfen und ggf. korrigieren. „Übernehmen" trägt die Buchung ein, setzt das Beleg-Häkchen und hängt den Beleg beim PDF-Export an.</div>'+
         '<div style="display:flex;gap:9px">'+
