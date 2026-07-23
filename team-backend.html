@@ -3374,6 +3374,29 @@ async function kbSave(silent){
     S.kbMsg=(r&&r.message)||'Konnte nicht gespeichert werden.'; S.kbBusy=''; render(); return false;
   }catch(e){ S.kbMsg='Verbindung fehlgeschlagen.'; S.kbBusy=''; render(); return false; }
 }
+// Anfangsbestand (+ Blatt-Nr., falls leer) neu aus dem Vormonat übernehmen. Nützlich, wenn
+// ein Vormonat nachträglich korrigiert wurde – dann stimmt der Anfangsbestand mit einem Tipp wieder.
+async function kbCarryOpening(){
+  if(S.kbBusy) return;
+  if(S.kb && S.kb.closed){ S.kbMsg='Der Monat ist abgeschlossen – bitte zuerst „Wieder öffnen".'; render(); return; }
+  if(!S.kbHasStore){ S.kbMsg='Speicher nicht aktiv – Übernahme nicht möglich.'; render(); return; }
+  S.kbBusy='carry'; S.kbMsg=''; render();
+  var msg='';
+  try{
+    var r=await tapi('/api/team/kassenbuch',{method:'POST',body:{action:'suggest',month:S.kbMonth}});
+    if(r && r.ok && r.suggest && r.suggest.carried){
+      var s=r.suggest;
+      S.kbBusy='';
+      if(!confirm('Anfangsbestand aus '+kbMonthLabel(s.fromMonth)+' übernehmen?\n\nNeu: '+kbEuro(s.anfangsbestand)+(s.blattNr?('\nBlatt-Nr.: '+s.blattNr):'')+'\n\nDanach noch „Speichern" antippen.')){ render(); return; }
+      if(!S.kbDraft) S.kbDraft=kbSeedDraft(S.kb||{});
+      S.kbDraft.anfangsbestand=String(s.anfangsbestand).replace('.',',');
+      if(s.blattNr && !String(S.kbDraft.blattNr||'').trim()) S.kbDraft.blattNr=String(s.blattNr);
+      S.kbDirty=true;
+      msg='Anfangsbestand aus '+kbMonthLabel(s.fromMonth)+' übernommen ('+kbEuro(s.anfangsbestand)+'). Bitte noch „Speichern" antippen.';
+    } else { S.kbBusy=''; msg='Kein Vormonat gefunden, aus dem übernommen werden kann.'; }
+  }catch(e){ S.kbBusy=''; msg='Verbindung fehlgeschlagen.'; }
+  S.kbBusy=''; S.kbMsg=msg; render();
+}
 async function kbDoCheck(){
   if(S.kbCheckBusy||S.kbBusy) return;
   if(S.kbDirty){ var okS=await kbSave(true); if(!okS){ render(); return; } }
@@ -3641,12 +3664,14 @@ function kassenbuchNode(){
   var metaInp=function(field,val,ph,mode){ return '<input data-kbd="_top" data-kbf="'+field+'" value="'+esc(val)+'" placeholder="'+esc(ph)+'" inputmode="'+(mode==='dec'?'decimal':'text')+'"'+dis+' style="width:100%;border:1px solid '+(closed?'#e6ebee':'#dfe6e8')+';border-radius:9px;padding:9px 10px;font-size:13.5px;font-weight:800;color:#15171b;background:'+(closed?'#f4f6f7':'#fff')+';font-family:inherit;box-sizing:border-box" />'; };
   var carriedHint='';
   if(cur.carried && !cur.exists){ carriedHint='<div style="background:#e7f1f3;border:1px solid #cfe0e3;color:#0a4958;border-radius:10px;padding:8px 11px;font-size:11.5px;font-weight:700;margin-top:10px">Aus '+esc(kbMonthLabel(cur.carried.fromMonth))+' übernommen: Anfangsbestand = Endbestand des Vormonats'+(cur.carried.blattNr?(', Blatt-Nr. '+esc(cur.carried.blattNr)):'')+'. Du kannst beides anpassen.</div>'; }
+  // Neu-Übernahme aus dem Vormonat (z. B. wenn der Vormonat nachträglich korrigiert wurde).
+  var carryBtn = closed ? '' : '<button data-kbcarry="1"'+(S.kbBusy?' disabled':'')+' title="Anfangsbestand = Endbestand des Vormonats" style="width:100%;margin-top:10px;border:1px solid #cfe0e3;background:#f4f9fa;border-radius:10px;padding:9px 12px;font-size:12px;font-weight:800;color:'+TEAL+';cursor:pointer;opacity:'+(S.kbBusy?'.6':'1')+'">'+(S.kbBusy==='carry'?'Übernehme …':'↺ Anfangsbestand aus Vormonat übernehmen')+'</button>';
   H+='<div style="background:#fff;border:1px solid #e1e8ea;border-radius:16px;padding:14px 16px;margin-bottom:12px">'+
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">'+
       '<div><div style="font-size:11px;font-weight:800;color:#8a929a;text-transform:uppercase;letter-spacing:.3px;margin-bottom:5px">Anfangsbestand</div>'+metaInp('anfangsbestand',draft.anfangsbestand,'0,00','dec')+'</div>'+
       '<div><div style="font-size:11px;font-weight:800;color:#8a929a;text-transform:uppercase;letter-spacing:.3px;margin-bottom:5px">Blatt-Nr.</div>'+metaInp('blattNr',draft.blattNr,'z. B. 844')+'</div>'+
     '</div>'+
-    carriedHint+
+    carriedHint+carryBtn+
     '<div style="margin-top:10px"><div style="font-size:11px;font-weight:800;color:#8a929a;text-transform:uppercase;letter-spacing:.3px;margin-bottom:5px">Gezählter Kassenbestand am Monatsende (Kassensturz)</div>'+metaInp('gezaehlterEndbestand',draft.gezaehlterEndbestand,'leer lassen, wenn nicht gezählt','dec')+'<div style="font-size:11px;color:#9aa2a8;font-weight:600;margin-top:5px">Trag hier ein, was du am Ende real in der Kasse zählst – daraus ergibt sich die Differenz zum rechnerischen Bestand.</div></div>'+
   '</div>';
 
@@ -3767,6 +3792,7 @@ function kassenbuchNode(){
   var tg=q('[data-kbtog]'); if(tg) tg.onclick=function(){ S.kbShowPrices=!S.kbShowPrices; render(); };
   var im=q('[data-kbimport]'); if(im) im.onclick=kbImportSeed;
   var sv=q('[data-kbsave]'); if(sv) sv.onclick=function(){ kbSave(false); };
+  var cy=q('[data-kbcarry]'); if(cy) cy.onclick=kbCarryOpening;
   var ck=q('[data-kbcheck]'); if(ck) ck.onclick=kbDoCheck;
   node.querySelectorAll('[data-kbfix]').forEach(function(b){ b.onclick=function(){ kbApplyFix(parseInt(b.getAttribute('data-kbfix'),10)); }; });
   var pd=q('[data-kbpdf]'); if(pd) pd.onclick=kbExportPdf;

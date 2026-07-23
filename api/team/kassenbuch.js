@@ -116,6 +116,18 @@ module.exports = async function handler(req, res) {
 
   if (!KB.isMonthKey(month)) return j(res, 400, { ok: false, error: 'bad_month' });
 
+  // Anfangsbestand/Blatt-Nr. aus dem Vormonat vorschlagen – auch für einen bereits
+  // gespeicherten Monat (z. B. wenn der Vormonat nachträglich korrigiert wurde).
+  // Gleiche Logik + Seed-Fallback wie beim ersten Öffnen (monthPayload).
+  if (action === 'suggest') {
+    let sug = await KB.suggestOpening(month);
+    if (!sug.carried) {
+      const prev = SEED.SEED_2026.filter((s) => s.key < month).sort((a, b) => (a.key < b.key ? -1 : 1)).pop();
+      if (prev) sug = { carried: true, anfangsbestand: prev.endbestand, blattNr: KB.nextBlattNr(prev.blattNr), fromMonth: prev.key };
+    }
+    return j(res, 200, { ok: true, suggest: sug });
+  }
+
   if (action === 'save') {
     if (!KB.hasStore) return j(res, 200, { ok: false, disabled: true, message: 'Kassenbuch-Speicher nicht verfügbar.' });
     const r = await KB.saveMonth(month, body.data || {});
