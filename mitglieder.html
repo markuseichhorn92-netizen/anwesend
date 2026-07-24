@@ -3189,13 +3189,18 @@
     '</div>';
   }
   // Bereitschafts-Status aus dem letzten Vital-Check (für Coach/Start prominent).
+  // Ohne Gurt-Messung springt das Tages-Urteil auf die passiven Health-Werte
+  // (Apple Health / Health Connect) um – dann kommt der Score von dort.
   function moReadyStatus(){
     var d=(DATA.morning&&DATA.morning.ok)?DATA.morning:null; if(!d) return null;
-    var r=d.readiness, m=d.latest; if(!m||!r||!r.level) return null;
+    var r=d.readiness, m=d.latest;
+    var viaHealth=!!(d.verdict&&d.verdict.dataSource==='health'&&d.vitals&&d.vitals.readiness);
+    if((!m||!r||!r.level)&&!viaHealth) return null;
     var e=moEff();   // reconciled Tages-Urteil (nicht die rohe Physiologie) – konsistent mit allem
     var map={gruen:{emo:'🟢',col:'#1c9b5e',bg:'#E7F6EC'},gelb:{emo:'🟡',col:'#9a5a18',bg:'#FBF0E3'},rot:{emo:'🔴',col:'#b4552f',bg:'#FBECE8'}};
     var s=map[e.level]; if(!s) return {emo:'📈',lab:'Kalibrierung läuft',col:'var(--text-soft)',bg:'var(--surface-2)',score:null};
-    return {emo:s.emo,lab:e.headline||r.headline||'Bereitschaft',col:s.col,bg:s.bg,score:r.score};
+    var score=viaHealth?(d.vitals.readiness.score!=null?d.vitals.readiness.score:null):(r?r.score:null);
+    return {emo:s.emo,lab:e.headline||(r&&r.headline)||'Bereitschaft',col:s.col,bg:s.bg,score:score,viaHealth:viaHealth};
   }
   // Coach-Übersicht-Hero: Vitalalter im Fokus + Bereitschafts-Status; Vitalpunkte sekundär.
   function coachVitalHero(){
@@ -6254,7 +6259,7 @@
     // EINE Quelle für Erholung & Herzwerte: existiert heute eine Gurt-Messung, gewinnt die
     // (der Bereitschafts-Hero zeigt Score + Ruhepuls/HRV). Diese passive Health-Karte zeigt
     // dann nur ihren Mehrwert (Schlaf + Aktivität) – KEIN zweiter, abweichender Erholungs-Score.
-    var beltToday=!!(DATA.morning&&DATA.morning.ok&&DATA.morning.latest);
+    var beltToday=!!(DATA.morning&&DATA.morning.ok&&DATA.morning.latest&&String(DATA.morning.latest.date||'').slice(0,10)===moToday());
     var readyScore=(!beltToday&&rd&&rd.level&&rd.level!=='kalibrierung')?rd.score:null;
     var sleepScore=sd?sd.score:null;
     var fmt=function(x){ return Math.floor(x/60)+'h '+(x%60)+'m'; };
@@ -6555,8 +6560,11 @@
     var r=d.readiness, m=d.latest, ot=d.overtraining;
     var alert=!!(ot&&ot.level==='alert');
     var warn=!!(ot&&ot.level==='warn');
-    var level=(r&&m&&r.level)?r.level:null;         // gruen | gelb | rot | kalibrierung
-    if(level==='kalibrierung') level=null;          // noch nicht aussagekräftig
+    // Ohne Gurt-Messung zählt die Health-Bereitschaft (Apple Health / Health Connect) –
+    // das Tages-Urteil des Servers (verdict.dataSource==='health') macht sie autoritativ.
+    var viaHealth=!!(d.verdict&&d.verdict.dataSource==='health'&&d.vitals&&d.vitals.readiness&&d.vitals.readiness.level&&d.vitals.readiness.level!=='kalibrierung');
+    var level=(r&&m&&r.level)?r.level:(viaHealth?d.vitals.readiness.level:null);   // gruen | gelb | rot | kalibrierung
+    if(level==='kalibrierung') level=viaHealth?d.vitals.readiness.level:null;      // Gurt kalibriert noch -> Health übernimmt
     if(!alert && !level) return null;
     // Effektive Ampel aus dem EINEN Tages-Urteil (moEff). Im Trainings-Kontext (ctx==='training')
     // zusätzlich der Puls-Check vorm Workout (moTrainEff) – so zeigt der Training-Screen dasselbe
@@ -8194,9 +8202,32 @@
       '<div style="font-size:'+Math.round(size*0.072)+'px;font-weight:900;color:'+col+';letter-spacing:1.5px;margin-top:2px">'+(label||'RECOVERY')+'</div></div></div>';
   }
   function moReadinessHero(){
-    var d=morningData(); if(!d||!d.latest) return '';
+    var d=morningData(); if(!d) return '';
+    // Health-Fallback: keine Gurt-Messung von heute, aber aktuelle Werte aus Apple Health /
+    // Health Connect -> der Hero zeigt DEREN Bereitschaft (mit Quellen-Hinweis), damit der
+    // Vital-Check auch ohne Brustgurt eine Tages-Empfehlung hat.
+    var viaHealth=!!(d.verdict&&d.verdict.dataSource==='health'&&d.vitals&&d.vitals.readiness&&d.vitals.readiness.level&&d.vitals.readiness.level!=='kalibrierung');
+    if(!d.latest&&!viaHealth) return '';
     var r=d.readiness||{}, base=d.baseline||{}, m=d.latest;
     var chip=function(lab,val,sub){ return '<div style="flex:1;background:rgba(255,255,255,.09);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:11px 13px"><div style="font-size:10px;font-weight:800;color:rgba(255,255,255,.6);text-transform:uppercase;letter-spacing:.5px">'+lab+'</div><div style="font-size:21px;font-weight:900;color:#fff;margin-top:3px;line-height:1">'+val+'</div>'+(sub?'<div style="font-size:10.5px;color:rgba(255,255,255,.55);font-weight:700;margin-top:2px">'+sub+'</div>':'')+'</div>'; };
+    if(viaHealth){
+      var vr=d.vitals.readiness, vm=d.vitals.latest||{}, vbb=d.vitals.baseline||{};
+      var eH=moEff();
+      var lvH=(eH.level&&MO_LV[eH.level])?eH.level:vr.level;
+      var LH=MO_LV[lvH]||MO_LV[vr.level];
+      var headH=eH.headline||vr.headline||LH.lab;
+      var noteHTxt=eH.note||((lvH!==vr.level)?eH.detail:'');
+      var noteH=noteHTxt?('<div style="font-size:12px;color:rgba(255,255,255,.72);font-weight:600;margin-top:6px;line-height:1.45">'+esc(noteHTxt)+'</div>'):'';
+      var chipsH='<div style="display:flex;gap:10px;margin-top:18px">'+
+        (vm.restingHr!=null?chip('Ruhepuls', moNum(vm.restingHr)+'<span style="font-size:12px;font-weight:800;color:rgba(255,255,255,.55)"> bpm</span>', vbb.rhr!=null?('Ø '+moNum(vbb.rhr)):'kalibriert noch'):'')+
+        (vm.hrv!=null?chip('HRV', moNum(vm.hrv)+'<span style="font-size:12px;font-weight:800;color:rgba(255,255,255,.55)"> ms</span>', vbb.hrv!=null?('Ø '+moNum(vbb.hrv)):''):'')+'</div>';
+      var dateH=vm.date?(' · '+esc(ernDeDate(vm.date))):'';
+      var CARDH='background:linear-gradient(160deg,#0e5566,#062b34);border-radius:24px;padding:20px;color:#fff;box-shadow:0 16px 40px rgba(4,33,40,.24)';
+      return '<div style="'+CARDH+'"><div style="display:flex;align-items:center;gap:18px">'+moRecoveryRing(vr.score,lvH,122)+
+        '<div style="flex:1;min-width:0"><div style="font-size:11px;font-weight:800;color:rgba(255,255,255,.6);text-transform:uppercase;letter-spacing:.5px">Bereitschaft'+dateH+'</div>'+
+        '<div style="font-size:21px;font-weight:900;letter-spacing:-.3px;line-height:1.12;margin-top:5px">'+LH.emo+' '+esc(headH)+'</div>'+noteH+'</div></div>'+chipsH+
+        '<div style="font-size:11px;font-weight:700;color:rgba(255,255,255,.55);margin-top:12px">⌚ Ohne Gurt-Messung – heute aus '+esc(woHealthPlatform())+'. Eine Brustgurt-Messung ist genauer und gewinnt, sobald du misst.</div></div>';
+    }
     var chips='<div style="display:flex;gap:10px;margin-top:18px">'+
       chip('Ruhepuls', moNum(m.rhr)+'<span style="font-size:12px;font-weight:800;color:rgba(255,255,255,.55)"> bpm</span>', base.rhr!=null?('Ø '+moNum(base.rhr)):'kalibriert noch')+
       (m.hrvRmssd!=null?chip('HRV', moNum(m.hrvRmssd)+'<span style="font-size:12px;font-weight:800;color:rgba(255,255,255,.55)"> ms</span>', base.hrv!=null?('Ø '+moNum(base.hrv)):''):'')+'</div>';
@@ -8770,6 +8801,9 @@
     } else {
       blocks.push(moMeasureCard('morgen'));
       var ahM=woVitalRings(); if(ahM) blocks.push(ahM);
+      // Health-Fallback: keine Gurt-Messung, aber das Tages-Urteil kommt aus Apple Health /
+      // Health Connect -> Hero + Empfehlung trotzdem zeigen (Karten sichern sich selbst ab).
+      var viaHealthM=!!(d.verdict&&d.verdict.dataSource==='health'&&d.vitals&&d.vitals.readiness);
       if(d.latest){
         // Dynamische Kachel-Reihenfolge: das Relevanteste nach oben (Ampel → FINN → Tages-Auswirkung),
         // danach je nach Ampel priorisiert (Rot: Erholung/Atmen hoch; sonst Trainingszonen hoch).
@@ -8780,6 +8814,10 @@
         else { ordered=ordered.concat([moZonesCard(lv),moStrengthCard(lv),moBalanceCard(),moBreatheEntry()]); }
         ordered=ordered.concat([moBioAgeCard(),moEvalCard(),moCheckinCard(),moWeeklyCard(),moTrendCard(),moInsightsCard(),moCurvesCard(),moHistoryCard(),moTeamShareCard()]);
         ordered.forEach(function(b){ blocks.push(b); });
+        if(strapAd) blocks.push(strapAd);
+      } else if(viaHealthM){
+        var lvH=moEff().level||'';
+        [moRecoveryActiveCard(),moReadinessHero(),moOvertrainingCard(),moLoadCard(),moZonesCard(lvH),moStrengthCard(lvH),moBreatheEntry(),moWeeklyCard(),moTeamShareCard()].forEach(function(b){ if(b) blocks.push(b); });
         if(strapAd) blocks.push(strapAd);
       } else { blocks.push(intro); if(strapAd) blocks.push(strapAd); blocks.push(moBreatheEntry()); }
     }

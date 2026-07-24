@@ -55,11 +55,10 @@ async function readState(id) {
   const latest = list[0] || null;
   const readiness = latest ? MO.readiness(latest, base) : null;
   const ot = MO.overtraining(list);
-  // EIN widerspruchsfreies Tages-Urteil – Basis für alle Tages-Karten + FINN.
-  const verdict = MO.dayVerdict({ readiness: readiness, overtraining: ot, recovery: recovery, latest: latest });
   const trList = await MO.trList(id);
   const trLatest = trList[0] || null;
-  // Passive Vitalwerte aus Apple Health (Apple Watch/Waage) – nur bei Einwilligung.
+  // Passive Vitalwerte aus Apple Health / Health Connect (Apple Watch, Smartwatch,
+  // Waage) – nur bei Einwilligung.
   let vList = [];
   try { if (consent) vList = await V.list(id); } catch (e) {}
   let vitalsBlock = null;
@@ -78,13 +77,34 @@ async function readState(id) {
       };
     }
   } catch (e) {}
+  // Effektive Tages-Physiologie: eine Gurt-Messung von HEUTE gewinnt immer. Gibt es heute
+  // KEINE Brustgurt-Messung, übernehmen – falls aktueller als die letzte Gurt-Messung – die
+  // passiven Health-Werte (Apple Health / Health Connect) das Tages-Urteil. So liefert der
+  // Vital-Check auch ohne Gurt eine Tages-Empfehlung.
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const strapToday = !!(latest && latest.date === todayStr);
+  const vReady = vitalsBlock && vitalsBlock.readiness;
+  const vDate = (vitalsBlock && vitalsBlock.latest && vitalsBlock.latest.date) || null;
+  let effReadiness = readiness;
+  let dataSource = latest ? 'gurt' : null;
+  if (!strapToday && vReady && vReady.level && vReady.level !== 'kalibrierung'
+      && (!latest || !latest.date || (vDate && vDate > latest.date))) {
+    effReadiness = vReady;
+    dataSource = 'health';
+  }
+  // EIN widerspruchsfreies Tages-Urteil – Basis für alle Tages-Karten + FINN. Im Health-
+  // Fallback OHNE die (ggf. veralteten) subjektiven Gurt-Signale des letzten Check-ins.
+  const verdict = MO.dayVerdict({ readiness: effReadiness, overtraining: ot, recovery: recovery, latest: (dataSource === 'health') ? null : latest });
+  verdict.dataSource = dataSource;
   // Vital-Akku: modellierte Tagesenergie aus Erholung + Schlaf minus Trainingslast.
   // Nur mit echtem Erholungs-Score (HRV/Ruhepuls) und Einwilligung – sonst null (Client zeigt Teaser).
   let battery = null;
   try {
     if (consent) {
       let best = null, src = null;
-      if (readiness && readiness.score != null) { best = readiness; src = 'morgen'; }
+      // Gleiche Quellen-Logik wie das Tages-Urteil: Health-Fallback aktiv -> passiv zuerst.
+      if (dataSource === 'health' && vReady && vReady.score != null) { best = vReady; src = 'passiv'; }
+      else if (readiness && readiness.score != null) { best = readiness; src = 'morgen'; }
       else if (vitalsBlock && vitalsBlock.readiness && vitalsBlock.readiness.score != null) { best = vitalsBlock.readiness; src = 'passiv'; }
       if (best) {
         let weekLoad = null; try { weekLoad = WO.weeklyLoad(await WO.list(id)); } catch (e) {}
@@ -127,7 +147,7 @@ async function readState(id) {
     bioAge: latest ? MO.hrvAge(latest, age, base) : null,
     bioAgeSeries: MO.hrvAgeSeries(list),
     zones: MO.trainingZones(age),
-    trainingLoad: readiness ? MO.trainingLoad(readiness, latest) : null,
+    trainingLoad: (dataSource === 'health') ? MO.trainingLoad(effReadiness, null) : (readiness ? MO.trainingLoad(readiness, latest) : null),
     insights: MO.insights(list),
     overtraining: ot,
     // EIN widerspruchsfreies Tages-Urteil (Physiologie + Frühwarnung + Erholungsphase +
