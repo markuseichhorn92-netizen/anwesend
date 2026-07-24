@@ -110,7 +110,23 @@ function targetsFor(p) {
   const fat = Math.max(30, Math.min(150, Math.round(0.9 * weight)));
   const carbs = Math.max(0, Math.round((kcal - protein * 4 - fat * 9) / 4));
   const water = Math.max(1.5, Math.min(4, Math.round(weight * 0.035 * 10) / 10));
-  return { kcal, protein, carbs, fat, water, under18 };
+  const t = { kcal, protein, carbs, fat, water, under18 };
+  // Individuelle Zielwerte (z. B. aus einer Stoffwechselanalyse) übersteuern die
+  // Formel feldweise – identisch zur Mitglieder-Seite; unter 18 nie übersteuern.
+  const ov = (!under18 && p.targetOverride && typeof p.targetOverride === 'object') ? p.targetOverride : null;
+  if (ov) {
+    const num = (v, min, max, dec) => { if (v == null || v === '') return null; const n = Number(v); if (isNaN(n) || n <= 0) return null; const r = dec ? Math.round(n * 10) / 10 : Math.round(n); return Math.max(min, Math.min(max, r)); };
+    const k = num(ov.kcal, 1000, 4500), pr = num(ov.protein, 30, 300), ft = num(ov.fat, 20, 250), cb = num(ov.carbs, 1, 700), wa = num(ov.water, 1, 5, true);
+    if (k != null || pr != null || ft != null || cb != null || wa != null) {
+      if (k != null) t.kcal = k;
+      if (pr != null) t.protein = pr;
+      if (ft != null) t.fat = ft;
+      if (wa != null) t.water = wa;
+      t.carbs = (cb != null) ? cb : Math.max(0, Math.round((t.kcal - t.protein * 4 - t.fat * 9) / 4));
+      t.custom = true;
+    }
+  }
+  return t;
 }
 function totalsOf(entries) { return (entries || []).reduce((t, e) => ({ kcal: t.kcal + n0(e.kcal), p: t.p + n0(e.p), c: t.c + n0(e.c), f: t.f + n0(e.f) }), { kcal: 0, p: 0, c: 0, f: 0 }); }
 function waterGoalCups(t) { return Math.max(6, Math.round(((t && t.water) || 2) / 0.25)); }
@@ -146,7 +162,8 @@ async function readState(id, forDate) {
   return {
     ok: true, available: true, today: todayYMD, date,
     profile: pubProfile, goals: GOALS, meals: MEALS,
-    targets, day: dayView(id, date, day, targets), week,
+    targets, targetOverride: profile.targetOverride || null,
+    day: dayView(id, date, day, targets), week,
     cookplan: (cook.items || []).slice(0, 40),
     everTracked: !!profile.onboarded || week.some((w) => w.tracked) || (cook.items || []).length > 0,
   };
@@ -206,7 +223,36 @@ module.exports = async function handler(req, res) {
         updatedAt: Date.now(),
         updatedByTeam: (sess && (sess.user || sess.name)) || 'team',
       };
+      // Individuelle Zielwerte bleiben bei einer Neuberechnung der Körperdaten erhalten.
+      if (prev.targetOverride) profile.targetOverride = prev.targetOverride;
       try { await redisPipeline([['SET', PKEY(id), JSON.stringify(profile)]]); } catch (e) {}
+      return j(res, 200, await readState(id, body.date));
+    }
+
+    // Individuelle Zielwerte setzen (z. B. aus einer Stoffwechselanalyse). Leere Felder
+    // behalten den Formelwert; sind alle Felder leer, wird die Übersteuerung entfernt.
+    // Für unter 18-Jährige bleiben die Schutz-Richtwerte der Formel – keine Übersteuerung.
+    if (action === 'targets-set') {
+      const prev = (await loadProfile(id)) || {};
+      if (clamp(prev.age, 14, 100, 30) < 18) return j(res, 200, { ok: false, error: 'under18', message: 'Für unter 18-Jährige bleiben die berechneten Richtwerte bestehen.' });
+      const inp = (body && body.targets) || {};
+      const num = (v, min, max, dec) => { if (v == null || v === '') return null; const n = Number(String(v).replace(',', '.')); if (isNaN(n) || n <= 0) return null; const r = dec ? Math.round(n * 10) / 10 : Math.round(n); return Math.max(min, Math.min(max, r)); };
+      const ov = {};
+      const k = num(inp.kcal, 1000, 4500); if (k != null) ov.kcal = k;
+      const pr = num(inp.protein, 30, 300); if (pr != null) ov.protein = pr;
+      const cb = num(inp.carbs, 1, 700); if (cb != null) ov.carbs = cb;
+      const ft = num(inp.fat, 20, 250); if (ft != null) ov.fat = ft;
+      const wa = num(inp.water, 1, 5, true); if (wa != null) ov.water = wa;
+      if (Object.keys(ov).length) {
+        const note = cleanStr(body.note, 160); if (note) ov.note = note;
+        ov.setBy = (sess && (sess.user || sess.name)) || 'team';
+        ov.setAt = Date.now();
+        prev.targetOverride = ov;
+      } else {
+        delete prev.targetOverride;
+      }
+      prev.updatedAt = Date.now();
+      try { await redisPipeline([['SET', PKEY(id), JSON.stringify(prev)]]); } catch (e) {}
       return j(res, 200, await readState(id, body.date));
     }
 

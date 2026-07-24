@@ -508,7 +508,7 @@ async function openProfile(id){
   S.mbMsg=''; S.mbMailBusy=false; S.mbWeekly=null;   // Mitgliedschaftsbestätigung: Zustand je Mitglied zurücksetzen (Wochenbeitrag neu vorbefüllen)
   S.memberCoaching=null; S.memberCoachingLoading=false;
   S.memberMsgs=null; S.memberMsgsLoading=false; S.memberMsgsTotal=0;
-  S.memberNutri=null; S.memberNutriLoading=false; S.mnDate=''; S.mnBusy=false; S.mnEditId=null; S.mnAddOpen=false; S.mnGoalOpen=false; S.mnAssign=null; S.mnRecipes=null; S.mnRecipesLoading=false; S.mnAssignServ=1; S.mnAssignMeal='mittag';
+  S.memberNutri=null; S.memberNutriLoading=false; S.mnDate=''; S.mnBusy=false; S.mnEditId=null; S.mnAddOpen=false; S.mnGoalOpen=false; S.mnTgOpen=false; S.mnAssign=null; S.mnRecipes=null; S.mnRecipesLoading=false; S.mnAssignServ=1; S.mnAssignMeal='mittag';
   S.memberTrain=null; S.memberTrainLoading=false; S.mtBusy=false; S.mtBuildOpen=false; S.mtBuild=[]; S.mtBuildTitle=''; S.mtResults=null; S.mtResultsLoading=false;
   S.profTab='ueber'; S.acc={};   // Profil öffnet auf „Übersicht"; alle Sektionen zugeklappt
   S._profId=String(id); mainScrollMap['members:'+id]=0;   // neues Profil beginnt oben
@@ -955,7 +955,31 @@ function mnGoalCard(d){
       mnField('Ernährung', mnSelect('mng_diet',MN_DIETS,pr.diet||'omnivor'))+
     '</div><div style="display:flex;gap:8px;margin-top:14px"><button data-mngoalsave="1"'+(S.mnBusy?' disabled':'')+' style="border:none;border-radius:11px;background:'+TEAL+';color:#fff;font-size:13px;font-weight:800;padding:10px 16px;cursor:pointer">Speichern & neu berechnen</button><button data-mngoalcancel="1" style="border:1.5px solid #d6dee0;background:#fff;border-radius:11px;font-size:13px;font-weight:800;color:#42454b;padding:10px 16px;cursor:pointer">Abbrechen</button></div>';
   }
-  return '<div style="'+CARD+'">'+head+(S.mnGoalOpen?'':chipRow)+editor+'</div>';
+  // Individuelle Zielwerte (z. B. aus einer Stoffwechselanalyse): übersteuern die
+  // Formel feldweise. Leer gelassene Felder behalten den berechneten Wert.
+  var ov=d.targetOverride||null, tg='';
+  if(S.mnTgOpen){
+    tg='<div style="margin-top:16px;padding-top:16px;border-top:1px solid #f0f3f4">'+
+      '<div style="font-size:13px;font-weight:900;color:#15171B">🎯 Zielwerte individuell anpassen</div>'+
+      '<div style="font-size:12px;color:#8a929a;font-weight:600;margin-top:2px;line-height:1.45">Z. B. Werte aus einer Stoffwechselanalyse. Leere Felder behalten den berechneten Wert; Kohlenhydrate werden sonst automatisch aus dem Rest berechnet.</div>'+
+      '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:12px;margin-top:12px">'+
+        mnField('kcal / Tag', mnNum('mnt_kcal',ov&&ov.kcal!=null?ov.kcal:'',String(n(t.kcal))))+
+        mnField('Eiweiß (g)', mnNum('mnt_p',ov&&ov.protein!=null?ov.protein:'',String(n(t.protein))))+
+        mnField('KH (g)', mnNum('mnt_c',ov&&ov.carbs!=null?ov.carbs:'',String(n(t.carbs))))+
+        mnField('Fett (g)', mnNum('mnt_f',ov&&ov.fat!=null?ov.fat:'',String(n(t.fat))))+
+        mnField('Wasser (l)', mnInput('mnt_w',ov&&ov.water!=null?ov.water:'',String(t.water||'2')))+
+      '</div>'+
+      '<div style="margin-top:12px">'+mnField('Notiz (sieht das Mitglied)', mnInput('mnt_note',ov&&ov.note?ov.note:'','z. B. Nach deiner Stoffwechselanalyse vom 15.07.'))+'</div>'+
+      '<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap"><button data-mntgsave="1"'+(S.mnBusy?' disabled':'')+' style="border:none;border-radius:11px;background:'+TEAL+';color:#fff;font-size:13px;font-weight:800;padding:10px 16px;cursor:pointer">Zielwerte speichern</button>'+
+      (ov?'<button data-mntgreset="1"'+(S.mnBusy?' disabled':'')+' style="border:1.5px solid #e3b8b1;background:#fff;border-radius:11px;font-size:13px;font-weight:800;color:#b5402f;padding:10px 16px;cursor:pointer">Auf Formel zurücksetzen</button>':'')+
+      '<button data-mntgcancel="1" style="border:1.5px solid #d6dee0;background:#fff;border-radius:11px;font-size:13px;font-weight:800;color:#42454b;padding:10px 16px;cursor:pointer">Abbrechen</button></div></div>';
+  } else {
+    tg='<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:14px;padding-top:12px;border-top:1px solid #f0f3f4;flex-wrap:wrap">'+
+      '<div style="flex:1;min-width:180px;font-size:12px;font-weight:700;color:'+(ov?'#1d7a3e':'#8a929a')+';line-height:1.45">'+
+      (ov?('🎯 Individuell angepasst'+(ov.setBy?(' von '+esc(String(ov.setBy)) ):'')+(ov.note?(' · „'+esc(ov.note)+'“'):'')):'Zielwerte kommen aus der Formel – z. B. für eine Stoffwechselanalyse kannst du sie individuell festlegen.')+'</div>'+
+      '<button data-mntgedit="1" style="border:1.5px solid #d6dee0;background:#fff;border-radius:10px;font-size:12.5px;font-weight:800;color:#0a4958;padding:8px 13px;cursor:pointer">'+(ov?'Individuelle Werte bearbeiten':'Zielwerte individuell festlegen')+'</button></div>';
+  }
+  return '<div style="'+CARD+'">'+head+(S.mnGoalOpen||S.mnTgOpen?'':chipRow)+editor+tg+'</div>';
 }
 
 // Ernährungstagebuch für einen Tag
@@ -1047,9 +1071,14 @@ function wireNutrition(wrap, p){
   var pd=q('[data-mnprev]'); if(pd) pd.onclick=function(){ loadMemberNutrition(p.id, mnShiftDate(mnCurDate(),-1)); };
   var nd=q('[data-mnnext]'); if(nd) nd.onclick=function(){ var c=mnCurDate(); if(c<S.memberNutri.today) loadMemberNutrition(p.id, mnShiftDate(c,1)); };
   var tdy=q('[data-mntoday]'); if(tdy) tdy.onclick=function(){ loadMemberNutrition(p.id, S.memberNutri.today); };
-  var ge=q('[data-mngoaledit]'); if(ge) ge.onclick=function(){ S.mnGoalOpen=!S.mnGoalOpen; render(); };
+  var ge=q('[data-mngoaledit]'); if(ge) ge.onclick=function(){ S.mnGoalOpen=!S.mnGoalOpen; S.mnTgOpen=false; render(); };
   var gc=q('[data-mngoalcancel]'); if(gc) gc.onclick=function(){ S.mnGoalOpen=false; render(); };
   var gs=q('[data-mngoalsave]'); if(gs) gs.onclick=function(){ var prof={goal:v('#mng_goal'),sex:v('#mng_sex'),height:v('#mng_h'),weight:v('#mng_w'),age:v('#mng_age'),activity:v('#mng_act'),diet:v('#mng_diet')}; S.mnGoalOpen=false; mnAction('save-profile',{profile:prof,date:mnCurDate()}); };
+  // Individuelle Zielwerte (Stoffwechselanalyse & Co.)
+  var te=q('[data-mntgedit]'); if(te) te.onclick=function(){ S.mnTgOpen=true; S.mnGoalOpen=false; render(); };
+  var tc=q('[data-mntgcancel]'); if(tc) tc.onclick=function(){ S.mnTgOpen=false; render(); };
+  var ts=q('[data-mntgsave]'); if(ts) ts.onclick=function(){ var tgt={kcal:v('#mnt_kcal'),protein:v('#mnt_p'),carbs:v('#mnt_c'),fat:v('#mnt_f'),water:v('#mnt_w')}; S.mnTgOpen=false; mnAction('targets-set',{targets:tgt,note:v('#mnt_note'),date:mnCurDate()}); };
+  var tr=q('[data-mntgreset]'); if(tr) tr.onclick=function(){ if(!confirm('Individuelle Zielwerte entfernen und wieder mit der Formel rechnen?')) return; S.mnTgOpen=false; mnAction('targets-set',{targets:{},note:'',date:mnCurDate()}); };
   var ao=q('[data-mnadd]'); if(ao) ao.onclick=function(){ S.mnAddOpen=true; S.mnEditId=null; render(); };
   var ac=q('[data-mnaddcancel]'); if(ac) ac.onclick=function(){ S.mnAddOpen=false; render(); };
   var as=q('[data-mnaddsave]'); if(as) as.onclick=function(){ var b={date:mnCurDate(),name:v('#mna_name'),kcal:v('#mna_kcal'),p:v('#mna_p'),c:v('#mna_c'),f:v('#mna_f'),meal:v('#mna_meal')}; S.mnAddOpen=false; mnAction('entry-add',b); };

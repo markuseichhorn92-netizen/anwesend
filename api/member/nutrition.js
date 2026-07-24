@@ -240,7 +240,25 @@ function targetsFor(p) {
   const note = under18
     ? 'Für unter 18-Jährige zeigen wir nur allgemeine Richtwerte – für individuelle Ziele bitte persönliche Beratung im Studio.'
     : '';
-  return { kcal, protein, carbs, fat, water, note, under18 };
+  const t = { kcal, protein, carbs, fat, water, note, under18 };
+  // Individuelle Zielwerte vom Studio-Team (z. B. aus einer Stoffwechselanalyse):
+  // übersteuern die Formel feldweise; nicht gesetzte KH werden aus dem Rest nachgezogen.
+  // Für unter 18-Jährige bleiben immer die Schutz-Richtwerte der Formel.
+  const ov = (!under18 && p.targetOverride && typeof p.targetOverride === 'object') ? p.targetOverride : null;
+  if (ov) {
+    const num = (v, min, max, dec) => { if (v == null || v === '') return null; const n = Number(v); if (isNaN(n) || n <= 0) return null; const r = dec ? Math.round(n * 10) / 10 : Math.round(n); return Math.max(min, Math.min(max, r)); };
+    const k = num(ov.kcal, 1000, 4500), pr = num(ov.protein, 30, 300), ft = num(ov.fat, 20, 250), cb = num(ov.carbs, 1, 700), wa = num(ov.water, 1, 5, true);
+    if (k != null || pr != null || ft != null || cb != null || wa != null) {
+      if (k != null) t.kcal = k;
+      if (pr != null) t.protein = pr;
+      if (ft != null) t.fat = ft;
+      if (wa != null) t.water = wa;
+      t.carbs = (cb != null) ? cb : Math.max(0, Math.round((t.kcal - t.protein * 4 - t.fat * 9) / 4));
+      t.custom = true;
+      t.note = cleanStr(ov.note, 160) || 'Individuell von deinem Studio-Team eingestellt – z. B. nach deiner Stoffwechselanalyse.';
+    }
+  }
+  return t;
 }
 
 // ── KV-Helfer ──
@@ -445,7 +463,9 @@ module.exports = async function handler(req, res) {
     };
     // DSGVO-Einwilligung (Gesundheitsdaten, Art. 9) als Nachweis mit Zeitstempel festhalten;
     // eine bereits erteilte Einwilligung bleibt erhalten.
-    try { const prev = await loadProfile(id); profile.consentAt = body.consent ? Date.now() : ((prev && prev.consentAt) || null); } catch (e) {}
+    // Vom Studio-Team gesetzte individuelle Zielwerte überleben eine Neuberechnung
+    // durch das Mitglied – nur das Team kann sie ändern oder entfernen.
+    try { const prev = await loadProfile(id); profile.consentAt = body.consent ? Date.now() : ((prev && prev.consentAt) || null); if (prev && prev.targetOverride) profile.targetOverride = prev.targetOverride; } catch (e) {}
     try { await require('../../lib/privacy').recordConsent(id, 'nutrition_health', !!body.consent, { source: 'nutrition-onboarding' }); } catch (e) {}
     try { await redisPipeline([['SET', PKEY(id), JSON.stringify(profile)]]); } catch (e) {}
     res.statusCode = 200; return res.end(JSON.stringify(await buildState(id, profile)));
