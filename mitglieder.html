@@ -3683,6 +3683,7 @@
         kcal:Math.max(0,parseInt(it.kcal,10)||0), p:Math.max(0,parseInt(it.p,10)||0), c:Math.max(0,parseInt(it.c,10)||0), f:Math.max(0,parseInt(it.f,10)||0),
         fiber:g1(it.fiber), sugar:g1(it.sugar), satFat:g1(it.satFat), salt:g1(it.salt),
         custom:it.custom===true, saveFav:it.saveFav===true, _micOpen:it._micOpen===true, image:String(it.image||''),
+        gramsBase:Math.max(0,parseInt(it.gramsBase,10)||0)||undefined, grade:(/^[A-E]$/.test(String(it.grade||'').toUpperCase())?String(it.grade).toUpperCase():undefined),
         estimated:it.estimated!==false, barcode:it.barcode||undefined, source:it.source||source }; });
     // „Hinzufügen"-Modus: an die laufende Mahlzeit anhängen statt neu zu beginnen.
     if(S.ernAddToConfirm && S.ernConfirm){ S.ernConfirm.items=S.ernConfirm.items.concat(mapped); if(mapped.length&&mapped[0].meal) { /* Mahlzeit vom letzten Eintrag übernehmen, wenn gesetzt */ } }
@@ -3698,8 +3699,20 @@
     else if(field==='fiber'||field==='sugar'||field==='satFat'||field==='salt'){ var g=parseFloat(String(value).replace(',','.')); cf.items[idx][field]=(isNaN(g)||g<0)?0:Math.min(999,Math.round(g*100)/100); }
     else if(field==='saveFav'){ cf.items[idx].saveFav=!!value; }
     else if(field==='barcode'){ cf.items[idx].barcode=String(value).replace(/\D/g,'').slice(0,14); cf.items[idx]._bcOk=false; cf.items[idx]._bcErr=''; }
+    else if(field==='gramsBase'){ var gb=parseInt(value,10); cf.items[idx].gramsBase=(isNaN(gb)||gb<1)?0:Math.min(2000,gb); }
     else cf.items[idx][field]=String(value); };
-  window.__ernCFDate=function(v){ if(S.ernConfirm&&/^\d{4}-\d{2}-\d{2}$/.test(v)) S.ernConfirm.date=v; };
+  // Menge (g) eines eigenen Lebensmittels mit Grammbasis: skaliert alle Werte linear von der
+  // gemerkten Basis (z. B. Angaben je 100 g -> 137 g eintragen, App rechnet um). Rendert,
+  // weil sich die Zahlenfelder sichtbar ändern müssen (onchange, nicht je Tastendruck).
+  window.__ernCFGrams=function(idx,value){ var cf=S.ernConfirm; if(!cf||!cf.items[idx]) return;
+    var it=cf.items[idx]; var base=it._gBase; if(!base||!(base.g>0)) return;
+    var g=parseInt(value,10); if(isNaN(g)||g<1) g=base.g; g=Math.min(5000,g);
+    var f=g/base.g;
+    it.grams=g; it.portion=g+' g';
+    it.kcal=Math.round(base.kcal*f); it.p=Math.round(base.p*f); it.c=Math.round(base.c*f); it.f=Math.round(base.f*f);
+    ['fiber','sugar','satFat','salt'].forEach(function(k){ it[k]=Math.round((base[k]||0)*f*100)/100; });
+    render(); };
+  window.__ernCFDate=function(v){ if(S.ernConfirm&&/^\d{4}-\d{2}-\d{2}$/.test(v)){ S.ernConfirm.date=v; render(); } };
   // Bild eines eigenen Lebensmittels: clientseitig auf ~240 px verkleinern (kleines Thumbnail).
   function ernImgCompress(file,cb){
     try{ if(!file||!/^image\//.test(file.type)){ cb(null); return; }
@@ -3789,14 +3802,22 @@
                   ? '<div style="font-size:10.5px;color:#0e6072;font-weight:800;margin-top:6px;line-height:1.4">✓ Barcode erkannt und übernommen.</div>'
                   : '<div style="font-size:10px;color:var(--text-soft);font-weight:600;margin-top:6px;line-height:1.4">Scannen oder eintippen – dann findet der Scan dein Lebensmittel beim nächsten Mal automatisch.</div>')));
           var bcCtrl=(it.source==='manual'||it.custom)?('<div style="margin-top:11px"><label style="font-size:9.5px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.3px">Barcode (optional)</label>'+bcArea+bcMsg+'</div>'):'';
-          return toggle+body+favChk+imgCtrl+bcCtrl;
+          // Grammbasis: „diese Werte gelten für X g" – damit kann die App später jede Menge
+          // umrechnen (z. B. Nährwerte je 100 g anlegen, beim Essen 137 g eintragen).
+          var gbCtrl=((it.source==='manual'||it.custom)&&!it._gBase)?('<div style="margin-top:11px"><label style="font-size:9.5px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.3px">Diese Werte gelten für … Gramm (optional)</label><input type="number" inputmode="numeric" min="1" max="2000" placeholder="z. B. 100" value="'+(it.gramsBase>0?it.gramsBase:'')+'" oninput="window.__ernCF('+idx+',\'gramsBase\',this.value)" style="width:100%;border:1.5px solid var(--border);border-radius:10px;padding:8px 10px;font-size:13.5px;font-weight:700;color:var(--text-2);background:var(--surface);margin-top:3px"><div style="font-size:10px;color:var(--text-soft);font-weight:600;margin-top:4px;line-height:1.4">Mit Grammangabe rechnet die App künftig jede Menge automatisch um – z. B. Werte je 100 g anlegen und beim nächsten Mal einfach 137 g eintragen.</div></div>'):'';
+          // Beim Wieder-Loggen eines eigenen Lebensmittels MIT Grammbasis: Menge eingeben,
+          // alle Werte skalieren automatisch (kein Selbst-Umrechnen mehr).
+          var gramsCtrl=(it._gBase&&it._gBase.g>0)?('<div style="margin-top:11px"><label style="font-size:9.5px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.3px">Menge in Gramm</label><input type="number" inputmode="numeric" min="1" max="5000" value="'+(it.grams||it._gBase.g)+'" onchange="window.__ernCFGrams('+idx+',this.value)" style="width:100%;border:1.5px solid var(--border);border-radius:10px;padding:8px 10px;font-size:14px;font-weight:800;color:var(--text);background:var(--surface);margin-top:3px"><div style="font-size:10px;color:var(--text-soft);font-weight:600;margin-top:4px;line-height:1.4">Nährwerte-Basis: '+it._gBase.g+' g – kcal &amp; Makros rechnen sich automatisch um.</div></div>'):'';
+          return toggle+body+favChk+imgCtrl+bcCtrl+gbCtrl+gramsCtrl;
         }())+
         swapBox+
       '</div>';
     }).join('');
     var head='<div style="display:flex;align-items:center;gap:12px;padding:2px 2px 14px"><button data-act="ernCFCancel" aria-label="Abbrechen" style="width:38px;height:38px;border-radius:12px;border:none;background:var(--surface);box-shadow:0 4px 12px rgba(4,33,40,.08);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'+svg(IC.back,{c:'#0a4958',w:2.2,s:19})+'</button>'+
       '<div style="flex:1"><div style="font-size:20px;font-weight:900;color:var(--text);letter-spacing:-.4px">Prüfen &amp; speichern</div><div style="font-size:12px;font-weight:700;color:'+(cf.source==='openfoodfacts'?'#0a4958':'#8a6d1f')+'">'+(cf.source==='ai'?'KI-Schätzung – bitte kurz prüfen':(cf.source==='openfoodfacts'?'Open Food Facts – bitte Portion prüfen':'Eintrag prüfen'))+'</div></div></div>';
-    var dateRow='<div style="background:var(--surface);border-radius:14px;padding:12px 14px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;gap:10px"><label for="ern_cf_date" style="font-size:13.5px;font-weight:800;color:var(--text)">Tag</label><input id="ern_cf_date" type="date" max="'+today+'" value="'+esc(cf.date)+'" onchange="window.__ernCFDate(this.value)" aria-label="Datum" style="border:1.5px solid var(--border);border-radius:10px;padding:8px 10px;font-size:14px;font-weight:700;color:var(--text);background:var(--surface)"></div>';
+    // Vorplanen erlaubt: bis 7 Tage in die Zukunft (abends schon das Frühstück für morgen tracken).
+    var futureHint=(cf.date>isoToday())?'<div style="font-size:11px;font-weight:700;color:var(--ern-acc);margin:-6px 2px 12px">📅 Wird für '+esc(ernDayLabel(cf.date,false))+' vorgeplant – nicht für heute.</div>':'';
+    var dateRow='<div style="background:var(--surface);border-radius:14px;padding:12px 14px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;gap:10px"><label for="ern_cf_date" style="font-size:13.5px;font-weight:800;color:var(--text)">Tag</label><input id="ern_cf_date" type="date" max="'+isoShift(isoToday(),7)+'" value="'+esc(cf.date)+'" onchange="window.__ernCFDate(this.value)" aria-label="Datum" style="border:1.5px solid var(--border);border-radius:10px;padding:8px 10px;font-size:14px;font-weight:700;color:var(--text);background:var(--surface)"></div>'+futureHint;
     var totCard='<div style="display:flex;gap:8px;margin:4px 0 14px">'+[['Gesamt',ernNum(tot.kcal)+' kcal','var(--text)'],['Eiweiß',tot.p+' g',ERN_PROT],['KH',tot.c+' g',ERN_CARB],['Fett',tot.f+' g',ERN_FAT]].map(function(x){ return '<div style="flex:1;background:var(--surface);border-radius:12px;padding:10px 6px;text-align:center"><div style="font-size:13.5px;font-weight:900;color:'+x[2]+'">'+x[1]+'</div><div style="font-size:10px;font-weight:800;color:var(--text-soft);text-transform:uppercase">'+x[0]+'</div></div>'; }).join('')+'</div>';
     var addBtn='<div style="display:flex;gap:8px;margin-bottom:12px">'+
       '<button data-act="ernCFAdd" style="flex:1;padding:12px;border:1.5px dashed #9cc3b3;border-radius:14px;background:rgba(14,96,114,.05);color:var(--ern-acc);font-weight:800;font-size:13.5px;cursor:pointer">🔍 Suchen / Scannen</button>'+
@@ -3919,6 +3940,15 @@
   function nutriGrade(r){ return (r&&r.nutri&&/^[ABCDE]$/.test(String(r.nutri.grade||'').toUpperCase()))?String(r.nutri.grade).toUpperCase():''; }
   // Kleiner Nutri-Score-Chip (ein Buchstabe) für Karten/Produkte.
   function nutriChip(grade,sz){ grade=String(grade||'').toUpperCase(); if(!/^[ABCDE]$/.test(grade)) return ''; var s=sz||24; return '<span title="Nutri-Score '+grade+'" style="display:inline-flex;align-items:center;justify-content:center;width:'+s+'px;height:'+s+'px;border-radius:7px;background:'+NUTRI_COL[grade]+';color:'+(grade==='C'?'#3a2f00':'#fff')+';font-size:'+Math.round(s*0.55)+'px;font-weight:900;flex-shrink:0;box-shadow:0 2px 6px rgba(4,33,40,.18)">'+grade+'</span>'; }
+  // Ampel für eine Mahlzeit/den Tag: kcal-gewichteter Schnitt der Eintrags-Scores (A=1…E=5).
+  // Nur wenn mindestens die Hälfte der Kalorien einen Score trägt – sonst wäre die Ampel geraten.
+  function ernGradeAgg(entries){
+    var RANK={A:1,B:2,C:3,D:4,E:5}, GR=['A','B','C','D','E'];
+    var sum=0,wsum=0,total=0;
+    (entries||[]).forEach(function(e){ var kc=Math.max(1,+e.kcal||0); total+=kc; var g=String(e.grade||'').toUpperCase(); if(RANK[g]){ sum+=RANK[g]*kc; wsum+=kc; } });
+    if(!wsum||!total||wsum<total*0.5) return null;
+    return GR[Math.min(4,Math.max(0,Math.round(sum/wsum)-1))];
+  }
   // Volle A–E-Skala (aktive Note hervorgehoben) fürs Rezept-Detail.
   function nutriScale(grade){ grade=String(grade||'').toUpperCase(); if(!/^[ABCDE]$/.test(grade)) return ''; return '<div style="display:inline-flex;gap:3px;align-items:center">'+['A','B','C','D','E'].map(function(g){ var on=g===grade; return '<span style="display:inline-flex;align-items:center;justify-content:center;width:'+(on?30:22)+'px;height:'+(on?34:26)+'px;border-radius:7px;background:'+NUTRI_COL[g]+';color:'+(g==='C'?'#3a2f00':'#fff')+';font-size:'+(on?16:12)+'px;font-weight:900;opacity:'+(on?1:0.42)+';box-shadow:'+(on?'0 3px 9px rgba(4,33,40,.22)':'none')+'">'+g+'</span>'; }).join('')+'</div>'; }
   // FINN-Bewertung: Sterne (1–5).
@@ -4199,7 +4229,12 @@
     // Zuerst die eigenen Lebensmittel prüfen (sofort, ohne Netz) – Scan erkennt selbst angelegte Produkte wieder.
     if(S.ernScanPurpose!=='shop'){ var own=ernFindOwnFood(bc);
       if(own){ S.ernScanCode=bc; S.ernScanBusy=false; S.ernScanNotFound=false; S.ernMsg='Dein Lebensmittel erkannt: '+own.name; S.ernErr=false;
-        ernOpenConfirm([{name:own.name,portion:own.portion||'1 Portion',meal:ernCurrentMeal(),kcal:own.kcal,p:own.p,c:own.c,f:own.f,fiber:own.fiber,sugar:own.sugar,satFat:own.satFat,salt:own.salt,image:own.img||'',barcode:bc,estimated:false,source:'manual',custom:true,_micOpen:false,saveFav:false}],'manual'); return; } }
+        ernOpenConfirm([{name:own.name,portion:own.portion||'1 Portion',meal:ernCurrentMeal(),kcal:own.kcal,p:own.p,c:own.c,f:own.f,fiber:own.fiber,sugar:own.sugar,satFat:own.satFat,salt:own.salt,image:own.img||'',barcode:bc,estimated:false,source:'manual',custom:true,_micOpen:false,saveFav:false}],'manual');
+        // Mit Grammbasis: Menge-in-Gramm-Feld aktivieren – Werte skalieren dann automatisch.
+        if(own.gramsBase>0&&S.ernConfirm&&S.ernConfirm.items.length){ var itN=S.ernConfirm.items[S.ernConfirm.items.length-1];
+          itN._gBase={g:own.gramsBase,kcal:own.kcal||0,p:own.p||0,c:own.c||0,f:own.f||0,fiber:own.fiber||0,sugar:own.sugar||0,satFat:own.satFat||0,salt:own.salt||0};
+          itN.grams=own.gramsBase; itN.portion=own.gramsBase+' g'; render(); }
+        return; } }
     S.ernScanBusy=true; S.ernScanErr=''; S.ernScanNotFound=false; render();
     api('/api/member/food-products',{method:'POST',body:JSON.stringify({action:'barcode',barcode:bc})})
     .then(function(d){ S.ernScanBusy=false; S.ernScanCode=bc;
@@ -4226,7 +4261,8 @@
     var per=function(v){ return (v==null)?0:Math.round(v*g/100); };
     var item={ name:p.name||'Produkt', portion:g+' g'+(p.brand?(' · '+p.brand):''), meal:ernCurrentMeal(),
       kcal:per(n.kcal100g), p:per(n.protein100g), c:per(n.carbs100g), f:per(n.fat100g),
-      estimated:false, source:'openfoodfacts', barcode:p.barcode };
+      estimated:false, source:'openfoodfacts', barcode:p.barcode,
+      grade:(p.nutriScore&&p.nutriScore.grade)?String(p.nutriScore.grade).toUpperCase():undefined };
     S.ernProd=null; S.ernCapture=false; ernOpenConfirm([item],'openfoodfacts');
   }
   // ── Barcode-Kamera-Scan ──
@@ -4642,7 +4678,7 @@
   // Aktuell angezeigter Tag (Server liefert today.date; leer = heute laden).
   function ernActiveDate(){ return (DATA.nutri&&DATA.nutri.today&&DATA.nutri.today.date)||isoToday(); }
   function isoShift(dateStr,delta){ var p=String(dateStr||'').split('-'); var d=new Date(parseInt(p[0],10),(parseInt(p[1],10)||1)-1,parseInt(p[2],10)||1); d.setDate(d.getDate()+(delta||0)); var z=function(n){return(n<10?'0':'')+n;}; return d.getFullYear()+'-'+z(d.getMonth()+1)+'-'+z(d.getDate()); }
-  function ernDayLabel(dateStr,isToday){ if(isToday) return 'Heute'; var ty=isoToday(); if(dateStr===isoShift(ty,-1)) return 'Gestern'; var p=String(dateStr||'').split('-'); var d=new Date(parseInt(p[0],10),(parseInt(p[1],10)||1)-1,parseInt(p[2],10)||1); var wd=['So.','Mo.','Di.','Mi.','Do.','Fr.','Sa.'][d.getDay()]; var z=function(n){return(n<10?'0':'')+n;}; return wd+' '+z(d.getDate())+'.'+z(d.getMonth()+1)+'.'; }
+  function ernDayLabel(dateStr,isToday){ if(isToday) return 'Heute'; var ty=isoToday(); if(dateStr===isoShift(ty,-1)) return 'Gestern'; if(dateStr===isoShift(ty,1)) return 'Morgen'; var p=String(dateStr||'').split('-'); var d=new Date(parseInt(p[0],10),(parseInt(p[1],10)||1)-1,parseInt(p[2],10)||1); var wd=['So.','Mo.','Di.','Mi.','Do.','Fr.','Sa.'][d.getDay()]; var z=function(n){return(n<10?'0':'')+n;}; return wd+' '+z(d.getDate())+'.'+z(d.getMonth()+1)+'.'; }
   // Stand für einen (validierten) Tag laden – Server begrenzt Vergangenheit selbst.
   function loadNutriDate(date){ if(S.ernDayBusy) return; S.ernViewDate=date; S.ernDayBusy=true; S.ernMsg=''; render();
     api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'state',date:date})})
@@ -4650,7 +4686,7 @@
     .catch(function(){ S.ernDayBusy=false; render(); }); }
   // Tages-Navigator (◀ Datum ▶ + „Heute") – nur auf dem Heute-Tab über der Mahlzeitenliste.
   function ernDayNav(){ var td=(DATA.nutri&&DATA.nutri.today)||{}, cur=td.date||isoToday(), isToday=td.isToday!==false&&cur===isoToday();
-    var prev=isoShift(cur,-1), next=isoShift(cur,1), canNext=!isToday, ty=isoToday();
+    var prev=isoShift(cur,-1), next=isoShift(cur,1), ty=isoToday(), canNext=cur<isoShift(ty,7);
     var arrow=function(act,arg,dis,path){ return '<button data-act="'+act+'" data-arg="'+arg+'" '+(dis?'disabled ':'')+'aria-label="'+(arg==='prev'?'Vorheriger Tag':'Nächster Tag')+'" style="width:38px;height:38px;border-radius:12px;border:none;background:var(--surface);box-shadow:0 4px 12px rgba(4,33,40,.07);display:flex;align-items:center;justify-content:center;cursor:'+(dis?'default':'pointer')+';opacity:'+(dis?'.35':'1')+'">'+svg(path,{c:'#0a4958',w:2.3,s:18})+'</button>'; };
     return '<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">'+
       arrow('ernDayShift','prev',false,'<path d="M15 6l-6 6 6 6"></path>')+
@@ -4719,6 +4755,7 @@
       ? '<div style="background:var(--surface);border-radius:16px;padding:15px;box-shadow:0 6px 18px rgba(4,33,40,.06);margin-bottom:14px">'+
           '<input id="ern_favn" placeholder="Name (z. B. Mein Porridge)" aria-label="Name" style="width:100%;border:none;border-bottom:1.5px solid var(--border);padding:6px 2px;font-size:16px;font-weight:800;color:var(--text);background:transparent">'+
           '<input id="ern_favport" placeholder="Portion (optional, z. B. 250 g)" aria-label="Portion" style="width:100%;border:1.5px solid var(--border);border-radius:10px;padding:9px 10px;font-size:14px;font-weight:600;color:var(--text-2);background:var(--surface);margin-top:10px">'+
+          '<input id="ern_favgb" type="number" inputmode="numeric" min="1" max="2000" placeholder="Werte gelten für … g (optional, z. B. 100)" aria-label="Grammbasis" style="width:100%;border:1.5px solid var(--border);border-radius:10px;padding:9px 10px;font-size:14px;font-weight:600;color:var(--text-2);background:var(--surface);margin-top:8px">'+
           '<div style="display:flex;gap:7px;margin-top:12px">'+numI('ern_favk','kcal','var(--text)')+numI('ern_favp','Eiweiß',ERN_PROT)+numI('ern_favc','KH',ERN_CARB)+numI('ern_favf','Fett',ERN_FAT)+'</div>'+
           '<div style="display:flex;gap:9px;margin-top:14px"><button data-act="ernFavAddCancel" style="flex:1;padding:13px;border:1.5px solid var(--border);border-radius:13px;background:var(--surface);color:var(--text-muted);font-weight:800;font-size:14px;cursor:pointer">Abbrechen</button><button data-act="ernFavAddSave" '+(S.ernFavBusy?'disabled ':'')+'style="flex:2;padding:13px;border:none;border-radius:13px;background:#0e6072;color:#fff;font-weight:900;font-size:14px;cursor:pointer;opacity:'+(S.ernFavBusy?'.6':'1')+'">'+(S.ernFavBusy?'Speichert …':'Favorit speichern')+'</button></div>'+
         '</div>'
@@ -4728,6 +4765,7 @@
           '<div style="display:flex;align-items:flex-start;gap:10px">'+(f.img?'<img src="'+esc(f.img)+'" alt="" style="width:46px;height:46px;object-fit:cover;border-radius:11px;border:1px solid var(--border);flex-shrink:0">':'')+'<div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:900;color:var(--text)">'+(f.img?'':'⭐ ')+esc(f.name)+'</div><div style="font-size:11.5px;font-weight:600;color:var(--text-soft);margin-top:2px">'+(f.portion?esc(f.portion)+' · ':'')+ernNum(f.kcal)+' kcal · E '+(f.p||0)+' · K '+(f.c||0)+' · F '+(f.f||0)+(((f.fiber||0)||(f.sugar||0)||(f.salt||0))?(' · Ballast. '+(f.fiber||0)+' g · Salz '+(f.salt||0)+' g'):'')+'</div></div>'+
           '<button data-act="ernFavDelete" data-arg="'+esc(f.id)+'" aria-label="Favorit löschen" style="width:30px;height:30px;border-radius:9px;border:none;background:var(--surface-2);cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center">'+svg('<path d="M18 6L6 18M6 6l12 12"></path>',{c:'var(--err-fg)',w:2.2,s:14})+'</button></div>'+
           '<div style="display:flex;gap:7px;margin-top:12px">'+[['0.5','½ Portion'],['1','1 Portion'],['2','Doppelt']].map(function(x){ return '<button data-act="ernFavLog" data-arg="'+esc(f.id)+':'+x[0]+'" style="flex:1;padding:10px 4px;border:1.5px solid var(--border);border-radius:11px;background:var(--surface-2);color:var(--ern-acc);font-weight:800;font-size:12.5px;cursor:pointer">'+x[1]+'</button>'; }).join('')+'</div>'+
+          (f.gramsBase>0?('<div style="display:flex;gap:7px;margin-top:8px"><input id="ern_favg_'+esc(f.id)+'" type="number" inputmode="numeric" min="1" max="5000" value="'+f.gramsBase+'" aria-label="Menge in Gramm" style="flex:1;min-width:0;border:1.5px solid var(--border);border-radius:11px;padding:9px 10px;font-size:13.5px;font-weight:800;color:var(--text);background:var(--surface)"><button data-act="ernFavLogG" data-arg="'+esc(f.id)+'" style="flex:1.4;padding:10px 4px;border:none;border-radius:11px;background:#0e6072;color:#fff;font-weight:900;font-size:12.5px;cursor:pointer">Menge (g) loggen</button></div><div style="font-size:10px;color:var(--text-soft);font-weight:600;margin-top:4px">Werte-Basis: '+f.gramsBase+' g – jede Menge wird automatisch umgerechnet.</div>'):'')+
         '</div>'; }).join('')
       : '<div style="background:var(--surface);border-radius:16px;padding:28px 20px;text-align:center;box-shadow:0 6px 18px rgba(4,33,40,.06)"><div style="font-size:30px">⭐</div><div style="font-size:14px;font-weight:800;color:var(--text);margin-top:8px">Noch keine Favoriten</div><div style="font-size:12.5px;font-weight:500;color:var(--text-soft);margin-top:4px;line-height:1.5">Speichere Mahlzeiten, die du oft isst – dann loggst du sie mit einem Tipp. Beim Bearbeiten eines Eintrags gibt es „Als Favorit speichern".</div></div>';
     var msg=S.ernMsg?'<div role="'+(S.ernErr?'alert':'status')+'" style="font-size:12.5px;font-weight:700;color:'+(S.ernErr?'var(--err-fg)':ERN_G)+';text-align:center;margin-top:12px">'+esc(S.ernMsg)+'</div>':'';
@@ -4820,9 +4858,13 @@
         '<button data-act="glp1Activate" style="width:100%;margin-top:13px;padding:12px;border:none;border-radius:13px;background:'+ERN_G+';color:#fff;font-weight:900;font-size:14px;cursor:pointer">Aktivieren</button></div>';
     }
     var ch=glp1Checks();
+    // Ballaststoffe live aus dem Protokoll (weitere Nährwerte je Eintrag) – zeigt den
+    // Ist-Stand zum 30-g-Ziel und hakt automatisch ab, wenn (fast) erreicht.
+    var fibG=Math.round((((n.today||{}).totals||{}).fiber||0)*10)/10;
+    var fibTxt=fibG>0?('Bisher '+String(fibG).replace('.',',')+' g von 30 g erfasst'):'Hafer, Hülsenfrüchte, Gemüse → kurzkettige Fettsäuren';
     var items=[
       {key:'protein',ic:'🥩',t:'Eiweiß zu jeder Mahlzeit',s:'Stärkster natürlicher GLP-1-Reiz',auto:true,done:glp1ProteinMet()},
-      {key:'fiber',ic:'🌾',t:'Ballaststoffe (~30 g)',s:'Hafer, Hülsenfrüchte, Gemüse → kurzkettige Fettsäuren',done:!!ch.fiber},
+      {key:'fiber',ic:'🌾',t:'Ballaststoffe (~30 g)',s:fibTxt,done:!!ch.fiber||fibG>=27},
       {key:'fats',ic:'🥑',t:'Gesunde Fette',s:'Olivenöl, Nüsse, Avocado',done:!!ch.fats},
       {key:'ferment',ic:'🥛',t:'Fermentiertes',s:'Joghurt, Kefir, Sauerkraut → Mikrobiom',done:!!ch.ferment},
       {key:'order',ic:'🥗',t:'Reihenfolge beachtet',s:'Gemüse &amp; Eiweiß zuerst, Kohlenhydrate zuletzt',done:!!ch.order},
@@ -4873,11 +4915,14 @@
       '</div>'+
       '<div style="display:flex;gap:12px;margin-top:18px">'+macros.map(function(m){ var pct=m[2]>0?Math.min(100,Math.round(m[1]/m[2]*100)):0; return '<div style="flex:1"><div style="font-size:12px;font-weight:800;color:var(--text);margin-bottom:6px">'+m[0]+'</div><div style="height:7px;border-radius:4px;background:var(--surface-2);overflow:hidden"><div style="height:100%;width:'+pct+'%;background:'+m[3]+';border-radius:4px"></div></div><div style="font-size:11px;font-weight:700;color:var(--text-soft);margin-top:6px">'+m[1]+' / '+m[2]+' g</div></div>'; }).join('')+'</div>'+
     '</div>';
-    // Wasser
+    // Wasser – Gläser à 0,25 l zum Tippen PLUS freie Mengen (0,33-l-Flasche & Co.).
     var wg=td.waterGoal||8, wc=td.water||0, cups='';
-    for(var i=0;i<wg;i++){ cups+='<button data-act="ernWater" data-arg="to:'+(i+1)+'" aria-label="'+(i+1)+' von '+wg+' Gläsern Wasser" aria-pressed="'+(i<wc?'true':'false')+'" style="flex:1;height:26px;border-radius:6px;border:none;background:'+(i<wc?ERN_WATER:'var(--surface-2)')+';cursor:pointer;padding:0"></button>'; }
-    var water='<div style="'+CARD+'"><div style="display:flex;align-items:center;justify-content:space-between"><div style="display:flex;align-items:center;gap:8px">'+svg('<path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z"></path>',{c:ERN_WATER,w:2,s:18})+'<span style="font-size:13px;font-weight:800;color:var(--text)">Wasser</span></div><span style="font-size:15px;font-weight:900;color:var(--text)">'+String((wc*0.25).toFixed(1)).replace('.',',')+' <span style="font-size:12px;color:var(--text-soft)">/ '+String((wg*0.25).toFixed(1)).replace('.',',')+' L</span></span></div>'+
-      '<div style="display:flex;gap:4px;margin-top:12px">'+cups+'</div><div style="font-size:10.5px;font-weight:700;color:var(--text-soft);margin-top:8px">Tippen zum Eintragen · 1 Glas = 0,25 L</div></div>';
+    for(var i=0;i<wg;i++){ cups+='<button data-act="ernWater" data-arg="to:'+(i+1)+'" aria-label="'+(i+1)+' von '+wg+' Gläsern Wasser" aria-pressed="'+(i<Math.round(wc)?'true':'false')+'" style="flex:1;height:26px;border-radius:6px;border:none;background:'+(i<Math.round(wc)?ERN_WATER:'var(--surface-2)')+';cursor:pointer;padding:0"></button>'; }
+    var wchip=function(ml,lab){ return '<button data-act="ernWaterMl" data-arg="'+ml+'" style="flex:1;padding:8px 4px;border:1.5px solid var(--border);border-radius:10px;background:var(--surface-2);color:'+ERN_WATER+';font-weight:800;font-size:12px;cursor:pointer">'+lab+'</button>'; };
+    var wfree='<div style="display:flex;gap:6px;margin-top:9px">'+wchip(330,'+0,33 l')+wchip(500,'+0,5 l')+wchip(750,'+0,75 l')+
+      '<div style="flex:1.4;display:flex;gap:4px"><input id="ern_wml" type="number" inputmode="numeric" min="1" max="5000" placeholder="ml" aria-label="Wassermenge in Milliliter" style="width:100%;min-width:0;border:1.5px solid var(--border);border-radius:10px;padding:8px 8px;font-size:12.5px;font-weight:700;color:var(--text);background:var(--surface)"><button data-act="ernWaterMlInput" aria-label="Eigene Menge eintragen" style="padding:0 12px;border:none;border-radius:10px;background:'+ERN_WATER+';color:#fff;font-weight:900;font-size:13px;cursor:pointer">＋</button></div></div>';
+    var water='<div style="'+CARD+'"><div style="display:flex;align-items:center;justify-content:space-between"><div style="display:flex;align-items:center;gap:8px">'+svg('<path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z"></path>',{c:ERN_WATER,w:2,s:18})+'<span style="font-size:13px;font-weight:800;color:var(--text)">Wasser</span></div><span style="font-size:15px;font-weight:900;color:var(--text)">'+String((wc*0.25).toFixed(2)).replace('.',',').replace(/,?0+$/,'').replace(/^$/,'0')+' <span style="font-size:12px;color:var(--text-soft)">/ '+String((wg*0.25).toFixed(1)).replace('.',',')+' L</span></span></div>'+
+      '<div style="display:flex;gap:4px;margin-top:12px">'+cups+'</div>'+wfree+'<div style="font-size:10.5px;font-weight:700;color:var(--text-soft);margin-top:8px">Glas antippen (0,25 l) oder freie Menge in ml eintragen</div></div>';
     // Status-Meldung + Favoriten-Schnellzugriff. Das Loggen läuft jetzt komplett über den
     // „+"-Button (Erfassen-Popup) – die alte „Mahlzeit loggen"-Karte entfällt (war doppelt).
     var msg=S.ernMsg?'<div style="font-size:12.5px;font-weight:700;color:'+(S.ernErr?'var(--err-fg)':ERN_G)+';margin:12px 2px 0;line-height:1.4">'+esc(S.ernMsg)+'</div>':'';
@@ -4890,12 +4935,17 @@
       var items=entries.filter(function(e){ return (e.meal||'snack')===ml[0]; });
       if(!items.length) return;
       var sum=items.reduce(function(a,b){ return a+(b.kcal||0); },0);
-      meals+='<div style="'+CARD.replace('padding:18px','padding:15px 16px')+'"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px"><div style="display:flex;align-items:center;gap:9px"><span style="font-size:18px">'+ml[2]+'</span><span style="font-size:14.5px;font-weight:900;color:var(--text)">'+ml[1]+'</span></div><span style="font-size:13.5px;font-weight:900;color:var(--text)">'+ernNum(sum)+' kcal</span></div>'+
-        items.map(function(it){ return '<div style="display:flex;align-items:center;gap:8px;padding:10px 0;border-top:1px solid var(--border)"><button data-act="ernEntryOpen" data-arg="'+esc(it.id)+'" aria-label="'+esc(it.name)+' bearbeiten" style="flex:1;min-width:0;text-align:left;border:none;background:transparent;padding:0;cursor:pointer;font-family:inherit"><div style="font-size:13.5px;font-weight:700;color:var(--text)">'+esc(it.name)+(it.source==='openfoodfacts'?' <span style="font-size:9px;font-weight:800;color:var(--teal-ink);background:var(--surface-2);padding:1px 5px;border-radius:6px;vertical-align:middle">OFF</span>':'')+'</div><div style="font-size:11px;font-weight:600;color:var(--text-soft);margin-top:1px">'+(it.portion?esc(it.portion)+' · ':'')+'E '+(it.p||0)+' · K '+(it.c||0)+' · F '+(it.f||0)+'</div></button><span style="font-size:13px;font-weight:800;color:var(--text-2)">'+ernNum(it.kcal||0)+'</span><button data-act="ernDelete" data-arg="'+esc(it.id)+'" aria-label="Entfernen" style="width:26px;height:26px;border-radius:8px;border:none;background:var(--surface-2);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'+svg('<path d="M18 6L6 18M6 6l12 12"></path>',{c:'var(--text-soft)',w:2.2,s:13})+'</button></div>'; }).join('')+'<button data-act="ernOpenCapture" data-arg="'+ml[1]+'" style="width:100%;margin:8px 0 10px;padding:10px;border:1.5px dashed #cfe0d6;background:var(--surface-2);color:var(--ern-acc);border-radius:12px;font-weight:800;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px">'+svg('<path d="M12 5v14M5 12h14"></path>',{c:'var(--ern-acc)',w:2.6,s:15})+'Zu '+ml[1]+' hinzufügen</button><button data-act="ernMealSaveOpen" data-arg="'+ml[0]+'" style="width:100%;margin:0 0 8px;padding:8px;border:none;background:transparent;color:var(--ern-acc);border-radius:10px;font-weight:800;font-size:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px">⭐ '+ml[1]+' als Mahlzeit speichern</button></div>';
+      // Makros + Ampel je Mahlzeit direkt im Kopf – so sieht man die Verteilung ohne Aufklappen.
+      var mp=items.reduce(function(a,b){ return a+(b.p||0); },0), mc=items.reduce(function(a,b){ return a+(b.c||0); },0), mf=items.reduce(function(a,b){ return a+(b.f||0); },0);
+      var mGrade=ernGradeAgg(items);
+      meals+='<div style="'+CARD.replace('padding:18px','padding:15px 16px')+'"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px"><div style="display:flex;align-items:center;gap:9px"><span style="font-size:18px">'+ml[2]+'</span><span style="font-size:14.5px;font-weight:900;color:var(--text)">'+ml[1]+'</span>'+(mGrade?nutriChip(mGrade,20):'')+'</div><div style="text-align:right"><div style="font-size:13.5px;font-weight:900;color:var(--text)">'+ernNum(sum)+' kcal</div><div style="font-size:10px;font-weight:800;margin-top:1px"><span style="color:'+ERN_PROT+'">E '+ernNum(mp)+'</span> · <span style="color:'+ERN_CARB+'">K '+ernNum(mc)+'</span> · <span style="color:'+ERN_FAT+'">F '+ernNum(mf)+'</span></div></div></div>'+
+        items.map(function(it){ return '<div style="display:flex;align-items:center;gap:8px;padding:10px 0;border-top:1px solid var(--border)"><button data-act="ernEntryOpen" data-arg="'+esc(it.id)+'" aria-label="'+esc(it.name)+' bearbeiten" style="flex:1;min-width:0;text-align:left;border:none;background:transparent;padding:0;cursor:pointer;font-family:inherit"><div style="font-size:13.5px;font-weight:700;color:var(--text)">'+esc(it.name)+(it.source==='openfoodfacts'?' <span style="font-size:9px;font-weight:800;color:var(--teal-ink);background:var(--surface-2);padding:1px 5px;border-radius:6px;vertical-align:middle">OFF</span>':'')+'</div><div style="font-size:11px;font-weight:600;color:var(--text-soft);margin-top:1px">'+(it.portion?esc(it.portion)+' · ':'')+'E '+(it.p||0)+' · K '+(it.c||0)+' · F '+(it.f||0)+'</div></button>'+(it.grade?nutriChip(it.grade,20):'')+'<span style="font-size:13px;font-weight:800;color:var(--text-2)">'+ernNum(it.kcal||0)+'</span><button data-act="ernDelete" data-arg="'+esc(it.id)+'" aria-label="Entfernen" style="width:26px;height:26px;border-radius:8px;border:none;background:var(--surface-2);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'+svg('<path d="M18 6L6 18M6 6l12 12"></path>',{c:'var(--text-soft)',w:2.2,s:13})+'</button></div>'; }).join('')+'<button data-act="ernOpenCapture" data-arg="'+ml[1]+'" style="width:100%;margin:8px 0 10px;padding:10px;border:1.5px dashed #cfe0d6;background:var(--surface-2);color:var(--ern-acc);border-radius:12px;font-weight:800;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px">'+svg('<path d="M12 5v14M5 12h14"></path>',{c:'var(--ern-acc)',w:2.6,s:15})+'Zu '+ml[1]+' hinzufügen</button><button data-act="ernMealSaveOpen" data-arg="'+ml[0]+'" style="width:100%;margin:0 0 8px;padding:8px;border:none;background:transparent;color:var(--ern-acc);border-radius:10px;font-weight:800;font-size:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px">⭐ '+ml[1]+' als Mahlzeit speichern</button></div>';
     });
     if(!meals){ meals='<div style="'+CARD+';text-align:center"><div style="font-size:30px">🍽️</div><div style="font-size:13.5px;font-weight:700;color:var(--text);margin-top:6px">Noch nichts protokolliert</div><div style="font-size:12.5px;font-weight:500;color:var(--text-soft);margin:2px 0 12px">Erfasse deine erste Mahlzeit per Foto, Sprache oder Suche.</div><button data-act="ernOpenCapture" data-arg="Mahlzeit" style="padding:12px 20px;border:none;border-radius:13px;background:'+ERN_G+';color:#fff;font-weight:900;font-size:14px;cursor:pointer">Essen erfassen</button></div>'; }
     var viewIsToday=td.isToday!==false&&(td.date||isoToday())===isoToday();
-    var mealsBlock='<div style="font-size:17px;font-weight:900;color:var(--text);letter-spacing:-.3px;margin:22px 2px 12px">'+(viewIsToday?'Heute gegessen':'An diesem Tag')+'</div>'+meals;
+    var viewIsFuture=(td.date||isoToday())>isoToday();
+    var dayGrade=ernGradeAgg(entries);
+    var mealsBlock='<div style="display:flex;align-items:center;gap:9px;margin:22px 2px 12px"><span style="font-size:17px;font-weight:900;color:var(--text);letter-spacing:-.3px">'+(viewIsToday?'Heute gegessen':(viewIsFuture?'Für diesen Tag geplant':'An diesem Tag'))+'</span>'+(dayGrade?nutriChip(dayGrade,22):'')+'</div>'+meals;
     // (Der FINN-Coach ist über den eigenen „Coach"-Tab in der unteren Leiste erreichbar –
     //  der frühere Teaser hier entfällt, um „Heute" aufgeräumt zu halten.)
     // Stoffwechsel-Coaching CTA
@@ -5929,8 +5979,9 @@
     var overview=trainCardBox(head+macros+'<button data-act="tagErnCapture" style="width:100%;margin-top:13px;border:1.5px solid '+ERN_G+';border-radius:12px;background:rgba(14,96,114,.05);color:var(--teal-ink);font-weight:800;font-size:13.5px;padding:12px;cursor:pointer">＋ Essen erfassen</button>');
     // Wasser (voll interaktiv, in-place)
     var wg=td.waterGoal||8, wc=td.water||0, cups='';
-    for(var wi=0;wi<wg;wi++){ cups+='<button data-act="ernWater" data-arg="to:'+(wi+1)+'" aria-label="'+(wi+1)+' von '+wg+' Gläsern Wasser" style="flex:1;height:26px;border-radius:6px;border:none;background:'+(wi<wc?ERN_WATER:'var(--surface-2)')+';cursor:pointer;padding:0"></button>'; }
-    var water=trainCardBox('<div style="display:flex;align-items:center;justify-content:space-between"><div style="display:flex;align-items:center;gap:8px">'+svg('<path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z"></path>',{c:ERN_WATER,w:2,s:18})+'<span style="font-size:13px;font-weight:800;color:var(--text)">Wasser</span></div><span style="font-size:15px;font-weight:900;color:var(--text)">'+String((wc*0.25).toFixed(1)).replace('.',',')+' <span style="font-size:12px;color:var(--text-soft)">/ '+String((wg*0.25).toFixed(1)).replace('.',',')+' L</span></span></div><div style="display:flex;gap:4px;margin-top:12px">'+cups+'</div><div style="font-size:10.5px;font-weight:700;color:var(--text-soft);margin-top:8px">Tippen zum Eintragen · 1 Glas = 0,25 L</div>');
+    for(var wi=0;wi<wg;wi++){ cups+='<button data-act="ernWater" data-arg="to:'+(wi+1)+'" aria-label="'+(wi+1)+' von '+wg+' Gläsern Wasser" style="flex:1;height:26px;border-radius:6px;border:none;background:'+(wi<Math.round(wc)?ERN_WATER:'var(--surface-2)')+';cursor:pointer;padding:0"></button>'; }
+    var wchipT=function(ml,lab){ return '<button data-act="ernWaterMl" data-arg="'+ml+'" style="flex:1;padding:8px 4px;border:1.5px solid var(--border);border-radius:10px;background:var(--surface-2);color:'+ERN_WATER+';font-weight:800;font-size:12px;cursor:pointer">'+lab+'</button>'; };
+    var water=trainCardBox('<div style="display:flex;align-items:center;justify-content:space-between"><div style="display:flex;align-items:center;gap:8px">'+svg('<path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z"></path>',{c:ERN_WATER,w:2,s:18})+'<span style="font-size:13px;font-weight:800;color:var(--text)">Wasser</span></div><span style="font-size:15px;font-weight:900;color:var(--text)">'+String((wc*0.25).toFixed(2)).replace('.',',').replace(/,?0+$/,'')+' <span style="font-size:12px;color:var(--text-soft)">/ '+String((wg*0.25).toFixed(1)).replace('.',',')+' L</span></span></div><div style="display:flex;gap:4px;margin-top:12px">'+cups+'</div><div style="display:flex;gap:6px;margin-top:9px">'+wchipT(330,'+0,33 l')+wchipT(500,'+0,5 l')+wchipT(750,'+0,75 l')+'</div><div style="font-size:10.5px;font-weight:700;color:var(--text-soft);margin-top:8px">Glas antippen (0,25 l) oder Flaschengröße wählen</div>');
     // Intervallfasten (voll interaktiv; Timer #ern_fast_t läuft über das globale Intervall)
     var f=ernFastMs(), fastDeg=Math.min(360,Math.round(f.win?f.elapsed/f.win*360:0)), fastPlans=['16:8','18:6','14:10'];
     var fasting=trainCardBox('<div style="display:flex;align-items:center;gap:15px">'+
@@ -10807,8 +10858,12 @@
       .then(function(d){
         if(!(d&&d.ok!==false&&d.today)){ S.ernConfirmBusy=false; S.ernErr=true; S.ernMsg=(d&&d.message)||'Speichern fehlgeschlagen.'; render(); return; }
         var chain=Promise.resolve();
-        favItems.forEach(function(it){ chain=chain.then(function(){ return api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'fav-save',name:it.name,portion:it.portion,kcal:it.kcal,p:it.p,c:it.c,f:it.f,fiber:it.fiber,sugar:it.sugar,satFat:it.satFat,salt:it.salt,image:it.image||'',barcode:it.barcode||'',custom:true})}).catch(function(){}); }); });
-        chain.then(function(){ S.ernConfirmBusy=false; S.ernConfirm=null; S.ernTab='heute'; S.ernErr=false; S.ernMsg=favItems.length?'Gespeichert ✓ · als eigenes Lebensmittel gemerkt':'Gespeichert ✓'; loadNutri(); if(favItems.length) loadFavs(); });
+        favItems.forEach(function(it){ chain=chain.then(function(){ return api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'fav-save',name:it.name,portion:it.portion,kcal:it.kcal,p:it.p,c:it.c,f:it.f,fiber:it.fiber,sugar:it.sugar,satFat:it.satFat,salt:it.salt,image:it.image||'',barcode:it.barcode||'',gramsBase:it.gramsBase||0,custom:true})}).catch(function(){}); }); });
+        var futurePlan=cf.date>isoToday();
+        chain.then(function(){ S.ernConfirmBusy=false; S.ernConfirm=null; S.ernTab='heute'; S.ernErr=false;
+          S.ernMsg=(futurePlan?('Für '+ernDayLabel(cf.date,false)+' vorgeplant ✓'):'Gespeichert ✓')+(favItems.length?' · als eigenes Lebensmittel gemerkt':'');
+          if(futurePlan){ loadNutriDate(cf.date); } else { loadNutri(); }
+          if(favItems.length) loadFavs(); });
       })
       .catch(function(){ S.ernConfirmBusy=false; S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); }); },
     // FINN bewertet die aktuell zusammengestellte Mahlzeit (Einzel-Items + Gesamt + Optimierung).
@@ -10883,6 +10938,13 @@
       render();
       var rid=++__ernWaterReq;
       api('/api/member/nutrition',{method:'POST',body:JSON.stringify(body)}).then(function(d){ if(rid!==__ernWaterReq) return; if(d&&d.ok){ DATA.nutri=d; render(); } }).catch(function(){}); },
+    // Freie Wassermenge in ml (0,33-l-Flasche & Co.) – optimistisch, dann Server.
+    ernWaterMl:function(a){ var ml=parseInt(a,10)||0; if(ml<1||ml>5000) return; var nu=DATA.nutri&&DATA.nutri.today;
+      if(nu) nu.water=Math.round(Math.max(0,(nu.water||0)+ml/250)*100)/100;
+      render();
+      var rid=++__ernWaterReq;
+      api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'water',ml:ml,date:ernActiveDate()})}).then(function(d){ if(rid!==__ernWaterReq) return; if(d&&d.ok){ DATA.nutri=d; render(); } }).catch(function(){}); },
+    ernWaterMlInput:function(){ var el=$('ern_wml'); var ml=el?parseInt(el.value,10):0; if(!(ml>0)){ S.ernErr=true; S.ernMsg='Bitte eine Menge in ml eingeben (z. B. 330).'; render(); return; } if(el) el.value=''; ACT.ernWaterMl(String(Math.min(5000,ml))); },
     // ── Etappe 3: Tages-Navigation + Eintrag bearbeiten/duplizieren/löschen ──
     ernDayShift:function(a){ var cur=ernActiveDate(); loadNutriDate(isoShift(cur, a==='next'?1:-1)); },
     ernDayToday:function(){ S.ernViewDate=''; loadNutri(); },
@@ -10922,13 +10984,18 @@
       if(name.length<2){ S.ernErr=true; S.ernMsg='Bitte gib einen Namen ein.'; render(); return; }
       if(!(kcal>0||p>0||c>0||f>0)){ S.ernErr=true; S.ernMsg='Bitte gib zumindest Kalorien oder Makros an.'; render(); return; }
       S.ernFavBusy=true; S.ernErr=false; S.ernMsg=''; render();
-      api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'fav-save',name:name,portion:(g('ern_favport')||'').trim(),kcal:kcal,p:p,c:c,f:f})})
+      api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'fav-save',name:name,portion:(g('ern_favport')||'').trim(),gramsBase:gn('ern_favgb'),kcal:kcal,p:p,c:c,f:f})})
       .then(function(d){ S.ernFavBusy=false; if(d&&d.ok){ DATA.nutriFavs=d.favorites||DATA.nutriFavs; S.ernFavAddOpen=false; S.ernMsg=d.saved===false?'Ist schon in deinen Favoriten.':'Favorit gespeichert ⭐'; S.ernErr=false; } else { S.ernErr=true; S.ernMsg=(d&&d.message)||'Konnte nicht speichern.'; } render(); })
       .catch(function(){ S.ernFavBusy=false; S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); }); },
     ernFavDelete:function(a){ api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'fav-delete',id:a})}).then(function(d){ if(d&&d.ok){ DATA.nutriFavs=d.favorites||[]; render(); } else { S.ernErr=true; S.ernMsg=(d&&d.message)||'Löschen fehlgeschlagen – bitte erneut.'; render(); } }).catch(function(){ S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); }); },
     ernFavLog:function(a){ a=String(a||''); var parts=a.split(':'), fid=parts[0], factor=parts[1]?parseFloat(parts[1]):1;
       api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'fav-log',id:fid,factor:factor,date:ernActiveDate()})})
       .then(function(d){ if(d&&d.ok){ DATA.nutri=d; var nm=(d.added&&d.added[0]&&d.added[0].name)||'Favorit'; S.ernMsg='Protokolliert: '+nm; S.ernErr=false; render(); } else { S.ernErr=true; S.ernMsg=(d&&d.message)||'Konnte nicht protokollieren – bitte erneut.'; render(); } }).catch(function(){ S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); }); },
+    // Favorit mit Grammbasis in freier Menge loggen – der Server rechnet die Werte exakt um.
+    ernFavLogG:function(a){ var el=$('ern_favg_'+a); var g=el?parseInt(el.value,10):0;
+      if(!(g>0)){ S.ernErr=true; S.ernMsg='Bitte eine Menge in Gramm eingeben.'; render(); return; }
+      api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'fav-log',id:a,grams:Math.min(5000,g),date:ernActiveDate()})})
+      .then(function(d){ if(d&&d.ok){ DATA.nutri=d; var nm=(d.added&&d.added[0]&&d.added[0].name)||'Favorit'; S.ernMsg='Protokolliert: '+nm+' ('+g+' g)'; S.ernErr=false; render(); } else { S.ernErr=true; S.ernMsg=(d&&d.message)||'Konnte nicht protokollieren – bitte erneut.'; render(); } }).catch(function(){ S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); }); },
     // ── Gespeicherte Mahlzeiten (mehrere Produkte als 1 Vorlage) ──
     ernMealMgrOpen:function(){ setS({ernMealMgr:true, ernMealDraft:null, ernMsg:'', ernErr:false}); if(DATA.nutriMeals==null) loadMeals(); },
     ernMealMgrClose:function(){ setS({ernMealMgr:false, ernMealDraft:null, ernMsg:''}); },

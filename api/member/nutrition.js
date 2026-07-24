@@ -114,6 +114,8 @@ const ACTS = { kaum: 1.35, moderat: 1.55, aktiv: 1.75 };
 const DIETS = ['omnivor', 'vegetarisch', 'vegan', 'lowcarb', 'highprotein'];
 
 function n0(v) { const n = Math.round(Number(v)); return (isNaN(n) || n < 0) ? 0 : n; }
+// Wasser in Gläsern MIT Nachkommastellen (0,33 l = 1,32 Gläser à 0,25 l) – freie Mengen.
+function nWater(v) { const n = Number(v); if (isNaN(n) || n < 0) return 0; return Math.round(n * 100) / 100; }
 function clamp(v, lo, hi, def) { const n = Math.round(Number(v)); return isNaN(n) ? def : Math.max(lo, Math.min(hi, n)); }
 // Wie clamp, aber mit Nachkommastellen – für Nährwerte in Gramm, die auch <1 g sein
 // können (z. B. Salz 0,3 g). Absent/unlesbar/negativ -> 0.
@@ -146,7 +148,10 @@ function validDate(input, todayYMD) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return todayYMD;
   const d = new Date(s + 'T12:00:00Z');
   if (isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== s) return todayYMD;
-  if (s > todayYMD) return todayYMD;
+  // Vorplanen erlaubt: bis zu 7 Tage in die Zukunft (abends schon den nächsten Tag
+  // tracken). Streak/Vitalpunkte zählen weiterhin nur bis heute (computeVitals).
+  const max = dayKeyMinus(todayYMD, -7);
+  if (s > max) return max;
   const min = dayKeyMinus(todayYMD, 400);
   return s < min ? min : s;
 }
@@ -195,6 +200,9 @@ function sanitizeEntry(raw, hour, keepId) {
   if (SOURCES.indexOf(String(raw.source)) >= 0) e.source = String(raw.source);
   const bc = String(raw.barcode || '').replace(/\D/g, '');
   if (bc.length >= 8 && bc.length <= 14) e.barcode = bc;
+  // Nutri-Score-Ampel (A–E) vom Scan/der Suche – bleibt am Eintrag sichtbar.
+  const grade = String(raw.grade || '').toUpperCase();
+  if (/^[A-E]$/.test(grade)) e.grade = grade;
   return e;
 }
 
@@ -246,11 +254,11 @@ async function kvGetMany(keys) {
 async function loadProfile(id) { return kvGetJson(PKEY(id)); }
 async function loadDay(id, date) {
   const d = await kvGetJson(DKEY(id, date));
-  if (d && Array.isArray(d.entries)) return { entries: d.entries, water: n0(d.water) };
+  if (d && Array.isArray(d.entries)) return { entries: d.entries, water: nWater(d.water) };
   return { entries: [], water: 0 };
 }
 async function saveDay(id, date, day) {
-  try { await redisPipeline([['SET', DKEY(id, date), JSON.stringify({ entries: day.entries.slice(-60), water: n0(day.water) }), 'EX', String(DAY_TTL)]]); return true; } catch (e) { return false; }
+  try { await redisPipeline([['SET', DKEY(id, date), JSON.stringify({ entries: day.entries.slice(-60), water: nWater(day.water) }), 'EX', String(DAY_TTL)]]); return true; } catch (e) { return false; }
 }
 // ── Koch-Plan (was wann kochen) + abgeleitete Einkaufsliste ──
 async function loadCook(id) {
@@ -547,6 +555,9 @@ module.exports = async function handler(req, res) {
         fiber: patch.fiber != null ? patch.fiber : e.fiber, sugar: patch.sugar != null ? patch.sugar : e.sugar,
         satFat: patch.satFat != null ? patch.satFat : e.satFat, salt: patch.salt != null ? patch.salt : e.salt,
         custom: e.custom, meal: patch.meal != null ? patch.meal : e.meal,
+        // Herkunfts-Metadaten überleben das Bearbeiten (sonst verlöre ein OFF-Eintrag
+        // beim Anpassen der Portion sein Badge, den Barcode und die Ampel).
+        source: e.source, barcode: e.barcode, estimated: e.estimated, grade: e.grade,
       }, hour, true);
       merged.ts = e.ts || merged.ts;
       return merged;
@@ -570,15 +581,21 @@ module.exports = async function handler(req, res) {
     res.statusCode = 200; return res.end(JSON.stringify(Object.assign(await buildState(id, profile, toDate), { added: [{ name: copy.name, kcal: copy.kcal }] })));
   }
 
-  // ── Wasser (Gläser à 0,25 l) – am validierten Tag ──
+  // ── Wasser (Gläser à 0,25 l) – am validierten Tag. Auch freie Mengen: `ml` addiert
+  // beliebige Milliliter (0,33-l-Flasche = +1,32 Gläser), Bruchteile bleiben erhalten. ──
   if (action === 'water') {
     const targetDate = validDate(body.date, date);
     const day = await loadDay(id, targetDate);
     const goal = waterGoalCups(targetsFor(profile || {}));
     let cups = day.water;
     if (body.set != null) cups = n0(body.set);
+    else if (body.ml != null) {
+      const ml = Number(body.ml);
+      const dCups = (isNaN(ml) ? 0 : Math.max(-5000, Math.min(5000, ml))) / 250;
+      cups = (day.water || 0) + dCups;
+    }
     else cups = (day.water || 0) + clamp(body.delta, -20, 20, 0);
-    const nextWater = Math.max(0, Math.min(goal + 4, cups));
+    const nextWater = nWater(Math.max(0, Math.min(goal + 8, cups)));
     // Lost-Update vermeiden: unmittelbar vor dem Schreiben die aktuellsten entries neu laden
     // und nur das Wasser übernehmen. So löscht ein Wasser-Tap kein gerade parallel geloggtes
     // Lebensmittel (der Tages-Datensatz enthält entries + water in einem Objekt).
@@ -604,6 +621,10 @@ module.exports = async function handler(req, res) {
     const fav = { id: f.id, name: f.name, portion: f.portion, kcal: f.kcal, p: f.p, c: f.c, f: f.f };
     ['fiber', 'sugar', 'satFat', 'salt'].forEach(function (k) { if (f[k] != null) fav[k] = f[k]; });
     if (f.custom) fav.custom = true;
+    // Optionale Grammbasis: „diese Portion entspricht X g" – damit lässt sich später JEDE
+    // Menge loggen (z. B. Werte je 100 g anlegen und beim Essen 137 g eintragen).
+    const gb = clamp(body.gramsBase, 1, 2000, 0);
+    if (gb > 0) fav.gramsBase = gb;
     // Optionaler Barcode (EAN/GTIN) des eigenen Lebensmittels – zum späteren Wiederfinden per Scan.
     const bc = String(body.barcode || '').replace(/\D/g, '');
     if (bc.length >= 8 && bc.length <= 14) fav.barcode = bc;
@@ -631,10 +652,18 @@ module.exports = async function handler(req, res) {
     const saved = await kvGetJson(FAVKEY(id)); const list = Array.isArray(saved) ? saved : [];
     const fav = list.filter(function (x) { return String(x.id) === fid; })[0];
     if (!fav) { res.statusCode = 200; return res.end(JSON.stringify(Object.assign(await buildState(id, profile, targetDate), { added: [] }))); }
-    // Menge anpassbar: Faktor 0,25–10 (z. B. halbe/doppelte Portion).
-    const factor = Math.max(0.25, Math.min(10, Number(body.factor) || 1));
+    // Menge anpassbar: Faktor 0,25–10 (z. B. halbe/doppelte Portion) ODER – bei Favoriten
+    // mit Grammbasis – eine freie Grammzahl: Werte skalieren dann exakt (137 g Steak statt
+    // Gesamtwerte selbst umrechnen).
+    let factor = Math.max(0.25, Math.min(10, Number(body.factor) || 1));
+    let portionLabel = fav.portion;
+    const grams = Number(body.grams);
+    if (grams > 0 && Number(fav.gramsBase) > 0) {
+      factor = Math.max(0.05, Math.min(20, Math.min(5000, grams) / Number(fav.gramsBase)));
+      portionLabel = Math.round(grams) + ' g';
+    }
     const entry = sanitizeEntry({
-      name: fav.name, portion: fav.portion, meal: body.meal, custom: fav.custom,
+      name: fav.name, portion: portionLabel, meal: body.meal, custom: fav.custom,
       kcal: Math.round(n0(fav.kcal) * factor), p: Math.round(n0(fav.p) * factor), c: Math.round(n0(fav.c) * factor), f: Math.round(n0(fav.f) * factor),
       fiber: (Number(fav.fiber) || 0) * factor, sugar: (Number(fav.sugar) || 0) * factor, satFat: (Number(fav.satFat) || 0) * factor, salt: (Number(fav.salt) || 0) * factor,
     }, hour);
@@ -969,10 +998,12 @@ module.exports = async function handler(req, res) {
   if (action === 'recipe-log') {
     const targetDate = validDate(body.date, date);
     const rp = body.recipe || {};
-    // Anzahl der Portionen wählbar; Makros deterministisch × Portionen, dann geprüft.
-    const servings = clamp(body.servings, 1, 6, 1);
+    // Anzahl der Portionen wählbar – auch BRUCHTEILE (¼/⅓/½), z. B. wenn ein Rezept
+    // als Gesamtportion angelegt ist und zu zweit geteilt wird. Makros × Portionen, geprüft.
+    const servings = clampF(body.servings, 0.25, 6, 2) || 1;
+    const servLabel = (servings === 1) ? '1 Portion' : (String(servings).replace('.', ',') + ' Portionen');
     const entry = sanitizeEntry({
-      name: rp.title || 'Rezept', portion: servings + ' Portion' + (servings > 1 ? 'en' : ''), meal: body.meal,
+      name: rp.title || 'Rezept', portion: servLabel, meal: body.meal,
       kcal: n0(rp.kcal) * servings, p: n0(rp.protein) * servings, c: n0(rp.carbs) * servings, f: n0(rp.fat) * servings,
     }, hour);
     const day = await loadDay(id, targetDate); day.entries.push(entry); await saveDay(id, targetDate, day);
@@ -1110,29 +1141,31 @@ module.exports = async function handler(req, res) {
     res.statusCode = 200; return res.end(JSON.stringify({ ok: true, cookplan: cook.items, shopping: buildShopping(cook) }));
   }
 
-  // ── Verlauf: letzte 7 Tage + FINN-Wochenreview ──
+  // ── Verlauf: letzte 7 ODER 30 Tage (range) + FINN-Wochenreview (nur 7-Tage-Sicht) ──
   if (action === 'week') {
     const t = targetsFor(profile || {});
-    const keys = []; for (let i = 6; i >= 0; i--) keys.push(DKEY(id, dayKeyMinus(date, i)));
+    const range = (Number(body.range) === 30) ? 30 : 7;
+    const keys = []; for (let i = range - 1; i >= 0; i--) keys.push(DKEY(id, dayKeyMinus(date, i)));
     const vals = await kvGetMany(keys);
     const days = vals.map(function (v, idx) {
       let entries = []; try { const o = JSON.parse(v); if (o && Array.isArray(o.entries)) entries = o.entries; } catch (e) {}
       const tot = totalsOf(entries);
-      return { date: dayKeyMinus(date, 6 - idx), kcal: tot.kcal, p: tot.p, c: tot.c, f: tot.f, meals: entries.length };
+      return { date: dayKeyMinus(date, range - 1 - idx), kcal: tot.kcal, p: tot.p, c: tot.c, f: tot.f, meals: entries.length };
     });
     const target = t.kcal || 2000;
     const trackedDays = days.filter(function (d) { return d.meals > 0; });
     const tracked = trackedDays.length;
     const inGoal = trackedDays.filter(function (d) { return d.kcal >= target * 0.85 && d.kcal <= target * 1.1; }).length;
     const proteinDays = trackedDays.filter(function (d) { return d.p >= t.protein * 0.9; }).length;
-    const avgKcal = tracked ? Math.round(trackedDays.reduce(function (a, d) { return a + d.kcal; }, 0) / tracked) : 0;
+    const avg = function (k) { return tracked ? Math.round(trackedDays.reduce(function (a, d) { return a + d[k]; }, 0) / tracked) : 0; };
+    const avgKcal = avg('kcal');
     let review = null;
-    // Verlauf/Protokoll ist gratis; nur das KI-Wochen-Review ist Premium.
-    if (premium && AI.hasAI && tracked > 0 && (await M.rateLimit('nutri-week:' + id, 12, 3600))) {
+    // Verlauf/Protokoll ist gratis; nur das KI-Wochen-Review ist Premium (7-Tage-Sicht).
+    if (range === 7 && premium && AI.hasAI && tracked > 0 && (await M.rateLimit('nutri-week:' + id, 12, 3600))) {
       const r = await AI.nutritionWeekReview({ goal: GOALS[profile && profile.goal] || '—', kcalTarget: target, protein: t.protein, days: trackedDays.map(function (d) { return { date: d.date.slice(5), kcal: d.kcal, p: d.p }; }), inGoal: inGoal, avgKcal: avgKcal, proteinDays: proteinDays, tracked: tracked });
       if (r.ok) review = { tip: r.tip, insights: r.insights };
     }
-    res.statusCode = 200; return res.end(JSON.stringify({ ok: true, days: days, target: target, stats: { inGoal: inGoal, avgKcal: avgKcal, proteinDays: proteinDays, tracked: tracked }, review: review, reviewLocked: !premium }));
+    res.statusCode = 200; return res.end(JSON.stringify({ ok: true, range: range, days: days, target: target, stats: { inGoal: inGoal, avgKcal: avgKcal, avgP: avg('p'), avgC: avg('c'), avgF: avg('f'), proteinDays: proteinDays, tracked: tracked }, review: review, reviewLocked: !premium }));
   }
 
   // ── Punkt 8: Datenschutz – Export / einzelnen Tag löschen / alles löschen ──
