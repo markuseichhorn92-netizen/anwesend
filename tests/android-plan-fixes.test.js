@@ -57,7 +57,8 @@ assert.ok(member.includes("rIf(['figur','home','fort','ern'])"), 'loadFigur muss
 
 // Gewicht auch im Ernaehrungs-Bereich (Verlauf-Tab + Erfassen-"+") – Nutzerwunsch.
 assert.ok(member.includes('function ernWeightCard()'), 'Gewicht-Karte im Ernaehrungs-Verlauf muss existieren');
-assert.ok(member.includes('return ernWeightCard()+stripCard'), 'Gewicht-Karte muss im Verlauf-Tab oben stehen');
+assert.ok(/return ernWeightCard\(\)\+\w*[Bb]ar\+stripCard/.test(member) || member.includes('return ernWeightCard()+stripCard'),
+  'Gewicht-Karte muss im Verlauf-Tab oben stehen');
 assert.ok(member.includes("mkPick('ernCapWeight',"), 'Ernaehrungs-Erfassen muss einen Gewicht-Eintrag haben');
 assert.ok(/ernCapWeight:function\(\)\{[\s\S]*?nav\('figur'\)/.test(member), "ernCapWeight muss in den Figur-Check fuehren");
 

@@ -3731,6 +3731,10 @@
   window.__ernCFRefine=function(v){ S.ernCFRefine=String(v||''); };
   var ERN_MEALS=[['fruehstueck','Frühstück'],['mittag','Mittag'],['abend','Abend'],['snack','Snack']];
   function ernMealLabel(m){ for(var i=0;i<ERN_MEALS.length;i++){ if(ERN_MEALS[i][0]===m) return ERN_MEALS[i][1]; } return 'Snack'; }
+  // Portionen dürfen Bruchteile sein (¼/⅓/½) – z. B. wenn ein Rezept als Gesamtmenge
+  // angelegt ist und geteilt wird. Parser + deutsche Anzeige (Komma).
+  function ernServVal(v,def){ var n=parseFloat(String(v==null?'':v).replace(',','.')); if(isNaN(n)||n<=0) n=def||1; return Math.max(0.25,Math.min(12,Math.round(n*100)/100)); }
+  function ernServFmt(v){ return String(v).replace('.',','); }
   // FINNs Mahlzeit-Bewertung als Karte: Nutri-Score (geschätzt) + Ampel + „was war gut" + „besser machen".
   function ernEvalCard(ev){
     if(!ev) return '';
@@ -3876,7 +3880,7 @@
   function loadLib(q){ api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'recipe-library',q:q||''})}).then(function(d){ DATA.nutriLib=(d&&d.ok&&Array.isArray(d.recipes))?d.recipes:[]; rIf(['ern']); }).catch(function(){ DATA.nutriLib=[]; rIf(['ern']); }); }
   // Koch-Plan (was wann kochen) + abgeleitete Einkaufsliste.
   function loadCook(){ api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'cookplan-get'})}).then(function(d){ DATA.nutriCook=(d&&d.ok)?{cookplan:d.cookplan||[],shopping:d.shopping||[]}:{cookplan:[],shopping:[]}; rIf(['ern']); }).catch(function(){ DATA.nutriCook={cookplan:[],shopping:[]}; rIf(['ern']); }); }
-  function loadWeek(){ api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'week'})}).then(function(d){ DATA.nutriWeek=(d&&d.ok)?d:{ok:false}; rIf(['ern']); }).catch(function(){ DATA.nutriWeek={ok:false}; rIf(['ern']); }); }
+  function loadWeek(){ var range=(S.ernWeekRange===30)?30:7; api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'week',range:range})}).then(function(d){ DATA.nutriWeek=(d&&d.ok)?d:{ok:false}; rIf(['ern']); }).catch(function(){ DATA.nutriWeek={ok:false}; rIf(['ern']); }); }
   // FINN-Langzeitgedächtnis (Opt-in) – Zustand + gemerkte Fakten für die Einstellungen laden.
   function loadFinnMem(){ var apply=function(o){ DATA.finnMem=o; if(S.screen==='settings'||S.finnOpen) render(); }; api('/api/member/coach',{method:'POST',body:JSON.stringify({action:'memory-get'})}).then(function(d){ apply((d&&d.ok)?{on:!!d.on,decided:!!d.decided,items:Array.isArray(d.items)?d.items:[]}:{on:false,decided:false,items:[]}); }).catch(function(){ apply({on:false,decided:false,items:[]}); }); }
   // Server-Antwort einer Gedächtnis-Aktion in DATA.finnMem übernehmen (on/decided/items).
@@ -6148,8 +6152,8 @@
   function woRouteBox(route){ if(!route||route.length<2) return ''; return '<div style="margin-top:16px;background:var(--surface-2);border-radius:14px;padding:12px"><div style="font-size:11px;font-weight:900;color:var(--text-soft);text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px">📍 Deine Strecke</div>'+woRoutePath(route,360,150)+'</div>'; }
   function loadWorkouts(){
     if(DATA.workouts==null) DATA.workouts=false;
-    api('/api/member/workouts').then(function(d){ DATA.workouts=(d&&typeof d==='object'&&(d.ok||d.available===false))?d:{ok:false,available:false}; rIf(['tag','home','fort','coach','morning']); })
-    .catch(function(){ DATA.workouts={ok:false,available:false}; rIf(['tag','home','fort','coach','morning']); });
+    api('/api/member/workouts').then(function(d){ DATA.workouts=(d&&typeof d==='object'&&(d.ok||d.available===false))?d:{ok:false,available:false}; rIf(['tag','home','fort','coach','morning','ern']); })
+    .catch(function(){ DATA.workouts={ok:false,available:false}; rIf(['tag','home','fort','coach','morning','ern']); });
   }
   function woData(){ var d=DATA.workouts; return (d&&d.ok)?d:null; }
   function woMeasuring(){ return /^(connecting|measuring|saving)$/.test(S.woPhase||''); }
@@ -7194,7 +7198,7 @@
   function ernCookPickSheet(r){
     var days=[['0','Heute'],['1','Morgen'],['2','Übermorgen']];
     var sel=S.ernCookDay||'0';
-    var serv=Math.max(1,Math.min(12,parseInt(S.ernRecipeServ,10)||parseInt(r.servings,10)||1));
+    var serv=ernServVal(S.ernRecipeServ,parseInt(r.servings,10)||1);
     var dayBtns=days.map(function(d){ var on=sel===d[0]; return '<button data-act="ernCookDay" data-arg="'+d[0]+'" style="flex:1;border:1.5px solid '+(on?ERN_G:'var(--border)')+';background:'+(on?'rgba(14,96,114,.12)':'var(--surface)')+';color:'+(on?ERN_G:'var(--text)')+';border-radius:12px;padding:11px 6px;font-size:13px;font-weight:800;cursor:pointer">'+d[1]+'</button>'; }).join('');
     return '<div data-act="ernCookPickClose" style="position:fixed;inset:0;background:rgba(4,20,24,.5);z-index:120;display:flex;align-items:flex-end;justify-content:center"><div data-act="noop" style="width:100%;max-width:520px;background:var(--surface);border-radius:22px 22px 0 0;padding:20px 18px calc(20px + env(safe-area-inset-bottom));box-shadow:0 -12px 40px rgba(0,0,0,.28)">'+
       '<div style="width:40px;height:4px;border-radius:2px;background:var(--border);margin:0 auto 14px"></div>'+
@@ -7202,7 +7206,7 @@
       '<div style="font-size:12.5px;font-weight:600;color:var(--text-soft);margin-top:2px">'+esc(r.title)+'</div>'+
       '<div style="font-size:12px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.4px;margin:16px 0 8px">Wann kochst du?</div>'+
       '<div style="display:flex;gap:8px">'+dayBtns+'</div>'+
-      '<div style="display:flex;align-items:center;justify-content:space-between;margin-top:16px;background:var(--surface-2);border-radius:14px;padding:12px 14px"><span style="font-size:13.5px;font-weight:900;color:var(--text)">Portionen</span><div style="display:flex;align-items:center;gap:12px"><button data-act="ernRecipeServ" data-arg="-1" style="width:36px;height:36px;border-radius:11px;border:none;background:var(--surface);color:var(--ern-acc);font-size:19px;font-weight:800;cursor:pointer">−</button><span style="font-size:18px;font-weight:900;color:var(--text);min-width:20px;text-align:center">'+serv+'</span><button data-act="ernRecipeServ" data-arg="1" style="width:36px;height:36px;border-radius:11px;border:none;background:var(--surface);color:var(--ern-acc);font-size:19px;font-weight:800;cursor:pointer">+</button></div></div>'+
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-top:16px;background:var(--surface-2);border-radius:14px;padding:12px 14px"><span style="font-size:13.5px;font-weight:900;color:var(--text)">Portionen</span><div style="display:flex;align-items:center;gap:12px"><button data-act="ernRecipeServ" data-arg="-1" style="width:36px;height:36px;border-radius:11px;border:none;background:var(--surface);color:var(--ern-acc);font-size:19px;font-weight:800;cursor:pointer">−</button><span style="font-size:18px;font-weight:900;color:var(--text);min-width:20px;text-align:center">'+ernServFmt(serv)+'</span><button data-act="ernRecipeServ" data-arg="1" style="width:36px;height:36px;border-radius:11px;border:none;background:var(--surface);color:var(--ern-acc);font-size:19px;font-weight:800;cursor:pointer">+</button></div></div>'+(function(){ var mk=function(v,l){ var on=Math.abs(serv-v)<0.01; return '<button data-act="ernRecipeServSet" data-arg="'+v+'" style="flex:1;padding:7px 4px;border:1.5px solid '+(on?'var(--ern-acc)':'var(--border)')+';border-radius:9px;background:'+(on?'rgba(14,96,114,.10)':'var(--surface)')+';color:var(--ern-acc);font-weight:800;font-size:12px;cursor:pointer">'+l+'</button>'; }; return '<div style="display:flex;gap:6px;margin-top:8px">'+mk(0.25,'¼')+mk(0.33,'⅓')+mk(0.5,'½')+mk(1,'1')+'</div>'; })()+
       '<button data-act="ernCookAdd" '+(S.ernBusy?'disabled ':'')+'style="width:100%;margin-top:16px;padding:15px;border:none;border-radius:14px;background:'+ERN_G+';color:#fff;font-weight:900;font-size:15px;cursor:pointer">'+(S.ernBusy?'…':'In den Koch-Plan')+'</button>'+
       '<button data-act="ernCookPickClose" style="width:100%;margin-top:8px;padding:12px;border:none;background:none;color:var(--text-soft);font-weight:800;font-size:13.5px;cursor:pointer">Abbrechen</button>'+
     '</div></div>';
@@ -7211,7 +7215,7 @@
   function ernKochModus(){
     var r=S.ernRecipeSel; if(!r||!(r.steps&&r.steps.length)) return '';
     var n=r.steps.length; var i=parseInt(S.ernKoch,10); if(isNaN(i)) i=-1; i=Math.max(-1,Math.min(n-1,i));  // -1 = Vorbereitung
-    var base=Math.max(1,Math.min(12,parseInt(r.baseServings||r.servings,10)||1)); var serv=Math.max(1,Math.min(12,parseInt(S.ernRecipeServ,10)||1)); var factor=serv/base;
+    var base=Math.max(1,Math.min(12,parseInt(r.baseServings||r.servings,10)||1)); var serv=ernServVal(S.ernRecipeServ,1); var factor=serv/base;
     var wrap='position:fixed;inset:0;background:linear-gradient(160deg,#0a4958,#063540);z-index:130;display:flex;flex-direction:column;color:#fff;padding:calc(18px + env(safe-area-inset-top)) 20px calc(20px + env(safe-area-inset-bottom))';
     var closeBtn='<button data-act="ernKochExit" aria-label="Koch-Modus schließen" style="width:40px;height:40px;border-radius:12px;border:none;background:rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;cursor:pointer">'+svg('<path d="M18 6L6 18M6 6l12 12"></path>',{c:'#fff',w:2.4,s:20})+'</button>';
     // Fortschrittsbalken: Vorbereitung + alle Schritte.
@@ -7309,7 +7313,7 @@
       '<div style="font-size:15px;font-weight:900;color:var(--text);margin-bottom:12px">Dein Rezept</div>'+
       '<input id="ern_selfname" value="'+esc(d.title||'')+'" oninput="window.__ernSelfField(\'title\',this.value)" placeholder="Name (z. B. Cremiger Protein-Porridge)" style="'+inp+'">'+
       '<input id="ern_selfgoal" value="'+esc(d.goal||'')+'" oninput="window.__ernSelfField(\'goal\',this.value)" placeholder="Was soll rauskommen? (optional – z. B. warm, herzhaft)" style="width:100%;border:1.5px solid var(--border);border-radius:10px;padding:10px 12px;font-size:14px;font-weight:600;color:var(--text-2);background:var(--surface);margin-top:14px;font-family:inherit">'+
-      '<div style="display:flex;align-items:center;justify-content:space-between;margin-top:14px;background:var(--surface-2);border-radius:14px;padding:10px 14px"><div style="font-size:13.5px;font-weight:900;color:var(--text)">Portionen</div><div style="display:flex;align-items:center;gap:12px">'+stepBtn('-1','−')+'<span style="font-size:19px;font-weight:900;color:var(--text);min-width:20px;text-align:center">'+serv+'</span>'+stepBtn('1','+')+'</div></div>'+
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-top:14px;background:var(--surface-2);border-radius:14px;padding:10px 14px"><div style="font-size:13.5px;font-weight:900;color:var(--text)">Portionen</div><div style="display:flex;align-items:center;gap:12px">'+stepBtn('-1','−')+'<span style="font-size:19px;font-weight:900;color:var(--text);min-width:20px;text-align:center">'+ernServFmt(serv)+'</span>'+stepBtn('1','+')+'</div></div>'+(function(){ var mk=function(v,l){ var on=Math.abs(serv-v)<0.01; return '<button data-act="ernRecipeServSet" data-arg="'+v+'" style="flex:1;padding:7px 4px;border:1.5px solid '+(on?'var(--ern-acc)':'var(--border)')+';border-radius:9px;background:'+(on?'rgba(14,96,114,.10)':'var(--surface)')+';color:var(--ern-acc);font-weight:800;font-size:12px;cursor:pointer">'+l+'</button>'; }; return '<div style="display:flex;gap:6px;margin-top:8px">'+mk(0.25,'¼')+mk(0.33,'⅓')+mk(0.5,'½')+mk(1,'1')+'</div>'; })()+
     '</div>';
     // Zutaten-Suche
     var searchBox='<div style="display:flex;gap:8px;margin-bottom:12px"><input id="ern_selfq" value="'+esc(d.searchQ||'')+'" enterkeyhint="search" autocomplete="off" oninput="window.__ernSelfField(\'searchQ\',this.value)" onkeydown="if(event.key===\'Enter\'){event.preventDefault();window.__ernSelfSearchGo&&window.__ernSelfSearchGo();}" placeholder="Zutat suchen (z. B. Haferflocken)" style="flex:1;min-width:0;border:none;border-radius:12px;padding:12px 14px;font-size:14px;font-weight:600;outline:none;color:var(--text);background:var(--surface-2);font-family:inherit"><button data-act="ernSelfSearch" style="border:none;border-radius:12px;background:'+ERN_G+';color:#fff;font-weight:900;font-size:13.5px;padding:0 16px;cursor:pointer">Suchen</button></div>';
@@ -7345,7 +7349,7 @@
     if(S.ernRecipeSel){
       var r=S.ernRecipeSel;
       var base=Math.max(1,Math.min(12,parseInt(r.baseServings||r.servings,10)||1));
-      var serv=Math.max(1,Math.min(12,parseInt(S.ernRecipeServ,10)||1));
+      var serv=ernServVal(S.ernRecipeServ,1);
       var factor=serv/base;
       var macrosOk=macrosOkR(r);
       var pv=function(v){ return (v==null||!macrosOk)?'—':ernNum(Math.round(v*serv)); };
@@ -7354,7 +7358,7 @@
       var gradeCard=grade?'<div style="display:flex;align-items:center;gap:13px;background:var(--surface-2);border-radius:14px;padding:12px 15px;margin-top:14px">'+nutriScale(grade)+'<div style="font-size:12px;font-weight:700;color:var(--text-soft);line-height:1.4">Nutri-Score <b style="color:var(--text)">'+grade+'</b><br>berechnet je 100 g</div></div>':'';
       var rating=(r.finnRating&&(r.finnRating.stars||r.finnRating.text))?'<div style="background:linear-gradient(150deg,#0a4958,#0d5d6e);border-radius:14px;padding:13px 15px;margin-top:12px;color:#fff"><div style="display:flex;align-items:center;gap:9px"><span style="font-size:15px;color:#ffd15c;letter-spacing:2px">'+finnStars(r.finnRating.stars)+'</span><span style="font-size:12px;font-weight:800;color:#9fc7d0">FINN-Bewertung</span></div>'+(r.finnRating.text?'<div style="font-size:12.5px;font-weight:600;color:#e7f3f0;line-height:1.45;margin-top:7px">'+esc(r.finnRating.text)+'</div>':'')+'</div>':'';
       var incomplete=macrosOk?'':'<div role="alert" style="font-size:12px;font-weight:700;color:#8a6d1f;background:#FBF2E1;border-radius:12px;padding:11px 13px;margin-top:12px;line-height:1.5">Für dieses Rezept liegen keine vollständigen Nährwerte vor. Beim Übernehmen wird nichts Erfundenes gespeichert – bitte die Werte danach im Protokoll ergänzen.</div>';
-      var servRow='<div style="display:flex;align-items:center;justify-content:space-between;margin-top:16px;background:var(--surface-2);border-radius:14px;padding:12px 14px"><div><div style="font-size:13.5px;font-weight:900;color:var(--text)">Portionen</div><div style="font-size:11px;font-weight:600;color:var(--text-soft)">Grundrezept: '+base+' Portion'+(base>1?'en':'')+'</div></div><div style="display:flex;align-items:center;gap:12px"><button data-act="ernRecipeServ" data-arg="-1" aria-label="Weniger Portionen" style="width:38px;height:38px;border-radius:11px;border:none;background:var(--surface);color:var(--ern-acc);font-size:20px;font-weight:800;cursor:pointer;box-shadow:0 2px 6px rgba(4,33,40,.08)">−</button><span style="font-size:19px;font-weight:900;color:var(--text);min-width:20px;text-align:center">'+serv+'</span><button data-act="ernRecipeServ" data-arg="1" aria-label="Mehr Portionen" style="width:38px;height:38px;border-radius:11px;border:none;background:var(--surface);color:var(--ern-acc);font-size:20px;font-weight:800;cursor:pointer;box-shadow:0 2px 6px rgba(4,33,40,.08)">+</button></div></div>';
+      var servRow='<div style="display:flex;align-items:center;justify-content:space-between;margin-top:16px;background:var(--surface-2);border-radius:14px;padding:12px 14px"><div><div style="font-size:13.5px;font-weight:900;color:var(--text)">Portionen</div><div style="font-size:11px;font-weight:600;color:var(--text-soft)">Grundrezept: '+base+' Portion'+(base>1?'en':'')+'</div></div><div style="display:flex;align-items:center;gap:12px"><button data-act="ernRecipeServ" data-arg="-1" aria-label="Weniger Portionen" style="width:38px;height:38px;border-radius:11px;border:none;background:var(--surface);color:var(--ern-acc);font-size:20px;font-weight:800;cursor:pointer;box-shadow:0 2px 6px rgba(4,33,40,.08)">−</button><span style="font-size:19px;font-weight:900;color:var(--text);min-width:20px;text-align:center">'+ernServFmt(serv)+'</span><button data-act="ernRecipeServ" data-arg="1" aria-label="Mehr Portionen" style="width:38px;height:38px;border-radius:11px;border:none;background:var(--surface);color:var(--ern-acc);font-size:20px;font-weight:800;cursor:pointer;box-shadow:0 2px 6px rgba(4,33,40,.08)">+</button></div></div>'+(function(){ var mk=function(v,l){ var on=Math.abs(serv-v)<0.01; return '<button data-act="ernRecipeServSet" data-arg="'+v+'" style="flex:1;padding:7px 4px;border:1.5px solid '+(on?'var(--ern-acc)':'var(--border)')+';border-radius:9px;background:'+(on?'rgba(14,96,114,.10)':'var(--surface)')+';color:var(--ern-acc);font-weight:800;font-size:12px;cursor:pointer">'+l+'</button>'; }; return '<div style="display:flex;gap:6px;margin-top:8px">'+mk(0.25,'¼')+mk(0.33,'⅓')+mk(0.5,'½')+mk(1,'1')+'</div>'; })()+'';
       var logLabel=S.ernBusy?'…':('Ins Protokoll'+(macrosOk?(' · '+ernNum(Math.round((+r.kcal||0)*serv))+' kcal'):''));
       var hero=r.image?'<div style="height:180px;margin:-16px -16px 15px;background-image:url('+r.image+');background-size:cover;background-position:center;border-radius:20px 20px 0 0"></div>':'';
       var ingBlock=(r.ingredients&&r.ingredients.length)?'<div style="font-size:15px;font-weight:900;color:var(--text);margin:18px 0 10px">Zutaten <span style="font-size:12px;font-weight:700;color:var(--text-soft)">· '+serv+' Portion'+(serv>1?'en':'')+'</span></div><div style="background:var(--surface-2);border-radius:14px;padding:2px 14px">'+r.ingredients.map(function(x,i){ return '<div style="font-size:13.5px;font-weight:600;color:var(--text-2);padding:11px 0'+(i?';border-top:1px solid var(--border)':'')+'">'+ingLine(x,factor)+'</div>'; }).join('')+'</div>':'';
@@ -7431,16 +7435,39 @@
       delta+chart+hint+btn+
     '</div>';
   }
+  // Kalorienbilanz-Zeile: durch Training/Health-Import verbrauchte kcal im Zeitraum –
+  // ergänzt die Ø-Werte um „gegessen vs. verbraucht".
+  function ernBalanceRow(w){
+    if(DATA.workouts==null) loadWorkouts();
+    var d=woData(); var list=(d&&Array.isArray(d.list))?d.list:[];
+    var range=(w&&w.range)||7;
+    var since=isoShift(isoToday(),-(range-1)), ty=isoToday();
+    var burned=0,n=0;
+    list.forEach(function(s){ var dt=String((s&&s.date)||''); if(dt&&dt>=since&&dt<=ty&&s.kcal>0){ burned+=s.kcal; n++; } });
+    if(!n) return '<div style="font-size:10.5px;font-weight:600;color:var(--text-soft);margin-top:11px;border-top:1px solid var(--border);padding-top:10px;line-height:1.45">🔥 Kalorienbilanz: Noch keine Trainings-Kalorien im Zeitraum. Zeichne Einheiten mit Puls auf oder verbinde Apple Health / Health Connect – dann siehst du hier gegessen vs. verbraucht.</div>';
+    var burnedAvg=Math.round(burned/range);
+    return '<div style="margin-top:11px;border-top:1px solid var(--border);padding-top:11px"><div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><span style="font-size:12px;font-weight:800;color:var(--text-soft)">🔥 Durch Training verbraucht</span><span style="font-size:13px;font-weight:900;color:var(--text)">'+ernNum(burned)+' kcal · '+n+' Einheit'+(n===1?'':'en')+'</span></div><div style="font-size:10.5px;font-weight:600;color:var(--text-soft);margin-top:4px;line-height:1.45">Ø '+ernNum(burnedAvg)+' kcal/Tag zusätzlich verbrannt – an intensiven Tagen darfst du entsprechend mehr essen.</div></div>';
+  }
   function ernVerlauf(){
     var w=DATA.nutriWeek, CARD='background:var(--surface);border-radius:20px;box-shadow:0 12px 30px rgba(4,33,40,.09);padding:18px;margin-bottom:14px';
-    if(w==null){ return '<div style="text-align:center;color:var(--text-soft);font-size:14px;font-weight:600;padding:40px">Lädt …</div>'; }
-    if(!w.ok){ return ernSectionEmpty('📊','Verlauf nicht verfügbar','Bitte später erneut versuchen.'); }
+    var range=(S.ernWeekRange===30)?30:7;
+    // Umschalter 7 Tage | 30 Tage – für den Gesamtüberblick über Wochen/den Monat.
+    var rangeBar='<div style="display:flex;gap:7px;margin-bottom:14px">'+[[7,'7 Tage'],[30,'30 Tage']].map(function(x){ var on=range===x[0]; return '<button data-act="ernWeekRange" data-arg="'+x[0]+'" style="flex:1;padding:10px;border:1.5px solid '+(on?'var(--ern-acc)':'var(--border)')+';border-radius:12px;background:'+(on?'rgba(14,96,114,.10)':'var(--surface)')+';color:'+(on?'var(--ern-acc)':'var(--text-soft)')+';font-weight:900;font-size:13px;cursor:pointer">'+x[1]+'</button>'; }).join('')+'</div>';
+    if(w==null){ return rangeBar+'<div style="text-align:center;color:var(--text-soft);font-size:14px;font-weight:600;padding:40px">Lädt …</div>'; }
+    if(!w.ok){ return rangeBar+ernSectionEmpty('📊','Verlauf nicht verfügbar','Bitte später erneut versuchen.'); }
     var days=Array.isArray(w.days)?w.days:[], target=w.target||2000;
     var maxK=days.reduce(function(a,d){return Math.max(a,d.kcal);},target)||1;
     var DOW=['So','Mo','Di','Mi','Do','Fr','Sa'];
-    var strip=days.map(function(d){ var h=Math.round(Math.min(1,d.kcal/maxK)*100); var inG=d.meals>0&&d.kcal>=target*0.85&&d.kcal<=target*1.1; var lab=DOW[new Date(d.date+'T12:00:00').getDay()]; return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:7px"><div style="width:100%;height:66px;background:var(--surface-2);border-radius:8px;display:flex;align-items:flex-end;overflow:hidden"><div style="width:100%;height:'+h+'%;background:'+(inG?ERN_OK:(d.meals?ERN_CARB:'var(--border)'))+';border-radius:8px"></div></div><span style="font-size:10.5px;font-weight:800;color:var(--text-soft)">'+lab+'</span></div>'; }).join('');
-    var stripCard='<div style="'+CARD+'"><div style="font-size:12px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.4px;margin-bottom:12px">Kalorien · letzte 7 Tage</div><div style="display:flex;gap:6px">'+strip+'</div></div>';
+    var wide=days.length>10;
+    var strip=days.map(function(d,di){ var h=Math.round(Math.min(1,d.kcal/maxK)*100); var inG=d.meals>0&&d.kcal>=target*0.85&&d.kcal<=target*1.1; var dd=new Date(d.date+'T12:00:00'); var lab=wide?((di%5===0||di===days.length-1)?String(dd.getDate())+'.':''):DOW[dd.getDay()]; return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:'+(wide?'4':'7')+'px;min-width:0"><div style="width:100%;height:66px;background:var(--surface-2);border-radius:'+(wide?'3':'8')+'px;display:flex;align-items:flex-end;overflow:hidden"><div style="width:100%;height:'+h+'%;background:'+(inG?ERN_OK:(d.meals?ERN_CARB:'var(--border)'))+';border-radius:'+(wide?'3':'8')+'px"></div></div><span style="font-size:'+(wide?'8.5':'10.5')+'px;font-weight:800;color:var(--text-soft);white-space:nowrap">'+lab+'</span></div>'; }).join('');
+    var stripCard='<div style="'+CARD+'"><div style="font-size:12px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.4px;margin-bottom:12px">Kalorien · letzte '+range+' Tage</div><div style="display:flex;gap:'+(wide?'2':'6')+'px">'+strip+'</div></div>';
     var st=w.stats||{}, rev=w.review;
+    // Ø-Makros + Kalorienbilanz (gegessen vs. durch Training verbraucht, aus Workouts/Health).
+    var avgCard='';
+    if(st.tracked){
+      avgCard='<div style="'+CARD+'"><div style="font-size:12px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.4px;margin-bottom:11px">Ø pro getracktem Tag ('+st.tracked+' von '+range+')</div>'+
+        '<div style="display:flex;gap:8px">'+[['kcal',ernNum(st.avgKcal||0),'var(--text)'],['Eiweiß',(st.avgP||0)+' g',ERN_PROT],['KH',(st.avgC||0)+' g',ERN_CARB],['Fett',(st.avgF||0)+' g',ERN_FAT]].map(function(x){ return '<div style="flex:1;background:var(--surface-2);border-radius:12px;padding:10px 6px;text-align:center"><div style="font-size:15px;font-weight:900;color:'+x[2]+'">'+x[1]+'</div><div style="font-size:9.5px;font-weight:800;color:var(--text-soft);text-transform:uppercase;margin-top:1px">'+x[0]+'</div></div>'; }).join('')+'</div>'+ernBalanceRow(w)+'</div>';
+    }
     var review='<div style="background:linear-gradient(150deg,#0a4958,#063540);border-radius:20px;padding:18px;color:#fff;box-shadow:0 14px 34px rgba(4,33,40,.18);margin-bottom:14px"><div style="font-size:15px;font-weight:900">Deine Woche im Rückblick</div><div style="font-size:11.5px;font-weight:700;color:#7fc9a8;margin-top:1px">FINN · Wochen-Review</div>'+
       '<div style="display:flex;gap:8px;margin-top:14px"><div style="flex:1;background:rgba(255,255,255,.08);border-radius:13px;padding:11px;text-align:center"><div style="font-size:19px;font-weight:900;color:#7fd8e0">'+(st.inGoal||0)+'/7</div><div style="font-size:10px;font-weight:700;color:#a9d9c4;margin-top:2px">Tage im Ziel</div></div><div style="flex:1;background:rgba(255,255,255,.08);border-radius:13px;padding:11px;text-align:center"><div style="font-size:19px;font-weight:900;color:#fff">'+ernNum(st.avgKcal||0)+'</div><div style="font-size:10px;font-weight:700;color:#a9d9c4;margin-top:2px">Ø kcal/Tag</div></div><div style="flex:1;background:rgba(255,255,255,.08);border-radius:13px;padding:11px;text-align:center"><div style="font-size:19px;font-weight:900;color:#fff">'+(st.proteinDays||0)+'/7</div><div style="font-size:10px;font-weight:700;color:#a9d9c4;margin-top:2px">Eiweißziel</div></div></div>'+
       (rev&&rev.tip?'<div style="display:flex;gap:9px;margin-top:14px;background:rgba(255,255,255,.06);border-radius:13px;padding:12px 13px"><span style="font-size:15px">💡</span><div style="font-size:12.5px;font-weight:600;color:#cfe8ec;line-height:1.45">'+esc(rev.tip)+'</div></div>'
@@ -7449,7 +7476,7 @@
     var insights=(rev&&rev.insights&&rev.insights.length)?('<div style="'+CARD+'"><div style="font-size:15px;font-weight:900;color:var(--text);margin-bottom:12px">FINN erkennt Muster</div>'+rev.insights.map(function(i){ return '<div style="display:flex;gap:11px;background:var(--surface-2);border-radius:14px;padding:13px 14px;margin-bottom:9px"><span style="font-size:18px">💬</span><div style="flex:1"><div style="font-size:13.5px;font-weight:900;color:var(--text)">'+esc(i.title)+'</div><div style="font-size:12px;font-weight:600;color:var(--text-muted);line-height:1.45;margin-top:2px">'+esc(i.text)+'</div></div></div>'; }).join('')+'</div>'):'';
     var proto=days.slice().reverse().filter(function(d){return d.meals>0;});
     var protoBlock=proto.length?('<div style="font-size:14px;font-weight:900;color:var(--text);margin:4px 2px 12px">Protokoll</div>'+proto.map(function(d){ var pct=Math.round(Math.min(1,d.kcal/target)*100); var deg=Math.min(360,Math.round(d.kcal/target*360)); var dd=new Date(d.date+'T12:00:00'); var lab=['So','Mo','Di','Mi','Do','Fr','Sa'][dd.getDay()]+', '+dd.getDate()+'.'+(dd.getMonth()+1)+'.'; return '<div style="background:var(--surface);border-radius:18px;box-shadow:0 10px 26px rgba(4,33,40,.07);padding:14px 16px;margin-bottom:10px;display:flex;align-items:center;gap:14px"><div style="position:relative;width:50px;height:50px;flex-shrink:0"><div style="width:50px;height:50px;border-radius:50%;background:conic-gradient('+ERN_OK+' '+deg+'deg,var(--surface-2) 0)"></div><div style="position:absolute;inset:6px;border-radius:50%;background:var(--surface);display:flex;align-items:center;justify-content:center;font-size:10.5px;font-weight:900;color:var(--text)">'+pct+'%</div></div><div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:900;color:var(--text)">'+lab+'</div><div style="font-size:12px;font-weight:700;color:var(--text-soft);margin-top:2px">'+ernNum(d.kcal)+' kcal · '+d.meals+' Einträge</div><div style="display:flex;gap:10px;margin-top:5px"><span style="font-size:11px;font-weight:800;color:'+ERN_PROT+'">EW '+d.p+'g</span><span style="font-size:11px;font-weight:800;color:'+ERN_CARB+'">KH '+d.c+'g</span><span style="font-size:11px;font-weight:800;color:'+ERN_FAT+'">F '+d.f+'g</span></div></div></div>'; }).join('')):ernSectionEmpty('🍽️','Noch keine Tage protokolliert','Sobald du Mahlzeiten loggst, erscheint hier dein Verlauf.');
-    return ernWeightCard()+stripCard+review+insights+protoBlock;
+    return ernWeightCard()+rangeBar+stripCard+avgCard+(range===7?(review+insights):'')+protoBlock;
   }
   // ── Sport-Blog ──
   function loadBlog(){ if(DATA.blog||!TOKEN) return; DATA.blog=[]; api('/api/member/blog').then(function(d){ DATA.blog=(d&&d.posts)||[]; render(); }).catch(function(){ DATA.blog=[]; }); }
@@ -11173,11 +11200,15 @@
         : (p[0]==='saved'?(DATA.nutriSaved||[]) : p[0]==='lib'?(DATA.nutriLib||[]) : p[0]==='cook'?((DATA.nutriCook&&DATA.nutriCook.cookplan)||[]) : (S.ernRecipes||[]))[i];
       if(r) setS({ernRecipeSel:r,ernRecipeSaved:(p[0]==='saved'),ernRecipeServ:Math.max(1,Math.min(12,parseInt(r.servings,10)||1)),ernKoch:null,ernKochDirect:false,ernCookPick:false,ernMsg:'',ernErr:false}); },
     ernRecipeBack:function(){ setS({ernRecipeSel:null,ernKoch:null,ernKochDirect:false,ernCookPick:false}); },
-    ernRecipeServ:function(a){ var d=parseInt(a,10)||0; S.ernRecipeServ=Math.max(1,Math.min(12,(parseInt(S.ernRecipeServ,10)||1)+d)); render(); },
+    ernRecipeServ:function(a){ var d=parseInt(a,10)||0; var cur=ernServVal(S.ernRecipeServ,1); var next=(d<0)?(cur>1?cur-1:cur-0.25):(cur<1?cur+0.25:cur+1); S.ernRecipeServ=Math.max(0.25,Math.min(12,Math.round(next*100)/100)); render(); },
+    // Bruchteil-Portion direkt setzen (¼/⅓/½/1) – fürs Teilen eines Gesamtrezepts.
+    ernRecipeServSet:function(a){ S.ernRecipeServ=ernServVal(a,1); render(); },
+    // Verlauf: Zeitraum 7 | 30 Tage umschalten (Wochen-/Monatsüberblick).
+    ernWeekRange:function(a){ var r=(parseInt(a,10)===30)?30:7; if(S.ernWeekRange===r) return; S.ernWeekRange=r; DATA.nutriWeek=null; loadWeek(); render(); },
     ernLibSearch:function(){ var el=$('ern_libq'); var v=el?(el.value||'').trim():''; S.ernLibQ=v; DATA.nutriLib=null; loadLib(v); render(); },
     ernRecipeSave:function(){ var r=S.ernRecipeSel; if(!r) return; api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'recipe-save',recipe:r})}).then(function(d){ if(d&&d.ok){ DATA.nutriSaved=d.saved; S.ernRecipeSaved=true; render(); } else { S.ernErr=true; S.ernMsg=(d&&d.message)||'Rezept konnte nicht gespeichert werden.'; render(); } }).catch(function(){ S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); }); },
     ernRecipeDel:function(a){ api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'recipe-delete',id:a})}).then(function(d){ if(d&&d.ok){ DATA.nutriSaved=d.saved; render(); } }).catch(function(){}); },
-    ernRecipeLog:function(){ var r=S.ernRecipeSel; if(!r||S.ernBusy) return; var serv=Math.max(1,Math.min(12,parseInt(S.ernRecipeServ,10)||1)); S.ernBusy=true; render();
+    ernRecipeLog:function(){ var r=S.ernRecipeSel; if(!r||S.ernBusy) return; var serv=ernServVal(S.ernRecipeServ,1); S.ernBusy=true; render();
       api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'recipe-log',recipe:r,servings:serv,date:ernActiveDate()})})
       .then(function(d){ S.ernBusy=false; if(d&&d.ok){ DATA.nutri=d; S.ernRecipeSel=null; S.ernTab='heute'; S.ernMsg='Ins Protokoll übernommen: '+r.title; S.ernErr=false; } else { S.ernErr=true; S.ernMsg=(d&&d.message)||'Konnte nicht übernehmen – bitte erneut.'; } render(); })
       .catch(function(){ S.ernBusy=false; S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); }); },
@@ -11185,7 +11216,7 @@
     ernCookPick:function(){ setQuiet({ernCookPick:true,ernCookDay:'0'}); },
     ernCookPickClose:function(){ setQuiet({ernCookPick:false}); },
     ernCookDay:function(a){ setQuiet({ernCookDay:String(a||'0')}); },
-    ernCookAdd:function(){ var r=S.ernRecipeSel; if(!r||S.ernBusy) return; var serv=Math.max(1,Math.min(12,parseInt(S.ernRecipeServ,10)||1)); var off=parseInt(S.ernCookDay,10)||0; var d=new Date(); d.setDate(d.getDate()+off); var p=function(n){return(n<10?'0':'')+n;}; var ymd=d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());
+    ernCookAdd:function(){ var r=S.ernRecipeSel; if(!r||S.ernBusy) return; var serv=Math.max(1,Math.min(12,Math.round(ernServVal(S.ernRecipeServ,1))||1)); var off=parseInt(S.ernCookDay,10)||0; var d=new Date(); d.setDate(d.getDate()+off); var p=function(n){return(n<10?'0':'')+n;}; var ymd=d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());
       S.ernBusy=true; render();
       api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'cookplan-add',recipe:r,servings:serv,date:ymd})})
       .then(function(res){ S.ernBusy=false; if(res&&res.ok){ DATA.nutriCook={cookplan:res.cookplan||[],shopping:res.shopping||[]}; S.ernCookPick=false; S.ernRecipeSel=null; S.ernTab='plan'; S.ernPlanTab='woche'; S.ernMsg='Zum Koch-Plan hinzugefügt: '+r.title; S.ernErr=false; } else { S.ernErr=true; S.ernMsg=(res&&res.message)||'Konnte nicht hinzufügen – bitte erneut.'; } render(); })
