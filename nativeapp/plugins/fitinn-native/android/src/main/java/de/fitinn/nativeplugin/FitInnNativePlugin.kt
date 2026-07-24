@@ -251,14 +251,16 @@ class FitInnNativePlugin : Plugin() {
         scope.launch {
             val out = JSObject()
             try {
+                // Jede Kennzahl einzeln absichern: fehlt EINE Berechtigung (z. B. Schlaf),
+                // duerfen die uebrigen Werte (Schritte, Ruhepuls …) trotzdem ankommen.
                 withContext(Dispatchers.IO) {
-                    latestRecord<RestingHeartRateRecord>(client, 60)?.let { out.put("restingHr", it.beatsPerMinute.toInt()) }
-                    latestRecord<HeartRateVariabilityRmssdRecord>(client, 60)?.let { out.put("hrv", round1(it.heartRateVariabilityMillis)) }
-                    latestRecord<WeightRecord>(client, 365)?.let { out.put("weightKg", round1(it.weight.inKilograms)) }
-                    latestRecord<BodyFatRecord>(client, 365)?.let { out.put("bodyFatPct", round1(it.percentage.value)) }
-                    latestRecord<Vo2MaxRecord>(client, 365)?.let { out.put("vo2max", round1(it.vo2MillilitersPerMinuteKilogram)) }
-                    stepsToday(client)?.let { out.put("steps", it) }
-                    sleepLastNight(client, out)
+                    runCatching { latestRecord<RestingHeartRateRecord>(client, 60)?.let { out.put("restingHr", it.beatsPerMinute.toInt()) } }
+                    runCatching { latestRecord<HeartRateVariabilityRmssdRecord>(client, 60)?.let { out.put("hrv", round1(it.heartRateVariabilityMillis)) } }
+                    runCatching { latestRecord<WeightRecord>(client, 365)?.let { out.put("weightKg", round1(it.weight.inKilograms)) } }
+                    runCatching { latestRecord<BodyFatRecord>(client, 365)?.let { out.put("bodyFatPct", round1(it.percentage.value)) } }
+                    runCatching { latestRecord<Vo2MaxRecord>(client, 365)?.let { out.put("vo2max", round1(it.vo2MillilitersPerMinuteKilogram)) } }
+                    runCatching { stepsToday(client)?.let { out.put("steps", it) } }
+                    runCatching { sleepLastNight(client, out) }
                 }
                 out.put("ok", true)
                 call.resolve(out)

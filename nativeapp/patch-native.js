@@ -94,11 +94,26 @@ const ANDROID_PERMISSIONS = [
   // PermissionsRationaleActivity mit Intent-Filter (ACTION_SHOW_PERMISSIONS_RATIONALE) und
   // eine veröffentlichte Datenschutzerklärung – plus native Read/Write-Methoden in
   // FitInnNative (siehe docs/NATIVE-BRIDGE.md). Die Manifest-Rechte hier allein genügen NICHT.
+  // WICHTIG: Health Connect gewährt NUR Berechtigungen, die auch hier im Manifest
+  // deklariert sind. Die Liste muss deshalb ALLE Rechte enthalten, die das Plugin
+  // (hcPermissions in FitInnNativePlugin.kt) anfordert – sonst scheitern die Reads
+  // (Schritte/Schlaf/Ruhepuls/HRV …) still und der Freigabe-Dialog zeigt sie gar
+  // nicht erst an. Genau das war der Grund für „nur Schritte, sonst nichts".
   'android.permission.health.READ_EXERCISE',
   'android.permission.health.WRITE_EXERCISE',
   'android.permission.health.READ_HEART_RATE',
   'android.permission.health.READ_DISTANCE',
+  'android.permission.health.WRITE_DISTANCE',
   'android.permission.health.READ_ACTIVE_CALORIES_BURNED',
+  'android.permission.health.WRITE_ACTIVE_CALORIES_BURNED',
+  'android.permission.health.READ_TOTAL_CALORIES_BURNED',
+  'android.permission.health.READ_STEPS',
+  'android.permission.health.READ_RESTING_HEART_RATE',
+  'android.permission.health.READ_HEART_RATE_VARIABILITY',
+  'android.permission.health.READ_WEIGHT',
+  'android.permission.health.READ_BODY_FAT',
+  'android.permission.health.READ_VO2_MAX',
+  'android.permission.health.READ_SLEEP',
 ];
 const ANDROID_FEATURES = [
   // Kamera/Mikro nur „optional" verlangen, damit Geräte ohne Kamera die App
