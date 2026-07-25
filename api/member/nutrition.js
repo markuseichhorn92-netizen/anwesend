@@ -23,6 +23,7 @@
  * Favoriten (Punkt 3): fav-list | fav-save{name,kcal,p,c,f,portion?} | fav-delete{id} | fav-log{id,date?,factor?,meal?}
  *   POST { action:'water', delta|set, date? }
  * Rezepte/Plan: recipes | recipes-get | recipe-save | recipe-delete | recipe-log{recipe,servings?,date?} | plan-generate | plan-get | shopping-toggle | shopping-clear
+ * Einkauf: store-set{store} (bevorzugter Supermarkt, ''=egal) | shopping-store-suggest{store?} (FINN-Produktvorschläge je Listenposition, global gecacht)
  *   POST { action:'coach', question, history? } -> FINN-Antwort (Punkt 4 Verlauf, Punkt 6 Schutzregeln)
  *   POST { action:'coaching-request' }          -> Inbox-Vorgang „Stoffwechsel-Coaching" + Studio-Mail
  * Datenschutz (Punkt 8): export | delete-day{date?} | delete-all{confirm:'LOESCHEN'}
@@ -112,6 +113,21 @@ const GOAL_MODEL = {
 };
 const ACTS = { kaum: 1.35, moderat: 1.55, aktiv: 1.75 };
 const DIETS = ['omnivor', 'vegetarisch', 'vegan', 'lowcarb', 'highprotein'];
+// Einkaufsorte (Präferenz/Metadatum): die 7 Lebensmittelmärkte sind auch in der
+// Einkaufslisten-Marktwahl wählbar, dm/rossmann/andere nur als Kaufort am Eintrag.
+const STORES = ['aldi', 'lidl', 'rewe', 'edeka', 'penny', 'kaufland', 'netto', 'dm', 'rossmann', 'andere'];
+const STORE_LABELS = { aldi: 'ALDI Süd', lidl: 'Lidl', rewe: 'REWE', edeka: 'EDEKA', penny: 'Penny', kaufland: 'Kaufland', netto: 'Netto Marken-Discount' };
+// Bekannte Eigenmarken je Markt – NUR als Grounding für die KI-Produktvorschläge
+// (verhindert erfundene Markennamen). Anzeige-Tabelle lebt im Client (ERN_STORE_BRANDS).
+const STORE_BRANDS = {
+  aldi: ['MILSANI', 'GUT BIO', 'Meine Metzgerei', 'GOLDEN SEAFOOD', 'Natur Lieblinge', 'Knusperone', 'Rio d\'Oro'],
+  lidl: ['Milbona', 'Metzgerfrisch', 'Ocean Sea', 'Freshona', 'Crownfield', 'Solevita', 'Vemondo', 'Chef Select'],
+  rewe: ['ja!', 'REWE Bio', 'REWE Beste Wahl', 'Wilhelm Brandenburg'],
+  edeka: ['GUT&GÜNSTIG', 'EDEKA Bio', 'EDEKA Genussmomente'],
+  penny: ['Penny', 'Naturgut', 'San Fabio', 'Food For Future'],
+  kaufland: ['K-Classic', 'K-Bio', 'K-Purland', 'K-take it veggie'],
+  netto: ['GUT&GÜNSTIG', 'BioBio', 'Viva Vital'],
+};
 
 function n0(v) { const n = Math.round(Number(v)); return (isNaN(n) || n < 0) ? 0 : n; }
 // Wasser in Gläsern MIT Nachkommastellen (0,33 l = 1,32 Gläser à 0,25 l) – freie Mengen.
@@ -203,6 +219,11 @@ function sanitizeEntry(raw, hour, keepId) {
   // Nutri-Score-Ampel (A–E) vom Scan/der Suche – bleibt am Eintrag sichtbar.
   const grade = String(raw.grade || '').toUpperCase();
   if (/^[A-E]$/.test(grade)) e.grade = grade;
+  // Marke + Einkaufsort (optional): Marke kommt bei OFF-Produkten automatisch mit,
+  // der Markt ist eine reine Nutzerangabe (Whitelist STORES).
+  const brand = cleanStr(raw.brand, 60);
+  if (brand) e.brand = brand;
+  if (STORES.indexOf(String(raw.store)) >= 0) e.store = String(raw.store);
   return e;
 }
 
@@ -387,7 +408,7 @@ async function buildState(id, profile, forDate) {
   // Preis/Testphase zeigt die UI aus dem Magicline-Zusatzmodul (loadModules), nicht hier.
   return {
     ok: true, available: true, onboarded: onboarded,
-    profile: profile ? { goal: profile.goal, sex: profile.sex, height: profile.height, weight: profile.weight, age: profile.age, activity: profile.activity, diet: profile.diet } : null,
+    profile: profile ? { goal: profile.goal, sex: profile.sex, height: profile.height, weight: profile.weight, age: profile.age, activity: profile.activity, diet: profile.diet, store: profile.store || '' } : null,
     targets: targets,
     today: { date, isToday: date === todayYMD, entries: day.entries, totals, water: day.water, waterGoal: waterGoalCups(targets) },
     streak: vit.streak,
@@ -465,7 +486,8 @@ module.exports = async function handler(req, res) {
     // eine bereits erteilte Einwilligung bleibt erhalten.
     // Vom Studio-Team gesetzte individuelle Zielwerte überleben eine Neuberechnung
     // durch das Mitglied – nur das Team kann sie ändern oder entfernen.
-    try { const prev = await loadProfile(id); profile.consentAt = body.consent ? Date.now() : ((prev && prev.consentAt) || null); if (prev && prev.targetOverride) profile.targetOverride = prev.targetOverride; } catch (e) {}
+    // Der bevorzugte Supermarkt (Einkaufsliste) überlebt eine Neuberechnung ebenfalls.
+    try { const prev = await loadProfile(id); profile.consentAt = body.consent ? Date.now() : ((prev && prev.consentAt) || null); if (prev && prev.targetOverride) profile.targetOverride = prev.targetOverride; profile.store = STORES.indexOf(String(inp.store)) >= 0 ? String(inp.store) : ((prev && prev.store) || ''); } catch (e) {}
     try { await require('../../lib/privacy').recordConsent(id, 'nutrition_health', !!body.consent, { source: 'nutrition-onboarding' }); } catch (e) {}
     try { await redisPipeline([['SET', PKEY(id), JSON.stringify(profile)]]); } catch (e) {}
     res.statusCode = 200; return res.end(JSON.stringify(await buildState(id, profile)));
@@ -492,6 +514,16 @@ module.exports = async function handler(req, res) {
     const used = await Quota.incr(id, monthKey);
     return Quota.publicQuota(used, premium, monthKey);
   };
+
+  // ── Bevorzugten Supermarkt setzen (Einkaufsliste) – leichte Präferenz, ohne das
+  // komplette Onboarding-Formular von save-profile. '' = keine Präferenz („egal"). ──
+  if (action === 'store-set') {
+    if (!profile) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'no_profile' })); }
+    const st = String(body.store || '');
+    profile.store = STORES.indexOf(st) >= 0 ? st : '';
+    try { await redisPipeline([['SET', PKEY(id), JSON.stringify(profile)]]); } catch (e) {}
+    res.statusCode = 200; return res.end(JSON.stringify(await buildState(id, profile)));
+  }
 
   // ── Punkt 1: KI-SCHÄTZUNG per Freitext – wird NICHT gespeichert, nur zur Bestätigung ──
   if (action === 'estimate' || action === 'log') {
@@ -541,7 +573,7 @@ module.exports = async function handler(req, res) {
   if (action === 'log-manual') {
     if (!(await M.rateLimit('nutri-log:' + id, 40, 3600))) { res.statusCode = 200; return res.end(JSON.stringify(await buildState(id, profile))); }
     const targetDate = validDate(body.date, date);
-    const entry = sanitizeEntry({ name: body.name || 'Snack', portion: body.portion, amount: body.amount, kcal: body.kcal, p: body.p, c: body.c, f: body.f, fiber: body.fiber, sugar: body.sugar, satFat: body.satFat, salt: body.salt, custom: body.custom, meal: body.meal }, hour);
+    const entry = sanitizeEntry({ name: body.name || 'Snack', portion: body.portion, amount: body.amount, kcal: body.kcal, p: body.p, c: body.c, f: body.f, fiber: body.fiber, sugar: body.sugar, satFat: body.satFat, salt: body.salt, custom: body.custom, meal: body.meal, brand: body.brand, store: body.store }, hour);
     const day = await loadDay(id, targetDate);
     day.entries.push(entry);
     await saveDay(id, targetDate, day);
@@ -575,6 +607,7 @@ module.exports = async function handler(req, res) {
         fiber: patch.fiber != null ? patch.fiber : e.fiber, sugar: patch.sugar != null ? patch.sugar : e.sugar,
         satFat: patch.satFat != null ? patch.satFat : e.satFat, salt: patch.salt != null ? patch.salt : e.salt,
         custom: e.custom, meal: patch.meal != null ? patch.meal : e.meal,
+        brand: patch.brand != null ? patch.brand : e.brand, store: patch.store != null ? patch.store : e.store,
         // Herkunfts-Metadaten überleben das Bearbeiten (sonst verlöre ein OFF-Eintrag
         // beim Anpassen der Portion sein Badge, den Barcode und die Ampel).
         source: e.source, barcode: e.barcode, estimated: e.estimated, grade: e.grade,
@@ -637,10 +670,12 @@ module.exports = async function handler(req, res) {
     res.statusCode = 200; return res.end(JSON.stringify({ ok: true, favorites: Array.isArray(saved) ? saved : [] }));
   }
   if (action === 'fav-save') {
-    const f = sanitizeEntry({ name: body.name, portion: body.portion, kcal: body.kcal, p: body.p, c: body.c, f: body.f, fiber: body.fiber, sugar: body.sugar, satFat: body.satFat, salt: body.salt, custom: body.custom }, hour);
+    const f = sanitizeEntry({ name: body.name, portion: body.portion, kcal: body.kcal, p: body.p, c: body.c, f: body.f, fiber: body.fiber, sugar: body.sugar, satFat: body.satFat, salt: body.salt, custom: body.custom, brand: body.brand, store: body.store }, hour);
     const fav = { id: f.id, name: f.name, portion: f.portion, kcal: f.kcal, p: f.p, c: f.c, f: f.f };
     ['fiber', 'sugar', 'satFat', 'salt'].forEach(function (k) { if (f[k] != null) fav[k] = f[k]; });
     if (f.custom) fav.custom = true;
+    if (f.brand) fav.brand = f.brand;
+    if (f.store) fav.store = f.store;
     // Optionale Grammbasis: „diese Portion entspricht X g" – damit lässt sich später JEDE
     // Menge loggen (z. B. Werte je 100 g anlegen und beim Essen 137 g eintragen).
     const gb = clamp(body.gramsBase, 1, 2000, 0);
@@ -683,7 +718,7 @@ module.exports = async function handler(req, res) {
       portionLabel = Math.round(grams) + ' g';
     }
     const entry = sanitizeEntry({
-      name: fav.name, portion: portionLabel, meal: body.meal, custom: fav.custom,
+      name: fav.name, portion: portionLabel, meal: body.meal, custom: fav.custom, brand: fav.brand, store: fav.store,
       kcal: Math.round(n0(fav.kcal) * factor), p: Math.round(n0(fav.p) * factor), c: Math.round(n0(fav.c) * factor), f: Math.round(n0(fav.f) * factor),
       fiber: (Number(fav.fiber) || 0) * factor, sugar: (Number(fav.sugar) || 0) * factor, satFat: (Number(fav.satFat) || 0) * factor, salt: (Number(fav.salt) || 0) * factor,
     }, hour);
@@ -1159,6 +1194,52 @@ module.exports = async function handler(req, res) {
     cook.checked = {};
     await saveCook(id, cook);
     res.statusCode = 200; return res.end(JSON.stringify({ ok: true, cookplan: cook.items, shopping: buildShopping(cook) }));
+  }
+
+  // ── FINN-Produktvorschläge für die Einkaufsliste beim gewählten Supermarkt ──
+  // Je Position ein konkretes, dort übliches Produkt (bevorzugt Eigenmarke). Die
+  // Vorschläge sind Produktwissen ohne Personenbezug -> GLOBALER Cache je
+  // (Markt, Zutat), 30 Tage: erneute Anfragen (auch anderer Mitglieder) sind gratis.
+  if (action === 'shopping-store-suggest') {
+    const st = String(body.store || (profile && profile.store) || '');
+    if (STORES.indexOf(st) < 0 || !STORE_LABELS[st]) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'no_store', message: 'Bitte wähle zuerst deinen Markt aus.' })); }
+    const cook = await loadCook(id);
+    const list = buildShopping(cook);
+    const items = list.filter(function (x) { return !x.checked; }).concat(list.filter(function (x) { return x.checked; })).slice(0, 25);
+    if (!items.length) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'empty_list', message: 'Deine Einkaufsliste ist leer.' })); }
+    const crypto = require('crypto');
+    const ck = function (key) { return 'nutri:storesuggest:' + st + ':' + crypto.createHash('sha1').update(String(key)).digest('hex').slice(0, 16); };
+    const cached = await kvGetMany(items.map(function (x) { return ck(x.key); }));
+    const suggestions = {};
+    const missing = [];
+    items.forEach(function (x, i) {
+      let hit = null; try { hit = cached[i] ? JSON.parse(cached[i]) : null; } catch (e) {}
+      if (hit && hit.product) suggestions[x.key] = { product: hit.product, note: hit.note || '' };
+      else missing.push(x);
+    });
+    let quota;
+    if (missing.length) {
+      if (!(await gateAI())) return;
+      if (!AI.hasAI) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'no_ai', message: 'FINN ist gerade nicht verfügbar.' })); }
+      if (!(await M.rateLimit('nutri-storesuggest:' + id, 10, 3600))) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'rate_limited', message: 'Bitte warte kurz und versuch es erneut.' })); }
+      const r = await AI.nutritionStoreSuggest({
+        store: st, storeLabel: STORE_LABELS[st], diet: (profile && profile.diet) || 'omnivor', goal: (profile && profile.goal) || '',
+        brands: STORE_BRANDS[st] || [], items: missing.map(function (x) { return { key: x.key, name: x.name, amount: x.amount }; }),
+      });
+      if (!r.ok) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: r.error || 'ai_failed', message: 'FINN konnte gerade keine Vorschläge machen – bitte später erneut.' })); }
+      // Nur angefragte Positionen übernehmen (die KI-Schicht filtert schon – hier nochmal fail-safe).
+      const wanted = {}; missing.forEach(function (x) { wanted[x.key] = true; });
+      const sets = [];
+      r.items.forEach(function (x) {
+        if (!wanted[x.key]) return;
+        suggestions[x.key] = { product: x.product, note: x.note || '' };
+        sets.push(['SET', ck(x.key), JSON.stringify({ product: x.product, note: x.note || '' }), 'EX', String(30 * 86400)]);
+      });
+      try { if (sets.length) await redisPipeline(sets); } catch (e) {}
+      quota = await chargeAI();
+      try { require('../../lib/handled').record('ai', id, 'nutri-storesuggest'); } catch (e) {}
+    }
+    res.statusCode = 200; return res.end(JSON.stringify({ ok: true, store: st, suggestions: suggestions, cachedCount: items.length - missing.length, quota: quota }));
   }
 
   // ── Verlauf: letzte 7 ODER 30 Tage (range) + FINN-Wochenreview (nur 7-Tage-Sicht) ──
