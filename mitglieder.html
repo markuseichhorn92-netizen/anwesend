@@ -533,6 +533,7 @@
     ernConfirm:null, ernConfirmBusy:false,
     ernScanCode:'', ernScanBusy:false, ernScanErr:'', ernScanNotFound:false,
     ernScanPurpose:'log', ernShop:false, ernShopProd:null, ernShopAlt:null, ernShopAltBusy:false, ernShopFinn:null, ernShopFinnBusy:false,
+    ernShopItem:null, ernShopItemBusy:false, ernShopItemErr:'', ernShopItemCache:{}, ernShopItemGeneric:false,
     sos:false, sosCrave:'', sosTrigger:'', sosFinn:null, sosFinnBusy:false, buyGuide:false,
     ernSearchQ:'', ernSearchResults:null, ernSearchBusy:false, ernSearchErr:'',
     ernCamErr:'', ernVoiceText:'', ernCamShot:'', ernMoreOpen:false,
@@ -4123,6 +4124,81 @@
       '</div></div>';
   }
 
+  // ═══ Einkaufsliste: Position antippen → echte Produkte mit Bild & Nährwerten ═══
+  // Zweck: das Lebensmittel im Regal WIEDERFINDEN (Foto + Marke) und vergleichen
+  // (kcal je 100 g + Nutri-Score). Ein Tipp auf ein Produkt öffnet die volle
+  // Nährwert-Ansicht – dasselbe Sheet wie beim Barcode-Check.
+  // Suchbegriff: bevorzugt FINNs Produktvorschlag für den gewählten Markt, sonst der
+  // Zutatenname. Treffer werden je Suchbegriff im Client gecacht – das schont das
+  // Open-Food-Facts-Limit, wenn mehrere Positionen nacheinander geöffnet werden.
+  function ernItemQuery(name){
+    var s=String(name||'').replace(/\([^)]*\)/g,' ')
+      .replace(/\b\d+([.,]\d+)?\s*(g|kg|ml|l|cl|el|tl|stk|stück|prise|dose|packung|bund|zehen?|scheiben?)\b/gi,' ')
+      .replace(/[0-9]+/g,' ').replace(/\s+/g,' ').trim();
+    return s.split(' ').filter(Boolean).slice(0,3).join(' ');
+  }
+  function ernShopItemSuggest(key){ var m=(S.ernShopSuggest&&S.ernShopSuggest.map)?S.ernShopSuggest.map[key]:null; return (m&&m.product)?m:null; }
+  function ernShopItemQueryFor(it){
+    if(!it) return '';
+    var sg=S.ernShopItemGeneric?null:ernShopItemSuggest(it.key);
+    return sg?String(sg.product).replace(/\s+/g,' ').trim().slice(0,60):ernItemQuery(it.name);
+  }
+  function ernShopItemFetch(){
+    var it=S.ernShopItem; if(!it||S.ernShopItemBusy) return;
+    var q=ernShopItemQueryFor(it);
+    if(q.length<2){ setQuiet({ernShopItemErr:'Zu dieser Position gibt es keinen sinnvollen Suchbegriff.'}); return; }
+    if(S.ernShopItemCache[q]) return;   // bereits geladen (Cache je Suchbegriff)
+    S.ernShopItemBusy=true; S.ernShopItemErr=''; render();
+    api('/api/member/food-products',{method:'POST',body:JSON.stringify({action:'search',query:q,limit:8})})
+    .then(function(d){ S.ernShopItemBusy=false;
+      if(d&&d.ok&&Array.isArray(d.products)) S.ernShopItemCache[q]=d.products.filter(function(p){ return p&&p.name; });
+      else S.ernShopItemErr=(d&&d.message)||'Produkte gerade nicht ladbar.';
+      render(); })
+    .catch(function(){ S.ernShopItemBusy=false; S.ernShopItemErr='Verbindung gerade nicht möglich.'; render(); });
+  }
+  function ernShopItemSheet(){
+    var it=S.ernShopItem; if(!it) return '';
+    var q=ernShopItemQueryFor(it), sg=S.ernShopItemGeneric?null:ernShopItemSuggest(it.key);
+    var list=S.ernShopItemCache[q]||null;
+    var head='<div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:4px"><div style="flex:1;min-width:0">'+
+      '<div style="font-size:18px;font-weight:900;color:var(--text);letter-spacing:-.3px">'+esc(it.name)+'</div>'+
+      '<div style="font-size:12.5px;color:var(--text-soft);font-weight:700;margin-top:2px">'+(it.amount?esc(it.amount)+' · ':'')+'Produkte zum Wiederfinden</div></div>'+
+      '<button data-act="ernShopItemClose" aria-label="Schließen" style="width:34px;height:34px;border-radius:11px;border:none;background:var(--surface-2);color:var(--text-soft);cursor:pointer;font-size:20px;line-height:1;flex-shrink:0">×</button></div>';
+    var myStore=(DATA.nutri&&DATA.nutri.profile&&DATA.nutri.profile.store)||'';
+    var qLine='<div style="background:var(--surface-2);border-radius:12px;padding:10px 12px;margin-top:10px;font-size:12px;font-weight:700;color:var(--text-2);line-height:1.45">'+
+      (sg?('🏷️ FINN-Vorschlag'+(ernStoreLabel(myStore)?(' für '+esc(ernStoreLabel(myStore))):'')+': <b>'+esc(sg.product)+'</b>'):('🔎 Gesucht: <b>'+esc(q)+'</b>'))+'</div>'+
+      (sg?'<button data-act="ernShopItemGeneric" style="width:100%;margin-top:7px;padding:9px;border:1px dashed var(--border);border-radius:11px;background:transparent;color:var(--teal-ink);font-weight:800;font-size:12px;cursor:pointer">Stattdessen allgemein nach „'+esc(ernItemQuery(it.name))+'" suchen</button>':'');
+    var card=function(p,i){
+      var g=(p.nutriScore&&p.nutriScore.grade)?String(p.nutriScore.grade).toUpperCase():'';
+      var n=p.nutriments||{};
+      var kc=(n.kcal100g!=null)?(ernNum(n.kcal100g)+' kcal'):'';
+      var mac=[(n.protein100g!=null?('E '+ernShopNum(n.protein100g)):''),(n.carbs100g!=null?('K '+ernShopNum(n.carbs100g)):''),(n.fat100g!=null?('F '+ernShopNum(n.fat100g)):'')].filter(Boolean).join(' · ');
+      var img=p.imageUrl
+        ? '<div style="width:58px;height:58px;border-radius:12px;overflow:hidden;flex-shrink:0;background:var(--surface-2)"><img src="'+esc(p.imageUrl)+'" alt="" loading="lazy" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display=\'none\'"></div>'
+        : '<div style="width:58px;height:58px;border-radius:12px;flex-shrink:0;background:var(--surface-2);display:flex;align-items:center;justify-content:center;font-size:26px">🛒</div>';
+      return '<button data-act="ernShopItemProd" data-arg="'+i+'" style="display:flex;align-items:center;gap:11px;width:100%;background:var(--surface-2);border:1.5px solid var(--border);border-radius:14px;padding:10px;margin-bottom:8px;cursor:pointer;text-align:left;font-family:inherit">'+img+
+        '<span style="flex:1;min-width:0"><span style="display:block;font-size:13.5px;font-weight:800;color:var(--text);line-height:1.3">'+esc(p.name)+'</span>'+
+        (p.brand?'<span style="display:block;font-size:11.5px;font-weight:700;color:var(--teal-ink);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(p.brand)+'</span>':'')+
+        ((kc||mac)?'<span style="display:block;font-size:11px;font-weight:600;color:var(--text-soft);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc([kc,mac].filter(Boolean).join(' · '))+' · je 100 g</span>':'')+
+        '</span>'+(g?nutriChip(g,30):'')+svg('<path d="M9 18l6-6-6-6"></path>',{c:'var(--text-soft)',w:2.4,s:15})+'</button>';
+    };
+    var body;
+    if(S.ernShopItemBusy) body='<div style="text-align:center;color:var(--text-soft);font-size:13px;font-weight:700;padding:26px 10px"><span style="width:18px;height:18px;border:2.5px solid rgba(14,96,114,.25);border-top-color:var(--ern-acc);border-radius:50%;display:inline-block;animation:ernspin .7s linear infinite;vertical-align:middle;margin-right:8px"></span>Produkte werden geladen …</div>';
+    else if(S.ernShopItemErr) body='<div role="alert" style="text-align:center;color:var(--err-fg);font-size:12.5px;font-weight:700;padding:20px 10px;line-height:1.5">'+esc(S.ernShopItemErr)+'</div>';
+    else if(list&&list.length) body='<div style="margin-top:12px">'+list.map(card).join('')+'</div>';
+    else if(list) body='<div style="text-align:center;padding:22px 12px"><div style="font-size:30px">🔍</div><div style="font-size:13.5px;font-weight:800;color:var(--text);margin-top:8px">Keine Produkte gefunden</div><div style="font-size:12px;font-weight:600;color:var(--text-soft);margin-top:5px;line-height:1.5">Nicht jedes Lebensmittel steht in Open Food Facts – frische Ware wie Obst, Gemüse oder Fleisch von der Theke meist nicht.</div></div>';
+    else body='';
+    var tip=(list&&list.length)?'<div style="font-size:11.5px;font-weight:600;color:var(--text-soft);text-align:center;margin-top:4px;line-height:1.5">Produkt antippen → alle Nährwerte, Ampel &amp; FINNs Einschätzung.</div>':'';
+    var actions='<div style="display:flex;gap:9px;margin-top:14px">'+
+      '<button data-act="ernShopItemScan" style="flex:1;padding:13px;border:1.5px solid rgba(10,73,88,.25);border-radius:14px;background:var(--surface);color:var(--teal-ink);font-weight:800;font-size:13.5px;cursor:pointer">📷 Scannen</button>'+
+      '<button data-act="ernShopItemCheck" style="flex:1;padding:13px;border:none;border-radius:14px;background:'+(it.checked?'var(--surface-2)':ERN_OK)+';color:'+(it.checked?'var(--text-soft)':'#fff')+';font-weight:900;font-size:13.5px;cursor:pointer">'+(it.checked?'✓ Erledigt':'✓ Abhaken')+'</button></div>';
+    return '<div data-act="ernShopItemClose" style="position:fixed;inset:0;background:rgba(4,20,24,.55);z-index:117;display:flex;align-items:flex-end;justify-content:center" role="dialog" aria-modal="true" aria-label="Produkte zu '+esc(it.name)+'">'+
+      '<div data-act="noop" style="width:100%;max-width:520px;max-height:92vh;overflow-y:auto;-webkit-overflow-scrolling:touch;background:var(--surface);border-radius:22px 22px 0 0;padding:16px 18px calc(20px + env(safe-area-inset-bottom))">'+
+        '<div style="width:40px;height:4px;border-radius:2px;background:var(--border);margin:0 auto 12px"></div>'+
+        head+qLine+body+tip+actions+ernOffNotice()+
+      '</div></div>';
+  }
+
   // ═══════════════ Heißhunger-SOS (interaktive Soforthilfe – Swap + Trick + FINN-Zuspruch) ═══════════════
   var SOS_CRAVE=[['suess','Süßes','🍫'],['salzig','Salziges','🥨'],['herzhaft','Herzhaft/Fettig','🍟'],['unklar','Einfach was','🤷']];
   var SOS_TRIG=[['hunger','Echt hungrig','🍽️'],['kopf','Kopf · Stress · Langeweile','🧠']];
@@ -7141,8 +7217,15 @@
     var done=shop.filter(function(x){return x.checked;}).length;
     var head='<div style="display:flex;align-items:center;justify-content:space-between;margin:2px 2px 12px"><span style="font-size:13px;font-weight:800;color:var(--text-muted)">'+done+' von '+shop.length+' erledigt</span>'+(done?'<button data-act="ernCookClear" style="border:none;background:none;color:#c5654f;font-size:12.5px;font-weight:800;cursor:pointer">Erledigte entfernen</button>':'')+'</div>';
     var sug=(S.ernShopSuggest&&S.ernShopSuggest.store===myStore)?(S.ernShopSuggest.map||{}):null;
+    // Zeile = zwei Tap-Ziele: links abhaken (Häkchen), rechts die Position öffnen –
+    // dort echte Produkte mit Foto, Marke & Nährwerten (Wiederfinden im Regal).
     var row=function(it){ var sg=sug&&sug[it.key];
-      return '<button data-act="ernCookCheck" data-arg="'+encodeURIComponent(it.key)+'" aria-pressed="'+(it.checked?'true':'false')+'" style="width:100%;display:flex;align-items:center;gap:12px;background:'+(it.checked?'var(--surface-2)':'var(--surface)')+';border:none;border-radius:14px;padding:13px 14px;margin-bottom:8px;cursor:pointer;text-align:left;box-shadow:0 6px 16px rgba(4,33,40,.05)"><span style="width:24px;height:24px;border-radius:8px;background:'+(it.checked?ERN_OK:'var(--surface)')+';border:2px solid '+(it.checked?ERN_OK:'var(--border)')+';display:flex;align-items:center;justify-content:center;flex-shrink:0">'+(it.checked?svg('<path d="M20 6L9 17l-5-5"></path>',{c:'#fff',w:3,s:14}):'')+'</span><span style="flex:1;min-width:0"><span style="display:block;font-size:14.5px;font-weight:700;color:'+(it.checked?'var(--text-soft)':'var(--text)')+';text-decoration:'+(it.checked?'line-through':'none')+'">'+esc(it.name)+'</span>'+((sg&&!it.checked)?'<span style="display:block;font-size:11px;font-weight:700;color:var(--ern-acc);margin-top:2px">🏷️ z. B. '+esc(sg.product)+(sg.note?' · '+esc(sg.note):'')+'</span>':'')+'</span><span style="font-size:13px;font-weight:800;color:var(--text-soft);flex-shrink:0">'+esc(it.amount||'')+'</span></button>'; };
+      var check='<button data-act="ernCookCheck" data-arg="'+encodeURIComponent(it.key)+'" aria-pressed="'+(it.checked?'true':'false')+'" aria-label="'+esc(it.name)+' abhaken" style="width:46px;height:50px;border:none;background:transparent;padding:0;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'+
+        '<span style="width:24px;height:24px;border-radius:8px;background:'+(it.checked?ERN_OK:'var(--surface)')+';border:2px solid '+(it.checked?ERN_OK:'var(--border)')+';display:flex;align-items:center;justify-content:center">'+(it.checked?svg('<path d="M20 6L9 17l-5-5"></path>',{c:'#fff',w:3,s:14}):'')+'</span></button>';
+      var open='<button data-act="ernShopItemOpen" data-arg="'+encodeURIComponent(it.key)+'" aria-label="Produkte zu '+esc(it.name)+' ansehen" style="flex:1;min-width:0;display:flex;align-items:center;gap:9px;border:none;background:transparent;padding:13px 0;cursor:pointer;text-align:left;font-family:inherit">'+
+        '<span style="flex:1;min-width:0"><span style="display:block;font-size:14.5px;font-weight:700;color:'+(it.checked?'var(--text-soft)':'var(--text)')+';text-decoration:'+(it.checked?'line-through':'none')+'">'+esc(it.name)+'</span>'+((sg&&!it.checked)?'<span style="display:block;font-size:11px;font-weight:700;color:var(--ern-acc);margin-top:2px">🏷️ z. B. '+esc(sg.product)+(sg.note?' · '+esc(sg.note):'')+'</span>':'')+'</span>'+
+        '<span style="font-size:13px;font-weight:800;color:var(--text-soft);flex-shrink:0">'+esc(it.amount||'')+'</span>'+svg('<path d="M9 18l6-6-6-6"></path>',{c:'var(--text-soft)',w:2.4,s:15})+'</button>';
+      return '<div style="display:flex;align-items:center;background:'+(it.checked?'var(--surface-2)':'var(--surface)')+';border-radius:14px;padding:0 13px 0 2px;margin-bottom:8px;box-shadow:0 6px 16px rgba(4,33,40,.05)">'+check+open+'</div>'; };
     var CATS=['Obst & Gemüse','Milchprodukte & Eier','Fleisch & Fisch','Brot & Backwaren','Trockenwaren & Konserven','Getränke','Sonstiges'];
     var brands=myStore?(ERN_STORE_BRANDS[myStore]||{}):{};
     var groups={}; shop.forEach(function(it){ var cat=ernShopCat(it.name); (groups[cat]=groups[cat]||[]).push(it); });
@@ -9963,7 +10046,7 @@
     if(fm){
       var onErnTab=(S.screen==='ern')&&DATA.nutri&&DATA.nutri.ok&&DATA.nutri.onboarded&&
         !S.ernEdit&&!S.ernRecipeSel&&!S.ernCapture&&!S.ernConfirm&&!S.ernProd&&!S.ernData&&
-        !S.ernShop&&!S.ernShopProd&&!S.sos&&!S.buyGuide&&
+        !S.ernShop&&!S.ernShopProd&&!S.ernShopItem&&!S.sos&&!S.buyGuide&&
         !S.ernFavMgr&&!S.ernMealMgr&&!S.ernSelfNew&&!S.ernEntryEdit&&!S.ernLesson&&!S.ernVert&&!S.ernCk&&!(S.ernKoch!=null);
       var onTagTab=(S.screen==='tag')&&!S.trainRun&&!S.trainDetail&&!S.trainGenOpen;
       var miniBlock=S.finnOpen||S.qaOpen||S.ernChatOpen||S.ernUpgrade||S.dp||S.ciPopup||S.vaOpen;
@@ -10190,6 +10273,7 @@
     if(S.screen==='tag' && S.woOpen && !woMeasuring() && !S.woResult) html+=woStartSheet();   // Aktivitäts-Auswahl
     if(S.screen==='tag' && S.woDetail && !S.woResult) html+=woDetailSheet();   // Einheit-Detail (Verlauf)
     if(S.screen==='ern'&&S.ernCapture) html+=ernErfassen();   // Erfassen-Popup (Bottom-Sheet) über dem Ernährungs-Screen
+    if(S.screen==='ern'&&S.ernShopItem) html+=ernShopItemSheet();   // Einkaufsliste: Produkte zur Position (Bild + Nährwerte)
     if(S.screen==='ern'&&S.ernShop) html+=ernShopSheet();   // Produkt-Check: Scan-Sheet (Einkaufen-Modus)
     if(S.screen==='ern'&&S.ernShopProd) html+=ernShopVerdictSheet();   // Produkt-Check: Ampel-Ergebnis
     if(S.screen==='ern'&&S.sos) html+=ernSosSheet();   // Heißhunger-SOS (Soforthilfe-Bottom-Sheet)
@@ -10233,7 +10317,7 @@
     // Login/Onboarding, in Vollbild-Chats, im Schnell-Popup und in Ernährungs-/Trainings-
     // Vollbild-Flows (die tragen ihren eigenen Kopf mit Zurück).
     var abFull=!!(S.ernLesson||S.ernVert||S.ernCk)
-      || (S.screen==='ern' && (S.ernCapture||S.ernEdit||S.ernProd||S.ernShop||S.ernShopProd||S.sos||S.buyGuide||S.ernConfirm||S.ernData||S.ernFavMgr||S.ernMealMgr||S.ernSelfNew||S.ernEntryEdit||!(DATA.nutri&&DATA.nutri.ok&&DATA.nutri.available!==false&&DATA.nutri.onboarded)))
+      || (S.screen==='ern' && (S.ernCapture||S.ernEdit||S.ernProd||S.ernShop||S.ernShopProd||S.ernShopItem||S.sos||S.buyGuide||S.ernConfirm||S.ernData||S.ernFavMgr||S.ernMealMgr||S.ernSelfNew||S.ernEntryEdit||!(DATA.nutri&&DATA.nutri.ok&&DATA.nutri.available!==false&&DATA.nutri.onboarded)))
       || (S.screen==='tag' && (S.trainRun||S.trainGenOpen||S.trainDetail));
     var abOn = !!TOKEN && S.screen!=='login' && S.screen!=='alogin' && !chatFull && !S.qaOpen && !abFull && obDone() && !tourActive();
     var abar=$('appbar');
@@ -11195,6 +11279,30 @@
         else { S.ernErr=true; S.ernMsg=(d&&d.message)||'FINN konnte gerade keine Vorschläge machen.'; }
         render(); })
       .catch(function(){ S.ernShopSuggestBusy=false; S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); }); },
+    // ── Einkaufsliste: Position antippen -> Produkte mit Bild & Nährwerten ──
+    ernShopItemOpen:function(a){
+      var key=decodeURIComponent(a||''); var c=DATA.nutriCook;
+      var it=((c&&c.shopping)||[]).filter(function(x){ return String(x.key)===key; })[0];
+      if(!it) return;
+      S.ernShopItem={key:it.key,name:it.name,amount:it.amount||'',checked:!!it.checked};
+      S.ernShopItemErr=''; S.ernShopItemGeneric=false; render();
+      ernShopItemFetch();
+    },
+    ernShopItemClose:function(){ setS({ernShopItem:null,ernShopItemErr:'',ernShopItemGeneric:false}); },
+    // Allgemeiner Suchbegriff statt FINNs Marktvorschlag (findet mehr, aber unspezifischer).
+    ernShopItemGeneric:function(){ S.ernShopItemGeneric=true; S.ernShopItemErr=''; render(); ernShopItemFetch(); },
+    // Produkt antippen -> volle Nährwert-/Ampel-Ansicht (dasselbe Sheet wie beim Barcode-Check).
+    ernShopItemProd:function(a){
+      var it=S.ernShopItem; if(!it) return;
+      var list=S.ernShopItemCache[ernShopItemQueryFor(it)]||[];
+      var p=list[parseInt(a,10)]; if(p) ernOpenShopVerdict(p);
+    },
+    ernShopItemCheck:function(){
+      var it=S.ernShopItem; if(!it) return;
+      var key=it.key; S.ernShopItem=null;
+      try{ ACT.ernCookCheck(encodeURIComponent(key)); }catch(e){ render(); }
+    },
+    ernShopItemScan:function(){ setS({ernShopItem:null}); try{ ACT.ernShopOpen(); }catch(e){} },
     // ── Eigenes Rezept: Zutaten wählen -> FINN schreibt die Zubereitung ──
     ernSelfOpen:function(){ setS({ernSelfNew:{title:'',goal:'',servings:1,searchQ:'',results:null,searchBusy:false,searchErr:'',ings:[],busy:false,msg:'',err:false}}); try{ window.scrollTo(0,0); }catch(e){} },
     ernSelfCancel:function(){ setS({ernSelfNew:null}); },
@@ -12073,6 +12181,7 @@
       if(S.moGuide){ S.moGuide=false; S.moGuideStep=0; render(); return true; }
       if(S.ernShopProd){ S.ernShopProd=null; S.ernShopAlt=null; S.ernShopFinn=null; render(); return true; }
       if(S.ernShop){ try{ window.__ernStopScan&&window.__ernStopScan(); }catch(e){} S.ernShop=false; S.ernScanPurpose='log'; render(); return true; }
+      if(S.ernShopItem){ S.ernShopItem=null; S.ernShopItemErr=''; S.ernShopItemGeneric=false; render(); return true; }
       if(S.sos){ if(S.sosTrigger){ S.sosTrigger=''; S.sosFinn=null; } else if(S.sosCrave){ S.sosCrave=''; } else { S.sos=false; } render(); return true; }
       if(S.buyGuide){ S.buyGuide=false; render(); return true; }
       var boolO=['fbOpen','finnOpen','qaOpen','vaOpen','ciPopup','ernUpgrade','ernChatOpen','morningBreathe'];
@@ -12094,7 +12203,7 @@
           return true;
         }
         var order=['ernConfirm','ernProd','ernEntryEdit','ernEdit','ernData','ernSelfNew','ernFavMgr','ernMealMgr','ernPlanQuiz','ernKoch',
-          'ernLesson','ernVert','ernCk','ernChatOpen','ernUpgrade','ernShopProd','ernShop','sos','buyGuide',
+          'ernLesson','ernVert','ernCk','ernChatOpen','ernUpgrade','ernShopProd','ernShop','ernShopItem','sos','buyGuide',
           'socChat','socRoom','trainFinish','trainRun','trainDetail','trainGenOpen','welcomeGift',
           'moMetric','moGuide','morningBreathe','woResult','woDetail','woOpen',
           'finnOpen','vaOpen','qaOpen','fbOpen','ciPopup','dp'];
