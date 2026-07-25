@@ -59,7 +59,7 @@ assert.ok(member.includes("rIf(['figur','home','fort','ern'])"), 'loadFigur muss
 assert.ok(member.includes('function ernWeightCard()'), 'Gewicht-Karte im Ernaehrungs-Verlauf muss existieren');
 assert.ok(/return ernWeightCard\(\)\+\w*[Bb]ar\+stripCard/.test(member) || member.includes('return ernWeightCard()+stripCard'),
   'Gewicht-Karte muss im Verlauf-Tab oben stehen');
-assert.ok(member.includes("mkPick('ernCapWeight',"), 'Ernaehrungs-Erfassen muss einen Gewicht-Eintrag haben');
+assert.ok(member.includes('data-act="ernCapWeight"'), 'Ernaehrungs-Erfassen muss einen Gewicht-Eintrag haben');
 assert.ok(/ernCapWeight:function\(\)\{[\s\S]*?nav\('figur'\)/.test(member), "ernCapWeight muss in den Figur-Check fuehren");
 
 // ── Android-System-Zurück fängt statt App zu schließen (Rueckmeldung Samsung) ──

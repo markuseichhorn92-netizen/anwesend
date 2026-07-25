@@ -528,7 +528,7 @@
     ernLibQ:'', ernCookPick:false, ernCookDay:'0', ernKoch:null,
     ernPlanDraft:null, ernPlanDraftBusy:false, ernPlanReplaceIdx:-1, ernPlanQuiz:null,
     ernCFSwapIdx:-1, ernCFSwapTxt:'', ernCFSwapBusy:false, ernCFRefine:'', ernCFRefineBusy:false,
-    ernCapture:false, ernCapTab:'cam', ernObStep:0, ernConsent:false, ernCheckinDismissed:false, ernCapTarget:'',
+    ernCapture:false, ernCapTab:'cam', ernObStep:0, ernConsent:false, ernFastOpen:false, ernCapTarget:'',
     ernBuyConsent:false, wdStep:0, wdBusy:false, wdErr:false, wdMsg:'', wdDoneAt:0,
     ernConfirm:null, ernConfirmBusy:false,
     ernScanCode:'', ernScanBusy:false, ernScanErr:'', ernScanNotFound:false,
@@ -1997,28 +1997,6 @@
         '<div style="font-size:12.5px;color:var(--text-soft);font-weight:600;line-height:1.45;margin-top:2px">'+sub+'</div></div>'+
         pill+
       '</div></button>';
-  }
-  // Ernährungs-Karte auf der Startseite – nur wenn das Modul freigeschaltet ist (ERN_ON).
-  // Zeigt live: kcal übrig (Ring), Streak und die heute verdienten Vitalpunkte; führt ins Essen-Modul.
-  function homeErnCard(){
-    if(!ERN_ON) return '';
-    var n=DATA.nutri;
-    var wrap=function(inner){ return '<button data-act="nav" data-arg="ern" style="width:100%;text-align:left;border:none;cursor:pointer;font-family:inherit;background:var(--surface);border-radius:20px;box-shadow:0 12px 30px rgba(4,33,40,.09);padding:16px 18px;margin-bottom:16px">'+inner+'</button>'; };
-    var head='<div style="display:flex;align-items:center;gap:11px;margin-bottom:12px"><div style="width:38px;height:38px;border-radius:12px;background:rgba(14,96,114,.12);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:20px">🥗</div><div style="flex:1;min-width:0"><div style="font-size:10.5px;font-weight:900;color:'+ERN_G+';text-transform:uppercase;letter-spacing:.4px">Ernährung</div><div style="font-size:15.5px;font-weight:900;color:var(--text)">Heute im Blick</div></div>'+svg('<path d="M9 6l6 6-6 6"></path>',{c:'var(--text-soft)',w:2.4,s:18})+'</div>';
-    // Noch nicht geladen / nicht verfügbar -> dezente Teaser-Karte, die trotzdem ins Modul führt.
-    if(!(n&&n.ok)){
-      var sub=(n&&n.available===false)?'Bald in deiner App verfügbar':'Tagesziel, Tracking &amp; Rezepte – tippe zum Öffnen';
-      return wrap(head+'<div style="font-size:13px;font-weight:600;color:var(--text-muted);line-height:1.45">'+sub+'</div>');
-    }
-    if(!n.onboarded){
-      return wrap(head+'<div style="font-size:13px;font-weight:600;color:var(--text-muted);line-height:1.45">In 1 Minute dein Tagesziel einrichten und Essen tracken – bringt dir Vitalpunkte für deinen Rang.</div>');
-    }
-    var t=n.targets||{}, td=n.today||{}, tot=td.totals||{kcal:0,p:0,c:0,f:0};
-    var kcalLeft=Math.max(0,(t.kcal||0)-tot.kcal), deg=t.kcal?Math.min(360,Math.round(tot.kcal/t.kcal*360)):0;
-    var ring='<div style="position:relative;width:70px;height:70px;flex-shrink:0"><div style="width:70px;height:70px;border-radius:50%;background:conic-gradient('+ERN_OK+' '+deg+'deg,var(--surface-2) 0)"></div><div style="position:absolute;inset:7px;border-radius:50%;background:var(--surface);display:flex;flex-direction:column;align-items:center;justify-content:center"><span style="font-size:17px;font-weight:900;color:var(--text);letter-spacing:-.5px;line-height:1">'+ernNum(kcalLeft)+'</span><span style="font-size:7px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.3px;margin-top:1px">kcal übrig</span></div></div>';
-    var pill=function(v,l,c){ return '<div style="flex:1;background:var(--surface-2);border-radius:12px;padding:9px 11px"><div style="font-size:15px;font-weight:900;color:'+(c||'var(--teal-ink)')+'">'+v+'</div><div style="font-size:10px;font-weight:700;color:var(--text-soft);margin-top:1px">'+l+'</div></div>'; };
-    var body='<div style="display:flex;align-items:center;gap:13px">'+ring+'<div style="flex:1;min-width:0;display:flex;gap:8px">'+pill('🔥 '+(n.streak||0),'Tage-Streak')+pill('+'+(n.pointsToday||0),'VP heute',ERN_G)+'</div></div>';
-    return wrap(head+body);
   }
   // Ernährungs-Karte auf der Startseite mit Schnellüberblick: kcal-Fortschritt
   // + Makro-Balken (Eiweiß/KH/Fett) mit Ist/Ziel – ein Blick genügt. Führt ins Modul.
@@ -3688,11 +3666,11 @@
     // „Hinzufügen"-Modus: an die laufende Mahlzeit anhängen statt neu zu beginnen.
     if(S.ernAddToConfirm && S.ernConfirm){ S.ernConfirm.items=S.ernConfirm.items.concat(mapped); if(mapped.length&&mapped[0].meal) { /* Mahlzeit vom letzten Eintrag übernehmen, wenn gesetzt */ } }
     else { S.ernConfirm={ source:source||'ai', date:(S.ernConfirm&&S.ernConfirm.date)||today, items:mapped }; }
-    S.ernAddToConfirm=false; S.ernEval=null; S.ernEvalBusy=false; S.ernCFSwapIdx=-1; S.ernCFSwapTxt=''; S.ernCFRefine='';
+    S.ernAddToConfirm=false; S.ernEval=null; S.ernEvalBusy=false; S.ernCFSwapIdx=-1; S.ernCFSwapTxt=''; S.ernCFRefine=''; S.ernCFExtrasOpen=false; S.ernCFDateOpen=false;
     try{ window.__ernStopScan&&window.__ernStopScan(); }catch(e){}
     S.ernCapture=false; S.ernProd=null; S.ernMsg=''; S.ernErr=false; render();
   }
-  function ernCloseConfirm(){ try{ window.__ernStopScan&&window.__ernStopScan(); }catch(e){} S.ernCFScanIdx=null; S.ernConfirm=null; S.ernConfirmBusy=false; S.ernAddToConfirm=false; S.ernEval=null; S.ernEvalBusy=false; S.ernCFSwapIdx=-1; S.ernCFSwapTxt=''; S.ernCFRefine=''; render(); }
+  function ernCloseConfirm(){ try{ window.__ernStopScan&&window.__ernStopScan(); }catch(e){} S.ernCFScanIdx=null; S.ernConfirm=null; S.ernConfirmBusy=false; S.ernAddToConfirm=false; S.ernEval=null; S.ernEvalBusy=false; S.ernCFSwapIdx=-1; S.ernCFSwapTxt=''; S.ernCFRefine=''; S.ernCFExtrasOpen=false; S.ernCFDateOpen=false; render(); }
   // Live-Update der Bestätigen-Felder OHNE Re-Render (Fokus/Tastatur bleiben erhalten).
   window.__ernCF=function(idx,field,value){ var cf=S.ernConfirm; if(!cf||!cf.items[idx]) return;
     if(field==='kcal'||field==='p'||field==='c'||field==='f'){ var n=parseInt(value,10); cf.items[idx][field]=(isNaN(n)||n<0)?0:Math.min(9999,n); }
@@ -3779,7 +3757,7 @@
           // Weitere Nährwerte (Nährwerttabelle) – bei eigenen Lebensmitteln offen, sonst einklappbar.
           var micOpen=it._micOpen||it.source==='manual'||it.custom||(+it.fiber||0)>0||(+it.sugar||0)>0||(+it.satFat||0)>0||(+it.salt||0)>0;
           var numFm=function(field,label,val){ return '<div style="flex:1"><label style="font-size:9px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.2px">'+label+'</label><input type="number" inputmode="decimal" min="0" step="any" aria-label="'+label+' in Gramm" value="'+(+val||0)+'" oninput="window.__ernCF('+idx+',\''+field+'\',this.value)" style="width:100%;border:1.5px solid var(--border);border-radius:10px;padding:7px 3px;font-size:13.5px;font-weight:700;color:var(--text-2);text-align:center;background:var(--surface);margin-top:3px"></div>'; };
-          var toggle='<button data-act="ernCFMicros" data-arg="'+idx+'" aria-expanded="'+(micOpen?'true':'false')+'" style="width:100%;margin-top:11px;padding:8px 4px;border:1px dashed var(--border);border-radius:11px;background:transparent;color:var(--text-soft);font-weight:800;font-size:11.5px;cursor:pointer;text-align:left;display:flex;align-items:center;justify-content:space-between">weitere Nährwerte (Ballaststoffe · Zucker · ges. Fett · Salz)<span>'+(micOpen?'▲':'▼')+'</span></button>';
+          var toggle='<button data-act="ernCFMicros" data-arg="'+idx+'" aria-expanded="'+(micOpen?'true':'false')+'" style="width:100%;margin-top:11px;padding:8px 4px;border:1px dashed var(--border);border-radius:11px;background:transparent;color:var(--text-soft);font-weight:800;font-size:11.5px;cursor:pointer;text-align:left;display:flex;align-items:center;justify-content:space-between">weitere Nährwerte<span>'+(micOpen?'▲':'▼')+'</span></button>';
           var body=micOpen?('<div style="display:flex;gap:7px;margin-top:8px">'+numFm('fiber','Ballast.',it.fiber)+numFm('sugar','Zucker',it.sugar)+numFm('satFat','ges.Fett',it.satFat)+numFm('salt','Salz',it.salt)+'</div><div style="font-size:10px;color:var(--text-soft);font-weight:600;margin-top:5px;line-height:1.4">Gramm je Portion – optional, wie auf der Nährwerttabelle.</div>'):'';
           var favChk=(it.source==='manual'||it.custom)?('<label style="display:flex;align-items:center;gap:9px;margin-top:12px;cursor:pointer"><input type="checkbox" '+(it.saveFav?'checked':'')+' onchange="window.__ernCF('+idx+',\'saveFav\',this.checked)" style="width:18px;height:18px;accent-color:#0e6072;flex-shrink:0"><span style="font-size:12.5px;font-weight:700;color:var(--text-2)">Als eigenes Lebensmittel merken (für später)</span></label>'):'';
           // Bild eines eigenen Lebensmittels (optional): fotografieren/hochladen -> Vorschau -> beim Merken gespeichert.
@@ -3821,7 +3799,10 @@
       '<div style="flex:1"><div style="font-size:20px;font-weight:900;color:var(--text);letter-spacing:-.4px">Prüfen &amp; speichern</div><div style="font-size:12px;font-weight:700;color:'+(cf.source==='openfoodfacts'?'#0a4958':'#8a6d1f')+'">'+(cf.source==='ai'?'KI-Schätzung – bitte kurz prüfen':(cf.source==='openfoodfacts'?'Open Food Facts – bitte Portion prüfen':'Eintrag prüfen'))+'</div></div></div>';
     // Vorplanen erlaubt: bis 7 Tage in die Zukunft (abends schon das Frühstück für morgen tracken).
     var futureHint=(cf.date>isoToday())?'<div style="font-size:11px;font-weight:700;color:var(--ern-acc);margin:-6px 2px 12px">📅 Wird für '+esc(ernDayLabel(cf.date,false))+' vorgeplant – nicht für heute.</div>':'';
-    var dateRow='<div style="background:var(--surface);border-radius:14px;padding:12px 14px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;gap:10px"><label for="ern_cf_date" style="font-size:13.5px;font-weight:800;color:var(--text)">Tag</label><input id="ern_cf_date" type="date" max="'+isoShift(isoToday(),7)+'" value="'+esc(cf.date)+'" onchange="window.__ernCFDate(this.value)" aria-label="Datum" style="border:1.5px solid var(--border);border-radius:10px;padding:8px 10px;font-size:14px;font-weight:700;color:var(--text);background:var(--surface)"></div>'+futureHint;
+    // Datumszeile nur zeigen, wenn NICHT auf heute gebucht wird – sonst reicht ein Textlink.
+    var dateRow=(cf.date!==isoToday()||S.ernCFDateOpen)
+      ? '<div style="background:var(--surface);border-radius:14px;padding:12px 14px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;gap:10px"><label for="ern_cf_date" style="font-size:13.5px;font-weight:800;color:var(--text)">Tag</label><input id="ern_cf_date" type="date" max="'+isoShift(isoToday(),7)+'" value="'+esc(cf.date)+'" onchange="window.__ernCFDate(this.value)" aria-label="Datum" style="border:1.5px solid var(--border);border-radius:10px;padding:8px 10px;font-size:14px;font-weight:700;color:var(--text);background:var(--surface)"></div>'+futureHint
+      : '<div style="text-align:right;margin:-6px 2px 8px"><button data-act="ernCFDateOpen" style="border:none;background:none;color:var(--text-soft);font-size:12px;font-weight:800;cursor:pointer;padding:4px 2px">📅 Anderen Tag wählen</button></div>';
     var totCard='<div style="display:flex;gap:8px;margin:4px 0 14px">'+[['Gesamt',ernNum(tot.kcal)+' kcal','var(--text)'],['Eiweiß',tot.p+' g',ERN_PROT],['KH',tot.c+' g',ERN_CARB],['Fett',tot.f+' g',ERN_FAT]].map(function(x){ return '<div style="flex:1;background:var(--surface);border-radius:12px;padding:10px 6px;text-align:center"><div style="font-size:13.5px;font-weight:900;color:'+x[2]+'">'+x[1]+'</div><div style="font-size:10px;font-weight:800;color:var(--text-soft);text-transform:uppercase">'+x[0]+'</div></div>'; }).join('')+'</div>';
     var addBtn='<div style="display:flex;gap:8px;margin-bottom:12px">'+
       '<button data-act="ernCFAdd" style="flex:1;padding:12px;border:1.5px dashed #9cc3b3;border-radius:14px;background:rgba(14,96,114,.05);color:var(--ern-acc);font-weight:800;font-size:13.5px;cursor:pointer">🔍 Suchen / Scannen</button>'+
@@ -3838,7 +3819,12 @@
       '<textarea id="ern_cf_refine" rows="2" placeholder="z. B. Vollkornbrot statt Baguette, dazu Putenbrust und Frischkäse" oninput="window.__ernCFRefine(this.value)" style="width:100%;border:1.5px solid var(--border);border-radius:11px;padding:10px 12px;font-size:13.5px;font-weight:600;color:var(--text);background:var(--surface);resize:none;font-family:inherit;box-sizing:border-box">'+esc(S.ernCFRefine||'')+'</textarea>'+
       '<button data-act="ernCFRefineGo" '+(S.ernCFRefineBusy?'disabled ':'')+'style="width:100%;margin-top:9px;padding:11px;border:1.5px solid #0e6072;border-radius:12px;background:rgba(14,96,114,.06);color:var(--ern-acc);font-weight:800;font-size:13.5px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px">'+(S.ernCFRefineBusy?'<span style="width:15px;height:15px;border:2.5px solid rgba(14,96,114,.3);border-top-color:var(--ern-acc);border-radius:50%;display:inline-block;animation:ernspin .7s linear infinite"></span>FINN rechnet neu …':'🔄 Mahlzeit neu schätzen')+'</button>'+
     '</div>':'';
-    return '<div style="padding:4px 2px 40px">'+head+dateRow+(rows||'<div style="text-align:center;color:var(--text-soft);font-size:13px;font-weight:600;padding:20px">Keine Einträge – füge einen hinzu.</div>')+addBtn+totCard+refine+evalBtn+evalCard+msg+save+hint+'</div>';
+    // FINN-Extras (nachschärfen + bewerten) eingeklappt – ein liegendes Bewertungs-Ergebnis bleibt sichtbar.
+    var extrasOpen=!!S.ernCFExtrasOpen;
+    var extras=cf.items.length?('<button data-act="ernCFExtras" aria-expanded="'+(extrasOpen?'true':'false')+'" style="width:100%;margin-bottom:12px;padding:12px 14px;border:1.5px solid var(--border);border-radius:14px;background:var(--surface);color:var(--ern-acc);font-weight:800;font-size:13.5px;cursor:pointer;display:flex;align-items:center;justify-content:space-between">🤖 FINN-Extras: nachschärfen &amp; bewerten<span>'+(extrasOpen?'▲':'▼')+'</span></button>'+(extrasOpen?(refine+evalBtn):'')):'';
+    // „Speichern" als fixierte Leiste unten – immer erreichbar, ohne durch alle Felder zu scrollen.
+    var saveBar='<div style="position:fixed;left:0;right:0;bottom:0;z-index:60;padding:14px 16px calc(12px + env(safe-area-inset-bottom,0px));background:linear-gradient(180deg,rgba(0,0,0,0),var(--bg) 40%)"><div style="max-width:520px;margin:0 auto">'+save+'</div></div>';
+    return '<div style="padding:4px 2px 120px">'+head+dateRow+(rows||'<div style="text-align:center;color:var(--text-soft);font-size:13px;font-weight:600;padding:20px">Keine Einträge – füge einen hinzu.</div>')+addBtn+totCard+extras+evalCard+msg+hint+'</div>'+saveBar;
   }
   // Sprache -> Text (Web Speech API) -> ins Log-Feld -> KI-Schätzung. Nicht überall verfügbar.
   var ernRecog=null;
@@ -4436,6 +4422,10 @@
     if(q.length<2){ if(S.ernSearchResults!==null||S.ernSearchBusy){ S.ernSearchResults=null; S.ernSearchBusy=false; S.ernSearchErr=''; render(); } return; }
     ernSearchTimer=setTimeout(function(){ ernSearchTimer=null; if(String((S.ernSearchQ||'')).trim()===q) ernSearchGo(q); }, 480);
   };
+  // Suchfeld im Menü-Zustand des Erfassen-Sheets: erster Tastendruck wechselt in den Suche-Tab
+  // (gleiche Feld-id ern_prodq -> Wert & Fokus überleben den Re-Render über die Keep-Liste).
+  window.__ernMenuSearch=function(el){ if((S.ernCapTab||'menu')==='menu'){ S.ernCapTab='search'; window.__ernProdInput(el); render(); } else { window.__ernProdInput(el); } };
+  window.__ernMenuEnter=function(){ if((S.ernCapTab||'menu')==='menu') S.ernCapTab='search'; window.__ernProdSearch(); };
   // ── Live-Kamera (kleine Vorschau IM Sheet, statt der nativen Vollbild-Kamera) ──
   var ernCamStream=null, ernCamActive=false;
   function ernAttachCam(){ if(!ernCamActive||!ernCamStream) return; var v=document.getElementById('ern_cam_video'); if(!v) return;
@@ -4540,33 +4530,37 @@
     var IC_SRCH='<circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4-4"></path>';
     var IC_BAR='<path d="M3 5v14M7 5v14M11 5v14M14 5v14M18 5v14M21 5v14"></path>';
     var IC_PEN='<path d="M12 20h9"></path><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"></path>';
-    var IC_REC='<path d="M6 2h11a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2"></path><path d="M9 7h6M9 11h6M9 15h4"></path>';
     // Kopfzeile des Sheets (Titel + optionaler Zurück-Pfeil zur Auswahl + Schließen)
     var capBack=(tab!=='menu')?'<button data-act="ernCapMenu" aria-label="Zurück zur Auswahl" style="width:38px;height:38px;border-radius:12px;border:none;background:var(--surface);box-shadow:0 3px 10px rgba(4,33,40,.08);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'+svg(IC.back,{c:'#0a4958',w:2.2,s:19})+'</button>':'';
     var capClose='<button data-act="ernCloseCapture" aria-label="Schließen" style="width:38px;height:38px;border-radius:12px;border:none;background:#e4eaeb;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'+svg('<path d="M18 6L6 18M6 6l12 12"></path>',{c:'#5a666c',w:2.4,s:17})+'</button>';
     var capTitle=addMode?'Zur Mahlzeit hinzufügen':'Essen erfassen';
-    var capSub=addMode?'Suchen, scannen oder Barcode – wird angehängt':(tab==='menu'?'Wie möchtest du erfassen?':(S.ernCapTarget||'Wähle oben eine andere Methode'));
+    var capSub=addMode?'Suchen, scannen oder Barcode – wird angehängt':(tab==='menu'?'Suchen, Chip antippen – oder Methode wählen':(S.ernCapTarget||'Wähle oben eine andere Methode'));
     var capHead='<div style="display:flex;align-items:center;gap:11px;padding:2px 2px 14px">'+capBack+'<div style="flex:1;min-width:0"><div style="font-size:19px;font-weight:900;color:var(--text);letter-spacing:-.3px">'+esc(capTitle)+'</div><div style="font-size:12.5px;font-weight:600;color:var(--text-soft);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(capSub)+'</div></div>'+capClose+'</div>';
     var capShell=function(bodyHtml){ var na=window.__ernCapAnim?'':' noAnim'; window.__ernCapAnim=false; return '<div class="ernCapScrim'+na+'" data-act="ernCloseCapture"></div><div class="ernCapSheet'+na+'" role="dialog" aria-modal="true" aria-label="'+esc(capTitle)+'"><div class="ernCapGrip"></div><div style="padding:6px 18px 0">'+capHead+'</div><div style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:0 16px 6px">'+bodyHtml+'</div></div>'; };
     // ── Auswahl-Popup (Methoden-Picker) ──
     if(tab==='menu'){
+      // Schnell-Log zuerst: Suchfeld (erster Tastendruck wechselt in den Suche-Tab, gleiche
+      // Feld-id -> Wert & Fokus überleben den Re-Render) + Chips für Mahlzeiten/Favoriten.
+      var mag=svg('<circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4-4"></path>',{c:'var(--text-soft)',w:2.2,s:19});
+      var quickSearch='<div style="display:flex;align-items:center;gap:10px;background:var(--surface);border-radius:15px;padding:13px 15px;box-shadow:0 10px 24px rgba(4,33,40,.12)">'+mag+'<input id="ern_prodq" enterkeyhint="search" autocomplete="off" aria-label="Produkt suchen" placeholder="Suchen: Produkt oder Marke …" value="'+esc(S.ernSearchQ||'')+'" oninput="window.__ernMenuSearch&&window.__ernMenuSearch(this)" onkeydown="if(event.key===\'Enter\'){event.preventDefault();window.__ernMenuEnter&&window.__ernMenuEnter();}" style="flex:1;min-width:0;border:none;outline:none;font-size:15px;font-weight:600;color:var(--text);background:transparent;font-family:inherit"></div>';
+      var chipHead='<div style="font-size:11px;font-weight:900;color:var(--text-soft);text-transform:uppercase;letter-spacing:.4px;margin:14px 4px 0">Zuletzt &amp; Favoriten – 1 Tipp loggt direkt</div>';
       var mkPick=function(act,arg,icon,label,sub,accent){ return '<button class="ernCapRow" data-act="'+act+'"'+(arg?' data-arg="'+arg+'"':'')+' style="display:flex;align-items:center;gap:13px;width:100%;background:var(--surface);border:none;border-radius:16px;padding:14px 15px;cursor:pointer;text-align:left;box-shadow:0 4px 14px rgba(4,33,40,.06);transition:transform .08s ease">'+
         '<span style="width:44px;height:44px;border-radius:13px;flex-shrink:0;background:'+accent+';display:flex;align-items:center;justify-content:center">'+svg(icon,{c:'var(--ern-acc)',w:2,s:22})+'</span>'+
         '<span style="flex:1;min-width:0"><span style="display:block;font-size:15.5px;font-weight:800;color:var(--text)">'+label+'</span><span style="display:block;font-size:12.5px;font-weight:600;color:var(--text-soft);margin-top:1px">'+sub+'</span></span>'+
         svg('<path d="M9 18l6-6-6-6"></path>',{c:'#c2d3d6',w:2,s:16})+'</button>'; };
       var gt='rgba(14,96,114,.10)';
-      var pick='<div style="display:flex;flex-direction:column;gap:10px;padding-top:2px">'+
+      var pick='<div style="display:flex;flex-direction:column;gap:10px;padding-top:14px">'+
         mkPick('ernCapTab','cam',IC_CAM,'Teller scannen','Foto — FINN erkennt Zutaten &amp; Portion',gt)+
         mkPick('ernCapTab','voice',IC_FINN,'FINN beschreiben','Sag oder tippe – FINN schätzt deine Mahlzeit',gt)+
-        mkPick('ernCapRecipe','',IC_REC,'Rezept kochen','Aus deiner Rezept-Bibliothek übernehmen',gt)+
-        mkPick('ernCapMeals','','<path d="M6 3v7a2 2 0 0 0 4 0V3"></path><path d="M8 10v11"></path><path d="M16 3c-1.7 0-3 1.8-3 4s1.3 4 3 4v10"></path>','Meine Mahlzeiten','Gespeicherte Mahlzeit komplett eintragen',gt)+
-        mkPick('ernCapTab','search',IC_SRCH,'Produkt suchen','Datenbank nach Name oder Marke',gt)+
         mkPick('ernCapTab','barcode',IC_BAR,'Barcode scannen','Verpackung einscannen',gt)+
         mkPick('ernManualEntry','',IC_PEN,'Eigenes Lebensmittel','Nährwerte selbst eingeben – auch Mikros','rgba(10,73,88,.08)')+
-        mkPick('ernCapWeight','','<path d="M3 3v18h18"></path><path d="M7 14l4-4 3 3 5-6"></path>','Gewicht & Maße','Gewicht/Umfänge festhalten – Fortschritt sehen','rgba(224,140,83,.14)')+
-      '</div>'+
-      '<div style="text-align:center;font-size:11.5px;font-weight:600;color:var(--text-soft);line-height:1.5;margin:16px 6px 4px">Frische Mahlzeiten am besten per Foto oder Sprache, verpackte Produkte per Suche oder Barcode.</div>';
-      return capShell(pick);
+      '</div>';
+      var menuMsg=S.ernMsg?'<div role="'+(S.ernErr?'alert':'status')+'" style="font-size:12.5px;font-weight:700;color:'+(S.ernErr?'var(--err-fg)':ERN_G)+';text-align:center;margin-top:12px;line-height:1.4">'+esc(S.ernMsg)+'</div>':'';
+      var moreLinks='<div style="display:flex;justify-content:center;gap:22px;margin:16px 6px 4px">'+
+        '<button data-act="ernCapRecipe" style="border:none;background:none;color:var(--teal-ink);font-size:12.5px;font-weight:800;cursor:pointer;padding:6px 2px">🍳 Rezepte</button>'+
+        '<button data-act="ernCapWeight" style="border:none;background:none;color:var(--teal-ink);font-size:12.5px;font-weight:800;cursor:pointer;padding:6px 2px">⚖️ Gewicht &amp; Maße</button>'+
+      '</div>';
+      return capShell(quickSearch+chipHead+ernMealChips()+ernFavChips()+pick+menuMsg+moreLinks);
     }
     // ── Methoden-Ansicht (Tab-Leiste + Inhalt im selben Sheet) ──
     var tabBtn=function(k,icon,label){ var sel=tab===k; return '<button data-act="ernCapTab" data-arg="'+k+'" style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;padding:10px 4px;border:none;border-radius:14px;background:'+(sel?'#0e6072':'#fff')+';cursor:pointer;box-shadow:'+(sel?'0 6px 16px rgba(14,96,114,.28)':'0 3px 10px rgba(4,33,40,.05)')+'">'+svg(icon,{c:sel?'#fff':'#0a4958',w:1.9,s:20})+'<span style="font-size:11px;font-weight:800;color:'+(sel?'#fff':'#0a4958')+'">'+label+'</span></button>'; };
@@ -4642,7 +4636,8 @@
       inner=camArea+manual+st+ernOffNotice();
     }
     var msg=S.ernMsg?'<div style="font-size:12.5px;font-weight:700;color:'+(S.ernErr?'#c0392b':'#0e6072')+';text-align:center;margin-top:14px;line-height:1.4">'+esc(S.ernMsg)+'</div>':'';
-    var tabbar='<div style="display:flex;gap:7px;margin-bottom:14px">'+tabBtn('cam',IC_CAM,'Kamera')+tabBtn('voice',IC_FINN,'FINN')+tabBtn('search',IC_SRCH,'Suche')+tabBtn('barcode',IC_BAR,'Barcode')+'</div>';
+    var tabbar='<div style="display:flex;gap:7px;margin-bottom:14px">'+tabBtn('cam',IC_CAM,'Kamera')+tabBtn('voice',IC_FINN,'FINN')+tabBtn('barcode',IC_BAR,'Barcode')+tabBtn('search',IC_SRCH,'Suche')+
+      '<button data-act="ernManualEntry" style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;padding:10px 4px;border:none;border-radius:14px;background:#fff;cursor:pointer;box-shadow:0 3px 10px rgba(4,33,40,.05)">'+svg(IC_PEN,{c:'#0a4958',w:1.9,s:20})+'<span style="font-size:11px;font-weight:800;color:#0a4958">Eigenes</span></button></div>';
     return capShell(tabbar+inner+msg);
   }
   // 5-Schritt-Onboarding (Vollbild, grün) – wie im Claude-Design
@@ -4724,7 +4719,7 @@
       (function(){
         var micOpen=e._micOpen;
         var numFm=function(field,label,val){ return '<div style="flex:1"><label style="font-size:9px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.2px">'+label+'</label><input type="number" inputmode="decimal" min="0" step="any" aria-label="'+label+' in Gramm" value="'+(+val||0)+'" oninput="window.__ernEE(\''+field+'\',this.value)" style="width:100%;border:1.5px solid var(--border);border-radius:10px;padding:7px 3px;font-size:13.5px;font-weight:700;color:var(--text-2);text-align:center;background:var(--surface);margin-top:3px"></div>'; };
-        var toggle='<button data-act="ernEEMicros" aria-expanded="'+(micOpen?'true':'false')+'" style="width:100%;margin-top:12px;padding:8px 4px;border:1px dashed var(--border);border-radius:11px;background:transparent;color:var(--text-soft);font-weight:800;font-size:11.5px;cursor:pointer;text-align:left;display:flex;align-items:center;justify-content:space-between">weitere Nährwerte (Ballaststoffe · Zucker · ges. Fett · Salz)<span>'+(micOpen?'▲':'▼')+'</span></button>';
+        var toggle='<button data-act="ernEEMicros" aria-expanded="'+(micOpen?'true':'false')+'" style="width:100%;margin-top:12px;padding:8px 4px;border:1px dashed var(--border);border-radius:11px;background:transparent;color:var(--text-soft);font-weight:800;font-size:11.5px;cursor:pointer;text-align:left;display:flex;align-items:center;justify-content:space-between">weitere Nährwerte<span>'+(micOpen?'▲':'▼')+'</span></button>';
         return toggle+(micOpen?('<div style="display:flex;gap:7px;margin-top:8px">'+numFm('fiber','Ballast.',e.fiber)+numFm('sugar','Zucker',e.sugar)+numFm('satFat','ges.Fett',e.satFat)+numFm('salt','Salz',e.salt)+'</div>'):'');
       }())+
     '</div>';
@@ -4815,34 +4810,6 @@
     var msg=S.ernMsg?'<div role="'+(S.ernErr?'alert':'status')+'" style="font-size:12.5px;font-weight:700;color:'+(S.ernErr?'var(--err-fg)':ERN_G)+';text-align:center;margin-top:12px">'+esc(S.ernMsg)+'</div>':'';
     return '<div style="padding:4px 2px 40px">'+head+saveCard+list+msg+'</div>';
   }
-  // Prominente Coaching-Karte für „Heute" – rückt das Coach-Programm in den Fokus.
-  function ernCoachCard(){
-    var c=DATA.coach;
-    if(!c||c===true||c===false||!c.ok||c.available===false) return '';
-    var GRAD='background:linear-gradient(150deg,#12879c,#0e6072 58%,#0a4958)';
-    var ava='<div style="width:42px;height:42px;border-radius:50%;background:rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;flex-shrink:0">'+svg('<path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.5 8.6 8.6 0 0 1-4-1L3 20l1-5a8.4 8.4 0 0 1-1-4A8.5 8.5 0 0 1 11.5 3 8.5 8.5 0 0 1 21 11.5z"></path>',{c:'#fff',w:2,s:22})+'</div>';
-    var arrow=svg('<path d="M9 6l6 6-6 6"></path>',{c:'#fff',w:2.4,s:17});
-    if(!c.enrolled){
-      return '<button data-act="nav" data-arg="coach" style="width:100%;text-align:left;border:none;cursor:pointer;font-family:inherit;'+GRAD+';border-radius:20px;padding:18px 20px;color:#fff;box-shadow:0 14px 34px rgba(14,96,114,.26);margin-bottom:14px">'+
-        '<div style="display:flex;align-items:center;gap:11px">'+ava+'<div style="flex:1;min-width:0"><div style="font-size:11px;font-weight:900;color:#bfe0e6;text-transform:uppercase;letter-spacing:.4px">Dein Coaching-Programm</div><div style="font-size:17px;font-weight:900;letter-spacing:-.2px;margin-top:1px">In '+(c.totalWeeks||8)+' Wochen zum Ziel</div></div></div>'+
-        '<div style="font-size:12.5px;font-weight:600;color:#cfe8ec;line-height:1.45;margin-top:10px">Jede Woche eine kurze Lektion und klare Gewohnheiten – FINN begleitet dich. Woche 1 ist gratis.</div>'+
-        '<div style="display:flex;align-items:center;justify-content:space-between;margin-top:14px;background:rgba(255,255,255,.15);border-radius:12px;padding:11px 14px"><span style="font-size:14px;font-weight:900">Coaching starten</span>'+arrow+'</div>'+
-      '</button>';
-    }
-    var cur=c.currentLesson;
-    var habs=Array.isArray(c.todayHabits)?c.todayHabits:[];
-    var hd=habs.filter(function(h){ return h.done; }).length;
-    var done=Array.isArray(c.lessons)?c.lessons.filter(function(l){ return l.completed; }).length:Math.max(0,(c.week||1)-1);
-    var lessonLine=cur
-      ? '<div style="font-size:11px;font-weight:800;color:#bfe0e6;text-transform:uppercase;letter-spacing:.3px;margin-top:13px">'+(cur.completed?'Diese Woche · zum Wiederholen':'Diese Woche')+' · '+cur.minutes+' Min'+((!c.premium&&cur.week>=2)?' · ⭐ Premium':'')+'</div><div style="font-size:16.5px;font-weight:900;margin-top:2px;line-height:1.25">'+esc(cur.title)+'</div>'+(cur.teaser?'<div style="font-size:12.5px;font-weight:600;color:#cfe8ec;line-height:1.4;margin-top:3px">'+esc(cur.teaser)+'</div>':'')
-      : '<div style="font-size:16px;font-weight:900;margin-top:13px">Alle Wochen geschafft 🎉</div>';
-    var pills=(habs.length?'<span style="background:rgba(255,255,255,.16);border-radius:10px;padding:6px 10px;font-size:12px;font-weight:900">Heute dran '+hd+'/'+habs.length+'</span>':'')+'<span style="background:rgba(255,255,255,.16);border-radius:10px;padding:6px 10px;font-size:12px;font-weight:900">🔥 '+(c.streak||0)+'</span>';
-    return '<button data-act="nav" data-arg="coach" style="width:100%;text-align:left;border:none;cursor:pointer;font-family:inherit;'+GRAD+';border-radius:20px;padding:18px 20px;color:#fff;box-shadow:0 14px 34px rgba(14,96,114,.26);margin-bottom:14px">'+
-      '<div style="display:flex;align-items:center;gap:11px">'+ava+'<div style="flex:1;min-width:0"><div style="font-size:11px;font-weight:900;color:#bfe0e6;text-transform:uppercase;letter-spacing:.4px">Dein Coaching</div><div style="font-size:16px;font-weight:900">Woche '+c.week+' von '+c.totalWeeks+'</div></div><div style="background:rgba(255,255,255,.16);border-radius:11px;padding:6px 10px;font-size:12.5px;font-weight:900;white-space:nowrap">'+done+'/'+c.totalWeeks+' ✓</div></div>'+
-      lessonLine+
-      '<div style="display:flex;align-items:center;gap:8px;margin-top:14px">'+pills+'<span style="margin-left:auto;display:inline-flex;align-items:center;gap:4px;font-size:13.5px;font-weight:900">'+(cur&&!cur.completed?'Weiterlernen':'Zum Coach')+arrow+'</span></div>'+
-    '</button>';
-  }
   // ══ „GLP-1 natürlich" ══ Körpereigene Sättigung über Ernährung & Bewegung anregen –
   // ohne Medikament/Spritze. Hebel: Eiweiß, lösliche Ballaststoffe, gesunde Fette,
   // Fermentiertes, Reihenfolge (Gemüse/Eiweiß zuerst), Bewegung nach dem Essen.
@@ -4856,11 +4823,7 @@
     if(!ERN_ON) return '';
     var n=DATA.nutri; if(!(n&&n.ok&&n.onboarded)) return '';
     var CARD='background:var(--surface);border-radius:20px;box-shadow:0 12px 30px rgba(4,33,40,.09);padding:18px;margin-bottom:14px';
-    if(!glp1On()){
-      return '<div style="'+CARD+'"><div style="display:flex;align-items:center;gap:12px"><div style="width:44px;height:44px;border-radius:13px;background:rgba(28,155,94,.14);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:22px">🌿</div>'+
-        '<div style="flex:1;min-width:0"><div style="display:flex;align-items:center;gap:7px"><span style="font-size:15px;font-weight:900;color:var(--text)">GLP-1 natürlich</span><span style="font-size:9px;font-weight:900;color:#1c9b5e;background:rgba(28,155,94,.16);padding:2px 7px;border-radius:7px;text-transform:uppercase;letter-spacing:.3px">Neu</span></div><div style="font-size:12px;font-weight:600;color:var(--text-soft);line-height:1.4;margin-top:2px">Deine körpereigene Sättigung stärken – ganz ohne Spritze, nur über Ernährung &amp; Bewegung.</div></div></div>'+
-        '<button data-act="glp1Activate" style="width:100%;margin-top:13px;padding:12px;border:none;border-radius:13px;background:'+ERN_G+';color:#fff;font-weight:900;font-size:14px;cursor:pointer">Aktivieren</button></div>';
-    }
+    if(!glp1On()) return '';   // Einstieg läuft über die kompakte Tools-Kachel im Heute-Tab
     var ch=glp1Checks();
     // Ballaststoffe live aus dem Protokoll (weitere Nährwerte je Eintrag) – zeigt den
     // Ist-Stand zum 30-g-Ziel und hakt automatisch ab, wenn (fast) erreicht.
@@ -4943,8 +4906,8 @@
       // Makros + Ampel je Mahlzeit direkt im Kopf – so sieht man die Verteilung ohne Aufklappen.
       var mp=items.reduce(function(a,b){ return a+(b.p||0); },0), mc=items.reduce(function(a,b){ return a+(b.c||0); },0), mf=items.reduce(function(a,b){ return a+(b.f||0); },0);
       var mGrade=ernGradeAgg(items);
-      meals+='<div style="'+CARD.replace('padding:18px','padding:15px 16px')+'"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px"><div style="display:flex;align-items:center;gap:9px"><span style="font-size:18px">'+ml[2]+'</span><span style="font-size:14.5px;font-weight:900;color:var(--text)">'+ml[1]+'</span>'+(mGrade?nutriChip(mGrade,20):'')+'</div><div style="text-align:right"><div style="font-size:13.5px;font-weight:900;color:var(--text)">'+ernNum(sum)+' kcal</div><div style="font-size:10px;font-weight:800;margin-top:1px"><span style="color:'+ERN_PROT+'">E '+ernNum(mp)+'</span> · <span style="color:'+ERN_CARB+'">K '+ernNum(mc)+'</span> · <span style="color:'+ERN_FAT+'">F '+ernNum(mf)+'</span></div></div></div>'+
-        items.map(function(it){ return '<div style="display:flex;align-items:center;gap:8px;padding:10px 0;border-top:1px solid var(--border)"><button data-act="ernEntryOpen" data-arg="'+esc(it.id)+'" aria-label="'+esc(it.name)+' bearbeiten" style="flex:1;min-width:0;text-align:left;border:none;background:transparent;padding:0;cursor:pointer;font-family:inherit"><div style="font-size:13.5px;font-weight:700;color:var(--text)">'+esc(it.name)+(it.source==='openfoodfacts'?' <span style="font-size:9px;font-weight:800;color:var(--teal-ink);background:var(--surface-2);padding:1px 5px;border-radius:6px;vertical-align:middle">OFF</span>':'')+'</div><div style="font-size:11px;font-weight:600;color:var(--text-soft);margin-top:1px">'+(it.portion?esc(it.portion)+' · ':'')+'E '+(it.p||0)+' · K '+(it.c||0)+' · F '+(it.f||0)+'</div></button>'+(it.grade?nutriChip(it.grade,20):'')+'<span style="font-size:13px;font-weight:800;color:var(--text-2)">'+ernNum(it.kcal||0)+'</span><button data-act="ernDelete" data-arg="'+esc(it.id)+'" aria-label="Entfernen" style="width:26px;height:26px;border-radius:8px;border:none;background:var(--surface-2);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'+svg('<path d="M18 6L6 18M6 6l12 12"></path>',{c:'var(--text-soft)',w:2.2,s:13})+'</button></div>'; }).join('')+'<button data-act="ernOpenCapture" data-arg="'+ml[1]+'" style="width:100%;margin:8px 0 10px;padding:10px;border:1.5px dashed #cfe0d6;background:var(--surface-2);color:var(--ern-acc);border-radius:12px;font-weight:800;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px">'+svg('<path d="M12 5v14M5 12h14"></path>',{c:'var(--ern-acc)',w:2.6,s:15})+'Zu '+ml[1]+' hinzufügen</button><button data-act="ernMealSaveOpen" data-arg="'+ml[0]+'" style="width:100%;margin:0 0 8px;padding:8px;border:none;background:transparent;color:var(--ern-acc);border-radius:10px;font-weight:800;font-size:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px">⭐ '+ml[1]+' als Mahlzeit speichern</button></div>';
+      meals+='<div style="'+CARD.replace('padding:18px','padding:15px 16px')+'"><div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px"><div style="display:flex;align-items:center;gap:9px;min-width:0"><span style="font-size:18px">'+ml[2]+'</span><span style="font-size:14.5px;font-weight:900;color:var(--text)">'+ml[1]+'</span>'+(mGrade?nutriChip(mGrade,20):'')+'</div><div style="display:flex;align-items:center;gap:8px;flex-shrink:0"><div style="text-align:right"><div style="font-size:13.5px;font-weight:900;color:var(--text)">'+ernNum(sum)+' kcal</div><div style="font-size:10px;font-weight:800;margin-top:1px"><span style="color:'+ERN_PROT+'">E '+ernNum(mp)+'</span> · <span style="color:'+ERN_CARB+'">K '+ernNum(mc)+'</span> · <span style="color:'+ERN_FAT+'">F '+ernNum(mf)+'</span></div></div><button data-act="ernMealSaveOpen" data-arg="'+ml[0]+'" aria-label="'+ml[1]+' als Mahlzeit speichern" title="Als Mahlzeit speichern" style="width:28px;height:28px;border-radius:9px;border:none;background:var(--surface-2);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:14px;padding:0">⭐</button></div></div>'+
+        items.map(function(it){ return '<div style="display:flex;align-items:center;gap:8px;padding:10px 0;border-top:1px solid var(--border)"><button data-act="ernEntryOpen" data-arg="'+esc(it.id)+'" aria-label="'+esc(it.name)+' bearbeiten" style="flex:1;min-width:0;text-align:left;border:none;background:transparent;padding:0;cursor:pointer;font-family:inherit"><div style="font-size:13.5px;font-weight:700;color:var(--text)">'+esc(it.name)+(it.source==='openfoodfacts'?' <span style="font-size:9px;font-weight:800;color:var(--teal-ink);background:var(--surface-2);padding:1px 5px;border-radius:6px;vertical-align:middle">OFF</span>':'')+'</div><div style="font-size:11px;font-weight:600;color:var(--text-soft);margin-top:1px">'+(it.portion?esc(it.portion)+' · ':'')+'E '+(it.p||0)+' · K '+(it.c||0)+' · F '+(it.f||0)+'</div></button>'+(it.grade?nutriChip(it.grade,20):'')+'<span style="font-size:13px;font-weight:800;color:var(--text-2)">'+ernNum(it.kcal||0)+'</span><button data-act="ernDelete" data-arg="'+esc(it.id)+'" aria-label="Entfernen" style="width:26px;height:26px;border-radius:8px;border:none;background:var(--surface-2);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'+svg('<path d="M18 6L6 18M6 6l12 12"></path>',{c:'var(--text-soft)',w:2.2,s:13})+'</button></div>'; }).join('')+'<button data-act="ernOpenCapture" data-arg="'+ml[1]+'" style="width:100%;margin:8px 0 10px;padding:10px;border:1.5px dashed #cfe0d6;background:var(--surface-2);color:var(--ern-acc);border-radius:12px;font-weight:800;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px">'+svg('<path d="M12 5v14M5 12h14"></path>',{c:'var(--ern-acc)',w:2.6,s:15})+'Zu '+ml[1]+' hinzufügen</button></div>';
     });
     if(!meals){ meals='<div style="'+CARD+';text-align:center"><div style="font-size:30px">🍽️</div><div style="font-size:13.5px;font-weight:700;color:var(--text);margin-top:6px">Noch nichts protokolliert</div><div style="font-size:12.5px;font-weight:500;color:var(--text-soft);margin:2px 0 12px">Erfasse deine erste Mahlzeit per Foto, Sprache oder Suche.</div><button data-act="ernOpenCapture" data-arg="Mahlzeit" style="padding:12px 20px;border:none;border-radius:13px;background:'+ERN_G+';color:#fff;font-weight:900;font-size:14px;cursor:pointer">Essen erfassen</button></div>'; }
     var viewIsToday=td.isToday!==false&&(td.date||isoToday())===isoToday();
@@ -4964,9 +4927,6 @@
     var recompute=(t.custom?'<div style="font-size:11px;font-weight:600;color:var(--text-soft);margin:0 2px 8px;line-height:1.45">Hinweis: Deine individuellen Zielwerte vom Studio-Team bleiben auch nach einer Neuberechnung bestehen – Änderungen daran macht dein Team für dich.</div>':'')+
       '<button data-act="ernRecompute" style="width:100%;padding:13px;border:1.5px solid var(--border);background:var(--surface);color:var(--text-muted);border-radius:14px;font-weight:800;font-size:13px;cursor:pointer">Ziel &amp; Körperdaten neu berechnen</button>'+
       '<button data-act="ernDataOpen" style="width:100%;margin-top:10px;padding:12px;border:none;background:transparent;color:var(--text-soft);border-radius:12px;font-weight:700;font-size:12.5px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px">'+svg('<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>',{c:'var(--text-soft)',w:1.8,s:15})+'Meine Daten &amp; Datenschutz</button>';
-    // Proaktiver Check-in (echt, aus dem Streak) – wie im Mockup, ausblendbar
-    var nm=(DATA.profile&&DATA.profile.firstName)||'';
-    var checkin=(!S.ernCheckinDismissed && (n.streak||0)>=2)?('<div style="background:linear-gradient(150deg,#FBEFE2,#f6ddc4);border-radius:18px;padding:14px 16px;margin-bottom:14px;display:flex;align-items:flex-start;gap:12px;position:relative"><span style="font-size:22px;line-height:1;margin-top:1px">🎉</span><div style="flex:1;min-width:0;padding-right:16px"><div style="font-size:13.5px;font-weight:900;color:#b5631f">Stark dabei'+(nm?', '+esc(nm):'')+'!</div><div style="font-size:12.5px;font-weight:600;color:#9a6027;line-height:1.4;margin-top:2px">Du hast '+(n.streak||0)+' Tage in Folge protokolliert – weiter so! 💪</div></div><button data-act="ernCheckinDismiss" style="position:absolute;top:10px;right:10px;width:24px;height:24px;border-radius:8px;border:none;background:rgba(181,99,31,.14);display:flex;align-items:center;justify-content:center;cursor:pointer">'+svg('<path d="M18 6L6 18M6 6l12 12"></path>',{c:'#b5631f',w:2.6,s:13})+'</button></div>'):'';
     // Studio-Anbindung (motivierende Karte, wie im Mockup)
     var studio='<div style="'+CARD+';display:flex;align-items:center;gap:13px"><div style="width:46px;height:46px;border-radius:14px;background:#EAF4FB;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+svg('<path d="M6.5 6.5l11 11M4 9l-1.5-1.5M20 15l1.5 1.5M9 4l-1.5-1.5M15 20l1.5 1.5M3 12l3-3 6 6-3 3zM21 12l-3 3-6-6 3-3z"></path>',{c:'#2d84b8',w:1.9,s:24})+'</div><div style="flex:1;min-width:0"><div style="font-size:10.5px;font-weight:800;color:#2d84b8;text-transform:uppercase;letter-spacing:.4px">Aus deinem Fit-Inn Studio</div><div style="font-size:14px;font-weight:900;color:var(--text);margin-top:2px">Trainingstag = mehr Spielraum</div><div style="font-size:12px;font-weight:600;color:var(--text-muted);margin-top:3px;line-height:1.35">An Tagen, an denen du trainierst, darfst du etwas mehr essen – plane es ruhig ein.</div></div></div>';
     // „Mehr" – Sekundäres eingeklappt (Coaching-CTA, Studio-Tipp, Premium, Ziel/Daten),
@@ -4996,15 +4956,18 @@
         planned='<div style="'+CARD+';padding:16px 18px 8px"><div style="display:flex;align-items:center;justify-content:space-between"><div style="font-size:15px;font-weight:900;color:var(--text);letter-spacing:-.3px">🍽️ Für heute geplant</div><div style="font-size:12px;font-weight:800;color:var(--text-soft)">'+todays.length+' Rezept'+(todays.length>1?'e':'')+(dayKcal>0?(' · '+ernNum(dayKcal)+' kcal'):'')+'</div></div>'+prows+'</div>';
       }
     }
-    // „Beim Einkaufen"-Produkt-Check: Barcode scannen → Ampel + Empfehlung (kein Log-Zwang).
-    var shopEntry='<div data-act="ernShopOpen" style="'+CARD+';display:flex;align-items:center;gap:13px;cursor:pointer;background:linear-gradient(150deg,#0e6072,#0a4958);color:#fff"><div style="width:46px;height:46px;border-radius:14px;background:rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0">🛒</div><div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:900">Beim Einkaufen? Produkt checken</div><div style="font-size:12px;font-weight:600;color:#bfe0e6;margin-top:2px;line-height:1.4">Barcode scannen → Ampel &amp; Empfehlung, ob’s zu deinem Ziel passt</div></div>'+svg('<path d="M9 18l6-6-6-6"></path>',{c:'rgba(255,255,255,.7)',w:2.2,s:20})+'</div>';
-    // Heißhunger-SOS: interaktive Soforthilfe (Swap + 5-Min-Trick + FINN-Zuspruch).
-    var sosEntry='<button data-act="ernSosOpen" style="width:100%;margin-bottom:14px;display:flex;align-items:center;gap:12px;background:var(--surface);border:1.5px solid var(--border);border-radius:20px;padding:14px 16px;cursor:pointer;text-align:left;box-shadow:0 8px 22px rgba(4,33,40,.06)"><div style="width:42px;height:42px;border-radius:13px;background:#FBEAE4;display:flex;align-items:center;justify-content:center;font-size:21px;flex-shrink:0">🆘</div><div style="flex:1;min-width:0"><div style="font-size:14.5px;font-weight:900;color:var(--text)">Heißhunger? Soforthilfe</div><div style="font-size:12px;font-weight:600;color:var(--text-soft);margin-top:1px;line-height:1.4">In 20 Sekunden über den Impuls – cleverer Swap + Trick</div></div>'+svg('<path d="M9 18l6-6-6-6"></path>',{c:'var(--text-soft)',w:2.2,s:18})+'</button>';
-    // Vergangene Tage: nur die relevanten Blöcke (Ring, Wasser, Mahlzeiten).
-    if(!viewIsToday) return ernDayNav()+ring+msg+water+mealsBlock;
-    // Heute: klare Reihenfolge – Überblick, Einkaufen-Check, für heute geplant, Wasser, Mahlzeiten, Schnell-Add, Fasten, Mehr.
-    // Das Coaching-Programm (Wochen-Lern-Einheiten) lebt jetzt im Coach-Bereich, nicht mehr hier im Essen-Tab.
-    return ernDayNav()+ring+ernVitalBanner()+glp1Card()+msg+checkin+shopEntry+sosEntry+planned+water+mealsBlock+quickAdd+fasting+more;
+    // Kompakte Tools-Reihe: Einkaufs-Check, Heißhunger-SOS, Fasten- und GLP-1-Einstieg
+    // als kleine Kacheln statt voller Karten – „Heute" bleibt beim Kern (Ring, Mahlzeiten, Wasser).
+    var toolTile=function(act,emoji,label,sub){ return '<button data-act="'+act+'" style="width:calc(50% - 4px);display:flex;flex-direction:column;align-items:flex-start;gap:6px;background:var(--surface);border:none;border-radius:16px;padding:13px 14px;cursor:pointer;text-align:left;box-shadow:0 6px 16px rgba(4,33,40,.06)"><span style="font-size:21px;line-height:1">'+emoji+'</span><span style="font-size:13px;font-weight:900;color:var(--text);line-height:1.25">'+label+'</span><span style="font-size:10.5px;font-weight:600;color:var(--text-soft);line-height:1.35">'+sub+'</span></button>'; };
+    var tools=toolTile('ernShopOpen','🛒','Einkaufs-Check','Barcode → Ampel, ob’s zu dir passt')+toolTile('ernSosOpen','🆘','Heißhunger-SOS','In 20 Sekunden über den Impuls');
+    if(!f.active&&!S.ernFastOpen) tools+=toolTile('ernFastOpen','⏱','Intervallfasten','Fasten-Timer starten');
+    if(!glp1On()) tools+=toolTile('glp1Activate','🌿','GLP-1 natürlich','Sättigung über Ernährung stärken');
+    var toolsRow='<div style="font-size:12px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.4px;margin:22px 2px 10px">Tools</div><div style="display:flex;flex-wrap:wrap;gap:8px">'+tools+'</div>';
+    // Vergangene Tage: nur die relevanten Blöcke (Ring, Mahlzeiten, Wasser).
+    if(!viewIsToday) return ernDayNav()+ring+msg+mealsBlock+water;
+    // Heute: Kern zuerst (Ring, Mahlzeiten, Schnell-Add, Wasser, Geplantes), dann aktive
+    // Modi (GLP-1-Checkliste, laufendes Fasten), Tools-Kacheln und „Mehr" ganz unten.
+    return ernDayNav()+ring+ernVitalBanner()+msg+mealsBlock+quickAdd+water+planned+glp1Card()+((f.active||S.ernFastOpen)?fasting:'')+toolsRow+more;
   }
   // Fasten-Helfer (Client-Countdown; Server hält plan+start)
   function ernFastMs(){
@@ -5194,7 +5157,10 @@
   // (Rezepte ist jetzt ein eigener Tab in ernModuleSeg).
   function ernTopbar(){
     var streak=(DATA.nutri&&DATA.nutri.streak)||0;
-    var d=new Date(); var date=['Sonntag','Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag'][d.getDay()]+', '+d.toLocaleDateString('de-DE',{day:'2-digit',month:'long'});
+    // Zeigt den BETRACHTETEN Tag (ernDayNav kann zurückblättern), nicht stur „heute".
+    var iso=ernActiveDate(), p=iso.split('-'), d=new Date(+p[0],(+p[1]||1)-1,+p[2]||1);
+    var date=['Sonntag','Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag'][d.getDay()]+', '+d.toLocaleDateString('de-DE',{day:'2-digit',month:'long'});
+    if(iso===isoToday()) date='Heute · '+date;
     var streakChip=streak>0?'<div style="display:flex;align-items:center;gap:5px;background:rgba(224,140,83,.12);color:#c56a2f;border-radius:20px;padding:6px 11px;font-size:13px;font-weight:900;flex-shrink:0">🔥 '+streak+'</div>':'';
     return '<div style="display:flex;align-items:center;gap:10px;margin:2px 2px 12px"><div style="flex:1;min-width:0;font-size:13.5px;font-weight:700;color:var(--text-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(date)+'</div>'+streakChip+'</div>';
   }
@@ -5228,9 +5194,7 @@
     var coach='<div style="'+CARD+'">'+head+body+
       '<div style="display:flex;gap:9px;align-items:flex-end;margin-top:14px"><textarea id="ern_ask" rows="1" enterkeyhint="send" placeholder="Frag FINN etwas …" style="flex:1;border:1.5px solid var(--border);border-radius:14px;padding:12px 14px;font-size:14.5px;font-weight:600;outline:none;color:var(--text);background:var(--surface);resize:none;font-family:inherit"></textarea>'+
       '<button data-act="ernAskSend" '+(S.ernAskBusy?'disabled ':'')+'style="width:50px;height:48px;border-radius:14px;border:none;background:'+ERN_G+';display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'+svg('<path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"></path>',{c:'#fff',w:2.1,s:20})+'</button></div></div>';
-    var cta='<div style="background:linear-gradient(150deg,#0e6072,#063540);border-radius:20px;padding:18px;color:#fff;box-shadow:0 14px 36px rgba(4,33,40,.2)"><div style="display:flex;align-items:center;gap:13px"><div style="width:46px;height:46px;border-radius:14px;background:rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;font-size:23px;flex-shrink:0">🧬</div><div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:900">Lieber ein Mensch?</div><div style="font-size:12.5px;color:#aed0d6;font-weight:600;line-height:1.4;margin-top:2px">Stoffwechsel-Coaching mit persönlicher Betreuung im Studio.</div></div></div>'+
-      (S.ernCoachSent?'<div style="margin-top:14px;background:rgba(127,227,168,.16);border-radius:13px;padding:12px;text-align:center;font-size:13.5px;font-weight:800;color:#7fd8e0">Danke! Wir melden uns. ✓</div>':'<button data-act="ernCoachReq" '+(S.ernCoachBusy?'disabled ':'')+'style="width:100%;margin-top:14px;padding:13px;border:none;border-radius:14px;background:#ffffff;color:#0A4958;font-weight:900;font-size:14px;cursor:pointer">'+(S.ernCoachBusy?'Wird gesendet …':'Beratung anfragen')+'</button>')+'</div>';
-    return (S.ernChatOpen?'<button data-act="ernCoachChatClose" style="display:flex;align-items:center;gap:6px;border:none;background:none;color:var(--text-muted);font-weight:800;font-size:13px;cursor:pointer;padding:4px 2px 10px">'+svg(IC.back,{c:'var(--text-muted)',w:2.2,s:16})+'Zurück zum Coach</button>':'')+coach+cta;
+    return (S.ernChatOpen?'<button data-act="ernCoachChatClose" style="display:flex;align-items:center;gap:6px;border:none;background:none;color:var(--text-muted);font-weight:800;font-size:13px;cursor:pointer;padding:4px 2px 10px">'+svg(IC.back,{c:'var(--text-muted)',w:2.2,s:16})+'Zurück zum Coach</button>':'')+coach+ernHumanCta();
   }
   // FINN-Glyph (Sprechblase) als runder Avatar – für Coaching-Screens.
   function ernFinnAvatar(sz){ return '<div style="width:'+sz+'px;height:'+sz+'px;border-radius:50%;background:linear-gradient(150deg,'+ERN_G2+','+ERN_GD+');display:flex;align-items:center;justify-content:center;flex-shrink:0">'+svg('<path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.5 8.6 8.6 0 0 1-4-1L3 20l1-5a8.4 8.4 0 0 1-1-4A8.5 8.5 0 0 1 11.5 3 8.5 8.5 0 0 1 21 11.5z"></path>',{c:'#fff',w:2,s:Math.round(sz*0.5)})+'</div>'; }
@@ -5966,52 +5930,6 @@
       '<div style="font-size:20px;font-weight:900;letter-spacing:-.4px;color:var(--text);margin:0 2px 4px">Trainingsplan holen</div>'+
       '<div style="font-size:12.5px;font-weight:500;color:var(--text-2);line-height:1.5;margin:0 2px 14px">Wähl einen fertigen Plan, lass dir von FINN einen erstellen – oder buch eine persönliche Planung im Studio.</div>'+
       msg+trainingGenCta(d)+trainingLibrary(d)+trainingInspiration(d)+trainingBookCta()+'</div>';
-  }
-  // Ernährungs-Teil (nur wenn ERN_ON): Tages-Ring + Makros + Einstieg ins Tagebuch.
-  function meinTagErnBody(){
-    var n=DATA.nutri;
-    if(!(n&&n.ok)){
-      return trainCardBox('<div style="font-size:13.5px;font-weight:600;color:var(--text-muted);line-height:1.5">Tagesziel, Tracking &amp; Rezepte im Essen-Bereich.</div><button data-act="nav" data-arg="ern" style="margin-top:12px;border:none;border-radius:12px;background:'+ERN_G+';color:#fff;font-weight:800;font-size:13.5px;padding:11px 18px;cursor:pointer">Zum Ernährungstagebuch</button>');
-    }
-    if(!n.onboarded){
-      return trainCardBox('<div style="font-size:13.5px;font-weight:600;color:var(--text-muted);line-height:1.5">In 1 Minute dein Tagesziel einrichten und Essen tracken.</div><button data-act="nav" data-arg="ern" style="margin-top:12px;border:none;border-radius:12px;background:'+ERN_G+';color:#fff;font-weight:800;font-size:13.5px;padding:11px 18px;cursor:pointer">Jetzt einrichten</button>');
-    }
-    var t=n.targets||{}, td=n.today||{}, tot=td.totals||{kcal:0,p:0,c:0,f:0};
-    var kcalLeft=Math.max(0,(t.kcal||0)-tot.kcal), deg=t.kcal?Math.min(360,Math.round(tot.kcal/t.kcal*360)):0;
-    var ring='<div style="position:relative;width:74px;height:74px;flex-shrink:0"><div style="width:74px;height:74px;border-radius:50%;background:conic-gradient('+ERN_OK+' '+deg+'deg,var(--surface-2) 0)"></div><div style="position:absolute;inset:7px;border-radius:50%;background:var(--surface);display:flex;flex-direction:column;align-items:center;justify-content:center"><span style="font-size:18px;font-weight:900;color:var(--text);letter-spacing:-.5px;line-height:1">'+ernNum(kcalLeft)+'</span><span style="font-size:7.5px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.3px;margin-top:1px">kcal übrig</span></div></div>';
-    var mp3=function(v,tg,l){ return '<div style="flex:1;background:var(--surface-2);border-radius:12px;padding:9px 10px;text-align:center"><div style="font-size:14px;font-weight:900;color:var(--text)">'+Math.round(v||0)+'<span style="font-size:10px;color:var(--placeholder)"> /'+Math.round(tg||0)+'g</span></div><div style="font-size:10px;font-weight:700;color:var(--text-soft);margin-top:1px">'+l+'</div></div>'; };
-    var macros='<div style="display:flex;gap:8px;margin-top:12px">'+mp3(tot.p,t.protein,'Eiweiß')+mp3(tot.c,t.carbs,'Kohl.')+mp3(tot.f,t.fat,'Fett')+'</div>';
-    var head='<div style="display:flex;align-items:center;gap:14px">'+ring+'<div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:900;color:var(--text)">Gegessen: '+ernNum(tot.kcal)+' / '+ernNum(t.kcal||0)+' kcal</div><div style="font-size:12px;font-weight:600;color:var(--text-soft);margin-top:2px">🔥 '+(n.streak||0)+' Tage-Streak · +'+(n.pointsToday||0)+' VP heute</div></div></div>';
-    var overview=trainCardBox(head+macros+'<button data-act="tagErnCapture" style="width:100%;margin-top:13px;border:1.5px solid '+ERN_G+';border-radius:12px;background:rgba(14,96,114,.05);color:var(--teal-ink);font-weight:800;font-size:13.5px;padding:12px;cursor:pointer">＋ Essen erfassen</button>');
-    // Wasser (voll interaktiv, in-place)
-    var wg=td.waterGoal||8, wc=td.water||0, cups='';
-    for(var wi=0;wi<wg;wi++){ cups+='<button data-act="ernWater" data-arg="to:'+(wi+1)+'" aria-label="'+(wi+1)+' von '+wg+' Gläsern Wasser" style="flex:1;height:26px;border-radius:6px;border:none;background:'+(wi<Math.round(wc)?ERN_WATER:'var(--surface-2)')+';cursor:pointer;padding:0"></button>'; }
-    var wchipT=function(ml,lab){ return '<button data-act="ernWaterMl" data-arg="'+ml+'" style="flex:1;padding:8px 4px;border:1.5px solid var(--border);border-radius:10px;background:var(--surface-2);color:'+ERN_WATER+';font-weight:800;font-size:12px;cursor:pointer">'+lab+'</button>'; };
-    var water=trainCardBox('<div style="display:flex;align-items:center;justify-content:space-between"><div style="display:flex;align-items:center;gap:8px">'+svg('<path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z"></path>',{c:ERN_WATER,w:2,s:18})+'<span style="font-size:13px;font-weight:800;color:var(--text)">Wasser</span></div><span style="font-size:15px;font-weight:900;color:var(--text)">'+String((wc*0.25).toFixed(2)).replace('.',',').replace(/,?0+$/,'')+' <span style="font-size:12px;color:var(--text-soft)">/ '+String((wg*0.25).toFixed(1)).replace('.',',')+' L</span></span></div><div style="display:flex;gap:4px;margin-top:12px">'+cups+'</div><div style="display:flex;gap:6px;margin-top:9px">'+wchipT(330,'+0,33 l')+wchipT(500,'+0,5 l')+wchipT(750,'+0,75 l')+'</div><div style="font-size:10.5px;font-weight:700;color:var(--text-soft);margin-top:8px">Glas antippen (0,25 l) oder Flaschengröße wählen</div>');
-    // Intervallfasten (voll interaktiv; Timer #ern_fast_t läuft über das globale Intervall)
-    var f=ernFastMs(), fastDeg=Math.min(360,Math.round(f.win?f.elapsed/f.win*360:0)), fastPlans=['16:8','18:6','14:10'];
-    var fasting=trainCardBox('<div style="display:flex;align-items:center;gap:15px">'+
-      '<div style="position:relative;width:84px;height:84px;flex-shrink:0"><div id="ern_fast_ring" style="width:84px;height:84px;border-radius:50%;background:conic-gradient(#0a4958 '+fastDeg+'deg,var(--surface-2) 0)"></div><div style="position:absolute;inset:9px;border-radius:50%;background:var(--surface);display:flex;flex-direction:column;align-items:center;justify-content:center"><span id="ern_fast_t" style="font-size:14px;font-weight:900;color:var(--text);letter-spacing:-.5px;line-height:1;font-variant-numeric:tabular-nums">'+(f.active?ernFmtHMS(f.remain):'--:--')+'</span><span style="font-size:8px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.4px;margin-top:2px">verbleibend</span></div></div>'+
-      '<div style="flex:1;min-width:0"><div style="display:flex;align-items:center;gap:7px"><span style="font-size:15px;font-weight:900;color:var(--text)">Intervallfasten</span><span style="font-size:11px;font-weight:800;color:var(--ern-acc);background:rgba(14,96,114,.12);padding:2px 8px;border-radius:8px">'+f.plan+'</span></div>'+
-        '<div style="font-size:12px;font-weight:600;color:var(--text-soft);margin-top:3px">'+(f.active?(f.remain<=0?'Fastenfenster erreicht 🎉':'noch bis zum Essensfenster'):'Bereit fürs nächste Fenster')+'</div>'+
-        '<div style="display:flex;gap:5px;margin-top:10px">'+fastPlans.map(function(p){ var sel=f.plan===p; return '<button data-act="ernFastPlan" data-arg="'+p+'" style="flex:1;border:none;background:'+(sel?'#0a4958':'var(--surface-2)')+';color:'+(sel?'#fff':'var(--text-soft)')+';font-size:11.5px;font-weight:800;padding:7px 0;border-radius:9px;cursor:pointer">'+p+'</button>'; }).join('')+'</div></div></div>'+
-      '<button data-act="ernFastToggle" style="width:100%;margin-top:13px;padding:12px;border:1.5px solid var(--border);border-radius:13px;background:var(--surface-2);color:var(--teal-ink);font-weight:900;font-size:13.5px;cursor:pointer">'+(f.active?'Fasten beenden':'Fasten starten')+'</button>');
-    // Heute gegessen (Anzeige; Hinzufügen öffnet das Erfassen, Bearbeiten im Tagebuch)
-    var MEALS=[['fruehstueck','Frühstück','🌅'],['mittag','Mittagessen','☀️'],['abend','Abendessen','🌙'],['snack','Snacks','🍎']];
-    var entries=Array.isArray(td.entries)?td.entries:[];
-    var meals='';
-    MEALS.forEach(function(ml){
-      var items=entries.filter(function(e){ return (e.meal||'snack')===ml[0]; });
-      if(!items.length) return;
-      var sum=items.reduce(function(a,b){ return a+(b.kcal||0); },0);
-      meals+=trainCardBox('<div style="display:flex;align-items:center;justify-content:space-between"><div style="display:flex;align-items:center;gap:9px"><span style="font-size:18px">'+ml[2]+'</span><span style="font-size:14.5px;font-weight:900;color:var(--text)">'+ml[1]+'</span></div><span style="font-size:13.5px;font-weight:900;color:var(--text)">'+ernNum(sum)+' kcal</span></div>'+
-        items.map(function(it){ return '<div style="display:flex;align-items:center;gap:8px;padding:9px 0;border-top:1px solid var(--border)"><div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:700;color:var(--text)">'+esc(it.name)+'</div><div style="font-size:11px;font-weight:600;color:var(--text-soft);margin-top:1px">'+(it.portion?esc(it.portion)+' · ':'')+'E '+(it.p||0)+' · K '+(it.c||0)+' · F '+(it.f||0)+'</div></div><span style="font-size:13px;font-weight:800;color:var(--text-2)">'+ernNum(it.kcal||0)+'</span></div>'; }).join('')+
-        '<button data-act="tagErnCapture" style="width:100%;margin-top:9px;padding:9px;border:1.5px dashed var(--border-strong);background:var(--surface-2);color:var(--teal-ink);border-radius:11px;font-weight:800;font-size:12.5px;cursor:pointer">+ zu '+ml[1]+' hinzufügen</button>');
-    });
-    if(!meals){ meals=trainCardBox('<div style="text-align:center;padding:4px 2px"><div style="font-size:28px">🍽️</div><div style="font-size:13.5px;font-weight:700;color:var(--text);margin-top:4px">Noch nichts protokolliert</div><div style="font-size:12px;font-weight:500;color:var(--text-soft);margin:2px 0 10px">Erfasse deine erste Mahlzeit – per Foto, Sprache oder Suche.</div><button data-act="tagErnCapture" style="padding:11px 20px;border:none;border-radius:12px;background:'+ERN_G+';color:#fff;font-weight:900;font-size:13.5px;cursor:pointer">Essen erfassen</button></div>'); }
-    var mealsHead='<div style="font-size:16px;font-weight:900;color:var(--text);letter-spacing:-.3px;margin:8px 4px 10px">Heute gegessen</div>';
-    var diary='<button data-act="nav" data-arg="ern" style="width:100%;margin-top:4px;border:1.5px solid var(--border-strong);border-radius:13px;background:var(--surface);color:var(--teal-ink);font-weight:800;font-size:13.5px;padding:13px;cursor:pointer">Vollständiges Tagebuch, Plan &amp; Rezepte öffnen</button>';
-    return overview+water+fasting+mealsHead+meals+diary;
   }
   // Grobe Dauer-Schätzung einer Einheit (ehrlich mit „ca.").
   function trainEstMin(day){
@@ -7259,7 +7177,6 @@
       var cook=[];   // deine Rezepte stehen bereits oben (ernCookPlanView); das Raster zeigt nur FINN-Ideen
       var EMO={'Frühstück':'🌅','Mittag':'☀️','Mittagessen':'☀️','Abend':'🌙','Abendessen':'🌙','Snack':'🍎','Snacks':'🍎'};
       var WD=['So','Mo','Di','Mi','Do','Fr','Sa'];
-      var pmsg=S.ernMsg?'<div role="'+(S.ernErr?'alert':'status')+'" style="font-size:12.5px;font-weight:700;color:'+(S.ernErr?'var(--err-fg)':ERN_G)+';margin:0 2px 12px;line-height:1.4">'+esc(S.ernMsg)+'</div>':'';
       var daysOut='';
       for(var off=0;off<7;off++){
         var ds=ernOffsetDate(off); var dt=new Date(ds+'T12:00:00'); var wd=WD[dt.getDay()];
@@ -7281,22 +7198,10 @@
         var total=cookKcal+finnKcal;
         daysOut+='<div style="'+CARD.replace('padding:16px','padding:14px 16px 8px')+'"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2px"><span style="font-size:14.5px;font-weight:900;color:var(--text)">'+esc(label)+'</span>'+(total?'<span style="font-size:12px;font-weight:800;color:var(--ern-acc)">'+ernNum(total)+' kcal</span>':'')+'</div>'+cookRows+finnRows+'</div>';
       }
-      if(!daysOut){ return seg+wk+pmsg+genBtn(plan?'FINN-Ideen neu vorschlagen':'FINN-Ideen für die Woche'); }
+      if(!daysOut){ return seg+wk+genBtn(plan?'FINN-Ideen neu vorschlagen':'FINN-Ideen für die Woche'); }
       var finnHead='<div style="font-size:12px;font-weight:900;color:var(--ern-acc);text-transform:uppercase;letter-spacing:.4px;margin:8px 2px 10px">FINN-Ideen für die Woche</div>';
-      return seg+wk+finnHead+pmsg+daysOut+genBtn(plan?'FINN-Ideen neu':'FINN-Ideen ergänzen');
+      return seg+wk+finnHead+daysOut+genBtn(plan?'FINN-Ideen neu':'FINN-Ideen ergänzen');
     }
-    var shop=Array.isArray(pd.shopping)?pd.shopping:[];
-    if(!shop.length){ return seg+'<div style="'+CARD+';text-align:center;padding:34px 22px"><div style="width:70px;height:70px;border-radius:22px;background:rgba(14,96,114,.1);display:flex;align-items:center;justify-content:center;font-size:32px;margin:0 auto">🛒</div><div style="font-size:16px;font-weight:900;color:var(--text);margin-top:16px">Noch keine Einkaufsliste</div><div style="font-size:13px;color:var(--text-muted);font-weight:500;margin-top:8px;line-height:1.5">Erstelle deinen Wochenplan – FINN fasst die Zutaten automatisch zusammen.</div>'+genBtn('Woche & Liste erstellen')+'</div>'; }
-    var done=shop.filter(function(x){return x.checked;}).length;
-    var head='<div style="display:flex;align-items:center;justify-content:space-between;margin:0 2px 12px"><span style="font-size:13px;font-weight:800;color:var(--text-muted)">'+done+' erledigt</span><button data-act="ernShopClear" style="border:none;background:none;color:#c5654f;font-size:12.5px;font-weight:800;cursor:pointer">Erledigte entfernen</button></div>';
-    var itemRow=function(it){ return '<button data-act="ernShopToggle" data-arg="'+it.i+'" aria-pressed="'+(it.checked?'true':'false')+'" style="width:100%;display:flex;align-items:center;gap:12px;background:'+(it.checked?'var(--surface-2)':'var(--surface)')+';border:none;border-radius:14px;padding:13px 14px;margin-bottom:8px;cursor:pointer;text-align:left;box-shadow:0 6px 16px rgba(4,33,40,.05)"><span style="width:24px;height:24px;border-radius:8px;background:'+(it.checked?ERN_OK:'var(--surface)')+';border:2px solid '+(it.checked?ERN_OK:'var(--border)')+';display:flex;align-items:center;justify-content:center;flex-shrink:0">'+(it.checked?svg('<path d="M20 6L9 17l-5-5"></path>',{c:'#fff',w:3,s:14}):'')+'</span><span style="flex:1;font-size:14.5px;font-weight:700;color:'+(it.checked?'var(--text-soft)':'var(--text)')+';text-decoration:'+(it.checked?'line-through':'none')+'">'+esc(it.name)+'</span><span style="font-size:13px;font-weight:800;color:var(--text-soft)">'+esc(it.amount||'')+'</span></button>'; };
-    // Nach Warengruppen gruppieren (Kategorie vom Server, sonst Stichwort-Heuristik).
-    var CATS=['Obst & Gemüse','Milchprodukte & Eier','Fleisch & Fisch','Brot & Backwaren','Trockenwaren & Konserven','Getränke','Sonstiges'];
-    var groups={}; shop.forEach(function(it){ var c=ernShopCat(it.name,it.category); (groups[c]=groups[c]||[]).push(it); });
-    var items=CATS.filter(function(c){ return groups[c]&&groups[c].length; }).map(function(c){
-      return '<div style="font-size:11.5px;font-weight:900;color:var(--text-soft);text-transform:uppercase;letter-spacing:.4px;margin:14px 2px 8px">'+esc(c)+'</div>'+groups[c].map(itemRow).join('');
-    }).join('');
-    return seg+head+items;
   }
   // ── Ernährung · Rezepte + Kühlschrank ──
   // ── Eigenes Rezept anlegen: Zutaten (aus Produktsuche, Nährwerte automatisch) ──
@@ -7400,7 +7305,7 @@
     var savedList=saved.length?('<div style="font-size:12.5px;font-weight:900;color:var(--text-soft);text-transform:uppercase;letter-spacing:.4px;margin:16px 2px 10px">⭐ Deine gespeicherten</div>'+saved.map(function(r,i){ return '<div style="position:relative">'+card(r,'ernRecipeOpen','saved:'+i)+'<button data-act="ernRecipeDel" data-arg="'+esc(r.id)+'" aria-label="Löschen" style="position:absolute;top:8px;right:10px;width:28px;height:28px;border-radius:8px;border:none;background:var(--surface-2);display:flex;align-items:center;justify-content:center;cursor:pointer">'+svg('<path d="M18 6L6 18M6 6l12 12"></path>',{c:'var(--text-soft)',w:2.2,s:13})+'</button></div>'; }).join('')):'';
     // Studioweite Bibliothek: Suche + Liste (wächst mit jeder Generierung).
     var libArr=DATA.nutriLib;
-    var libSearch='<div style="display:flex;gap:8px;margin:0 2px 12px"><input id="ern_libq" value="'+esc(S.ernLibQ||'')+'" placeholder="Bibliothek durchsuchen …" style="flex:1;border:none;border-radius:12px;padding:12px 14px;font-size:14px;font-weight:600;outline:none;color:var(--text);background:var(--surface);box-shadow:0 6px 16px rgba(4,33,40,.06);font-family:inherit"/><button data-act="ernLibSearch" style="border:none;border-radius:12px;background:'+ERN_G+';color:#fff;font-weight:900;font-size:13.5px;padding:0 16px;cursor:pointer">Suchen</button></div>';
+    var libSearch='<div style="display:flex;gap:8px;margin:0 2px 14px"><input id="ern_libq" value="'+esc(S.ernLibQ||'')+'" placeholder="Rezept suchen (Bibliothek) …" style="flex:1;border:none;border-radius:12px;padding:12px 14px;font-size:14px;font-weight:600;outline:none;color:var(--text);background:var(--surface);box-shadow:0 6px 16px rgba(4,33,40,.06);font-family:inherit"/><button data-act="ernLibSearch" style="border:none;border-radius:12px;background:'+ERN_G+';color:#fff;font-weight:900;font-size:13.5px;padding:0 16px;cursor:pointer">Suchen</button></div>';
     var libList;
     if(libArr==null){ libList='<div style="text-align:center;color:var(--text-soft);font-size:13px;font-weight:600;padding:26px">Lädt …</div>'; }
     else if(!libArr.length){ libList='<div style="font-size:12.5px;color:var(--text-soft);font-weight:500;text-align:center;padding:20px 14px;line-height:1.5">'+(S.ernLibQ?'Nichts gefunden – andere Suche probieren.':'Noch keine Rezepte – lass dir von FINN welche vorschlagen.')+'</div>'; }
@@ -7411,7 +7316,7 @@
     var planLink=cookN?'<button data-act="ernTab" data-arg="plan" style="width:100%;margin-bottom:14px;padding:13px 15px;border:none;border-radius:14px;background:var(--surface);box-shadow:0 8px 20px rgba(4,33,40,.07);display:flex;align-items:center;gap:11px;cursor:pointer;text-align:left"><span style="font-size:20px">📅</span><div style="flex:1"><div style="font-size:13.5px;font-weight:900;color:var(--text)">Dein Koch-Plan</div><div style="font-size:11.5px;font-weight:600;color:var(--text-soft)">'+cookN+' Rezept'+(cookN>1?'e':'')+' geplant · Einkaufsliste</div></div><span style="color:var(--text-soft);font-size:18px">›</span></button>':'';
     // Eigenes Rezept anlegen: du wählst die Zutaten, FINN schreibt die Zubereitung.
     var selfBtn='<button data-act="ernSelfOpen" style="width:100%;margin-bottom:14px;padding:14px 15px;border:1.5px dashed #cfe0d6;border-radius:14px;background:var(--surface-2);display:flex;align-items:center;gap:11px;cursor:pointer;text-align:left"><span style="font-size:20px">📝</span><div style="flex:1"><div style="font-size:13.5px;font-weight:900;color:var(--ern-acc)">Eigenes Rezept anlegen</div><div style="font-size:11.5px;font-weight:600;color:var(--text-soft)">Zutaten wählen – FINN schreibt die Zubereitung dazu</div></div><span style="color:var(--ern-acc);font-size:18px">›</span></button>';
-    return msg+generator+selfBtn+planLink+genList+savedList+libHdr+libSearch+libList;
+    return msg+libSearch+generator+selfBtn+planLink+genList+savedList+libHdr+libList;
   }
   // ── Ernährung · Verlauf / Wochen-Review ──
   // Gewicht im Ernährungs-Verlauf: die Kurve gehört neben den Kalorien-Verlauf.
@@ -10030,7 +9935,7 @@
       // Nur die Vollbild-Zustände (Onboarding / Erfassen-Popup / Profil-Edit) verstecken die Nav.
       if(S.screen==='ern'){
         var en=DATA.nutri;
-        if(!(en&&en.ok&&en.available!==false)||!en.onboarded||S.ernCapture||S.ernEdit){ bn.style.display='none'; return; }
+        if(!(en&&en.ok&&en.available!==false)||!en.onboarded||S.ernCapture||S.ernEdit||S.ernConfirm){ bn.style.display='none'; return; }
       }
       var sc=S.screen;
       // Einheitliche Nav: Start · Training · (+) · Ernährung/Termine · Coach.
@@ -10253,7 +10158,7 @@
     // sonst verschwindet getippter Text und die Tastatur klappt zu, sobald im Hintergrund
     // Daten nachladen (das war der große Chat-Bug).
     var keep={};
-    ['finn_q','pf_reply','ern_log','ern_ask','ern_fridge','ern_capq','ern_prodq','ern_bc','ern_voiceq','ern_cf_swap','ern_cf_refine','soc_msg','soc_code','soc_name','soc_rmsg','soc_roomname','soc_report','fig_weight','fig_waist','fig_hips','fig_chest','fig_arm','fig_thigh','fig_bodyFat','fig_note'].forEach(function(id){ var e=$(id); if(e){ keep[id]={v:e.value,f:document.activeElement===e,ss:e.selectionStart,se:e.selectionEnd,h:e.style.height}; } });
+    ['finn_q','pf_reply','ern_log','ern_ask','ern_fridge','ern_prodq','ern_bc','ern_voiceq','ern_cf_swap','ern_cf_refine','soc_msg','soc_code','soc_name','soc_rmsg','soc_roomname','soc_report','fig_weight','fig_waist','fig_hips','fig_chest','fig_arm','fig_thigh','fig_bodyFat','fig_note'].forEach(function(id){ var e=$(id); if(e){ keep[id]={v:e.value,f:document.activeElement===e,ss:e.selectionStart,se:e.selectionEnd,h:e.style.height}; } });
     var keepScroll={};
     ['finn_scroll','pf_scroll'].forEach(function(id){ var e=$(id); if(e){ keepScroll[id]=e.scrollTop; } });
     // Scroll-Position der AKTUELLEN Ansicht sichern. Auf Mobil ist der Scroller .maincol
@@ -10809,8 +10714,7 @@
       .then(function(d){ S.ernBusy=false; if(d&&d.ok){ DATA.nutri=d; S.ernEdit=false; S.ernObStep=0; } else { S.ernErr=true; S.ernMsg='Konnte nicht speichern. Bitte später erneut.'; } render(); })
       .catch(function(){ S.ernBusy=false; S.ernErr=true; S.ernMsg='Konnte nicht speichern. Bitte später erneut.'; render(); }); },
     ernLog:function(){ if(S.ernBusy) return; var t=$('ern_log'); var q=t?(t.value||'').trim():''; if(q.length>=2) ernLogText(q); },
-    ernCapSearch:function(){ if(S.ernBusy) return; var t=$('ern_capq'); var q=t?(t.value||'').trim():''; if(q.length>=2) ernLogText(q); },
-    ernOpenCapture:function(a){ try{window.__ernCapAnim=true;}catch(e){} setS({ernCapture:true,ernCapTab:'menu',ernCapTarget:a||'',ernScanPurpose:'log',ernMsg:'',ernErr:false}); },
+    ernOpenCapture:function(a){ try{window.__ernCapAnim=true;}catch(e){} if(DATA.nutriFavs==null) loadFavs(); if(DATA.nutriMeals==null) loadMeals(); setS({ernCapture:true,ernCapTab:'menu',ernCapTarget:a||'',ernScanPurpose:'log',ernMsg:'',ernErr:false}); },
     // Produkt-Check „Beim Einkaufen" (Barcode → Ampel, kein Log-Zwang)
     ernShopOpen:function(){ try{ window.__ernStopScan&&window.__ernStopScan(); }catch(e){} setS({ernShop:true,ernScanPurpose:'shop',ernShopProd:null,ernScanErr:'',ernScanNotFound:false,ernScanCode:'',ernMsg:'',ernErr:false}); },
     ernShopClose:function(){ try{ window.__ernStopScan&&window.__ernStopScan(); }catch(e){} setS({ernShop:false,ernScanPurpose:'log'}); },
@@ -10922,6 +10826,8 @@
     ernSearchToAI:function(){ var q=S.ernSearchQ||''; if(q&&q.length>=2){ setS({ernCapTab:'cam'}); ernLogText(q); } },
     ernManualEntry:function(){ var bc=(S.ernScanNotFound&&S.ernScanCode)?String(S.ernScanCode).replace(/\D/g,''):''; setS({ernCapture:false, ernScanNotFound:false, ernScanErr:'', ernSearchErr:''}); ernOpenConfirm([{name:'',portion:'1 Portion',meal:ernCurrentMeal(),kcal:0,p:0,c:0,f:0,fiber:0,sugar:0,satFat:0,salt:0,barcode:bc,estimated:false,source:'manual',custom:true,_micOpen:true,saveFav:true}],'manual'); },
     ernCFMicros:function(a){ var cf=S.ernConfirm; var i=parseInt(a,10); if(cf&&cf.items[i]){ cf.items[i]._micOpen=!(cf.items[i]._micOpen||cf.items[i].source==='manual'||cf.items[i].custom); render(); } },
+    ernCFExtras:function(){ setQuiet({ernCFExtrasOpen:!S.ernCFExtrasOpen}); },
+    ernCFDateOpen:function(){ setQuiet({ernCFDateOpen:true}); },
     ernCFImgDel:function(a){ var cf=S.ernConfirm; var i=parseInt(a,10); if(cf&&cf.items[i]){ cf.items[i].image=''; render(); } },
     // Live-Kamera-Scan fürs eigene Lebensmittel starten: löst automatisch aus, sobald ein Code erkannt wird.
     ernCFScanStart:function(a){ var cf=S.ernConfirm; var i=parseInt(a,10); if(!cf||!cf.items[i]) return; try{ window.__ernStopCam&&window.__ernStopCam(); }catch(e){} cf.items[i]._bcErr=''; cf.items[i]._bcOk=false; S.ernScanErr=''; S.ernCFScanIdx=i; window.__ernStartScan&&window.__ernStartScan(); },
@@ -10931,7 +10837,8 @@
     ernScanStart:function(){ S.ernCFScanIdx=null; window.__ernStartScan&&window.__ernStartScan(); },
     ernScanStop:function(){ try{ window.__ernStopScan&&window.__ernStopScan(); }catch(e){} render(); },
     ernScanManualBtn:function(){ window.__ernScanManual&&window.__ernScanManual(); },
-    ernCheckinDismiss:function(){ setS({ernCheckinDismissed:true}); },
+    // Tools-Kachel „Intervallfasten": klappt die volle Fasten-Karte im Heute-Tab auf.
+    ernFastOpen:function(){ setQuiet({ernFastOpen:true}); },
     // In-Place-Aufklapp-Sektionen: setQuiet -> Scrollposition bleibt (kein Sprung nach oben).
     ernMoreToggle:function(){ setQuiet({ernMoreOpen:!S.ernMoreOpen}); },
     coachMapToggle:function(){ setQuiet({coachMapOpen:!S.coachMapOpen}); },
@@ -11003,7 +10910,7 @@
       .then(function(d){ S.ernFavBusy=false; if(d&&d.ok){ DATA.nutriFavs=d.favorites||DATA.nutriFavs; S.ernMsg=d.saved===false?'Ist schon in deinen Favoriten.':'Als Favorit gespeichert ⭐'; S.ernErr=false; } else { S.ernErr=true; S.ernMsg=(d&&d.message)||'Konnte nicht speichern.'; } render(); })
       .catch(function(){ S.ernFavBusy=false; S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); }); },
     // ── Etappe 4: Favoriten-Verwaltung ──
-    ernFavMgrOpen:function(){ setS({ernFavMgr:true, ernFavAddOpen:false, ernMsg:'', ernErr:false}); if(DATA.nutriFavs==null) loadFavs(); },
+    ernFavMgrOpen:function(){ setS({ernFavMgr:true, ernFavAddOpen:false, ernCapture:false, ernMsg:'', ernErr:false}); if(DATA.nutriFavs==null) loadFavs(); },
     ernFavMgrClose:function(){ setS({ernFavMgr:false, ernFavAddOpen:false, ernMsg:''}); },
     ernFavAddOpen:function(){ setS({ernFavAddOpen:true, ernMsg:'', ernErr:false}); },
     ernFavAddCancel:function(){ setS({ernFavAddOpen:false}); },
@@ -11026,10 +10933,8 @@
       api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'fav-log',id:a,grams:Math.min(5000,g),date:ernActiveDate()})})
       .then(function(d){ if(d&&d.ok){ DATA.nutri=d; var nm=(d.added&&d.added[0]&&d.added[0].name)||'Favorit'; S.ernMsg='Protokolliert: '+nm+' ('+g+' g)'; S.ernErr=false; render(); } else { S.ernErr=true; S.ernMsg=(d&&d.message)||'Konnte nicht protokollieren – bitte erneut.'; render(); } }).catch(function(){ S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); }); },
     // ── Gespeicherte Mahlzeiten (mehrere Produkte als 1 Vorlage) ──
-    ernMealMgrOpen:function(){ setS({ernMealMgr:true, ernMealDraft:null, ernMsg:'', ernErr:false}); if(DATA.nutriMeals==null) loadMeals(); },
+    ernMealMgrOpen:function(){ setS({ernMealMgr:true, ernMealDraft:null, ernCapture:false, ernMsg:'', ernErr:false}); if(DATA.nutriMeals==null) loadMeals(); },
     ernMealMgrClose:function(){ setS({ernMealMgr:false, ernMealDraft:null, ernMsg:''}); },
-    // Aus dem Erfassen-Sheet: Sheet schließen und die Mahlzeiten-Verwaltung öffnen.
-    ernCapMeals:function(){ try{ window.__ernStopScan&&window.__ernStopScan(); window.__ernStopCam&&window.__ernStopCam(); }catch(e){} setS({ernCapture:false, ernMealMgr:true, ernMealDraft:null, ernMsg:'', ernErr:false}); if(DATA.nutriMeals==null) loadMeals(); },
     // „Als Mahlzeit speichern" aus einer Tagesliste-Gruppe: deren Einträge übernehmen -> Entwurf.
     ernMealSaveOpen:function(a){ var slot=String(a||'snack'); var LAB={fruehstueck:'Frühstück',mittag:'Mittagessen',abend:'Abendessen',snack:'Snacks'};
       var td=(DATA.nutri&&DATA.nutri.today)||{}; var ents=Array.isArray(td.entries)?td.entries:[];
@@ -11180,7 +11085,7 @@
     glp1Deactivate:function(){ glp1SetOn(false); setS({}); },
     glp1Check:function(a){ if(a) glp1ToggleCheck(a); setS({}); },
     ernFastPlan:function(a){ api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'fast',do:'plan',plan:a})}).then(function(d){ if(d&&d.ok) DATA.nutri=d; render(); }).catch(function(){}); },
-    ernFastToggle:function(){ if(S.ernFastBusy) return; var act=ernFastMs().active?'stop':'start'; S.ernFastBusy=true; api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'fast',do:act})}).then(function(d){ S.ernFastBusy=false; if(d&&d.ok){ DATA.nutri=d; } else { S.ernErr=true; S.ernMsg=(d&&d.message)||'Fasten-Timer konnte nicht umgeschaltet werden.'; } render(); }).catch(function(){ S.ernFastBusy=false; S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); }); },
+    ernFastToggle:function(){ if(S.ernFastBusy) return; var act=ernFastMs().active?'stop':'start'; if(act==='stop') S.ernFastOpen=true; S.ernFastBusy=true; api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'fast',do:act})}).then(function(d){ S.ernFastBusy=false; if(d&&d.ok){ DATA.nutri=d; } else { S.ernErr=true; S.ernMsg=(d&&d.message)||'Fasten-Timer konnte nicht umgeschaltet werden.'; } render(); }).catch(function(){ S.ernFastBusy=false; S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); }); },
     ernPlanTab:function(a){ if(DATA.nutriCook==null) loadCook(); if(a!=='einkauf'&&DATA.nutriPlan==null) loadNutriPlan(); setQuiet({ernPlanTab:a}); },
     // „FINN-Ideen ergänzen"/„Plan vorschlagen" öffnen jetzt den Fragebogen (welche Mahlzeiten + Vorlieben).
     ernPlanGen:function(){ if(S.ernPlanDraftBusy) return; if(ernNeedPremium()) return; setQuiet({ernPlanQuiz:ernPlanQuizDefaults(),ernMsg:'',ernErr:false}); },
@@ -11189,8 +11094,6 @@
       S.ernBusy=true; render();
       api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'log-manual',name:m.title,kcal:m.kcal,meal:(mealMap[m.label]||'snack'),date:ernActiveDate()})})
       .then(function(r){ S.ernBusy=false; if(r&&r.ok){ DATA.nutri=r; S.ernMsg='Ins Protokoll: '+m.title; S.ernErr=false; } render(); }).catch(function(){ S.ernBusy=false; render(); }); },
-    ernShopToggle:function(a){ api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'shopping-toggle',i:parseInt(a,10)})}).then(function(d){ if(d&&d.ok&&DATA.nutriPlan){ DATA.nutriPlan.shopping=d.shopping; render(); } else { S.ernErr=true; S.ernMsg=(d&&d.message)||'Konnte nicht speichern – bitte erneut.'; render(); } }).catch(function(){ S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); }); },
-    ernShopClear:function(){ api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'shopping-clear'})}).then(function(d){ if(d&&d.ok&&DATA.nutriPlan) DATA.nutriPlan.shopping=d.shopping; render(); }).catch(function(){}); },
     ernFridgeGo:function(){ if(S.ernRecipesBusy) return; if(ernNeedPremium()) return; var el=$('ern_fridge'); var v=el?(el.value||'').trim():(S.ernFridge||''); S.ernFridge=v;
       if(v.length<2){ S.ernErr=true; S.ernMsg='Sag FINN, was im Kühlschrank ist.'; render(); return; }
       S.ernRecipesBusy=true; S.ernMsg=''; S.ernErr=false; render();
@@ -12074,7 +11977,6 @@
     if(t.id==='ern_log'){ e.preventDefault(); ACT.ernLog(); }
     if(t.id==='ern_ask'){ e.preventDefault(); ACT.ernAskSend(); }
     if(t.id==='ern_fridge'){ e.preventDefault(); ACT.ernFridgeGo(); }
-    if(t.id==='ern_capq'){ e.preventDefault(); ACT.ernCapSearch(); }
   });
   // Merken, ob der Nutzer im Verlauf hochgescrollt hat (dann nicht nach unten springen).
   document.addEventListener('scroll',function(e){
