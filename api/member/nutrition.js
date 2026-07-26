@@ -37,6 +37,7 @@
 
 const M = require('../../lib/members');
 const AI = require('../../lib/ai');
+const NS = require('../../lib/nutriscore');
 const { redisPipeline, hasStore } = require('../../lib/store');
 const Inbox = require('../../lib/inbox');
 const SR = require('../../lib/studioReply');
@@ -191,6 +192,17 @@ function validPlanDate(input, todayYMD) {
 
 // Ein Ernährungs-Eintrag aus (ggf. ungeprüften) Clientdaten – auf realistische
 // Grenzen begrenzt. Immer serverseitig verwenden, bevor gespeichert wird.
+// Grammmenge aus einem Portions-/Mengentext lesen („250 g", „0,5 l" -> 500).
+// Nur eindeutige Angaben zaehlen; „1 Portion" liefert 0 (dann wird nichts geschaetzt).
+function gramsFromText(txt) {
+  const m = String(txt || '').match(/(\d+(?:[.,]\d+)?)\s*(kg|g|ml|l)\b/i);
+  if (!m) return 0;
+  let n = parseFloat(m[1].replace(',', '.'));
+  const unit = m[2].toLowerCase();
+  if (unit === 'kg' || unit === 'l') n *= 1000;
+  return (n > 0 && n <= 5000) ? n : 0;
+}
+
 function sanitizeEntry(raw, hour, keepId) {
   raw = raw || {};
   const e = {
@@ -226,6 +238,29 @@ function sanitizeEntry(raw, hour, keepId) {
   const brand = cleanStr(raw.brand, 60);
   if (brand) e.brand = brand;
   if (STORES.indexOf(String(raw.store)) >= 0) e.store = String(raw.store);
+  // Nutri-Score SCHÄTZEN, wenn keiner vorliegt (KI-Schätzung, manueller Eintrag, Rezept).
+  // Ohne das trugen nur Barcode-Produkte eine Ampel – die Mahlzeit-Ampel blieb dadurch oft
+  // ganz aus. Nötig ist eine ablesbare Grammmenge; sonst wird bewusst NICHT geraten.
+  // Fehlende Detailwerte werden wie bei Produkten ohne offizielle Note genähert
+  // (Zucker ~ 30 % der KH, ges. Fett ~ 40 % des Fetts). Ergebnis wird als Schätzung markiert.
+  if (!e.grade && e.kcal > 0) {
+    const g = gramsFromText(e.portion) || gramsFromText(e.amount);
+    if (g >= 10) {
+      const f = 100 / g;
+      try {
+        const s = NS.score({
+          kcal100: e.kcal * f,
+          sugars100: (e.sugar != null ? e.sugar : e.c * 0.3) * f,
+          satfat100: (e.satFat != null ? e.satFat : e.f * 0.4) * f,
+          salt100: (e.salt != null ? e.salt : 0) * f,
+          fiber100: (e.fiber != null ? e.fiber : 0) * f,
+          protein100: e.p * f,
+          fruitVegPct: 0, isBeverage: false,
+        });
+        if (s && /^[A-E]$/.test(String(s.grade))) { e.grade = String(s.grade); e.gradeCalc = true; }
+      } catch (err) {}
+    }
+  }
   return e;
 }
 
@@ -638,7 +673,9 @@ module.exports = async function handler(req, res) {
         brand: patch.brand != null ? patch.brand : e.brand, store: patch.store != null ? patch.store : e.store,
         // Herkunfts-Metadaten überleben das Bearbeiten (sonst verlöre ein OFF-Eintrag
         // beim Anpassen der Portion sein Badge, den Barcode und die Ampel).
-        source: e.source, barcode: e.barcode, estimated: e.estimated, grade: e.grade,
+        // Eine GESCHÄTZTE Ampel wird bewusst nicht mitgeschleppt: sie hängt an Menge und
+        // Nährwerten und wird nach der Änderung frisch berechnet.
+        source: e.source, barcode: e.barcode, estimated: e.estimated, grade: e.gradeCalc ? '' : e.grade,
       }, hour, true);
       merged.ts = e.ts || merged.ts;
       return merged;
