@@ -3822,9 +3822,16 @@
           // Beim Wieder-Loggen eines eigenen Lebensmittels MIT Grammbasis: Menge eingeben,
           // alle Werte skalieren automatisch (kein Selbst-Umrechnen mehr).
           var gramsCtrl=(it._gBase&&it._gBase.g>0)?('<div style="margin-top:11px"><label style="font-size:9.5px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.3px">Menge in Gramm</label><input type="number" inputmode="numeric" min="1" max="5000" value="'+(it.grams||it._gBase.g)+'" onchange="window.__ernCFGrams('+idx+',this.value)" style="width:100%;border:1.5px solid var(--border);border-radius:10px;padding:8px 10px;font-size:14px;font-weight:800;color:var(--text);background:var(--surface);margin-top:3px"><div style="font-size:10px;color:var(--text-soft);font-weight:600;margin-top:4px;line-height:1.4">Nährwerte-Basis: '+it._gBase.g+' g – kcal &amp; Makros rechnen sich automatisch um.</div></div>'):'';
+          // Etikett-Scan ganz oben: der schnellste Weg zu einem eigenen Lebensmittel – Foto der
+          // Nährwerttabelle statt alles abtippen. Füllt Name, Marke und die Werte je 100 g.
+          var lblMsg=it._lblMsg?('<div style="font-size:10.5px;font-weight:700;color:'+(it._lblOk?'var(--ern-acc)':'var(--err-fg)')+';margin-top:6px;line-height:1.45">'+(it._lblOk?'✓ ':'')+esc(it._lblMsg)+'</div>'):'';
+          var lblCtrl=((it.source==='manual'||it.custom)&&!it._gBase)?('<label style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:12px;padding:13px;border:1.5px solid #0e6072;border-radius:13px;background:rgba(14,96,114,.06);color:var(--ern-acc);font-weight:800;font-size:14px;cursor:'+(it._lblBusy?'default':'pointer')+'">'+
+            (it._lblBusy?'<span style="width:16px;height:16px;border:2.4px solid rgba(14,96,114,.3);border-top-color:var(--ern-acc);border-radius:50%;display:inline-block;animation:ernspin .7s linear infinite"></span>FINN liest das Etikett …':'📷 Nährwerttabelle scannen')+
+            '<input type="file" accept="image/*" capture="environment" style="display:none" '+(it._lblBusy?'disabled ':'')+'onchange="window.__ernCFLabelPick('+idx+',this)"></label>'+
+            '<div style="font-size:10.5px;color:var(--text-soft);font-weight:600;margin-top:5px;line-height:1.45;text-align:center">Foto der Nährwerttabelle auf der Verpackung – Name, Marke und Werte je 100 g werden übernommen.</div>'+lblMsg):'';
           // Bezugsmenge (100 g) steht bewusst DIREKT unter den Nährwertfeldern – sie erklärt,
           // worauf sich die eingetippten Zahlen beziehen. Vorher stand sie ganz unten und wurde übersehen.
-          return gbCtrl+toggle+body+metaCtrl+favChk+imgCtrl+bcCtrl+gramsCtrl;
+          return lblCtrl+gbCtrl+toggle+body+metaCtrl+favChk+imgCtrl+bcCtrl+gramsCtrl;
         }())+
         swapBox+
       '</div>';
@@ -4517,6 +4524,63 @@
   };
   // Barcode fürs EIGENE Lebensmittel per Kamera/Foto erfassen und direkt ins Feld schreiben
   // (keine Produktsuche, keine Navigation) – analog zum Bild-Hinzufügen im Prüfen-Screen.
+  // ── Etikett-Scan: Nährwerttabelle fotografieren -> Felder automatisch füllen ──
+  // Bewusst höher aufgelöst als das Teller-Foto (1600 px statt 1024, Qualität 0,9): die
+  // Tabelle ist kleingedruckt. Übernommen wird nur ins Formular – gespeichert wird erst,
+  // wenn das Mitglied bestätigt.
+  window.__ernCFLabelPick=function(idx,input){
+    var f=input&&input.files&&input.files[0]; try{ if(input) input.value=''; }catch(e){}
+    if(!f) return;
+    var cf=S.ernConfirm; if(!cf||!cf.items||!cf.items[idx]) return;
+    if(!/^image\//.test(f.type||'')){ cf.items[idx]._lblMsg='Bitte ein Foto auswählen.'; cf.items[idx]._lblOk=false; render(); return; }
+    cf.items[idx]._lblBusy=true; cf.items[idx]._lblMsg=''; render();
+    var rd=new FileReader();
+    rd.onload=function(e){
+      var img=new Image();
+      img.onload=function(){
+        var b64='';
+        try{
+          var max=1600,w=img.naturalWidth||1,h=img.naturalHeight||1,sc=Math.min(1,max/Math.max(w,h));
+          var cw=Math.max(1,Math.round(w*sc)),ch=Math.max(1,Math.round(h*sc));
+          var cv=document.createElement('canvas'); cv.width=cw; cv.height=ch; cv.getContext('2d').drawImage(img,0,0,cw,ch);
+          var url=cv.toDataURL('image/jpeg',0.9); var ix=url.indexOf('base64,'); b64=ix>=0?url.slice(ix+7):'';
+        }catch(err){ b64=''; }
+        ernLabelSend(idx,b64);
+      };
+      img.onerror=function(){ ernLabelSend(idx,''); };
+      img.src=String((e.target&&e.target.result)||'');
+    };
+    rd.onerror=function(){ ernLabelSend(idx,''); };
+    rd.readAsDataURL(f);
+  };
+  function ernLabelSend(idx,b64){
+    var cf0=S.ernConfirm, it0=(cf0&&cf0.items)?cf0.items[idx]:null; if(!it0) return;
+    if(!b64){ it0._lblBusy=false; it0._lblOk=false; it0._lblMsg='Foto konnte nicht gelesen werden.'; render(); return; }
+    api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'label-scan',base64:b64,mediaType:'image/jpeg'})})
+    .then(function(d){
+      var c=S.ernConfirm, x=(c&&c.items)?c.items[idx]:null; if(!x) return;
+      x._lblBusy=false;
+      if(d&&d.error==='premium_required'){ setS({ernUpgrade:true}); return; }
+      ernQuotaApply(d);
+      if(d&&d.ok){
+        var p=d.per100||{};
+        if(d.name) x.name=d.name;
+        if(d.brand) x.brand=d.brand;
+        if(p.kcal!=null) x.kcal=Math.round(p.kcal);
+        if(p.protein!=null) x.p=Math.round(p.protein);
+        if(p.carbs!=null) x.c=Math.round(p.carbs);
+        if(p.fat!=null) x.f=Math.round(p.fat);
+        if(p.fiber!=null) x.fiber=p.fiber;
+        if(p.sugar!=null) x.sugar=p.sugar;
+        if(p.satFat!=null) x.satFat=p.satFat;
+        if(p.salt!=null) x.salt=p.salt;
+        x.gramsBase=100; x.portion=(d.basis==='100ml')?'100 ml':'100 g'; x._micOpen=true;
+        x._lblOk=true; x._lblMsg=d.hint||'Werte vom Etikett übernommen – bitte kurz prüfen.';
+      } else { x._lblOk=false; x._lblMsg=(d&&d.message)||'Etikett konnte nicht gelesen werden.'; }
+      render();
+    })
+    .catch(function(){ var c=S.ernConfirm,x=(c&&c.items)?c.items[idx]:null; if(x){ x._lblBusy=false; x._lblOk=false; x._lblMsg='Verbindung gerade nicht möglich.'; } render(); });
+  }
   window.__ernCFScanPhoto=function(idx,input){
     var f=input&&input.files&&input.files[0]; try{ if(input) input.value=''; }catch(e){}
     if(!f) return;

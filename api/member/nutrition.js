@@ -14,6 +14,8 @@
  * Erfassen (Punkt 1: KI schätzt NUR, gespeichert wird erst nach Bestätigung):
  *   POST { action:'estimate', text }            -> { ok, items:[…], meal, estimated } (kein Speichern!)
  *   POST { action:'estimate-photo', base64, mediaType } -> dito per Foto
+ *   POST { action:'label-scan', base64, mediaType } -> liest die Nährwerttabelle ab (je 100 g/ml)
+ *        -> { ok, name, brand, basis, per100:{…}, confidence, hint } (speichert NICHTS)
  *   POST { action:'confirm-log', date?, items:[…] } -> speichert die BESTÄTIGTEN Werte
  *   POST { action:'log-manual', date?, name,portion?,kcal,p,c,f,meal? } (feste Werte, direkt)
  * Bearbeiten (Punkt 2, immer am validierten Tag):
@@ -553,6 +555,32 @@ module.exports = async function handler(req, res) {
     const meal = mealForHour(hour);
     const items = (est.items || []).map(function (it) { return sanitizeEntry({ name: it.name, portion: it.portion, kcal: it.kcal, p: it.p, c: it.c, f: it.f, meal: meal, estimated: true }, hour); });
     res.statusCode = 200; return res.end(JSON.stringify({ ok: true, items: items, meal: meal, estimated: true, quota: quota, message: items.length ? '' : 'Auf dem Foto konnte ich kein Lebensmittel erkennen – versuch es mit einer Texteingabe.' }));
+  }
+
+  // ── Etikett-Scan: Nährwerttabelle fotografieren -> Felder fürs eigene Lebensmittel ──
+  // Gibt NUR die abgelesenen Werte zurück; gespeichert wird nichts. Der Client füllt damit
+  // das Anlege-Formular vor, das Mitglied prüft und bestätigt (bewusster Zwischenschritt,
+  // weil OCR bei schlechten Fotos danebenliegen kann).
+  if (action === 'label-scan') {
+    if (!(await gateAI())) return;
+    if (!AI.hasAI) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'no_ai', message: 'FINN ist gerade nicht verfügbar.' })); }
+    if (!(await M.rateLimit('nutri-label:' + id, 20, 3600))) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'rate_limited', message: 'Kurz durchatmen – gleich wieder versuchen.' })); }
+    const b64 = String(body.base64 || '');
+    if (b64.length < 100 || b64.length > 8000000) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'bad_photo', message: 'Kein gültiges Foto empfangen.' })); }
+    const r = await AI.nutritionLabelScan(b64, body.mediaType);
+    if (!r.ok) {
+      const msg = (r.error === 'no_label')
+        ? 'Auf dem Foto war keine Nährwerttabelle lesbar – bitte näher ran und auf gute Beleuchtung achten.'
+        : 'FINN kann das Foto gerade nicht auswerten. Versuch es gleich nochmal.';
+      res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: r.error || 'ai_failed', message: msg }));
+    }
+    const quota = await chargeAI();
+    try { require('../../lib/handled').record('ai', id, 'nutri-label'); } catch (e) {}
+    const hint = (r.warn === 'mismatch')
+      ? 'Kalorien und Makros passen rechnerisch nicht ganz zusammen – bitte kurz gegenprüfen.'
+      : (r.confidence < 0.6 ? 'Das Foto war nicht ganz eindeutig – bitte die Werte kurz prüfen.' : '');
+    res.statusCode = 200;
+    return res.end(JSON.stringify({ ok: true, name: r.name, brand: r.brand, basis: r.basis, per100: r.per100, confidence: r.confidence, hint: hint, quota: quota }));
   }
 
   // ── Punkt 1: bestätigte Mahlzeit SPEICHERN (jeder Wert serverseitig geprüft & gedeckelt) ──
