@@ -532,7 +532,7 @@
     ernBuyConsent:false, wdStep:0, wdBusy:false, wdErr:false, wdMsg:'', wdDoneAt:0,
     ernConfirm:null, ernConfirmBusy:false,
     ernScanCode:'', ernScanBusy:false, ernScanErr:'', ernScanNotFound:false,
-    pfAtt:null, pfAttBusy:false, ernCompare:false,
+    pfAtt:null, pfAttBusy:false, ernCompare:false, trainCueOpen:false,
     ernScanPurpose:'log', ernShop:false, ernShopProd:null, ernShopAlt:null, ernShopAltBusy:false, ernShopFinn:null, ernShopFinnBusy:false,
     ernShopItem:null, ernShopItemBusy:false, ernShopItemErr:'', ernShopItemCache:{}, ernShopItemGeneric:false,
     sos:false, sosCrave:'', sosTrigger:'', sosFinn:null, sosFinnBusy:false, buyGuide:false,
@@ -5907,14 +5907,21 @@
       svg('<path d="M9 6l6 6-6 6"></path>',{c:'var(--ern-acc)',w:2.2,s:16})+'</button>';
   }
   // Kuratierte Bibliothek als Kachelliste.
+  // Icon je Ziel: drei identische 💪 nebeneinander machten die Pläne ununterscheidbar.
+  function trainGoalIcon(goal){
+    var M={ abnehmen:'🔥', aufbau:'💪', definieren:'✨', kraft:'🏋️', beweglichkeit:'🧘', ganzkoerper:'⚡' };
+    return M[String(goal||'')]||'🏃';
+  }
   function trainingLibrary(d){
     var plans=Array.isArray(d.plans)?d.plans:[];
     if(!plans.length) return '';
+    var activeId=(d&&d.myPlan&&d.myPlan.plan&&d.myPlan.plan.id)||'';
     var cards=plans.map(function(p){
-      return '<button data-act="trainOpen" data-arg="'+esc(p.id)+'" style="width:100%;text-align:left;border:none;cursor:pointer;font-family:inherit;background:var(--surface);border-radius:18px;box-shadow:0 10px 26px rgba(4,33,40,.08);padding:0;margin-bottom:12px;overflow:hidden;display:block">'+
+      var isActive=(activeId&&String(p.id)===String(activeId));
+      return '<button data-act="trainOpen" data-arg="'+esc(p.id)+'" style="width:100%;text-align:left;border:none;cursor:pointer;font-family:inherit;background:var(--surface);border-radius:18px;box-shadow:'+(isActive?'0 12px 30px rgba(14,96,114,.22)':'0 10px 26px rgba(4,33,40,.08)')+';outline:'+(isActive?'2px solid '+ERN_G:'none')+';outline-offset:-2px;padding:0;margin-bottom:12px;overflow:hidden;display:block">'+
         '<div style="background:linear-gradient(120deg,'+ERN_G2+','+ERN_GD+');padding:14px 16px;display:flex;align-items:center;gap:12px">'+
-          '<div style="width:44px;height:44px;border-radius:13px;background:rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:24px">'+esc(p.emoji||'💪')+'</div>'+
-          '<div style="flex:1;min-width:0"><div style="font-size:15.5px;font-weight:900;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(p.title)+'</div>'+(p.subtitle?'<div style="font-size:11.5px;font-weight:600;color:rgba(255,255,255,.82);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(p.subtitle)+'</div>':'')+'</div>'+
+          '<div style="width:44px;height:44px;border-radius:13px;background:rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:24px">'+esc(p.emoji||trainGoalIcon(p.goal))+'</div>'+
+          '<div style="flex:1;min-width:0"><div style="font-size:15.5px;font-weight:900;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(p.title)+(isActive?' <span style="display:inline-block;vertical-align:middle;background:#fff;color:'+ERN_GD+';border-radius:7px;padding:2px 7px;font-size:9.5px;font-weight:900;letter-spacing:.3px;margin-left:4px">AKTIV</span>':'')+'</div>'+(p.subtitle?'<div style="font-size:11.5px;font-weight:600;color:rgba(255,255,255,.82);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(p.subtitle)+'</div>':'')+'</div>'+
           svg('<path d="M9 6l6 6-6 6"></path>',{c:'rgba(255,255,255,.85)',w:2.2,s:16})+'</div>'+
         '<div style="padding:12px 16px 14px">'+
           '<div style="font-size:12px;font-weight:700;color:var(--text-muted)">'+esc(trainMetaLine(p))+(p.weeks?(' · '+p.weeks+' Wochen'):'')+'</div>'+
@@ -6115,6 +6122,32 @@
   function trFmtSec(s){ s=Math.max(0,s|0); var m=Math.floor(s/60); return m+':'+pad2(s%60); }
   // Verstrichene Trainingszeit seit Start der Einheit (überlebt Re-Render via localStorage, tageweise).
   function trainElapsedSec(){ if(!S.trainRunStart) return 0; return Math.max(0,Math.floor((Date.now()-S.trainRunStart)/1000)); }
+  // Statusleiste der laufenden Einheit: Zeit, Fortschritt und – falls aktiv – die Pause.
+  // Sie klebt oben fest, weil man im Studio ständig scrollt und genau diese drei Angaben
+  // permanent braucht. Vorher standen sie in zwei Karten, die sofort weggescrollt waren.
+  function trainRunSticky(doneN,total,pct){
+    var e=trainElapsedSec(); var mm=Math.floor(e/60), ss=e%60;
+    var rest=(S.trainRestKey&&S.trainRestStart)
+      ? '<span style="display:flex;align-items:center;gap:5px;background:rgba(199,122,46,.14);color:#C77A2E;border-radius:9px;padding:4px 9px;font-size:12px;font-weight:900;flex-shrink:0">⏱ <span id="tr_rest" style="font-variant-numeric:tabular-nums">0:00</span></span>'
+      : '';
+    return '<div style="position:sticky;top:0;z-index:9;margin:0 -2px 12px;padding:10px 12px;background:var(--surface);border-radius:0 0 16px 16px;box-shadow:0 6px 18px rgba(4,33,40,.10)">'+
+      '<div style="display:flex;align-items:center;gap:10px">'+
+        '<span style="display:flex;align-items:center;gap:6px;flex-shrink:0"><span style="font-size:14px">⏱</span><span id="tr_elapsed" style="font-size:19px;font-weight:900;color:var(--text);letter-spacing:-.5px;font-variant-numeric:tabular-nums">'+mm+':'+(ss<10?'0':'')+ss+'</span></span>'+
+        rest+
+        '<span style="margin-left:auto;font-size:12.5px;font-weight:900;color:var(--ern-acc);flex-shrink:0">'+doneN+' / '+total+'</span>'+
+      '</div>'+
+      '<div style="height:5px;border-radius:3px;background:var(--surface-2);overflow:hidden;margin-top:8px"><div style="width:'+pct+'%;height:100%;border-radius:3px;background:'+ERN_OK+';transition:width .3s"></div></div>'+
+    '</div>';
+  }
+  // Geräte-Hinweis EINMAL pro Einheit statt in jeder Übungszeile. Er erklärt eine Sache,
+  // die man einmal liest – wiederholt an jedem Gerät kostete nur Platz und Aufmerksamkeit.
+  function trainRunHint(exs){
+    var anyTg=(exs||[]).some(function(e){ return trIsTg(e); });
+    var base='<div style="font-size:12.5px;font-weight:500;color:var(--text-2);margin:0 2px 12px;line-height:1.5">Tippe eine Übung an für Beschreibung &amp; Muskeln.';
+    if(!anyTg) return base+'</div>';
+    return base+' Bei <b>🤖 KI-Geräten</b> meldest du dich am Gerät an – Gewicht und Steigerung übernimmt die Technogym-KI.</div>'+
+      '<a href="'+TG_APP_URL+'" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:9px;margin:0 2px 12px;padding:11px 13px;border:1.5px solid rgba(14,96,114,.25);border-radius:13px;background:rgba(14,96,114,.05);text-decoration:none"><span style="font-size:17px">📱</span><span style="flex:1;min-width:0;font-size:12.5px;font-weight:800;color:var(--ern-acc)">Technogym-App öffnen</span><span style="color:var(--ern-acc);font-weight:900">↗</span></a>';
+  }
   function trainingRun(){
     var d=DATA.training||{}; var mp=d.myPlan&&d.myPlan.plan;
     var back=subBack('trainRunClose');
@@ -6137,8 +6170,9 @@
     var footer=(running?finishBtn:'')+resetBtn;
     return '<div style="padding:0 2px 96px">'+back+
       '<div style="font-size:20px;font-weight:900;letter-spacing:-.4px;color:var(--text);margin:0 2px 3px">'+esc(mp.title)+'</div>'+
-      '<div style="font-size:12.5px;font-weight:500;color:var(--text-2);margin:0 2px 14px">Tippe eine Übung an für Beschreibung &amp; Muskeln. 🤖 = am Gerät per App/Band anmelden, den Rest macht die KI.</div>'+
-      (running?elapsed:startCard)+dayTabs+prog+rows+footer+'</div>';
+      (running?trainRunSticky(doneN,exs.length,pct):'')+
+      trainRunHint(exs)+
+      (running?'':startCard)+dayTabs+(running?'':prog)+rows+footer+'</div>';
   }
   // Übungszeile im Tracker: Name antippbar (Detail), KI-Geräte mit App-Link, sonst Satz-Protokoll.
   function trainRunRow(e,key){
@@ -6148,11 +6182,22 @@
       '<button data-act="trainToggle" data-arg="'+esc(key)+'" aria-label="Erledigt" style="flex-shrink:0;width:34px;height:34px;border-radius:50%;border:2px solid '+(done?ERN_G:'var(--border-strong)')+';background:'+(done?ERN_G:'var(--surface)')+';display:flex;align-items:center;justify-content:center;cursor:pointer">'+(done?svg('<path d="M20 6L9 17l-5-5"></path>',{c:'#fff',w:3,s:17}):'')+'</button></div>';
     var body='';
     if(tg){
-      body='<div style="margin-top:11px;padding-top:11px;border-top:1px solid var(--border)"><a href="'+TG_APP_URL+'" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:9px;text-decoration:none;background:rgba(14,96,114,.06);border:1.5px solid '+ERN_G+';border-radius:12px;padding:11px 13px"><span style="width:30px;height:30px;border-radius:9px;background:'+ERN_GD+';display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:15px">📲</span><span style="flex:1;min-width:0"><span style="display:block;font-size:13px;font-weight:900;color:var(--teal-ink)">In der Technogym-App öffnen</span><span style="display:block;font-size:11px;font-weight:600;color:var(--text-soft);margin-top:1px">Per App oder Band am Gerät anmelden – Gewicht &amp; Progression macht die KI.</span></span>'+svg('<path d="M7 17L17 7M9 7h8v8"></path>',{c:'var(--teal-ink)',w:2.2,s:16})+'</a></div>';
+      // Nichts weiter: der 🤖-Badge in der Unterzeile kennzeichnet das KI-Gerät, die Erklärung
+      // steht einmal oben (trainRunHint). Alles andere war reine Wiederholung an jedem Gerät.
+      body='';
     } else {
       body=trainSetLog(e,key,it);
     }
-    return '<div style="background:var(--surface);border-radius:15px;box-shadow:0 6px 18px rgba(4,33,40,.06);padding:14px 15px;margin-bottom:10px'+(done?';opacity:.7':'')+'">'+head+body+'</div>';
+    // Erledigt = zusammengeklappt. Während der Einheit interessiert nur, was noch kommt;
+    // vorher blieben abgehakte Übungen in voller Größe stehen und man scrollte ewig.
+    if(done){
+      return '<div style="display:flex;align-items:center;gap:11px;background:var(--surface);border-radius:13px;box-shadow:0 4px 12px rgba(4,33,40,.05);padding:11px 14px;margin-bottom:8px">'+
+        '<button data-act="trainToggle" data-arg="'+esc(key)+'" aria-label="Wieder öffnen" style="flex-shrink:0;width:26px;height:26px;border-radius:50%;border:none;background:'+ERN_OK+';display:flex;align-items:center;justify-content:center;cursor:pointer">'+svg('<path d="M20 6L9 17l-5-5"></path>',{c:'#fff',w:3,s:14})+'</button>'+
+        '<span style="flex:1;min-width:0;font-size:14px;font-weight:700;color:var(--text-soft);text-decoration:line-through;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(e.name||'Übung')+'</span>'+
+        '<span style="font-size:11px;font-weight:800;color:'+ERN_OK+';flex-shrink:0">fertig</span>'+
+      '</div>';
+    }
+    return '<div style="background:var(--surface);border-radius:15px;box-shadow:0 6px 18px rgba(4,33,40,.06);padding:14px 15px;margin-bottom:10px">'+head+body+'</div>';
   }
   // Satz-Protokoll (Nicht-KI-Geräte): je Satz Gewicht/Wdh./Pause, editierbar + ergänzbar.
   function trainSetLog(e,key,it){
@@ -6279,11 +6324,35 @@
     return trainCardBox('<div style="display:flex;align-items:center;gap:14px">'+ring+'<div style="flex:1;min-width:0"><div style="font-size:14.5px;font-weight:900;color:var(--text)">Diese Woche</div><div style="font-size:12.5px;font-weight:600;color:var(--text-soft);margin-top:2px">'+sub+'</div>'+(v.streak?'<div style="font-size:11.5px;font-weight:800;color:var(--ern-acc);margin-top:6px">🔥 '+v.streak+' Wochen in Folge</div>':'')+'</div></div>');
   }
   // „Am Gerät anmelden" – die Technogym/Biostrength-Story (QR-Stil-Icon, rein informativ).
+  // Geräte-Hinweis: erklärt einmal, wie das Anmelden am Biostrength-Gerät funktioniert.
+  // Früher stand die Karte bei JEDEM Öffnen des Heute-Tabs in voller Größe direkt unter der
+  // Einheit – eine Erklärung, die man einmal liest, dauerhaft auf dem wichtigsten Platz.
+  // Jetzt: einmal ausgeklappt, danach nur noch eine Zeile zum Aufklappen (Merker lokal).
+  function trainMachineCueSeen(){ try{ return localStorage.getItem('fi_machine_cue_v1')==='1'; }catch(e){ return false; } }
   function trainMachineCue(){
-    var qr='<div style="width:46px;height:46px;border-radius:12px;background:'+ERN_GD+';display:flex;align-items:center;justify-content:center;flex-shrink:0">'+svg('<rect x="3" y="3" width="7" height="7" rx="1"></rect><rect x="14" y="3" width="7" height="7" rx="1"></rect><rect x="3" y="14" width="7" height="7" rx="1"></rect><path d="M14 14h3v3h-3zM20 14v3M14 20h3M20 20v.01"></path>',{c:'#fff',w:1.8,s:24})+'</div>';
-    return trainCardBox('<div style="display:flex;gap:12px;align-items:flex-start">'+qr+'<div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:900;color:var(--text)">Am Gerät anmelden</div><div style="font-size:12.5px;font-weight:500;color:var(--text-2);line-height:1.5;margin-top:3px">Melde dich an jedem <b style="color:var(--teal-ink)">Biostrength</b>-Gerät mit deinem Profil an – Sitz und Gewicht stellen sich automatisch ein, die Technogym-KI steigert dich Woche für Woche.</div></div></div>');
+    var open=S.trainCueOpen||!trainMachineCueSeen();
+    var qr='<div style="width:'+(open?46:30)+'px;height:'+(open?46:30)+'px;border-radius:'+(open?12:9)+'px;background:'+ERN_GD+';display:flex;align-items:center;justify-content:center;flex-shrink:0">'+svg('<rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect><path d="M14 14h3v3h-3zM19 14h2M14 19h3M19 19h2"></path>',{c:'#fff',w:2,s:open?22:15})+'</div>';
+    if(!open){
+      return '<button data-act="trainCueOpen" style="width:100%;display:flex;align-items:center;gap:11px;background:var(--surface);border:none;border-radius:14px;box-shadow:0 6px 16px rgba(4,33,40,.05);padding:11px 14px;margin-bottom:12px;cursor:pointer;text-align:left;font-family:inherit">'+qr+
+        '<span style="flex:1;min-width:0;font-size:13px;font-weight:800;color:var(--text-2)">Am Gerät anmelden – so geht\'s</span>'+
+        svg('<path d="M9 18l6-6-6-6"></path>',{c:'var(--text-soft)',w:2.4,s:15})+'</button>';
+    }
+    return trainCardBox('<div style="display:flex;gap:12px;align-items:flex-start">'+qr+'<div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:900;color:var(--text)">Am Gerät anmelden</div><div style="font-size:12.5px;font-weight:500;color:var(--text-2);line-height:1.5;margin-top:3px">Melde dich an jedem <b>Biostrength</b>-Gerät mit deinem Profil an – Sitz und Gewicht stellen sich automatisch ein, die Technogym-KI steigert dich Woche für Woche.</div>'+
+      '<button data-act="trainCueHide" style="margin-top:9px;border:none;background:none;padding:4px 0;color:var(--teal-ink);font-weight:800;font-size:12px;cursor:pointer">Verstanden – kleiner anzeigen</button></div></div>');
   }
+
   // Technogym-„Heute": große Session-Karte mit Start, Vorschau, Wochen-Ring & Geräte-Hinweis.
+  // „Einheit 2 von 3 diese Woche" – ordnet die heutige Einheit in die Woche ein. Zählt die
+  // Studio-Besuche der laufenden Woche (Montag als Wochenstart) gegen die Plan-Tage.
+  function trainWeekPos(mp){
+    var goal=Math.max(1,parseInt(mp&&mp.daysPerWeek,10)||((mp&&mp.days&&mp.days.length)||3));
+    var list=(DATA.checkins&&DATA.checkins.items)||[];
+    var now=new Date(); var dow=(now.getDay()+6)%7;   // Mo=0
+    var start=new Date(now.getFullYear(),now.getMonth(),now.getDate()-dow).getTime();
+    var doneWeek=list.filter(function(c){ var t=+(c&&(c.at||c.ts))||0; return t>=start; }).length;
+    var nr=Math.min(goal,doneWeek+1);
+    return '<span style="background:rgba(255,255,255,.16);color:#fff;border-radius:8px;padding:3px 8px;font-size:10.5px;font-weight:900;letter-spacing:.2px">Einheit '+nr+' von '+goal+'</span>';
+  }
   function meinTagTodayCard(mp){
     var di=trainTodayDay(mp);
     var day=mp.days[di]||mp.days[0]; var exs=(day&&day.exercises)||[];
@@ -6300,7 +6369,7 @@
     var btnLabel=allDone?'Einheit ansehen':(started?'Weiter trainieren':'Training starten');
     var btnAct=(!started&&!allDone)?'trainRunGo':'trainRun';
     var hero='<div style="background:linear-gradient(155deg,'+ERN_G2+','+ERN_G+' 55%,'+ERN_GD+');border-radius:22px;padding:20px;color:#fff;box-shadow:0 16px 38px rgba(14,96,114,.28);margin-bottom:14px">'+
-      '<div style="font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.6px;color:#bfe0e6">Heutige Einheit</div>'+
+      '<div style="display:flex;align-items:center;gap:8px"><span style="font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.6px;color:#bfe0e6">Heutige Einheit</span>'+trainWeekPos(mp)+'</div>'+
       '<div style="font-size:23px;font-weight:900;letter-spacing:-.5px;margin-top:3px">'+esc((day&&day.name)||'Training')+'</div>'+
       '<div style="display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:700;color:#cfe8ec;margin-top:6px"><span>'+exs.length+' Übungen</span><span style="opacity:.5">·</span><span>ca. '+est+' Min</span></div>'+
       progRow+
@@ -10803,6 +10872,8 @@
     trainBegin:function(){ if(!(S.trainRunStart>0)){ var now=Date.now(); S.trainRunStart=now; try{ localStorage.setItem('fi_train_start',String(now)); }catch(e){} } setS({}); },
     // Öffnen UND sofort starten – für den klar beschrifteten „Training starten"-Button.
     trainRunGo:function(){ S.trainRun=true; S.trainRunDay=0; S.trainRestKey=''; S.trainRestStart=0; var now=Date.now(); S.trainRunStart=now; try{ localStorage.setItem('fi_train_start',String(now)); }catch(e){} loadTrainSession(); setS({}); },
+    trainCueOpen:function(){ setS({trainCueOpen:true}); },
+    trainCueHide:function(){ try{ localStorage.setItem('fi_machine_cue_v1','1'); }catch(e){} setS({trainCueOpen:false}); },
     trainRunClose:function(){ S.trainRun=false; S.trainRestKey=''; setS({}); },
     // Übungs-Detail (Beschreibung + Muskeldiagramm) öffnen/schließen.
     trExDetail:function(key){ S.trainExDetail=key; setS({}); },
