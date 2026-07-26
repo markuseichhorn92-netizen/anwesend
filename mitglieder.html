@@ -578,7 +578,6 @@
     liEmail:'', liNum:'', liPhone:'', remember:(localStorage.getItem('fi_remember')==='1'),
     loginStep:'request', challenge:'', otp:'',
     liDob:'', waLogin:false, waLoginFetched:false, loginVia:'email', channels:[],
-    dupNotice:null, dupDismissed:false,
     loginErr:'' };
   window.__setLi=function(f,v){ if(f==='email')S.liEmail=v; else if(f==='code'){ S.otp=v; if(S.loginStep==='verify' && !S.busy && S.challenge && String(v).replace(/\D/g,'').length===6){ ACT.verifyCode(); } } else if(f==='num')S.liNum=v; else if(f==='phone')S.liPhone=v; else if(f==='dob')S.liDob=v; };
   window.__ciDate=function(which,v){ if(which==='from')S.ciFrom=v; else S.ciTo=v; render(); };
@@ -791,7 +790,7 @@
 
   // ---- data loading ----
   function loadMe(){
-    return api('/api/member/me').then(function(d){ DATA.profile=d.profile||null; DATA.contract=d.contract||null; DATA.membershipActive=(d.membershipActive!==false); DATA.meLoaded=true; checkDup(); try{ if(window.FitInnNative) FitInnNative.onAuthed(TOKEN); }catch(e){} });
+    return api('/api/member/me').then(function(d){ DATA.profile=d.profile||null; DATA.contract=d.contract||null; DATA.membershipActive=(d.membershipActive!==false); DATA.meLoaded=true; try{ if(window.FitInnNative) FitInnNative.onAuthed(TOKEN); }catch(e){} });
   }
   // Profil + Postfach frisch laden und neu zeichnen (nach Daten-Aktionen).
   function refreshMe(){ return loadMe().then(function(){ render(); }).catch(function(){}); }
@@ -812,10 +811,6 @@
     if(s==='coach'){ loadCoach(); loadTraining(); }
     if(s==='checkins'||s==='fort') loadCheckins();
     woHealthAutoSync();   // neue Wearable-/Health-Einheiten still im Hintergrund holen
-  }
-  // Mehrere Magicline-Konten zu denselben Daten? -> Hinweis-Banner im Portal.
-  function checkDup(){
-    api('/api/member/duplicates').then(function(d){ if(d&&d.ok){ S.dupNotice={ hasDuplicates:!!d.hasDuplicates, count:d.count||0, requested:!!d.requested }; render(); } }).catch(function(){});
   }
   function loadCheckins(){ S.ciLoadErr=false; api('/api/member/checkins').then(function(d){ DATA.checkins=d.checkins||[]; ciSyncFromHistory(); render(); }).catch(function(){ if(DATA.checkins==null){ S.ciLoadErr=true; } render(); }); }
   function loadAccount(){ api('/api/member/account').then(function(d){ DATA.account=d&&d.ok?d:{ok:false,open:[]}; render(); }).catch(function(){ DATA.account={ok:false,open:[]}; render(); }); }
@@ -2259,19 +2254,6 @@
       '<div style="width:44px;height:44px;border-radius:14px;background:linear-gradient(150deg,'+t[3]+');box-shadow:0 8px 18px -6px '+t[4]+';display:flex;align-items:center;justify-content:center;margin-bottom:11px">'+svg(t[5],{c:'#fff',w:1.9,s:23})+'</div>'+
       '<div style="font-size:14.5px;font-weight:800;color:var(--text)">'+t[1]+'</div>'+
       '<div style="font-size:12px;color:var(--text-soft);font-weight:600;margin-top:2px">'+esc(t[2])+'</div></button>'; }).join('');
-    var dupBanner='';
-    if(S.dupNotice && S.dupNotice.hasDuplicates && !S.dupDismissed){
-      if(S.dupNotice.requested){
-        dupBanner='<div style="display:flex;align-items:flex-start;gap:11px;background:#eaf6ef;border:1px solid #bfe3cd;border-radius:14px;padding:13px 15px;margin-bottom:14px">'+svg('<path d="M22 11.1V12a10 10 0 1 1-5.9-9.1"></path><path d="M22 4L12 14.01l-3-3"></path>',{c:'#1d7a3e',w:2,s:18})+'<div style="flex:1;font-size:13.5px;color:#1d6b3a;font-weight:600;line-height:1.5">Zusammenführung angefragt – wir kümmern uns darum und melden uns bei dir.</div></div>';
-      } else {
-        dupBanner='<div style="background:#fff6ec;border:1px solid #f3dcc0;border-radius:14px;padding:14px 16px;margin-bottom:14px">'+
-          '<div style="display:flex;align-items:flex-start;gap:11px">'+svg('<path d="M12 9v4M12 17h.01M10.3 3.5L1.8 18a1.5 1.5 0 0 0 1.3 2.3h17.8a1.5 1.5 0 0 0 1.3-2.3L13.7 3.5a1.5 1.5 0 0 0-2.6 0z"></path>',{c:'#C77A2E',w:2,s:18})+
-          '<div style="flex:1"><div style="font-size:14px;font-weight:800;color:#8a5a20">Mehrere Konten erkannt</div>'+
-          '<div style="font-size:13px;color:#a06a2c;font-weight:600;margin-top:2px;line-height:1.5">Wir haben mehrere Konten zu deinen Daten gefunden. Sollen wir sie für dich zusammenführen? Unser Team kümmert sich darum.</div>'+
-          '<div style="display:flex;gap:9px;margin-top:11px"><button class="btn" data-act="mergeRequest" style="width:auto;padding:10px 16px;font-size:14px">'+(S.busy?'Wird gesendet …':'Ja, zusammenführen')+'</button>'+
-          '<button class="btn2" data-act="dupDismiss" style="width:auto;padding:10px 16px;font-size:14px">Später</button></div></div></div></div>';
-      }
-    }
     var hdr=function(t){ return '<div style="font-size:18px;font-weight:900;color:var(--text);letter-spacing:-.3px;margin:24px 2px 12px">'+t+'</div>'; };
     // Übersichtlich in klare Abschnitte gegliedert – „Heute" (aktionsorientiert) zuerst.
     // Ein leerer Abschnitt (z. B. Community ohne SOCIAL_ON) erzeugt keine verwaiste Überschrift.
@@ -2283,7 +2265,6 @@
     var hh=berlinHour();
     var mainBlock=(hh>=5&&hh<11)?(secCoach+secHeute):(secHeute+secCoach);
     return ''+
-      dupBanner+                                                   // Konto-Warnung ganz oben (falls vorhanden)
       checkinBtn()+                                                // kontextuell: im Studio / eingecheckt
       homeContextHero()+                                           // Tageszeit-Begrüßung + sinnvollster nächster Schritt
       mainBlock+                                                   // Heute + Coach/Fortschritt (Reihenfolge tageszeitabhängig)
@@ -12043,8 +12024,6 @@
       if(S.loginVia==='email'||S.loginVia==='whatsapp'){ ACT.pickChannel(S.loginVia); return; }
       ACT.reqCode();
     },
-    mergeRequest:function(){ if(S.busy) return; setQuiet({busy:true}); api('/api/member/duplicates',{method:'POST',body:JSON.stringify({action:'merge'})}).then(function(d){ S.busy=false; if(d&&d.ok){ S.dupNotice=S.dupNotice||{}; S.dupNotice.requested=true; setS({msg:'Anfrage gesendet – wir kümmern uns darum.'}); } else { setS({msg:(d&&d.message)||'Konnte nicht gesendet werden.'}); } }).catch(function(){ setS({busy:false,msg:'Konnte nicht gesendet werden.'}); }); },
-    dupDismiss:function(){ setS({dupDismissed:true}); },
     loginBack:function(){ setS({loginStep:'request',otp:'',loginErr:''}); },
     loginNumberMode:function(){ setS({loginStep:'number',loginErr:''}); },
     loginPhoneMode:function(){ setS({loginStep:'phone',loginErr:''}); },
