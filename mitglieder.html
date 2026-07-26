@@ -297,7 +297,30 @@
   .skcard::after{content:"";position:absolute;inset:0;background:linear-gradient(100deg,transparent 25%,rgba(255,255,255,.5) 50%,transparent 75%);transform:translateX(-100%);animation:skShimmer 1.4s ease-in-out infinite}
   html[data-theme="dark"] .skcard::after{background:linear-gradient(100deg,transparent 25%,rgba(255,255,255,.06) 50%,transparent 75%)}
   @keyframes skShimmer{to{transform:translateX(100%)}}
-  @media (prefers-reduced-motion:reduce){ .skcard::after{animation:none} .bootsplash .ring{animation-duration:1.6s} }
+  /* Nur für Screenreader: die Platzhalter-Balken selbst sagen nichts, die Statusmeldung schon. */
+  .srOnly{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+  /* Ladeplatzhalter in Inhaltsform: Balken dort, wo gleich Text steht. Das zeigt WAS kommt,
+     nicht nur DASS geladen wird, und lässt dieselbe Wartezeit kürzer wirken als ein
+     zentriertes „Lädt …". Den Versatz der Schimmer-Welle setzt skLine() je Zeile inline. */
+  .skline{background:var(--surface-2);border-radius:9px;position:relative;overflow:hidden}
+  .skline::after{content:"";position:absolute;inset:0;background:linear-gradient(100deg,transparent 25%,rgba(255,255,255,.55) 50%,transparent 75%);transform:translateX(-100%);animation:skShimmer 1.4s ease-in-out infinite}
+  html[data-theme="dark"] .skline::after{background:linear-gradient(100deg,transparent 25%,rgba(255,255,255,.07) 50%,transparent 75%)}
+  /* Screenwechsel: der neue Inhalt steigt kurz ein statt hart umzuspringen. render() setzt die
+     Klasse NUR beim echten Ansichtswechsel – dieselbe Ansicht rendert auch beim Tippen und bei
+     eintreffenden Live-Daten neu, dort würde eine Animation flackern. */
+  @keyframes appIn{from{opacity:0;transform:translateY(9px)}to{opacity:1;transform:none}}
+  .appIn{animation:appIn .23s cubic-bezier(.22,.8,.3,1)}
+  /* Tap-Rückmeldung auf Touch-Geräten: der Button gibt beim Antippen sofort leicht nach – noch
+     bevor Handler und render() durch sind. Ohne das fühlt sich jede Aktion, die kurz nachdenkt,
+     auf dem Handy wie „nichts passiert" an.
+     Nur <button> in #app: Sheet-Hintergründe sind <div> und dürfen nicht mitschrumpfen,
+     App-Leiste und Bottom-Nav haben ihre eigene Rückmeldung. Buttons mit eigenem
+     inline-transform bleiben unberührt, weil Inline das Stylesheet schlägt. */
+  @media (hover:none){
+    #app button{transition:transform .09s ease-out}
+    #app button:active:not(:disabled){transform:scale(.977)}
+  }
+  @media (prefers-reduced-motion:reduce){ .skcard::after,.skline::after{animation:none} .bootsplash .ring{animation-duration:1.6s} .bootsplash .lbl{animation:none} .appIn{animation:none} #app button{transition:none} #app button:active:not(:disabled){transform:none} }
   /* ===== App-Tour (Schritt für Schritt nach den Onboarding-Fragen) =====
      tourBlock fängt Klicks ab, tourHole legt per Riesen-Schatten den Spot aufs Ziel,
      tourCard ist die Erklärkarte mit Weiter/Überspringen. */
@@ -937,6 +960,41 @@
   // Titel + Zurück tragen jetzt die feste App-Leiste. subHeader liefert nur noch eine
   // schlanke, mitscrollende Untertitel-Zeile (falls vorhanden) – kein Verlaufs-Kasten mehr.
   function subHeader(title, sub, target){ return sub?('<div style="margin:2px 2px 14px;font-size:13px;font-weight:600;color:var(--text-soft);line-height:1.4">'+esc(sub)+'</div>'):'<div style="height:2px"></div>'; }
+
+  // ===== Ladeplatzhalter (Skeletons) =====
+  // Ersetzt die früheren zentrierten „Lädt …"/„Lade X …"-Texte. Ein Platzhalter in der Form
+  // des erwarteten Inhalts beantwortet „was kommt hier gleich?" sofort und lässt dieselbe
+  // Wartezeit kürzer wirken. Die Schimmer-Welle läuft je Zeile leicht versetzt, damit sie
+  // als eine Bewegung von oben nach unten gelesen wird.
+  function skLine(w, h, mt, i) {
+    return '<div class="skline" style="width:' + w + ';height:' + (h || 12) + 'px'
+      + (mt ? (';margin-top:' + mt + 'px') : '')
+      + (i ? (';animation-delay:' + (i * 0.09).toFixed(2) + 's') : '') + '"></div>';
+  }
+  // Eine Karte mit Platzhalter-Zeilen. rows = Breiten, erste Zeile höher (Titel).
+  function skelCard(rows, pad) {
+    var r = rows || ['55%', '92%', '78%'];
+    var inner = r.map(function (w, i) { return skLine(w, i === 0 ? 15 : 11, i ? (i === 1 ? 14 : 9) : 0, i); }).join('');
+    return '<div class="skcard" style="padding:' + (pad || 18) + 'px;margin-bottom:12px">' + inner + '</div>';
+  }
+  // Listenzeilen (Symbol links, zwei Textzeilen rechts) – für Pläne, Rezepte, Partner.
+  function skelRows(n, icon) {
+    var out = '';
+    for (var k = 0; k < (n || 3); k++) {
+      out += '<div class="skcard" style="display:flex;align-items:center;gap:12px;padding:14px;margin-bottom:9px;border-radius:16px">'
+        + (icon === false ? '' : '<div class="skline" style="width:42px;height:42px;border-radius:13px;flex-shrink:0;animation-delay:' + (k * 0.09).toFixed(2) + 's"></div>')
+        + '<div style="flex:1;min-width:0">' + skLine('62%', 12, 0, k) + skLine('38%', 10, 8, k) + '</div></div>';
+    }
+    return out;
+  }
+  // Fertiger Ladeblock samt Statusmeldung für Screenreader.
+  function skelBlock(kind, n) {
+    var body = kind === 'rows' ? skelRows(n || 3)
+      : kind === 'chat' ? (skelCard(['48%', '86%'], 14) + skelCard(['70%'], 14) + skelCard(['40%', '78%'], 14))
+      : kind === 'wide' ? (skelCard(['46%', '95%', '88%', '62%']) + skelRows(2))
+      : skelCard(n === 2 ? ['52%', '90%'] : null);
+    return '<div role="status" aria-live="polite" aria-busy="true" style="padding:2px 0"><span class="srOnly">Wird geladen …</span>' + body + '</div>';
+  }
 
   // ===== Rad-Datumsauswahl (Geburtstag) =====
   // Native <input type=date> zeigt je nach Gerät ein anderes UI (iOS-Rad, Android-
@@ -2337,7 +2395,7 @@
     if(S.cancelStep>0) return head+funnel();
     // overview
     // Solange /me noch nicht aufgelöst ist: Ladehinweis statt alarmierender „nicht verfügbar"-Karte.
-    if(!c && !DATA.meLoaded) return head+'<div class="card" style="text-align:center;color:var(--text-soft);font-size:14px">Vertragsdaten werden geladen …</div>';
+    if(!c && !DATA.meLoaded) return head+skelBlock('wide');
     if(!c){
       return head+'<div class="card" style="padding:30px 22px;text-align:center"><div style="width:60px;height:60px;border-radius:18px;background:var(--err-bg);display:flex;align-items:center;justify-content:center;margin:0 auto 16px">'+svg(IC.warn,{c:'var(--err-fg)',w:2,s:28})+'</div><div style="font-size:19px;font-weight:900;letter-spacing:-.3px">Vertragsdaten nicht verfügbar</div><div style="font-size:14px;color:var(--text-muted);margin-top:7px;line-height:1.55">Wir konnten keinen laufenden Vertrag automatisch zuordnen. Du kannst trotzdem pausieren oder kündigen – wir melden uns.</div>'+pauseBtn(20)+'<button class="btnDanger" data-act="assistCancel" style="margin-top:12px">Mitgliedschaft kündigen</button><div style="font-size:12px;color:var(--text-soft);margin-top:14px">Oder ruf uns an: <b style="color:'+TEAL+'">0651 308524</b></div></div>'+(S.cancelDone?okBox('Deine Kündigung wurde eingereicht. Du erhältst eine Bestätigung per E-Mail.'):'')+(S.pauseDone?okBox('Deine Pause-Anfrage ist eingegangen.'):'')+modulesCard()+docsCard();
     }
@@ -5538,7 +5596,7 @@
     var c=DATA.coach;
     var CARD='background:var(--surface);border-radius:20px;box-shadow:0 12px 30px rgba(4,33,40,.09);padding:18px;margin-bottom:14px';
     var chev=svg('<path d="M9 6l6 6-6 6"></path>',{c:'var(--text-soft)',w:2.2,s:20});
-    if(c===undefined||c===null){ return '<div style="'+CARD+';text-align:center;color:var(--text-soft);font-weight:600">Lade Coaching …</div>'; }
+    if(c===undefined||c===null){ return skelBlock('card'); }
     if(!c.ok||c.available===false){ return ernSectionEmpty('🧭','Coaching gerade nicht verfügbar','Bitte später erneut versuchen.'); }
     // Noch nicht eingeschrieben -> Einladungs-Hero.
     if(!c.enrolled){
@@ -7035,7 +7093,7 @@
     var tstreakChip=tstreak>0?'<div style="display:flex;align-items:center;gap:5px;background:rgba(224,140,83,.12);color:#c56a2f;border-radius:20px;padding:6px 11px;font-size:13px;font-weight:900;flex-shrink:0">🔥 '+tstreak+'</div>':'';
     var header='<div style="display:flex;align-items:center;gap:10px;margin:2px 2px 12px"><div style="flex:1;min-width:0;font-size:13.5px;font-weight:700;color:var(--text-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(meinTagDateStr())+'</div>'+tstreakChip+'</div>'+trainSegBar(seg);
     var d=DATA.training; var body;
-    if(d==null){ body='<div style="padding:30px 0;text-align:center">'+trainSpin(24)+'</div>'; }
+    if(d==null){ body=skelBlock('wide'); }
     else if(!d.ok && d.available===false){ body=trainCardBox('<div style="font-size:13.5px;font-weight:600;color:var(--text-soft)">Der Training-Bereich ist gerade nicht verfügbar.</div>'); }
     else if(!d.ok){ body=trainCardBox('<div style="font-size:13.5px;font-weight:700;color:var(--err-fg)">Training konnte nicht geladen werden.</div><button data-act="trainReload" style="width:100%;margin-top:10px;padding:11px;border:none;border-radius:12px;background:'+ERN_G+';color:#fff;font-weight:800;font-size:13.5px;cursor:pointer">Erneut versuchen</button>'); }
     else if(seg==='plaene'){ body=trainingGenCta(d)+trainingLibrary(d)+trainingInspiration(d)+trainingBookCta(); }
@@ -7112,7 +7170,7 @@
         return trainCardBox('<div style="display:flex;align-items:center;gap:9px;margin-bottom:2px"><div style="width:26px;height:26px;border-radius:8px;background:'+ERN_G+';color:#fff;font-size:12.5px;font-weight:900;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+(di+1)+'</div><div style="font-size:15px;font-weight:900;color:var(--text)">'+esc(day.name)+'</div></div>'+(day.subtitle?'<div style="font-size:12px;font-weight:600;color:var(--text-soft);margin:1px 0 2px 35px">'+esc(day.subtitle)+'</div>':'')+ex);
       }).join('');
     } else {
-      days=trainCardBox('<div style="padding:6px 0;text-align:center">'+trainSpin(22)+'</div>');
+      days=skelBlock('rows', 3);
     }
     var tips=(Array.isArray(p.tips)&&p.tips.length)?trainCardBox('<div style="font-size:12px;font-weight:900;color:var(--ern-acc);text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px">Tipps zum Plan</div>'+p.tips.map(function(t){ return '<div style="display:flex;gap:8px;font-size:13px;font-weight:500;color:var(--text-2);line-height:1.5;margin-top:6px"><span>•</span><span>'+esc(t)+'</span></div>'; }).join('')):'';
     var cta=isActive
@@ -7315,7 +7373,7 @@
   function scrErn(){
     var n=DATA.nutri, inner;
     // Mockup-Palette liegt als .ernwrap-Klasse im Stylesheet – hell wie gehabt, im Dark Mode dunkel.
-    if(n===null||n===false){ inner='<div style="background:var(--surface);border-radius:20px;box-shadow:0 12px 34px rgba(4,33,40,.10);padding:40px 22px;text-align:center;color:var(--text-soft);font-size:14px;font-weight:600">Lade Ernährung …</div>'; }
+    if(n===null||n===false){ inner=skelBlock('wide'); }
     else if(!n.ok||n.available===false){ inner='<div style="background:var(--surface);border-radius:20px;box-shadow:0 12px 34px rgba(4,33,40,.10);padding:30px 22px;text-align:center"><div style="font-size:34px">🥗</div><div style="font-size:16px;font-weight:800;color:var(--text);margin-top:10px">Ernährung ist gerade nicht verfügbar</div><div style="font-size:13.5px;color:var(--text-muted);font-weight:500;margin-top:6px;line-height:1.5">Bitte später erneut versuchen.</div></div>'; }
     else if(S.ernProd){ inner=ernProductPicker(); }
     // Erfassen ist jetzt ein Bottom-Sheet-Popup (Overlay über dem aktuellen Screen), kein Vollbild mehr.
@@ -7466,7 +7524,7 @@
   function ernCookPlanView(){
     var CARD='background:var(--surface);border-radius:20px;box-shadow:0 12px 30px rgba(4,33,40,.09);padding:16px;margin-bottom:12px';
     var c=DATA.nutriCook;
-    if(c==null) return '<div style="text-align:center;color:var(--text-soft);font-size:14px;font-weight:600;padding:30px">Lädt …</div>';
+    if(c==null) return skelBlock('rows', 3);
     var plan=Array.isArray(c.cookplan)?c.cookplan:[];
     var pmsg=S.ernMsg?'<div role="'+(S.ernErr?'alert':'status')+'" style="font-size:12.5px;font-weight:700;color:'+(S.ernErr?'var(--err-fg)':ERN_G)+';margin:0 2px 12px;line-height:1.4">'+esc(S.ernMsg)+'</div>':'';
     var planBlock;
@@ -7493,7 +7551,7 @@
   // FINN-Produktvorschläge je Position für den gewählten Markt.
   function ernCookShoppingBlock(){
     var c=DATA.nutriCook;
-    if(c==null) return '<div style="text-align:center;color:var(--text-soft);font-size:14px;font-weight:600;padding:30px">Lädt …</div>';
+    if(c==null) return skelBlock('rows', 3);
     var CARD='background:var(--surface);border-radius:20px;box-shadow:0 12px 30px rgba(4,33,40,.09);padding:16px;margin-bottom:12px';
     var myStore=(DATA.nutri&&DATA.nutri.profile&&DATA.nutri.profile.store)||'';
     if(ERN_SHOP_STORES.map(function(s){return s[0];}).indexOf(myStore)<0) myStore='';
@@ -7740,7 +7798,7 @@
     var libArr=DATA.nutriLib;
     var libSearch='<div style="display:flex;gap:8px;margin:0 2px 14px"><input id="ern_libq" value="'+esc(S.ernLibQ||'')+'" placeholder="Rezept suchen (Bibliothek) …" style="flex:1;border:none;border-radius:12px;padding:12px 14px;font-size:14px;font-weight:600;outline:none;color:var(--text);background:var(--surface);box-shadow:0 6px 16px rgba(4,33,40,.06);font-family:inherit"/><button data-act="ernLibSearch" style="border:none;border-radius:12px;background:'+ERN_G+';color:#fff;font-weight:900;font-size:13.5px;padding:0 16px;cursor:pointer">Suchen</button></div>';
     var libList;
-    if(libArr==null){ libList='<div style="text-align:center;color:var(--text-soft);font-size:13px;font-weight:600;padding:26px">Lädt …</div>'; }
+    if(libArr==null){ libList=skelBlock('rows', 3); }
     else if(!libArr.length){ libList='<div style="font-size:12.5px;color:var(--text-soft);font-weight:500;text-align:center;padding:20px 14px;line-height:1.5">'+(S.ernLibQ?'Nichts gefunden – andere Suche probieren.':'Noch keine Rezepte – lass dir von FINN welche vorschlagen.')+'</div>'; }
     else { libList=libArr.map(function(r,i){ return card(r,'ernRecipeOpen','lib:'+i); }).join(''); }
     var libHdr='<div style="font-size:17px;font-weight:900;color:var(--text);letter-spacing:-.3px;margin:22px 2px 12px">Rezept-Bibliothek'+(Array.isArray(libArr)&&libArr.length?' <span style="font-size:12.5px;font-weight:700;color:var(--text-soft)">· '+libArr.length+'</span>':'')+'</div>';
@@ -7793,7 +7851,7 @@
     var range=(S.ernWeekRange===30)?30:7;
     // Umschalter 7 Tage | 30 Tage – für den Gesamtüberblick über Wochen/den Monat.
     var rangeBar='<div style="display:flex;gap:7px;margin-bottom:14px">'+[[7,'7 Tage'],[30,'30 Tage']].map(function(x){ var on=range===x[0]; return '<button data-act="ernWeekRange" data-arg="'+x[0]+'" style="flex:1;padding:10px;border:1.5px solid '+(on?'var(--ern-acc)':'var(--border)')+';border-radius:12px;background:'+(on?'rgba(14,96,114,.10)':'var(--surface)')+';color:'+(on?'var(--ern-acc)':'var(--text-soft)')+';font-weight:900;font-size:13px;cursor:pointer">'+x[1]+'</button>'; }).join('')+'</div>';
-    if(w==null){ return rangeBar+'<div style="text-align:center;color:var(--text-soft);font-size:14px;font-weight:600;padding:40px">Lädt …</div>'; }
+    if(w==null){ return rangeBar+skelBlock('wide'); }
     if(!w.ok){ return rangeBar+ernSectionEmpty('📊','Verlauf nicht verfügbar','Bitte später erneut versuchen.'); }
     var days=Array.isArray(w.days)?w.days:[], target=w.target||2000;
     var maxK=days.reduce(function(a,d){return Math.max(a,d.kcal);},target)||1;
@@ -7964,7 +8022,7 @@
     var head=subHeader('Figur-Check','Deine Maße & dein Fortschritt','coach');
     var CARD='background:var(--surface);border-radius:18px;box-shadow:0 10px 28px rgba(4,33,40,.08);padding:18px';
     var d=DATA.figur;
-    if(d===false||d==null){ return '<div class="narrow">'+head+'<div style="'+CARD+';text-align:center;color:var(--text-soft)">Lädt …</div></div>'; }
+    if(d===false||d==null){ return '<div class="narrow">'+head+skelBlock('wide')+'</div>'; }
     if(!d.ok){
       if(d.available===false) return '<div class="narrow">'+head+'<div style="'+CARD+'"><div style="font-weight:800;color:var(--text)">Gerade nicht verfügbar</div><div style="font-size:13px;color:var(--text-soft);margin-top:5px">Der Figur-Check steht dir in Kürze zur Verfügung.</div></div></div>';
       return '<div class="narrow">'+head+'<div style="'+CARD+';text-align:center"><div style="color:var(--text-soft);margin-bottom:10px">Konnte nicht geladen werden.</div><button data-act="nav" data-arg="figur" style="border:none;background:var(--teal);color:#fff;font-weight:800;border-radius:12px;padding:11px 18px;cursor:pointer">Erneut versuchen</button></div></div>';
@@ -8421,7 +8479,7 @@
     var d=DATA.inbody;
     // Prüf-Formular (nach Scan oder manuell) hat Vorrang.
     if(S.inbodyReview){ return '<div class="narrow" style="display:flex;flex-direction:column;gap:14px">'+head+ibReviewForm()+'</div>'; }
-    if(d===false||d==null){ return '<div class="narrow">'+head+'<div style="'+IB_CARD+';text-align:center;color:var(--text-soft)">Lädt …</div></div>'; }
+    if(d===false||d==null){ return '<div class="narrow">'+head+skelBlock('wide')+'</div>'; }
     if(!d.ok && d.available===false){ return '<div class="narrow">'+head+'<div style="'+IB_CARD+'"><div style="font-weight:800;color:var(--text)">Gerade nicht verfügbar</div><div style="font-size:13px;color:var(--text-soft);margin-top:5px">Die InBody-Analyse steht dir in Kürze zur Verfügung.</div></div></div>'; }
     if(!d.ok){ return '<div class="narrow">'+head+'<div style="'+IB_CARD+';text-align:center"><div style="color:var(--text-soft);margin-bottom:10px">Konnte nicht geladen werden.</div><button data-act="inbodyReload" style="border:none;background:var(--teal);color:#fff;font-weight:800;border-radius:12px;padding:11px 18px;cursor:pointer">Erneut versuchen</button></div></div>'; }
     // Detail-Sheets (auf eine Kennzahl getippt bzw. Ampel-Analyse geöffnet).
@@ -9190,7 +9248,7 @@
   function scrMorning(){
     var head=subHeader('Vital-Check','Herz & Erholung im Blick','coach');
     var d=DATA.morning;
-    if(d===false||d==null){ return '<div class="narrow">'+head+'<div style="'+MO_CARD+';text-align:center;color:var(--text-soft)">Lädt …</div></div>'; }
+    if(d===false||d==null){ return '<div class="narrow">'+head+skelBlock('wide')+'</div>'; }
     if(!d.ok && d.available===false){ return '<div class="narrow">'+head+'<div style="'+MO_CARD+'"><div style="font-weight:800;color:var(--text)">Gerade nicht verfügbar</div><div style="font-size:13px;color:var(--text-soft);margin-top:5px">Der Vital-Check steht dir in Kürze zur Verfügung.</div></div></div>'; }
     if(!d.ok){ return '<div class="narrow">'+head+'<div style="'+MO_CARD+';text-align:center"><div style="color:var(--text-soft);margin-bottom:10px">Konnte nicht geladen werden.</div><button data-act="morningReload" style="border:none;background:var(--teal);color:#fff;font-weight:800;border-radius:12px;padding:11px 18px;cursor:pointer">Erneut versuchen</button></div></div>'; }
     if(DATA.training==null) loadTraining();   // Kraft-Empfehlung braucht die geloggten Sätze
@@ -9311,7 +9369,7 @@
   function scrFinnUsage(){
     var gradHd='<div style="margin:2px 2px 14px;font-size:13px;font-weight:600;color:var(--text-soft)">Deine KI-Aktionen diesen Monat</div>';
     var n=DATA.nutri;
-    if(n==null||n===false) return gradHd+'<div style="background:var(--surface);border-radius:20px;box-shadow:0 12px 34px rgba(4,33,40,.10);padding:26px 20px;text-align:center;color:var(--text-soft);font-size:14px;font-weight:600">Lade Nutzung …</div>';
+    if(n==null||n===false) return gradHd+skelBlock('wide');
     var q=(n&&n.quota)||null;
     if(!q) return gradHd+'<div style="background:var(--surface);border-radius:20px;box-shadow:0 12px 34px rgba(4,33,40,.10);padding:26px 20px;text-align:center;color:var(--text-soft);font-size:14px;font-weight:600">Nutzungsdaten gerade nicht verfügbar.</div>';
     var used=Math.max(0,parseInt(q.used,10)||0), lim=parseInt(q.limit,10)||5;
@@ -9348,7 +9406,7 @@
     var gradHd='';
     head+=gradHd+ernAboRow();
     var a=DATA.account;
-    if(a===null) return head+'<div style="background:var(--surface);border-radius:20px;box-shadow:0 12px 34px rgba(4,33,40,.10);padding:24px 20px;text-align:center;color:var(--text-soft);font-size:14px;font-weight:600">Lade Beitragskonto …</div>';
+    if(a===null) return head+skelBlock('wide');
     if(!a.ok) return head+'<div style="background:var(--surface);border-radius:20px;box-shadow:0 12px 34px rgba(4,33,40,.10);padding:26px 22px;text-align:center"><div style="width:56px;height:56px;border-radius:50%;background:var(--surface-2);display:flex;align-items:center;justify-content:center;margin:0 auto 14px">'+svg(IC.warn,{c:'var(--text-soft)',w:2,s:26})+'</div><div style="font-size:16px;font-weight:800">Beitragskonto nicht verfügbar</div><div style="font-size:13.5px;color:var(--text-muted);margin:6px 0 14px;line-height:1.5">Bitte später erneut versuchen oder im Studio nachfragen.</div><button data-act="accountReload" style="padding:11px 20px;border:none;border-radius:12px;background:'+TEAL+';color:#fff;font-weight:800;font-size:14px;cursor:pointer">Erneut versuchen</button></div>';
     var cur=a.currency||'EUR', sym=(cur==='EUR'?'€':' '+cur);
     var money=function(v){ if(v==null) return '—'; return (Math.round(Math.abs(v)*100)/100).toFixed(2).replace('.',',')+' '+sym; };
@@ -9596,7 +9654,7 @@
       '<button data-act="socReport" data-arg="'+esc(bid)+'" aria-label="Melden" title="Melden" style="width:36px;height:36px;border-radius:11px;border:1.5px solid var(--border);background:var(--surface);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'+svg('<path d="M4 21V4h13l-2 4 2 4H4"></path>',{c:'var(--text-soft)',w:2,s:16})+'</button>'+
       '<button data-act="socBlock" data-arg="'+esc(bid)+'" aria-label="Blockieren" title="Blockieren" style="width:36px;height:36px;border-radius:11px;border:1.5px solid var(--border);background:var(--surface);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'+svg('<circle cx="12" cy="12" r="9"></circle><path d="M5.6 5.6l12.8 12.8"></path>',{c:'var(--err-fg)',w:2,s:15})+'</button>'+
     '</div>';
-    var body='<div id="soc_dm_scroll" style="height:calc(100vh - 250px);min-height:220px;overflow-y:auto;padding:4px 2px">'+(loaded?socMsgsHtml(dm.messages):'<div style="text-align:center;color:var(--text-soft);font-size:13px;font-weight:600;padding:34px">Lädt …</div>')+'</div>';
+    var body='<div id="soc_dm_scroll" style="height:calc(100vh - 250px);min-height:220px;overflow-y:auto;padding:4px 2px">'+(loaded?socMsgsHtml(dm.messages):skelBlock('chat'))+'</div>';
     var composer='<div style="display:flex;gap:9px;align-items:flex-end;padding-top:10px">'+
       '<textarea id="soc_msg" rows="1" enterkeyhint="send" placeholder="Nachricht …" style="flex:1;resize:none;max-height:120px;box-sizing:border-box;padding:12px 14px;border:1.5px solid var(--border);border-radius:16px;font-size:15px;font-family:inherit;color:var(--text);background:var(--surface)"></textarea>'+
       '<button data-act="socChatSend" '+(S.socChatBusy?'disabled ':'')+'aria-label="Senden" style="width:46px;height:46px;border-radius:50%;border:none;background:'+SOC+';display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'+svg('<path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"></path>',{c:'#fff',w:2,s:19})+'</button>'+
@@ -9627,7 +9685,7 @@
       '<button data-act="socRoomInviteOpen" data-arg="'+esc(rid)+'" aria-label="Einladen" title="Einladen" style="width:36px;height:36px;border-radius:11px;border:1.5px solid var(--border);background:var(--surface);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'+svg('<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M19 8v6M22 11h-6"></path>',{c:SOC,w:2,s:16})+'</button>'+
       '<button data-act="socRoomLeave" data-arg="'+esc(rid)+'" aria-label="Verlassen" title="Gruppe verlassen" style="width:36px;height:36px;border-radius:11px;border:1.5px solid var(--border);background:var(--surface);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'+svg('<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"></path>',{c:'var(--err-fg)',w:2,s:16})+'</button>'+
     '</div>';
-    var body='<div id="soc_room_scroll" style="height:calc(100vh - 250px);min-height:220px;overflow-y:auto;padding:4px 2px">'+(loaded?socRoomMsgsHtml(t.messages):'<div style="text-align:center;color:var(--text-soft);font-size:13px;font-weight:600;padding:34px">Lädt …</div>')+'</div>';
+    var body='<div id="soc_room_scroll" style="height:calc(100vh - 250px);min-height:220px;overflow-y:auto;padding:4px 2px">'+(loaded?socRoomMsgsHtml(t.messages):skelBlock('chat'))+'</div>';
     var composer='<div style="display:flex;gap:9px;align-items:flex-end;padding-top:10px">'+
       '<textarea id="soc_rmsg" rows="1" enterkeyhint="send" placeholder="Nachricht an die Gruppe …" style="flex:1;resize:none;max-height:120px;box-sizing:border-box;padding:12px 14px;border:1.5px solid var(--border);border-radius:16px;font-size:15px;font-family:inherit;color:var(--text);background:var(--surface)"></textarea>'+
       '<button data-act="socRoomSend" '+(S.socChatBusy?'disabled ':'')+'aria-label="Senden" style="width:46px;height:46px;border-radius:50%;border:none;background:'+SOC+';display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'+svg('<path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"></path>',{c:'#fff',w:2,s:19})+'</button>'+
@@ -9717,7 +9775,7 @@
     if(SOCIAL_ON&&S.socRules){ return socRulesView(); }
     if(SOCIAL_ON&&S.socRoom){ return socRoomView(S.socRoom); }
     if(SOCIAL_ON&&S.socChat){ return socChatView(S.socChat); }
-    if(d==null||d===false){ return socHeader()+'<div style="text-align:center;color:var(--text-soft);font-size:14px;font-weight:600;padding:44px 20px">Lädt …</div>'; }
+    if(d==null||d===false){ return socHeader()+skelBlock('rows', 3); }
     if(!d.ok||d.available===false){ return socHeader()+'<div style="background:var(--surface);border-radius:20px;box-shadow:0 12px 30px rgba(4,33,40,.09);padding:24px;text-align:center"><div style="font-size:30px">🤝</div><div style="font-size:14.5px;font-weight:800;color:var(--text);margin-top:8px">Trainingspartner sind gerade nicht verfügbar</div><div style="font-size:12.5px;font-weight:500;color:var(--text-soft);margin-top:4px">Bitte versuch es später erneut.</div></div>'; }
     return d.enabled?socMain(d):socOnboarding();
   }
@@ -9992,7 +10050,7 @@
     var head=subHeader('Check-in-Verlauf','Deine Besuche & PDF');
     if(all===null){
       if(S.ciLoadErr) return head+'<div class="card" style="text-align:center"><div style="font-size:15px;font-weight:800">Verlauf konnte nicht geladen werden</div><div style="font-size:13px;color:var(--text-muted);margin:6px 0 14px;line-height:1.5">Bitte prüfe deine Verbindung.</div><button data-act="ciReload" style="padding:11px 20px;border:none;border-radius:12px;background:'+TEAL+';color:#fff;font-weight:800;font-size:14px;cursor:pointer">Erneut versuchen</button></div>';
-      return head+'<div class="card" style="text-align:center;color:var(--text-soft);font-size:14px">Lade Verlauf …</div>';
+      return head+skelBlock('rows', 4);
     }
     if(!all.length) return head+'<div class="card" style="text-align:center"><div style="font-size:16px;font-weight:800">Noch keine Besuche</div><div style="font-size:13px;color:var(--text-muted);margin-top:6px;line-height:1.5">Sobald du eincheckst, erscheinen deine Besuche hier.</div></div>';
     var sel=ciSelector();
@@ -10259,7 +10317,7 @@
     var FINN_IC='<path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.5 8.6 8.6 0 0 1-4-1L3 20l1-5a8.4 8.4 0 0 1-1-4A8.5 8.5 0 0 1 11.5 3 8.5 8.5 0 0 1 21 11.5z"></path>';
     var fm=DATA.finnMem;
     var memBody;
-    if(fm==null){ memBody='<div style="font-size:12.5px;color:var(--text-soft);margin-top:14px;line-height:1.5">Lädt …</div>'; }
+    if(fm==null){ memBody='<div style="margin-top:14px">'+skelBlock('card', 2)+'</div>'; }
     else if(!fm.on){ memBody='<div style="font-size:12.5px;color:var(--text-soft);margin-top:14px;line-height:1.5">Aus – FINN merkt sich nichts über dich. Aktiviere es, damit FINN dein Ziel, deine Vorlieben und Einschränkungen über Gespräche hinweg berücksichtigt. Keine sensiblen Gesundheitsdiagnosen.</div>'; }
     else if(!fm.items.length){ memBody='<div style="font-size:12.5px;color:var(--text-soft);margin-top:14px;line-height:1.5">An – FINN merkt sich noch nichts. Sobald im Chat etwas Dauerhaftes auftaucht (z. B. dein Ziel), erscheint es hier zum Nachlesen und Löschen.</div>'; }
     else {
@@ -10663,6 +10721,13 @@
     var _skTo=(_skNew===_skPrev && !_skLocked)?_skY:(SCROLL_MEM.hasOwnProperty(_skNew)?SCROLL_MEM[_skNew]:0);
     var _skElR=(window.innerWidth<1000)?document.querySelector('.maincol'):null;
     if(_skElR){ _skElR.scrollTop=_skTo; } else { try{ window.scrollTo(0,_skTo); }catch(e){} }
+    // Einblenden nur beim echten Ansichtswechsel. Dieselbe Ansicht rendert auch beim Tippen und
+    // bei eintreffenden Live-Daten neu – dort würde eine Animation flackern. _skPrev==='' ist der
+    // allererste Render: da hat die Boot-Animation den Auftritt, nicht diese.
+    if(_skNew!==_skPrev && _skPrev!==''){
+      var _ap=$('app');
+      if(_ap){ _ap.classList.remove('appIn'); void _ap.offsetWidth; _ap.classList.add('appIn'); }
+    }
   }
 
   // ---- actions (event delegation) ----
