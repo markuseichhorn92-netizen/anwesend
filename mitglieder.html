@@ -532,7 +532,7 @@
     ernBuyConsent:false, wdStep:0, wdBusy:false, wdErr:false, wdMsg:'', wdDoneAt:0,
     ernConfirm:null, ernConfirmBusy:false,
     ernScanCode:'', ernScanBusy:false, ernScanErr:'', ernScanNotFound:false,
-    pfAtt:null, pfAttBusy:false,
+    pfAtt:null, pfAttBusy:false, ernCompare:false,
     ernScanPurpose:'log', ernShop:false, ernShopProd:null, ernShopAlt:null, ernShopAltBusy:false, ernShopFinn:null, ernShopFinnBusy:false,
     ernShopItem:null, ernShopItemBusy:false, ernShopItemErr:'', ernShopItemCache:{}, ernShopItemGeneric:false,
     sos:false, sosCrave:'', sosTrigger:'', sosFinn:null, sosFinnBusy:false, buyGuide:false,
@@ -3521,6 +3521,44 @@
     ['💬','FINN-Coach im Chat','Dein persönlicher Coach für Ernährung, Training & Erholung – kennt deine Vital-Werte, jederzeit fragbar.'],
     ['🔎','Tiefe FINN-Analysen','Wochen-Auswertung & datenbasierte Empfehlungen.'],
   ];
+  // Was ohne Premium in der Mitgliedschaft steckt. Anlass: die Testerin fragte, welche
+  // Funktionen Premium sind, was nach der Testphase endet und ob Basic etwas kostet –
+  // die App beantwortete das nirgends.
+  var ERN_BASIC_FEATURES=[
+    ['📝','Tracking von Hand','Mahlzeiten eintragen, eigene Lebensmittel anlegen, Favoriten und gespeicherte Mahlzeiten.'],
+    ['▮▮','Barcode & Produktsuche','Verpackte Produkte scannen oder suchen – mit Nährwerten und Nutri-Score.'],
+    ['🍽️','Rezepte & Einkaufsliste','Rezepte des Studios, Koch-Plan und die Einkaufsliste inklusive Markt-Auswahl.'],
+    ['💧','Wasser, Gewicht & Maße','Wasserzähler, Gewichtsverlauf und der Figur-Check zum Eintragen.'],
+    ['🏋️','Trainingsprotokoll','Einheiten aufzeichnen und deinen Verlauf sehen.'],
+    ['👥','Community','Trainingspartner, Gruppen und Challenges.'],
+    ['🤖','FINN zum Ausprobieren','5 KI-Aktionen pro Monat – z. B. Teller schätzen, Etikett scannen oder ein Rezept.'],
+  ];
+  function ernCompareSheet(){
+    var n=DATA.nutri||{}, pc=ernPriceCopy(), mp=ernModulePrice();
+    var row=function(f,on){ return '<div style="display:flex;align-items:flex-start;gap:11px;padding:9px 0"><span style="width:32px;height:32px;border-radius:10px;background:'+(on?'rgba(14,96,114,.10)':'var(--surface-2)')+';display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">'+f[0]+'</span><div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:900;color:var(--text)">'+esc(f[1])+'</div><div style="font-size:11.5px;font-weight:600;color:var(--text-soft);line-height:1.45;margin-top:1px">'+esc(f[2])+'</div></div></div>'; };
+    var CARD='background:var(--surface);border-radius:18px;padding:15px;margin-bottom:12px;box-shadow:0 8px 22px rgba(4,33,40,.07)';
+    // Preis NUR nennen, wenn er wirklich aus dem Studio-Modul kommt – nichts erfinden.
+    var priceLine=mp
+      ? ('<b>'+esc(mp)+' im Monat</b>'+(pc.trialDays>0?(' · '+pc.trialDays+' Tage gratis testen'):'')+' · monatlich kündbar')
+      : 'Den aktuellen Preis erfährst du im Studio oder beim Upgrade in der App.';
+    var status='';
+    if(n.premium){
+      var untilTxt=n.premiumPermanent?'dauerhaft freigeschaltet':(n.premiumUntil?('läuft bis '+ernFmtDate(n.premiumUntil)):'');
+      status='<div style="background:linear-gradient(150deg,#0e6072,#0a4958);border-radius:16px;padding:14px 16px;margin-bottom:12px;color:#fff"><div style="font-size:14px;font-weight:900">'+(n.trialing?'Deine Testphase läuft':'Coach Premium ist aktiv')+'</div>'+(untilTxt?'<div style="font-size:12.5px;font-weight:600;color:#cfe8ec;margin-top:3px">'+esc(untilTxt)+'</div>':'')+'</div>';
+    }
+    var endBox='<div style="'+CARD+';border-left:4px solid #C77A2E"><div style="font-size:13.5px;font-weight:900;color:var(--text);margin-bottom:6px">Was passiert nach der Testphase?</div><div style="font-size:12.5px;font-weight:600;color:var(--text-2);line-height:1.6">Deine <b>Daten bleiben vollständig erhalten</b> – Tagebuch, eigene Lebensmittel, Rezepte, Gewicht und Verlauf. Alles oben unter „In deiner Mitgliedschaft" nutzt du unverändert weiter. FINN steht dann mit <b>5 KI-Aktionen pro Monat</b> zur Verfügung statt unbegrenzt; Vital-Check, automatische Trainings-Steigerung und die Coaching-Wochen ab Woche 2 pausieren, bis du wieder freischaltest.</div></div>';
+    var cta=n.premium?'':'<button data-act="ernCompareUpgrade" style="width:100%;padding:15px;border:none;border-radius:15px;background:'+ERN_G+';color:#fff;font-weight:900;font-size:15px;cursor:pointer;margin-top:2px">Coach Premium ansehen</button>';
+    return '<div data-act="ernCompareClose" style="position:fixed;inset:0;background:rgba(4,20,24,.55);z-index:121;display:flex;align-items:flex-end;justify-content:center" role="dialog" aria-modal="true" aria-label="Basic und Premium im Vergleich">'+
+      '<div data-act="noop" style="width:100%;max-width:520px;max-height:92vh;overflow-y:auto;-webkit-overflow-scrolling:touch;background:var(--bg);border-radius:22px 22px 0 0;padding:16px 16px calc(20px + env(safe-area-inset-bottom))">'+
+        '<div style="width:40px;height:4px;border-radius:2px;background:var(--border);margin:0 auto 12px"></div>'+
+        '<div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:12px"><div style="flex:1;min-width:0"><div style="font-size:19px;font-weight:900;color:var(--text);letter-spacing:-.3px">Was ist gratis, was ist Premium?</div><div style="font-size:12.5px;font-weight:600;color:var(--text-soft);margin-top:2px;line-height:1.45">'+priceLine+'</div></div>'+
+        '<button data-act="ernCompareClose" aria-label="Schließen" style="width:34px;height:34px;border-radius:11px;border:none;background:var(--surface);color:var(--text-soft);cursor:pointer;font-size:20px;line-height:1;flex-shrink:0">×</button></div>'+
+        status+
+        '<div style="'+CARD+'"><div style="font-size:11.5px;font-weight:900;color:var(--ern-acc);text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px">✓ In deiner Mitgliedschaft enthalten</div><div style="font-size:11.5px;font-weight:600;color:var(--text-soft);margin-bottom:6px">Ohne Zusatzkosten – Teil deiner Fit-Inn-Mitgliedschaft.</div>'+ERN_BASIC_FEATURES.map(function(f){ return row(f,false); }).join('')+'</div>'+
+        '<div style="'+CARD+'"><div style="font-size:11.5px;font-weight:900;color:var(--ern-acc);text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">★ Mit Coach Premium zusätzlich</div>'+ERN_PREMIUM_FEATURES.map(function(f){ return row(f,true); }).join('')+'</div>'+
+        endBox+cta+
+      '</div></div>';
+  }
   function ernUpgradeScreen(){
     // Popup kann über JEDEM Screen liegen -> Ernährungsdaten (mit premiumModuleId
     // für den Modul-Modus) selbstheilend nachladen, falls noch nicht da.
@@ -3603,7 +3641,9 @@
           legalLink+
           err+
           '<div style="font-size:12px;color:#aed0d6;font-weight:600;text-align:center;margin-top:16px;line-height:1.5">Gratis-Basis: '+ernQuotaLimit()+' FINN-Aktionen/Monat · Tracking ·<br>Übungs- &amp; Rezept-Bibliothek · Verlauf.</div>'+
-          '<button data-act="ernUpgradeClose" style="width:100%;margin-top:12px;padding:13px;border:none;background:transparent;color:#eafff4;font-weight:800;font-size:14px;cursor:pointer">Vielleicht später</button>'+
+          // Direkter Weg zum Vergleich: die häufigste Rückfrage ist „was ist eigentlich gratis?"
+          '<button data-act="ernCompareOpen" style="width:100%;margin-top:10px;padding:12px;border:none;background:transparent;color:#cfe8ec;font-weight:800;font-size:13.5px;cursor:pointer;text-decoration:underline">Was ist gratis, was ist Premium?</button>'+
+          '<button data-act="ernUpgradeClose" style="width:100%;margin-top:4px;padding:13px;border:none;background:transparent;color:#eafff4;font-weight:800;font-size:14px;cursor:pointer">Vielleicht später</button>'+
         '</div>'+
       '</div>';
   }
@@ -9233,6 +9273,7 @@
         '<div style="height:12px;border-radius:7px;background:var(--surface-2);overflow:hidden;margin-top:12px"><div style="height:100%;width:'+pct+'%;background:'+barCol+';border-radius:7px"></div></div>'+
         '<div style="font-size:11.5px;font-weight:600;color:var(--text-soft);margin-top:10px;line-height:1.5">Dein Gratis-Kontingent setzt sich zum Monatsanfang wieder auf '+lim+' zurück.</div>'+
         (left<=1?'<button data-act="ernUsageUpgrade" style="width:100%;margin-top:14px;padding:14px;border:none;border-radius:14px;background:'+ERN_G+';color:#fff;font-weight:900;font-size:14.5px;cursor:pointer">Mit Premium unbegrenzt nutzen</button>':'')+
+        '<button data-act="ernCompareOpen" style="width:100%;margin-top:8px;padding:11px;border:none;background:transparent;color:var(--teal-ink);font-weight:800;font-size:12.5px;cursor:pointer;text-decoration:underline">Was ist gratis, was ist Premium?</button>'+
       '</div>';
     }
     // Was als KI-Aktion zählt.
@@ -10471,6 +10512,7 @@
     if(S.dp) html+=wheelOverlay();
     if(S.qaOpen) html+=qaSheet();
     if(S.fbOpen) html+=fbSheet();
+    if(S.ernCompare) html+=ernCompareSheet();   // Basic vs. Premium im Vergleich
     if(S.ernUpgrade) html+=ernUpgradeScreen();   // Coach-Premium-Kauf als Bottom-Sheet-Popup über dem aktuellen Screen
     if(S.moGuide && S.screen==='morning') html+=moGuideOverlay();   // Vital-Check Schritt-für-Schritt-Anleitung (Pop-up)
     if(S.screen==='morning' && moMeasuring()) html+=moMeasureOverlay();   // Live-Messung im Vollbild-Popup (Bildschirm bleibt an)
@@ -11316,6 +11358,9 @@
       .then(function(d){ if(d&&d.ok){ DATA.nutri=d; var nm=(d.mealName)||'Mahlzeit'; var cnt=(d.added&&d.added.length)||0; S.ernMsg='Eingetragen: '+nm+(cnt?(' · '+cnt+' Produkte'):''); S.ernErr=false; render(); } else { S.ernErr=true; S.ernMsg=(d&&d.message)||'Konnte nicht eintragen – bitte erneut.'; render(); } }).catch(function(){ S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); }); },
     // ── Premium (Freemium / Coach Premium über Zusatzmodul) ──
     ernUpgradeOpen:function(){ setS({ernUpgrade:true, ernMsg:'', ernErr:false}); ernEnsureModulePrice(); },
+    ernCompareOpen:function(){ setS({ernCompare:true, ernMsg:'', ernErr:false}); ernEnsureModulePrice(); },
+    ernCompareClose:function(){ setS({ernCompare:false}); },
+    ernCompareUpgrade:function(){ setS({ernCompare:false, ernUpgrade:true}); ernEnsureModulePrice(); },
     ernModulePriceRetry:function(){ DATA.modules=null; try{ loadModules(); }catch(e){} render(); },
     // Aus dem Profil-Bereich „FINN-Nutzung": ins Ernährungsmodul wechseln und Upgrade öffnen.
     ernUsageUpgrade:function(){ nav('ern'); S.ernUpgrade=true; ernEnsureModulePrice(); render(); },
@@ -12417,7 +12462,7 @@
     function backTrig(){ return Math.min(window.innerWidth*0.28, 110); }
     function menuOpen(){ return document.body.classList.contains('menu-open'); }
     function overlayOpen(){
-      return !!(S.finnOpen||S.vaOpen||S.ciPopup||S.dp||S.qaOpen||S.fbOpen||S.ernUpgrade||S.ernCapture||S.ernConfirm||S.ernProd||S.ernShop||S.ernShopProd||S.sos||S.buyGuide||S.ernData||S.ernEdit||S.ernRecipeSel||S.ernSelfNew||S.ernFavMgr||S.ernMealMgr||S.ernEntryEdit||S.ernLesson||S.ernVert||S.ernCk||S.ernChatOpen||S.ernPlanQuiz||(S.ernKoch!=null)||S.welcomeGift||S.trainFinish||S.trainRun||S.trainDetail||S.trainGenOpen||S.morningBreathe||S.moGuide||S.moMetric||(S.screen==='morning'&&moRecSuggestOn())||(S.morningPhase&&S.morningPhase!=='idle')||(S.screen==='tag'&&woMeasuring())||S.woOpen||S.woResult||S.woDetail||S.socChat||S.socRoom||document.querySelector('.obOverlay'));
+      return !!(S.finnOpen||S.vaOpen||S.ciPopup||S.dp||S.qaOpen||S.fbOpen||S.ernUpgrade||S.ernCompare||S.ernCapture||S.ernConfirm||S.ernProd||S.ernShop||S.ernShopProd||S.sos||S.buyGuide||S.ernData||S.ernEdit||S.ernRecipeSel||S.ernSelfNew||S.ernFavMgr||S.ernMealMgr||S.ernEntryEdit||S.ernLesson||S.ernVert||S.ernCk||S.ernChatOpen||S.ernPlanQuiz||(S.ernKoch!=null)||S.welcomeGift||S.trainFinish||S.trainRun||S.trainDetail||S.trainGenOpen||S.morningBreathe||S.moGuide||S.moMetric||(S.screen==='morning'&&moRecSuggestOn())||(S.morningPhase&&S.morningPhase!=='idle')||(S.screen==='tag'&&woMeasuring())||S.woOpen||S.woResult||S.woDetail||S.socChat||S.socRoom||document.querySelector('.obOverlay'));
     }
     function closeKnownOverlay(){
       if(S.screen==='tag' && woMeasuring()){ return true; }   // laufende Aufzeichnung: nicht per Zurück abbrechen (nur über die Buttons)
@@ -12433,7 +12478,7 @@
       if(S.ernShopItem){ S.ernShopItem=null; S.ernShopItemErr=''; S.ernShopItemGeneric=false; render(); return true; }
       if(S.sos){ if(S.sosTrigger){ S.sosTrigger=''; S.sosFinn=null; } else if(S.sosCrave){ S.sosCrave=''; } else { S.sos=false; } render(); return true; }
       if(S.buyGuide){ S.buyGuide=false; render(); return true; }
-      var boolO=['fbOpen','finnOpen','qaOpen','vaOpen','ciPopup','ernUpgrade','ernChatOpen','morningBreathe'];
+      var boolO=['fbOpen','finnOpen','qaOpen','vaOpen','ciPopup','ernCompare','ernUpgrade','ernChatOpen','morningBreathe'];
       for(var i=0;i<boolO.length;i++){ if(S[boolO[i]]){ S[boolO[i]]=false; render(); return true; } }
       if(S.ernProd){ S.ernProd=null; render(); return true; }
       if(S.ernRecipeSel){ S.ernRecipeSel=null; render(); return true; }
@@ -12452,7 +12497,7 @@
           return true;
         }
         var order=['ernConfirm','ernProd','ernEntryEdit','ernEdit','ernData','ernSelfNew','ernFavMgr','ernMealMgr','ernPlanQuiz','ernKoch',
-          'ernLesson','ernVert','ernCk','ernChatOpen','ernUpgrade','ernShopProd','ernShop','ernShopItem','sos','buyGuide',
+          'ernLesson','ernVert','ernCk','ernChatOpen','ernCompare','ernUpgrade','ernShopProd','ernShop','ernShopItem','sos','buyGuide',
           'socChat','socRoom','trainFinish','trainRun','trainDetail','trainGenOpen','welcomeGift',
           'moMetric','moGuide','morningBreathe','woResult','woDetail','woOpen',
           'finnOpen','vaOpen','qaOpen','fbOpen','ciPopup','dp'];
