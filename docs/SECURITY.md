@@ -186,10 +186,26 @@ Gesundheits- oder Zahlungsdetails, keine Betreffzeilen privater Vorgänge)
   über alle versionierten Dateien aus (`npm run scan`).
 - **Feature-/Demo-Flags** serverseitig (`/api/app-info`, FEATURE_*): Demo-
   Daten und Testmodi sind in Produktion standardmäßig deaktiviert.
+- **Fehlermeldungen vom Gerät** (`POST /api/member/client-error`,
+  `POST /api/team/client-error`): JavaScript-Fehler aus App und Team-Backend
+  landen in den Vercel-Laufzeitlogs, statt unbemerkt zu bleiben. Beide
+  Endpunkte verlangen eine gültige Sitzung, sind auf 20/h je Sitzung begrenzt
+  und **speichern nichts**. `lib/clientErrors.js` maskiert vor dem Loggen
+  Tokens, AWS-/Stripe-Schlüssel, E-Mail-Adressen, IBAN, Telefon- und
+  Mitgliedsnummern, eingebettete Bilder sowie Adress-Parameter; die
+  Mitglieds- bzw. Mitarbeiter-Kennung wird nicht mitgeschrieben. Der Client
+  meldet höchstens 5 Fehler je Sitzung, damit eine Fehlerschleife die Logs
+  nicht flutet. Der Team-Endpunkt trägt bewusst keine Capability (wie
+  `login`/`logout`/`me`/`push`): ein Rechte-Gate würde ausgerechnet die
+  Fehler verschlucken, die es zu sehen gilt.
 
 ## 8. Tests
 
-`npm run check` = Syntax-Lint aller JS/JSON + Secret-Scan + `tests/*.test.js`
-(ohne Netz/echte Secrets): Widerruf, Nummern-Login, Logout/Revoke,
-Push-Token-Rebinding, Check-in, Team-Capabilities (verbotene Zugriffe je
-Rolle), Cron-Auth (fehlend/falsch/gültig), Security-Header, Feature-Flags.
+`npm run check` = Syntax-Lint aller JS/JSON **einschließlich des Inline-JS
+der beiden Oberflächen-Dateien** und der `data-act`-Klickziele
+(`scripts/uilint.js`) + Secret-Scan + `tests/*.test.js` (ohne Netz/echte
+Secrets): Widerruf, Nummern-Login, Logout/Revoke, Push-Token-Rebinding,
+Check-in, Team-Capabilities (verbotene Zugriffe je Rolle), Cron-Auth
+(fehlend/falsch/gültig), Security-Header, Feature-Flags, Maskierung der
+Gerätefehler (`client-errors`) sowie ein Browser-Smoke über alle Screens
+(`ui-smoke`, überspringt sich ohne Playwright).

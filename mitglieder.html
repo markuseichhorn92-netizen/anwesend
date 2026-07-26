@@ -687,6 +687,38 @@
   }catch(e){} }; img.src='/assets/fitinn-logo-white.png'; }catch(e){} })();
 
   function headers(){ return { 'Content-Type':'application/json', 'Authorization':'Bearer '+TOKEN }; }
+
+  // ===== Fehler vom Gerät melden =====
+  // Ein JavaScript-Fehler auf dem Handy eines Mitglieds war bisher unsichtbar, bis
+  // jemand von sich aus schrieb. Jetzt geht eine knappe Meldung an den Server und
+  // landet in den Laufzeitlogs. Bewusst sparsam: der Server macht ohnehin alles
+  // unkenntlich, was nach personenbezogener Angabe aussieht (lib/clientErrors.js),
+  // und hier wird schon nichts gesammelt, was dort nicht hingehört – keine Eingaben,
+  // keine Antworten, keine Gesundheitsdaten, keine Adresszeile mit Parametern.
+  var errSent=0, ERR_MAX=5;   // pro Sitzung deckeln: eine Fehlerschleife soll nichts fluten
+  function reportErr(typ, message, source, line, col, stack){
+    try{
+      if(!TOKEN || errSent>=ERR_MAX) return;
+      var msg=String(message||'').slice(0,300);
+      if(!msg) return;
+      errSent++;
+      var v=''; try{ var bm=document.getElementById('buildMark'); v=bm?(bm.textContent||'').trim():''; }catch(e){}
+      // sendBeacon überlebt auch ein sofort schließendes Fenster; fetch ist der Rückfall.
+      var payload=JSON.stringify({ type:typ, message:msg, source:String(source||''), line:line||0, col:col||0,
+        screen:(S&&S.screen)||'', version:v, ua:String(navigator.userAgent||'').slice(0,160), stack:String(stack||'').slice(0,200) });
+      var url='/api/member/client-error';
+      // sendBeacon kann keine Authorization mitgeben -> nur fetch, dafür ohne Warten.
+      fetch(url,{method:'POST',headers:headers(),body:payload,keepalive:true}).catch(function(){});
+    }catch(e){}
+  }
+  window.addEventListener('error', function(ev){
+    if(ev && ev.target && ev.target !== window) return;   // fehlgeschlagene Bilder/Skripte: nicht interessant
+    reportErr('fehler', (ev&&ev.message)||'', (ev&&ev.filename)||'', (ev&&ev.lineno)||0, (ev&&ev.colno)||0, (ev&&ev.error&&ev.error.stack)||'');
+  });
+  window.addEventListener('unhandledrejection', function(ev){
+    var r=ev&&ev.reason;
+    reportErr('abgelehnt', (r&&r.message)||String(r||''), '', 0, 0, (r&&r.stack)||'');
+  });
   function api(path, opt){ opt=opt||{}; opt.headers=Object.assign(headers(), opt.headers||{}); opt.cache='no-store';
     // Hängende Requests dürfen den Spinner nicht ewig stehen lassen. GET ist immer kurz
     // (nie KI/Upload) -> automatischer Timeout; POST nur mit opt.timeoutMs (KI/Uploads NICHT).

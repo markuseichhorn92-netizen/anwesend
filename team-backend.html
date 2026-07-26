@@ -300,6 +300,32 @@ function aiDraftFor(sel){
   return map[ty]||('Hallo '+f+', danke für deine Nachricht! Wir kümmern uns darum und melden uns zeitnah bei dir.');
 }
 
+// ---------- Fehler vom Gerät melden ----------
+// Wie in der Mitglieder-App: JavaScript-Fehler landen in den Laufzeitlogs, statt
+// unbemerkt zu bleiben. Der Server macht alles unkenntlich, was nach Mitgliedsdaten
+// aussieht (lib/clientErrors.js); hier wird schon gar nichts Inhaltliches gesammelt.
+var errSent=0, ERR_MAX=5;
+function reportErr(typ, message, source, line, col, stack){
+  try{
+    if(!S.token || errSent>=ERR_MAX) return;
+    var msg=String(message||'').slice(0,300); if(!msg) return;
+    errSent++;
+    fetch('/api/team/client-error',{method:'POST',keepalive:true,
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+S.token},
+      body:JSON.stringify({ type:typ, message:msg, source:String(source||''), line:line||0, col:col||0,
+        screen:String(S.screen||''), ua:String(navigator.userAgent||'').slice(0,160), stack:String(stack||'').slice(0,200) })
+    }).catch(function(){});
+  }catch(e){}
+}
+window.addEventListener('error', function(ev){
+  if(ev && ev.target && ev.target !== window) return;
+  reportErr('fehler', (ev&&ev.message)||'', (ev&&ev.filename)||'', (ev&&ev.lineno)||0, (ev&&ev.colno)||0, (ev&&ev.error&&ev.error.stack)||'');
+});
+window.addEventListener('unhandledrejection', function(ev){
+  var r=ev&&ev.reason;
+  reportErr('abgelehnt', (r&&r.message)||String(r||''), '', 0, 0, (r&&r.stack)||'');
+});
+
 // ---------- auth ----------
 function loadToken(){ try{ S.token=localStorage.getItem('fi_team_token')||null; S.role=localStorage.getItem('fi_team_role')||null; S.meName=localStorage.getItem('fi_team_name')||null; }catch(e){} }
 function saveToken(t){ S.token=t; try{ t?localStorage.setItem('fi_team_token',t):localStorage.removeItem('fi_team_token'); }catch(e){} }

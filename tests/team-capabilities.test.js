@@ -69,7 +69,11 @@ async function run() {
 
   // 4) Abdeckungs-Tripwire: JEDER Team-Endpoint (ausser Session-/Geraete-Endpunkten)
   //    referenziert die Capability-Schicht.
-  const exempt = new Set(['login.js', 'logout.js', 'me.js', 'push.js']);
+  //    client-error.js meldet nur, dass die eigene Oberflaeche kaputt ist: keine
+  //    Mitgliedsdaten, kein Lesen, kein Schreiben ausser einer Logzeile. Ein
+  //    Rechte-Gate wuerde dort ausgerechnet die Fehler verschlucken, die es zu
+  //    sehen gilt; begrenzt wird stattdessen per Rate-Limit.
+  const exempt = new Set(['login.js', 'logout.js', 'me.js', 'push.js', 'client-error.js']);
   const missing = fs.readdirSync(path.join(ROOT, 'api/team'))
     .filter((f) => f.endsWith('.js') && !exempt.has(f))
     .filter((f) => !fs.readFileSync(path.join(ROOT, 'api/team', f), 'utf8').includes('lib/capabilities'));
