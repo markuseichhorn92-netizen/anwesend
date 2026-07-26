@@ -7877,7 +7877,14 @@
     return ernWeightCard()+rangeBar+stripCard+avgCard+(range===7?(review+insights):'')+protoBlock;
   }
   // ── Sport-Blog ──
-  function loadBlog(){ if(DATA.blog||!TOKEN) return; DATA.blog=[]; api('/api/member/blog').then(function(d){ DATA.blog=(d&&d.posts)||[]; render(); }).catch(function(){ DATA.blog=[]; }); }
+  // Blog laden. DATA.blog: undefined = noch nicht angefragt, null = unterwegs,
+  // false = fehlgeschlagen, Array = geladen (auch leer). Vorher diente [] gleichzeitig
+  // als „lädt gerade", als Leerergebnis UND als Fehlerergebnis – der Screen konnte die
+  // drei Fälle nicht auseinanderhalten und blieb dauerhaft auf „Lade Beiträge …" stehen.
+  var blogBusy=false;
+  function loadBlog(){ if(blogBusy||!TOKEN) return; if(Array.isArray(DATA.blog)) return; blogBusy=true; DATA.blog=null;
+    api('/api/member/blog').then(function(d){ blogBusy=false; DATA.blog=(d&&d.ok&&Array.isArray(d.posts))?d.posts:false; render(); })
+      .catch(function(){ blogBusy=false; DATA.blog=false; render(); }); }
   function blogCompact(p){
     return '<div data-act="openBlog" data-arg="'+esc(p.id)+'" style="flex:0 0 230px;scroll-snap-align:start;background:var(--surface);border-radius:20px;box-shadow:0 12px 34px rgba(4,33,40,.10);overflow:hidden;cursor:pointer">'+
       '<div style="height:104px;background:'+p.grad+';display:flex;align-items:flex-end;padding:12px"><span style="background:rgba(255,255,255,.92);color:'+p.tag+';font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;padding:5px 10px;border-radius:20px">'+esc(p.cat)+'</span></div>'+
@@ -7979,8 +7986,11 @@
         '<div style="font-size:12.5px;color:var(--text-soft);font-weight:700;margin:0 2px 18px">'+esc(p.mins)+' Lesezeit</div>'+
         '<div style="padding:0 2px">'+paras+'</div>';
     }
-    var b=Array.isArray(DATA.blog)?DATA.blog:[];
-    if(!b.length) return backHd('Blog')+'<div style="padding:40px;text-align:center;color:var(--text-soft);font-weight:600">Lade Beiträge …</div>';
+    // Drei Zustände sauber getrennt: lädt / fehlgeschlagen / geladen-aber-leer.
+    if(DATA.blog===false) return backHd('Blog')+'<div style="background:var(--surface);border-radius:20px;box-shadow:0 12px 30px rgba(4,33,40,.09);padding:26px 20px;text-align:center"><div style="font-size:30px">📰</div><div style="font-size:14.5px;font-weight:900;color:var(--text);margin-top:8px">Beiträge nicht ladbar</div><div style="font-size:12.5px;font-weight:600;color:var(--text-soft);margin-top:5px;line-height:1.5">Die Verbindung hat gerade nicht geklappt.</div><button data-act="blogReload" style="width:100%;margin-top:14px;padding:13px;border:none;border-radius:13px;background:'+ERN_G+';color:#fff;font-weight:800;font-size:13.5px;cursor:pointer">Erneut versuchen</button></div>';
+    if(!Array.isArray(DATA.blog)) return backHd('Blog')+skelBlock('rows', 3);
+    var b=DATA.blog;
+    if(!b.length) return backHd('Blog')+'<div style="background:var(--surface);border-radius:20px;box-shadow:0 12px 30px rgba(4,33,40,.09);padding:30px 22px;text-align:center"><div style="font-size:32px">📰</div><div style="font-size:15px;font-weight:900;color:var(--text);margin-top:8px">Noch keine Beiträge</div><div style="font-size:12.5px;font-weight:600;color:var(--text-soft);margin-top:5px;line-height:1.5">Hier erscheinen bald Trainings- und Ernährungstipps aus dem Studio.</div></div>';
     var cards=b.map(function(p){
       return '<div data-act="openBlog" data-arg="'+esc(p.id)+'" style="display:flex;gap:13px;align-items:center;background:var(--surface);border-radius:18px;box-shadow:0 10px 28px rgba(4,33,40,.09);padding:12px;margin-bottom:12px;cursor:pointer">'+
         '<div style="width:64px;height:64px;border-radius:14px;background:'+p.grad+';flex-shrink:0"></div>'+
@@ -11809,6 +11819,7 @@
     // Koch-Modus direkt von der Heute-/Plan-Ansicht starten (Rezept aus dem Koch-Plan).
     ernCookCook:function(a){ var list=(DATA.nutriCook&&DATA.nutriCook.cookplan)||[]; var it=list.filter(function(x){ return String(x.id)===String(a); })[0]; if(!it||!(it.steps&&it.steps.length)) return; setQuiet({ernRecipeSel:it, ernRecipeServ:Math.max(1,Math.min(12,parseInt(it.servings,10)||1)), ernKoch:-1, ernKochDirect:true}); },
     openBlog:function(a){ closeMenu(); S.blogSel=a; S.blogPost=null; setS({screen:'blog'}); api('/api/member/blog?id='+encodeURIComponent(a)).then(function(d){ if(d&&d.ok&&d.post){ S.blogPost=d.post; if(S.blogSel===a&&S.screen==='blog') render(); } }).catch(function(){}); },
+    blogReload:function(){ DATA.blog=undefined; loadBlog(); render(); },
     openInsta:function(a){ closeMenu(); S.instaSel=a; setS({screen:'insta'}); loadInsta(); },
     // Standort-Opt-in fürs Auto-Erscheinen des Check-in-Buttons (fragt erst NACH dem Tipp ab).
     geoCiAllow:function(){ try{ localStorage.setItem('fi_geoci_v1','1'); }catch(e){} try{ window.__geoLast=0; checkArrival(true); }catch(e){} render(); },
