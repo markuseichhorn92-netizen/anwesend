@@ -532,6 +532,7 @@
     ernBuyConsent:false, wdStep:0, wdBusy:false, wdErr:false, wdMsg:'', wdDoneAt:0,
     ernConfirm:null, ernConfirmBusy:false,
     ernScanCode:'', ernScanBusy:false, ernScanErr:'', ernScanNotFound:false,
+    pfAtt:null, pfAttBusy:false,
     ernScanPurpose:'log', ernShop:false, ernShopProd:null, ernShopAlt:null, ernShopAltBusy:false, ernShopFinn:null, ernShopFinnBusy:false,
     ernShopItem:null, ernShopItemBusy:false, ernShopItemErr:'', ernShopItemCache:{}, ernShopItemGeneric:false,
     sos:false, sosCrave:'', sosTrigger:'', sosFinn:null, sosFinnBusy:false, buyGuide:false,
@@ -4641,6 +4642,22 @@
       .catch(function(){ ernSelfIngFail('Verbindung gerade nicht möglich.'); });
     });
   };
+  // Postfach: Bild anhängen. Wird clientseitig verkleinert (1200 px / 0,75), damit der
+  // Vorgang klein bleibt; die eigentliche Prüfung von Typ und Größe macht der Server.
+  window.__pfAttPick=function(input){
+    var f=input&&input.files&&input.files[0]; try{ if(input) input.value=''; }catch(e){}
+    if(!f) return;
+    if(!/^image\//.test(f.type||'')){ setQuiet({pfErr:'Bitte ein Bild auswählen.'}); return; }
+    S.pfAttBusy=true; S.pfErr=''; render();
+    ernPhotoB64(f,1200,0.75,function(b64){
+      S.pfAttBusy=false;
+      if(!b64){ S.pfErr='Bild konnte nicht gelesen werden.'; render(); return; }
+      var url='data:image/jpeg;base64,'+b64;
+      if(url.length>700000){ S.pfErr='Bild ist zu groß – bitte einen Ausschnitt schicken.'; render(); return; }
+      S.pfAtt={ name:String(f.name||'Bild').slice(0,60), data:url };
+      render();
+    });
+  };
   window.__ernCFScanPhoto=function(idx,input){
     var f=input&&input.files&&input.files[0]; try{ if(input) input.value=''; }catch(e){}
     if(!f) return;
@@ -4989,6 +5006,35 @@
     }
     return wrap(ERN_FAVS.map(function(f,idx){ return '<button data-act="ernFav" data-arg="'+idx+'" style="flex-shrink:0;display:flex;align-items:center;gap:7px;border:1.5px solid var(--border);background:var(--surface);border-radius:20px;padding:8px 13px;cursor:pointer;font-size:12.5px;font-weight:800;color:var(--text)"><span>'+f.e+'</span>'+esc(f.name)+' <span style="color:var(--text-soft);font-weight:700">'+f.kcal+'</span></button>'; }).join('')+mgrChip);
   }
+  // Eigene Standard-Portionen je Favorit („1 Scheibe = 45 g"): antippen loggt die Menge,
+  // ohne dass jemand Brot oder Teelöffel abwiegen muss. Nur sinnvoll mit Grammbasis.
+  function ernFavServRow(f){
+    var list=Array.isArray(f.servings)?f.servings:[];
+    var chips=list.slice(0,5).map(function(sv){
+      return '<button data-act="ernFavServLog" data-arg="'+esc(f.id)+'|'+esc(sv.label)+'" style="flex-shrink:0;border:1.5px solid var(--border);border-radius:16px;padding:6px 12px;font-size:12px;font-weight:800;cursor:pointer;background:var(--surface);color:var(--teal-ink)">'+esc(sv.label)+' <span style="color:var(--text-soft);font-weight:700">'+sv.grams+' g</span></button>';
+    }).join('');
+    var add=(list.length<5)?'<button data-act="ernFavServAdd" data-arg="'+esc(f.id)+'" style="flex-shrink:0;border:1.5px dashed var(--border);border-radius:16px;padding:6px 12px;font-size:12px;font-weight:800;cursor:pointer;background:transparent;color:var(--text-soft)">+ Portion</button>':'';
+    var del=list.length?'<button data-act="ernFavServClear" data-arg="'+esc(f.id)+'" style="flex-shrink:0;border:none;background:none;color:var(--err-fg);font-size:11.5px;font-weight:800;cursor:pointer;padding:6px 4px">zurücksetzen</button>':'';
+    return '<div style="display:flex;gap:6px;overflow-x:auto;margin-top:8px;padding-bottom:2px;scrollbar-width:none">'+chips+add+del+'</div>';
+  }
+  // Favorit mit geänderten Standard-Portionen sichern. Es wird derselbe Favorit
+  // überschrieben (fav-delete + fav-save), weil das Modell keine Teil-Updates kennt.
+  function ernFavServSave(f,list,msg){
+    if(S.ernFavBusy) return; S.ernFavBusy=true; render();
+    api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'fav-delete',id:f.id})})
+    .then(function(){
+      return api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'fav-save',
+        name:f.name, portion:f.portion, kcal:f.kcal, p:f.p, c:f.c, f:f.f,
+        fiber:f.fiber, sugar:f.sugar, satFat:f.satFat, salt:f.salt,
+        gramsBase:f.gramsBase||0, barcode:f.barcode||'', image:f.img||'',
+        brand:f.brand||'', store:f.store||'', custom:!!f.custom, servings:list })});
+    })
+    .then(function(d){ S.ernFavBusy=false;
+      if(d&&d.ok){ DATA.nutriFavs=d.favorites||DATA.nutriFavs; S.ernMsg=msg; S.ernErr=false; }
+      else { S.ernErr=true; S.ernMsg=(d&&d.message)||'Konnte nicht speichern.'; }
+      render(); })
+    .catch(function(){ S.ernFavBusy=false; S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); });
+  }
   function ernFavMgrScreen(){
     var favs=Array.isArray(DATA.nutriFavs)?DATA.nutriFavs:[];
     var td=(DATA.nutri&&DATA.nutri.today)||{}, isToday=td.isToday!==false&&(td.date||isoToday())===isoToday();
@@ -5008,7 +5054,7 @@
           '<div style="display:flex;align-items:flex-start;gap:10px">'+(f.img?'<img src="'+esc(f.img)+'" alt="" style="width:46px;height:46px;object-fit:cover;border-radius:11px;border:1px solid var(--border);flex-shrink:0">':'')+'<div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:900;color:var(--text)">'+(f.img?'':'⭐ ')+esc(f.name)+'</div><div style="font-size:11.5px;font-weight:600;color:var(--text-soft);margin-top:2px">'+(f.brand?esc(f.brand)+' · ':'')+(f.portion?esc(f.portion)+' · ':'')+ernNum(f.kcal)+' kcal · E '+(f.p||0)+' · K '+(f.c||0)+' · F '+(f.f||0)+(((f.fiber||0)||(f.sugar||0)||(f.salt||0))?(' · Ballast. '+(f.fiber||0)+' g · Salz '+(f.salt||0)+' g'):'')+(f.store&&ernStoreLabel(f.store)?' · 🛒 '+ernStoreLabel(f.store):'')+'</div></div>'+
           '<button data-act="ernFavDelete" data-arg="'+esc(f.id)+'" aria-label="Favorit löschen" style="width:30px;height:30px;border-radius:9px;border:none;background:var(--surface-2);cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center">'+svg('<path d="M18 6L6 18M6 6l12 12"></path>',{c:'var(--err-fg)',w:2.2,s:14})+'</button></div>'+
           '<div style="display:flex;gap:7px;margin-top:12px">'+[['0.5','½ Portion'],['1','1 Portion'],['2','Doppelt']].map(function(x){ return '<button data-act="ernFavLog" data-arg="'+esc(f.id)+':'+x[0]+'" style="flex:1;padding:10px 4px;border:1.5px solid var(--border);border-radius:11px;background:var(--surface-2);color:var(--ern-acc);font-weight:800;font-size:12.5px;cursor:pointer">'+x[1]+'</button>'; }).join('')+'</div>'+
-          (f.gramsBase>0?('<div style="display:flex;gap:7px;margin-top:8px"><input id="ern_favg_'+esc(f.id)+'" type="number" inputmode="numeric" min="1" max="5000" value="'+f.gramsBase+'" aria-label="Menge in Gramm" style="flex:1;min-width:0;border:1.5px solid var(--border);border-radius:11px;padding:9px 10px;font-size:13.5px;font-weight:800;color:var(--text);background:var(--surface)"><button data-act="ernFavLogG" data-arg="'+esc(f.id)+'" style="flex:1.4;padding:10px 4px;border:none;border-radius:11px;background:#0e6072;color:#fff;font-weight:900;font-size:12.5px;cursor:pointer">Menge (g) loggen</button></div><div style="font-size:10px;color:var(--text-soft);font-weight:600;margin-top:4px">Werte-Basis: '+f.gramsBase+' g – jede Menge wird automatisch umgerechnet.</div>'):'')+
+          (f.gramsBase>0?('<div style="display:flex;gap:7px;margin-top:8px"><input id="ern_favg_'+esc(f.id)+'" type="number" inputmode="numeric" min="1" max="5000" value="'+f.gramsBase+'" aria-label="Menge in Gramm" style="flex:1;min-width:0;border:1.5px solid var(--border);border-radius:11px;padding:9px 10px;font-size:13.5px;font-weight:800;color:var(--text);background:var(--surface)"><button data-act="ernFavLogG" data-arg="'+esc(f.id)+'" style="flex:1.4;padding:10px 4px;border:none;border-radius:11px;background:#0e6072;color:#fff;font-weight:900;font-size:12.5px;cursor:pointer">Menge (g) loggen</button></div><div style="font-size:10px;color:var(--text-soft);font-weight:600;margin-top:4px">Werte-Basis: '+f.gramsBase+' g – jede Menge wird automatisch umgerechnet.</div>'+ernFavServRow(f)):'')+
         '</div>'; }).join('')
       : '<div style="background:var(--surface);border-radius:16px;padding:28px 20px;text-align:center;box-shadow:0 6px 18px rgba(4,33,40,.06)"><div style="font-size:30px">⭐</div><div style="font-size:14px;font-weight:800;color:var(--text);margin-top:8px">Noch keine Favoriten</div><div style="font-size:12.5px;font-weight:500;color:var(--text-soft);margin-top:4px;line-height:1.5">Speichere Mahlzeiten, die du oft isst – dann loggst du sie mit einem Tipp. Beim Bearbeiten eines Eintrags gibt es „Als Favorit speichern".</div></div>';
     var msg=S.ernMsg?'<div role="'+(S.ernErr?'alert':'status')+'" style="font-size:12.5px;font-weight:700;color:'+(S.ernErr?'var(--err-fg)':ERN_G)+';text-align:center;margin-top:12px">'+esc(S.ernMsg)+'</div>':'';
@@ -9747,7 +9793,7 @@
       if(day&&day!==lastDay){ lastDay=day; out+='<div style="text-align:center;margin:16px 0 4px"><span style="font-size:11px;font-weight:800;color:var(--text-soft);background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:4px 12px">'+esc(day)+'</span></div>'; }
       var t=pfClock(mm.at);
       if(mm.from==='system'){ out+='<div style="text-align:center;margin:12px 0"><span style="font-size:12px;color:var(--text-soft);background:var(--surface);border-radius:20px;padding:6px 12px;line-height:1.4">'+linkifyMsg(mm.text)+'</span></div>'; return; }
-      if(mm.from==='member'){ out+='<div style="display:flex;justify-content:flex-end;margin-top:10px"><div style="max-width:84%"><div style="background:'+TEALBG+';color:#fff;border-radius:16px 16px 4px 16px;padding:11px 14px;font-size:14.5px;line-height:1.5;white-space:pre-wrap;box-shadow:0 3px 10px rgba(10,73,88,.18)">'+linkifyMsg(mm.text,true)+'</div><div style="font-size:10.5px;color:var(--text-soft);margin-top:4px;text-align:right">'+t+'</div></div></div>'; return; }
+      if(mm.from==='member'){ out+='<div style="display:flex;justify-content:flex-end;margin-top:10px"><div style="max-width:84%"><div style="background:'+TEALBG+';color:#fff;border-radius:16px 16px 4px 16px;padding:11px 14px;font-size:14.5px;line-height:1.5;white-space:pre-wrap;box-shadow:0 3px 10px rgba(10,73,88,.18)">'+linkifyMsg(mm.text,true)+'</div>'+(mm.att&&mm.att.data?'<img src="'+esc(mm.att.data)+'" alt="Dein Anhang" style="display:block;max-width:100%;border-radius:12px;margin-top:6px">':'')+'<div style="font-size:10.5px;color:var(--text-soft);margin-top:4px;text-align:right">'+t+'</div></div></div>'; return; }
       out+='<div style="display:flex;gap:9px;margin-top:10px;align-items:flex-end">'+FI+'<div style="max-width:84%"><div style="background:var(--surface);border-radius:16px 16px 16px 4px;padding:11px 14px;font-size:14.5px;line-height:1.5;color:var(--text);white-space:pre-wrap;box-shadow:0 3px 10px rgba(4,33,40,.07)">'+linkifyMsg(mm.text)+'</div>'+(mm.needsAction?'<button data-act="pfConfirm" data-arg="'+esc(v.id)+'" style="margin-top:8px;display:inline-flex;align-items:center;gap:7px;border:none;border-radius:10px;background:'+TEALBG+';color:#fff;font-size:13px;font-weight:700;padding:9px 14px;cursor:pointer">Bestätigen</button>':'')+'<div style="font-size:10.5px;color:var(--text-soft);margin-top:4px">Fit-Inn Team · '+t+'</div></div></div>';
     });
     return out;
@@ -9796,7 +9842,11 @@
       '<div id="pf_scroll">'+pfMsgsHtml(v)+'</div>'+
       '<div style="padding:10px 14px calc(12px + env(safe-area-inset-bottom,0px));border-top:1px solid var(--border);background:var(--surface);flex-shrink:0">'+
         err+
-        '<div style="display:flex;align-items:flex-end;gap:9px"><textarea id="pf_reply" rows="1" enterkeyhint="send" placeholder="Nachricht schreiben …" style="flex:1;border:1.5px solid var(--border);border-radius:18px;padding:11px 15px;font-size:15px;resize:none;max-height:120px;line-height:1.5;outline:none;background:var(--bg);color:var(--text)">'+esc(S.pfDraft||'')+'</textarea>'+
+        // Bild-Anhang (Wunsch aus dem Feedback: Screenshots direkt aus der App schicken).
+        (S.pfAtt?('<div style="display:flex;align-items:center;gap:10px;background:var(--surface-2);border-radius:12px;padding:8px 10px;margin-bottom:9px"><img src="'+esc(S.pfAtt.data)+'" alt="" style="width:44px;height:44px;object-fit:cover;border-radius:9px;flex-shrink:0"><span style="flex:1;min-width:0;font-size:12px;font-weight:700;color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(S.pfAtt.name||'Bild')+'</span><button data-act="pfAttDel" style="border:none;background:none;color:var(--err-fg);font-weight:800;font-size:12.5px;cursor:pointer;padding:4px 2px">Entfernen</button></div>'):'')+
+        '<div style="display:flex;align-items:flex-end;gap:9px">'+
+          '<label aria-label="Bild anhängen" style="width:42px;height:42px;border-radius:50%;background:var(--surface-2);display:flex;align-items:center;justify-content:center;flex-shrink:0;cursor:'+(S.pfAttBusy?'default':'pointer')+'">'+(S.pfAttBusy?'…':svg('<path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path>',{c:'var(--text-soft)',w:2,s:19}))+'<input type="file" accept="image/*" style="display:none" '+(S.pfAttBusy?'disabled ':'')+'onchange="window.__pfAttPick(this)"></label>'+
+          '<textarea id="pf_reply" rows="1" enterkeyhint="send" placeholder="Nachricht schreiben …" style="flex:1;border:1.5px solid var(--border);border-radius:18px;padding:11px 15px;font-size:15px;resize:none;max-height:120px;line-height:1.5;outline:none;background:var(--bg);color:var(--text)">'+esc(S.pfDraft||'')+'</textarea>'+
           '<button id="pf_send" data-act="pfReply" data-arg="'+esc(v.id)+'" '+(S.pfBusy?'disabled ':'')+'style="width:46px;height:46px;border-radius:50%;border:none;background:'+TEALBG+';color:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0;cursor:pointer;opacity:'+(S.pfBusy?'.55':'1')+'">'+svg('<path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"></path>',{c:'#fff',w:2,s:19})+'</button></div>'+
         '<div style="text-align:center;font-size:11px;color:var(--text-soft);font-weight:600;margin-top:7px">Wir antworten meist innerhalb weniger Stunden</div>'+
       '</div></div>';
@@ -11228,6 +11278,22 @@
       if(!(g>0)){ S.ernErr=true; S.ernMsg='Bitte eine Menge in Gramm eingeben.'; render(); return; }
       api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'fav-log',id:a,grams:Math.min(5000,g),date:ernActiveDate()})})
       .then(function(d){ if(d&&d.ok){ DATA.nutri=d; var nm=(d.added&&d.added[0]&&d.added[0].name)||'Favorit'; S.ernMsg='Protokolliert: '+nm+' ('+g+' g)'; S.ernErr=false; render(); } else { S.ernErr=true; S.ernMsg=(d&&d.message)||'Konnte nicht protokollieren – bitte erneut.'; render(); } }).catch(function(){ S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); }); },
+    // Standard-Portion antippen -> direkt mit der hinterlegten Grammzahl loggen.
+    ernFavServLog:function(a){ var parts=String(a||'').split('|'); var fid=parts[0], label=parts[1]||'';
+      if(!fid||!label) return;
+      api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'fav-log',id:fid,serving:label,date:ernActiveDate()})})
+      .then(function(d){ if(d&&d.ok){ DATA.nutri=d; var nm=(d.added&&d.added[0]&&d.added[0].name)||'Favorit'; S.ernMsg='Protokolliert: '+nm+' ('+label+')'; S.ernErr=false; } else { S.ernErr=true; S.ernMsg=(d&&d.message)||'Konnte nicht protokollieren.'; } render(); })
+      .catch(function(){ S.ernErr=true; S.ernMsg='Verbindung gerade nicht möglich.'; render(); }); },
+    // Neue Standard-Portion anlegen: Name + Gramm, danach als Chip verfügbar.
+    ernFavServAdd:function(a){ var favs=Array.isArray(DATA.nutriFavs)?DATA.nutriFavs:[]; var f=favs.filter(function(x){ return String(x.id)===String(a); })[0]; if(!f) return;
+      var label=String(window.prompt('Name der Portion (z. B. 1 Scheibe, 1 TL, 1 Glas):','')||'').trim().slice(0,20);
+      if(!label) return;
+      var g=parseInt(window.prompt('Wie viel Gramm sind „'+label+'"?',''),10);
+      if(!(g>0&&g<=2000)){ S.ernErr=true; S.ernMsg='Bitte eine Grammzahl zwischen 1 und 2000 angeben.'; render(); return; }
+      var list=(Array.isArray(f.servings)?f.servings:[]).filter(function(x){ return x.label!==label; }).concat([{label:label,grams:g}]).slice(0,5);
+      ernFavServSave(f,list,'Portion „'+label+'" gespeichert ✓'); },
+    ernFavServClear:function(a){ var favs=Array.isArray(DATA.nutriFavs)?DATA.nutriFavs:[]; var f=favs.filter(function(x){ return String(x.id)===String(a); })[0]; if(!f) return;
+      ernFavServSave(f,[],'Portionen zurückgesetzt.'); },
     // ── Gespeicherte Mahlzeiten (mehrere Produkte als 1 Vorlage) ──
     ernMealMgrOpen:function(){ setS({ernMealMgr:true, ernMealDraft:null, ernCapture:false, ernMsg:'', ernErr:false}); if(DATA.nutriMeals==null) loadMeals(); },
     ernMealMgrClose:function(){ setS({ernMealMgr:false, ernMealDraft:null, ernMsg:''}); },
@@ -12081,14 +12147,16 @@
       api('/api/member/inbox?id='+encodeURIComponent(a)).then(function(d){ if(d&&d.ok&&d.vorgang&&String(S.pfSel)===String(d.vorgang.id)){ updateVorgang(d.vorgang); pfPatchThread(d.vorgang); } }).catch(function(){}); },
     pfBack:function(){ setS({pfThread:false}); },
     pfMore:function(){ S.pfStick=false; setS({pfExpand:true}); },
-    pfReply:function(a){ var ta=$('pf_reply'); var t=ta?(ta.value||'').trim():''; if(!t){ setQuiet({pfErr:'Bitte gib eine Nachricht ein.'}); return; }
+    pfReply:function(a){ var ta=$('pf_reply'); var t=ta?(ta.value||'').trim():'';
+      if(!t&&S.pfAtt) t='(Bild)';   // reines Bild ohne Text ist eine gültige Nachricht
+      if(!t){ setQuiet({pfErr:'Bitte gib eine Nachricht ein.'}); return; }
       if(S.pfBusy) return;
       S.pfDraft=t; S.pfBusy=true; S.pfErr='';
       var sb=$('pf_send'); if(sb){ sb.disabled=true; sb.style.opacity='.55'; }
-      api('/api/member/inbox',{method:'POST',body:JSON.stringify({action:'reply',id:a,text:t})})
+      api('/api/member/inbox',{method:'POST',body:JSON.stringify({action:'reply',id:a,text:t,attachment:S.pfAtt||null})})
         .then(function(d){ S.pfBusy=false;
           if(d&&d.ok&&d.vorgang){
-            S.pfDraft=''; S.pfStick=true; updateVorgang(d.vorgang);
+            S.pfDraft=''; S.pfAtt=null; S.pfStick=true; updateVorgang(d.vorgang);
             // Teil-Update: nur der Verlauf wird neu gezeichnet – Fokus/Tastatur bleiben.
             var ta2=$('pf_reply'); if(ta2){ ta2.value=''; ta2.style.height='auto'; ta2.focus(); }
             var sb2=$('pf_send'); if(sb2){ sb2.disabled=false; sb2.style.opacity='1'; }

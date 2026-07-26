@@ -82,7 +82,9 @@ module.exports = async function handler(req, res) {
     }
     const text = String(body.text || '').trim();
     if (!text) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'Bitte gib eine Nachricht ein.' })); }
-    const v = await Inbox.reply(sess.id, id, text);
+    // Optionaler Bild-Anhang (z. B. Screenshot). Typ und Größe prüft lib/inbox serverseitig;
+    // ein ungültiger Anhang lässt die Nachricht durch, wird aber verworfen.
+    const v = await Inbox.reply(sess.id, id, text, body.attachment);
     if (!v) { res.statusCode = 404; return res.end(JSON.stringify({ ok: false, error: 'not_found' })); }
 
     if (hasMail) {
@@ -93,7 +95,8 @@ module.exports = async function handler(req, res) {
             + 'Mitglied: ' + who(m) + '\nKundennr.: ' + (m.customerNumber || '—')
             + '\nVorgang: ' + (v.subject || '—') + ' (' + (v.ref || '') + ')'
             + '\nStatus: ' + (v.status || '—')
-            + '\n\nNachricht des Mitglieds:\n' + text });
+            + '\n\nNachricht des Mitglieds:\n' + text
+            + (((v.messages || []).slice(-1)[0] || {}).att ? '\n\n(Mit Bild-Anhang – im Team-Backend sichtbar.)' : '') });
       } catch (e) {}
     }
     res.statusCode = 200;

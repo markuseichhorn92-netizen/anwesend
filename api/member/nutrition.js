@@ -745,6 +745,19 @@ module.exports = async function handler(req, res) {
     // Menge loggen (z. B. Werte je 100 g anlegen und beim Essen 137 g eintragen).
     const gb = clamp(body.gramsBase, 1, 2000, 0);
     if (gb > 0) fav.gramsBase = gb;
+    // Eigene Standard-Portionen („1 Scheibe = 45 g", „1 TL = 5 g"): erspart das Umrechnen
+    // bei Lebensmitteln, die man nie abwiegt. Nur sinnvoll mit Grammbasis – ohne sie
+    // fehlt der Bezug, auf den die Gramm skaliert werden.
+    const servIn = Array.isArray(body.servings) ? body.servings : [];
+    const servOut = [];
+    servIn.slice(0, 5).forEach(function (x) {
+      const label = cleanStr(x && x.label, 20);
+      // Bewusst VERWERFEN statt zurechtstutzen: aus einem vertippten „9999" darf keine
+      // stille 2-kg-Portion werden – lieber gar keine Portion als eine falsche.
+      const grams = Math.round(Number(x && x.grams));
+      if (label && grams >= 1 && grams <= 2000) servOut.push({ label: label, grams: grams });
+    });
+    if (servOut.length) fav.servings = servOut;
     // Optionaler Barcode (EAN/GTIN) des eigenen Lebensmittels – zum späteren Wiederfinden per Scan.
     const bc = String(body.barcode || '').replace(/\D/g, '');
     if (bc.length >= 8 && bc.length <= 14) fav.barcode = bc;
@@ -777,10 +790,17 @@ module.exports = async function handler(req, res) {
     // Gesamtwerte selbst umrechnen).
     let factor = Math.max(0.25, Math.min(10, Number(body.factor) || 1));
     let portionLabel = fav.portion;
-    const grams = Number(body.grams);
+    let grams = Number(body.grams);
+    // Benannte Standard-Portion gewählt („1 Scheibe") -> deren Gramm verwenden.
+    const servPick = cleanStr(body.serving, 20);
+    if (servPick && Array.isArray(fav.servings)) {
+      const hit = fav.servings.filter(function (x) { return x && x.label === servPick; })[0];
+      if (hit && hit.grams > 0 && Number(fav.gramsBase) > 0) { grams = hit.grams; portionLabel = hit.label; }
+    }
     if (grams > 0 && Number(fav.gramsBase) > 0) {
       factor = Math.max(0.05, Math.min(20, Math.min(5000, grams) / Number(fav.gramsBase)));
-      portionLabel = Math.round(grams) + ' g';
+      // Bei benannter Portion bleibt der Name stehen und die Gramm kommen dazu („1 Scheibe (45 g)").
+      portionLabel = (servPick && portionLabel === servPick) ? (servPick + ' (' + Math.round(grams) + ' g)') : (Math.round(grams) + ' g');
     }
     const entry = sanitizeEntry({
       name: fav.name, portion: portionLabel, meal: body.meal, custom: fav.custom, brand: fav.brand, store: fav.store,
