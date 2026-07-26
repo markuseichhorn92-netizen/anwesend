@@ -4528,30 +4528,37 @@
   // Bewusst höher aufgelöst als das Teller-Foto (1600 px statt 1024, Qualität 0,9): die
   // Tabelle ist kleingedruckt. Übernommen wird nur ins Formular – gespeichert wird erst,
   // wenn das Mitglied bestätigt.
+  // Foto -> verkleinertes JPEG als base64. maxPx/quality bewusst als Parameter: eine
+  // Nährwerttabelle braucht mehr Auflösung als ein Teller-Foto.
+  function ernPhotoB64(file,maxPx,quality,cb){
+    try{
+      if(!file||!/^image\//.test(file.type||'')){ cb(''); return; }
+      var rd=new FileReader();
+      rd.onload=function(e){
+        var img=new Image();
+        img.onload=function(){
+          try{
+            var w=img.naturalWidth||1,h=img.naturalHeight||1,sc=Math.min(1,maxPx/Math.max(w,h));
+            var cw=Math.max(1,Math.round(w*sc)),ch=Math.max(1,Math.round(h*sc));
+            var cv=document.createElement('canvas'); cv.width=cw; cv.height=ch; cv.getContext('2d').drawImage(img,0,0,cw,ch);
+            var url=cv.toDataURL('image/jpeg',quality); var ix=url.indexOf('base64,');
+            cb(ix>=0?url.slice(ix+7):'');
+          }catch(err){ cb(''); }
+        };
+        img.onerror=function(){ cb(''); };
+        img.src=String((e.target&&e.target.result)||'');
+      };
+      rd.onerror=function(){ cb(''); };
+      rd.readAsDataURL(file);
+    }catch(e){ cb(''); }
+  }
   window.__ernCFLabelPick=function(idx,input){
     var f=input&&input.files&&input.files[0]; try{ if(input) input.value=''; }catch(e){}
     if(!f) return;
     var cf=S.ernConfirm; if(!cf||!cf.items||!cf.items[idx]) return;
     if(!/^image\//.test(f.type||'')){ cf.items[idx]._lblMsg='Bitte ein Foto auswählen.'; cf.items[idx]._lblOk=false; render(); return; }
     cf.items[idx]._lblBusy=true; cf.items[idx]._lblMsg=''; render();
-    var rd=new FileReader();
-    rd.onload=function(e){
-      var img=new Image();
-      img.onload=function(){
-        var b64='';
-        try{
-          var max=1600,w=img.naturalWidth||1,h=img.naturalHeight||1,sc=Math.min(1,max/Math.max(w,h));
-          var cw=Math.max(1,Math.round(w*sc)),ch=Math.max(1,Math.round(h*sc));
-          var cv=document.createElement('canvas'); cv.width=cw; cv.height=ch; cv.getContext('2d').drawImage(img,0,0,cw,ch);
-          var url=cv.toDataURL('image/jpeg',0.9); var ix=url.indexOf('base64,'); b64=ix>=0?url.slice(ix+7):'';
-        }catch(err){ b64=''; }
-        ernLabelSend(idx,b64);
-      };
-      img.onerror=function(){ ernLabelSend(idx,''); };
-      img.src=String((e.target&&e.target.result)||'');
-    };
-    rd.onerror=function(){ ernLabelSend(idx,''); };
-    rd.readAsDataURL(f);
+    ernPhotoB64(f,1600,0.9,function(b64){ ernLabelSend(idx,b64); });
   };
   function ernLabelSend(idx,b64){
     var cf0=S.ernConfirm, it0=(cf0&&cf0.items)?cf0.items[idx]:null; if(!it0) return;
@@ -4581,6 +4588,56 @@
     })
     .catch(function(){ var c=S.ernConfirm,x=(c&&c.items)?c.items[idx]:null; if(x){ x._lblBusy=false; x._lblOk=false; x._lblMsg='Verbindung gerade nicht möglich.'; } render(); });
   }
+  // ── Rezept-Baukasten: Zutaten auch ohne Textsuche hinzufügen ──
+  // Grund: die Produktdatenbank kennt unverpackte Ware (Melone, Theken-Fleisch) oft nicht.
+  // Wer dort nichts findet, stand vorher in der Sackgasse. Jetzt: Etikett fotografieren,
+  // Barcode fotografieren oder FINN schätzen lassen. Zutaten rechnen intern je 100 g,
+  // deshalb passen alle drei Wege direkt ins Datenmodell.
+  function ernSelfPushIng(name,per100,note){
+    var d=S.ernSelfNew; if(!d) return false;
+    d.ings=d.ings||[];
+    if(d.ings.length>=20){ d.ingBusy=''; d.err=true; d.msg='Maximal 20 Zutaten.'; render(); return false; }
+    d.ings.push({ name:String(name||'Zutat').slice(0,80), grams:100,
+      k100:Math.max(0,Math.round(+per100.kcal||0)), p100:Math.max(0,Math.round((+per100.protein||0)*10)/10),
+      c100:Math.max(0,Math.round((+per100.carbs||0)*10)/10), f100:Math.max(0,Math.round((+per100.fat||0)*10)/10) });
+    d.ingBusy=''; d.err=false; d.msg=note||'Zutat übernommen ✓'; render(); return true;
+  }
+  function ernSelfIngFail(msg){ var d=S.ernSelfNew; if(!d) return; d.ingBusy=''; d.err=true; d.msg=msg; render(); }
+  // Etikett der Zutat fotografieren -> Werte je 100 g direkt übernehmen.
+  window.__ernSelfLabelPick=function(input){
+    var f=input&&input.files&&input.files[0]; try{ if(input) input.value=''; }catch(e){}
+    var d=S.ernSelfNew; if(!f||!d) return;
+    d.ingBusy='label'; d.msg=''; d.err=false; render();
+    ernPhotoB64(f,1600,0.9,function(b64){
+      if(!b64){ ernSelfIngFail('Foto konnte nicht gelesen werden.'); return; }
+      api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'label-scan',base64:b64,mediaType:'image/jpeg'})})
+      .then(function(r){
+        if(r&&r.error==='premium_required'){ if(S.ernSelfNew) S.ernSelfNew.ingBusy=''; setS({ernUpgrade:true}); return; }
+        ernQuotaApply(r);
+        if(r&&r.ok&&r.per100) ernSelfPushIng([r.brand,r.name].filter(Boolean).join(' ')||'Zutat',r.per100,'Zutat vom Etikett übernommen – bitte Menge anpassen.');
+        else ernSelfIngFail((r&&r.message)||'Etikett konnte nicht gelesen werden.');
+      })
+      .catch(function(){ ernSelfIngFail('Verbindung gerade nicht möglich.'); });
+    });
+  };
+  // Barcode der Zutat fotografieren -> Produkt aus der Datenbank als Zutat übernehmen.
+  window.__ernSelfBarcodePick=function(input){
+    var f=input&&input.files&&input.files[0]; try{ if(input) input.value=''; }catch(e){}
+    var d=S.ernSelfNew; if(!f||!d) return;
+    d.ingBusy='barcode'; d.msg=''; d.err=false; render();
+    ernReadBarcodeFile(f,function(code){
+      if(!code||code.length<8){ ernSelfIngFail('Kein Barcode erkennbar – bitte näher ran oder die Suche nutzen.'); return; }
+      api('/api/member/food-products',{method:'POST',body:JSON.stringify({action:'barcode',barcode:code})})
+      .then(function(r){
+        var p=(r&&r.ok&&r.found)?r.product:null;
+        if(!p){ ernSelfIngFail('Zu diesem Barcode gibt es keinen Eintrag – probier das Etikett-Foto.'); return; }
+        var n=p.nutriments||{};
+        ernSelfPushIng([p.brand,p.name].filter(Boolean).join(' ')||'Zutat',
+          { kcal:n.kcal100g, protein:n.protein100g, carbs:n.carbs100g, fat:n.fat100g },'Zutat per Barcode übernommen – bitte Menge anpassen.');
+      })
+      .catch(function(){ ernSelfIngFail('Verbindung gerade nicht möglich.'); });
+    });
+  };
   window.__ernCFScanPhoto=function(idx,input){
     var f=input&&input.files&&input.files[0]; try{ if(input) input.value=''; }catch(e){}
     if(!f) return;
@@ -7436,11 +7493,27 @@
     '</div>';
     // Zutaten-Suche
     var searchBox='<div style="display:flex;gap:8px;margin-bottom:12px"><input id="ern_selfq" value="'+esc(d.searchQ||'')+'" enterkeyhint="search" autocomplete="off" oninput="window.__ernSelfField(\'searchQ\',this.value)" onkeydown="if(event.key===\'Enter\'){event.preventDefault();window.__ernSelfSearchGo&&window.__ernSelfSearchGo();}" placeholder="Zutat suchen (z. B. Haferflocken)" style="flex:1;min-width:0;border:none;border-radius:12px;padding:12px 14px;font-size:14px;font-weight:600;outline:none;color:var(--text);background:var(--surface-2);font-family:inherit"><button data-act="ernSelfSearch" style="border:none;border-radius:12px;background:'+ERN_G+';color:#fff;font-weight:900;font-size:13.5px;padding:0 16px;cursor:pointer">Suchen</button></div>';
+    // Drei weitere Wege zur Zutat – nötig, weil die Produktdatenbank unverpackte Ware
+    // (Melone, Fleisch von der Theke) häufig nicht kennt und die Textsuche dort ins Leere lief.
+    var ingBusy=d.ingBusy||'';
+    var altBtn=function(kind,label,handler){
+      var busy=(ingBusy===kind);
+      var style='flex:1;min-width:0;display:flex;align-items:center;justify-content:center;gap:6px;padding:10px 6px;border:1.5px solid var(--border);border-radius:12px;background:var(--surface);color:var(--teal-ink);font-weight:800;font-size:12px;cursor:'+(busy?'default':'pointer')+';white-space:nowrap';
+      var txt=busy?'… lädt':label;
+      if(!handler) return '<button data-act="ernSelfIngAI" '+(ingBusy?'disabled ':'')+'style="'+style+'">'+txt+'</button>';
+      return '<label style="'+style+'">'+txt+'<input type="file" accept="image/*" capture="environment" style="display:none" '+(ingBusy?'disabled ':'')+'onchange="'+handler+'"></label>';
+    };
+    searchBox+='<div style="display:flex;gap:7px;margin-bottom:12px">'+
+      altBtn('label','📷 Etikett','window.__ernSelfLabelPick(this)')+
+      altBtn('barcode','▮▮ Barcode','window.__ernSelfBarcodePick(this)')+
+      altBtn('ai','🤖 FINN fragen','')+'</div>';
     var resHtml='';
     if(d.searchBusy) resHtml='<div style="text-align:center;color:var(--text-soft);font-size:13px;font-weight:600;padding:14px">Sucht …</div>';
     else if(d.searchErr) resHtml='<div style="font-size:12.5px;font-weight:700;color:var(--err-fg);padding:6px 2px 10px;line-height:1.4">'+esc(d.searchErr)+'</div>';
     else if(Array.isArray(d.results)){
-      if(!d.results.length) resHtml='<div style="font-size:12.5px;color:var(--text-soft);font-weight:600;padding:10px 2px">Nichts gefunden – andere Schreibweise probieren.</div>';
+      // Sackgasse auflösen: „nichts gefunden" ist bei frischer Ware der Normalfall, nicht
+      // die Ausnahme. Statt nur zu melden, zeigen wir hier, wie es trotzdem weitergeht.
+      if(!d.results.length) resHtml='<div style="background:var(--surface-2);border-radius:12px;padding:12px 13px;margin-bottom:10px"><div style="font-size:12.5px;font-weight:800;color:var(--text)">Nichts gefunden – kein Problem</div><div style="font-size:11.5px;color:var(--text-soft);font-weight:600;margin-top:4px;line-height:1.5">Frische Ware wie Obst, Gemüse oder Fleisch von der Theke steht selten in der Produktdatenbank. Nimm oben <b>📷 Etikett</b> (bei Verpackung), <b>▮▮ Barcode</b> oder <b>🤖 FINN fragen</b> – dann kannst du dein Rezept trotzdem anlegen.</div></div>';
       else resHtml='<div style="margin-bottom:6px">'+d.results.slice(0,12).map(function(p,i){ var n=p.nutriments||{}; var kc=(n.kcal100g!=null)?Math.round(n.kcal100g):null; return '<button data-act="ernSelfAddIng" data-arg="'+i+'" style="display:flex;align-items:center;gap:10px;width:100%;text-align:left;border:none;background:var(--surface-2);border-radius:12px;padding:11px 12px;margin-bottom:7px;cursor:pointer;font-family:inherit"><span style="flex:1;min-width:0"><span style="display:block;font-size:13.5px;font-weight:800;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(p.name||'Produkt')+(p.brand?' · '+esc(p.brand):'')+'</span><span style="display:block;font-size:11px;font-weight:600;color:var(--text-soft);margin-top:1px">'+(kc!=null?(kc+' kcal / 100 g'):'Nährwerte unvollständig')+'</span></span><span style="width:28px;height:28px;border-radius:9px;background:'+ERN_G+';color:#fff;font-size:18px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0">+</span></button>'; }).join('')+'</div>';
     }
     var ingHtml=ings.length?ings.map(function(x,i){ var g=Math.max(0,parseInt(x.grams,10)||0); var kc=Math.round((x.k100||0)*g/100);
@@ -11401,6 +11474,22 @@
       api('/api/member/food-products',{method:'POST',body:JSON.stringify({action:'search',query:q,limit:15})})
       .then(function(r){ if(!S.ernSelfNew) return; S.ernSelfNew.searchBusy=false; if(r&&r.ok&&Array.isArray(r.products)) S.ernSelfNew.results=r.products; else if(r&&r.available===false){ S.ernSelfNew.searchErr='Der Produktdienst ist nicht verfügbar.'; S.ernSelfNew.results=[]; } else { S.ernSelfNew.searchErr=(r&&r.message)||'Suche gerade nicht möglich.'; S.ernSelfNew.results=[]; } render(); })
       .catch(function(){ if(!S.ernSelfNew) return; S.ernSelfNew.searchBusy=false; S.ernSelfNew.searchErr='Verbindung gerade nicht möglich.'; S.ernSelfNew.results=[]; render(); }); },
+    // FINN schätzt eine Zutat, die die Produktdatenbank nicht kennt (typisch: frische Ware
+    // wie Melone). Gefragt wird bewusst nach „100 g X" – dann sind die Werte direkt die
+    // Je-100-g-Basis, mit der das Zutaten-Modell rechnet.
+    ernSelfIngAI:function(){ var d=S.ernSelfNew; if(!d||d.ingBusy) return;
+      var el=$('ern_selfq'); var q=String((el?el.value:d.searchQ)||'').trim();
+      if(q.length<2){ d.err=true; d.msg='Bitte zuerst eingeben, welche Zutat du meinst.'; render(); return; }
+      d.ingBusy='ai'; d.err=false; d.msg=''; render();
+      api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'estimate',text:'100 g '+q})})
+      .then(function(r){
+        if(r&&r.error==='premium_required'){ if(S.ernSelfNew) S.ernSelfNew.ingBusy=''; setS({ernUpgrade:true}); return; }
+        ernQuotaApply(r);
+        var it=(r&&r.ok&&Array.isArray(r.items))?r.items[0]:null;
+        if(it) ernSelfPushIng(q,{ kcal:it.kcal, protein:it.p, carbs:it.c, fat:it.f },'Von FINN geschätzt (je 100 g) – bitte Menge anpassen.');
+        else ernSelfIngFail((r&&r.message)||'FINN konnte die Zutat nicht einschätzen.');
+      })
+      .catch(function(){ ernSelfIngFail('Verbindung gerade nicht möglich.'); }); },
     ernSelfAddIng:function(a){ var d=S.ernSelfNew; if(!d||!Array.isArray(d.results)) return; var p=d.results[parseInt(a,10)]; if(!p) return; d.ings=d.ings||[]; if(d.ings.length>=20){ d.err=true; d.msg='Maximal 20 Zutaten.'; render(); return; } var n=p.nutriments||{};
       d.ings.push({name:String(p.name||'Zutat').slice(0,80), grams:100, k100:+n.kcal100g||0, p100:+n.protein100g||0, c100:+n.carbs100g||0, f100:+n.fat100g||0}); d.msg=''; d.err=false; render(); },
     ernSelfDropIng:function(a){ var d=S.ernSelfNew; if(!d||!Array.isArray(d.ings)) return; d.ings.splice(parseInt(a,10),1); render(); },
