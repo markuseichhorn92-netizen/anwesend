@@ -99,6 +99,23 @@ function run() {
   ok('21. Ohne Grundnahrung reicht OFF durch',
     BF.mergeWithOff([], off, 3).length === 3 && BF.mergeWithOff([], off, 3)[0].name === 'Banane');
 
+  // ── 5) BLS-Integration (buildFoods) ──
+  // Ohne echte BLS-Datei liefert die App die 105 kuratierten. Mit importierter Datei
+  // wird der Datensatz erweitert – kuratierte Einträge bleiben vorn.
+  ok('22. Ohne BLS-Datei genau die kuratierten', BF.FOODS.length === 105, String(BF.FOODS.length));
+  const blsSample = [
+    { name: 'Dinkelvollkornmehl', kcal: 340, p: 12, c: 61, f: 2.5, fiber: 10, sugar: 1 },
+    { name: 'Apfel', kcal: 52, p: 0.3, c: 14, f: 0.2, fiber: 2.4, sugar: 10 },   // Dublette zu kuratiert
+    { name: 'Grünkohl, gegart', kcal: 37, p: 4.3, c: 3, f: 0.9, fiber: 4, sugar: 1, satfat: 0.1, salt: 0.02 },
+  ];
+  const withBls = BF.buildFoods(BF.ROWS, blsSample);
+  ok('23. BLS erweitert den Datensatz', withBls.length > BF.FOODS.length, String(withBls.length));
+  ok('24. Neues BLS-Lebensmittel ist dabei', withBls.some((f) => f.name === 'Dinkelvollkornmehl'));
+  ok('25. Exakte Dublette „Apfel" wird nicht doppelt aufgenommen',
+    withBls.filter((f) => f.name === 'Apfel').length === 1);
+  ok('26. BLS-Eintrag trägt ges. Fett/Salz durch (für Nutri-Score)',
+    withBls.some((f) => f.name === 'Grünkohl, gegart' && f.satfat === 0.1 && f.salt === 0.02));
+
   console.log(pass ? 'BASE-FOODS PASS' : 'BASE-FOODS FAIL');
   process.exit(pass ? 0 : 1);
 }
