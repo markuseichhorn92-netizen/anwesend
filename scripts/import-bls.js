@@ -174,6 +174,9 @@ function rowsToFoods(rows) {
     kcal: findCol(header, 'ENERCC'), p: findCol(header, 'PROT625'), c: findCol(header, 'CHO'),
     f: findCol(header, 'FAT'), fiber: findCol(header, 'FIBT'), sugar: findCol(header, 'SUGAR'),
     satfat: findCol(header, 'FASAT'), na: findCol(header, 'NA'),
+    // Für die Energie-Gegenprüfung: der BLS berechnet ENERCC nach der EU-Formel
+    // (VO 1169/2011) und liefert alle Energieträger als eigene Spalten.
+    alc: findCol(header, 'ALC'), oa: findCol(header, 'OA'), polyl: findCol(header, 'POLYL'),
   };
   const need = ['kcal', 'p', 'c', 'f'];
   const missing = need.filter((k) => cols[k] < 0);
@@ -197,19 +200,31 @@ function rowsToFoods(rows) {
     const naMg = cols.na >= 0 ? num(row[cols.na]) : null;
     const salt = naMg != null ? Math.round((naMg / 1000) * 2.5 * 100) / 100 : null;   // Salz = Natrium × 2,5
 
-    // Atwater-Plausibilität mit Ballaststoff-(2 kcal/g)-Korrektur. Der BLS führt Alkohol als
-    // eigene Spalte; ohne sie erlauben wir eine großzügige obere Schranke, damit sehr
-    // fett-/alkoholreiche Einträge nicht fälschlich als Ausreißer fallen.
-    const atwHigh = 4 * p + 4 * c + 9 * f;
-    const atwLow = 4 * p + 4 * Math.max(0, c - fiber) + 2 * fiber + 9 * f;
-    const lo = Math.min(atwLow, atwHigh) * 0.6 - 15;
-    const hi = Math.max(atwLow, atwHigh) * 1.3 + 60;
+    // Energie-Gegenprüfung nach der EU-Formel (VO 1169/2011), mit der auch der BLS ENERCC
+    // berechnet: Eiweiß/verfügbare KH 4, Ballaststoffe 2, Fett 9, Alkohol 7, organische
+    // Säuren 3, Zuckeralkohole 2,4 kcal/g. Stimmt der gelieferte kcal-Wert grob damit
+    // überein, ist die Spaltenzuordnung korrekt und der Datenpunkt plausibel. Das fängt
+    // Parsing-Fehler (z. B. kJ-statt-kcal, ~4× daneben), ohne gültige Getränke oder
+    // Säuren fälschlich zu verwerfen.
+    const alc = cols.alc >= 0 ? (num(row[cols.alc]) || 0) : 0;
+    const oa = cols.oa >= 0 ? (num(row[cols.oa]) || 0) : 0;
+    const polyl = cols.polyl >= 0 ? (num(row[cols.polyl]) || 0) : 0;
+    // Zuckeralkohole (POLYL) sind in „Kohlenhydrate, verfügbar" (CHO) enthalten, liefern
+    // aber nur 2,4 statt 4 kcal/g – vor der Energie-Rechnung herausrechnen, sonst würden
+    // reine Süßstoff-Pulver (Sorbit/Xylit/Mannit) fälschlich als Ausreißer fallen.
+    const energy = 4 * Math.max(0, c - polyl) + 2.4 * polyl + 2 * fiber + 9 * f + 4 * p + 7 * alc + 3 * oa;
+    // Bewusst weit: der BLS ist die amtliche Quelle und rechnet die verwertbare Energie
+    // teils niedriger als die Rohformel (Pilze, Beeren u. Ä.) – solche legitimen ±40 %
+    // sollen NICHT fallen. Der Filter fängt nur grobe Zuordnungsfehler ab: läge z. B. kcal
+    // versehentlich auf der kJ-Spalte, wären ALLE Werte ~4× zu hoch (nicht ein paar Dutzend).
+    const lo = energy * 0.5 - 25;
+    const hi = energy * 2.0 + 50;
     const round = (x, d) => (x == null ? null : Math.round(x * Math.pow(10, d)) / Math.pow(10, d));
     const rec = { name: name.slice(0, 80), kcal: round(kcal, 0), p: round(p, 1), c: round(c, 1), f: round(f, 1),
       fiber: round(fiber, 1), sugar: round(sugar, 1) };
     if (satfat != null) rec.satfat = round(satfat, 1);
     if (salt != null) rec.salt = salt;
-    if (kcal < lo || kcal > hi) { stats.outliers.push(name + ' (kcal=' + rec.kcal + ', erwartet ' + Math.round(lo) + '–' + Math.round(hi) + ')'); continue; }
+    if (kcal < lo || kcal > hi) { stats.outliers.push(name + ' (kcal=' + rec.kcal + ', berechnet ' + Math.round(energy) + ')'); continue; }
     foods.push(rec);
   }
   return { foods: foods, stats: stats };

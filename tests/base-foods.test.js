@@ -13,8 +13,13 @@ function run() {
   // kcal ≈ 4·Eiweiß + 4·KH + 9·Fett. Ballaststoffe liefern real nur ~2 statt 4 kcal/g,
   // deshalb eine untere (ballaststoffkorrigierte) und obere Schranke mit Toleranz.
   // Ziel: grobe Vertipper fangen (z. B. 373 statt 87), nicht jede Rundung.
+  // Diese Datenqualitäts-Prüfungen gelten den 105 HANDGEPFLEGTEN Einträgen. Die
+  // importierten BLS-Daten sind amtlich und werden beim Import mit der EU-Energieformel
+  // (inkl. Alkohol/organische Säuren/Zuckeralkohole) geprüft – die einfache 4/4/9-Regel
+  // hier würde Wein, Beeren, Säuren u. Ä. zu Unrecht flaggen.
+  const CUR = BF.buildFoods(BF.ROWS, []);
   let bad = [];
-  for (const f of BF.FOODS) {
+  for (const f of CUR) {
     const high = 4 * f.p + 4 * f.c + 9 * f.f;                                // Standard-Atwater
     const low = 4 * f.p + 4 * Math.max(0, f.c - f.fiber) + 2 * f.fiber + 9 * f.f;  // Ballaststoffe @2
     const loBound = Math.min(low, high) * 0.82 - 8;
@@ -23,18 +28,18 @@ function run() {
       bad.push(f.name + ' (kcal=' + f.kcal + ', erwartet ' + Math.round(loBound) + '–' + Math.round(hiBound) + ')');
     }
   }
-  ok('1. Alle ' + BF.FOODS.length + ' Einträge sind per Atwater plausibel', bad.length === 0, bad.join(' | '));
+  ok('1. Alle ' + CUR.length + ' kuratierten Einträge sind per Atwater plausibel', bad.length === 0, bad.join(' | '));
 
   // Grundwerte vorhanden und im sinnvollen Bereich (0..900 kcal, Makros 0..100 g)
   let range = [];
-  for (const f of BF.FOODS) {
+  for (const f of CUR) {
     if (!(f.kcal >= 0 && f.kcal <= 900)) range.push(f.name + ' kcal');
     for (const k of ['p', 'c', 'f', 'fiber', 'sugar']) if (!(f[k] >= 0 && f[k] <= 100)) range.push(f.name + ' ' + k);
     if (!f.name || !f.terms.length) range.push(f.name + ' (Name/Terms)');
   }
   ok('2. Werte und Namen im plausiblen Bereich', range.length === 0, range.slice(0, 6).join(', '));
 
-  // Keine doppelten IDs / Namen
+  // Keine doppelten IDs / Namen im gesamten (kuratiert + BLS) Datensatz
   const ids = new Set(BF.FOODS.map((f) => f.id));
   const names = new Set(BF.FOODS.map((f) => f.name.toLowerCase()));
   ok('3. Keine doppelten IDs', ids.size === BF.FOODS.length);
@@ -88,7 +93,9 @@ function run() {
     { barcode: '222', name: 'Bananenchips', source: 'openfoodfacts' },  // eigenständig
     { barcode: '333', name: 'Kartoffeln 1kg Beutel', source: 'openfoodfacts' },
   ];
-  const baseB = BF.search('Banane', 5);
+  // baseB deterministisch auf die kuratierte „Banane" begrenzen (unabhängig davon, wie
+  // viele Bananen-Varianten der importierte BLS beisteuert), damit OFF-Produkte Platz haben.
+  const baseB = [BF.toProduct(BF.buildFoods(BF.ROWS, []).find((f) => f.name === 'Banane'))];
   const merged = BF.mergeWithOff(baseB, off, 5);
   ok('16. Grundnahrung steht vor den OFF-Treffern', merged[0].source === 'grundnahrung', merged[0].source);
   ok('17. Doppelte „Banane" aus OFF wird verworfen',
@@ -100,21 +107,25 @@ function run() {
     BF.mergeWithOff([], off, 3).length === 3 && BF.mergeWithOff([], off, 3)[0].name === 'Banane');
 
   // ── 5) BLS-Integration (buildFoods) ──
-  // Ohne echte BLS-Datei liefert die App die 105 kuratierten. Mit importierter Datei
-  // wird der Datensatz erweitert – kuratierte Einträge bleiben vorn.
-  ok('22. Ohne BLS-Datei genau die kuratierten', BF.FOODS.length === 105, String(BF.FOODS.length));
+  // Reine Funktion prüfen (unabhängig davon, ob die echte BLS-Datei im Repo liegt):
+  // ohne BLS-Array genau die 105 kuratierten, mit Array entsprechend erweitert.
+  ok('22. buildFoods ohne BLS = genau die kuratierten (105)', BF.buildFoods(BF.ROWS, []).length === 105, String(BF.buildFoods(BF.ROWS, []).length));
   const blsSample = [
     { name: 'Dinkelvollkornmehl', kcal: 340, p: 12, c: 61, f: 2.5, fiber: 10, sugar: 1 },
-    { name: 'Apfel', kcal: 52, p: 0.3, c: 14, f: 0.2, fiber: 2.4, sugar: 10 },   // Dublette zu kuratiert
+    { name: 'Apfel', kcal: 52, p: 0.3, c: 14, f: 0.2, fiber: 2.4, sugar: 10 },   // exakte Dublette zu kuratiert
+    { name: 'Reis, ungeschält, roh', kcal: 349, p: 7.8, c: 74, f: 2.2, fiber: 2.2, sugar: 0.9 }, // Variante zu „Reis"
     { name: 'Grünkohl, gegart', kcal: 37, p: 4.3, c: 3, f: 0.9, fiber: 4, sugar: 1, satfat: 0.1, salt: 0.02 },
   ];
   const withBls = BF.buildFoods(BF.ROWS, blsSample);
-  ok('23. BLS erweitert den Datensatz', withBls.length > BF.FOODS.length, String(withBls.length));
+  ok('23. BLS erweitert den Datensatz (105 + 3 neue)', withBls.length === 108, String(withBls.length));
   ok('24. Neues BLS-Lebensmittel ist dabei', withBls.some((f) => f.name === 'Dinkelvollkornmehl'));
-  ok('25. Exakte Dublette „Apfel" wird nicht doppelt aufgenommen',
-    withBls.filter((f) => f.name === 'Apfel').length === 1);
-  ok('26. BLS-Eintrag trägt ges. Fett/Salz durch (für Nutri-Score)',
+  ok('25. Exakte Dublette „Apfel" wird nicht doppelt aufgenommen', withBls.filter((f) => f.name === 'Apfel').length === 1);
+  ok('26. BLS-Variante „Reis, …" bleibt trotz kuratiertem „Reis, gekocht" erhalten',
+    withBls.some((f) => f.name === 'Reis, ungeschält, roh'));
+  ok('27. BLS-Eintrag trägt ges. Fett/Salz durch (für Nutri-Score)',
     withBls.some((f) => f.name === 'Grünkohl, gegart' && f.satfat === 0.1 && f.salt === 0.02));
+  // Am echten Modul: die kuratierten sind immer dabei; mit importierter Datei ist es deutlich mehr.
+  ok('28. Kuratierte Basis immer vorhanden', BF.FOODS.length >= 105, String(BF.FOODS.length));
 
   console.log(pass ? 'BASE-FOODS PASS' : 'BASE-FOODS FAIL');
   process.exit(pass ? 0 : 1);
