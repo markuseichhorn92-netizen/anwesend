@@ -21,6 +21,7 @@
 const M = require('../../lib/members');
 const OFF = require('../../lib/openFoodFacts');
 const Catalog = require('../../lib/foodCatalog');
+const BaseFoods = require('../../lib/baseFoods');
 const NS = require('../../lib/nutriscore');
 const { hasStore } = require('../../lib/store');
 
@@ -108,15 +109,25 @@ module.exports = async function handler(req, res) {
     if (query.length < 2) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'query_too_short', message: 'Bitte mindestens 2 Zeichen eingeben.' })); }
     if (!(await M.rateLimit('off-search:' + id, 20, 3600))) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'member_rate_limited', message: 'Kurz durchatmen – gleich wieder versuchen.' })); }
     const limit = Math.max(1, Math.min(20, parseInt(body.limit, 10) || 10));
+    // Grundnahrungsmittel zuerst: offline, ohne Rate-Limit, verlässliche Werte.
+    // So findet „Kartoffeln" wieder Kartoffeln statt eines Knäckebrots mit 373 kcal.
+    const baseHits = BaseFoods.search(query, limit);
     let r; try { r = await Catalog.searchProducts(query, limit, OFF); } catch (e) { r = { ok: false, error: 'internal' }; }
     if (!r.ok) {
+      // OFF ausgelastet/aus? Solange Grundnahrungsmittel passen, ist die Suche trotzdem
+      // erfolgreich – der häufigste Fall (Alltags-Lebensmittel) funktioniert immer.
+      if (baseHits.length) {
+        res.statusCode = 200;
+        return res.end(JSON.stringify({ ok: true, products: baseHits.map(publicProduct), source: 'grundnahrung' }));
+      }
       const msg = r.error === 'rate_limited' ? 'Produktsuche ist gerade stark ausgelastet – bitte gleich nochmal oder manuell eingeben.'
         : r.error === 'not_configured' ? 'Der Produktdienst ist noch nicht konfiguriert.'
         : 'Suche gerade nicht möglich – bitte manuell eingeben.';
       res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: r.error, message: msg }));
     }
+    const merged = BaseFoods.mergeWithOff(baseHits, r.products || [], limit);
     res.statusCode = 200;
-    return res.end(JSON.stringify({ ok: true, products: (r.products || []).map(publicProduct), source: r.source }));
+    return res.end(JSON.stringify({ ok: true, products: merged.map(publicProduct), source: baseHits.length ? 'grundnahrung+' + r.source : r.source }));
   }
 
   res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'unknown_action' }));
