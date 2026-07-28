@@ -33,9 +33,16 @@ function apiBase(req) {
   const proto = req.headers['x-forwarded-proto'] || 'https';
   return host ? (proto + '://' + host) : '';
 }
+// Diagnose-Log OHNE Personenbezug: nur der Entscheidungs-Pfad + Fehlerklasse.
+// KEINE Telefonnummer, KEIN Nachrichtentext, KEINE Prompt-/Gesundheitsinhalte.
+function waLog(path, extra) { try { console.log('[wa-assist]', JSON.stringify(Object.assign({ path: path }, extra || {}))); } catch (e) {} }
 // Team-sichtbare Antwort in den Vorgang schreiben UND per WhatsApp zustellen (ein Weg).
 async function ownerReply(memberId, vorgangId, text, author) {
-  try { await SR.applyOwnerReply(memberId, vorgangId, text, { author: author || 'FINN', channel: 'whatsapp' }); } catch (e) {}
+  try {
+    const r = await SR.applyOwnerReply(memberId, vorgangId, text, { author: author || 'FINN', channel: 'whatsapp' });
+    waLog('reply', { ch: (r && r.channel) || null, ok: !!(r && r.ok) });
+    return r;
+  } catch (e) { waLog('reply_error', { name: String(e && e.name) }); return null; }
 }
 // Vorgeschichte des WhatsApp-Threads als Chatverlauf für den Coach (ohne die aktuelle
 // Frage – die steht im lokalen Vorgang noch nicht drin, weil applyMemberReply die
@@ -51,11 +58,12 @@ function buildHistory(v) {
 // WhatsApp-KI für ein bekanntes (Magicline-)Mitglied: verifizieren -> antworten,
 // heikle Themen eskalieren. Wirft nie; jeder Fehler fällt still auf den Team-Weg zurück.
 async function handleAssistant(req, memberId, msg, v) {
-  if (msg.id && !(await WAAuth.firstSeen(msg.id))) return;   // Meta-Retry nicht doppelt beantworten
+  if (msg.id && !(await WAAuth.firstSeen(msg.id))) { waLog('dup'); return; }   // Meta-Retry nicht doppelt beantworten
   const phone = msg.from;
 
   // 1) Heikle/nach außen wirkende Themen: nicht die KI, sondern ein Mensch.
   if (WAAssistant.needsEscalation(msg.text)) {
+    waLog('escalate');
     await ownerReply(memberId, v.id, 'Alles klar – da hole ich am besten einen Kollegen aus dem Team dazu. Jemand meldet sich hier bei dir. 🙌', 'System');
     return;
   }
@@ -65,20 +73,24 @@ async function handleAssistant(req, memberId, msg, v) {
   if (ver && String(ver.memberId) === String(memberId)) {
     await WAAuth.touch(phone);
     if (!(await M.rateLimit('wa-ai:' + memberId, 30, 3600))) {
+      waLog('ai_ratelimited');
       await ownerReply(memberId, v.id, 'Ich hab gerade ganz schön viele Nachrichten von dir – magst du es in ein paar Minuten nochmal versuchen? 🙏', 'System');
       return;
     }
     const ans = await WAAssistant.answer({ req: req, memberId: memberId, question: msg.text, history: buildHistory(v) });
+    waLog(ans && ans.ok ? 'answered' : 'answer_failed', { err: (ans && ans.error) || null });
     if (ans && ans.ok && ans.text) await ownerReply(memberId, v.id, ans.text, 'FINN');
     else await ownerReply(memberId, v.id, 'Das kann ich dir gerade nicht sicher beantworten – ein Kollege schaut hier drauf und meldet sich. 🙌', 'System');
     return;
   }
+  if (ver) waLog('verify_mismatch');   // Nummer verifiziert, aber für ein anderes Mitglied -> neu verifizieren
 
   // 3) Nicht (mehr) verifiziert: Bestätigungs-Link schicken (Anti-Spam: max. 3/Tag).
-  if (!(await M.rateLimit('wa-link:' + WAAuth.normPhone(phone), 3, 86400))) return;
+  if (!(await M.rateLimit('wa-link:' + WAAuth.normPhone(phone), 3, 86400))) { waLog('link_ratelimited'); return; }
   const chal = await WAAuth.createChallenge(phone, memberId);
   const base = apiBase(req);
-  if (!chal || !base) return;
+  if (!chal || !base) { waLog('link_blocked', { chal: !!chal, base: !!base }); return; }
+  waLog(chal.reused ? 'link_reused' : 'link_sent');
   const link = base + '/wa-verify.html?token=' + encodeURIComponent(chal.token);
   await ownerReply(memberId, v.id,
     'Hi! Schön, dass du dich meldest. 😊 Damit ich dir hier sicher zu deinem Vertrag, deinen Terminen, deinem Training und deiner Ernährung antworten darf, bestätige bitte einmal kurz, dass du es wirklich bist:\n' + link + '\nDanach beantworte ich deine Fragen direkt hier – dauert nur eine Minute.',
@@ -167,14 +179,21 @@ module.exports = async function handler(req, res) {
       const v = open || await createWaVorgang(memberId, msg.from, msg.name, snapshot);
       if (!v) continue;
       await SR.applyMemberReply(memberId, v.id, msg.text); handled++;
+      // Diagnose (ohne Personenbezug): wurde die Nummer als Mitglied erkannt und ist
+      // die WhatsApp-KI überhaupt scharf? So sieht man in den Logs sofort, warum ggf.
+      // nichts passiert (Nummer nicht erkannt -> Lead; Flag aus; AI/WhatsApp fehlt).
+      waLog('inbound', {
+        known: !isLead, via: isLead ? 'lead' : (linked && linked.id ? 'linked' : 'phone'),
+        gate: !!(WA_ASSISTANT && AI.hasAI && WA.hasWhatsApp), flag: WA_ASSISTANT, ai: !!AI.hasAI, wa: !!WA.hasWhatsApp,
+      });
       if (isLead) {
         const fresh = await Inbox.get(memberId, v.id);
         await LF.onLeadMessage({ memberId: memberId, vorgang: fresh || v, phone: msg.from, profileName: msg.name, firstContact: firstContact });
       } else if (WA_ASSISTANT && AI.hasAI && WA.hasWhatsApp) {
         // Bekanntes Mitglied: WhatsApp-KI (verifiziert antworten / sonst Bestätigungs-Link).
-        try { await handleAssistant(req, memberId, msg, v); } catch (e) { /* still: Team-Weg bleibt */ }
+        try { await handleAssistant(req, memberId, msg, v); } catch (e) { waLog('error', { name: String(e && e.name) }); }
       }
-    } catch (e) { /* einzelne Nachricht darf den Lauf nicht abbrechen */ }
+    } catch (e) { waLog('loop_error', { name: String(e && e.name) }); }
   }
 
   // Zustell-/Lesestatus (gesendet/zugestellt/gelesen/fehlgeschlagen) auf die passende
