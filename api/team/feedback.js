@@ -51,7 +51,8 @@ module.exports = async function handler(req, res) {
     const c = await FB.startCampaign({ title: title, text: text });
     if (!c.ok) return j(res, 200, { ok: false, message: 'Aktion konnte nicht gestartet werden.' });
     let recipients = 0, pushSent = 0, capped = false;
-    try { const r = await Outreach.sendBroadcast({ segment: 'app', title: title, body: text, channels: { push: true } }); recipients = r.recipients || 0; pushSent = r.pushSent || 0; capped = !!r.capped; } catch (e) {}
+    // Deep-Link ?fb=1 + Datenfeld: Tippen auf die Push öffnet direkt das Feedback-Fenster.
+    try { const r = await Outreach.sendBroadcast({ segment: 'app', title: title, body: text, channels: { push: true }, query: '?fb=1', data: { action: 'feedback' } }); recipients = r.recipients || 0; pushSent = r.pushSent || 0; capped = !!r.capped; } catch (e) {}
     return j(res, 200, { ok: true, campaign: c.campaign, recipients: recipients, pushSent: pushSent, capped: capped });
   }
   if (action === 'campaign-stop') {

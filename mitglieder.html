@@ -792,11 +792,14 @@
   function loadMe(){
     return api('/api/member/me').then(function(d){ DATA.profile=d.profile||null; DATA.contract=d.contract||null; DATA.membershipActive=(d.membershipActive!==false); DATA.meLoaded=true; DATA.feedbackPrompt=(d&&d.feedbackPrompt)||null; try{ if(window.FitInnNative) FitInnNative.onAuthed(TOKEN); }catch(e){} });
   }
-  // Vom Team ausgelöste „Bitte um Feedback": beim nächsten Öffnen EINMAL das Feedback-
-  // Fenster auf der Startseite öffnen. Dass die Aktion gesehen wurde, wird nur LOKAL
-  // gemerkt (kein Personenbezug); der Feedback-Banner auf der Startseite bleibt ohnehin.
-  // Wird aus scrHome aufgerufen (Startseite ist dann sicher aktiv); das Öffnen selbst
-  // wird kurz verzögert, um kein render() aus dem laufenden render() auszulösen.
+  // Feedback-Fenster öffnen – kurz verzögert, um kein render() aus dem laufenden
+  // render() auszulösen. camp (optional) zeigt den Text der Team-Aktion oben an.
+  function fbSheetOpen(camp){
+    setTimeout(function(){ if(!S.fbOpen&&TOKEN&&S.screen!=='login') setS({fbOpen:true, fbSent:false, fbErr:'', fbBusy:false, fbCampaign:camp||null, fbCat:'sonstiges'}); },80);
+  }
+  // Vom Team ausgelöste „Bitte um Feedback": beim nächsten Öffnen EINMAL automatisch
+  // auf der Startseite zeigen. „Gesehen" wird nur LOKAL gemerkt (kein Personenbezug);
+  // der Feedback-Banner auf der Startseite bleibt ohnehin erreichbar.
   function maybeFeedbackPrompt(camp){
     try{
       if(!camp||!camp.id) return;
@@ -804,9 +807,22 @@
       var seen=''; try{ seen=localStorage.getItem('fi_fb_campaign')||''; }catch(e){}
       if(seen===String(camp.id)) return;
       try{ localStorage.setItem('fi_fb_campaign',String(camp.id)); }catch(e){}
-      setTimeout(function(){ if(!S.fbOpen&&S.screen==='home'&&TOKEN) setS({fbOpen:true, fbSent:false, fbErr:'', fbBusy:false, fbCampaign:camp, fbCat:'sonstiges'}); },80);
+      fbSheetOpen(camp);
     }catch(e){}
   }
+  // Push-Tap-Pfad („?fb=1" oder nativer Hook): bewusst getippt -> IMMER öffnen, auch
+  // wenn die Aktion schon einmal gezeigt wurde. Markiert sie als gesehen, damit sie
+  // beim nächsten Start nicht zusätzlich automatisch aufpoppt.
+  var fbPushPending=false;
+  function fbFromPush(){
+    try{
+      var camp=DATA.feedbackPrompt||null;
+      if(camp&&camp.id){ try{ localStorage.setItem('fi_fb_campaign',String(camp.id)); }catch(e){} }
+      fbSheetOpen(camp);
+    }catch(e){}
+  }
+  // Nativer Hook: die App-Hülle kann dies beim Antippen einer Feedback-Push aufrufen.
+  try{ window.__fitinnFeedbackPush=function(){ fbPushPending=true; try{ if(TOKEN&&S.screen!=='login'){ if(S.screen!=='home') nav('home'); else render(); } }catch(e){} }; }catch(e){}
   // Profil + Postfach frisch laden und neu zeichnen (nach Daten-Aktionen).
   function refreshMe(){ return loadMe().then(function(){ render(); }).catch(function(){}); }
   // Alle Kerndaten neu laden (beim Zurückkehren in die App / nach größeren Aktionen).
@@ -2242,7 +2258,8 @@
   function scrHome(){
     if(isFormer()) return scrRejoin();
     loadFinnTip(); loadInsta(); loadTypical(); loadLive(); loadHours();
-    maybeFeedbackPrompt(DATA.feedbackPrompt);   // vom Team ausgelöste Feedback-Bitte einmalig als Fenster zeigen
+    if(fbPushPending){ fbPushPending=false; fbFromPush(); }   // Push getippt -> Feedback-Fenster direkt öffnen
+    else maybeFeedbackPrompt(DATA.feedbackPrompt);            // sonst: Team-Bitte einmalig automatisch zeigen
     if(ERN_ON&&DATA.nutri==null) loadNutri();   // Ernährungs-Karte auf der Startseite mit Live-Daten füttern
     if(SOCIAL_ON&&DATA.social==null) loadSocial();   // Trainingspartner-Karte auf der Startseite mit Live-Daten füttern
     if(DATA.checkins==null) loadCheckins();      // fürs Vitalalter (Aktivität) auf der Startseite
@@ -12911,6 +12928,9 @@
   // Anmeldung wird direkt eingecheckt (Face-ID-Gate greift wie beim manuellen
   // Check-in). Kein Standort-Check. Wiederholtes Auslösen ist per 8s-Sperre entkoppelt.
   var NFC=null; try{ NFC=new URL(window.location.href).searchParams.get('nfc'); }catch(e){}
+  // Feedback-Push getippt: die Nachricht öffnet .../mitglieder?fb=1 -> Feedback-Fenster
+  // direkt zeigen (die Startseite löst es aus). Parameter danach aus der URL entfernen.
+  try{ var FBP=new URL(window.location.href).searchParams.get('fb'); if(FBP){ fbPushPending=true; var _u=new URL(window.location.href); _u.searchParams.delete('fb'); window.history.replaceState({}, document.title, _u.pathname+_u.search+_u.hash); } }catch(e){}
   var __nfcAt=0;
   function nfcArrive(){
     var now=Date.now(); if(now-__nfcAt<8000) return; __nfcAt=now;
