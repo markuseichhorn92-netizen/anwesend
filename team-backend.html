@@ -157,7 +157,7 @@ var S={ token:null, role:null, meName:null, screen:'dash', convs:[], counts:{}, 
         // App-Tester: Anmeldungen für den geschlossenen Google-Play-Test
         testers:[], testersLoaded:false, testersLoading:false, testersErr:false, testersPending:0, testerBusy:'', testerMsg:'',
         // App-Feedback (anonym aus der Mitglieder-App)
-        feedback:[], fbLoaded:false, fbLoading:false, fbErr:false, fbOpenCount:0, fbTotal:0, fbFilter:'open', fbBusy:'', fbMsg:'',
+        feedback:[], fbLoaded:false, fbLoading:false, fbErr:false, fbOpenCount:0, fbTotal:0, fbFilter:'open', fbBusy:'', fbMsg:'', fbCampaign:null, fbCampBusy:false,
         // Neue Mitglieder: zuletzt beigetreten (aus Magicline-Webhook CONTRACT_CREATED)
         newMembers:[], newMembersLoaded:false, newMembersLoading:false, newMembersErr:false, newMembersDisabled:false,
         // Kassenbuch: Barkasse pro Monat (nur Admin) – editierbarer Entwurf + gespeicherte Monate
@@ -3236,7 +3236,7 @@ function testerNode(){
 var FB_CAT={ bug:['🐞','Fehler','#FCEBEA','#b53a2c'], idee:['💡','Idee','#FFF7EC','#9a6112'], lob:['❤️','Lob','#E7F6EC','#1d7a3e'], sonstiges:['💬','Sonstiges','#eef2f3','#5a6b70'] };
 async function loadFeedback(){
   S.fbLoading=true; render();
-  try{ var r=await tapi('/api/team/feedback'); if(r&&r.ok){ S.feedback=r.items||[]; S.fbOpenCount=r.open||0; S.fbTotal=r.total||0; S.fbErr=false; } else S.fbErr=!(S.feedback&&S.feedback.length); S.fbLoaded=true; }
+  try{ var r=await tapi('/api/team/feedback'); if(r&&r.ok){ S.feedback=r.items||[]; S.fbOpenCount=r.open||0; S.fbTotal=r.total||0; S.fbCampaign=r.campaign||null; S.fbErr=false; } else S.fbErr=!(S.feedback&&S.feedback.length); S.fbLoaded=true; }
   catch(e){ S.fbErr=!(S.feedback&&S.feedback.length); }
   S.fbLoading=false; render();
 }
@@ -3274,6 +3274,29 @@ async function fbDelete(id){
   catch(e){ S.fbMsg='Netzwerkfehler.'; }
   S.fbBusy=''; render();
 }
+// „Bitte um Feedback"-Aktion starten: Push an alle App-Nutzer + Feedback-Fenster
+// beim nächsten App-Start aktivieren.
+async function fbStartCampaign(){
+  if(S.fbCampBusy) return;
+  var t=String(((document.getElementById('fbcamp_title')||{}).value)||'').trim();
+  var x=String(((document.getElementById('fbcamp_text')||{}).value)||'').trim();
+  if(!x){ S.fbMsg='Bitte einen kurzen Text für die Bitte um Feedback eingeben.'; render(); return; }
+  if(!window.confirm('Push an alle App-Nutzer senden und das Feedback-Fenster aktivieren?')) return;
+  S.fbCampBusy=true; S.fbMsg=''; render();
+  try{ var r=await tapi('/api/team/feedback',{method:'POST',body:{action:'campaign-start',title:t,text:x}});
+    if(r&&r.ok){ S.fbCampaign=r.campaign||null; S.fbMsg='Aktion gestartet · Push an '+(r.pushSent||0)+' App-Nutzer'+(r.capped?' (max. 500)':'')+'. Beim nächsten App-Start erscheint das Feedback-Fenster.'; }
+    else S.fbMsg=(r&&r.message)||'Konnte nicht gestartet werden.'; }
+  catch(e){ S.fbMsg='Netzwerkfehler.'; }
+  S.fbCampBusy=false; render();
+}
+async function fbStopCampaign(){
+  if(S.fbCampBusy) return;
+  if(!window.confirm('Feedback-Aktion beenden? Neue App-Öffnungen zeigen dann kein Feedback-Fenster mehr.')) return;
+  S.fbCampBusy=true; S.fbMsg=''; render();
+  try{ var r=await tapi('/api/team/feedback',{method:'POST',body:{action:'campaign-stop'}}); if(r&&r.ok){ S.fbCampaign=null; S.fbMsg='Aktion beendet.'; } else S.fbMsg=(r&&r.message)||'Konnte nicht beenden.'; }
+  catch(e){ S.fbMsg='Netzwerkfehler.'; }
+  S.fbCampBusy=false; render();
+}
 function feedbackNode(){
   var node=el('<div style="flex:1;overflow-y:auto;padding:20px 22px 90px"></div>');
   if(S.fbLoading && !(S.feedback&&S.feedback.length)){ node.innerHTML='<div style="padding:60px 22px;text-align:center;color:#8a929a;font-weight:700">Lade Feedback …</div>'; return node; }
@@ -3287,6 +3310,19 @@ function feedbackNode(){
   var openList=all.filter(function(f){ return f.status!=='done'; });
   var msg=S.fbMsg?'<div style="background:#e7f1f3;border:1px solid #cfe0e3;color:#0a4958;border-radius:12px;padding:11px 14px;font-size:13px;font-weight:700;margin-bottom:14px">'+esc(S.fbMsg)+'</div>':'';
   var intro='<div style="background:#fff;border:1px solid #e1e8ea;border-radius:16px;padding:14px 16px;margin-bottom:14px;font-size:12.5px;color:#5a636a;font-weight:600;line-height:1.6">Feedback der Mitglieder aus der App – <b>anonym</b> (kein Name, keine Mitgliedsnummer). Mit dabei sind nur technische Angaben zur Fehlersuche. Mit <b>„Für Claude kopieren"</b> nimmst du ein Feedback (oder alle offenen) mit in den Chat.</div>';
+  // ── „Um Feedback bitten"-Aktion: Push an alle App-Nutzer + Feedback-Fenster ──
+  var camp=S.fbCampaign;
+  var campCard='<div style="background:#fff;border:1px solid #e1e8ea;border-radius:16px;padding:16px;margin-bottom:14px">'+
+    '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><span style="font-size:17px">📣</span><div style="font-size:14px;font-weight:900;color:#15171b">Um Feedback bitten</div></div>'+
+    '<div style="font-size:12px;color:#5a636a;font-weight:600;line-height:1.55;margin-bottom:12px">Sendet allen App-Nutzern eine <b>Push-Nachricht</b>. Beim nächsten Öffnen der App erscheint bei ihnen automatisch das <b>Feedback-Fenster</b> mit deinem Text.</div>'+
+    ((camp&&camp.id)
+      ? '<div style="background:#e7f6ec;border:1px solid #bfe3cd;border-radius:12px;padding:11px 13px;font-size:12.5px;color:#176b37;font-weight:700;line-height:1.5">✓ Aktion läuft'+(camp.createdAt?(' · seit '+esc(fbDate(camp.createdAt))):'')+'.</div>'+
+        '<div style="font-size:12.5px;color:#42454b;font-weight:600;background:#f4f7f7;border-radius:10px;padding:10px 12px;margin-top:8px;white-space:pre-wrap;word-break:break-word">'+esc(camp.text||'')+'</div>'+
+        '<button data-fbcampstop="1"'+(S.fbCampBusy?' disabled':'')+' style="margin-top:12px;border:1.5px solid #e3b8b1;background:#fff;border-radius:11px;font-size:13px;font-weight:800;padding:10px 15px;color:#b53a2c;cursor:'+(S.fbCampBusy?'default':'pointer')+'">'+(S.fbCampBusy?'…':'Aktion beenden')+'</button>'
+      : '<input id="fbcamp_title" value="Deine Meinung zählt" maxlength="80" style="width:100%;box-sizing:border-box;border:1px solid #dfe6e8;border-radius:10px;padding:10px 12px;font-size:13.5px;font-weight:700;color:#15171b;font-family:inherit;margin-bottom:9px" />'+
+        '<textarea id="fbcamp_text" rows="3" maxlength="400" placeholder="Kurze Bitte um Feedback …" style="width:100%;box-sizing:border-box;border:1px solid #dfe6e8;border-radius:10px;padding:10px 12px;font-size:13.5px;font-weight:600;color:#15171b;font-family:inherit;resize:vertical;line-height:1.5">Wir arbeiten laufend an der App und würden uns riesig über dein kurzes Feedback freuen. Tippen genügt – danke dir! 🙌</textarea>'+
+        '<button data-fbcampstart="1"'+(S.fbCampBusy?' disabled':'')+' style="margin-top:12px;width:100%;border:none;background:'+TEAL+';border-radius:12px;font-size:13.5px;font-weight:900;padding:12px 14px;color:#fff;cursor:'+(S.fbCampBusy?'default':'pointer')+';opacity:'+(S.fbCampBusy?'.6':'1')+'">'+(S.fbCampBusy?'Wird gesendet …':'Push senden & Feedback-Fenster aktivieren')+'</button>')+
+  '</div>';
   var stat=function(n,l,c){ return '<div style="flex:1;min-width:84px;background:#fff;border:1px solid #e1e8ea;border-radius:14px;padding:13px 14px"><div style="font-size:22px;font-weight:900;color:'+(c||'#15171b')+'">'+n+'</div><div style="font-size:11.5px;color:#8a929a;font-weight:700;margin-top:2px">'+l+'</div></div>'; };
   var stats='<div style="display:flex;gap:10px;margin-bottom:14px">'+stat(S.fbTotal||all.length,'Gesamt')+stat(S.fbOpenCount,'Offen',(S.fbOpenCount?'#C77A2E':'#8a929a'))+'</div>';
   var actions=openList.length?('<div style="margin-bottom:14px"><button data-fbcopyall="1" style="width:100%;border:none;background:'+TEAL+';border-radius:12px;font-size:13px;font-weight:900;padding:12px 14px;color:#fff;cursor:pointer">Alle offenen für Claude kopieren ('+openList.length+')</button></div>'):'';
@@ -3310,7 +3346,9 @@ function feedbackNode(){
     '</div>';
   };
   var listHtml=list.length?list.map(row).join(''):'<div style="padding:40px 22px;text-align:center;color:#8a929a;font-weight:700;background:#fff;border:1px solid #e1e8ea;border-radius:16px">'+(all.length?'Nichts in dieser Ansicht.':'Noch kein Feedback eingegangen.')+'</div>';
-  node.innerHTML=msg+intro+stats+actions+tabs+listHtml;
+  node.innerHTML=msg+intro+campCard+stats+actions+tabs+listHtml;
+  var csb=node.querySelector('[data-fbcampstart]'); if(csb) csb.onclick=fbStartCampaign;
+  var cxb=node.querySelector('[data-fbcampstop]'); if(cxb) cxb.onclick=fbStopCampaign;
   var ca=node.querySelector('[data-fbcopyall]'); if(ca) ca.onclick=function(){ var txt=openList.map(fbReport).join('\n\n──────────\n\n'); fbCopy(txt, openList.length+' offene Feedbacks kopiert – im Chat einfügen.'); };
   node.querySelectorAll('[data-fbfilter]').forEach(function(b){ b.onclick=function(){ S.fbFilter=b.getAttribute('data-fbfilter'); render(); }; });
   node.querySelectorAll('[data-fbcopy]').forEach(function(b){ b.onclick=function(){ var id=b.getAttribute('data-fbcopy'); var f=(S.feedback||[]).filter(function(x){ return x.id===id; })[0]; if(f) fbCopy(fbReport(f),'Feedback kopiert – im Chat einfügen.'); }; });

@@ -6,6 +6,7 @@
  */
 
 const M = require('../../lib/members');
+const FB = require('../../lib/feedback');
 
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json');
@@ -20,8 +21,12 @@ module.exports = async function handler(req, res) {
     // Aktive Mitgliedschaft? Fail-safe: bei Fehler NICHT aussperren (true);
     // kein Vertrag -> ehemalig/nie (false); sonst contract.active.
     const membershipActive = contractError ? true : (contract ? contract.active !== false : false);
+    // Aktive „Bitte um Feedback"-Aktion (falls vom Team gestartet) mitgeben – die App
+    // öffnet daraufhin beim nächsten Start einmalig das Feedback-Fenster. Best effort.
+    let feedbackPrompt = null;
+    try { feedbackPrompt = await FB.getCampaign(); } catch (e) {}
     res.statusCode = 200;
-    return res.end(JSON.stringify({ ok: true, profile: M.publicProfile(m), contract: contract, membershipActive: membershipActive }));
+    return res.end(JSON.stringify({ ok: true, profile: M.publicProfile(m), contract: contract, membershipActive: membershipActive, feedbackPrompt: feedbackPrompt }));
   } catch (err) {
     console.error('[member/me]', err.message);
     res.statusCode = 500; return res.end(JSON.stringify({ error: 'server_error' }));

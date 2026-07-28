@@ -537,7 +537,7 @@
     finnOpen:false, finnTopic:'', finnMsgs:[], finnBusy:false, finnTip:'', finnTipLoaded:false,
     vaOpen:false, vaMsgs:[], vaBusy:false, vaInput:'', vaIntent:'',
     qaOpen:false, dp:null,
-    fbOpen:false, fbCat:'bug', fbText:'', fbBusy:false, fbSent:false, fbErr:'',
+    fbOpen:false, fbCat:'bug', fbText:'', fbBusy:false, fbSent:false, fbErr:'', fbCampaign:null,
     blogSel:null, blogPost:null, instaSel:null,
     obStep:0, obGoal:'Gesundheit & Longevity', obFreq:3, obAge:34, obExp:'gelegentlich', obMemConsent:false,
     obPrefilled:false, obServerChecked:false, obSex:'', obHeightCm:null, obWeightKg:null, obTargetWeight:null, obTrainTime:'', obLikes:[], obDislikes:[],
@@ -790,7 +790,22 @@
 
   // ---- data loading ----
   function loadMe(){
-    return api('/api/member/me').then(function(d){ DATA.profile=d.profile||null; DATA.contract=d.contract||null; DATA.membershipActive=(d.membershipActive!==false); DATA.meLoaded=true; try{ if(window.FitInnNative) FitInnNative.onAuthed(TOKEN); }catch(e){} });
+    return api('/api/member/me').then(function(d){ DATA.profile=d.profile||null; DATA.contract=d.contract||null; DATA.membershipActive=(d.membershipActive!==false); DATA.meLoaded=true; DATA.feedbackPrompt=(d&&d.feedbackPrompt)||null; try{ if(window.FitInnNative) FitInnNative.onAuthed(TOKEN); }catch(e){} });
+  }
+  // Vom Team ausgelöste „Bitte um Feedback": beim nächsten Öffnen EINMAL das Feedback-
+  // Fenster auf der Startseite öffnen. Dass die Aktion gesehen wurde, wird nur LOKAL
+  // gemerkt (kein Personenbezug); der Feedback-Banner auf der Startseite bleibt ohnehin.
+  // Wird aus scrHome aufgerufen (Startseite ist dann sicher aktiv); das Öffnen selbst
+  // wird kurz verzögert, um kein render() aus dem laufenden render() auszulösen.
+  function maybeFeedbackPrompt(camp){
+    try{
+      if(!camp||!camp.id) return;
+      if(S.fbOpen||!obDone()) return;                      // kein Overlay über Overlay, nicht im Onboarding
+      var seen=''; try{ seen=localStorage.getItem('fi_fb_campaign')||''; }catch(e){}
+      if(seen===String(camp.id)) return;
+      try{ localStorage.setItem('fi_fb_campaign',String(camp.id)); }catch(e){}
+      setTimeout(function(){ if(!S.fbOpen&&S.screen==='home'&&TOKEN) setS({fbOpen:true, fbSent:false, fbErr:'', fbBusy:false, fbCampaign:camp, fbCat:'sonstiges'}); },80);
+    }catch(e){}
   }
   // Profil + Postfach frisch laden und neu zeichnen (nach Daten-Aktionen).
   function refreshMe(){ return loadMe().then(function(){ render(); }).catch(function(){}); }
@@ -2216,6 +2231,7 @@
     return '<div class="ciOverlay" data-act="fbClose" style="align-items:flex-end;justify-content:center;padding:0">'+
       '<div data-act="noop" style="width:100%;max-width:480px;background:var(--surface);border-radius:24px 24px 0 0;box-shadow:0 -14px 44px rgba(4,33,40,.35);padding:20px 18px calc(20px + env(safe-area-inset-bottom,0px));animation:fiUp .28s ease">'+
       '<div style="display:flex;align-items:center;gap:11px;margin-bottom:6px"><div style="font-size:19px;font-weight:900;color:var(--text);flex:1">Feedback geben</div><button data-act="fbClose" aria-label="Schließen" style="width:34px;height:34px;border-radius:11px;border:none;background:var(--surface-2);display:flex;align-items:center;justify-content:center;cursor:pointer">'+svg('<path d="M6 6l12 12M6 18L18 6"></path>',{c:'var(--text-soft)',w:2.2,s:18})+'</button></div>'+
+      ((S.fbCampaign&&S.fbCampaign.text)?('<div style="background:linear-gradient(150deg,#12879c,#0a4958);color:#fff;border-radius:14px;padding:12px 14px;margin:8px 0 4px;font-size:13.5px;font-weight:600;line-height:1.5">'+esc(S.fbCampaign.text)+'</div>'):'')+
       '<div style="display:flex;gap:8px;margin:10px 0 12px">'+chips+'</div>'+
       '<textarea id="fb_text" rows="4" placeholder="Was ist dir aufgefallen? Je konkreter, desto besser können wir helfen." style="width:100%;border:1.5px solid var(--border);border-radius:14px;background:var(--surface-2);color:var(--text);font-size:14.5px;padding:13px;resize:vertical;box-sizing:border-box;font-family:inherit">'+esc(S.fbText||'')+'</textarea>'+
       err+
@@ -2226,6 +2242,7 @@
   function scrHome(){
     if(isFormer()) return scrRejoin();
     loadFinnTip(); loadInsta(); loadTypical(); loadLive(); loadHours();
+    maybeFeedbackPrompt(DATA.feedbackPrompt);   // vom Team ausgelöste Feedback-Bitte einmalig als Fenster zeigen
     if(ERN_ON&&DATA.nutri==null) loadNutri();   // Ernährungs-Karte auf der Startseite mit Live-Daten füttern
     if(SOCIAL_ON&&DATA.social==null) loadSocial();   // Trainingspartner-Karte auf der Startseite mit Live-Daten füttern
     if(DATA.checkins==null) loadCheckins();      // fürs Vitalalter (Aktivität) auf der Startseite
@@ -11151,8 +11168,8 @@
     qaOpen:function(){ if(!DATA.account && typeof loadAccount==='function'){ try{ loadAccount(); }catch(e){} } setQuiet({qaOpen:true}); },
     qaClose:function(){ setQuiet({qaOpen:false}); },
     // App-Feedback (anonym -> Team-Backend)
-    fbOpen:function(){ S.qaOpen=false; setS({fbOpen:true, fbSent:false, fbErr:'', fbBusy:false}); },
-    fbClose:function(){ setS({fbOpen:false, fbSent:false, fbErr:'', fbBusy:false}); },
+    fbOpen:function(){ S.qaOpen=false; setS({fbOpen:true, fbSent:false, fbErr:'', fbBusy:false, fbCampaign:null}); },
+    fbClose:function(){ setS({fbOpen:false, fbSent:false, fbErr:'', fbBusy:false, fbCampaign:null}); },
     fbCat:function(a){ for(var i=0;i<FB_CATS.length;i++){ if(FB_CATS[i][0]===a){ var el=document.getElementById('fb_text'); if(el) S.fbText=el.value; setS({fbCat:a}); return; } } },
     fbSubmit:function(){
       if(S.fbBusy) return;

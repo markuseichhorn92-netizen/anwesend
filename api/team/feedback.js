@@ -14,6 +14,7 @@ const TA = require('../../lib/teamAuth');
 const Cap = require('../../lib/capabilities');
 const M = require('../../lib/members');   // readBody
 const FB = require('../../lib/feedback');
+const Outreach = require('../../lib/outreach');
 
 function j(res, code, obj) { res.statusCode = code; return res.end(JSON.stringify(obj)); }
 
@@ -27,7 +28,8 @@ module.exports = async function handler(req, res) {
 
   if (req.method === 'GET') {
     const l = await FB.list({ limit: 300 });
-    return j(res, 200, { ok: true, hasStore: FB.hasStore, items: l.items, total: l.total, open: l.open });
+    let campaign = null; try { campaign = await FB.getCampaign(); } catch (e) {}
+    return j(res, 200, { ok: true, hasStore: FB.hasStore, items: l.items, total: l.total, open: l.open, campaign: campaign });
   }
 
   if (req.method !== 'POST') return j(res, 405, { ok: false, error: 'method_not_allowed' });
@@ -36,6 +38,28 @@ module.exports = async function handler(req, res) {
   let body = {};
   try { body = await M.readBody(req); } catch (e) { body = {}; }
   const action = String((body && body.action) || '');
+
+  // ── „Bitte um Feedback"-Aktion starten/beenden (nur Admin) ──
+  // Start sendet zugleich einen Push an alle App-Nutzer; beim nächsten App-Start
+  // erscheint das Feedback-Fenster mit dem hinterlegten Text.
+  if (action === 'campaign-start') {
+    if (!TA.isAdmin(sess)) return j(res, 403, { ok: false, error: 'forbidden', message: 'Nur Admins können eine Feedback-Aktion starten.' });
+    if (!(await M.rateLimit('broadcast', 20, 3600))) return j(res, 429, { ok: false, message: 'Zu viele Aktionen – bitte kurz warten.' });
+    const title = String((body && body.title) || '').trim() || 'Deine Meinung zählt';
+    const text = String((body && body.text) || '').trim();
+    if (!text) return j(res, 200, { ok: false, message: 'Bitte einen kurzen Text für die Bitte um Feedback eingeben.' });
+    const c = await FB.startCampaign({ title: title, text: text });
+    if (!c.ok) return j(res, 200, { ok: false, message: 'Aktion konnte nicht gestartet werden.' });
+    let recipients = 0, pushSent = 0, capped = false;
+    try { const r = await Outreach.sendBroadcast({ segment: 'app', title: title, body: text, channels: { push: true } }); recipients = r.recipients || 0; pushSent = r.pushSent || 0; capped = !!r.capped; } catch (e) {}
+    return j(res, 200, { ok: true, campaign: c.campaign, recipients: recipients, pushSent: pushSent, capped: capped });
+  }
+  if (action === 'campaign-stop') {
+    if (!TA.isAdmin(sess)) return j(res, 403, { ok: false, error: 'forbidden' });
+    await FB.stopCampaign();
+    return j(res, 200, { ok: true, campaign: null });
+  }
+
   const id = String((body && body.id) || '');
   if (!id) return j(res, 400, { ok: false, error: 'id_required' });
 
