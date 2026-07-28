@@ -33,8 +33,11 @@ function run() {
   const rFail = WAAgent.replyFor([{ ok: false, message: 'Ich konnte kein Lebensmittel erkennen – beschreib es bitte etwas genauer.' }]);
   ok('11. Fehlschlag: klare Meldung', /kein Lebensmittel erkennen/.test(rFail), rFail);
 
-  ok('12. Werkzeuge vorhanden (log_food, add_water, nutrition_today)',
-    WAAgent.ACTION_TOOLS.map((t) => t.name).sort().join(',') === 'add_water,log_food,nutrition_today');
+  const toolNames = WAAgent.ACTION_TOOLS.map((t) => t.name);
+  const expected = ['log_food', 'add_water', 'nutrition_today', 'list_appointments', 'cancel_appointment', 'list_bookable_types', 'find_appointment_slots', 'book_appointment', 'log_weight_checkin', 'log_workout'];
+  const missing = expected.filter((n) => toolNames.indexOf(n) < 0);
+  ok('12. Alle Aktions-Werkzeuge vorhanden (Ernährung, Termine, Gewicht, Training)', missing.length === 0, 'fehlt: ' + missing.join(', '));
+  ok('13. Jedes Werkzeug hat name + input_schema', WAAgent.ACTION_TOOLS.every((t) => t.name && t.input_schema && t.input_schema.type === 'object'));
 
   console.log(pass ? 'WA-AGENT PASS' : 'WA-AGENT FAIL');
   process.exit(pass ? 0 : 1);

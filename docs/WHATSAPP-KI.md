@@ -33,12 +33,30 @@ gemünzten, kurzlebigen Mitglieds-Session (`lib/waAgent.js`). Phase 1:
 - **Wasser:** „2 Gläser Wasser" / „0,5 l getrunken" → `water`.
 - **Tagesstand:** „Wie viele Kalorien habe ich heute noch?" → `state`.
 
-Ablauf: EIN KI-Aufruf entscheidet Werkzeug + Argumente (Tool Use), die Bestätigung
-wird deterministisch getextet (kein zweiter KI-Aufruf). Ist die Nachricht keine
-Ernährungs-Aktion, übernimmt der normale FINN-Coach die Antwort. Freemium/Quota
-und Guardrails gelten unverändert – die Endpunkte prüfen das KI-Kontingent selbst,
-es wird nichts umgangen. Weitere Aktionen (z. B. Termine buchen) sind als nächste
-Werkzeuge in `lib/waAgent.js` ergänzbar.
+Weitere Aktionen (`lib/waAgent.js`, Tool-Use-Loop):
+
+- **Foto-Tracking:** Mahlzeit fotografieren → FINN erkennt & trägt ein
+  (`estimate-photo` + `confirm-log`). Bild-Download: Twilio `MediaUrl` (Basic-Auth),
+  Meta media-id via Graph + Token (`lib/whatsapp.fetchMedia`).
+- **Termine:** anzeigen, absagen, buchen (`list_bookable_types` →
+  `find_appointment_slots` → `book_appointment`; FINN bucht nur einen bestätigten
+  Slot, sonst schlägt es Slots vor).
+- **Gewicht/Erfolgskontrolle:** `log_weight_checkin` (nur für Coaching-Teilnehmer;
+  sonst erklärt FINN das).
+- **Trainingseinheit:** `log_workout` (nutzt den Workouts-Endpunkt; dessen Gates –
+  Premium + Vital-Check-Einwilligung – gelten unverändert).
+
+Ablauf: ein bounded Tool-Use-Loop (max. 5 Schritte) – die KI orchestriert
+mehrstufige Abläufe (z. B. Terminbuchung) und formuliert die Abschluss-Antwort.
+Ist die Nachricht keine Aktion, übernimmt der normale FINN-Coach. Freemium/Quota
+und Guardrails der Endpunkte gelten unverändert – es wird nichts umgangen.
+
+## Team-Benachrichtigung nur bei Eskalation
+
+Nachrichten, die FINN selbst erledigt (Antwort, Tracking, Foto, Termin), werden
+STILL ins Postfach protokolliert – ohne Team-Push, nicht als „neu"/ungelesen. Das
+Team bekommt eine **E-Mail + Push nur bei Eskalation**: heikle Themen oder wenn
+FINN nicht sicher antworten kann (`Inbox.alertTeam` + `SR.notifyStudio`).
 
 ## Automatisch + Eskalation
 
