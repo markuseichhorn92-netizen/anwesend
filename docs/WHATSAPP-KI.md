@@ -22,6 +22,24 @@ Termine, Besuche, Beitragskonto, Training, Ernährung) direkt über WhatsApp –
    (`WA_VERIFY_TTL_DAYS`, Default 60). Bei Aktivität verlängert sie sich; nach
    Ablauf (längere Pause) ist eine erneute Bestätigung nötig.
 
+## App-Aktionen (nicht nur Antworten)
+
+Verifizierte Mitglieder können über WhatsApp echte App-Aktionen auslösen – FINN
+nutzt dieselben Endpunkte wie die App (`/api/member/nutrition`) mit einer intern
+gemünzten, kurzlebigen Mitglieds-Session (`lib/waAgent.js`). Phase 1:
+
+- **Essen tracken:** „Ich hatte mittags 200 g Hähnchen mit Reis" → FINN schätzt
+  Kalorien/Makros und trägt es ins Tagebuch ein (`estimate` + `confirm-log`).
+- **Wasser:** „2 Gläser Wasser" / „0,5 l getrunken" → `water`.
+- **Tagesstand:** „Wie viele Kalorien habe ich heute noch?" → `state`.
+
+Ablauf: EIN KI-Aufruf entscheidet Werkzeug + Argumente (Tool Use), die Bestätigung
+wird deterministisch getextet (kein zweiter KI-Aufruf). Ist die Nachricht keine
+Ernährungs-Aktion, übernimmt der normale FINN-Coach die Antwort. Freemium/Quota
+und Guardrails gelten unverändert – die Endpunkte prüfen das KI-Kontingent selbst,
+es wird nichts umgangen. Weitere Aktionen (z. B. Termine buchen) sind als nächste
+Werkzeuge in `lib/waAgent.js` ergänzbar.
+
 ## Automatisch + Eskalation
 
 FINN antwortet selbst auf Auskunfts- und Coach-Fragen. **Heikle bzw. nach außen

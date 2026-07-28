@@ -1,0 +1,42 @@
+'use strict';
+// Prüft die deterministische Bestätigungs-Textung der WhatsApp-App-Aktionen
+// (lib/waAgent.js): Essen-Eintrag, Wasser, Tagesstand und Fehlermeldung – ohne KI.
+const WAAgent = require('../lib/waAgent');
+
+function run() {
+  let pass = true; const ok = (l, c, extra) => { if (!c) pass = false; console.log((c ? 'OK  ' : 'FAIL') + ' ' + l + (c ? '' : ' -- ' + (extra || ''))); };
+
+  const stand = { kcal: 1200, kcalZiel: 2000, eiweissG: 90, eiweissZielG: 150, khG: 100, fettG: 40, wasserGlaeser: 4, wasserZielGlaeser: 10 };
+
+  // ── compact() ──
+  const c = WAAgent.compact({ today: { totals: { kcal: 1234.6, p: 89.4, c: 100, f: 40 }, water: 3.5, waterGoal: 10 }, targets: { kcal: 2000, protein: 150, carbs: 200, fat: 60 } });
+  ok('1. compact rundet kcal', c.kcal === 1235 && c.kcalZiel === 2000, JSON.stringify(c));
+  ok('2. compact Eiweiß + Ziel', c.eiweissG === 89 && c.eiweissZielG === 150);
+  ok('3. compact Wasser + Ziel', c.wasserGlaeser === 3.5 && c.wasserZielGlaeser === 10);
+
+  // ── replyFor() ──
+  const rFood = WAAgent.replyFor([{ ok: true, kind: 'log_food', added: [{ name: 'Hähnchen mit Reis', kcal: 450 }], stand: stand }]);
+  ok('4. Essen: nennt Eintrag + kcal', /Eingetragen: Hähnchen mit Reis \(~450 kcal\)/.test(rFood), rFood);
+  ok('5. Essen: Tagesbilanz', /heute 1200 von 2000 kcal/.test(rFood) && /Eiweiß 90\/150 g/.test(rFood), rFood);
+  ok('6. Essen: Motivations-Emoji', /💪$/.test(rFood.trim()), rFood);
+
+  const rWater = WAAgent.replyFor([{ ok: true, kind: 'add_water', glasses: 2, stand: stand }]);
+  ok('7. Wasser: Bestätigung + Plural', /Wasser notiert \(\+2 Gläser\)/.test(rWater), rWater);
+
+  const rWater1 = WAAgent.replyFor([{ ok: true, kind: 'add_water', glasses: 1, stand: stand }]);
+  ok('8. Wasser: Singular korrekt', /\(\+1 Glas\)/.test(rWater1), rWater1);
+
+  const rStatus = WAAgent.replyFor([{ ok: true, kind: 'nutrition_today', stand: stand }]);
+  ok('9. Tagesstand: Bilanz ohne „Eingetragen"', /heute 1200 von 2000 kcal/.test(rStatus) && !/Eingetragen/.test(rStatus), rStatus);
+  ok('10. Tagesstand: kein Aktions-Emoji', !/💪/.test(rStatus), rStatus);
+
+  const rFail = WAAgent.replyFor([{ ok: false, message: 'Ich konnte kein Lebensmittel erkennen – beschreib es bitte etwas genauer.' }]);
+  ok('11. Fehlschlag: klare Meldung', /kein Lebensmittel erkennen/.test(rFail), rFail);
+
+  ok('12. Werkzeuge vorhanden (log_food, add_water, nutrition_today)',
+    WAAgent.ACTION_TOOLS.map((t) => t.name).sort().join(',') === 'add_water,log_food,nutrition_today');
+
+  console.log(pass ? 'WA-AGENT PASS' : 'WA-AGENT FAIL');
+  process.exit(pass ? 0 : 1);
+}
+run();
