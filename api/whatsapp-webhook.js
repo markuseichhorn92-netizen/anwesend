@@ -20,6 +20,70 @@ const Inbox = require('../lib/inbox');
 const SR = require('../lib/studioReply');
 const WA = require('../lib/whatsapp');
 const LF = require('../lib/leadflow');
+const AI = require('../lib/ai');
+const WAAuth = require('../lib/waAuth');
+const WAAssistant = require('../lib/waAssistant');
+
+// WhatsApp-KI (Auskunft zu Mitgliedsdaten) ist bewusst per Feature-Flag geschützt
+// und standardmäßig AUS – ohne Flag bleibt es beim bisherigen Team-Weg (fail-closed).
+const WA_ASSISTANT = process.env.WA_ASSISTANT === '1';
+
+function apiBase(req) {
+  const host = req.headers['x-forwarded-host'] || req.headers.host || '';
+  const proto = req.headers['x-forwarded-proto'] || 'https';
+  return host ? (proto + '://' + host) : '';
+}
+// Team-sichtbare Antwort in den Vorgang schreiben UND per WhatsApp zustellen (ein Weg).
+async function ownerReply(memberId, vorgangId, text, author) {
+  try { await SR.applyOwnerReply(memberId, vorgangId, text, { author: author || 'FINN', channel: 'whatsapp' }); } catch (e) {}
+}
+// Vorgeschichte des WhatsApp-Threads als Chatverlauf für den Coach (ohne die aktuelle
+// Frage – die steht im lokalen Vorgang noch nicht drin, weil applyMemberReply die
+// gespeicherte Kopie ergänzt, nicht unser Objekt).
+function buildHistory(v) {
+  const msgs = (v && v.messages) || [];
+  return msgs
+    .filter((m) => m && (m.from === 'member' || m.from === 'team') && m.text)
+    .map((m) => ({ role: m.from === 'member' ? 'user' : 'assistant', text: String(m.text) }))
+    .slice(-8);
+}
+
+// WhatsApp-KI für ein bekanntes (Magicline-)Mitglied: verifizieren -> antworten,
+// heikle Themen eskalieren. Wirft nie; jeder Fehler fällt still auf den Team-Weg zurück.
+async function handleAssistant(req, memberId, msg, v) {
+  if (msg.id && !(await WAAuth.firstSeen(msg.id))) return;   // Meta-Retry nicht doppelt beantworten
+  const phone = msg.from;
+
+  // 1) Heikle/nach außen wirkende Themen: nicht die KI, sondern ein Mensch.
+  if (WAAssistant.needsEscalation(msg.text)) {
+    await ownerReply(memberId, v.id, 'Alles klar – da hole ich am besten einen Kollegen aus dem Team dazu. Jemand meldet sich hier bei dir. 🙌', 'System');
+    return;
+  }
+
+  // 2) Verifiziert? -> antworten. Sonst Bestätigungs-Link.
+  const ver = await WAAuth.getVerified(phone);
+  if (ver && String(ver.memberId) === String(memberId)) {
+    await WAAuth.touch(phone);
+    if (!(await M.rateLimit('wa-ai:' + memberId, 30, 3600))) {
+      await ownerReply(memberId, v.id, 'Ich hab gerade ganz schön viele Nachrichten von dir – magst du es in ein paar Minuten nochmal versuchen? 🙏', 'System');
+      return;
+    }
+    const ans = await WAAssistant.answer({ req: req, memberId: memberId, question: msg.text, history: buildHistory(v) });
+    if (ans && ans.ok && ans.text) await ownerReply(memberId, v.id, ans.text, 'FINN');
+    else await ownerReply(memberId, v.id, 'Das kann ich dir gerade nicht sicher beantworten – ein Kollege schaut hier drauf und meldet sich. 🙌', 'System');
+    return;
+  }
+
+  // 3) Nicht (mehr) verifiziert: Bestätigungs-Link schicken (Anti-Spam: max. 3/Tag).
+  if (!(await M.rateLimit('wa-link:' + WAAuth.normPhone(phone), 3, 86400))) return;
+  const chal = await WAAuth.createChallenge(phone, memberId);
+  const base = apiBase(req);
+  if (!chal || !base) return;
+  const link = base + '/wa-verify.html?token=' + encodeURIComponent(chal.token);
+  await ownerReply(memberId, v.id,
+    'Hi! Schön, dass du dich meldest. 😊 Damit ich dir hier sicher zu deinem Vertrag, deinen Terminen, deinem Training und deiner Ernährung antworten darf, bestätige bitte einmal kurz, dass du es wirklich bist:\n' + link + '\nDanach beantworte ich deine Fragen direkt hier – dauert nur eine Minute.',
+    'System');
+}
 
 function readRaw(req) {
   return new Promise((resolve) => {
@@ -106,6 +170,9 @@ module.exports = async function handler(req, res) {
       if (isLead) {
         const fresh = await Inbox.get(memberId, v.id);
         await LF.onLeadMessage({ memberId: memberId, vorgang: fresh || v, phone: msg.from, profileName: msg.name, firstContact: firstContact });
+      } else if (WA_ASSISTANT && AI.hasAI && WA.hasWhatsApp) {
+        // Bekanntes Mitglied: WhatsApp-KI (verifiziert antworten / sonst Bestätigungs-Link).
+        try { await handleAssistant(req, memberId, msg, v); } catch (e) { /* still: Team-Weg bleibt */ }
       }
     } catch (e) { /* einzelne Nachricht darf den Lauf nicht abbrechen */ }
   }
