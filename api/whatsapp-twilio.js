@@ -18,6 +18,12 @@ const Inbox = require('../lib/inbox');
 const SR = require('../lib/studioReply');
 const WA = require('../lib/whatsapp');
 const LF = require('../lib/leadflow');
+const AI = require('../lib/ai');
+const WAAssistant = require('../lib/waAssistant');
+
+// WhatsApp-KI (siehe api/whatsapp-webhook.js): per Flag, standardmäßig AUS,
+// fail-closed. Gleiche zentrale Behandlung wie beim Meta-Webhook.
+const WA_ASSISTANT = process.env.WA_ASSISTANT === '1';
 
 function readRaw(req) {
   return new Promise((resolve) => {
@@ -104,11 +110,19 @@ module.exports = async function handler(req, res) {
       const v = open || await createWaVorgang(memberId, msg.from, msg.name, snapshot);
       if (!v) continue;
       await SR.applyMemberReply(memberId, v.id, msg.text); handled++;
+      // Diagnose (ohne Personenbezug): Mitglied erkannt? WhatsApp-KI scharf? (Provider: twilio)
+      WAAssistant.waLog('inbound', {
+        provider: 'twilio', known: !isLead, via: isLead ? 'lead' : (linked && linked.id ? 'linked' : 'phone'),
+        gate: !!(WA_ASSISTANT && AI.hasAI && WA.hasWhatsApp), flag: WA_ASSISTANT, ai: !!AI.hasAI, wa: !!WA.hasWhatsApp,
+      });
       if (isLead) {
         const fresh = await Inbox.get(memberId, v.id);
         await LF.onLeadMessage({ memberId: memberId, vorgang: fresh || v, phone: msg.from, profileName: msg.name, firstContact: firstContact });
+      } else if (WA_ASSISTANT && AI.hasAI && WA.hasWhatsApp) {
+        // Bekanntes Mitglied: WhatsApp-KI (verifiziert antworten / sonst Bestätigungs-Link).
+        try { await WAAssistant.handleInbound({ req: req, memberId: memberId, msg: msg, vorgang: v }); } catch (e) { WAAssistant.waLog('error', { name: String(e && e.name) }); }
       }
-    } catch (e) { /* einzelne Nachricht darf den Lauf nicht abbrechen */ }
+    } catch (e) { WAAssistant.waLog('loop_error', { name: String(e && e.name) }); }
   }
 
   res.statusCode = 200; res.setHeader('Content-Type', 'text/xml');
