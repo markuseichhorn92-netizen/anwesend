@@ -16,11 +16,15 @@
 const M = require('../lib/members');
 const WA = require('../lib/whatsapp');
 const WAAuth = require('../lib/waAuth');
+const LF = require('../lib/leadflow');
 
 const STUDIO = { name: 'Fit-Inn Trier', tel: '0651 308524', mail: 'info@fit-inn-trier.de' };
 
 function j(res, code, obj) { res.statusCode = code; res.end(JSON.stringify(obj)); }
 function clientIp(req) { return String(req.headers['x-forwarded-for'] || '').split(',')[0].trim() || (req.socket && req.socket.remoteAddress) || 'unknown'; }
+// Diagnose OHNE Personenbezug: nur der Grund (kein Geburtsdatum/E-Mail/Telefon).
+function vLog(reason) { try { console.log('[wa-verify]', JSON.stringify({ reason: reason })); } catch (e) {} }
+function idOf(c) { return c && (c.id != null ? c.id : c.customerId); }
 
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json');
@@ -56,15 +60,44 @@ module.exports = async function handler(req, res) {
     return j(res, 429, { ok: false, error: 'rate_limited', message: 'Zu viele Versuche – bitte später erneut.' });
   }
 
-  let member = null;
-  try { member = await M.findByEmailDob(email, dob); } catch (e) { member = null; }
-  const okMatch = member && member.id != null && String(member.id) === String(chal.memberId);
-  if (!okMatch) {
-    return j(res, 200, { ok: false, error: 'mismatch', message: 'Die Angaben passen nicht zu deinem WhatsApp-Kontakt. Bitte prüfe Geburtsdatum und E-Mail.' });
+  // Identität ZUERST über E-Mail + Geburtsdatum (verlässlich) – nicht über die
+  // unscharfe Telefonsuche. Magicline hat oft Dubletten, daher ALLE passenden
+  // Datensätze holen.
+  let all = [];
+  try { all = await M.findAllByEmailDob(email, dob); } catch (e) { all = []; }
+  if (!all.length) {
+    vLog('no_member');   // Geburtsdatum/E-Mail passen zu keinem Mitglied (falsche/andere Angaben)
+    return j(res, 200, { ok: false, error: 'mismatch', message: 'Die Angaben passen nicht. Bitte nutze das Geburtsdatum und die E-Mail-Adresse, die bei uns hinterlegt sind.' });
   }
 
-  const set = await WAAuth.setVerified(chal.phone, chal.memberId, WAAuth.CONSENT_VERSION);
+  // Besitz-Faktor: Gehört die WhatsApp-Nummer zu einem dieser (E-Mail+Geburtsdatum-)
+  // Datensätze? Das bindet beide Faktoren an dieselbe Person – robust gegen Dubletten
+  // und die unscharfe Telefonsuche. Suchergebnisse haben oft keine Telefonfelder ->
+  // Vollprofil laden.
+  const target = M.normDePhone(chal.phone);
+  let bound = null;
+  for (const c of all) {
+    let full = c;
+    if (!M.customerPhoneSet(full).has(target)) { try { full = (await M.getMember(idOf(c))) || c; } catch (e) {} }
+    if (M.customerPhoneSet(full).has(target)) { bound = full; break; }
+  }
+  // Fallback: die ursprünglich per Telefon gefundene ID gehört zu genau dieser Person.
+  if (!bound) { const hit = all.find((c) => String(idOf(c)) === String(chal.memberId)); if (hit) bound = hit; }
+  if (!bound) {
+    vLog('phone_not_on_record');   // Identität ok, aber die Nummer steht auf keinem Datensatz dieser Person
+    return j(res, 200, { ok: false, error: 'mismatch', message: 'Die Angaben passen nicht zu deiner WhatsApp-Nummer. Ist diese Nummer bei uns hinterlegt? Sonst melde dich kurz beim Team.' });
+  }
+
+  const memberId = String(idOf(bound));
+  const set = await WAAuth.setVerified(chal.phone, memberId, WAAuth.CONSENT_VERSION);
   if (!set) return j(res, 200, { ok: false, error: 'store', message: 'Das hat gerade nicht geklappt – bitte später erneut.' });
+  // Nummer fest ans Mitglied binden -> künftige Nachrichten werden zuverlässig
+  // erkannt (resolveKnownLead), unabhängig von der unscharfen Telefonsuche.
+  try {
+    const nm = ((bound.firstName || '') + ' ' + (bound.lastName || '')).trim();
+    await LF.linkPhone(chal.phone, { id: memberId, name: nm, nr: bound.customerNumber || null });
+  } catch (e) {}
+  vLog('ok');
   try { await WAAuth.consumeChallenge(token); } catch (e) {}
 
   // Bestätigung zurück auf WhatsApp (best effort; wir sind im 24h-Fenster).
