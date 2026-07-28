@@ -109,18 +109,22 @@ module.exports = async function handler(req, res) {
       const firstContact = !open;
       const v = open || await createWaVorgang(memberId, msg.from, msg.name, snapshot);
       if (!v) continue;
-      await SR.applyMemberReply(memberId, v.id, msg.text); handled++;
       // Diagnose (ohne Personenbezug): Mitglied erkannt? WhatsApp-KI scharf? (Provider: twilio)
       WAAssistant.waLog('inbound', {
         provider: 'twilio', known: !isLead, via: isLead ? 'lead' : (linked && linked.id ? 'linked' : 'phone'),
         gate: !!(WA_ASSISTANT && AI.hasAI && WA.hasWhatsApp), flag: WA_ASSISTANT, ai: !!AI.hasAI, wa: !!WA.hasWhatsApp,
       });
       if (isLead) {
+        await SR.applyMemberReply(memberId, v.id, msg.text); handled++;
         const fresh = await Inbox.get(memberId, v.id);
         await LF.onLeadMessage({ memberId: memberId, vorgang: fresh || v, phone: msg.from, profileName: msg.name, firstContact: firstContact });
       } else if (WA_ASSISTANT && AI.hasAI && WA.hasWhatsApp) {
-        // Bekanntes Mitglied: WhatsApp-KI (verifiziert antworten / sonst Bestätigungs-Link).
+        // Bekanntes Mitglied: WhatsApp-KI protokolliert die Nachricht selbst (still) und
+        // benachrichtigt das Team NUR bei Eskalation.
+        handled++;
         try { await WAAssistant.handleInbound({ req: req, memberId: memberId, msg: msg, vorgang: v }); } catch (e) { WAAssistant.waLog('error', { name: String(e && e.name) }); }
+      } else {
+        await SR.applyMemberReply(memberId, v.id, msg.text); handled++;
       }
     } catch (e) { WAAssistant.waLog('loop_error', { name: String(e && e.name) }); }
   }
