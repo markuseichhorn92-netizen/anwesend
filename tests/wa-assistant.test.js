@@ -36,6 +36,10 @@ async function run() {
     'Wie oft war ich diesen Monat da?',
     'Gib mir bitte einen Trainingstipp für Rücken',
     'Wie sind eure Öffnungszeiten?',
+    // Reine Info-Fragen zum Vertrag: FINN darf sie beantworten (nicht eskalieren).
+    'Wie ist meine Kündigungsfrist?',
+    'Wann ist mein nächstmögliches Kündigungsdatum?',
+    'Wie lange ist meine Kündigungsfrist und bis wann muss ich Bescheid geben?',
   ];
   let wrongEsc = [];
   normal.forEach((t) => { if (WA.needsEscalation(t)) wrongEsc.push(t); });
