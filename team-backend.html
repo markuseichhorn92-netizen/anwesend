@@ -163,7 +163,7 @@ var S={ token:null, role:null, meName:null, screen:'dash', convs:[], counts:{}, 
         // Kassenbuch: Barkasse pro Monat (nur Admin) – editierbarer Entwurf + gespeicherte Monate
         kb:null, kbDraft:null, kbMonth:'', kbMonths:[], kbLoaded:false, kbLoading:false, kbErr:false, kbHasStore:true,
         kbDirty:false, kbBusy:'', kbMsg:'', kbCheck:null, kbCheckBusy:false, kbShowPrices:false, kbSeedPending:0,
-        kbBelegBusy:'', kbBelegScan:null, kbBelegView:null,
+        kbBelegBusy:'', kbBelegScan:null, kbBelegView:null, kbAutoTimer:null, kbLastSaved:0,
         // Aufgaben: interne To-do-Liste (getrennt von Kunden-Vorgängen)
         todos:[], todosLoaded:false, todosLoading:false, todoFilter:'open', todoBusy:'',
         todoText:'', todoAssignee:'', todoDue:'', todoAddBusy:false,
@@ -3382,6 +3382,7 @@ async function kbImportSeed(){
   S.kbMsg=msg; render();
 }
 async function loadKassenbuch(month){
+  kbClearAutoSave();
   S.kbLoading=true; S.kbErr=false; render();
   try{
     var q=(month&&/^\d{4}-\d{2}$/.test(month))?('?month='+encodeURIComponent(month)):'';
@@ -3400,7 +3401,7 @@ function kbSetField(day,field,val){
   if(day==='_top'){ S.kbDraft[field]=val; }
   else if(day==='_price'){ S.kbDraft.prices=S.kbDraft.prices||{}; S.kbDraft.prices[field]=val; }
   else { var k=String(day); S.kbDraft.days=S.kbDraft.days||{}; S.kbDraft.days[k]=S.kbDraft.days[k]||{}; S.kbDraft.days[k][field]=val; }
-  S.kbDirty=true; kbRepaint();
+  S.kbDirty=true; kbRepaint(); kbScheduleAutoSave();
 }
 // Live-Neuberechnung ohne Voll-Render (behält den Tastaturfokus in der Zelle).
 function kbRepaint(){
@@ -3419,14 +3420,71 @@ function kbRepaint(){
   var gz=document.getElementById('kbsum-gez'); if(gz) gz.textContent=(t.gezaehlterEndbestand==null?'—':kbEuro(t.gezaehlterEndbestand));
   var sv=document.getElementById('kbSaveBtn'); if(sv){ var en=S.kbHasStore&&!(S.kb&&S.kb.closed); sv.disabled=!en; sv.style.opacity=en?'1':'.5'; sv.style.cursor=en?'pointer':'default'; }
 }
+// ── Automatisches Speichern ───────────────────────────────────────────────
+// Änderungen am Entwurf werden nach einer kurzen Tipp-Pause still gesichert –
+// kein „Speichern"-Klick nötig. Die Rückmeldung läuft ohne Voll-Render (nur
+// Button + Hinweis per DOM), damit der Tastaturfokus in der Zelle bleibt.
+var KB_AUTOSAVE_MS=1500;
+function kbClearAutoSave(){ if(S.kbAutoTimer){ clearTimeout(S.kbAutoTimer); S.kbAutoTimer=null; } }
+function kbScheduleAutoSave(){
+  if(!S.kbHasStore || (S.kb&&S.kb.closed)) return;   // kein Speicher / abgeschlossen -> nichts
+  kbClearAutoSave();
+  S.kbAutoTimer=setTimeout(function(){ S.kbAutoTimer=null; kbAutoSave(); }, KB_AUTOSAVE_MS);
+  kbUpdateSaveUi();
+}
+async function kbAutoSave(){
+  if(!S.kbDirty) return;
+  if(!S.kbHasStore || (S.kb&&S.kb.closed)) return;
+  if(S.kbBusy){ kbScheduleAutoSave(); return; }        // anderer Vorgang läuft -> später erneut versuchen
+  S.kbBusy='autosave'; S.kbDirty=false; kbUpdateSaveUi();
+  // Momentaufnahme senden: tippt jemand während des Speicherns weiter, setzt das
+  // kbDirty erneut – der Entwurf wird dann NICHT vom Server-Echo überschrieben.
+  var snap; try{ snap=JSON.parse(JSON.stringify(S.kbDraft)); }catch(e){ snap=S.kbDraft; }
+  try{
+    var r=await tapi('/api/team/kassenbuch',{method:'POST',body:{action:'save',month:S.kbMonth,data:snap}});
+    S.kbBusy='';
+    if(r && r.ok && r.current){
+      S.kb=r.current;
+      if(!S.kbDirty) S.kbDraft=kbSeedDraft(r.current);   // nur übernehmen, wenn zwischenzeitlich nichts getippt wurde
+      S.kbLastSaved=Date.now(); kbUpdateSaveUi();
+      if(S.kbDirty) kbScheduleAutoSave();                // während des Speicherns kamen neue Eingaben -> erneut
+    } else { S.kbDirty=true; kbUpdateSaveUi(); }          // fehlgeschlagen -> „schmutzig" lassen (Klick bleibt möglich)
+  }catch(e){ S.kbBusy=''; S.kbDirty=true; kbUpdateSaveUi(); }
+}
+// Beschriftung/Hinweis des Speicher-Bereichs – von render() UND vom fokuserhaltenden
+// DOM-Update genutzt, damit beide immer dasselbe zeigen.
+function kbSaveLabel(){
+  if(S.kbBusy==='save'||S.kbBusy==='autosave') return 'Speichere …';
+  if(S.kbDirty) return 'Jetzt speichern';
+  return S.kbLastSaved?'Gespeichert ✓':'Speichern';
+}
+function kbSaveHint(){
+  if(!S.kbHasStore) return 'Speicher nicht aktiv – Eingaben können nicht gesichert werden.';
+  if(S.kb&&S.kb.closed) return '';
+  if(S.kbBusy==='save'||S.kbBusy==='autosave') return 'Wird gespeichert …';
+  if(S.kbDirty||S.kbAutoTimer) return 'Änderungen werden automatisch gespeichert …';
+  if(S.kbLastSaved){ var d=new Date(S.kbLastSaved); return 'Automatisch gespeichert · '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')+' Uhr'; }
+  return 'Änderungen werden automatisch gespeichert.';
+}
+// Speicher-Button + Hinweis ohne Voll-Render aktualisieren (Fokus bleibt in der Zelle).
+function kbUpdateSaveUi(){
+  var b=document.getElementById('kbSaveBtn');
+  if(b){
+    b.textContent=kbSaveLabel();
+    var en=S.kbHasStore && !(S.kb&&S.kb.closed) && S.kbDirty && S.kbBusy!=='save' && S.kbBusy!=='autosave';
+    b.disabled=!en; b.style.opacity=en?'1':'.5'; b.style.cursor=en?'pointer':'default';
+  }
+  var h=document.getElementById('kbSaveHint'); if(h) h.textContent=kbSaveHint();
+}
 async function kbSave(silent){
   if(S.kbBusy) return false;
   if(S.kb && S.kb.closed) return false;
   if(!S.kbHasStore){ S.kbMsg='Speicher nicht aktiv – Eingaben können nicht gesichert werden.'; if(!silent) render(); return false; }
+  kbClearAutoSave();
   S.kbBusy='save'; if(!silent){ S.kbMsg=''; render(); }
   try{
     var r=await tapi('/api/team/kassenbuch',{method:'POST',body:{action:'save',month:S.kbMonth,data:S.kbDraft}});
-    if(r && r.ok && r.current){ S.kb=r.current; S.kbDraft=kbSeedDraft(r.current); S.kbDirty=false; S.kbBusy=''; if(!silent){ S.kbMsg='Gespeichert.'; render(); } return true; }
+    if(r && r.ok && r.current){ S.kb=r.current; S.kbDraft=kbSeedDraft(r.current); S.kbDirty=false; S.kbLastSaved=Date.now(); S.kbBusy=''; if(!silent){ S.kbMsg='Gespeichert.'; render(); } return true; }
     S.kbMsg=(r&&r.message)||'Konnte nicht gespeichert werden.'; S.kbBusy=''; render(); return false;
   }catch(e){ S.kbMsg='Verbindung fehlgeschlagen.'; S.kbBusy=''; render(); return false; }
 }
@@ -3434,6 +3492,7 @@ async function kbSave(silent){
 // ein Vormonat nachträglich korrigiert wurde – dann stimmt der Anfangsbestand mit einem Tipp wieder.
 async function kbCarryOpening(){
   if(S.kbBusy) return;
+  kbClearAutoSave();
   if(S.kb && S.kb.closed){ S.kbMsg='Der Monat ist abgeschlossen – bitte zuerst „Wieder öffnen".'; render(); return; }
   if(!S.kbHasStore){ S.kbMsg='Speicher nicht aktiv – Übernahme nicht möglich.'; render(); return; }
   S.kbBusy='carry'; S.kbMsg=''; render();
@@ -3455,6 +3514,7 @@ async function kbCarryOpening(){
 }
 async function kbDoCheck(){
   if(S.kbCheckBusy||S.kbBusy) return;
+  kbClearAutoSave();
   if(S.kbDirty){ var okS=await kbSave(true); if(!okS){ render(); return; } }
   S.kbCheckBusy=true; S.kbMsg=''; render();
   try{
@@ -3504,6 +3564,7 @@ async function kbPrint(){
 }
 async function kbClose(){
   if(S.kbBusy) return;
+  kbClearAutoSave();
   if(!confirm('Monat '+kbMonthLabel(S.kbMonth)+' abschließen?\n\nDanach sind keine Änderungen mehr möglich – der Monat bleibt aber abrufbar und als PDF hinterlegt.')) return;
   if(S.kbDirty){ var okS=await kbSave(true); if(!okS){ render(); return; } }
   S.kbBusy='close'; S.kbMsg='PDF-Beleg wird erstellt …'; render();
@@ -3520,6 +3581,7 @@ async function kbClose(){
 }
 async function kbReopen(){
   if(S.kbBusy) return;
+  kbClearAutoSave();
   if(!confirm('Abschluss von '+kbMonthLabel(S.kbMonth)+' zurücknehmen?\n\nDer Monat wird wieder bearbeitbar; der hinterlegte PDF-Beleg wird entfernt.')) return;
   S.kbBusy='reopen'; S.kbMsg=''; render();
   try{
@@ -3944,11 +4006,12 @@ function kassenbuchNode(){
   // Aktionen
   var btn=function(attr,label,primary,disabled){ return '<button '+attr+(disabled?' disabled':'')+' style="flex:1;min-width:140px;border:'+(primary?'none':'1.5px solid #cfe0e3')+';background:'+(primary?TEAL:'#fff')+';border-radius:12px;font-size:13px;font-weight:'+(primary?'900':'800')+';padding:12px 14px;color:'+(primary?'#fff':TEAL)+';cursor:'+(disabled?'default':'pointer')+';opacity:'+(disabled?'.5':'1')+'">'+label+'</button>'; };
   H+='<div style="display:flex;gap:9px;flex-wrap:wrap;margin-bottom:8px">';
-  if(!closed) H+='<button id="kbSaveBtn" data-kbsave="1"'+((!S.kbHasStore||!S.kbDirty||S.kbBusy)?' disabled':'')+' style="flex:1;min-width:140px;border:none;background:'+TEAL+';border-radius:12px;font-size:13px;font-weight:900;padding:12px 14px;color:#fff;cursor:'+((!S.kbHasStore||!S.kbDirty)?'default':'pointer')+';opacity:'+((!S.kbHasStore||!S.kbDirty||S.kbBusy)?'.5':'1')+'">'+(S.kbBusy==='save'?'Speichere …':'Speichern')+'</button>';
+  if(!closed){ var kbSaveOn=S.kbHasStore && S.kbDirty && S.kbBusy!=='save' && S.kbBusy!=='autosave'; H+='<button id="kbSaveBtn" data-kbsave="1"'+(kbSaveOn?'':' disabled')+' style="flex:1;min-width:140px;border:none;background:'+TEAL+';border-radius:12px;font-size:13px;font-weight:900;padding:12px 14px;color:#fff;cursor:'+(kbSaveOn?'pointer':'default')+';opacity:'+(kbSaveOn?'1':'.5')+'">'+kbSaveLabel()+'</button>'; }
   H+=btn('data-kbpdf="1"','PDF exportieren',false,false);
   H+=btn('data-kbprint="1"','Drucken',false,false);
   if(!closed) H+=btn('data-kbclose="1"','Monat abschließen',false,(S.kbBusy||!S.kbHasStore||!t.entriesCount));
   H+='</div>';
+  if(!closed) H+='<div id="kbSaveHint" style="font-size:11.5px;color:#9aa2a8;font-weight:600;margin:-2px 2px 8px">'+esc(kbSaveHint())+'</div>';
   if(!closed && !t.entriesCount) H+='<div style="font-size:11.5px;color:#9aa2a8;font-weight:600;margin-bottom:8px">Zum Abschließen mindestens eine Buchung erfassen.</div>';
   } // Ende editierbarer Monat (nicht-Archiv)
 
