@@ -8,9 +8,14 @@ Anteil** im eigenen Ernährungstagebuch – inspiriert von Nutrilize. Geteilt wi
 ## Ablauf
 
 1. **Erstellen:** In der App unter *Ernährung → Heute → Tools → „Gemeinsam kochen"*
-   legt jemand einen Topf an – entweder per **FINN-Beschreibung** („ganzer Topf
-   Chili con Carne für 4") oder mit **manuellen Gesamt-Nährwerten**. Gespeichert
-   werden die Nährwerte des **ganzen Topfs**.
+   legt jemand einen Topf an – auf drei Wegen:
+   - **Aus Rezept:** ein Rezept aus der Bibliothek wählen und einstellen, **wie
+     viele Portionen** ihr gekocht habt. Der Topf = Pro-Portion × Portionen
+     (serverautoritativ aus `Recipes.getById`), Zutaten werden auf die gekochte
+     Menge skaliert.
+   - **FINN beschreiben:** „ganzer Topf Chili con Carne für 4" → FINN schätzt.
+   - **Werte eintragen:** Gesamt-Nährwerte des Topfs manuell.
+   Gespeichert werden immer die Nährwerte des **ganzen Topfs**.
 2. **Teilen:** Der Ersteller bekommt einen **Link + QR-Code + Code**. Der QR
    kodiert den Link (`/mitglieder?kochen=<CODE>`); zum In-Person-Scannen mit der
    Handykamera oder per WhatsApp verschicken.
@@ -60,4 +65,4 @@ Tagebücher, `me`-Flag ohne IDs, unbekannter Code, manueller Topf, Ersteller-Lö
 
 - Echter In-App-QR-**Scanner** (Kamera) statt nur Link-Öffnen.
 - Topf als wiederkehrende gemeinsame Mahlzeit speichern.
-- Direkt aus einem Rezept (Bibliothek) einen Topf mit „wie viele Portionen gekocht?".
+- „Gemeinsam kochen"-Button direkt in der Rezept-Detailansicht.

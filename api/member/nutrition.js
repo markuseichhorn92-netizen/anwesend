@@ -919,18 +919,33 @@ module.exports = async function handler(req, res) {
     if (!(await M.rateLimit('cook-create:' + id, 20, 3600))) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'rate', message: 'Kurz durchatmen – gleich wieder versuchen.' })); }
     const idn = await cookIdentity(id);
     if (idn.age != null && idn.age < 16) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'too_young', message: 'Gemeinsam kochen ist erst ab 16 Jahren möglich.' })); }
-    // Gesamt-Nährwerte: entweder direkt (manuell) oder aus einer FINN-Schätzung (items).
-    let total = null;
-    if (body.total && typeof body.total === 'object') {
+    // Gesamt-Nährwerte + Zutaten + Quelle: aus einem Bibliotheks-REZEPT (gekochte
+    // Portionen × Pro-Portion, serverautoritativ), aus einer FINN-Schätzung (items)
+    // oder manuell (direkte Gesamtwerte).
+    let total = null, ptitle = cleanStr(body.title, 80), pingredients = [], psource = 'manual';
+    if (body.recipeId) {
+      const rec = await Recipes.getById(cleanStr(body.recipeId, 60));
+      if (rec) {
+        const sv = Math.max(1, Math.min(20, parseInt(body.servings, 10) || rec.servings || 1));
+        // Rezept-Makros gelten PRO PORTION -> ganzer Topf = Pro-Portion × gekochte Portionen.
+        total = { kcal: n0(rec.kcal) * sv, p: n0(rec.protein) * sv, c: n0(rec.carbs) * sv, f: n0(rec.fat) * sv };
+        const rf = rec.servings > 0 ? (sv / rec.servings) : 1;   // Zutaten (informativ) auf die gekochte Menge skalieren
+        pingredients = (Array.isArray(rec.ingredients) ? rec.ingredients : []).slice(0, 30).map(function (i) { return { text: cleanStr(i && i.text, 90), grams: Math.round(n0(i && i.grams) * rf) }; }).filter(function (x) { return x.text; });
+        if (!ptitle) ptitle = rec.title;
+        psource = 'recipe';
+      }
+    } else if (body.total && typeof body.total === 'object') {
       total = { kcal: n0(body.total.kcal), p: n0(body.total.p), c: n0(body.total.c), f: n0(body.total.f) };
+      psource = 'manual';
     } else if (Array.isArray(body.items)) {
       total = body.items.slice(0, 40).reduce(function (a, it) {
         a.kcal += n0(it && it.kcal); a.p += n0(it && it.p); a.c += n0(it && it.c); a.f += n0(it && it.f); return a;
       }, { kcal: 0, p: 0, c: 0, f: 0 });
+      pingredients = body.items.slice(0, 30).map(function (it) { return { text: cleanStr(it && (it.name || it.text), 90), grams: n0(it && it.grams) }; }).filter(function (x) { return x.text; });
+      psource = 'ai';
     }
-    if (!total || !(total.kcal > 0 || total.p > 0 || total.c > 0 || total.f > 0)) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'empty', message: 'Der Topf braucht Nährwerte – beschreib kurz, was drin ist, oder trag sie ein.' })); }
-    const ingredients = Array.isArray(body.items) ? body.items.slice(0, 30).map(function (it) { return { text: cleanStr(it && (it.name || it.text), 90), grams: n0(it && it.grams) }; }).filter(function (x) { return x.text; }) : (Array.isArray(body.ingredients) ? body.ingredients : []);
-    const pot = await CookPot.createPot({ id: id, name: idn.name }, { title: cleanStr(body.title, 80), total: total, ingredients: ingredients, source: Array.isArray(body.items) ? 'ai' : 'manual' });
+    if (!total || !(total.kcal > 0 || total.p > 0 || total.c > 0 || total.f > 0)) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'empty', message: 'Der Topf braucht Nährwerte – wähle ein Rezept, beschreib kurz, was drin ist, oder trag sie ein.' })); }
+    const pot = await CookPot.createPot({ id: id, name: idn.name }, { title: ptitle, total: total, ingredients: pingredients, source: psource });
     if (!pot) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'failed', message: 'Der Topf konnte nicht erstellt werden.' })); }
     const shareUrl = appBaseFrom(req) + '/mitglieder?kochen=' + encodeURIComponent(pot.code);
     res.statusCode = 200; return res.end(JSON.stringify({ ok: true, pot: potView(pot, id), code: pot.code, shareUrl: shareUrl }));

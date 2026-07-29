@@ -44,7 +44,9 @@ async function run() {
     rateLimit: async () => true,
   });
   inject('lib/ai.js', { hasAI: true });
-  inject('lib/recipes.js', { searchLibrary: async () => [], getLibrary: async () => [], seedOnce: async () => {} });
+  // Bibliotheks-Rezept (Makros gelten PRO PORTION) für den Rezept-Topf-Pfad.
+  const RECIPES = { r1: { id: 'r1', title: 'Rote Linsensuppe', servings: 2, kcal: 340, protein: 18, carbs: 45, fat: 8, ingredients: [{ text: '150 g rote Linsen', grams: 150 }, { text: 'Gemüsebrühe', grams: 0 }] } };
+  inject('lib/recipes.js', { getById: async (rid) => RECIPES[rid] || null, searchLibrary: async () => [], getLibrary: async () => [], seedOnce: async () => {} });
   inject('lib/inbox.js', {});
   inject('lib/studioReply.js', {});
   inject('lib/entitlements.js', { getEntitlement: async () => null, isPremium: () => false, publicTier: () => ({ premium: false, tier: 'basic' }) });
@@ -124,6 +126,17 @@ async function run() {
   ok('15. Ersteller verlässt -> Topf gelöscht', r.ok === true && r.deleted === true);
   r = await call('florian', { action: 'pot-get', code: code });
   ok('16. danach nicht mehr auffindbar', r.ok === false && r.error === 'not_found');
+
+  // ── 10) Topf aus einem Bibliotheks-Rezept: Pro-Portion × gekochte Portionen ──
+  r = await call('cassandra', { action: 'pot-create', recipeId: 'r1', servings: 4 });
+  ok('17. Rezept-Topf: 4 × 340 = 1360 kcal (serverautoritativ)', r.ok === true && r.pot.total.kcal === 1360 && r.pot.total.p === 72 && r.pot.total.c === 180 && r.pot.total.f === 32, JSON.stringify(r.pot && r.pot.total));
+  ok('18. Rezept-Titel + Quelle übernommen', r.pot.title === 'Rote Linsensuppe');
+  // Zutaten auf die gekochte Menge skaliert (4 statt Rezept-2 Portionen -> ×2).
+  r = await call('cassandra', { action: 'pot-get', code: r.code });
+  ok('19. Zutaten auf gekochte Menge skaliert (150 g -> 300 g)', (r.pot.ingredients || []).some((i) => /rote Linsen/.test(i.text) && i.grams === 300), JSON.stringify(r.pot.ingredients));
+  // Unbekanntes Rezept -> empty (keine Nährwerte).
+  r = await call('cassandra', { action: 'pot-create', recipeId: 'nope', servings: 2 });
+  ok('20. unbekanntes Rezept -> empty', r.ok === false && r.error === 'empty');
 
   console.log(pass ? 'COOKPOT PASS' : 'COOKPOT FAIL');
   process.exit(pass ? 0 : 1);

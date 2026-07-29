@@ -5419,7 +5419,31 @@
   function ernPotOpenCreate(){ S.ernPot={mode:'create',how:'describe',busy:false,err:''}; setS({}); }
   function ernPotClose(){ S.ernPot=null; setS({}); }
   window.__ernPotField=function(k,v){ if(S.ernPot) S.ernPot[k]=String(v||''); };   // Titel/Text ohne Re-Render halten
-  function ernPotHow(h){ if(!S.ernPot) return; S.ernPot.how=(h==='manual'?'manual':'describe'); S.ernPot.err=''; setS({}); }
+  function ernPotHow(h){ if(!S.ernPot) return; S.ernPot.how=({manual:'manual',recipe:'recipe',describe:'describe'})[h]||'describe'; S.ernPot.err=''; if(S.ernPot.how==='recipe'&&DATA.nutriLib==null) loadLib(); setS({}); }
+  function ernPotRecipeSearch(){ if(!S.ernPot) return; var el=$('ern_pot_rq'); var v=el?(el.value||'').trim():''; S.ernPot.recipeQ=v; DATA.nutriLib=null; loadLib(v); setS({}); }
+  function ernPotRecipePick(id){ if(!S.ernPot) return; var r=(DATA.nutriLib||[]).filter(function(x){ return String(x.id)===String(id); })[0]; if(!r) return; S.ernPot.recipeSel=r; S.ernPot.servings=r.servings||1; S.ernPot.title=r.title||''; S.ernPot.err=''; setS({}); }
+  function ernPotRecipeBack(){ if(!S.ernPot) return; S.ernPot.recipeSel=null; setS({}); }
+  function ernPotServ(dir){ if(!S.ernPot||!S.ernPot.recipeSel) return; var sv=parseInt(S.ernPot.servings,10)||S.ernPot.recipeSel.servings||1; sv+=(dir==='dec'?-1:1); S.ernPot.servings=Math.max(1,Math.min(20,sv)); setS({}); }
+  // Rezept-Auswahl im Erstellen-Sheet: Bibliothek durchsuchen -> Rezept wählen ->
+  // gekochte Portionen einstellen (ganzer Topf = Pro-Portion × Portionen).
+  function ernPotRecipeBody(p){
+    var CARD='background:var(--surface);border-radius:16px;box-shadow:0 6px 18px rgba(4,33,40,.07);padding:15px 16px;margin-bottom:12px';
+    if(p.recipeSel){
+      var rec=p.recipeSel;
+      var sv=Math.max(1,Math.min(20,parseInt(p.servings,10)||rec.servings||1));
+      var tot={kcal:Math.round((rec.kcal||0)*sv),p:Math.round((rec.protein||0)*sv),c:Math.round((rec.carbs||0)*sv),f:Math.round((rec.fat||0)*sv)};
+      var stepper='<div style="display:flex;align-items:center;gap:12px;margin:14px 0"><button data-act="ernPotServ" data-arg="dec" aria-label="weniger Portionen" style="width:44px;height:44px;border-radius:13px;border:1.5px solid var(--border);background:var(--surface-2);font-size:22px;font-weight:900;color:'+POT_ACC+';cursor:pointer">–</button><div style="flex:1;text-align:center"><div style="font-size:26px;font-weight:900;color:var(--text);line-height:1">'+sv+'</div><div style="font-size:11px;font-weight:700;color:var(--text-soft);margin-top:2px">Portionen gekocht</div></div><button data-act="ernPotServ" data-arg="inc" aria-label="mehr Portionen" style="width:44px;height:44px;border-radius:13px;border:1.5px solid var(--border);background:var(--surface-2);font-size:22px;font-weight:900;color:'+POT_ACC+';cursor:pointer">+</button></div>';
+      return '<button data-act="ernPotRecipeBack" style="display:inline-flex;align-items:center;gap:6px;border:none;background:transparent;color:'+POT_ACC+';font-weight:800;font-size:12.5px;cursor:pointer;margin-bottom:10px">'+svg('<path d="M15 18l-6-6 6-6"></path>',{c:POT_ACC,w:2.2,s:15})+'Anderes Rezept</button>'+
+        '<div style="'+CARD+'"><div style="font-size:16px;font-weight:900;color:var(--text)">'+esc(rec.title)+'</div><div style="font-size:11.5px;font-weight:700;color:var(--text-soft);margin-top:3px">'+ernNum(rec.kcal)+' kcal/Portion · Rezept für '+(rec.servings||1)+'</div>'+stepper+
+        '<div style="border-top:1px solid var(--border);padding-top:12px"><div style="font-size:11px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.3px;margin-bottom:5px">Ganzer Topf ('+sv+' Portion'+(sv>1?'en':'')+')</div>'+potMacroLine(tot)+'</div></div>';
+    }
+    var search='<div style="display:flex;gap:8px;margin-bottom:10px"><input id="ern_pot_rq" value="'+esc(p.recipeQ||'')+'" placeholder="Rezept suchen …" oninput="window.__ernPotField(\'recipeQ\',this.value)" style="flex:1;box-sizing:border-box;padding:11px 12px;border:1.5px solid var(--border);border-radius:11px;font-size:14px;font-weight:600;color:var(--text);background:var(--surface-2)"><button data-act="ernPotRecipeSearch" style="border:none;border-radius:11px;background:'+POT_ACC+';color:#fff;font-weight:900;font-size:13px;padding:0 14px;cursor:pointer">Suchen</button></div>';
+    var libArr=DATA.nutriLib, list;
+    if(libArr==null){ list='<div style="text-align:center;color:var(--text-soft);font-weight:700;font-size:13px;padding:18px">Lade Rezepte …</div>'; }
+    else if(!libArr.length){ list='<div style="text-align:center;color:var(--text-soft);font-weight:600;font-size:12.5px;padding:18px;line-height:1.5">'+(p.recipeQ?'Nichts gefunden – andere Suche probieren.':'Noch keine Rezepte in der Bibliothek – lass dir von FINN welche vorschlagen.')+'</div>'; }
+    else { list=libArr.slice(0,40).map(function(r){ return '<button data-act="ernPotRecipePick" data-arg="'+esc(r.id)+'" style="width:100%;text-align:left;border:1.5px solid var(--border);border-radius:12px;background:var(--surface);padding:11px 12px;margin-bottom:8px;cursor:pointer;display:flex;align-items:center;gap:10px"><span style="flex:1;min-width:0"><span style="display:block;font-size:13.5px;font-weight:800;color:var(--text)">'+esc(r.title)+'</span><span style="font-size:11px;font-weight:700;color:var(--text-soft)">'+ernNum(r.kcal)+' kcal/Portion · '+(r.servings||1)+' Portionen</span></span>'+svg('<path d="M9 18l6-6-6-6"></path>',{c:'var(--text-soft)',w:2,s:15})+'</button>'; }).join(''); }
+    return search+'<div style="max-height:40vh;overflow-y:auto">'+list+'</div>';
+  }
   function ernPotCreated(d){
     if(!S.ernPot) return;
     if(!(d&&d.ok&&d.pot)){ S.ernPot.busy=false; S.ernPot.err=(d&&d.message)||'Der Topf konnte nicht erstellt werden.'; setS({}); return; }
@@ -5428,7 +5452,17 @@
   }
   function ernPotCreate(){
     var p=S.ernPot; if(!p||p.busy) return;
-    var title=((($('ern_pot_title')||{}).value)||'').trim();
+    var title=((($('ern_pot_title')||{}).value)||p.title||'').trim();
+    p.title=title;
+    // Aus der Rezept-Bibliothek: Rezept-ID + gekochte Portionen (Server rechnet den Topf).
+    if(p.how==='recipe'){
+      var rec=p.recipeSel;
+      if(!rec){ p.err='Bitte wähle zuerst ein Rezept aus.'; setS({}); return; }
+      var sv=Math.max(1,Math.min(20,parseInt(p.servings,10)||rec.servings||1));
+      p.busy=true; p.err=''; setS({});
+      potApi({action:'pot-create',recipeId:rec.id,servings:sv,title:title},ernPotCreated);
+      return;
+    }
     p.busy=true; p.err=''; setS({});
     if(p.how==='manual'){
       var num=function(id){ return Math.max(0,Math.round(parseFloat(((($(id)||{}).value)||'0').replace(',','.'))||0)); };
@@ -5509,23 +5543,28 @@
     var inner='';
 
     if(p.mode==='create'){
+      var how=p.how||'describe';
       var seg='<div style="display:flex;gap:6px;background:var(--surface-2);border-radius:12px;padding:4px;margin-bottom:12px">'+
-        [['describe','FINN beschreiben'],['manual','Werte eintragen']].map(function(v){ var a=(p.how||'describe')===v[0];
+        [['describe','FINN'],['recipe','Aus Rezept'],['manual','Werte']].map(function(v){ var a=how===v[0];
           return '<button data-act="ernPotHow" data-arg="'+v[0]+'" style="flex:1;padding:9px 0;border:none;border-radius:9px;background:'+(a?'var(--surface)':'transparent')+';color:'+(a?POT_ACC:'var(--text-soft)')+';font-weight:800;font-size:12.5px;cursor:pointer">'+v[1]+'</button>';
         }).join('')+'</div>';
-      var titleInp='<input id="ern_pot_title" value="'+esc(p.title||'')+'" maxlength="80" placeholder="Titel, z. B. Chili con Carne" oninput="window.__ernPotField(\'title\',this.value)" style="width:100%;box-sizing:border-box;padding:13px 14px;border:1.5px solid var(--border);border-radius:13px;font-size:15px;font-weight:700;color:var(--text);background:var(--surface-2);margin-bottom:12px">';
+      var showTitle=(how!=='recipe')||!!p.recipeSel;
+      var titleInp=showTitle?('<input id="ern_pot_title" value="'+esc(p.title||'')+'" maxlength="80" placeholder="Titel, z. B. Chili con Carne" oninput="window.__ernPotField(\'title\',this.value)" style="width:100%;box-sizing:border-box;padding:13px 14px;border:1.5px solid var(--border);border-radius:13px;font-size:15px;font-weight:700;color:var(--text);background:var(--surface-2);margin-bottom:12px">'):'';
       var body;
-      if((p.how||'describe')==='describe'){
-        body='<textarea id="ern_pot_desc" rows="3" placeholder="Was ist im ganzen Topf? z. B. ganzer Topf Chili con Carne für 4 Portionen: 500 g Rinderhack, 2 Dosen Kidneybohnen, Reis, Gemüse" oninput="window.__ernPotField(\'desc\',this.value)" style="width:100%;box-sizing:border-box;padding:13px 14px;border:1.5px solid var(--border);border-radius:13px;font-size:14px;font-weight:600;color:var(--text);background:var(--surface-2);resize:vertical;line-height:1.5">'+esc(p.desc||'')+'</textarea>'+
-          '<div style="font-size:11.5px;font-weight:600;color:var(--text-soft);margin-top:8px;line-height:1.45">FINN schätzt die Nährwerte des <b>ganzen Topfs</b>. Den Anteil pro Person stellt ihr danach ein.</div>';
+      if(how==='recipe'){
+        body=ernPotRecipeBody(p);
+      } else if(how==='describe'){
+        body='<div style="'+CARD+'"><textarea id="ern_pot_desc" rows="3" placeholder="Was ist im ganzen Topf? z. B. ganzer Topf Chili con Carne für 4 Portionen: 500 g Rinderhack, 2 Dosen Kidneybohnen, Reis, Gemüse" oninput="window.__ernPotField(\'desc\',this.value)" style="width:100%;box-sizing:border-box;padding:13px 14px;border:1.5px solid var(--border);border-radius:13px;font-size:14px;font-weight:600;color:var(--text);background:var(--surface-2);resize:vertical;line-height:1.5">'+esc(p.desc||'')+'</textarea>'+
+          '<div style="font-size:11.5px;font-weight:600;color:var(--text-soft);margin-top:8px;line-height:1.45">FINN schätzt die Nährwerte des <b>ganzen Topfs</b>. Den Anteil pro Person stellt ihr danach ein.</div></div>';
       } else {
         var mi=function(id,lab,unit){ return '<div style="flex:1"><label style="font-size:10px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.3px">'+lab+'</label><input id="'+id+'" type="number" inputmode="numeric" min="0" placeholder="0" style="width:100%;box-sizing:border-box;margin-top:4px;padding:11px 10px;border:1.5px solid var(--border);border-radius:11px;font-size:15px;font-weight:800;color:var(--text);background:var(--surface-2);font-variant-numeric:tabular-nums"><div style="font-size:9.5px;font-weight:700;color:var(--text-soft);margin-top:3px">'+unit+'</div></div>'; };
-        body='<div style="font-size:11.5px;font-weight:600;color:var(--text-soft);margin-bottom:10px;line-height:1.45">Nährwerte des <b>ganzen Topfs</b> eintragen:</div>'+
+        body='<div style="'+CARD+'"><div style="font-size:11.5px;font-weight:600;color:var(--text-soft);margin-bottom:10px;line-height:1.45">Nährwerte des <b>ganzen Topfs</b> eintragen:</div>'+
           '<div style="display:flex;gap:8px;margin-bottom:8px">'+mi('ern_pot_kcal','kcal','gesamt')+mi('ern_pot_p','Eiweiß','g')+'</div>'+
-          '<div style="display:flex;gap:8px">'+mi('ern_pot_c','Kohlenh.','g')+mi('ern_pot_f','Fett','g')+'</div>';
+          '<div style="display:flex;gap:8px">'+mi('ern_pot_c','Kohlenh.','g')+mi('ern_pot_f','Fett','g')+'</div></div>';
       }
-      var btn='<button data-act="ernPotCreate" '+(p.busy?'disabled ':'')+'style="width:100%;margin-top:14px;padding:15px;border:none;border-radius:14px;background:'+POT_ACC+';color:#fff;font-weight:900;font-size:15px;cursor:pointer;opacity:'+(p.busy?'.6':'1')+'">'+(p.busy?'Erstellt …':'Topf erstellen & teilen')+'</button>';
-      inner=head('Einen Topf teilen – jeder trackt seinen Anteil')+errBox+seg+titleInp+'<div style="'+CARD+'">'+body+'</div>'+btn;
+      var canCreate=(how!=='recipe')||!!p.recipeSel;
+      var btn=canCreate?('<button data-act="ernPotCreate" '+(p.busy?'disabled ':'')+'style="width:100%;margin-top:14px;padding:15px;border:none;border-radius:14px;background:'+POT_ACC+';color:#fff;font-weight:900;font-size:15px;cursor:pointer;opacity:'+(p.busy?'.6':'1')+'">'+(p.busy?'Erstellt …':'Topf erstellen & teilen')+'</button>'):'';
+      inner=head('Einen Topf teilen – jeder trackt seinen Anteil')+errBox+seg+titleInp+body+btn;
     }
     else if(p.mode==='join'){
       var jt=p.pot||{};
@@ -10969,6 +11008,10 @@
     ernPotOpen:function(){ ernPotOpenCreate(); },
     ernPotClose:function(){ ernPotClose(); },
     ernPotHow:function(a){ ernPotHow(a); },
+    ernPotRecipeSearch:function(){ ernPotRecipeSearch(); },
+    ernPotRecipePick:function(a){ ernPotRecipePick(a); },
+    ernPotRecipeBack:function(){ ernPotRecipeBack(); },
+    ernPotServ:function(a){ ernPotServ(a); },
     ernPotCreate:function(){ ernPotCreate(); },
     ernPotJoin:function(){ ernPotJoin(); },
     ernPotShare:function(){ ernPotShare(); },
