@@ -45,6 +45,7 @@ const Ent = require('../../lib/entitlements');
 const MlPremium = require('../../lib/mlPremium');
 const Coaching = require('../../lib/coaching');
 const Recipes = require('../../lib/recipes');
+const CookPot = require('../../lib/cookpot');
 const Quota = require('../../lib/nutriquota');
 const Welcome = require('../../lib/welcomeGift');
 const Social = require('../../lib/social');
@@ -484,6 +485,48 @@ function safetyResponse(text) {
   return null;
 }
 
+// ── „Gemeinsam kochen": Helfer ──
+// App-Basis-URL aus dem Request (für den Teilen-Link), Fallback auf PUBLIC_BASE_URL.
+function appBaseFrom(req) {
+  const h = (req && req.headers && (req.headers['x-forwarded-host'] || req.headers.host)) || '';
+  const proto = (req && req.headers && req.headers['x-forwarded-proto']) || 'https';
+  if (h) return proto + '://' + h;
+  return String(process.env.PUBLIC_BASE_URL || 'https://mitglieder.fit-inn-trier.de').replace(/\/+$/, '');
+}
+// Datensparsamer Anzeigename + Alter (für Topf-Anzeige und Altersschwelle) aus Magicline.
+async function cookIdentity(id) {
+  try {
+    const m = await M.getMember(id);
+    if (m) {
+      let age = null; const t = Date.parse(m.dateOfBirth || ''); if (!isNaN(t)) age = Math.floor((Date.now() - t) / (365.25 * 24 * 3600 * 1000));
+      const fn = String(m.firstName || '').trim(), ln = String(m.lastName || '').trim();
+      const name = ((fn || 'Mitglied') + (ln ? (' ' + ln[0].toUpperCase() + '.') : '')).slice(0, 40);
+      return { name: name, age: age };
+    }
+  } catch (e) {}
+  return { name: 'Mitglied', age: null };
+}
+// Client-sichere Sicht eines Topfs: KEINE Mitglieds-IDs nach außen; je Teilnehmer nur
+// Anzeigename, Prozent, sein skalierter Anteil und ein „me"-Flag für den Aufrufer.
+function potView(pot, meId) {
+  if (!pot || !pot.code) return null;
+  const mine = String(meId);
+  const total = CookPot.normTotal(pot.total);
+  const participants = (pot.participants || []).map(function (p) {
+    const fac = (Number(p.pct) || 0) / 100;
+    return {
+      name: p.name, pct: Number(p.pct) || 0, logged: !!p.loggedAt, me: String(p.id) === mine,
+      share: { kcal: Math.round(total.kcal * fac), p: Math.round(total.p * fac), c: Math.round(total.c * fac), f: Math.round(total.f * fac) },
+    };
+  });
+  const sumPct = participants.reduce(function (a, p) { return a + p.pct; }, 0);
+  return {
+    code: pot.code, title: pot.title, total: total, ingredients: pot.ingredients || [],
+    owner: (pot.owner && pot.owner.name) || '', isOwner: String(pot.owner && pot.owner.id) === mine,
+    participants: participants, sumPct: sumPct,
+  };
+}
+
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json');
   res.setHeader('Cache-Control', 'no-store');
@@ -866,6 +909,78 @@ module.exports = async function handler(req, res) {
     day.entries = day.entries.concat(items);
     await saveDay(id, targetDate, day);
     res.statusCode = 200; return res.end(JSON.stringify(Object.assign(await buildState(id, profile, targetDate), { added: items.map(function (a) { return { name: a.name, kcal: a.kcal }; }), mealName: meal.name })));
+  }
+
+  // ── „Gemeinsam kochen": teilbarer Topf mit prozentualem Anteil je Person ──
+  // Ein Topf hält die GESAMT-Nährwerte des ganzen Topfs; jede:r trägt NUR seinen
+  // Anteil (Prozent) ins EIGENE Tagebuch. Geteilt über einen kurzen Code (Link/QR).
+  if (action === 'pot-create') {
+    if (!profile || !profile.onboarded) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'no_profile', message: 'Richte zuerst dein Ernährungsprofil ein, dann kannst du Töpfe teilen.' })); }
+    if (!(await M.rateLimit('cook-create:' + id, 20, 3600))) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'rate', message: 'Kurz durchatmen – gleich wieder versuchen.' })); }
+    const idn = await cookIdentity(id);
+    if (idn.age != null && idn.age < 16) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'too_young', message: 'Gemeinsam kochen ist erst ab 16 Jahren möglich.' })); }
+    // Gesamt-Nährwerte: entweder direkt (manuell) oder aus einer FINN-Schätzung (items).
+    let total = null;
+    if (body.total && typeof body.total === 'object') {
+      total = { kcal: n0(body.total.kcal), p: n0(body.total.p), c: n0(body.total.c), f: n0(body.total.f) };
+    } else if (Array.isArray(body.items)) {
+      total = body.items.slice(0, 40).reduce(function (a, it) {
+        a.kcal += n0(it && it.kcal); a.p += n0(it && it.p); a.c += n0(it && it.c); a.f += n0(it && it.f); return a;
+      }, { kcal: 0, p: 0, c: 0, f: 0 });
+    }
+    if (!total || !(total.kcal > 0 || total.p > 0 || total.c > 0 || total.f > 0)) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'empty', message: 'Der Topf braucht Nährwerte – beschreib kurz, was drin ist, oder trag sie ein.' })); }
+    const ingredients = Array.isArray(body.items) ? body.items.slice(0, 30).map(function (it) { return { text: cleanStr(it && (it.name || it.text), 90), grams: n0(it && it.grams) }; }).filter(function (x) { return x.text; }) : (Array.isArray(body.ingredients) ? body.ingredients : []);
+    const pot = await CookPot.createPot({ id: id, name: idn.name }, { title: cleanStr(body.title, 80), total: total, ingredients: ingredients, source: Array.isArray(body.items) ? 'ai' : 'manual' });
+    if (!pot) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'failed', message: 'Der Topf konnte nicht erstellt werden.' })); }
+    const shareUrl = appBaseFrom(req) + '/mitglieder?kochen=' + encodeURIComponent(pot.code);
+    res.statusCode = 200; return res.end(JSON.stringify({ ok: true, pot: potView(pot, id), code: pot.code, shareUrl: shareUrl }));
+  }
+
+  if (action === 'pot-get') {
+    const pot = await CookPot.getPot(cleanStr(body.code, 12));
+    if (!pot) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'not_found', message: 'Diesen Topf gibt es nicht (mehr) – frag nach einem neuen Link.' })); }
+    const shareUrl = appBaseFrom(req) + '/mitglieder?kochen=' + encodeURIComponent(pot.code);
+    res.statusCode = 200; return res.end(JSON.stringify({ ok: true, pot: potView(pot, id), code: pot.code, shareUrl: shareUrl }));
+  }
+
+  if (action === 'pot-join') {
+    if (!profile || !profile.onboarded) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'no_profile', message: 'Richte zuerst dein Ernährungsprofil ein, dann kannst du mitmachen.' })); }
+    if (!(await M.rateLimit('cook-join:' + id, 30, 3600))) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'rate', message: 'Kurz durchatmen – gleich wieder versuchen.' })); }
+    const idn = await cookIdentity(id);
+    if (idn.age != null && idn.age < 16) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'too_young', message: 'Gemeinsam kochen ist erst ab 16 Jahren möglich.' })); }
+    const pot = await CookPot.joinPot(cleanStr(body.code, 12), { id: id, name: idn.name });
+    if (!pot) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'not_found', message: 'Diesen Topf gibt es nicht (mehr) – frag nach einem neuen Link.' })); }
+    res.statusCode = 200; return res.end(JSON.stringify({ ok: true, pot: potView(pot, id), code: pot.code }));
+  }
+
+  if (action === 'pot-set-pct') {
+    const pot = await CookPot.setPct(cleanStr(body.code, 12), id, body.pct);
+    if (!pot) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'not_found' })); }
+    res.statusCode = 200; return res.end(JSON.stringify({ ok: true, pot: potView(pot, id), code: pot.code }));
+  }
+
+  if (action === 'pot-log') {
+    if (!(await M.rateLimit('nutri-log:' + id, 40, 3600))) { res.statusCode = 200; return res.end(JSON.stringify(await buildState(id, profile))); }
+    const targetDate = validDate(body.date, date);
+    const pot = await CookPot.getPot(cleanStr(body.code, 12));
+    if (!pot || !CookPot.participantOf(pot, id)) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'not_found', message: 'Du bist bei diesem Topf nicht (mehr) dabei.' })); }
+    const share = CookPot.shareFor(pot, id);
+    if (!(share.kcal > 0 || share.p > 0 || share.c > 0 || share.f > 0)) { res.statusCode = 200; return res.end(JSON.stringify(Object.assign(await buildState(id, profile, targetDate), { added: [], message: 'Stell zuerst deinen Anteil ein.' }))); }
+    const entry = sanitizeEntry({
+      name: pot.title, portion: 'Anteil ' + share.pct + ' %', source: 'recipe', meal: body.meal,
+      kcal: share.kcal, p: share.p, c: share.c, f: share.f,
+    }, hour);
+    const day = await loadDay(id, targetDate);
+    day.entries.push(entry);
+    await saveDay(id, targetDate, day);
+    try { await CookPot.markLogged(pot.code, id); } catch (e) {}
+    const fresh = await CookPot.getPot(pot.code);
+    res.statusCode = 200; return res.end(JSON.stringify(Object.assign(await buildState(id, profile, targetDate), { added: [{ name: entry.name, kcal: entry.kcal }], pot: potView(fresh || pot, id) })));
+  }
+
+  if (action === 'pot-leave') {
+    const r = await CookPot.leavePot(cleanStr(body.code, 12), id);
+    res.statusCode = 200; return res.end(JSON.stringify({ ok: true, deleted: !!(r && r.deleted) }));
   }
 
   // ── FINN generiert Rezepte -> in die studioweite Bibliothek + Nutri-Score ──
