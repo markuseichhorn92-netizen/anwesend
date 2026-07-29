@@ -444,8 +444,9 @@ async function buildState(id, profile, forDate) {
   const qMonth = Quota.monthOf(todayYMD);
   const qUsed = await Quota.getUsed(id, qMonth);
   // Preis/Testphase zeigt die UI aus dem Magicline-Zusatzmodul (loadModules), nicht hier.
+  const cookBeta = await cookBetaAllowed(id);   // „Gemeinsam kochen" ist Beta (Standard aus)
   return {
-    ok: true, available: true, onboarded: onboarded,
+    ok: true, available: true, onboarded: onboarded, cookBeta: cookBeta,
     profile: profile ? { goal: profile.goal, sex: profile.sex, height: profile.height, weight: profile.weight, age: profile.age, activity: profile.activity, diet: profile.diet, store: profile.store || '' } : null,
     targets: targets,
     today: { date, isToday: date === todayYMD, entries: day.entries, totals, water: day.water, waterGoal: waterGoalCups(targets) },
@@ -486,6 +487,23 @@ function safetyResponse(text) {
 }
 
 // ── „Gemeinsam kochen": Helfer ──
+// Beta-Freischaltung: „Gemeinsam kochen" ist standardmäßig AUS (internes Testen).
+// COOK_BETA=1 (oder 'all') gibt es für alle frei; sonst nur die per COOK_BETA_IDS
+// (Kunden-IDs, kommagetrennt) bzw. COOK_BETA_EMAILS gelisteten Mitglieder. Die
+// E-Mail-Prüfung wird 1 h in KV gecacht – kein Magicline-Call pro Anfrage.
+async function cookBetaAllowed(id) {
+  const flag = String(process.env.COOK_BETA || '').trim().toLowerCase();
+  if (flag === '1' || flag === 'all' || flag === 'true') return true;
+  const ids = String(process.env.COOK_BETA_IDS || '').split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+  if (ids.indexOf(String(id)) >= 0) return true;
+  const emails = String(process.env.COOK_BETA_EMAILS || '').toLowerCase().split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+  if (!emails.length) return false;
+  try { const [c] = await redisPipeline([['GET', 'cook:beta:' + id]]); if (c === '1') return true; if (c === '0') return false; } catch (e) {}
+  let allowed = false;
+  try { const m = await M.getMember(id); const em = String((m && m.email) || '').toLowerCase(); allowed = !!em && emails.indexOf(em) >= 0; } catch (e) {}
+  try { await redisPipeline([['SET', 'cook:beta:' + id, allowed ? '1' : '0', 'EX', 3600]]); } catch (e) {}
+  return allowed;
+}
 // App-Basis-URL aus dem Request (für den Teilen-Link), Fallback auf PUBLIC_BASE_URL.
 function appBaseFrom(req) {
   const h = (req && req.headers && (req.headers['x-forwarded-host'] || req.headers.host)) || '';
@@ -914,6 +932,10 @@ module.exports = async function handler(req, res) {
   // ── „Gemeinsam kochen": teilbarer Topf mit prozentualem Anteil je Person ──
   // Ein Topf hält die GESAMT-Nährwerte des ganzen Topfs; jede:r trägt NUR seinen
   // Anteil (Prozent) ins EIGENE Tagebuch. Geteilt über einen kurzen Code (Link/QR).
+  // Beta: standardmäßig aus – nur freigeschaltete Test-Mitglieder (COOK_BETA*).
+  if (action.indexOf('pot-') === 0) {
+    if (!(await cookBetaAllowed(id))) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'beta', message: '„Gemeinsam kochen" ist gerade im internen Test – bald für alle. 🙂' })); }
+  }
   if (action === 'pot-create') {
     if (!profile || !profile.onboarded) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'no_profile', message: 'Richte zuerst dein Ernährungsprofil ein, dann kannst du Töpfe teilen.' })); }
     if (!(await M.rateLimit('cook-create:' + id, 20, 3600))) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'rate', message: 'Kurz durchatmen – gleich wieder versuchen.' })); }

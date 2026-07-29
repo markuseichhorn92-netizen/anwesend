@@ -5,6 +5,19 @@ Anteil** im eigenen Ernährungstagebuch – inspiriert von Nutrilize. Geteilt wi
 über einen kurzen, eindeutigen Code (Link/QR), ganz ohne vorherige Freundschaft
 (offener Teil-Code).
 
+## Beta / Freischaltung
+
+Das Feature ist **standardmäßig aus** (internes Testen) und hinter einem Flag:
+
+- `COOK_BETA=1` → für **alle** Mitglieder frei (späterer Rollout).
+- sonst nur die per **`COOK_BETA_IDS`** (Kunden-IDs) oder **`COOK_BETA_EMAILS`**
+  (Magicline-Mail, Ergebnis 1 h gecacht) gelisteten **Test-Mitglieder**.
+
+Der Server prüft das bei jeder Topf-Aktion (`api/member/nutrition.js`,
+`cookBetaAllowed`) **und** liefert `cookBeta` im Ernährungs-Status – die App zeigt
+die Tool-Kachel nur freigeschalteten Mitgliedern. Zum Testen zu zweit einfach beide
+Test-Konten in die Allowlist aufnehmen.
+
 ## Ablauf
 
 1. **Erstellen:** In der App unter *Ernährung → Heute → Tools → „Gemeinsam kochen"*

@@ -13,6 +13,9 @@ const inject = (rel, exports) => {
 async function run() {
   let pass = true; const ok = (l, c, extra) => { if (!c) pass = false; console.log((c ? 'OK  ' : 'FAIL') + ' ' + l + (c ? '' : ' -- ' + (extra || ''))); };
 
+  // „Gemeinsam kochen" ist Beta (Standard aus) – für den Test global freischalten.
+  process.env.COOK_BETA = '1';
+
   // ── In-Memory-KV als lib/store (unterstützt SET NX + EX-Ignorieren) ──
   const kv = new Map();
   const redisPipeline = async (cmds) => cmds.map((c) => {
