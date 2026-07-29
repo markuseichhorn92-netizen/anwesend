@@ -4552,12 +4552,12 @@ async function shPost(body){
     return r;
   }catch(e){ alert('Verbindung fehlgeschlagen.'); return null; }
 }
-// Schichten aus den Magicline-Öffnungszeiten anlegen (nur leere Tage; Früh/Spät-Split).
+// Schichten aus dem festen Wochenplan anlegen (nur leere Tage; Mo–Fr 5, Sa 2, So 2 Schichten).
 async function shFillFromHours(){
   if(S.shBusy) return;
-  if(!confirm('Für diese Woche Schichten aus euren Magicline-Öffnungszeiten anlegen? Es werden nur leere Tage gefüllt – bestehende Schichten bleiben unangetastet.')) return;
+  if(!confirm('Für diese Woche die festen Studio-Schichten anlegen (Mo–Fr 5, Sa 2, So 2)? Es werden nur leere Tage gefüllt – bestehende Schichten bleiben unangetastet.')) return;
   S.shBusy='fill'; render();
-  var r=await shPost({action:'fillFromHours',split:'early_late'});
+  var r=await shPost({action:'fillTemplate'});
   S.shBusy=''; render();
   if(r && r.ok!==false && r.message) alert(r.message);
 }
@@ -4825,7 +4825,7 @@ function shPlanTabHTML(){
     '<div style="width:40px;height:40px;border-radius:12px;background:rgba(246,169,100,.22);display:flex;align-items:center;justify-content:center;flex-shrink:0">'+shSunIcon(21)+'</div>'+
     '<div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:900">KI-Schichtplanung</div><div style="font-size:11.5px;color:#aed0d6;font-weight:600">'+esc(String(open))+' offene Schichten · nutzt Verfügbarkeiten</div></div>'+
     '<button data-shki="1" class="tapc" style="border:none;border-radius:11px;background:#F6A964;color:#0a4958;font-weight:900;font-size:12.5px;padding:9px 14px;cursor:pointer;flex-shrink:0">Planen</button></div>';
-  var fillBtn='<button data-shfill="1" class="tapc" style="width:100%;margin-top:10px;display:flex;align-items:center;justify-content:center;gap:8px;border:1.5px solid #cfe0e3;border-radius:13px;background:#fff;color:#0a4958;font-weight:800;font-size:12.5px;padding:11px;cursor:pointer">'+(S.shBusy==='fill'?'<span class="spin" style="width:14px;height:14px;border-width:2px"></span>Legt Schichten an …':'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#0a4958" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Schichten aus Öffnungszeiten anlegen')+'</button>';
+  var fillBtn='<button data-shfill="1" class="tapc" style="width:100%;margin-top:10px;display:flex;align-items:center;justify-content:center;gap:8px;border:1.5px solid #cfe0e3;border-radius:13px;background:#fff;color:#0a4958;font-weight:800;font-size:12.5px;padding:11px;cursor:pointer">'+(S.shBusy==='fill'?'<span class="spin" style="width:14px;height:14px;border-width:2px"></span>Legt Schichten an …':'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#0a4958" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Feste Studio-Schichten anlegen')+'</button>';
   var toggle='<div style="display:flex;gap:6px;background:#e4ebec;border-radius:12px;padding:4px;margin:16px 0 2px">'+[['tag','Tagesansicht'],['woche','Wochenansicht']].map(function(v){ var a=S.shView===v[0];
     return '<button data-shview="'+v[0]+'" style="flex:1;padding:8px 0;border:none;border-radius:9px;background:'+(a?'#fff':'transparent')+';color:'+(a?'#0a4958':'#6b7780')+';font-weight:800;font-size:12.5px;cursor:pointer">'+v[1]+'</button>';
   }).join('')+'</div>';
@@ -4987,7 +4987,7 @@ function shKiHTML(){
     body='<div style="padding:20px 22px 34px">'+
       '<div style="display:flex;align-items:center;gap:14px;margin-bottom:20px">'+
         '<div style="width:40px;height:40px;border-radius:50%;border:3px solid #d6e2e4;border-top-color:#0a4958;animation:spin .8s linear infinite"></div>'+
-        '<div><div style="font-size:15px;font-weight:900;color:#15171B">Plane Schichten …</div><div style="font-size:12px;color:#8a929a;font-weight:600">Analysiere Verfügbarkeiten &amp; Öffnungszeiten</div></div></div>'+
+        '<div><div style="font-size:15px;font-weight:900;color:#15171B">Plane Schichten …</div><div style="font-size:12px;color:#8a929a;font-weight:600">Analysiere Verfügbarkeiten &amp; offene Schichten</div></div></div>'+
       '<div style="display:flex;flex-direction:column;gap:10px">'+['Lade Verfügbarkeiten …','Prüfe offene Schichten …','Verteile fair nach Auslastung …','Erstelle Vorschlag …'].map(function(st){
         return '<div style="display:flex;align-items:center;gap:10px;background:#fff;border-radius:12px;padding:11px 13px;box-shadow:0 6px 18px rgba(4,33,40,.05)"><span style="width:8px;height:8px;border-radius:50%;background:#0a4958;animation:pulseDot 1.2s ease-in-out infinite"></span><span style="font-size:13px;font-weight:700;color:#42454b">'+st+'</span></div>';
       }).join('')+'</div></div>';

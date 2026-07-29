@@ -142,6 +142,26 @@ module.exports = async function handler(req, res) {
     return done();
   }
 
+  // Woche aus der festen Wochen-Schichtvorlage füllen (nur LEERE Tage – nie doppelt).
+  // Das sind die tatsächlichen Studio-Schichten (Mo–Fr 5, Sa 2, So 2) – kein Magicline-Call.
+  if (action === 'fillTemplate') {
+    const dates = SH.weekDates(SH.mondayOf(week));
+    const filled = {};
+    try { const dw = await SH.listWeek(dates); dw.forEach((d) => { filled[d.date] = d.shifts.length; }); } catch (e) {}
+    const specs = SH.templateSpecs(dates);
+    let created = 0, skippedDays = 0;
+    const seenDays = {};
+    for (let i = 0; i < specs.length; i++) {
+      const sp = specs[i];
+      if (filled[sp.date]) { if (!seenDays[sp.date]) { seenDays[sp.date] = 1; skippedDays++; } continue; }
+      try { const sh = await SH.createShift(sp); if (sh) created++; } catch (e) {}
+    }
+    const note = created
+      ? (created + ' Schichten aus dem Wochenplan angelegt' + (skippedDays ? (' (' + skippedDays + ' Tage mit bestehenden Schichten übersprungen)') : '') + '. Jetzt Mitarbeiter zuweisen.')
+      : (skippedDays ? 'Alle Tage haben bereits Schichten – nichts hinzugefügt.' : 'Für diese Woche keine Schichten in der Vorlage.');
+    return done({ created: created, filledFromTemplate: true, message: note });
+  }
+
   // Woche aus den Magicline-Öffnungszeiten füllen (nur LEERE Tage – nie doppelt).
   if (action === 'fillFromHours') {
     let oh = null;
