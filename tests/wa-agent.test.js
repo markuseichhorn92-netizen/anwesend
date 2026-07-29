@@ -34,10 +34,22 @@ function run() {
   ok('11. Fehlschlag: klare Meldung', /kein Lebensmittel erkennen/.test(rFail), rFail);
 
   const toolNames = WAAgent.ACTION_TOOLS.map((t) => t.name);
-  const expected = ['log_food', 'add_water', 'nutrition_today', 'list_appointments', 'cancel_appointment', 'list_bookable_types', 'find_appointment_slots', 'book_appointment', 'log_weight_checkin', 'log_workout'];
+  const expected = ['log_food', 'add_water', 'nutrition_today', 'list_appointments', 'cancel_appointment', 'list_bookable_types', 'find_appointment_slots', 'book_appointment', 'log_weight_checkin', 'log_workout', 'present_options'];
   const missing = expected.filter((n) => toolNames.indexOf(n) < 0);
-  ok('12. Alle Aktions-Werkzeuge vorhanden (Ernährung, Termine, Gewicht, Training)', missing.length === 0, 'fehlt: ' + missing.join(', '));
+  ok('12. Alle Aktions-Werkzeuge vorhanden (Ernährung, Termine, Gewicht, Training, Auswahl)', missing.length === 0, 'fehlt: ' + missing.join(', '));
   ok('13. Jedes Werkzeug hat name + input_schema', WAAgent.ACTION_TOOLS.every((t) => t.name && t.input_schema && t.input_schema.type === 'object'));
+
+  // ── buildChoice(): present_options-Eingabe -> Buttons + nummerierter Fallback ──
+  const ch = WAAgent.buildChoice({ text: 'Welche Einweisung interessiert dich?', options: ['Einführungstraining', 'Biocircuit', 'Trainingsplanung'] });
+  ok('14. buildChoice: body + 3 Optionen', !!ch && ch.body === 'Welche Einweisung interessiert dich?' && ch.options.length === 3, JSON.stringify(ch));
+  ok('15. buildChoice: stabile ids + Titel', !!ch && ch.options[1].id === 'opt_2' && ch.options[1].title === 'Biocircuit');
+  ok('16. buildChoice: nummerierter Fallback-Text', !!ch && /1\. Einführungstraining/.test(ch.numbered) && /2\. Biocircuit/.test(ch.numbered) && /3\. Trainingsplanung/.test(ch.numbered), ch && ch.numbered);
+  ok('17. buildChoice: <2 Optionen -> null', WAAgent.buildChoice({ text: 'x', options: ['nur eins'] }) === null);
+
+  // ── openingMessage(): Verlauf als Kontext-Vorspann, „2" bekommt Bezug ──
+  const om = WAAgent.openingMessage([{ role: 'user', text: 'Ich möchte einen Termin zur Einweisung' }, { role: 'assistant', text: '1. Einführungstraining 2. Biocircuit 3. Trainingsplanung' }], '2');
+  ok('18. openingMessage: enthält Verlauf + aktuelle Nachricht', /Bisheriger WhatsApp-Verlauf/.test(om) && /FINN: 1\. Einführungstraining/.test(om) && /Aktuelle Nachricht des Mitglieds: 2/.test(om), om);
+  ok('19. openingMessage: ohne Verlauf nur die Frage', WAAgent.openingMessage([], 'Wie viele kcal habe ich noch?') === 'Aktuelle Nachricht des Mitglieds: Wie viele kcal habe ich noch?');
 
   console.log(pass ? 'WA-AGENT PASS' : 'WA-AGENT FAIL');
   process.exit(pass ? 0 : 1);

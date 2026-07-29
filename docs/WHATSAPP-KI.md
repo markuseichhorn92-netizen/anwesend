@@ -46,10 +46,34 @@ Weitere Aktionen (`lib/waAgent.js`, Tool-Use-Loop):
 - **Trainingseinheit:** `log_workout` (nutzt den Workouts-Endpunkt; dessen Gates –
   Premium + Vital-Check-Einwilligung – gelten unverändert).
 
-Ablauf: ein bounded Tool-Use-Loop (max. 5 Schritte) – die KI orchestriert
+Ablauf: ein bounded Tool-Use-Loop (max. 6 Schritte) – die KI orchestriert
 mehrstufige Abläufe (z. B. Terminbuchung) und formuliert die Abschluss-Antwort.
 Ist die Nachricht keine Aktion, übernimmt der normale FINN-Coach. Freemium/Quota
 und Guardrails der Endpunkte gelten unverändert – es wird nichts umgangen.
+
+### Mehrstufige Abläufe über mehrere Nachrichten
+
+Jede WhatsApp-Nachricht ist ein eigener Aufruf ohne gespeicherte Zwischenergebnisse.
+Damit z. B. eine Terminbuchung über mehrere Nachrichten hinweg funktioniert, geht der
+**bisherige Thread-Verlauf** (`buildHistory`) als unvertrauenswürdiger Kontext-Vorspann
+in die erste User-Nachricht des Agenten ein (`lib/waAgent.js` `openingMessage`). So
+erkennt FINN eine kurze Folgeantwort wie „2" oder einen angetippten Button als Auswahl
+aus seiner letzten Frage und holt sich Terminarten/Slots bei Bedarf erneut, bevor er bucht.
+
+### Anklickbare Buttons
+
+Statt Optionen nur als Text aufzuzählen, bietet FINN sie als **anklickbare WhatsApp-
+Buttons** an (Werkzeug `present_options` → `lib/whatsapp.sendButtons`):
+
+- **Meta Cloud API:** native interaktive Nachricht IM 24h-Fenster ohne Vorlage – bis 3
+  Optionen als Buttons, mehr als Liste (bis 10). Sofort aktiv.
+- **Twilio:** braucht eine genehmigte Quick-Reply-Content-Vorlage
+  (`TWILIO_QUICK_REPLY_CONTENT_SID`, `{{1}}`=Text, `{{2}}`..`{{4}}`=Button-Titel).
+  Ohne diese SID fällt FINN automatisch auf einen **nummerierten Text** zurück; das
+  Mitglied tippt dann die Zahl – dank Verlaufs-Kontext läuft der Ablauf identisch weiter.
+
+Ein Tipp auf einen Button kommt als normale Textnachricht (der Button-Titel) zurück und
+wird wie eine getippte Antwort verarbeitet (`parseInbound` / `parseTwilioInbound`).
 
 ## Team-Benachrichtigung nur bei Eskalation
 
