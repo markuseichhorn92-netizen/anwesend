@@ -16,6 +16,7 @@ inject('lib/store.js', {
     const op = String(c[0]).toUpperCase(), k = String(c[1]);
     if (op === 'GET') return KV.has(k) ? KV.get(k) : null;
     if (op === 'SET') { KV.set(k, typeof c[2] === 'string' ? c[2] : String(c[2])); return 'OK'; }
+    if (op === 'INCR') { const n = (parseInt(KV.get(k), 10) || 0) + 1; KV.set(k, String(n)); return n; }
     if (op === 'DEL') { KV.delete(k); SETS.delete(k); LISTS.delete(k); return 1; }
     if (op === 'SADD') { if (!SETS.has(k)) SETS.set(k, new Set()); SETS.get(k).add(String(c[2])); return 1; }
     if (op === 'SREM') { if (SETS.has(k)) SETS.get(k).delete(String(c[2])); return 1; }
@@ -47,6 +48,12 @@ function mockReq(method, body, headers) {
 }
 function res0() { return { statusCode: 0, setHeader() {}, body: null, end(x) { this.body = x; } }; }
 async function post(body, headers) { const res = res0(); await H(mockReq('POST', body, Object.assign({ 'x-api-key': 'testsecret' }, headers || {})), res); return { status: res.statusCode, json: JSON.parse(res.body || '{}') }; }
+async function getHealth() {
+  const res = res0();
+  const req = { method: 'GET', url: '/api/webhooks/magicline?health=1', headers: { 'x-api-key': 'testsecret' }, query: {}, on: function () { return req; } };
+  await H(req, res);
+  return { status: res.statusCode, json: JSON.parse(res.body || '{}') };
+}
 
 async function run() {
   let pass = true; const ok = (l, c, extra) => { if (!c) pass = false; console.log((c ? 'OK  ' : 'FAIL') + ' ' + l + (c ? '' : ' -- ' + (extra || ''))); };
@@ -96,6 +103,11 @@ async function run() {
   r = await post({ type: 'CUSTOMER_CREATED', entityId: 'm9', content: {} });
   const lead = leadRecorded[leadRecorded.length - 1] || {};
   ok('14. CUSTOMER_CREATED -> Lead in Pipeline aufgenommen', r.json.summary[0].action === 'lead_ingested' && lead.source === 'magicline' && lead.customerId === 'm9' && /Max/.test(lead.name || '') && lead.email === 'x@y.z', JSON.stringify(lead));
+
+  // ── Telemetrie/Health: welche Webhooks kamen an? (secret-gated GET) ──
+  const h = await getHealth();
+  ok('15. Health-Endpunkt liefert Telemetrie', h.status === 200 && h.json.health === true && h.json.stats && h.json.stats.total > 0, JSON.stringify(h.json && h.json.stats));
+  ok('16. Health zählt Event-Typen (CUSTOMER_CHECKIN gesehen)', !!(h.json.stats && h.json.stats.types && h.json.stats.types.CUSTOMER_CHECKIN >= 2), JSON.stringify(h.json.stats && h.json.stats.types));
 
   console.log(pass ? 'ML-WEBHOOK PASS' : 'ML-WEBHOOK FAIL');
   process.exit(pass ? 0 : 1);
