@@ -33,6 +33,8 @@ inject('lib/newMembers.js', { recordJoin: async () => {} });
 inject('lib/members.js', { ml: async () => ({ status: 200, json: [] }), getMember: async (id) => ({ id: id, firstName: 'Max', lastName: 'Muster', customerNumber: '123', email: 'x@y.z' }) });
 const notified = [];
 inject('lib/studioReply.js', { notifyStudio: async (o) => { notified.push(o); } });
+const leadRecorded = [];
+inject('lib/leadflow.js', { recordLead: async (o) => { leadRecorded.push(o); return o; } });
 
 const H = require(path.join(ROOT, 'api/webhooks/magicline.js'));
 const MlEvents = require(path.join(ROOT, 'lib/mlEvents.js'));
@@ -89,6 +91,11 @@ async function run() {
   // ── Kündigung/Widerruf -> Team-Rückholungshinweis ──
   r = await post({ type: 'CONTRACT_REVERSED', entityId: 'm1' });
   ok('13. Widerruf -> Rückholungs-Hinweis ans Team', r.json.summary[0].action === 'reversed_alerted' && notified.length === 2 && /Rückholung/.test(notified[1].subject), JSON.stringify(notified.map((n) => n.subject)));
+
+  // ── Neuer Kunde/Interessent -> Lead-Pipeline (source 'magicline') ──
+  r = await post({ type: 'CUSTOMER_CREATED', entityId: 'm9', content: {} });
+  const lead = leadRecorded[leadRecorded.length - 1] || {};
+  ok('14. CUSTOMER_CREATED -> Lead in Pipeline aufgenommen', r.json.summary[0].action === 'lead_ingested' && lead.source === 'magicline' && lead.customerId === 'm9' && /Max/.test(lead.name || '') && lead.email === 'x@y.z', JSON.stringify(lead));
 
   console.log(pass ? 'ML-WEBHOOK PASS' : 'ML-WEBHOOK FAIL');
   process.exit(pass ? 0 : 1);

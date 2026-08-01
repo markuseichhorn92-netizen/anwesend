@@ -7,10 +7,11 @@
  *
  * Aktuell umgesetzt: bei CONTRACT_CREATED bekommt das neue Mitglied automatisch
  * die Zugangs-/Willkommens-Mail (lib/welcome.js, mit Dedup gegen Doppelversand).
- * CUSTOMER_CREATED wird bewusst NICHT für die Willkommens-Mail genutzt – dabei
- * kann es sich auch um bloße Leads/Interessenten (z. B. Probetraining) handeln,
- * die noch keine Mitgliedschaft haben. CONTRACT_CANCELLED wird derzeit nur
- * quittiert (Erweiterungspunkt).
+ * CUSTOMER_CREATED wird NICHT für die Willkommens-Mail genutzt (dabei kann es sich
+ * um bloße Leads/Interessenten ohne Mitgliedschaft handeln) – stattdessen wird der
+ * neue Kunde in die Team-Lead-Pipeline übernommen (lib/leadflow, source 'magicline',
+ * idempotent per customerId). CONTRACT_CANCELLED/REVERSED lösen einen Rückholungs-
+ * Hinweis ans Team aus.
  *
  * Sicherheit: Der Endpunkt löst E-Mail-Versand aus und ist öffentlich erreichbar.
  * Deshalb pflicht: ein Shared Secret (Env MAGICLINE_WEBHOOK_KEY, alt:
@@ -126,6 +127,28 @@ async function checkinName(cid, p) {
   return null;
 }
 
+// CUSTOMER_CREATED -> neuer Interessent/Kunde in Magicline (Walk-in, Web-Formular,
+// Probetraining, Direkteintrag). In die Team-Lead-Pipeline übernehmen (source
+// 'magicline'), idempotent per customerId. So tauchen auch NICHT über WhatsApp
+// entstandene Leads im Team-Backend auf. Datensparsam: Name, E-Mail, Telefon;
+// keine sensiblen Zusatzdaten. Neue Kunden starten in Magicline als Lead – bei
+// echtem Abschluss folgt separat CONTRACT_CREATED (Willkommen). Best effort.
+async function onCustomerCreated(cid, p) {
+  try {
+    const M = require('../../lib/members');
+    const Leads = require('../../lib/leadflow');
+    let m = null; try { m = await M.getMember(cid); } catch (e) {}
+    p = p || {};
+    const fn = (m && m.firstName) || p.firstName || p.firstname || '';
+    const ln = (m && m.lastName) || p.lastName || p.lastname || '';
+    const name = String((fn + ' ' + ln)).replace(/\s+/g, ' ').trim() || null;
+    const email = String((m && m.email) || p.email || '').trim() || null;
+    const phone = String((m && (m.phonePrivateMobile || m.phonePrivate)) || p.phone || '').trim() || null;
+    await Leads.recordLead({ customerId: String(cid), name: name, email: email, phone: phone, source: 'magicline' });
+    return true;
+  } catch (e) { return false; }
+}
+
 // CONTRACT_CANCELLED / CONTRACT_REVERSED -> Team-Hinweis für die Rückholung. (Hinweis:
 // CANCELLED läuft laut Konfig auf einen anderen Server; REVERSED erreicht diese App. Beide
 // Branches sind verdrahtet, falls CANCELLED später hierher geroutet wird.) Best effort.
@@ -186,6 +209,11 @@ async function handleWebhook(req, res, opts) {
       else if (type === 'CUSTOMER_CHECKIN') {
         const cid = customerIdOf(e); const p = payloadOf(e);
         if (cid) { const nm = await checkinName(cid, p); await MlEvents.recordCheckin({ customerId: cid, memberName: nm, atMs: Date.parse(p.checkinDateTime || p.dateTime || p.timestamp || '') || Date.now() }); action = 'checkin'; }
+      }
+      // Neuer Kunde/Interessent -> in die Team-Lead-Pipeline übernehmen.
+      else if (type === 'CUSTOMER_CREATED') {
+        const cid = customerIdOf(e);
+        if (cid) { await onCustomerCreated(cid, payloadOf(e)); action = 'lead_ingested'; }
       }
       // Zahlungsablehnung -> Team benachrichtigen (Rückholung/Mahnung).
       else if (type === 'CUSTOMER_PAYMENT_REJECTED') {
