@@ -181,7 +181,12 @@ async function handleWebhook(req, res, opts) {
   if (!SECRET) { res.statusCode = 503; return res.end(JSON.stringify({ ok: false, error: 'not_configured' })); }
   let key = opts.key || req.headers['x-api-key'] || req.headers['x-webhook-secret'] || req.headers['x-magicline-secret'] || (req.query && req.query.key) || '';
   if (!key) { try { key = new URL(req.url, 'http://x').searchParams.get('key') || ''; } catch (e) {} }
-  if (key !== SECRET) { res.statusCode = 401; return res.end(JSON.stringify({ ok: false, error: 'unauthorized' })); }
+  if (key !== SECRET) {
+    // Nicht-personenbezogener Zähler: „Traffic kommt an, wird aber wg. Auth abgelehnt"
+    // vs. „gar kein Traffic". Nur bei tatsächlich falschem/fehlendem Key.
+    try { await MlEvents.bumpStat('_AUTH_REJECTED'); } catch (e) {}
+    res.statusCode = 401; return res.end(JSON.stringify({ ok: false, error: 'unauthorized' }));
+  }
   // Secret-gated Diagnose (GET ?health=1): welche Webhooks kommen an? Nicht personenbezogen.
   if (req.method === 'GET') {
     let health = false; try { health = !!new URL(req.url, 'http://x').searchParams.get('health'); } catch (e) {}
