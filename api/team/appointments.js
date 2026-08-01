@@ -26,6 +26,7 @@ const Cap = require('../../lib/capabilities');
 const M = require('../../lib/members');
 const Inbox = require('../../lib/inbox');
 const Studio = require('../../lib/studioReply');
+const MlEvents = require('../../lib/mlEvents');
 
 // Stornierte/abgesagte Buchungen erkennen (Magicline liefert sie weiter in der Liste).
 function isCancelledAppt(a) {
@@ -59,16 +60,30 @@ async function memberAppointments(memberId) {
 // Abruf mit from/to; nur ein 2xx mit Array gilt als verfügbar – sonst available:false,
 // die UI blendet die Karte dann aus. Ergebnis konservativ gekappt.
 async function studioAppointments(from, to) {
+  // 1) Direkter (customerId-loser) API-Abruf – klappt jetzt mit APPOINTMENTS_READ,
+  //    kann aber weiterhin degradieren; ein gültiges Array (auch leer) zählt als verfügbar.
+  let apiOk = false; let apiList = [];
   try {
     const qs = [];
     if (from) qs.push('from=' + encodeURIComponent(from));
     if (to) qs.push('to=' + encodeURIComponent(to));
     const r = await M.ml('GET', '/appointments/booking' + (qs.length ? ('?' + qs.join('&')) : ''));
-    if (!(r.status >= 200 && r.status < 300) || !Array.isArray(r.json)) return { available: false, appointments: [] };
-    const appointments = r.json.filter((a) => !isCancelledAppt(a)).map(mapAppt).filter((a) => a.start)
-      .sort((x, y) => new Date(x.start) - new Date(y.start)).slice(0, 200);
-    return { available: true, appointments };
-  } catch (e) { return { available: false, appointments: [] }; }
+    if ((r.status >= 200 && r.status < 300) && Array.isArray(r.json)) {
+      apiOk = true;
+      apiList = r.json.filter((a) => !isCancelledAppt(a)).map(mapAppt).filter((a) => a.start);
+    }
+  } catch (e) {}
+  // 2) Studioweiter LIVE-Feed aus den Webhooks (APPOINTMENT_BOOKING_*). Er füllt sich
+  //    laufend selbst und deckt genau die Termine ab, die der API-Abruf nicht liefert.
+  let feed = [];
+  try { feed = await MlEvents.listAppointments(from, to); } catch (e) {}
+  // 3) Mergen (dedupe über bookingId), API hat Vorrang.
+  const byId = {};
+  apiList.forEach((a) => { if (a.bookingId != null) byId[String(a.bookingId)] = a; });
+  feed.forEach((f) => { const k = String(f.bookingId); if (!byId[k]) byId[k] = { bookingId: f.bookingId, title: f.title, start: f.start, end: f.end || null }; });
+  const appointments = Object.keys(byId).map((k) => byId[k]).filter((a) => a.start)
+    .sort((x, y) => new Date(x.start) - new Date(y.start)).slice(0, 300);
+  return { available: apiOk || feed.length > 0, appointments: appointments };
 }
 
 // Termin absagen – exakt nach dem Muster aus api/member/appointment-cancel.js

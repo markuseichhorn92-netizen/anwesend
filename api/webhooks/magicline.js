@@ -24,6 +24,7 @@
 
 const W = require('../../lib/welcome');
 const NM = require('../../lib/newMembers');
+const MlEvents = require('../../lib/mlEvents');
 
 const SECRET = process.env.MAGICLINE_WEBHOOK_KEY || process.env.MAGICLINE_WEBHOOK_SECRET || '';
 const MAX_EVENTS = 50;   // Sicherheitskappe
@@ -61,6 +62,51 @@ function customerIdOf(e) {
   return cand != null ? String(cand) : null;
 }
 
+function payloadOf(e) { return (e && (e.content || e.payload || e.data)) || {}; }
+
+// APPOINTMENT_BOOKING_*: bei diesen Events ist entityId die bookingId (NICHT die
+// customerId). Fehlen Start/Titel im Event, laden wir den Termin über die API nach
+// (best effort), damit der studioweite Feed vollständig ist.
+async function onAppointmentUpsert(e) {
+  const p = payloadOf(e);
+  const bid = e.entityId || p.bookingId || p.id || e.objectId;
+  if (bid == null) return false;
+  let start = p.startDateTime || p.start || null;
+  let end = p.endDateTime || p.end || null;
+  let title = p.title || p.name || null;
+  const cid = p.customerId || (p.customer && p.customer.id) || null;
+  if (!start && cid) {
+    try {
+      const M = require('../../lib/members');
+      const r = await M.ml('GET', '/appointments/booking?customerId=' + encodeURIComponent(cid));
+      const list = Array.isArray(r.json) ? r.json : [];
+      const hit = list.find((a) => String(a.bookingId != null ? a.bookingId : (a.id != null ? a.id : a.appointmentId)) === String(bid));
+      if (hit) { start = hit.startDateTime || start; end = hit.endDateTime || end; title = hit.title || hit.name || title; }
+    } catch (e2) {}
+  }
+  if (!start) return false;
+  return MlEvents.upsertAppointment({ bookingId: bid, title: title || 'Termin', start: start, end: end, customerId: cid });
+}
+
+// CUSTOMER_PAYMENT_REJECTED: Team benachrichtigen (E-Mail), damit Beitragskonto/
+// Rückholung angestoßen werden kann. Best effort; NIE personenbezogen ins Log.
+async function onPaymentRejected(cid) {
+  try {
+    const M = require('../../lib/members');
+    const SR = require('../../lib/studioReply');
+    let m = null; try { m = await M.getMember(cid); } catch (e) {}
+    const name = m ? ((((m.firstName || '') + ' ' + (m.lastName || '')).trim()) || ('Mitglied ' + cid)) : ('Mitglied ' + cid);
+    await SR.notifyStudio({
+      member: m || { id: cid },
+      subject: '⚠️ Zahlung abgelehnt – ' + name,
+      text: 'Magicline meldet eine abgelehnte Zahlung (CUSTOMER_PAYMENT_REJECTED).\n\n'
+        + 'Mitglied: ' + name + (m && m.customerNumber ? (' · Nr. ' + m.customerNumber) : '') + (m && m.email ? (' · ' + m.email) : '')
+        + '\n\nBitte Beitragskonto prüfen und ggf. Rückholung/Mahnung anstoßen.',
+    });
+    return true;
+  } catch (e) { return false; }
+}
+
 // Kernlogik. opts.key erlaubt es, den Schlüssel aus dem Pfad zu übergeben
 // (für Webhook-Systeme, die keine ?key=-Query erlauben – z. B. Magicline).
 async function handleWebhook(req, res, opts) {
@@ -81,16 +127,39 @@ async function handleWebhook(req, res, opts) {
 
   for (const e of events) {
     const type = typeOf(e);
-    const cid = customerIdOf(e);
     let action = 'ignored';
-    // NUR echter Vertragsabschluss -> Willkommens-/Zugangs-Mail (mit Dedup) + für die
-    // „Neue Mitglieder"-Liste im Team-Backend vormerken (datensparsam: nur ID + Zeit).
-    if (type === 'CONTRACT_CREATED' && cid) {
-      try { const r = await W.sendAccessInfoOnce(cid); action = r.sent ? 'welcome_sent' : ('welcome_' + (r.reason || 'skip')); }
-      catch (e2) { action = 'error'; }
-      try { await NM.recordJoin(cid); } catch (e3) {}
-    }
-    summary.push({ type: type || null, cid: cid || null, action });
+    try {
+      // NUR echter Vertragsabschluss -> Willkommens-/Zugangs-Mail (mit Dedup) + „Neue Mitglieder".
+      if (type === 'CONTRACT_CREATED') {
+        const cid = customerIdOf(e);
+        if (cid) { const r = await W.sendAccessInfoOnce(cid); action = r.sent ? 'welcome_sent' : ('welcome_' + (r.reason || 'skip')); try { await NM.recordJoin(cid); } catch (e3) {} }
+      }
+      // Studioweiter Termin-Feed (Live) aus den Buchungs-Webhooks.
+      else if (type === 'APPOINTMENT_BOOKING_CREATED' || type === 'APPOINTMENT_BOOKING_UPDATED') {
+        action = (await onAppointmentUpsert(e)) ? 'appt_upsert' : 'appt_skip';
+      }
+      else if (type === 'APPOINTMENT_BOOKING_CANCELLED') {
+        const p = payloadOf(e); const bid = e.entityId || p.bookingId || p.id || e.objectId;
+        if (bid != null) { await MlEvents.removeAppointment(bid); action = 'appt_removed'; }
+      }
+      // Live-Check-in-Feed („wer ist gerade da").
+      else if (type === 'CUSTOMER_CHECKIN') {
+        const cid = customerIdOf(e); const p = payloadOf(e);
+        if (cid) { await MlEvents.recordCheckin({ customerId: cid, atMs: Date.parse(p.checkinDateTime || p.dateTime || p.timestamp || '') || Date.now() }); action = 'checkin'; }
+      }
+      // Zahlungsablehnung -> Team benachrichtigen (Rückholung/Mahnung).
+      else if (type === 'CUSTOMER_PAYMENT_REJECTED') {
+        const cid = customerIdOf(e);
+        if (cid) { await onPaymentRejected(cid); action = 'payment_alerted'; }
+      }
+      // Öffnungszeiten/Mitarbeiter/Vertrags-Lebenszyklus: quittiert (Caches sind kurzlebig
+      // bzw. clientseitig; Erweiterungspunkte für Churn/Rückholung).
+      else if (type === 'STUDIO_OPENING_HOURS_UPDATED') { action = 'hours_noted'; }
+      else if (type === 'EMPLOYEE_CREATED' || type === 'EMPLOYEE_UPDATED') { action = 'employee_noted'; }
+      else if (type === 'CONTRACT_CANCELLED') { action = 'cancel_noted'; }
+      else if (type === 'CONTRACT_REVERSED') { action = 'reversed_noted'; }
+    } catch (e2) { action = 'error'; }
+    summary.push({ type: type || null, action: action });
   }
 
   // Kompakte, NICHT personenbezogene Log-Zeile (nur Typ/ID/Aktion) für die Vercel-Logs.
