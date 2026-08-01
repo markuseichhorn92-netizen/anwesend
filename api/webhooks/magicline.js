@@ -107,6 +107,25 @@ async function onPaymentRejected(cid) {
   } catch (e) { return false; }
 }
 
+// Anzeigename für den Live-Check-in-Feed: bevorzugt aus dem Event, sonst einmal per
+// getMember auflösen und 7 Tage in KV cachen (datensparsam: Vorname + Initial). Best effort.
+function cleanName(s) { return String(s == null ? '' : s).replace(/\s+/g, ' ').trim().slice(0, 80); }
+async function checkinName(cid, p) {
+  p = p || {};
+  const fromEvent = cleanName(p.customerName || (p.customer && p.customer.name) || ((p.firstname || p.firstName || '') + ' ' + (p.lastname || p.lastName || '')).trim());
+  if (fromEvent) return fromEvent;
+  try {
+    const { redisPipeline } = require('../../lib/store');
+    try { const [c] = await redisPipeline([['GET', 'mlx:name:' + cid]]); if (c) return c; } catch (e) {}
+    const M = require('../../lib/members');
+    const m = await M.getMember(cid);
+    const ln = String((m && m.lastName) || '').trim();
+    const nm = cleanName(((m && m.firstName) || '') + (ln ? (' ' + ln.charAt(0).toUpperCase() + '.') : ''));
+    if (nm) { try { await redisPipeline([['SET', 'mlx:name:' + cid, nm, 'EX', String(7 * 86400)]]); } catch (e) {} return nm; }
+  } catch (e) {}
+  return null;
+}
+
 // CONTRACT_CANCELLED / CONTRACT_REVERSED -> Team-Hinweis für die Rückholung. (Hinweis:
 // CANCELLED läuft laut Konfig auf einen anderen Server; REVERSED erreicht diese App. Beide
 // Branches sind verdrahtet, falls CANCELLED später hierher geroutet wird.) Best effort.
@@ -166,7 +185,7 @@ async function handleWebhook(req, res, opts) {
       // Live-Check-in-Feed („wer ist gerade da").
       else if (type === 'CUSTOMER_CHECKIN') {
         const cid = customerIdOf(e); const p = payloadOf(e);
-        if (cid) { await MlEvents.recordCheckin({ customerId: cid, atMs: Date.parse(p.checkinDateTime || p.dateTime || p.timestamp || '') || Date.now() }); action = 'checkin'; }
+        if (cid) { const nm = await checkinName(cid, p); await MlEvents.recordCheckin({ customerId: cid, memberName: nm, atMs: Date.parse(p.checkinDateTime || p.dateTime || p.timestamp || '') || Date.now() }); action = 'checkin'; }
       }
       // Zahlungsablehnung -> Team benachrichtigen (Rückholung/Mahnung).
       else if (type === 'CUSTOMER_PAYMENT_REJECTED') {

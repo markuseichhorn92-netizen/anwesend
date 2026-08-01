@@ -2579,6 +2579,31 @@ function duesCardHTML(){
     }).join('')+
     '</div></div>';
 }
+// Live-Check-ins (aus den CUSTOMER_CHECKIN-Webhooks): letzte Check-ins + Besucher
+// heute. Wird KOMPLETT ausgeblendet, solange keine Check-ins vorliegen (leer/kein
+// Store/Webhook noch nicht scharf) – kein leeres Gerüst. Nur Anzeige, kein Klickziel.
+function checkinsCardHTML(){
+  var lc=S.liveCheckins||{};
+  var recent=(lc.recent||[]).slice(0,8);
+  var present=lc.present||0;
+  if(!recent.length && !present) return '';
+  function ini(n){ n=String(n||'').trim(); if(!n) return '·'; var p=n.split(/\s+/); return (((p[0]||'')[0]||'')+(p.length>1?((p[p.length-1][0]||'')):'')).toUpperCase()||'·'; }
+  return '<div style="margin-top:18px;background:#fff;border-radius:20px;box-shadow:0 12px 32px rgba(4,33,40,.09);padding:18px 18px 8px">'+
+    '<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">'+
+      '<div style="width:32px;height:32px;border-radius:10px;background:#e8f6ed;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1d7a3e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/></svg></div>'+
+      '<div style="min-width:0"><div style="font-size:14px;font-weight:900;color:#15171B;letter-spacing:-.2px">Live-Check-ins</div>'+
+      '<div style="font-size:11.5px;color:#8a929a;font-weight:600">'+present+' Besucher heute · letzte Check-ins</div></div>'+
+    '</div>'+
+    '<div style="display:flex;flex-direction:column">'+
+    recent.map(function(c){ var nm=c.name||'Mitglied';
+      return '<div style="display:flex;align-items:center;gap:11px;padding:11px 4px;border-top:1px solid #f0f3f4">'+
+        '<div style="width:36px;height:36px;border-radius:50%;background:#e8f6ed;color:#1d7a3e;font-weight:800;font-size:12px;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+esc(ini(c.name))+'</div>'+
+        '<div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:800;color:#15171B;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(nm)+'</div>'+
+          '<div style="font-size:12px;color:#8a929a;font-weight:600">eingecheckt</div></div>'+
+        '<span style="font-size:11.5px;font-weight:700;color:#8a929a;flex-shrink:0">'+esc(rel(c.at))+'</span></div>';
+    }).join('')+
+    '</div></div>';
+}
 function dashNode(){
   var open=S.counts.open||0, neu=S.counts.neu||0;
   var attn=S.convs.filter(function(c){ return c.teamStatus!=='abgeschlossen'; })
@@ -2616,7 +2641,7 @@ function dashNode(){
         '</div>'+
       '</div>'+
       // rechts: Live-Auslastung + Risiko-Mitglieder (Churn-Radar)
-      '<div style="margin-top:24px">'+auslastungCardHTML()+churnCardHTML()+duesCardHTML()+'</div>'+
+      '<div style="margin-top:24px">'+auslastungCardHTML()+checkinsCardHTML()+churnCardHTML()+duesCardHTML()+'</div>'+
     '</div>'+
     // unten volle Breite: Letzte Aktivität
     '<div style="font-size:14px;font-weight:900;color:#15171B;letter-spacing:-.2px;margin:24px 2px 12px">Letzte Aktivität</div>'+
@@ -5719,6 +5744,9 @@ async function loadUtil(){ try{ var r=await fetch('/api/auslastung').then(functi
 async function loadChurn(){ try{ var r=await tapi('/api/team/churn'); if(r && r.ok){ S.churn=r.members||[]; scheduleRender(); } }catch(e){} }
 // Offene Beiträge / Mahn-Liste (degradiert still – Karte bleibt bei Fehler/leer aus).
 async function loadDues(){ try{ var r=await tapi('/api/team/dues'); if(r && r.ok){ S.dues=r.members||[]; scheduleRender(); } }catch(e){} }
+// Live-Check-ins aus dem Webhook-Feed (letzte Check-ins + Besucher heute).
+// Degradiert still – Karte bleibt aus, solange keine Check-ins vorliegen.
+async function loadLiveCheckins(){ try{ var r=await tapi('/api/team/checkins?live=1'); if(r && r.ok){ S.liveCheckins={ recent:r.recent||[], present:r.present||0 }; scheduleRender(); } }catch(e){} }
 
 function helpNew(){ S.editor={id:null,title:'',cat:'mitglied',body:'',status:'entwurf',views:0,helpfulYes:0,helpfulNo:0}; S.helpView='edit'; render(); }
 function helpEdit(id){ var a=null; for(var i=0;i<S.articles.length;i++) if(S.articles[i].id===id) a=S.articles[i]; if(a){ S.editor=Object.assign({},a); S.helpView='edit'; render(); } }
@@ -6219,7 +6247,7 @@ function goScreen(k){
   if(!canSee(k)) k='dash';   // Angestellte werden aus Admin-Bereichen sanft umgeleitet
   if(k!=='inbox' && S.selMode){ S.selMode=false; S.selected={}; S.bulkMenu=''; }   // Auswahlmodus beim Verlassen des Postfachs beenden
   S.screen=k; S.navOpen=false; syncUrl(true);
-  if(k==='dash'){ loadUtil(); loadChurn(); if(isAdmin()){ loadDues(); loadRetentionOffers(); } if(!S.convs.length && !S.loading) loadInbox(); }
+  if(k==='dash'){ loadUtil(); loadChurn(); loadLiveCheckins(); if(isAdmin()){ loadDues(); loadRetentionOffers(); } if(!S.convs.length && !S.loading) loadInbox(); }
   if(k==='members'){ S.profile=null; if(!S.membersLoaded){ loadMembers(); return; } }
   if(k==='appts' && !S.convs.length && !S.loading){ loadInbox(); return; }
   if(k==='trial'){ if(S.trSlots==null){ loadTrialSlots(); return; } }

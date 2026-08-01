@@ -13,6 +13,7 @@
 const TA = require('../../lib/teamAuth');
 const Cap = require('../../lib/capabilities');
 const M = require('../../lib/members');
+const MlEvents = require('../../lib/mlEvents');
 
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json');
@@ -24,6 +25,14 @@ module.exports = async function handler(req, res) {
 
   const url = new URL(req.url, 'http://x');
   const id = url.searchParams.get('id');
+  // Live-Feed (aus den CUSTOMER_CHECKIN-Webhooks): letzte Check-ins + Besucher heute.
+  if (!id && url.searchParams.get('live')) {
+    let recent = [], present = 0;
+    try { recent = await MlEvents.recentCheckins(25); } catch (e) {}
+    try { present = await MlEvents.presentCount(); } catch (e) {}
+    res.statusCode = 200;
+    return res.end(JSON.stringify({ ok: true, live: true, present: present, recent: recent }));
+  }
   if (!id) { res.statusCode = 400; return res.end(JSON.stringify({ ok: false, error: 'missing_id' })); }
 
   try {
