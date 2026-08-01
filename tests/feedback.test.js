@@ -35,7 +35,7 @@ async function run() {
   ok('0b. Team-Endpoint da', fs.existsSync(path.join(ROOT, 'api/team/feedback.js')));
   const mem = read('mitglieder.html');
   ok('0c. Startseiten-Banner', mem.includes('function feedbackBanner()') && mem.includes("data-act=\"fbOpen\""));
-  ok('0d. Banner eingehängt', mem.includes("sec('App verbessern', feedbackBanner())"));
+  ok('0d. Banner in der Startseite eingehängt', mem.includes('homeBlog()+feedbackBanner()'));
   ok('0e. Sendet an /api/member/feedback', mem.includes("api('/api/member/feedback'"));
   ok('0f. Endpoint anonymisiert (keine memberId gespeichert)', !read('api/member/feedback.js').match(/submit\([^)]*id\s*:/));
   const team = read('team-backend.html');
