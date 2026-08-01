@@ -107,6 +107,27 @@ async function onPaymentRejected(cid) {
   } catch (e) { return false; }
 }
 
+// CONTRACT_CANCELLED / CONTRACT_REVERSED -> Team-Hinweis für die Rückholung. (Hinweis:
+// CANCELLED läuft laut Konfig auf einen anderen Server; REVERSED erreicht diese App. Beide
+// Branches sind verdrahtet, falls CANCELLED später hierher geroutet wird.) Best effort.
+async function onContractEnd(cid, kind) {
+  try {
+    const M = require('../../lib/members');
+    const SR = require('../../lib/studioReply');
+    let m = null; try { m = await M.getMember(cid); } catch (e) {}
+    const name = m ? ((((m.firstName || '') + ' ' + (m.lastName || '')).trim()) || ('Mitglied ' + cid)) : ('Mitglied ' + cid);
+    const label = kind === 'reversed' ? 'Vertrag widerrufen' : 'Vertrag gekündigt';
+    await SR.notifyStudio({
+      member: m || { id: cid },
+      subject: '🔄 ' + label + ' – Rückholung prüfen: ' + name,
+      text: 'Magicline meldet: ' + label + ' (' + (kind === 'reversed' ? 'CONTRACT_REVERSED' : 'CONTRACT_CANCELLED') + ').\n\n'
+        + 'Mitglied: ' + name + (m && m.customerNumber ? (' · Nr. ' + m.customerNumber) : '') + (m && m.email ? (' · ' + m.email) : '')
+        + '\n\nGuter Zeitpunkt für ein Rückhol-Angebot (Rückholung im Team-Backend / „Vorschlag von FINN").',
+    });
+    return true;
+  } catch (e) { return false; }
+}
+
 // Kernlogik. opts.key erlaubt es, den Schlüssel aus dem Pfad zu übergeben
 // (für Webhook-Systeme, die keine ?key=-Query erlauben – z. B. Magicline).
 async function handleWebhook(req, res, opts) {
@@ -156,8 +177,9 @@ async function handleWebhook(req, res, opts) {
       // bzw. clientseitig; Erweiterungspunkte für Churn/Rückholung).
       else if (type === 'STUDIO_OPENING_HOURS_UPDATED') { action = 'hours_noted'; }
       else if (type === 'EMPLOYEE_CREATED' || type === 'EMPLOYEE_UPDATED') { action = 'employee_noted'; }
-      else if (type === 'CONTRACT_CANCELLED') { action = 'cancel_noted'; }
-      else if (type === 'CONTRACT_REVERSED') { action = 'reversed_noted'; }
+      // Kündigung/Widerruf -> Team-Hinweis für die Rückholung.
+      else if (type === 'CONTRACT_CANCELLED') { const cid = customerIdOf(e); if (cid) { await onContractEnd(cid, 'cancelled'); action = 'cancel_alerted'; } }
+      else if (type === 'CONTRACT_REVERSED') { const cid = customerIdOf(e); if (cid) { await onContractEnd(cid, 'reversed'); action = 'reversed_alerted'; } }
     } catch (e2) { action = 'error'; }
     summary.push({ type: type || null, action: action });
   }

@@ -86,6 +86,10 @@ async function run() {
   r = await post({ type: 'SOMETHING_ELSE' });
   ok('12. Unbekannter Typ -> ignored', r.json.summary[0].action === 'ignored');
 
+  // ── Kündigung/Widerruf -> Team-Rückholungshinweis ──
+  r = await post({ type: 'CONTRACT_REVERSED', entityId: 'm1' });
+  ok('13. Widerruf -> Rückholungs-Hinweis ans Team', r.json.summary[0].action === 'reversed_alerted' && notified.length === 2 && /Rückholung/.test(notified[1].subject), JSON.stringify(notified.map((n) => n.subject)));
+
   console.log(pass ? 'ML-WEBHOOK PASS' : 'ML-WEBHOOK FAIL');
   process.exit(pass ? 0 : 1);
 }
