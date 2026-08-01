@@ -56,34 +56,44 @@ async function memberAppointments(memberId) {
   } catch (e) { return []; }
 }
 
-// Studio-weite Terminübersicht (best effort). Wir versuchen den customerId-losen
-// Abruf mit from/to; nur ein 2xx mit Array gilt als verfügbar – sonst available:false,
-// die UI blendet die Karte dann aus. Ergebnis konservativ gekappt.
+// Studio-weite Terminübersicht.
+// WICHTIG: Die Magicline Open API kennt KEINEN studioweiten Terminabruf – jeder
+// Booking-Endpunkt ist kundengebunden (customerId Pflicht). Der customerId-lose
+// Versuch bleibt best effort (falls Magicline ihn je freischaltet), die eigentliche
+// Datenquelle ist der studioweite LIVE-Feed aus den APPOINTMENT_BOOKING_*-Webhooks.
+// Der Feed füllt sich vorwärts: Termine, die seit Aktivierung neu gebucht/geändert
+// wurden. Bereits vorher bestehende Termine liefert Magicline NICHT nach.
+// Rückgabe: { available, appointments, source, feedReady }.
 async function studioAppointments(from, to) {
-  // 1) Direkter (customerId-loser) API-Abruf – klappt jetzt mit APPOINTMENTS_READ,
-  //    kann aber weiterhin degradieren; ein gültiges Array (auch leer) zählt als verfügbar.
-  let apiOk = false; let apiList = [];
+  // 1) Direkter (customerId-loser) API-Abruf – i. d. R. nicht unterstützt (nur best effort).
+  let apiOk = false; let apiList = []; let apiStatus = 0;
   try {
     const qs = [];
     if (from) qs.push('from=' + encodeURIComponent(from));
     if (to) qs.push('to=' + encodeURIComponent(to));
     const r = await M.ml('GET', '/appointments/booking' + (qs.length ? ('?' + qs.join('&')) : ''));
+    apiStatus = r.status || 0;
     if ((r.status >= 200 && r.status < 300) && Array.isArray(r.json)) {
       apiOk = true;
       apiList = r.json.filter((a) => !isCancelledAppt(a)).map(mapAppt).filter((a) => a.start);
     }
   } catch (e) {}
-  // 2) Studioweiter LIVE-Feed aus den Webhooks (APPOINTMENT_BOOKING_*). Er füllt sich
-  //    laufend selbst und deckt genau die Termine ab, die der API-Abruf nicht liefert.
+  // 2) Studioweiter LIVE-Feed aus den Webhooks (APPOINTMENT_BOOKING_*).
   let feed = [];
   try { feed = await MlEvents.listAppointments(from, to); } catch (e) {}
+  const feedReady = !!MlEvents.hasStore;   // Feed-Mechanik grundsätzlich einsatzbereit?
   // 3) Mergen (dedupe über bookingId), API hat Vorrang.
   const byId = {};
   apiList.forEach((a) => { if (a.bookingId != null) byId[String(a.bookingId)] = a; });
   feed.forEach((f) => { const k = String(f.bookingId); if (!byId[k]) byId[k] = { bookingId: f.bookingId, title: f.title, start: f.start, end: f.end || null }; });
   const appointments = Object.keys(byId).map((k) => byId[k]).filter((a) => a.start)
     .sort((x, y) => new Date(x.start) - new Date(y.start)).slice(0, 300);
-  return { available: apiOk || feed.length > 0, appointments: appointments };
+  // Nicht-personenbezogene Diagnose (nur Status/Zähler) für die Vercel-Logs.
+  try { console.log('[studio-appts]', JSON.stringify({ apiStatus: apiStatus, apiOk: apiOk, feed: feed.length, feedReady: feedReady })); } catch (e) {}
+  const source = apiOk ? 'api' : (feed.length ? 'feed' : (feedReady ? 'feed_empty' : 'none'));
+  // "available": Der Kalender kann angezeigt werden, sobald wir eine Quelle haben ODER
+  // der Live-Feed grundsätzlich bereit ist (leerer Feed = "noch keine Termine", NICHT "kaputt").
+  return { available: apiOk || feedReady, appointments: appointments, source: source, feedReady: feedReady };
 }
 
 // Termin absagen – exakt nach dem Muster aus api/member/appointment-cancel.js
@@ -223,7 +233,7 @@ module.exports = async function handler(req, res) {
     }
     if (from || to) {
       const r = await studioAppointments(from, to);
-      res.statusCode = 200; return res.end(JSON.stringify({ ok: true, available: r.available, appointments: r.appointments }));
+      res.statusCode = 200; return res.end(JSON.stringify({ ok: true, available: r.available, appointments: r.appointments, source: r.source }));
     }
     res.statusCode = 400; return res.end(JSON.stringify({ ok: false, error: 'missing_params' }));
   }

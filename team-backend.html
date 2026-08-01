@@ -1833,14 +1833,14 @@ async function loadStudioApptsWeek(weekStartMs){
   var key=apptWeekKey(weekStartMs);
   var c=S.apptWeekCache[key];
   if(c && (c.loading || c.loaded)) return;
-  S.apptWeekCache[key]={loading:true,loaded:false,available:false,appts:[]};
+  S.apptWeekCache[key]={loading:true,loaded:false,available:false,appts:[],source:null};
   try{
     var from=new Date(weekStartMs); var to=new Date(weekStartMs+7*86400000);
     var r=await tapi('/api/team/appointments?from='+encodeURIComponent(from.toISOString())+'&to='+encodeURIComponent(to.toISOString()));
     var ok=!!(r&&r.ok&&r.available);
-    S.apptWeekCache[key]={loading:false,loaded:true,available:ok,appts:(ok&&Array.isArray(r.appointments))?r.appointments:[]};
+    S.apptWeekCache[key]={loading:false,loaded:true,available:ok,appts:(ok&&Array.isArray(r.appointments))?r.appointments:[],source:(r&&r.source)||null};
     if(ok) S.studioApptsAvailable=true;
-  }catch(e){ S.apptWeekCache[key]={loading:false,loaded:true,available:false,appts:[]}; }
+  }catch(e){ S.apptWeekCache[key]={loading:false,loaded:true,available:false,appts:[],source:null}; }
   if(S.screen==='appts') render();
 }
 function apptShiftWeek(delta){
@@ -3003,8 +3003,13 @@ function apptsNode(){
   var statusLine=wk.loading
     ? '<span style="color:#8a929a">Kalender wird geladen …</span>'
     : ((wk.loaded && !wk.available)
-      ? '<span style="color:#a9832b">Studio-Übersicht über die Schnittstelle nicht verfügbar</span>'
-      : (weekTotal? '<span style="color:#2f7d8c">'+weekTotal+' gebuchte'+(weekTotal===1?'r Termin':' Termine')+'</span>' : '<span style="color:#8a929a">Keine gebuchten Termine</span>'));
+      ? '<span style="color:#a9832b">Studio-Kalender aktuell nicht verfügbar</span>'
+      : (weekTotal? '<span style="color:#2f7d8c">'+weekTotal+' gebuchte'+(weekTotal===1?'r Termin':' Termine')+'</span>' : '<span style="color:#8a929a">Noch keine Termine erfasst</span>'));
+  // Ehrlicher Hinweis: Die Magicline Open API liefert keine studioweite Terminliste;
+  // dieser Kalender wird live aus den Webhooks aufgebaut und füllt sich vorwärts.
+  var feedNote=(wk.loaded && wk.available && (wk.source==='feed'||wk.source==='feed_empty'))
+    ? '<div style="font-size:11.5px;color:#8a929a;font-weight:600;line-height:1.5;background:#f4f7f8;border-radius:10px;padding:9px 12px;margin-bottom:10px">Live aus Magicline: zeigt Termine, die seit Aktivierung neu gebucht oder geändert wurden. Bereits vorher bestehende Termine übermittelt Magicline nicht automatisch.</div>'
+    : '';
   var studioCard='<div style="background:#fff;border-radius:18px;box-shadow:0 10px 28px rgba(4,33,40,.07);padding:16px 18px 18px;margin-bottom:18px">'+
     '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px">'+
       '<span style="width:9px;height:9px;border-radius:50%;background:'+TEAL+'"></span>'+
@@ -3020,6 +3025,7 @@ function apptsNode(){
       '<div style="font-size:13.5px;font-weight:800;color:#15171B">'+esc(rangeLabel)+'</div>'+
       '<div style="font-size:12px;font-weight:800">'+statusLine+'</div>'+
     '</div>'+
+    feedNote+
     '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch"><div style="display:flex;gap:8px;min-width:760px">'+cols+'</div></div>'+
   '</div>';
   function card(c){
