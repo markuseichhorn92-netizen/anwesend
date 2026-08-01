@@ -336,6 +336,21 @@ module.exports = async function handler(req, res) {
       return j(res, 200, Object.assign({ ok: true }, await readState(id)));
     }
 
+    // Mitglied bearbeitet den EIGENEN aktiven Plan (kleine Änderungen: Sätze/Wdh./Pause,
+    // Übung tauschen/entfernen/hinzufügen). Wird als persönliche Kopie gespeichert
+    // (source 'finn'; normalizePlan behält die Plan-id), startedAt bleibt erhalten – die
+    // geteilte Bibliothek bleibt unangetastet. Da sich Übungs-Indizes ändern können, wird
+    // die HEUTIGE Session zurückgesetzt (keine veralteten Abhak-Marker d<di>e<ix>).
+    if (action === 'plan-edit') {
+      const cur = await T.resolveActive(id);
+      if (!cur) return j(res, 200, { ok: false, error: 'no_active' });
+      const norm = T.normalizePlan(body.plan, 'finn');
+      if (!norm || !Array.isArray(norm.days) || !norm.days.length) return j(res, 200, { ok: false, error: 'invalid_plan' });
+      await T.saveActive(id, { source: 'finn', plan: norm, startedAt: cur.startedAt || Date.now() });
+      try { await redisPipeline([['DEL', SKEY(id, berlinDate())]]); } catch (e) {}
+      return j(res, 200, Object.assign({ ok: true }, await readState(id)));
+    }
+
     // Meinen Plan beenden.
     if (action === 'plan-stop') {
       await T.clearActive(id);

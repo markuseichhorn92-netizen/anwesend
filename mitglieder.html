@@ -7386,6 +7386,54 @@
     }).join('');
   }
   window.__trExFilter=function(v){ S.trainExQ=v||''; var el=$('tr_ex_list'); if(el) el.innerHTML=trainExRows(trainExFilter((DATA.training&&DATA.training.exercises)||[])); };
+
+  // ══════════ Trainingsplan selbst bearbeiten (kleine Änderungen am AKTIVEN Plan) ══════════
+  // Arbeitet auf einer tiefen Kopie S.trainEditPlan; „Sichern" schickt sie an plan-edit.
+  // Feld-Änderungen (Sätze/Wdh./Pause) aktualisieren die Kopie ohne Re-Render (kein Fokusverlust).
+  window.__trEditFld=function(di,ex,field,val){ var pl=S.trainEditPlan; if(!pl||!pl.days||!pl.days[di]||!pl.days[di].exercises||!pl.days[di].exercises[ex]) return; var e=pl.days[di].exercises[ex]; if(field==='sets') e.sets=val; else if(field==='reps') e.reps=val; else if(field==='rest') e.rest=val; };
+  // Katalog-Eintrag -> Übungsobjekt (Biostrength ohne Sätze/Wdh., sonst sinnvolle Defaults).
+  function trainMkExercise(cat){ var e={ name:cat.name }; if(cat.machine) e.machine=cat.machine; if(cat.group) e.group=cat.group; if(cat.bio){ e.bio=true; } else { e.sets=3; e.reps='8–12'; e.rest='60–90 s'; } return e; }
+  function trainEditExRow(e,di,ex){
+    var top='<div style="display:flex;align-items:center;gap:8px"><div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:800;color:var(--text)">'+esc(e.name)+'</div>'+(e.machine?'<div style="font-size:11px;font-weight:700;color:var(--ern-acc);margin-top:1px">🔧 '+esc(e.machine)+'</div>':'')+'</div>'+
+      '<button data-act="trainExSwap" data-arg="'+di+':'+ex+'" style="border:1.5px solid var(--border-strong);border-radius:9px;background:var(--surface);color:var(--teal-ink);font-size:11.5px;font-weight:800;padding:6px 11px;cursor:pointer;flex-shrink:0">Tauschen</button>'+
+      '<button data-act="trainExRemove" data-arg="'+di+':'+ex+'" aria-label="Übung entfernen" style="width:30px;height:30px;border-radius:9px;border:none;background:var(--surface-2);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'+svg('<path d="M18 6L6 18M6 6l12 12"></path>',{c:'var(--err-fg,#b03434)',w:2.2,s:14})+'</button></div>';
+    var body;
+    if(e.bio){ body='<div style="font-size:11px;font-weight:800;color:var(--ern-acc);margin-top:7px">🤖 Technogym-KI steuert Gewicht &amp; Wdh.</div>'; }
+    else {
+      var fld=function(lab,field,val,ph,w){ return '<div style="flex:'+w+'"><label style="font-size:9.5px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.3px">'+lab+'</label><input value="'+esc(val==null?'':val)+'" placeholder="'+ph+'" oninput="window.__trEditFld('+di+','+ex+',\''+field+'\',this.value)" style="width:100%;box-sizing:border-box;margin-top:3px;padding:8px 9px;border:1.5px solid var(--border-strong);border-radius:9px;font-size:13.5px;font-weight:700;color:var(--text);background:var(--surface);font-family:inherit"></div>'; };
+      body='<div style="display:flex;gap:7px;margin-top:8px">'+fld('Sätze','sets',e.sets,'3','0.8')+fld('Wdh.','reps',e.reps,'8–12','1.2')+fld('Pause','rest',e.rest,'60–90 s','1.2')+'</div>';
+    }
+    return '<div style="padding:11px 0;border-top:1px solid var(--border)">'+top+body+'</div>';
+  }
+  function trainEditDaysHtml(plan){
+    return (plan.days||[]).map(function(day,di){
+      var ex=(day.exercises||[]).map(function(e,exIdx){ return trainEditExRow(e,di,exIdx); }).join('');
+      var add='<button data-act="trainExAdd" data-arg="'+di+'" style="width:100%;margin-top:10px;padding:10px;border:1.5px dashed var(--border-strong);border-radius:11px;background:var(--surface-2);color:var(--teal-ink);font-weight:800;font-size:13px;cursor:pointer">+ Übung hinzufügen</button>';
+      return trainCardBox('<div style="display:flex;align-items:center;gap:9px;margin-bottom:2px"><div style="width:26px;height:26px;border-radius:8px;background:'+ERN_G+';color:#fff;font-size:12.5px;font-weight:900;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+(di+1)+'</div><div style="font-size:15px;font-weight:900;color:var(--text)">'+esc(day.name)+'</div></div>'+ex+add);
+    }).join('');
+  }
+  function trainPickRows(list){
+    if(!list.length) return '<div style="font-size:13px;color:var(--placeholder);font-weight:600;padding:26px 2px;text-align:center">Keine Übung gefunden.</div>';
+    return list.map(function(e){
+      return '<button data-act="trainPickEx" data-arg="'+esc(e.id)+'" style="display:block;width:100%;text-align:left;background:var(--surface);border:none;border-radius:13px;box-shadow:0 5px 14px rgba(4,33,40,.06);padding:12px 13px;margin-bottom:8px;cursor:pointer;font-family:inherit">'+
+        '<div style="display:flex;align-items:center;gap:7px"><div style="font-size:13.5px;font-weight:900;color:var(--text);flex:1;min-width:0">'+esc(e.name)+'</div>'+
+        (e.bio?'<span style="background:rgba(14,96,114,.1);color:var(--teal-ink);font-size:10px;font-weight:800;border-radius:6px;padding:2px 6px;flex-shrink:0">🤖 KI</span>':'')+
+        '<span style="background:var(--surface-2);color:var(--text-muted);font-size:10px;font-weight:800;border-radius:6px;padding:2px 7px;flex-shrink:0">'+esc(e.groupLabel||'')+'</span></div>'+
+        '<div style="font-size:11px;font-weight:700;color:var(--ern-acc);margin-top:3px">🔧 '+esc(e.machine)+'</div></button>';
+    }).join('');
+  }
+  window.__trPickFilter=function(v){ S.trainExQ=v||''; var el=$('tr_pick_list'); if(el) el.innerHTML=trainPickRows(trainExFilter((DATA.training&&DATA.training.exercises)||[])); };
+  function trainPickSheet(){
+    var pk=S.trainPick; if(!pk) return '';
+    var d=DATA.training||{}; var groups=d.exerciseGroups||[]; var g=S.trainExGroup||'';
+    var title=(pk.ex>=0)?'Übung tauschen':'Übung hinzufügen';
+    var head='<div style="display:flex;align-items:center;gap:11px;margin-bottom:12px"><div style="flex:1;font-size:17px;font-weight:900;color:var(--text)">'+title+'</div><button data-act="trainPickClose" aria-label="Schließen" style="width:34px;height:34px;border-radius:11px;border:none;background:var(--surface-2);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'+svg('<path d="M18 6L6 18M6 6l12 12"></path>',{c:'var(--text-soft)',w:2.2,s:16})+'</button></div>';
+    var chips='<div style="display:flex;gap:7px;overflow-x:auto;padding-bottom:6px;margin-bottom:10px;-webkit-overflow-scrolling:touch">'+
+      [['','Alle']].concat(groups).map(function(gr){ var on=(g===gr[0]); return '<button data-act="trainExGroup" data-arg="'+esc(gr[0])+'" style="flex-shrink:0;border:1.5px solid '+(on?ERN_G:'var(--border-strong)')+';border-radius:20px;background:'+(on?ERN_G:'var(--surface)')+';color:'+(on?'#fff':'var(--text-2)')+';font-size:12px;font-weight:800;padding:7px 13px;cursor:pointer;white-space:nowrap">'+esc(gr[1])+'</button>'; }).join('')+'</div>';
+    var search='<input id="tr_pickq" value="'+esc(S.trainExQ||'')+'" placeholder="Übung oder Gerät suchen …" autocomplete="off" oninput="window.__trPickFilter(this.value)" style="width:100%;box-sizing:border-box;border:1.5px solid var(--border-strong);border-radius:12px;padding:11px 12px;font-size:14px;font-weight:600;color:var(--text);background:var(--surface);font-family:inherit;outline:none;margin-bottom:10px">';
+    var rows='<div id="tr_pick_list">'+trainPickRows(trainExFilter(d.exercises||[]))+'</div>';
+    return '<div class="ciOverlay" data-act="trainPickClose" style="align-items:flex-end;justify-content:center;padding:0"><div data-act="noop" style="width:100%;max-width:520px;max-height:92vh;overflow-y:auto;-webkit-overflow-scrolling:touch;background:var(--bg);border-radius:22px 22px 0 0;padding:16px 16px calc(20px + env(safe-area-inset-bottom))">'+head+chips+search+rows+'</div></div>';
+  }
   // Detailansicht eines Plans (kuratiert = aus Bibliothek, FINN = aus DATA.training.myPlan).
   function trainingDetail(){
     var d=DATA.training||{};
@@ -7407,8 +7455,11 @@
       '</div>';
     var summary=p.summary?'<div style="font-size:13.5px;font-weight:500;color:var(--text-2);line-height:1.55;margin:0 2px 16px">'+esc(p.summary)+'</div>':'';
     var aiCard=p.aiAssist?trainCardBox('<div style="display:flex;gap:11px;align-items:flex-start"><span style="font-size:22px">🤖</span><div><div style="font-size:14px;font-weight:900;color:var(--text)">Technogym-KI trainiert mit</div><div style="font-size:12.5px;font-weight:500;color:var(--text-2);line-height:1.5;margin-top:3px">Melde dich an jedem Biostrength-Gerät mit deinem Profil an. Sitz und Gewicht stellen sich automatisch ein und die KI steigert dich Woche für Woche – du musst dich nur bewegen.</div></div></div>','16px'):'';
+    var editing=S.trainEdit&&isActive&&!!S.trainEditPlan;
     var days='';
-    if(Array.isArray(p.days)&&p.days.length){
+    if(editing){
+      days=trainEditDaysHtml(S.trainEditPlan);
+    } else if(Array.isArray(p.days)&&p.days.length){
       days=p.days.map(function(day,di){
         var ex=(day.exercises||[]).map(function(e,exIdx){
           return '<button data-act="trExDetail" data-arg="p:'+esc(p.id)+':'+di+':'+exIdx+'" style="display:flex;width:100%;text-align:left;gap:10px;padding:10px 0;border:none;border-top:1px solid var(--border);background:none;cursor:pointer;font-family:inherit;align-items:center">'+
@@ -7423,11 +7474,14 @@
     } else {
       days=skelBlock('rows', 3);
     }
-    var tips=(Array.isArray(p.tips)&&p.tips.length)?trainCardBox('<div style="font-size:12px;font-weight:900;color:var(--ern-acc);text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px">Tipps zum Plan</div>'+p.tips.map(function(t){ return '<div style="display:flex;gap:8px;font-size:13px;font-weight:500;color:var(--text-2);line-height:1.5;margin-top:6px"><span>•</span><span>'+esc(t)+'</span></div>'; }).join('')):'';
-    var cta=isActive
+    var tips=(!editing&&Array.isArray(p.tips)&&p.tips.length)?trainCardBox('<div style="font-size:12px;font-weight:900;color:var(--ern-acc);text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px">Tipps zum Plan</div>'+p.tips.map(function(t){ return '<div style="display:flex;gap:8px;font-size:13px;font-weight:500;color:var(--text-2);line-height:1.5;margin-top:6px"><span>•</span><span>'+esc(t)+'</span></div>'; }).join('')):'';
+    // Aktiver Plan: „Plan anpassen" (oben, entdeckbar) bzw. im Edit-Modus die Sichern-/Abbrechen-Leiste.
+    var editTop=(isActive&&!editing)?'<button data-act="trainEditOpen" style="width:100%;margin:0 0 14px;padding:13px;border:1.5px solid var(--border-strong);border-radius:14px;background:var(--surface);color:var(--teal-ink);font-weight:800;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px">'+svg('<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.1 2.1 0 0 1 3 3L12 15l-4 1 1-4z"></path>',{c:'var(--teal-ink)',w:1.9,s:17})+'Plan anpassen</button>':'';
+    var editBar=editing?('<div style="display:flex;gap:8px;margin-top:6px"><button data-act="trainEditCancel"'+(S.trainBusy?' disabled':'')+' style="flex:1;padding:14px;border:1.5px solid var(--border-strong);border-radius:14px;background:var(--surface);color:var(--text-muted);font-weight:800;font-size:14.5px;cursor:pointer">Abbrechen</button><button data-act="trainEditSave"'+(S.trainBusy?' disabled':'')+' style="flex:1.4;padding:14px;border:none;border-radius:14px;background:'+ERN_G+';color:#fff;font-weight:900;font-size:14.5px;cursor:pointer;opacity:'+(S.trainBusy?'.6':'1')+'">'+(S.trainBusy?'Sichert …':'Änderungen sichern')+'</button></div>'):'';
+    var cta=editing?'':(isActive
       ? '<div style="background:rgba(14,96,114,.08);border:1px solid rgba(14,96,114,.2);border-radius:14px;padding:13px;text-align:center;font-size:13.5px;font-weight:800;color:var(--teal-ink);margin-top:4px">✓ Das ist aktuell dein Plan</div>'
-      : '<button data-act="trainStart" data-arg="'+esc(p.id)+'"'+(S.trainBusy?' disabled':'')+' style="width:100%;padding:15px;border:none;border-radius:14px;background:'+ERN_G+';color:#fff;font-weight:900;font-size:15px;cursor:pointer;margin-top:4px">'+(S.trainBusy?'…':'Diesen Plan wählen')+'</button>';
-    return '<div style="padding:0 2px 96px">'+back+head+aiCard+summary+days+tips+cta+'</div>';
+      : '<button data-act="trainStart" data-arg="'+esc(p.id)+'"'+(S.trainBusy?' disabled':'')+' style="width:100%;padding:15px;border:none;border-radius:14px;background:'+ERN_G+';color:#fff;font-weight:900;font-size:15px;cursor:pointer;margin-top:4px">'+(S.trainBusy?'…':'Diesen Plan wählen')+'</button>');
+    return '<div style="padding:0 2px 96px">'+back+head+aiCard+summary+editTop+days+tips+editBar+cta+'</div>'+(editing?trainPickSheet():'');
   }
   // FINN-Generator-Formular + Vorschau.
   function trainingGenSheet(){
@@ -11192,7 +11246,18 @@
       var d=DATA.training||{}; var isActive=(d.myPlan&&d.myPlan.plan&&String(d.myPlan.plan.id)===String(a)&&Array.isArray(d.myPlan.plan.days));
       if(!isActive){ api('/api/member/training',{method:'POST',body:JSON.stringify({action:'plan-detail',planId:a})}).then(function(r){ if(r&&r.ok&&r.plan&&S.trainDetail===a){ S.trainDetailFull=r.plan; render(); } }).catch(function(){}); }
     },
-    trainBack:function(){ S.trainDetail=null; S.trainDetailFull=null; setS({}); },
+    trainBack:function(){ S.trainDetail=null; S.trainDetailFull=null; S.trainEdit=false; S.trainEditPlan=null; S.trainPick=null; setS({}); },
+    // ── Trainingsplan selbst bearbeiten ──
+    trainEditOpen:function(){ var d=DATA.training||{}; var mp=d.myPlan&&d.myPlan.plan; if(!mp||!Array.isArray(mp.days)||!mp.days.length) return; try{ S.trainEditPlan=JSON.parse(JSON.stringify(mp)); }catch(e){ return; } S.trainEdit=true; S.trainPick=null; S.trainExQ=''; S.trainExGroup=''; S.trainMsg=''; setS({}); },
+    trainEditCancel:function(){ if(S.trainBusy) return; S.trainEdit=false; S.trainEditPlan=null; S.trainPick=null; setS({}); },
+    trainEditSave:function(){ if(S.trainBusy||!S.trainEditPlan) return; S.trainBusy=true; render();
+      api('/api/member/training',{method:'POST',body:JSON.stringify({action:'plan-edit',plan:S.trainEditPlan})}).then(function(r){ S.trainBusy=false; if(r&&r.ok){ DATA.training=r; S.trainEdit=false; S.trainEditPlan=null; S.trainPick=null; if(r.myPlan&&r.myPlan.plan) S.trainDetail=r.myPlan.plan.id; S.trainMsg='Plan aktualisiert. 💪'; } else { S.trainMsg=(r&&r.message)||'Konnte nicht gespeichert werden – prüf, dass jeder Tag mindestens eine Übung hat.'; } setS({}); }).catch(function(){ S.trainBusy=false; S.trainMsg='Konnte nicht gespeichert werden.'; setS({}); });
+    },
+    trainExSwap:function(a){ var p=String(a||'').split(':'); S.trainPick={di:parseInt(p[0],10)||0, ex:(parseInt(p[1],10)||0)}; S.trainExQ=''; S.trainExGroup=''; setS({}); },
+    trainExAdd:function(a){ S.trainPick={di:parseInt(a,10)||0, ex:-1}; S.trainExQ=''; S.trainExGroup=''; setS({}); },
+    trainPickClose:function(){ S.trainPick=null; setS({}); },
+    trainPickEx:function(a){ var pk=S.trainPick, pl=S.trainEditPlan; if(!pk||!pl||!pl.days[pk.di]) return; var cat=((DATA.training&&DATA.training.exercises)||[]).filter(function(x){ return String(x.id)===String(a); })[0]; if(!cat) return; var day=pl.days[pk.di]; var e=trainMkExercise(cat); if(pk.ex>=0){ day.exercises[pk.ex]=e; } else { day.exercises=(day.exercises||[]).concat([e]); } S.trainPick=null; setS({}); },
+    trainExRemove:function(a){ var pl=S.trainEditPlan; if(!pl) return; var p=String(a||'').split(':'); var di=parseInt(p[0],10)||0, ex=parseInt(p[1],10)||0; var day=pl.days[di]; if(!day||!day.exercises) return; day.exercises.splice(ex,1); setS({}); },
     // Tracker ÖFFNEN (ansehen): startet die Zeit NICHT von selbst – setzt nur eine bereits
     // laufende, junge Session fort. Gestartet wird ausschließlich per Button (trainBegin/trainRunGo).
     trainRun:function(){ S.trainRun=true; S.trainRunDay=0; S.trainRestKey=''; S.trainRestStart=0;
@@ -12900,7 +12965,7 @@
         }
         var order=['ernConfirm','ernProd','ernEntryEdit','ernEdit','ernData','ernSelfNew','ernFavMgr','ernMealMgr','ernPlanQuiz','ernKoch',
           'ernLesson','ernVert','ernCk','ernChatOpen','ernCompare','ernUpgrade','ernShopProd','ernShop','ernShopItem','sos','buyGuide',
-          'socChat','socRoom','trainFinish','trainRun','trainDetail','trainGenOpen','welcomeGift',
+          'socChat','socRoom','trainFinish','trainRun','trainPick','trainEdit','trainDetail','trainGenOpen','welcomeGift',
           'moMetric','moGuide','morningBreathe','woResult','woDetail','woOpen',
           'finnOpen','vaOpen','qaOpen','fbOpen','ciPopup','dp'];
         for(var i=0;i<order.length;i++){ var k=order[i];
