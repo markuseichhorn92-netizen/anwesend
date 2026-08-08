@@ -537,6 +537,7 @@
     finnOpen:false, finnTopic:'', finnMsgs:[], finnBusy:false, finnTip:'', finnTipLoaded:false,
     vaOpen:false, vaMsgs:[], vaBusy:false, vaInput:'', vaIntent:'',
     qaOpen:false, dp:null,
+    findOpen:false, findQ:'',
     fbOpen:false, fbCat:'bug', fbText:'', fbBusy:false, fbSent:false, fbErr:'', fbCampaign:null,
     blogSel:null, blogPost:null, instaSel:null,
     obStep:0, obGoal:'Gesundheit & Longevity', obFreq:3, obAge:34, obExp:'gelegentlich', obMemConsent:false,
@@ -582,6 +583,7 @@
   window.__setLi=function(f,v){ if(f==='email')S.liEmail=v; else if(f==='code'){ S.otp=v; if(S.loginStep==='verify' && !S.busy && S.challenge && String(v).replace(/\D/g,'').length===6){ ACT.verifyCode(); } } else if(f==='num')S.liNum=v; else if(f==='phone')S.liPhone=v; else if(f==='dob')S.liDob=v; };
   window.__ciDate=function(which,v){ if(which==='from')S.ciFrom=v; else S.ciTo=v; render(); };
   window.__pauseNote=function(v){ S.pauseReasonText=v; };
+  window.__findInput=function(v){ S.findQ=v; render(); };
   window.__pauseFrom=function(v){ S.pauseFrom=v; render(); };
   window.__pausePhoto=function(input){
     var f=input&&input.files&&input.files[0]; if(!f) return;
@@ -1179,6 +1181,53 @@
       '<span style="flex:1;min-width:0"><span class="qaLbl" style="display:block">'+esc(label)+'</span>'+(sub?'<span class="qaSub">'+esc(sub)+'</span>':'')+'</span>'+
       svg('<path d="M9 18l6-6-6-6"></path>',{c:'var(--text-soft)',w:2,s:16})+
     '</button>';
+  }
+  // ── Globale Funktions-Suche („Was suchst du?") ────────────────────────────
+  // Kunden melden, dass sie Funktionen suchen. Diese Suche mappt Nutzer-Wörter
+  // (kündigen, Rechnung, Termin, Gutschein …) auf die passende Funktion und
+  // springt direkt hin. Erreichbar über das Such-Icon in der App-Leiste (alle Screens).
+  var FIND_INDEX=[
+    {label:'Termine',sub:'Buchen & verwalten',e:'📅',arg:'appt',kw:'termin buchen probetraining beratung kurs einweisung anmelden',common:1},
+    {label:'Beitragskonto',sub:'Rechnungen & Zahlungen',e:'💳',arg:'account',kw:'rechnung beitrag zahlung konto offen sepa lastschrift geld bezahlen mahnung',common:1},
+    {label:'Vertrag & Kündigung',sub:'Tarif, Laufzeit, kündigen, pausieren',e:'📄',arg:'contract',kw:'vertrag tarif kuendigen kuendigung kündigen kündigung laufzeit verlaengern pause beitragspause ruhen ruhezeit',common:1},
+    {label:'Freunde werben',sub:'4 Wochen gratis',e:'🎁',arg:'referral',kw:'werben freunde gutschein empfehlung einladen gratis praemie prämie code',common:1},
+    {label:'Mitgliedskarte',sub:'Dein Ausweis / QR',e:'🎟️',arg:'card',kw:'karte ausweis mitgliedsausweis qr code band scannen',common:1},
+    {label:'Check-in-Verlauf',sub:'Deine Besuche',e:'✅',arg:'checkins',kw:'checkin check-in einchecken besuche verlauf wie oft anwesenheit',common:1},
+    {label:'Training',sub:'Plan & Einheiten',e:'🏋️',arg:'tag',kw:'training plan uebung übung workout einheit split',common:1},
+    {label:'Ernährung',sub:'Tagesziel & Tracking',e:'🥗',arg:'ern',kw:'ernaehrung ernährung essen kalorien tracken makros rezept abnehmen kcal',common:1},
+    {label:'Fortschritt',sub:'Statistik & Gewicht',e:'📈',arg:'fort',kw:'fortschritt statistik gewicht verlauf vitalalter kurve entwicklung',common:0},
+    {label:'Vital-Check',sub:'Puls & Erholung',e:'❤️',arg:'morning',kw:'vital puls herz erholung bereitschaft messen ruhepuls',common:0},
+    {label:'InBody-Analyse',sub:'Körperzusammensetzung',e:'🧬',arg:'inbody',kw:'inbody koerperanalyse körperanalyse koerperfett körperfett muskelmasse waage',common:0},
+    {label:'Figur-Check',sub:'Maße & Umfänge',e:'📏',arg:'figur',kw:'figur masse maße umfang bauch taille huefte hüfte fotos vorher nachher',common:0},
+    {label:'FINN Coach',sub:'Deine KI-Fragen',e:'🤖',arg:'coach',kw:'coach finn ki frage hilfe trainingsplan erstellen assistent',common:0},
+    {label:'Trainingspartner',sub:'Verbinden & chatten',e:'🤝',arg:'social',kw:'partner buddy zusammen trainieren freunde community chat gruppe',common:0},
+    {label:'Meine Daten',sub:'Adresse, Kontakt, Bank',e:'👤',arg:'data',kw:'daten adresse kontakt telefon email e-mail bankverbindung iban aendern ändern profil',common:0},
+    {label:'Postfach',sub:'Nachrichten vom Team',e:'✉️',arg:'postfach',kw:'postfach nachricht team kontakt schreiben antwort mitteilung',common:0},
+    {label:'Hilfe & Kontakt',sub:'FAQ & Support',e:'❓',arg:'help',kw:'hilfe kontakt faq support frage problem erreichen anrufen',common:1},
+    {label:'Einstellungen',sub:'Benachrichtigungen, Push',e:'⚙️',arg:'settings',kw:'einstellungen benachrichtigung push sprache konto abmelden logout',common:0},
+    {label:'Mein Abo',sub:'Premium-Status',e:'⭐',arg:'abo',kw:'abo premium modul ernaehrung ernährung premium kuendigen',common:0},
+    {label:'Datenschutz',sub:'Daten & Löschung',e:'🔒',arg:'datenschutz',kw:'datenschutz dsgvo daten loeschen löschen export einwilligung widerruf privat',common:0},
+    {label:'Blog',sub:'Tipps & News',e:'📰',arg:'blog',kw:'blog artikel news tipps lesen ratgeber',common:0}
+  ];
+  function finderSheet(){
+    var q=(S.findQ||'').trim().toLowerCase();
+    var avail=FIND_INDEX.filter(function(it){ return (ERN_ON||it.arg!=='ern') && (!isFormer()||FORMER_OK.indexOf(it.arg)>=0); });
+    var res=q?avail.filter(function(it){ return (it.label+' '+it.kw).toLowerCase().indexOf(q)>=0; }):avail.filter(function(it){ return it.common; });
+    var rows=res.length?res.map(function(it){
+      return '<button data-act="findGo" data-arg="'+it.arg+'" style="width:100%;text-align:left;border:none;background:none;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:13px;padding:12px 8px;border-top:1px solid var(--border)">'+
+        '<div style="width:40px;height:40px;border-radius:12px;background:var(--surface-2);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">'+it.e+'</div>'+
+        '<div style="flex:1;min-width:0"><div style="font-size:14.5px;font-weight:800;color:var(--text)">'+esc(it.label)+'</div><div style="font-size:12px;font-weight:600;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(it.sub)+'</div></div>'+
+        svg('<path d="M9 6l6 6-6 6"></path>',{c:'var(--text-soft)',w:2.2,s:17})+'</button>';
+    }).join(''):'<div style="padding:26px 10px;text-align:center"><div style="font-size:30px">🔍</div><div style="font-size:13.5px;font-weight:600;color:var(--text-muted);margin-top:8px;line-height:1.5">Nichts gefunden zu „'+esc(S.findQ||'')+'".<br>Frag FINN oder das Team.</div><button data-act="openFinn" style="margin-top:14px;border:none;border-radius:12px;background:'+TEALBG+';color:#fff;font-weight:800;font-size:13.5px;padding:11px 18px;cursor:pointer">FINN fragen</button></div>';
+    return '<div class="qaScrim" data-act="findClose"></div>'+
+      '<div role="dialog" aria-label="Funktions-Suche" style="position:fixed;left:12px;right:12px;top:calc(10px + env(safe-area-inset-top,0px));z-index:60;max-width:520px;margin:0 auto;background:var(--surface);border-radius:20px;box-shadow:0 22px 54px rgba(4,33,40,.4);overflow:hidden;animation:qaUp .22s cubic-bezier(.22,.61,.36,1);display:flex;flex-direction:column;max-height:calc(100vh - 30px)">'+
+      '<div style="display:flex;align-items:center;gap:10px;padding:14px 14px 12px;border-bottom:1px solid var(--border)">'+
+        svg(IC.search,{c:'var(--text-soft)',w:2,s:20})+
+        '<input id="find_q" type="text" autocomplete="off" placeholder="Was suchst du? z. B. Kündigung, Rechnung, Termin" value="'+esc(S.findQ||'')+'" oninput="window.__findInput(this.value)" style="flex:1;min-width:0;border:none;background:transparent;color:var(--text);font-size:15.5px;font-weight:600;outline:none;font-family:inherit">'+
+        '<button data-act="findClose" aria-label="Schließen" style="width:32px;height:32px;border-radius:10px;border:none;background:var(--surface-2);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'+svg('<path d="M6 6l12 12M6 18L18 6"></path>',{c:'var(--text-soft)',w:2.2,s:17})+'</button>'+
+      '</div>'+
+      '<div style="overflow-y:auto;-webkit-overflow-scrolling:touch;padding:2px 10px 12px">'+(q?'':'<div style="font-size:11px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.5px;padding:12px 8px 2px">Häufig gesucht</div>')+rows+'</div>'+
+      '</div>';
   }
   function qaSheet(){
     var ci=!!S.checkedInAt;
@@ -1911,7 +1960,7 @@
     if(ernPremium()||ernTrialing()) return false;           // nie Zahlende/Tester nerven
     if(!n.onboarded) return false;                          // erst wenn das Modul bekannt ist
     if(premNudgeSuppressed()) return false;                 // Frequenz-Cap
-    if(S.finnOpen||S.vaOpen||S.ernUpgrade||S.ernCapture||S.qaOpen||S.fbOpen||S.dp||S.ciPopup) return false;
+    if(S.finnOpen||S.vaOpen||S.ernUpgrade||S.ernCapture||S.qaOpen||S.fbOpen||S.dp||S.ciPopup||S.findOpen) return false;
     return true;
   }
   function premNudgeHome(){
@@ -10719,7 +10768,8 @@
       var abUnread=pfUnread()>0;
       var abBell='<button class="ab-btn" data-act="nav" data-arg="postfach" aria-label="Postfach">'+svg('<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.7 21a2 2 0 0 1-3.4 0"></path>',{c:'#fff',w:1.9,s:20})+(abUnread?'<span class="ab-dot"></span>':'')+'</button>';
       var abAva='<button class="ab-ava" data-act="avatarTap" aria-label="Profil &amp; Menü öffnen">'+esc(initials(DATA.profile))+'</button>';
-      var abRight='<div class="ab-right">'+abBell+abAva+'</div>';
+      var abSearch='<button class="ab-btn" data-act="findOpen" aria-label="Suchen">'+svg(IC.search,{c:'#fff',w:2,s:20})+'</button>';
+      var abRight='<div class="ab-right">'+abSearch+abBell+abAva+'</div>';
       if(abSc==='home'){
         // Startseite: EIN einheitlicher Kopf – Datum + Begrüßung links, Postfach + Initialen rechts.
         var nm=(DATA.profile&&DATA.profile.firstName)||'';
@@ -10755,7 +10805,7 @@
         !S.ernShop&&!S.ernShopProd&&!S.ernShopItem&&!S.sos&&!S.buyGuide&&
         !S.ernFavMgr&&!S.ernMealMgr&&!S.ernSelfNew&&!S.ernEntryEdit&&!S.ernLesson&&!S.ernVert&&!S.ernCk&&!(S.ernKoch!=null);
       var onTagTab=(S.screen==='tag')&&!S.trainRun&&!S.trainDetail&&!S.trainGenOpen;
-      var miniBlock=S.finnOpen||S.qaOpen||S.ernChatOpen||S.ernUpgrade||S.dp||S.ciPopup||S.vaOpen;
+      var miniBlock=S.finnOpen||S.qaOpen||S.ernChatOpen||S.ernUpgrade||S.dp||S.ciPopup||S.vaOpen||S.findOpen;
       var showMini=(onErnTab||onTagTab)&&!miniBlock;
       fm.style.display=showMini?'flex':'none';
       if(showMini) fm.setAttribute('data-arg', S.screen==='ern'?'ernaehrung':'training');
@@ -10965,6 +11015,7 @@
     if(S.dp) html+=wheelOverlay();
     if(S.qaOpen) html+=qaSheet();
     if(S.fbOpen) html+=fbSheet();
+    if(S.findOpen) html+=finderSheet();
     if(S.ernCompare) html+=ernCompareSheet();   // Basic vs. Premium im Vergleich
     if(S.ernUpgrade) html+=ernUpgradeScreen();   // Coach-Premium-Kauf als Bottom-Sheet-Popup über dem aktuellen Screen
     if(S.moGuide && S.screen==='morning') html+=moGuideOverlay();   // Vital-Check Schritt-für-Schritt-Anleitung (Pop-up)
@@ -10992,7 +11043,7 @@
     // sonst verschwindet getippter Text und die Tastatur klappt zu, sobald im Hintergrund
     // Daten nachladen (das war der große Chat-Bug).
     var keep={};
-    ['finn_q','pf_reply','ern_log','ern_ask','ern_fridge','ern_prodq','ern_bc','ern_voiceq','ern_cf_swap','ern_cf_refine','soc_msg','soc_code','soc_name','soc_rmsg','soc_roomname','soc_report','fig_weight','fig_waist','fig_hips','fig_chest','fig_arm','fig_thigh','fig_bodyFat','fig_note'].forEach(function(id){ var e=$(id); if(e){ keep[id]={v:e.value,f:document.activeElement===e,ss:e.selectionStart,se:e.selectionEnd,h:e.style.height}; } });
+    ['find_q','finn_q','pf_reply','ern_log','ern_ask','ern_fridge','ern_prodq','ern_bc','ern_voiceq','ern_cf_swap','ern_cf_refine','soc_msg','soc_code','soc_name','soc_rmsg','soc_roomname','soc_report','fig_weight','fig_waist','fig_hips','fig_chest','fig_arm','fig_thigh','fig_bodyFat','fig_note'].forEach(function(id){ var e=$(id); if(e){ keep[id]={v:e.value,f:document.activeElement===e,ss:e.selectionStart,se:e.selectionEnd,h:e.style.height}; } });
     var keepScroll={};
     ['finn_scroll','pf_scroll'].forEach(function(id){ var e=$(id); if(e){ keepScroll[id]=e.scrollTop; } });
     // Scroll-Position der AKTUELLEN Ansicht sichern. Auf Mobil ist der Scroller .maincol
@@ -11487,6 +11538,9 @@
     // Assistent-Hub öffnen. Beitragskonto nachladen, damit der proaktive Vorschlag greifen kann.
     qaOpen:function(){ if(!DATA.account && typeof loadAccount==='function'){ try{ loadAccount(); }catch(e){} } setQuiet({qaOpen:true}); },
     qaClose:function(){ setQuiet({qaOpen:false}); },
+    findOpen:function(){ S.qaOpen=false; setS({findOpen:true, findQ:''}); setTimeout(function(){ var t=$('find_q'); if(t) t.focus(); },60); },
+    findClose:function(){ setS({findOpen:false}); },
+    findGo:function(a){ S.findOpen=false; S.findQ=''; nav(a); },
     // App-Feedback (anonym -> Team-Backend)
     fbOpen:function(){ S.qaOpen=false; setS({fbOpen:true, fbSent:false, fbErr:'', fbBusy:false, fbCampaign:null}); },
     fbClose:function(){ setS({fbOpen:false, fbSent:false, fbErr:'', fbBusy:false, fbCampaign:null}); },
