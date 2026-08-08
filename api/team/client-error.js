@@ -34,6 +34,8 @@ module.exports = async function handler(req, res) {
   if (!rec) { res.statusCode = 200; return res.end(JSON.stringify({ ok: true, ignoriert: true })); }
 
   console.error('[team] ' + CE.alsLogZeile(rec));
+  // Nicht-personenbezogener Zähler (nur Anzahl) für den Ops-Überblick.
+  try { await require('../../lib/opsStat').bump('clienterr_team'); } catch (e) {}
 
   res.statusCode = 200;
   return res.end(JSON.stringify({ ok: true }));

@@ -39,6 +39,8 @@ module.exports = async function handler(req, res) {
 
   // Bewusst ohne Mitglieds-ID: für die Fehlersuche zählt WAS und WO, nicht WER.
   console.error(CE.alsLogZeile(rec));
+  // Nicht-personenbezogener Zähler (nur Anzahl) für den Ops-Überblick.
+  try { await require('../../lib/opsStat').bump('clienterr_member'); } catch (e) {}
 
   res.statusCode = 200;
   return res.end(JSON.stringify({ ok: true }));
