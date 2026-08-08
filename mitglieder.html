@@ -10734,7 +10734,13 @@
   // Navigations-Liste (für Sidebar & Burger-Drawer identisch)
   function navList(){
     var searchBar='<button data-act="findOpen" style="display:flex;align-items:center;gap:10px;width:100%;text-align:left;border:none;cursor:pointer;background:rgba(255,255,255,.1);border-radius:13px;padding:11px 13px;margin-bottom:10px;color:#cfe3e7;font-family:inherit">'+svg(IC.search,{c:'#cfe3e7',w:2,s:19})+'<span style="font-size:14px;font-weight:600">Funktion suchen …</span></button>';
-    return searchBar+'<nav style="display:flex;flex-direction:column;gap:4px">'+NAVITEMS.filter(function(it){return (ERN_ON||it[0]!=='ern') && (!isFormer()||FORMER_OK.indexOf(it[0])>=0);}).map(function(it){var act=S.screen===it[0];var bdg=(it[0]==='postfach'&&pfUnread()>0)?'<span style="background:#E08C53;color:#fff;font-size:11px;font-weight:800;border-radius:20px;min-width:20px;height:20px;padding:0 6px;display:flex;align-items:center;justify-content:center">'+pfUnread()+'</span>':'';return '<button class="sidebtn'+(act?' active':'')+'" data-act="nav" data-arg="'+it[0]+'">'+svg(it[2],{c:act?'#fff':'#bcd7dc',w:1.9,s:20})+'<span style="flex:1">'+it[1]+'</span>'+bdg+'</button>';}).join('')+'</nav>';
+    // Klar gruppierte Abschnitte statt flacher 14er-Liste – leichter zu scannen.
+    var byKey={}; NAVITEMS.forEach(function(it){ byKey[it[0]]=it; });
+    var GROUPS=[['Aktivität',['home','fort','ern']],['Mein Studio',['card','appt','checkins']],['Vertrag & Konto',['contract','account','referral','data']],['Service',['postfach','help','settings']],['Mehr',['insta']]];
+    var vis=function(k){ var it=byKey[k]; return !!(it && (ERN_ON||k!=='ern') && (!isFormer()||FORMER_OK.indexOf(k)>=0)); };
+    var itemHtml=function(k){ var it=byKey[k]; var act=S.screen===k; var bdg=(k==='postfach'&&pfUnread()>0)?'<span style="background:#E08C53;color:#fff;font-size:11px;font-weight:800;border-radius:20px;min-width:20px;height:20px;padding:0 6px;display:flex;align-items:center;justify-content:center">'+pfUnread()+'</span>':''; return '<button class="sidebtn'+(act?' active':'')+'" data-act="nav" data-arg="'+k+'">'+svg(it[2],{c:act?'#fff':'#bcd7dc',w:1.9,s:20})+'<span style="flex:1">'+it[1]+'</span>'+bdg+'</button>'; };
+    var body=GROUPS.map(function(g){ var ks=g[1].filter(vis); if(!ks.length) return ''; return '<div style="font-size:11px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:#7fa6ad;padding:14px 8px 6px">'+esc(g[0])+'</div>'+ks.map(itemHtml).join(''); }).join('');
+    return searchBar+'<nav style="display:flex;flex-direction:column;gap:3px">'+body+'</nav>';
   }
   function navLogoutBtn(){
     return '<button class="sidebtn" data-act="logout" style="margin-top:auto;color:#9fc3ca">'+svg('<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"></path>',{c:'#9fc3ca',w:1.9,s:19})+'<span>Abmelden</span></button>';
