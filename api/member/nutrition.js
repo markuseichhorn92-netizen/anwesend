@@ -43,6 +43,7 @@ const Inbox = require('../../lib/inbox');
 const SR = require('../../lib/studioReply');
 const Ent = require('../../lib/entitlements');
 const MlPremium = require('../../lib/mlPremium');
+const Phases = require('../../lib/nutriPhases');
 const Coaching = require('../../lib/coaching');
 const Recipes = require('../../lib/recipes');
 const CookPot = require('../../lib/cookpot');
@@ -270,7 +271,7 @@ function sanitizeEntry(raw, hour, keepId) {
 // den Grundumsatz; Eiweiß absolut begrenzt (kein 500-g-Ziel bei hohem Gewicht);
 // für unter 18-Jährige KEINE automatische Abnehm-Empfehlung. Dieselbe Logik spiegelt
 // der Client in ernTargets() – Abweichungen wären ein Fehler.
-function targetsFor(p) {
+function targetsFor(p, today) {
   p = p || {};
   const sex = p.sex === 'm' ? 'm' : 'w';
   const weight = clamp(p.weight, 35, 250, 70);
@@ -303,7 +304,16 @@ function targetsFor(p) {
   // Individuelle Zielwerte vom Studio-Team (z. B. aus einer Stoffwechselanalyse):
   // übersteuern die Formel feldweise; nicht gesetzte KH werden aus dem Rest nachgezogen.
   // Für unter 18-Jährige bleiben immer die Schutz-Richtwerte der Formel.
-  const ov = (!under18 && p.targetOverride && typeof p.targetOverride === 'object') ? p.targetOverride : null;
+  // Phasenplan (Periodisierung) hat Vorrang vor dem statischen targetOverride: wer einen
+  // Plan hat, soll auch automatisch umgestellt werden – sonst wäre der Wechsel für genau
+  // die Zielgruppe wirkungslos. Der Phasenblock ersetzt die Makros komplett (kein Mischen
+  // aus alten Override- und neuen Phasenwerten); nur Wasser bleibt aus dem Override.
+  const ov0 = (!under18 && p.targetOverride && typeof p.targetOverride === 'object') ? p.targetOverride : null;
+  const ph = (!under18 && p.phasePlan) ? Phases.activeOverride(p.phasePlan, today) : null;
+  const ov = ph
+    ? { water: ov0 ? ov0.water : null, kcal: ph.kcal, protein: ph.protein, carbs: ph.carbs, fat: ph.fat,
+        note: ph.note || ('Phase ' + (ph.phaseIndex + 1) + ' von ' + ph.phaseCount + ': ' + ph.phaseName + (ph.weekInPhase ? (' · Woche ' + ph.weekInPhase + ' von ' + ph.weeksInPhase) : '')) }
+    : ov0;
   if (ov) {
     const num = (v, min, max, dec) => { if (v == null || v === '') return null; const n = Number(v); if (isNaN(n) || n <= 0) return null; const r = dec ? Math.round(n * 10) / 10 : Math.round(n); return Math.max(min, Math.min(max, r)); };
     const k = num(ov.kcal, 1000, 4500), pr = num(ov.protein, 30, 300), ft = num(ov.fat, 20, 250), cb = num(ov.carbs, 1, 700), wa = num(ov.water, 1, 5, true);
@@ -317,6 +327,7 @@ function targetsFor(p) {
       t.note = cleanStr(ov.note, 160) || 'Individuell von deinem Studio-Team eingestellt – z. B. nach deiner Stoffwechselanalyse.';
     }
   }
+  if (ph) t.phase = { name: ph.phaseName, index: ph.phaseIndex, count: ph.phaseCount, week: ph.weekInPhase, weeks: ph.weeksInPhase, until: ph.until };
   return t;
 }
 
@@ -427,7 +438,7 @@ async function buildState(id, profile, forDate) {
   const todayYMD = berlinNow().date;
   const date = (forDate && /^\d{4}-\d{2}-\d{2}$/.test(forDate)) ? forDate : todayYMD;
   const onboarded = !!(profile && profile.onboarded);
-  const targets = targetsFor(profile || {});
+  const targets = targetsFor(profile || {}, todayYMD);
   const day = await loadDay(id, date);
   const totals = totalsOf(day.entries);
   // Weitere-Nährwerte-Summen fürs Display runden (Gleitkomma-Rest vermeiden).
@@ -449,6 +460,9 @@ async function buildState(id, profile, forDate) {
     ok: true, available: true, onboarded: onboarded, cookBeta: cookBeta,
     profile: profile ? { goal: profile.goal, sex: profile.sex, height: profile.height, weight: profile.weight, age: profile.age, activity: profile.activity, diet: profile.diet, store: profile.store || '' } : null,
     targets: targets,
+    // Phasenplan (Periodisierung) – datensparsame Sicht, ohne Team-/Analysedaten.
+    // Kein zusätzlicher KV-Read: der Plan liegt im ohnehin geladenen Profil.
+    nutriPhase: (profile && profile.phasePlan && !targets.under18) ? Phases.memberView(profile.phasePlan, todayYMD) : null,
     today: { date, isToday: date === todayYMD, entries: day.entries, totals, water: day.water, waterGoal: waterGoalCups(targets) },
     streak: vit.streak,
     pointsToday: dayVitalPoints(totals, targets, day.entries.length),
@@ -585,7 +599,7 @@ module.exports = async function handler(req, res) {
     // Vom Studio-Team gesetzte individuelle Zielwerte überleben eine Neuberechnung
     // durch das Mitglied – nur das Team kann sie ändern oder entfernen.
     // Der bevorzugte Supermarkt (Einkaufsliste) überlebt eine Neuberechnung ebenfalls.
-    try { const prev = await loadProfile(id); profile.consentAt = body.consent ? Date.now() : ((prev && prev.consentAt) || null); if (prev && prev.targetOverride) profile.targetOverride = prev.targetOverride; profile.store = STORES.indexOf(String(inp.store)) >= 0 ? String(inp.store) : ((prev && prev.store) || ''); } catch (e) {}
+    try { const prev = await loadProfile(id); profile.consentAt = body.consent ? Date.now() : ((prev && prev.consentAt) || null); if (prev && prev.targetOverride) profile.targetOverride = prev.targetOverride; if (prev && prev.phasePlan) profile.phasePlan = prev.phasePlan; profile.store = STORES.indexOf(String(inp.store)) >= 0 ? String(inp.store) : ((prev && prev.store) || ''); } catch (e) {}
     try { await require('../../lib/privacy').recordConsent(id, 'nutrition_health', !!body.consent, { source: 'nutrition-onboarding' }); } catch (e) {}
     try { await redisPipeline([['SET', PKEY(id), JSON.stringify(profile)]]); } catch (e) {}
     res.statusCode = 200; return res.end(JSON.stringify(await buildState(id, profile)));

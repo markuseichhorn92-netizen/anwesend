@@ -24,6 +24,8 @@ const Cap = require('../../lib/capabilities');
 const M = require('../../lib/members');
 const Recipes = require('../../lib/recipes');
 const { redisPipeline, hasStore } = require('../../lib/store');
+const Phases = require('../../lib/nutriPhases');
+const PHIDX = 'nutri:phidx';   // SET der Mitglieder mit Phasenplan (für die Wechsel-Benachrichtigung)
 
 // ── Schlüssel & Konstanten (identisch zu api/member/nutrition.js) ──
 const PKEY = (id) => 'nutri:p:' + String(id);
@@ -90,7 +92,7 @@ function sanitizeEntry(raw, hour, keepId) {
   return e;
 }
 // Zielwerte – identische Rechnung wie beim Mitglied (Mifflin-St-Jeor + Ziel-Offset).
-function targetsFor(p) {
+function targetsFor(p, today) {
   p = p || {};
   const sex = p.sex === 'm' ? 'm' : 'w';
   const weight = clamp(p.weight, 35, 250, 70), height = clamp(p.height, 120, 230, 170), age = clamp(p.age, 14, 100, 30);
@@ -113,7 +115,14 @@ function targetsFor(p) {
   const t = { kcal, protein, carbs, fat, water, under18 };
   // Individuelle Zielwerte (z. B. aus einer Stoffwechselanalyse) übersteuern die
   // Formel feldweise – identisch zur Mitglieder-Seite; unter 18 nie übersteuern.
-  const ov = (!under18 && p.targetOverride && typeof p.targetOverride === 'object') ? p.targetOverride : null;
+  // Ein laufender Phasenplan hat Vorrang vor dem statischen Override (sonst bliebe der
+  // automatische Wechsel genau bei der Zielgruppe wirkungslos). Der Phasenblock ersetzt
+  // die Makros komplett; nur Wasser bleibt aus dem Override. Identisch zur Mitglieder-Seite.
+  const ov0 = (!under18 && p.targetOverride && typeof p.targetOverride === 'object') ? p.targetOverride : null;
+  const ph = (!under18 && p.phasePlan) ? Phases.activeOverride(p.phasePlan, today) : null;
+  const ov = ph
+    ? { water: ov0 ? ov0.water : null, kcal: ph.kcal, protein: ph.protein, carbs: ph.carbs, fat: ph.fat }
+    : ov0;
   if (ov) {
     const num = (v, min, max, dec) => { if (v == null || v === '') return null; const n = Number(v); if (isNaN(n) || n <= 0) return null; const r = dec ? Math.round(n * 10) / 10 : Math.round(n); return Math.max(min, Math.min(max, r)); };
     const k = num(ov.kcal, 1000, 4500), pr = num(ov.protein, 30, 300), ft = num(ov.fat, 20, 250), cb = num(ov.carbs, 1, 700), wa = num(ov.water, 1, 5, true);
@@ -126,6 +135,7 @@ function targetsFor(p) {
       t.custom = true;
     }
   }
+  if (ph) t.phase = { name: ph.phaseName, index: ph.phaseIndex, count: ph.phaseCount, week: ph.weekInPhase, weeks: ph.weeksInPhase, until: ph.until };
   return t;
 }
 function totalsOf(entries) { return (entries || []).reduce((t, e) => ({ kcal: t.kcal + n0(e.kcal), p: t.p + n0(e.p), c: t.c + n0(e.c), f: t.f + n0(e.f) }), { kcal: 0, p: 0, c: 0, f: 0 }); }
@@ -154,7 +164,7 @@ async function readState(id, forDate) {
   const todayYMD = berlinNow().date;
   const date = validDate(forDate, todayYMD);
   const profile = (await loadProfile(id)) || {};
-  const targets = targetsFor(profile);
+  const targets = targetsFor(profile, todayYMD);
   const day = await loadDay(id, date);
   const cook = await loadCook(id);
   const week = await weekOverview(id, todayYMD, targets);
@@ -163,6 +173,12 @@ async function readState(id, forDate) {
     ok: true, available: true, today: todayYMD, date,
     profile: pubProfile, goals: GOALS, meals: MEALS,
     targets, targetOverride: profile.targetOverride || null,
+    // Phasenplan (Periodisierung): Rohplan für den Editor + aufgelöste Sicht für die Anzeige.
+    phasePlan: profile.phasePlan || null,
+    phases: Phases.resolve(profile.phasePlan, todayYMD),
+    phasesBlocked: targets.under18 === true,
+    phaseTemplates: Phases.templateList(),
+    phaseLimits: { maxPhases: Phases.MAX_PHASES, maxWeeks: Phases.MAX_WEEKS, limits: Phases.LIMITS, kinds: Phases.KINDS },
     day: dayView(id, date, day, targets), week,
     cookplan: (cook.items || []).slice(0, 40),
     everTracked: !!profile.onboarded || week.some((w) => w.tracked) || (cook.items || []).length > 0,
@@ -225,6 +241,7 @@ module.exports = async function handler(req, res) {
       };
       // Individuelle Zielwerte bleiben bei einer Neuberechnung der Körperdaten erhalten.
       if (prev.targetOverride) profile.targetOverride = prev.targetOverride;
+      if (prev.phasePlan) profile.phasePlan = prev.phasePlan;   // Phasenplan überlebt jede Neuberechnung
       try { await redisPipeline([['SET', PKEY(id), JSON.stringify(profile)]]); } catch (e) {}
       return j(res, 200, await readState(id, body.date));
     }
@@ -254,6 +271,51 @@ module.exports = async function handler(req, res) {
       prev.updatedAt = Date.now();
       try { await redisPipeline([['SET', PKEY(id), JSON.stringify(prev)]]); } catch (e) {}
       return j(res, 200, await readState(id, body.date));
+    }
+
+    // ── Phasenplan (Periodisierung) ──────────────────────────────────────────
+    // Mehrere Phasen im Voraus planen; der Wechsel passiert automatisch, weil die
+    // Zielwerte bei jedem Read neu aufgelöst werden. Unter 18 bleibt gesperrt.
+    if (action === 'phases-set') {
+      const prev = (await loadProfile(id)) || {};
+      if (clamp(prev.age, 14, 100, 30) < 18) return j(res, 200, { ok: false, error: 'under18', message: 'Für unter 18-Jährige bleiben die berechneten Richtwerte bestehen.' });
+      const inp = (body && body.plan) || {};
+      if (body && body.source) inp.source = body.source;
+      if (body && body.analysis) inp.analysis = body.analysis;
+      const norm = Phases.normalize(inp, { today: berlinNow().date, setBy: (sess && (sess.user || sess.name)) || 'team' });
+      if (!norm.ok) {
+        const msg = norm.error === 'no_phases'
+          ? 'Bitte mindestens eine Phase mit Zielwerten angeben.'
+          : 'Der Phasenplan konnte nicht gelesen werden.';
+        return j(res, 200, { ok: false, error: norm.error, message: msg });
+      }
+      prev.phasePlan = norm.plan;
+      prev.updatedAt = Date.now();
+      try { await redisPipeline([['SET', PKEY(id), JSON.stringify(prev)]]); } catch (e) {}
+      try { await redisPipeline([['SADD', PHIDX, String(id)]]); } catch (e) {}
+      return j(res, 200, await readState(id, body.date));
+    }
+
+    if (action === 'phases-clear') {
+      const prev = (await loadProfile(id)) || {};
+      delete prev.phasePlan;
+      prev.updatedAt = Date.now();
+      try { await redisPipeline([['SET', PKEY(id), JSON.stringify(prev)]]); } catch (e) {}
+      try { await redisPipeline([['SREM', PHIDX, String(id)]]); } catch (e) {}
+      return j(res, 200, await readState(id, body.date));
+    }
+
+    // Vorlage in einen Vorschlag gießen (NICHT speichern) – das Team gibt die
+    // Gesamtdauer in Wochen vor, die Phasen werden proportional verteilt.
+    if (action === 'phases-template') {
+      const prev = (await loadProfile(id)) || {};
+      const base = targetsFor(Object.assign({}, prev, { phasePlan: null, targetOverride: null }), berlinNow().date);
+      const proposal = Phases.applyTemplate(String(body.template || ''), body.totalWeeks, base, {
+        weight: clamp(prev.weight, 35, 250, 75),
+        startDate: body.startDate,
+      });
+      if (!proposal) return j(res, 200, { ok: false, error: 'unknown_template', message: 'Unbekannte Vorlage.' });
+      return j(res, 200, { ok: true, proposal: proposal });
     }
 
     // Eintrag hinzufügen / bearbeiten / löschen (auf einem validierten Tag).
