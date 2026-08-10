@@ -77,6 +77,27 @@ async function run() {
   const empty = await AI.scanMetabolic('', 'application/pdf', {});
   ok('16. Leere Datei -> ok:false', empty.ok === false && empty.error === 'empty');
 
+  // ── Anbieter-Robustheit + ehrlicher Abbruch ──
+  ok('18. Prompt nennt Anbieter-Synonyme (uVida & Co.)', /uVida/i.test(sys) && /Ruheumsatz/i.test(sys) && /Gesamtumsatz/i.test(sys));
+  ok('19. Prompt fordert alle Seiten zu prüfen', /ALLE Seiten/i.test(sys));
+  ok('20. Prompt kennt kJ-Umrechnung', /4,184 kJ|4\.184 kJ|kJ/i.test(sys));
+
+  // Reiner Unverträglichkeits-Befund ohne Kalorienwerte -> KEIN erfundener Plan
+  const prevF = globalThis.fetch;
+  globalThis.fetch = async () => {
+    const b = JSON.stringify({ content: [{ type: 'text', text: JSON.stringify({
+      analysis: { date: '2026-08-10', device: 'uVida', bmr: null, tdee: null, kcalRecommended: null },
+      findings: ['Laktose stark erhöht', 'Weizen erhöht'],
+      phases: [], rationale: 'Der Befund enthält nur Unverträglichkeiten, keine Umsatzwerte.', confidence: 'low',
+    }) }] });
+    return { ok: true, status: 200, text: async () => b, json: async () => JSON.parse(b) };
+  };
+  const nov = await AI.scanMetabolic(PDF, 'application/pdf', {});
+  ok('21. Ohne Kalorienwerte: ehrlicher Abbruch statt erfundener Zahlen', nov.ok === false && nov.error === 'no_values', JSON.stringify(nov && nov.error));
+  ok('22. Auffälligkeiten werden trotzdem zurückgegeben', Array.isArray(nov.findings) && nov.findings.length === 2 && /Laktose/.test(nov.findings[0]), JSON.stringify(nov.findings));
+  ok('23. Begründung erklärt dem Team den Grund', /Unverträglichkeiten/i.test(nov.rationale || ''), nov.rationale);
+  globalThis.fetch = prevF;
+
   const prevFetch = globalThis.fetch;
   globalThis.fetch = async () => { const b = JSON.stringify({ content: [{ type: 'text', text: 'kein json' }] }); return { ok: true, status: 200, text: async () => b, json: async () => JSON.parse(b) }; };
   const bad = await AI.scanMetabolic(PDF, 'application/pdf', {});

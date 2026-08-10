@@ -538,7 +538,7 @@ async function openProfile(id){
   S.mbMsg=''; S.mbMailBusy=false; S.mbWeekly=null;   // Mitgliedschaftsbestätigung: Zustand je Mitglied zurücksetzen (Wochenbeitrag neu vorbefüllen)
   S.memberCoaching=null; S.memberCoachingLoading=false;
   S.memberMsgs=null; S.memberMsgsLoading=false; S.memberMsgsTotal=0;
-  S.memberNutri=null; S.memberNutriLoading=false; S.mnDate=''; S.mnBusy=false; S.mnEditId=null; S.mnAddOpen=false; S.mnGoalOpen=false; S.mnTgOpen=false; S.mnAssign=null; S.mnRecipes=null; S.mnRecipesLoading=false; S.mnAssignServ=1; S.mnAssignMeal='mittag'; S.mnPhOpen=false; S.mnPhDraft=null; S.mnPhMsg=''; S.mnPhAnalysis=null; S.mnPhRationale='';
+  S.memberNutri=null; S.memberNutriLoading=false; S.mnDate=''; S.mnBusy=false; S.mnEditId=null; S.mnAddOpen=false; S.mnGoalOpen=false; S.mnTgOpen=false; S.mnAssign=null; S.mnRecipes=null; S.mnRecipesLoading=false; S.mnAssignServ=1; S.mnAssignMeal='mittag'; S.mnPhOpen=false; S.mnPhDraft=null; S.mnPhMsg=''; S.mnPhAnalysis=null; S.mnPhRationale=''; S.mnPhFindings=null;
   S.memberTrain=null; S.memberTrainLoading=false; S.mtBusy=false; S.mtBuildOpen=false; S.mtBuild=[]; S.mtBuildTitle=''; S.mtResults=null; S.mtResultsLoading=false;
   S.profTab='ueber'; S.acc={};   // Profil öffnet auf „Übersicht"; alle Sektionen zugeklappt
   S._profId=String(id); mainScrollMap['members:'+id]=0;   // neues Profil beginnt oben
@@ -970,8 +970,13 @@ async function mnPhaseAnalyze(id, file, startDate){
     S.mnBusy=false;
     if(r&&r.ok&&r.proposal){
       S.mnPhDraft={ startDate:r.proposal.startDate, phases:r.proposal.phases };
-      S.mnPhAnalysis=r.analysis||null; S.mnPhRationale=r.rationale||'';
+      S.mnPhAnalysis=r.analysis||null; S.mnPhRationale=r.rationale||''; S.mnPhFindings=r.findings||[];
       S.mnPhMsg='Vorschlag von FINN eingesetzt – bitte pruefen. Gespeichert wird erst mit „Plan speichern".';
+    } else if(r&&r.error==='no_values'){
+      // Kein Kalorien-Befund (z. B. reiner Unvertraeglichkeits-Report): ehrlich anzeigen,
+      // was FINN gesehen hat, statt erfundener Zahlen.
+      S.mnPhAnalysis=r.analysis||null; S.mnPhRationale=r.rationale||''; S.mnPhFindings=r.findings||[];
+      S.mnPhMsg=r.message||'Keine Kalorienwerte im Dokument gefunden.';
     } else { S.mnPhMsg=(r&&r.message)||'Die Analyse konnte nicht ausgewertet werden.'; }
     render();
   };
@@ -1208,6 +1213,7 @@ function mnPhaseCard(d){
         [['Grundumsatz',S.mnPhAnalysis.bmr,'kcal'],['Gesamtumsatz',S.mnPhAnalysis.tdee,'kcal'],['RQ',S.mnPhAnalysis.rq,''],['Körperfett',S.mnPhAnalysis.fatPct,'%'],['Empfehlung',S.mnPhAnalysis.kcalRecommended,'kcal']].map(function(x){
           return '<div style="background:#fff;border-radius:10px;padding:7px 11px"><div style="font-size:10.5px;font-weight:800;color:#8a929a">'+x[0]+'</div><div style="font-size:13.5px;font-weight:900;color:#0a4958">'+(x[1]==null?'—':(x[1]+(x[2]?(' '+x[2]):'')))+'</div></div>';
         }).join('')+'</div>'+
+        ((S.mnPhFindings&&S.mnPhFindings.length)?('<div style="margin-top:10px"><div style="font-size:11px;font-weight:800;color:#8a929a;text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px">Auffälligkeiten aus dem Befund</div><div style="display:flex;flex-wrap:wrap;gap:6px">'+S.mnPhFindings.map(function(f){ return '<span style="background:#fff;border:1px solid #d6dee0;border-radius:20px;padding:5px 11px;font-size:11.5px;font-weight:700;color:#42454b">'+esc(f)+'</span>'; }).join('')+'</div></div>'):'')+
         (S.mnPhRationale?('<div style="font-size:12px;color:#42454b;font-weight:600;margin-top:10px;line-height:1.5"><b>FINNs Begründung:</b> '+esc(S.mnPhRationale)+'</div>'):'')+
         '<div style="font-size:11.5px;color:#7a5326;background:#FBF4E9;border:1px solid #F1DFC2;border-radius:10px;padding:9px 12px;font-weight:700;margin-top:10px;line-height:1.5">KI-Vorschlag – bitte fachlich prüfen und anpassen. Er gilt erst nach dem Speichern.</div>'+
       '</div>'):'')+

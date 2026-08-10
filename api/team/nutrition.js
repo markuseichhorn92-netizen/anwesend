@@ -339,6 +339,16 @@ module.exports = async function handler(req, res) {
           targets: { kcal: base.kcal }, totalWeeks: body.totalWeeks,
         });
       } catch (e) { r = null; }
+      if (r && !r.ok && r.error === 'no_values') {
+        // Ehrlicher Fall: Das Dokument enthält keine Energie-/Kalorienwerte (z. B. ein
+        // reiner Unverträglichkeits- oder Laborbefund). Wir zeigen, was FINN gesehen hat,
+        // statt Zahlen zu erfinden – das Team legt die Phasen dann selbst an.
+        return j(res, 200, {
+          ok: false, error: 'no_values',
+          message: 'In diesem Dokument stehen keine Kalorien-/Umsatzwerte, aus denen sich Phasen ableiten lassen. Bitte die Phasen manuell anlegen.',
+          analysis: r.analysis || null, findings: r.findings || [], rationale: r.rationale || '',
+        });
+      }
       if (!r || !r.ok) {
         // Fail-closed: kein Ersatzweg, aber verständliche Meldung (nie Inhalte ins Log).
         return j(res, 200, { ok: false, error: (r && r.error) || 'scan_failed', message: 'Die Analyse konnte nicht ausgewertet werden. Bitte Datei prüfen oder die Phasen manuell anlegen.' });
@@ -350,7 +360,7 @@ module.exports = async function handler(req, res) {
       return j(res, 200, {
         ok: true,
         proposal: { startDate: norm.plan.startDate, phases: norm.plan.phases, source: 'analysis' },
-        analysis: norm.plan.analysis, rationale: r.rationale, confidence: r.confidence,
+        analysis: norm.plan.analysis, findings: r.findings || [], rationale: r.rationale, confidence: r.confidence,
       });
     }
 
