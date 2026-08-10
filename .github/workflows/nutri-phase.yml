@@ -1,0 +1,36 @@
+name: Ernährungs-Phasenwechsel
+
+# Ruft einmal täglich /api/nutri-phase-tick auf. Der Job meldet Mitgliedern den
+# Wechsel in eine neue Ernährungsphase (Push + Postfach) und erinnert das Team,
+# wenn ein Plan aus einer Stoffwechselanalyse ausgelaufen ist.
+#
+# Wichtig: Die Zielwerte wechseln ohnehin automatisch (sie werden bei jedem
+# Aufruf neu aufgelöst) – dieser Workflow verschickt NUR die Information.
+#
+# Hinweise:
+#  - Geplante Workflows laufen nur auf dem Default-Branch des Repos.
+#  - Anti-Doppel-Versand steckt im Endpunkt (lastPhaseKey je Plan).
+#  - Nach 60 Tagen ohne Repo-Aktivität deaktiviert GitHub den Zeitplan; dann im
+#    Tab "Actions" einmalig wieder aktivieren.
+#  - Schutz: Repo-Secret RECORD_SECRET anlegen UND in Vercel dieselbe
+#    Env-Variable setzen (der Endpunkt verlangt das Secret).
+
+on:
+  schedule:
+    - cron: '0 6 * * *'   # täglich ~06:00 UTC (~8:00 Berlin, vor dem Frühstück)
+  workflow_dispatch: {}
+
+concurrency:
+  group: nutri-phase
+  cancel-in-progress: false
+
+jobs:
+  phase:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Phasenwechsel melden
+        env:
+          RECORD_SECRET: ${{ secrets.RECORD_SECRET }}
+        run: |
+          curl -fsS -m 60 "https://anwesend.vercel.app/api/nutri-phase-tick" \
+            ${RECORD_SECRET:+-H "Authorization: Bearer $RECORD_SECRET"}
