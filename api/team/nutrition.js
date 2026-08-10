@@ -307,14 +307,18 @@ module.exports = async function handler(req, res) {
 
     // Stoffwechselanalyse (PDF/Foto) von FINN auslesen lassen -> VORSCHLAG.
     // Speichert NICHTS: das Team prüft im Editor und bestätigt per phases-set.
-    // Gesundheitsdaten -> nur mit gültiger Einwilligung des Mitglieds.
+    //
+    // Bewusst KEINE App-Einwilligungsprüfung: die Stoffwechselanalyse liegt dem Studio
+    // ohnehin vor (das Mitglied hat sie im Rahmen der Betreuung übergeben). Die
+    // Einwilligung `nutrition_health` gehört zum App-Ernährungsmodul und ist eine andere
+    // Verarbeitung – sie hier zu verlangen hätte genau die Mitglieder ausgesperrt, die
+    // noch kein App-Onboarding gemacht haben. Rechtsgrundlage der Studio-Betreuung
+    // dokumentiert das Studio separat (siehe docs/VVT-TOM.md).
+    // Es bleibt datensparsam: die Roh-PDF wird NICHT gespeichert, nur die ausgelesenen
+    // Werte, und weder Datei noch Inhalte landen im Log.
     if (action === 'phases-analyze') {
       const prev = (await loadProfile(id)) || {};
       if (clamp(prev.age, 14, 100, 30) < 18) return j(res, 200, { ok: false, error: 'under18', message: 'Für unter 18-Jährige wird kein Phasenplan angewendet.' });
-      // Einwilligung für die Gesundheitsdaten-Verarbeitung (das Team kann sie NICHT ersetzen).
-      let consentOk = false;
-      try { const c = await require('../../lib/privacy').currentConsents(id); consentOk = !!(c && c.nutrition_health && c.nutrition_health.granted); } catch (e) { consentOk = false; }
-      if (!consentOk) return j(res, 200, { ok: false, error: 'consent_required', message: 'Das Mitglied hat der Verarbeitung seiner Ernährungs-/Gesundheitsdaten noch nicht zugestimmt. Bitte zuerst im Ernährungsbereich der App bestätigen lassen.' });
       if (!(await M.rateLimit('nutri-phase-ai:' + ((sess && (sess.user || sess.name)) || 'team'), 20, 3600))) {
         return j(res, 200, { ok: false, error: 'rate_limited', message: 'Zu viele Analysen in kurzer Zeit – bitte später erneut versuchen.' });
       }
