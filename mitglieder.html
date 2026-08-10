@@ -2179,7 +2179,8 @@
     var kcalRow='<div style="display:flex;justify-content:space-between;align-items:baseline;margin:14px 0 6px"><span style="font-size:10.5px;font-weight:700;color:var(--text-soft);text-transform:uppercase;letter-spacing:.5px">Kalorien</span><span style="font-size:19px;font-weight:900;color:var(--text);letter-spacing:-.4px">'+ernNum(tot.kcal||0)+'<span style="font-size:12px;font-weight:600;color:var(--text-soft);letter-spacing:0"> / '+ernNum(t.kcal||0)+' kcal</span></span></div>'+bar(tot.kcal||0,t.kcal||0,ERN_OK,8);
     var m=function(lab,val,goal,col){ return '<div style="flex:1;min-width:0"><div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px"><span style="font-size:10px;font-weight:700;color:var(--text-soft)">'+lab+'</span><span style="font-size:10px;font-weight:800;color:var(--text-2)">'+Math.round(val||0)+'/'+Math.round(goal||0)+'&#8202;g</span></div>'+bar(val||0,goal||0,col)+'</div>'; };
     var macros='<div style="display:flex;gap:10px;margin-top:11px">'+m('Eiweiß',tot.p,t.protein,ERN_PROT)+m('KH',tot.c,t.carbs,ERN_CARB)+m('Fett',tot.f,t.fat,ERN_FAT)+'</div>';
-    return wrap(headSub(kcalSt.line+' · 🔥 '+(n.streak||0)+' Tage · +'+(n.pointsToday||0)+' VP')+kcalRow+macros);
+    var phTag=(n.nutriPhase&&n.nutriPhase.name)?(' · '+n.nutriPhase.name):'';
+    return wrap(headSub(kcalSt.line+phTag+' · 🔥 '+(n.streak||0)+' Tage · +'+(n.pointsToday||0)+' VP')+kcalRow+macros);
   }
   // „Heute im Blick": Ernährung als Karte mit kcal-/Makro-Balken, Trainingspartner
   // als kompakte Kachel darunter (#103). Nur je nach Freischaltung.
@@ -5355,6 +5356,58 @@
       '<div style="font-size:9.5px;font-weight:600;color:var(--placeholder);line-height:1.45;margin-top:12px;border-top:1px solid var(--border);padding-top:10px">Unterstützt die <b>körpereigene</b> GLP-1-Ausschüttung &amp; Sättigung über Ernährung und Bewegung – ein Wellness-Ansatz, <b>kein Medikament</b> und kein Ersatz für ärztliche Behandlung. Fragen zu Abnehmspritzen bitte mit deiner Ärztin/deinem Arzt klären.</div>'+
       '<button data-act="glp1Deactivate" style="width:100%;margin-top:11px;padding:9px;border:1.5px solid var(--border);border-radius:11px;background:var(--surface);color:var(--text-soft);font-weight:800;font-size:12px;cursor:pointer">Modus ausschalten</button></div>';
   }
+  // ── Phasenplan: „wo stehe ich gerade, was kommt danach?" ────────────────────
+  // Zeigt die vom Studio geplante Phase, den Fortschritt und die nächste Phase.
+  // Rendert NICHTS, wenn kein Plan existiert (oder bei unter 18-Jährigen).
+  function ernPhaseCard(){
+    var ph=(DATA.nutri&&DATA.nutri.nutriPhase)||null;
+    if(!ph||!ph.status||ph.status==='none') return '';
+    var CARD='background:var(--surface);border-radius:20px;box-shadow:0 12px 30px rgba(4,33,40,.09);padding:18px;margin-bottom:14px';
+    var head='<div style="display:flex;align-items:center;gap:11px"><div style="width:38px;height:38px;border-radius:12px;background:var(--surface-2);display:flex;align-items:center;justify-content:center;font-size:19px;flex-shrink:0">🗓️</div><div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:900;color:var(--text)">Dein Ernährungsplan</div><div style="font-size:12px;font-weight:600;color:var(--text-muted);margin-top:1px">Vom Team fürs Studio geplant</div></div></div>';
+
+    // Noch nicht gestartet.
+    if(ph.status==='pending'){
+      return '<div style="'+CARD+'">'+head+'<div style="font-size:13px;font-weight:600;color:var(--text-muted);line-height:1.5;margin-top:12px">Dein Plan startet am <b>'+esc(deDateFull(ph.startDate))+'</b>'+(ph.next?(' mit <b>'+esc(ph.next.name)+'</b>'):'')+'. Bis dahin gelten deine bisherigen Werte.</div></div>';
+    }
+    // Analyse-Plan ausgelaufen (keine aktive Phase mehr).
+    if(!ph.name){
+      return '<div style="'+CARD+'">'+head+'<div style="font-size:13px;font-weight:600;color:var(--text-muted);line-height:1.5;margin-top:12px">Dein Phasenplan ist abgeschlossen – aktuell gelten wieder deine berechneten Tageswerte. Dein Team meldet sich für den nächsten Schritt. 💪</div></div>';
+    }
+
+    var pct=Math.max(3,Math.min(100,Math.round((ph.progress||0)*100)));
+    var pill='<span style="font-size:11px;font-weight:800;color:var(--teal-ink);background:var(--row-sel);border-radius:20px;padding:4px 10px;flex-shrink:0">Phase '+((ph.index||0)+1)+' von '+(ph.count||1)+'</span>';
+    var titleRow='<div style="display:flex;align-items:center;gap:10px;margin-top:14px"><div style="flex:1;min-width:0;font-size:19px;font-weight:900;color:var(--text);letter-spacing:-.3px">'+esc(ph.name)+'</div>'+pill+'</div>';
+    var sub=(ph.weekInPhase?('Woche '+ph.weekInPhase+' von '+ph.weeksInPhase):'')+((ph.daysLeft!=null&&!ph.expired)?(' · noch '+ph.daysLeft+' Tage'):'');
+    var bar='<div style="height:8px;border-radius:5px;background:var(--surface-2);overflow:hidden;margin-top:10px"><div style="width:'+pct+'%;height:100%;border-radius:5px;background:var(--ern-acc)"></div></div>'+
+      (sub?'<div style="font-size:12px;font-weight:700;color:var(--text-muted);margin-top:6px">'+esc(sub)+'</div>':'');
+
+    // Zielwerte dieser Phase.
+    var val=function(lab,v,unit){ if(v==null) return ''; return '<div style="flex:1;min-width:64px"><div style="font-size:10.5px;font-weight:700;color:var(--text-soft);text-transform:uppercase;letter-spacing:.4px">'+lab+'</div><div style="font-size:15px;font-weight:900;color:var(--text);margin-top:1px">'+ernNum(v)+(unit||'')+'</div></div>'; };
+    var vals='<div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap">'+val('kcal',ph.kcal,'')+val('Eiweiß',ph.protein,' g')+val('KH',ph.carbs,' g')+val('Fett',ph.fat,' g')+'</div>';
+
+    var note=ph.note?'<div style="margin-top:12px;background:var(--surface-2);border-radius:13px;padding:11px 13px;font-size:12.5px;font-weight:600;color:var(--text-2);line-height:1.5">'+esc(ph.note)+'</div>':'';
+
+    var after='';
+    if(ph.expired){
+      after='<div style="margin-top:12px;font-size:12.5px;font-weight:600;color:var(--text-muted);line-height:1.5">Das ist die letzte Phase deines Plans – sie läuft weiter, bis dein Team einen neuen Abschnitt plant.</div>';
+    } else if(ph.next){
+      after='<div style="margin-top:12px;display:flex;align-items:center;gap:9px;font-size:12.5px;font-weight:600;color:var(--text-muted);line-height:1.5"><span style="flex-shrink:0">➡️</span><span>Danach ab <b>'+esc(deDateFull(ph.next.startDate))+'</b>: <b>'+esc(ph.next.name)+'</b>'+(ph.next.kcal?(' · '+ernNum(ph.next.kcal)+' kcal'):'')+'</span></div>';
+    } else {
+      after='<div style="margin-top:12px;font-size:12.5px;font-weight:600;color:var(--text-muted);line-height:1.5">Letzte Phase deines Plans – stark durchgezogen! 💪</div>';
+    }
+
+    // Gesamtüberblick: alle Phasen als kompakte Liste.
+    var tl=(ph.upcoming||[]).map(function(x){
+      var cur=x.state==='current', done=x.state==='past';
+      var dot=cur?'var(--ern-acc)':(done?'var(--text-soft)':'var(--border)');
+      return '<div style="display:flex;align-items:center;gap:9px;padding:5px 0"><span style="width:8px;height:8px;border-radius:50%;background:'+dot+';flex-shrink:0"></span>'+
+        '<span style="flex:1;min-width:0;font-size:12.5px;font-weight:'+(cur?'900':'600')+';color:'+(cur?'var(--text)':'var(--text-muted)')+';white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(x.name)+'</span>'+
+        '<span style="font-size:11.5px;font-weight:700;color:var(--text-soft);flex-shrink:0">'+x.weeks+' Wo.</span></div>';
+    }).join('');
+    var timeline=tl?'<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)"><div style="font-size:11px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Dein Weg</div>'+tl+'</div>':'';
+
+    return '<div style="'+CARD+'">'+head+titleRow+bar+vals+note+after+timeline+'</div>';
+  }
   function ernDash(){
     if(DATA.morning==null) loadMorning();   // Vital-Signal-Banner (Erholung wirkt auf den Ernährungs-Fokus)
     var n=DATA.nutri, t=n.targets||{}, td=n.today||{}, tot=td.totals||{kcal:0,p:0,c:0,f:0};
@@ -5470,7 +5523,7 @@
     if(!viewIsToday) return ernDayNav()+ring+msg+mealsBlock+water;
     // Heute: Kern zuerst (Ring, Mahlzeiten, Schnell-Add, Wasser, Geplantes), dann aktive
     // Modi (GLP-1-Checkliste, laufendes Fasten), Tools-Kacheln und „Mehr" ganz unten.
-    return ernDayNav()+ring+ernVitalBanner()+msg+mealsBlock+quickAdd+water+planned+glp1Card()+((f.active||S.ernFastOpen)?fasting:'')+toolsRow+more;
+    return ernDayNav()+ring+ernPhaseCard()+ernVitalBanner()+msg+mealsBlock+quickAdd+water+planned+glp1Card()+((f.active||S.ernFastOpen)?fasting:'')+toolsRow+more;
   }
   // ══════════════ „Gemeinsam kochen": Topf teilen + prozentualer Anteil ══════════════
   // Ein Mitglied kocht EINEN Topf und teilt ihn per Link/QR (offener Code). Jede:r stellt
