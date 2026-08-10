@@ -538,7 +538,7 @@ async function openProfile(id){
   S.mbMsg=''; S.mbMailBusy=false; S.mbWeekly=null;   // Mitgliedschaftsbestätigung: Zustand je Mitglied zurücksetzen (Wochenbeitrag neu vorbefüllen)
   S.memberCoaching=null; S.memberCoachingLoading=false;
   S.memberMsgs=null; S.memberMsgsLoading=false; S.memberMsgsTotal=0;
-  S.memberNutri=null; S.memberNutriLoading=false; S.mnDate=''; S.mnBusy=false; S.mnEditId=null; S.mnAddOpen=false; S.mnGoalOpen=false; S.mnTgOpen=false; S.mnAssign=null; S.mnRecipes=null; S.mnRecipesLoading=false; S.mnAssignServ=1; S.mnAssignMeal='mittag';
+  S.memberNutri=null; S.memberNutriLoading=false; S.mnDate=''; S.mnBusy=false; S.mnEditId=null; S.mnAddOpen=false; S.mnGoalOpen=false; S.mnTgOpen=false; S.mnAssign=null; S.mnRecipes=null; S.mnRecipesLoading=false; S.mnAssignServ=1; S.mnAssignMeal='mittag'; S.mnPhOpen=false; S.mnPhDraft=null; S.mnPhMsg='';
   S.memberTrain=null; S.memberTrainLoading=false; S.mtBusy=false; S.mtBuildOpen=false; S.mtBuild=[]; S.mtBuildTitle=''; S.mtResults=null; S.mtResultsLoading=false;
   S.profTab='ueber'; S.acc={};   // Profil öffnet auf „Übersicht"; alle Sektionen zugeklappt
   S._profId=String(id); mainScrollMap['members:'+id]=0;   // neues Profil beginnt oben
@@ -957,6 +957,18 @@ async function mnAction(action, extra){
   else { alert((r&&r.message)||'Aktion nicht möglich.'); }
   render();
 }
+// Vorlage in einen Phasen-Vorschlag giessen (Server rechnet, gespeichert wird NICHT).
+async function mnPhaseTemplate(id, key, totalWeeks, startDate){
+  if(S.mnBusy) return; S.mnBusy=true; S.mnPhMsg=''; render();
+  var r=null;
+  try{ r=await tapi('/api/team/nutrition',{method:'POST',body:{action:'phases-template', id:id, template:key, totalWeeks:totalWeeks, startDate:startDate}}); }catch(e){}
+  S.mnBusy=false;
+  if(r&&r.ok&&r.proposal){
+    S.mnPhDraft={ startDate:r.proposal.startDate, phases:r.proposal.phases };
+    S.mnPhMsg='Vorschlag eingesetzt – bitte pruefen und anpassen. Gespeichert wird erst mit „Plan speichern".';
+  } else { S.mnPhMsg=(r&&r.message)||'Vorlage konnte nicht geladen werden.'; }
+  render();
+}
 async function mnSearchRecipes(q){ S.mnRecipesLoading=true; render(); try{ var r=await tapi('/api/team/nutrition',{method:'POST',body:{action:'recipe-search', q:q||''}}); S.mnRecipes=(r&&r.ok)?(r.recipes||[]):[]; }catch(e){ S.mnRecipes=[]; } S.mnRecipesLoading=false; render(); }
 
 function mnMacroLine(e){ return '<span style="font-size:12px;color:#8a929a;font-weight:700">'+n(e.kcal)+' kcal</span> <span style="font-size:11.5px;color:#a9b1b6;font-weight:600">· E '+n(e.p)+' · KH '+n(e.c)+' · F '+n(e.f)+'</span>'; }
@@ -1085,6 +1097,98 @@ function mnRecipeCard(d){
   return '<div style="'+CARD+'"><div style="font-size:15px;font-weight:900;letter-spacing:-.2px;color:#15171B">Rezept zuweisen</div><div style="font-size:12.5px;color:#8a929a;font-weight:600;margin-top:1px">Aus der Studio-Rezeptbibliothek in den Essens-/Koch-Plan des Mitglieds legen.</div>'+search+results+assign+plan+'</div>';
 }
 
+
+// ── Phasenplan (Periodisierung) ───────────────────────────────────────────────
+// Mehrere Phasen im Voraus planen (z. B. 6 W Aktivierung -> 8 W Reduktion ->
+// 4 W Stabilisierung). Der Wechsel passiert automatisch zum Stichtag, weil die
+// Zielwerte bei jedem Aufruf neu aufgeloest werden.
+var MN_KINDS=[['aktivierung','Aktivierung'],['reduktion','Reduktion'],['aufbau','Aufbau'],['erhaltung','Erhaltung'],['stabilisierung','Stabilisierung'],['diaetpause','Diaetpause'],['custom','Sonstige']];
+function mnPhKindLabel(k){ for(var i=0;i<MN_KINDS.length;i++){ if(MN_KINDS[i][0]===k) return MN_KINDS[i][1]; } return 'Phase'; }
+function mnPhDE(ymd){ if(!ymd) return ''; var t=String(ymd).split('-'); return t.length===3?(t[2]+'.'+t[1]+'.'+t[0]):String(ymd); }
+function mnPhaseCard(d){
+  var CARD='background:#fff;border-radius:20px;box-shadow:0 14px 38px rgba(4,33,40,.09);padding:20px 24px;margin-top:16px';
+  var ph=d.phases||{}, lim=d.phaseLimits||{maxPhases:8,maxWeeks:26};
+  var head='<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap"><div><div style="font-size:15px;font-weight:900;letter-spacing:-.2px;color:#15171B">Phasenplan</div><div style="font-size:12.5px;color:#8a929a;font-weight:600;margin-top:1px">Zielwerte im Voraus planen &ndash; der Wechsel passiert automatisch.</div></div>'+
+    (d.phasesBlocked?'':'<button data-mnphedit="1" style="border:1.5px solid #d6dee0;background:#fff;border-radius:10px;font-size:12.5px;font-weight:800;color:#0a4958;padding:8px 13px;cursor:pointer">'+(S.mnPhOpen?'Schliessen':(d.phasePlan?'Bearbeiten':'Phasen planen'))+'</button>')+'</div>';
+
+  // Unter 18: gesperrt (gleiche Schutzregel wie bei den individuellen Zielwerten).
+  if(d.phasesBlocked){
+    return '<div style="'+CARD+'">'+head+'<div style="margin-top:14px;background:#FBF4E9;border:1px solid #F1DFC2;border-radius:14px;padding:13px 16px;font-size:12.5px;color:#7a5326;font-weight:600;line-height:1.5">Fuer unter 18-Jaehrige bleiben die berechneten Richtwerte bestehen &ndash; ein Phasenplan wird nicht angewendet.</div></div>';
+  }
+
+  var body='';
+  if(ph.status && ph.status!=='none' && !S.mnPhOpen){
+    // Zeitstrahl: Breite je Phase proportional zur Dauer.
+    var tot=ph.totalWeeks||1;
+    var strip=(ph.phases||[]).map(function(x){
+      var col=x.state==='current'?TEAL:(x.state==='past'?'#cfe0e3':'#e8edee');
+      return '<div title="'+esc(x.name+' · '+x.weeks+' Wochen')+'" style="flex:'+x.weeks+';height:10px;background:'+col+';border-radius:3px"></div>';
+    }).join('');
+    var cur=ph.current;
+    var line;
+    if(ph.status==='pending'){
+      line='<div style="font-size:13px;font-weight:700;color:#8a929a">Startet am '+esc(mnPhDE(ph.startDate))+' &ndash; bis dahin gelten die bisherigen Zielwerte.</div>';
+    } else if(cur){
+      var sub=(ph.status==='finished')
+        ? 'Plan seit '+esc(mnPhDE(ph.endDate))+' abgelaufen &ndash; die letzte Phase gilt weiter.'
+        : ('Woche '+(ph.weekInPhase||1)+' von '+(ph.weeksInPhase||cur.weeks)+' &middot; noch '+(ph.daysLeft||0)+' Tage'+(ph.next?(' &middot; ab '+esc(mnPhDE(ph.next.startDate))+' &rarr; '+esc(ph.next.name)):' &middot; letzte Phase'));
+      line='<div style="font-size:14px;font-weight:900;color:#15171B">'+esc(cur.name)+'</div><div style="font-size:12.5px;color:#8a929a;font-weight:600;margin-top:2px">'+sub+'</div>'+
+        '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px">'+
+        [['kcal',n(cur.kcal)],['Eiweiss',n(cur.protein)+' g'],['KH',n(cur.carbs)+' g'],['Fett',n(cur.fat)+' g']].map(function(x){
+          return '<div style="background:#f2f6f7;border-radius:11px;padding:8px 12px"><div style="font-size:10.5px;font-weight:800;color:#8a929a">'+x[0]+'</div><div style="font-size:14px;font-weight:900;color:#0a4958">'+x[1]+'</div></div>';
+        }).join('')+'</div>';
+    } else {
+      line='<div style="font-size:13px;font-weight:700;color:#7a5326;background:#FBF4E9;border:1px solid #F1DFC2;border-radius:12px;padding:11px 14px">Plan aus der Stoffwechselanalyse ist ausgelaufen &ndash; es gelten wieder die berechneten Zielwerte. Bitte neu planen.</div>';
+    }
+    body='<div style="margin-top:14px"><div style="display:flex;gap:3px;margin-bottom:10px">'+strip+'</div>'+line+
+      '<div style="font-size:11.5px;color:#a9b1b6;font-weight:600;margin-top:10px">'+(ph.phases||[]).length+' Phasen &middot; '+tot+' Wochen &middot; '+(ph.source==='analysis'?'aus Stoffwechselanalyse':'manuell geplant')+'</div>'+
+      '<div style="margin-top:12px"><button data-mnphclear="1" style="border:1.5px solid #e3b8b1;background:#fff;border-radius:10px;font-size:12.5px;font-weight:800;color:#b53a2c;padding:8px 13px;cursor:pointer">Plan loeschen</button></div></div>';
+  } else if(!S.mnPhOpen){
+    body='<div style="margin-top:14px;font-size:13px;color:#8a929a;font-weight:600;line-height:1.5">Noch kein Phasenplan. Lege Phasen an &ndash; die Zielwerte stellen sich dann automatisch zum Stichtag um, und das Mitglied sieht, wo es gerade steht.</div>';
+  }
+
+  // ── Editor ──
+  var ed='';
+  if(S.mnPhOpen){
+    var draft=S.mnPhDraft||{startDate:(d.today||''),phases:[]};
+    var tplOpts=(d.phaseTemplates||[]).map(function(t){ return [t.key,t.label]; });
+    var rows=(draft.phases||[]).map(function(x,i){
+      return '<div style="border:1px solid #e8edee;border-radius:14px;padding:12px;margin-top:10px">'+
+        '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px">'+
+          mnField('Name', mnInput('mnph_n'+i,x.name,'Phase '+(i+1)))+
+          mnField('Art', mnSelect('mnph_k'+i,MN_KINDS,x.kind||'custom'))+
+          mnField('Wochen', mnNum('mnph_w'+i,x.weeks,'4'))+
+          mnField('kcal', mnNum('mnph_kc'+i,x.kcal,'2000'))+
+          mnField('Eiweiss (g)', mnNum('mnph_p'+i,x.protein,'150'))+
+          mnField('KH (g)', mnNum('mnph_c'+i,x.carbs,''))+
+          mnField('Fett (g)', mnNum('mnph_f'+i,x.fat,'70'))+
+        '</div>'+
+        '<div style="display:flex;align-items:center;gap:8px;margin-top:8px"><div style="flex:1;min-width:0">'+mnInput('mnph_no'+i,x.note,'Notiz fuer das Mitglied (optional)')+'</div>'+
+        '<button data-mnphdel="'+i+'" style="border:1.5px solid #e3b8b1;background:#fff;border-radius:9px;font-size:12px;font-weight:800;color:#b53a2c;padding:8px 11px;cursor:pointer;flex-shrink:0">Entfernen</button></div>'+
+      '</div>';
+    }).join('');
+    var full=(draft.phases||[]).length>=(lim.maxPhases||8);
+    ed='<div style="margin-top:16px;padding-top:16px;border-top:1px solid #f0f3f4">'+
+      (S.mnPhMsg?'<div style="background:#e7f1f3;border-radius:12px;padding:11px 14px;font-size:12.5px;font-weight:700;color:#0a4958;margin-bottom:12px;line-height:1.5">'+esc(S.mnPhMsg)+'</div>':'')+
+      '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px">'+
+        mnField('Start', mnInput('mnph_start',draft.startDate,'JJJJ-MM-TT'))+
+        mnField('Vorlage', mnSelect('mnph_tpl',tplOpts,''))+
+        mnField('Gesamtdauer (Wochen)', mnNum('mnph_tw','','18'))+
+        mnField('&nbsp;', '<button data-mnphtpl="1" style="width:100%;border:1.5px solid #d6dee0;background:#fff;border-radius:9px;font-size:12.5px;font-weight:800;color:#0a4958;padding:9px;cursor:pointer">Vorlage einsetzen</button>')+
+      '</div>'+
+      '<div style="font-size:11.5px;color:#a9b1b6;font-weight:600;margin-top:8px;line-height:1.5">Die Vorlage verteilt die Phasen proportional auf die gewuenschte Gesamtdauer. Leere KH werden aus kcal, Eiweiss und Fett errechnet.</div>'+
+      rows+
+      '<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">'+
+        '<button data-mnphadd="1"'+(full?' disabled':'')+' style="border:1.5px solid #d6dee0;background:#fff;border-radius:10px;font-size:12.5px;font-weight:800;color:'+(full?'#a9b1b6':'#0a4958')+';padding:9px 13px;cursor:'+(full?'default':'pointer')+'">+ Phase</button>'+
+        '<button data-mnphsave="1"'+(S.mnBusy?' disabled':'')+' style="border:none;border-radius:11px;background:'+TEAL+';color:#fff;font-size:13px;font-weight:800;padding:10px 16px;cursor:pointer">'+(S.mnBusy?'Speichert &hellip;':'Plan speichern')+'</button>'+
+        '<button data-mnphcancel="1" style="border:1.5px solid #d6dee0;background:#fff;border-radius:11px;font-size:13px;font-weight:800;color:#42454b;padding:10px 16px;cursor:pointer">Abbrechen</button>'+
+      '</div>'+
+      (d.targetOverride?'<div style="font-size:11.5px;color:#2f7d8c;font-weight:600;margin-top:12px;line-height:1.5">Hinweis: Solange ein Phasenplan laeuft, gelten die Phasenwerte. Die individuell gesetzten Zielwerte greifen wieder, sobald der Plan geloescht ist oder (bei einer Stoffwechselanalyse) auslaeuft.</div>':'')+
+    '</div>';
+  }
+  return '<div style="'+CARD+'">'+head+body+ed+'</div>';
+}
+
 function nutritionBlock(p){
   if(S.memberNutriLoading && S.memberNutri==null) return '<div style="padding:50px;text-align:center"><span class="spin"></span></div>';
   var d=S.memberNutri;
@@ -1092,7 +1196,7 @@ function nutritionBlock(p){
   if(d.available===false) return '<div style="background:#fff;border-radius:20px;box-shadow:0 14px 38px rgba(4,33,40,.09);padding:24px;margin-top:16px;font-size:13.5px;color:#8a929a;font-weight:600">Das Ernährungs-Modul ist gerade nicht verfügbar (kein Datenspeicher).</div>';
   if(d.error) return '<div style="background:#fff;border-radius:20px;box-shadow:0 14px 38px rgba(4,33,40,.09);padding:24px;margin-top:16px;font-size:13.5px;color:#b53a2c;font-weight:700">Ernährungsdaten konnten nicht geladen werden.</div>';
   var hint = d.everTracked ? '' : '<div style="background:#FBF4E9;border:1px solid #F1DFC2;border-radius:14px;padding:13px 16px;margin-top:16px;font-size:12.5px;color:#7a5326;font-weight:600">Dieses Mitglied hat das Ernährungs-Tracking noch nicht gestartet. Du kannst trotzdem ein Ziel setzen und Rezepte zuweisen.</div>';
-  return hint + mnGoalCard(d) + mnDiaryCard(d) + mnWeekCard(d) + mnRecipeCard(d);
+  return hint + mnGoalCard(d) + mnPhaseCard(d) + mnDiaryCard(d) + mnWeekCard(d) + mnRecipeCard(d);
 }
 function wireNutrition(wrap, p){
   if(S.profTab!=='ernaehrung' || !S.memberNutri) return;
@@ -1122,6 +1226,36 @@ function wireNutrition(wrap, p){
   var xc=q('[data-mnassigncancel]'); if(xc) xc.onclick=function(){ S.mnAssign=null; render(); };
   var xs=q('[data-mnassignconfirm]'); if(xs) xs.onclick=function(){ var b={recipeId:S.mnAssign.id, date:v('#mnas_date'), servings:v('#mnas_serv'), meal:v('#mnas_meal')}; S.mnAssign=null; mnAction('cookplan-add',b); };
   wrap.querySelectorAll('[data-mnplandel]').forEach(function(b){ b.onclick=function(){ mnAction('cookplan-remove',{itemId:b.getAttribute('data-mnplandel')}); }; });
+  // ── Phasenplan ──
+  var phRead=function(){
+    var out=[]; var i=0;
+    while(q('#mnph_n'+i)||q('#mnph_kc'+i)){
+      out.push({ name:v('#mnph_n'+i), kind:v('#mnph_k'+i), weeks:v('#mnph_w'+i),
+                 kcal:v('#mnph_kc'+i), protein:v('#mnph_p'+i), carbs:v('#mnph_c'+i),
+                 fat:v('#mnph_f'+i), note:v('#mnph_no'+i) });
+      i++;
+    }
+    return { startDate:v('#mnph_start'), phases:out };
+  };
+  var phe=q('[data-mnphedit]'); if(phe) phe.onclick=function(){
+    if(!S.mnPhOpen){
+      var pl=S.memberNutri&&S.memberNutri.phasePlan;
+      S.mnPhDraft = pl ? { startDate:pl.startDate, phases:(pl.phases||[]).map(function(x){ return {name:x.name,kind:x.kind,weeks:x.weeks,kcal:x.kcal,protein:x.protein,carbs:x.carbs,fat:x.fat,note:x.note}; }) }
+                       : { startDate:(S.memberNutri&&S.memberNutri.today)||'', phases:[] };
+      S.mnPhMsg=''; S.mnPhOpen=true; S.mnGoalOpen=false; S.mnTgOpen=false;
+    } else { S.mnPhOpen=false; }
+    render();
+  };
+  var phc=q('[data-mnphcancel]'); if(phc) phc.onclick=function(){ S.mnPhOpen=false; S.mnPhDraft=null; S.mnPhMsg=''; render(); };
+  var pha=q('[data-mnphadd]'); if(pha) pha.onclick=function(){ var dr=phRead(); dr.phases.push({name:'',kind:'custom',weeks:4,kcal:'',protein:'',carbs:'',fat:'',note:''}); S.mnPhDraft=dr; render(); };
+  wrap.querySelectorAll('[data-mnphdel]').forEach(function(b){ b.onclick=function(){ var dr=phRead(); dr.phases.splice(parseInt(b.getAttribute('data-mnphdel'),10),1); S.mnPhDraft=dr; render(); }; });
+  var phs=q('[data-mnphsave]'); if(phs) phs.onclick=function(){ var dr=phRead(); S.mnPhDraft=dr; S.mnPhOpen=false; mnAction('phases-set',{plan:dr}); };
+  var phcl=q('[data-mnphclear]'); if(phcl) phcl.onclick=function(){ if(!confirm('Phasenplan loeschen? Danach gelten wieder die berechneten bzw. individuell gesetzten Zielwerte.')) return; mnAction('phases-clear',{}); };
+  var pht=q('[data-mnphtpl]'); if(pht) pht.onclick=function(){
+    var key=v('#mnph_tpl'), tw=v('#mnph_tw'), sd=v('#mnph_start');
+    if(!key){ S.mnPhMsg='Bitte zuerst eine Vorlage auswaehlen.'; render(); return; }
+    mnPhaseTemplate(p.id,key,tw,sd);
+  };
 }
 
 // ====== Team verwaltet den Trainingsplan eines Mitglieds (Profil-Tab „Training") ======
