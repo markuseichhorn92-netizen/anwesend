@@ -538,7 +538,7 @@ async function openProfile(id){
   S.mbMsg=''; S.mbMailBusy=false; S.mbWeekly=null;   // Mitgliedschaftsbestätigung: Zustand je Mitglied zurücksetzen (Wochenbeitrag neu vorbefüllen)
   S.memberCoaching=null; S.memberCoachingLoading=false;
   S.memberMsgs=null; S.memberMsgsLoading=false; S.memberMsgsTotal=0;
-  S.memberNutri=null; S.memberNutriLoading=false; S.mnDate=''; S.mnBusy=false; S.mnEditId=null; S.mnAddOpen=false; S.mnGoalOpen=false; S.mnTgOpen=false; S.mnAssign=null; S.mnRecipes=null; S.mnRecipesLoading=false; S.mnAssignServ=1; S.mnAssignMeal='mittag'; S.mnPhOpen=false; S.mnPhDraft=null; S.mnPhMsg='';
+  S.memberNutri=null; S.memberNutriLoading=false; S.mnDate=''; S.mnBusy=false; S.mnEditId=null; S.mnAddOpen=false; S.mnGoalOpen=false; S.mnTgOpen=false; S.mnAssign=null; S.mnRecipes=null; S.mnRecipesLoading=false; S.mnAssignServ=1; S.mnAssignMeal='mittag'; S.mnPhOpen=false; S.mnPhDraft=null; S.mnPhMsg=''; S.mnPhAnalysis=null; S.mnPhRationale='';
   S.memberTrain=null; S.memberTrainLoading=false; S.mtBusy=false; S.mtBuildOpen=false; S.mtBuild=[]; S.mtBuildTitle=''; S.mtResults=null; S.mtResultsLoading=false;
   S.profTab='ueber'; S.acc={};   // Profil öffnet auf „Übersicht"; alle Sektionen zugeklappt
   S._profId=String(id); mainScrollMap['members:'+id]=0;   // neues Profil beginnt oben
@@ -957,6 +957,27 @@ async function mnAction(action, extra){
   else { alert((r&&r.message)||'Aktion nicht möglich.'); }
   render();
 }
+// Stoffwechselanalyse hochladen -> FINN liest aus und schlaegt Phasen vor (kein Speichern).
+async function mnPhaseAnalyze(id, file, startDate){
+  if(S.mnBusy) return;
+  if(!/^(application\/pdf|image\/(jpeg|png|webp))$/.test(file.type||'')){ S.mnPhMsg='Bitte eine PDF oder ein Foto (JPG/PNG) der Analyse hochladen.'; render(); return; }
+  if(file.size>1.8e6){ S.mnPhMsg='Datei ist zu gross (max. ca. 1,8 MB). Bitte nur die relevanten Seiten hochladen.'; render(); return; }
+  S.mnBusy=true; S.mnPhMsg='FINN liest die Analyse …'; render();
+  var rd=new FileReader();
+  rd.onload=async function(){
+    var r=null;
+    try{ r=await tapi('/api/team/nutrition',{method:'POST',body:{action:'phases-analyze', id:id, file:String(rd.result||''), startDate:startDate}}); }catch(e){}
+    S.mnBusy=false;
+    if(r&&r.ok&&r.proposal){
+      S.mnPhDraft={ startDate:r.proposal.startDate, phases:r.proposal.phases };
+      S.mnPhAnalysis=r.analysis||null; S.mnPhRationale=r.rationale||'';
+      S.mnPhMsg='Vorschlag von FINN eingesetzt – bitte pruefen. Gespeichert wird erst mit „Plan speichern".';
+    } else { S.mnPhMsg=(r&&r.message)||'Die Analyse konnte nicht ausgewertet werden.'; }
+    render();
+  };
+  rd.onerror=function(){ S.mnBusy=false; S.mnPhMsg='Datei konnte nicht gelesen werden.'; render(); };
+  rd.readAsDataURL(file);
+}
 // Vorlage in einen Phasen-Vorschlag giessen (Server rechnet, gespeichert wird NICHT).
 async function mnPhaseTemplate(id, key, totalWeeks, startDate){
   if(S.mnBusy) return; S.mnBusy=true; S.mnPhMsg=''; render();
@@ -1176,6 +1197,20 @@ function mnPhaseCard(d){
         mnField('Gesamtdauer (Wochen)', mnNum('mnph_tw','','18'))+
         mnField('&nbsp;', '<button data-mnphtpl="1" style="width:100%;border:1.5px solid #d6dee0;background:#fff;border-radius:9px;font-size:12.5px;font-weight:800;color:#0a4958;padding:9px;cursor:pointer">Vorlage einsetzen</button>')+
       '</div>'+
+      '<div style="display:flex;align-items:center;gap:10px;margin-top:12px;flex-wrap:wrap">'+
+        '<button data-mnphupload="1"'+(S.mnBusy?' disabled':'')+' style="border:1.5px solid #d6dee0;background:#fff;border-radius:10px;font-size:12.5px;font-weight:800;color:#0a4958;padding:9px 13px;cursor:pointer">📄 Stoffwechselanalyse hochladen</button>'+
+        '<input id="mnph_file" type="file" accept="application/pdf,image/jpeg,image/png,image/webp" style="display:none">'+
+        '<span style="font-size:11.5px;color:#a9b1b6;font-weight:600">FINN liest die Werte aus und schlägt Phasen vor – gespeichert wird erst mit „Plan speichern".</span>'+
+      '</div>'+
+      (S.mnPhAnalysis?('<div style="margin-top:12px;background:#e7f1f3;border-radius:14px;padding:13px 15px">'+
+        '<div style="font-size:12.5px;font-weight:900;color:#0a4958">🤖 Von FINN aus der Analyse gelesen</div>'+
+        '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:9px">'+
+        [['Grundumsatz',S.mnPhAnalysis.bmr,'kcal'],['Gesamtumsatz',S.mnPhAnalysis.tdee,'kcal'],['RQ',S.mnPhAnalysis.rq,''],['Körperfett',S.mnPhAnalysis.fatPct,'%'],['Empfehlung',S.mnPhAnalysis.kcalRecommended,'kcal']].map(function(x){
+          return '<div style="background:#fff;border-radius:10px;padding:7px 11px"><div style="font-size:10.5px;font-weight:800;color:#8a929a">'+x[0]+'</div><div style="font-size:13.5px;font-weight:900;color:#0a4958">'+(x[1]==null?'—':(x[1]+(x[2]?(' '+x[2]):'')))+'</div></div>';
+        }).join('')+'</div>'+
+        (S.mnPhRationale?('<div style="font-size:12px;color:#42454b;font-weight:600;margin-top:10px;line-height:1.5"><b>FINNs Begründung:</b> '+esc(S.mnPhRationale)+'</div>'):'')+
+        '<div style="font-size:11.5px;color:#7a5326;background:#FBF4E9;border:1px solid #F1DFC2;border-radius:10px;padding:9px 12px;font-weight:700;margin-top:10px;line-height:1.5">KI-Vorschlag – bitte fachlich prüfen und anpassen. Er gilt erst nach dem Speichern.</div>'+
+      '</div>'):'')+
       '<div style="font-size:11.5px;color:#a9b1b6;font-weight:600;margin-top:8px;line-height:1.5">Die Vorlage verteilt die Phasen proportional auf die gewuenschte Gesamtdauer. Leere KH werden aus kcal, Eiweiss und Fett errechnet.</div>'+
       rows+
       '<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">'+
@@ -1249,8 +1284,10 @@ function wireNutrition(wrap, p){
   var phc=q('[data-mnphcancel]'); if(phc) phc.onclick=function(){ S.mnPhOpen=false; S.mnPhDraft=null; S.mnPhMsg=''; render(); };
   var pha=q('[data-mnphadd]'); if(pha) pha.onclick=function(){ var dr=phRead(); dr.phases.push({name:'',kind:'custom',weeks:4,kcal:'',protein:'',carbs:'',fat:'',note:''}); S.mnPhDraft=dr; render(); };
   wrap.querySelectorAll('[data-mnphdel]').forEach(function(b){ b.onclick=function(){ var dr=phRead(); dr.phases.splice(parseInt(b.getAttribute('data-mnphdel'),10),1); S.mnPhDraft=dr; render(); }; });
-  var phs=q('[data-mnphsave]'); if(phs) phs.onclick=function(){ var dr=phRead(); S.mnPhDraft=dr; S.mnPhOpen=false; mnAction('phases-set',{plan:dr}); };
+  var phs=q('[data-mnphsave]'); if(phs) phs.onclick=function(){ var dr=phRead(); S.mnPhDraft=dr; S.mnPhOpen=false; var ex={plan:dr}; if(S.mnPhAnalysis){ ex.source='analysis'; ex.analysis=S.mnPhAnalysis; } mnAction('phases-set',ex); };
   var phcl=q('[data-mnphclear]'); if(phcl) phcl.onclick=function(){ if(!confirm('Phasenplan loeschen? Danach gelten wieder die berechneten bzw. individuell gesetzten Zielwerte.')) return; mnAction('phases-clear',{}); };
+  var phu=q('[data-mnphupload]'); if(phu) phu.onclick=function(){ var f=q('#mnph_file'); if(f) f.click(); };
+  var phf=q('#mnph_file'); if(phf) phf.onchange=function(){ var f=phf.files&&phf.files[0]; if(f) mnPhaseAnalyze(p.id,f,v('#mnph_start')); phf.value=''; };
   var pht=q('[data-mnphtpl]'); if(pht) pht.onclick=function(){
     var key=v('#mnph_tpl'), tw=v('#mnph_tw'), sd=v('#mnph_start');
     if(!key){ S.mnPhMsg='Bitte zuerst eine Vorlage auswaehlen.'; render(); return; }

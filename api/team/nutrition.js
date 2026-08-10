@@ -305,6 +305,51 @@ module.exports = async function handler(req, res) {
       return j(res, 200, await readState(id, body.date));
     }
 
+    // Stoffwechselanalyse (PDF/Foto) von FINN auslesen lassen -> VORSCHLAG.
+    // Speichert NICHTS: das Team prüft im Editor und bestätigt per phases-set.
+    // Gesundheitsdaten -> nur mit gültiger Einwilligung des Mitglieds.
+    if (action === 'phases-analyze') {
+      const prev = (await loadProfile(id)) || {};
+      if (clamp(prev.age, 14, 100, 30) < 18) return j(res, 200, { ok: false, error: 'under18', message: 'Für unter 18-Jährige wird kein Phasenplan angewendet.' });
+      // Einwilligung für die Gesundheitsdaten-Verarbeitung (das Team kann sie NICHT ersetzen).
+      let consentOk = false;
+      try { const c = await require('../../lib/privacy').currentConsents(id); consentOk = !!(c && c.nutrition_health && c.nutrition_health.granted); } catch (e) { consentOk = false; }
+      if (!consentOk) return j(res, 200, { ok: false, error: 'consent_required', message: 'Das Mitglied hat der Verarbeitung seiner Ernährungs-/Gesundheitsdaten noch nicht zugestimmt. Bitte zuerst im Ernährungsbereich der App bestätigen lassen.' });
+      if (!(await M.rateLimit('nutri-phase-ai:' + ((sess && (sess.user || sess.name)) || 'team'), 20, 3600))) {
+        return j(res, 200, { ok: false, error: 'rate_limited', message: 'Zu viele Analysen in kurzer Zeit – bitte später erneut versuchen.' });
+      }
+      const raw = String((body && (body.file || body.document || body.photo)) || '');
+      const m = raw.match(/^data:(application\/pdf|image\/(?:jpeg|png|webp));base64,(.+)$/);
+      const b64 = m ? m[2] : raw.replace(/^data:[^,]*,/, '');
+      const mediaType = m ? m[1] : (body && body.mediaType) || 'application/pdf';
+      if (!b64 || b64.length < 100) return j(res, 200, { ok: false, error: 'bad_file', message: 'Datei konnte nicht gelesen werden. Bitte eine PDF oder ein Foto der Analyse hochladen.' });
+      if (b64.length > 2.4e6) return j(res, 200, { ok: false, error: 'too_large', message: 'Datei ist zu groß. Bitte nur die relevanten Seiten hochladen (max. ca. 1,8 MB).' });
+
+      const AI = require('../../lib/ai');
+      if (!AI.hasAI) return j(res, 200, { ok: false, error: 'no_ai', message: 'Die KI-Auswertung ist gerade nicht verfügbar. Du kannst die Phasen manuell anlegen.' });
+      const base = targetsFor(Object.assign({}, prev, { phasePlan: null, targetOverride: null }), berlinNow().date);
+      let r = null;
+      try {
+        r = await AI.scanMetabolic(b64, mediaType, {
+          profile: { sex: prev.sex, age: prev.age, weight: prev.weight, height: prev.height },
+          targets: { kcal: base.kcal }, totalWeeks: body.totalWeeks,
+        });
+      } catch (e) { r = null; }
+      if (!r || !r.ok) {
+        // Fail-closed: kein Ersatzweg, aber verständliche Meldung (nie Inhalte ins Log).
+        return j(res, 200, { ok: false, error: (r && r.error) || 'scan_failed', message: 'Die Analyse konnte nicht ausgewertet werden. Bitte Datei prüfen oder die Phasen manuell anlegen.' });
+      }
+      // Durch dieselbe Normalisierung schicken, die auch beim Speichern greift –
+      // das Team sieht damit exakt das, was gespeichert würde.
+      const norm = Phases.normalize({ startDate: body.startDate || berlinNow().date, source: 'analysis', phases: r.phases, analysis: r.analysis }, { today: berlinNow().date });
+      if (!norm.ok) return j(res, 200, { ok: false, error: 'no_phases', message: 'FINN konnte aus dem Dokument keinen belastbaren Plan ableiten. Bitte manuell anlegen.' });
+      return j(res, 200, {
+        ok: true,
+        proposal: { startDate: norm.plan.startDate, phases: norm.plan.phases, source: 'analysis' },
+        analysis: norm.plan.analysis, rationale: r.rationale, confidence: r.confidence,
+      });
+    }
+
     // Vorlage in einen Vorschlag gießen (NICHT speichern) – das Team gibt die
     // Gesamtdauer in Wochen vor, die Phasen werden proportional verteilt.
     if (action === 'phases-template') {
