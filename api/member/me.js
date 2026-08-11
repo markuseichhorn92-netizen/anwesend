@@ -7,6 +7,7 @@
 
 const M = require('../../lib/members');
 const FB = require('../../lib/feedback');
+const NavBeta = require('../../lib/navBeta');
 
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json');
@@ -25,8 +26,13 @@ module.exports = async function handler(req, res) {
     // öffnet daraufhin beim nächsten Start einmalig das Feedback-Fenster. Best effort.
     let feedbackPrompt = null;
     try { feedbackPrompt = await FB.getCampaign(); } catch (e) {}
+    // Beta-Freigabe fuer die neue Bottom-Navigation (0 = normale Leiste). Das Mitglied
+    // liegt hier bereits geladen vor - keine zusaetzliche Abfrage, kein Cache noetig.
+    // Reine Anzeige-Freigabe, keine Berechtigungsgrenze.
+    let navBeta = 0;
+    try { navBeta = NavBeta.navBetaFor({ id: sess.id, email: m && m.email }, process.env); } catch (e) {}
     res.statusCode = 200;
-    return res.end(JSON.stringify({ ok: true, profile: M.publicProfile(m), contract: contract, membershipActive: membershipActive, feedbackPrompt: feedbackPrompt }));
+    return res.end(JSON.stringify({ ok: true, profile: M.publicProfile(m), contract: contract, membershipActive: membershipActive, feedbackPrompt: feedbackPrompt, navBeta: navBeta }));
   } catch (err) {
     console.error('[member/me]', err.message);
     res.statusCode = 500; return res.end(JSON.stringify({ error: 'server_error' }));

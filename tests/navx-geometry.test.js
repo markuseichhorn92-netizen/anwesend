@@ -125,7 +125,7 @@ ok('8. Tabs bleiben in der Reihenfolge links -> rechts', bad.order.length === 0,
     src.indexOf('navxOn') > 0 && !/navxOn[\s\S]{0,200}srvFlags/.test(src));
   ok('21. Gleiche Klickziele wie die normale Leiste', /data-act="nav" data-arg="'\+t\.key\+'"/.test(src));
   ok('22. Nur auf Mobil aktiv', /navxV && window\.innerWidth<1000/.test(src));
-  ok('23. Zwei Varianten wählbar (Meniskus / Center-FAB)', /\[\?&\]navx=\(\[012\]\)/.test(src));
+  ok('23. Zwei Varianten wählbar (Meniskus / Center-FAB)', /navx=\(auto\|\[012\]\)/.test(src));
 })();
 
 // ── 7. Variante 2 „Center-FAB": eingekerbte Leiste, Knopf schwebt mit Spalt darin ──

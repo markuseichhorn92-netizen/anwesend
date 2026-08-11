@@ -586,15 +586,26 @@
   // ihn setzt (?navx=1 einmal aufrufen, ?navx=0 schaltet zurück). Bewusst ohne
   // Server-Flag – die Leiste zeigt keine Daten, sie stellt nur dieselben Klickziele
   // anders dar. Sie ist deshalb KEINE Sicherheits- oder Berechtigungsgrenze.
-  // ?navx=1 = Meniskus (Kugel wandert in der Flüssigkeit), ?navx=2 = Center-FAB
-  // (Leiste mit Aussparung, Knopf schwebt frei darin), ?navx=0 = normale Leiste.
+  // Neue Bottom-Navigation. Zwei Quellen, klare Rangfolge:
+  //   1. dieses Gerät  – ?navx=1 Meniskus, ?navx=2 Center-FAB, ?navx=0 aus,
+  //                      ?navx=auto löscht die Geräteentscheidung wieder
+  //   2. Beta-Freigabe – serverseitig je Mitglied (NAV_BETA…, siehe lib/navBeta.js),
+  //                      kommt als DATA.navBeta aus /api/member/me
+  // Die Geräteeinstellung gewinnt IMMER – auch das ausdrückliche Aus. So kann ein
+  // Beta-Mitglied zurückschalten, ohne dass jemand serverseitig etwas ändern muss.
   (function(){ try{
-    var m=/[?&]navx=([012])/.exec(location.search||'');
-    if(m){ if(m[1]==='0') localStorage.removeItem('fi_navx'); else localStorage.setItem('fi_navx',m[1]);
+    var m=/[?&]navx=(auto|[012])/.exec(location.search||'');
+    if(m){ if(m[1]==='auto') localStorage.removeItem('fi_navx'); else localStorage.setItem('fi_navx',m[1]);
       try{ history.replaceState(null,'',location.pathname+location.hash); }catch(_e){} }
   }catch(e){} })();
-  function navxOn(){ try{ var v=localStorage.getItem('fi_navx'); return (v==='1'||v==='2')?parseInt(v,10):0; }catch(e){ return 0; } }
-  var DATA = { profile:null, contract:null, checkins:null, appts:null, plan:null, planAgg:null, planAggTom:null, inbox:null, prefs:null, membershipActive:true, bookable:null, slots:null, account:null, blog:null, typical:null, hours:null, insta:null, live:null, pauseInfo:null, cancelReasons:null, documents:null, modules:null, commPrefs:null, nutri:null, nutriPlan:null, nutriSaved:null, nutriWeek:null, nutriFavs:null, nutriMeals:null, nutriLib:null, nutriCook:null, finnMem:null };
+  function navxOn(){
+    var v=null; try{ v=localStorage.getItem('fi_navx'); }catch(e){}
+    if(v==='0') return 0;                       // auf diesem Gerät ausdrücklich aus
+    if(v==='1'||v==='2') return parseInt(v,10);
+    var b=DATA&&DATA.navBeta;                   // sonst die Beta-Freigabe vom Server
+    return (b===1||b===2)?b:0;
+  }
+  var DATA = { profile:null, contract:null, checkins:null, appts:null, plan:null, planAgg:null, planAggTom:null, inbox:null, prefs:null, membershipActive:true, navBeta:0, bookable:null, slots:null, account:null, blog:null, typical:null, hours:null, insta:null, live:null, pauseInfo:null, cancelReasons:null, documents:null, modules:null, commPrefs:null, nutri:null, nutriPlan:null, nutriSaved:null, nutriWeek:null, nutriFavs:null, nutriMeals:null, nutriLib:null, nutriCook:null, finnMem:null };
   // Erlaubte Screens für ehemalige Mitglieder (alles andere wird gesperrt)
   var FORMER_OK = ['home','checkins','help','postfach','settings','profil','recht','impressum','datenschutz','agb'];
   function isFormer(){ return DATA.membershipActive===false; }
@@ -871,7 +882,7 @@
 
   // ---- data loading ----
   function loadMe(){
-    return api('/api/member/me').then(function(d){ DATA.profile=d.profile||null; DATA.contract=d.contract||null; DATA.membershipActive=(d.membershipActive!==false); DATA.meLoaded=true; DATA.feedbackPrompt=(d&&d.feedbackPrompt)||null; try{ if(window.FitInnNative) FitInnNative.onAuthed(TOKEN); }catch(e){} });
+    return api('/api/member/me').then(function(d){ DATA.profile=d.profile||null; DATA.contract=d.contract||null; DATA.membershipActive=(d.membershipActive!==false); DATA.meLoaded=true; DATA.navBeta=(d&&(d.navBeta===1||d.navBeta===2))?d.navBeta:0; DATA.feedbackPrompt=(d&&d.feedbackPrompt)||null; try{ if(window.FitInnNative) FitInnNative.onAuthed(TOKEN); }catch(e){} });
   }
   // Feedback-Fenster öffnen – kurz verzögert, um kein render() aus dem laufenden
   // render() auszulösen. camp (optional) zeigt den Text der Team-Aktion oben an.
