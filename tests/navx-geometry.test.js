@@ -20,7 +20,7 @@ if (from < 0 || to < 0 || to < from) { console.log('FAIL Geometrie-Block in mitg
 // nxTextW faengt fehlendes `document` selbst ab und schaetzt dann ueber die Zeichenzahl.
 const G = {};
 // eslint-disable-next-line no-new-func
-new Function('exports', src.slice(from, to) + '\nexports.nxReach=nxReach;exports.nxMetrics=nxMetrics;exports.nxSocket=nxSocket;exports.nxPath=nxPath;exports.nxTextW=nxTextW;')(G);
+new Function('exports', src.slice(from, to) + '\nexports.nxReach=nxReach;exports.nxMetrics=nxMetrics;exports.nxSocket=nxSocket;exports.nxPath=nxPath;exports.nxTextW=nxTextW;exports.nxNotch=nxNotch;exports.nxNotchReach=nxNotchReach;')(G);
 
 const TABS = ['Start', 'Training', 'Ernährung', 'Coach'];
 const TABS_S = ['Start', 'Training', 'Essen', 'Coach'];
@@ -28,13 +28,13 @@ const CENTER = ['Hinzufügen', 'Starten', 'Erfassen', 'Schließen'];
 const CENTER_S = ['Neu', 'Starten', 'Erfassen', 'Schließen'];
 
 // Gleiche Auswahl wie navxLayout: erst die vollen Woerter, dann die Kurzform.
-function pick(W) {
+function pick(W, variant) {
   const narrow = W < 372;
   const tabL = narrow ? TABS_S : TABS;
   const cenL = narrow ? CENTER_S : CENTER;
   let m = null;
-  for (let fs2 = narrow ? 10 : 10.5; fs2 >= 9.5; fs2 -= 0.5) { m = G.nxMetrics(W, fs2, tabL, cenL); if (m.fits) break; }
-  if (!m.fits) { for (let fs2 = narrow ? 10 : 10.5; fs2 >= 9; fs2 -= 0.5) { m = G.nxMetrics(W, fs2, TABS_S, cenL); if (m.fits) break; } }
+  for (let fs2 = narrow ? 10 : 10.5; fs2 >= 9.5; fs2 -= 0.5) { m = G.nxMetrics(W, fs2, tabL, cenL, variant); if (m.fits) break; }
+  if (!m.fits) { for (let fs2 = narrow ? 10 : 10.5; fs2 >= 9; fs2 -= 0.5) { m = G.nxMetrics(W, fs2, TABS_S, cenL, variant); if (m.fits) break; } }
   return m;
 }
 
@@ -119,12 +119,50 @@ ok('8. Tabs bleiben in der Reihenfolge links -> rechts', bad.order.length === 0,
 
 // ── 6. Der Schalter selbst ──
 (function () {
-  ok('19. Testleiste ist standardmässig aus (nur fi_navx=1 schaltet sie ein)',
-    /localStorage\.getItem\('fi_navx'\)==='1'/.test(src));
+  ok('19. Testleiste ist standardmässig aus (nur fi_navx=1 oder =2 schaltet sie ein)',
+    /v==='1'\|\|v==='2'/.test(src) && /localStorage\.getItem\('fi_navx'\)/.test(src));
   ok('20. Sie hängt an keinem Server-Flag (rein optisch, keine Berechtigungsgrenze)',
     src.indexOf('navxOn') > 0 && !/navxOn[\s\S]{0,200}srvFlags/.test(src));
   ok('21. Gleiche Klickziele wie die normale Leiste', /data-act="nav" data-arg="'\+t\.key\+'"/.test(src));
-  ok('22. Nur auf Mobil aktiv', /navxOn\(\) && window\.innerWidth<1000/.test(src));
+  ok('22. Nur auf Mobil aktiv', /navxV && window\.innerWidth<1000/.test(src));
+  ok('23. Zwei Varianten wählbar (Meniskus / Center-FAB)', /\[\?&\]navx=\(\[012\]\)/.test(src));
+})();
+
+// ── 7. Variante 2 „Center-FAB": eingekerbte Leiste, Knopf schwebt mit Spalt darin ──
+(function () {
+  // Die Hohlkehle beruehrt die Kerbe von AUSSEN: |Mitte-Mitte| muss exakt rn + s sein.
+  const rn = 36, k = 2, s = 9, TOP = 40;
+  const d = G.nxNotchReach(rn, k, s);
+  const dist = Math.hypot(d, (TOP + k) - (TOP + s));
+  ok('24. Kerbenformel ist tangential (|Mitte-Mitte| = rn + s)', Math.abs(dist - (rn + s)) < 1e-9, 'd=' + dist + ' soll=' + (rn + s));
+
+  const bad2 = { fits: [], touch: [], fab: [], corner: [], gap: [], deep: [] };
+  WIDTHS.forEach((W) => {
+    const m = pick(W, 2);
+    if (!m || !m.fits) { bad2.fits.push(W); return; }
+    if (m.w < 44) bad2.touch.push(W + ' (' + Math.round(m.w) + 'px)');
+    if (Math.max(48, m.FR * 2) < 44) bad2.fab.push(W);
+    if (m.CX - m.pr < m.R + 2) bad2.corner.push(W);
+    // Der sichtbare Spalt ist genau GAP – der Knopf ist kleiner als die Kerbe.
+    if (m.PRB - m.FR !== m.GAP || m.GAP < 5) bad2.gap.push(W);
+    // Der Knopf darf nicht durch die Leiste durchfallen: Unterkante innerhalb der Leiste.
+    if (m.FCY + m.FR > m.H - 6) bad2.deep.push(W);
+  });
+  ok('25. Variante 2: passende Aufteilung für jede Breite', bad2.fits.length === 0, bad2.fits.slice(0, 6).join(','));
+  ok('26. Variante 2: Tab-Tastflächen >= 44 px', bad2.touch.length === 0, bad2.touch.slice(0, 6).join(','));
+  ok('27. Variante 2: Knopf-Tastfläche >= 44 px', bad2.fab.length === 0, bad2.fab.slice(0, 6).join(','));
+  ok('28. Variante 2: Kerbe läuft nie in die Eckenrundung', bad2.corner.length === 0, bad2.corner.slice(0, 6).join(','));
+  ok('29. Variante 2: sichtbarer Spalt zwischen Knopf und Kerbe', bad2.gap.length === 0, bad2.gap.slice(0, 6).join(','));
+  ok('30. Variante 2: Knopf bleibt in der Leiste verankert', bad2.deep.length === 0, bad2.deep.slice(0, 6).join(','));
+
+  const m2 = pick(390, 2);
+  const d2 = G.nxPath(m2, [G.nxNotch(m2, m2.CX, m2.PRB, m2.PBY, m2.PS)]);
+  ok('31. Variante 2: ein geschlossener Pfad ohne NaN', /^M /.test(d2) && /Z$/.test(d2) && d2.indexOf('M', 1) < 0 && d2.indexOf('NaN') < 0, d2.slice(0, 40));
+  ok('32. Variante 2 hat keine wandernde Kugel', m2.br === 0 && m2.RB === 0);
+  // Die Kerbe schneidet nach UNTEN: der Beruehrpunkt der Hohlkehle liegt unter der Oberkante.
+  ok('33. Variante 2 schneidet nach unten (Kerbe statt Mulde)', m2.FCY > m2.TOP, 'FCY=' + m2.FCY + ' TOP=' + m2.TOP);
+  const m1 = pick(390, 1);
+  ok('34. Variante 1 bleibt unveraendert (Kugel liegt ueber der Kante)', m1.FCY < m1.TOP && m1.br > 0, 'FCY=' + m1.FCY);
 })();
 
 console.log(pass ? 'NAVX-GEOMETRY PASS' : 'NAVX-GEOMETRY FAIL');

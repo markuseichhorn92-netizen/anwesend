@@ -154,6 +154,26 @@
     .btmnav.navx .nxPlus svg{fill:none;stroke:#fff;stroke-width:2.6;stroke-linecap:round}
     .btmnav.navx .nxCi{position:absolute;width:13px;height:13px;border-radius:50%;background:#1f9a4e;
       border:2px solid var(--surface);transform:translate(-50%,-50%);pointer-events:none}
+    /* Variante 2 „Center-FAB": ruhige Leiste mit Aussparung, der Knopf schwebt frei
+       darin. Kein wanderndes Element – der aktive Bereich wird durch Farbe, Strich-
+       stärke und einen Apricot-Punkt markiert. */
+    .app-in .btmnav.navx2{
+      --nxPlate1:#ffffff; --nxPlate2:#ffffff;
+      --nxRimTop:rgba(4,33,40,.10); --nxRimBot:rgba(4,33,40,.06);
+      --nxShade:rgba(4,33,40,.10);
+      --nxCast:rgba(10,73,88,.22);
+      filter:drop-shadow(0 8px 22px rgba(4,33,40,.13))}
+    html[data-theme="dark"] .app-in .btmnav.navx2{
+      --nxPlate1:#1b2724; --nxPlate2:#1b2724;
+      --nxRimTop:rgba(255,255,255,.13); --nxRimBot:rgba(255,255,255,.05);
+      --nxShade:rgba(0,0,0,.30); --nxCast:rgba(0,0,0,.5);
+      filter:drop-shadow(0 10px 26px rgba(0,0,0,.5))}
+    .btmnav.navx2 .nxTab{gap:5px;padding-bottom:11px}
+    .btmnav.navx2 .nxTab.on .nxIc{visibility:visible}      /* kein Icon in einer Kugel – es bleibt am Platz */
+    .btmnav.navx2 .nxTab.on svg{stroke-width:2.35}
+    .btmnav.navx2 .nxOnDot{width:4px;height:4px;border-radius:50%;background:var(--apricot);opacity:0;margin-top:1px}
+    .btmnav.navx2 .nxTab.on .nxOnDot{opacity:1}
+    .btmnav.navx2 .nxPlusLb{display:none}                  /* wie in der Vorlage: der Knopf trägt keine Beschriftung */
     @media (prefers-reduced-motion: reduce){
       .btmnav.navx .nxTab{transition:none}
       .btmnav.navx .nxShade{filter:none;opacity:.55}
@@ -566,12 +586,14 @@
   // ihn setzt (?navx=1 einmal aufrufen, ?navx=0 schaltet zurück). Bewusst ohne
   // Server-Flag – die Leiste zeigt keine Daten, sie stellt nur dieselben Klickziele
   // anders dar. Sie ist deshalb KEINE Sicherheits- oder Berechtigungsgrenze.
+  // ?navx=1 = Meniskus (Kugel wandert in der Flüssigkeit), ?navx=2 = Center-FAB
+  // (Leiste mit Aussparung, Knopf schwebt frei darin), ?navx=0 = normale Leiste.
   (function(){ try{
-    var m=/[?&]navx=([01])/.exec(location.search||'');
-    if(m){ if(m[1]==='1') localStorage.setItem('fi_navx','1'); else localStorage.removeItem('fi_navx');
+    var m=/[?&]navx=([012])/.exec(location.search||'');
+    if(m){ if(m[1]==='0') localStorage.removeItem('fi_navx'); else localStorage.setItem('fi_navx',m[1]);
       try{ history.replaceState(null,'',location.pathname+location.hash); }catch(_e){} }
   }catch(e){} })();
-  function navxOn(){ try{ return localStorage.getItem('fi_navx')==='1'; }catch(e){ return false; } }
+  function navxOn(){ try{ var v=localStorage.getItem('fi_navx'); return (v==='1'||v==='2')?parseInt(v,10):0; }catch(e){ return 0; } }
   var DATA = { profile:null, contract:null, checkins:null, appts:null, plan:null, planAgg:null, planAggTom:null, inbox:null, prefs:null, membershipActive:true, bookable:null, slots:null, account:null, blog:null, typical:null, hours:null, insta:null, live:null, pauseInfo:null, cancelReasons:null, documents:null, modules:null, commPrefs:null, nutri:null, nutriPlan:null, nutriSaved:null, nutriWeek:null, nutriFavs:null, nutriMeals:null, nutriLib:null, nutriCook:null, finnMem:null };
   // Erlaubte Screens für ehemalige Mitglieder (alles andere wird gesperrt)
   var FORMER_OK = ['home','checkins','help','postfach','settings','profil','recht','impressum','datenschutz','agb'];
@@ -10871,22 +10893,36 @@
     return NX_CV.measureText(s).width; }catch(e){ return String(s).length*fs*0.58; } }
   function nxWidest(list,fs){ var m=0; for(var i=0;i<list.length;i++) m=Math.max(m,nxTextW(list[i],fs)); return m; }
   // Kurzformen für schmale Geräte – sonst stoßen „Hinzufügen" und „Ernährung" aneinander.
-  function nxMetrics(W, fs, tabLabels, centerLabels){
+  function nxMetrics(W, fs, tabLabels, centerLabels, variant){
     var narrow = W<372, tiny = W<330;
     // Drei Größenprofile. Unter 330 px (iPhone SE) müssen Kugel und Mulden schrumpfen,
     // sonst bleibt für die vier Tabs keine 44-px-Tastfläche mehr übrig.
-    var m = tiny
-      ? {R:18,TOP:36,BARH:62,RB:17,BY:6,S:4,PRB:23,PBY:8,PS:5,ICN:21,BIC:21,PIC:22}
-      : narrow
-      ? {R:20,TOP:40,BARH:64,RB:19,BY:7,S:5,PRB:25,PBY:9,PS:6,ICN:22,BIC:23,PIC:24}
-      : {R:22,TOP:40,BARH:66,RB:22,BY:8,S:7,PRB:27,PBY:10,PS:8,ICN:23,BIC:25,PIC:26};
+    // Variante 2 (Center-FAB): keine wandernde Kugel; die Aussparung ist um GAP grösser
+    // als der Knopf, so entsteht der sichtbare Spalt rundherum.
+    var m = (variant === 2)
+      // PBY zählt hier NACH UNTEN: der Mittelpunkt der Kerbe liegt so weit unter der
+      // Oberkante. GAP ist der sichtbare Spalt zwischen Knopf und Kerbenrand.
+      ? (tiny
+        ? {R:20,TOP:34,BARH:62,FR:23,GAP:6,PBY:2,PS:7,ICN:21,PIC:22,RB:0,BY:0,S:0}
+        : narrow
+        ? {R:22,TOP:36,BARH:64,FR:25,GAP:7,PBY:2,PS:8,ICN:22,PIC:24,RB:0,BY:0,S:0}
+        : {R:24,TOP:38,BARH:66,FR:28,GAP:8,PBY:2,PS:9,ICN:23,PIC:26,RB:0,BY:0,S:0})
+      : (tiny
+        ? {R:18,TOP:36,BARH:62,RB:17,BY:6,S:4,PRB:23,PBY:8,PS:5,ICN:21,BIC:21,PIC:22}
+        : narrow
+        ? {R:20,TOP:40,BARH:64,RB:19,BY:7,S:5,PRB:25,PBY:9,PS:6,ICN:22,BIC:23,PIC:24}
+        : {R:22,TOP:40,BARH:66,RB:22,BY:8,S:7,PRB:27,PBY:10,PS:8,ICN:23,BIC:25,PIC:26});
+    m.variant = (variant === 2) ? 2 : 1;
+    if(m.variant === 2) m.PRB = m.FR + m.GAP;    // Aussparung = Knopf + Spalt
     m.narrow=narrow; m.FS=fs; m.W=W; m.H=m.TOP+m.BARH; m.CX=W/2;
-    m.br=nxReach(m.S,m.RB,m.BY); m.pr=nxReach(m.PS,m.PRB,m.PBY);
+    m.br=(m.variant===2)?0:nxReach(m.S,m.RB,m.BY);
+    m.pr=(m.variant===2)?nxNotchReach(m.PRB,m.PBY,m.PS):nxReach(m.PS,m.PRB,m.PBY);
+    m.FCY=(m.variant===2)?(m.TOP+m.PBY):(m.TOP-m.PBY);   // Mittelpunkt des Knopfs
     var cMax=nxWidest(centerLabels,fs);
     var G=Math.max(2*m.pr+8, cMax+18);          // Mitte: Mulde ODER Beschriftung – was breiter ist
     // Rand so, dass die äußere Mulde nie in die Eckenrundung läuft:
     //   pad + w/2 - br >= R + 2   mit   w = (W - 2*pad - G)/4
-    m.pad=Math.max(16, Math.ceil((4/3)*(m.R+2+m.br-(W-G)/8)));
+    m.pad=Math.max(m.variant===2?12:16, Math.ceil((4/3)*(m.R+2+m.br-(W-G)/8)));
     m.w=(W-2*m.pad-G)/4;
     m.tabX=[ m.pad+m.w/2, m.pad+1.5*m.w, W-m.pad-1.5*m.w, W-m.pad-m.w/2 ];
     m.keepOut=m.br+m.pr+4;                      // Sperrzone: die Mulden dürfen sich nie überlagern
@@ -10905,6 +10941,23 @@
       ' A '+f(rb)+' '+f(rb)+' 0 0 0 '+f(PRx)+' '+f(PRy)+
       ' A '+f(sR)+' '+f(sR)+' 0 0 0 '+f(CRx)+' '+TOP };
   }
+  // Eingekerbte Leiste (Variante 2): gerade Kante, kleine Hohlkehle NACH UNTEN,
+  // Kreisbogen um den Knopf, wieder hoch. Unterschied zu nxSocket: dort liegt die
+  // Kugel IN der Fläche und die Oberfläche steigt zu ihr an – hier wird sauber
+  // ausgeschnitten und der Knopf schwebt mit Spalt darin.
+  // Hohlkehle und Kerbe berühren sich von aussen: |Mitte-Mitte| = rn + s.
+  function nxNotchReach(rn, k, s){ var v=(rn+s)*(rn+s)-(k-s)*(k-s); return v>0?Math.sqrt(v):0; }
+  function nxNotch(m, cx, rn, k, s){
+    var TOP=m.TOP, d=nxNotchReach(rn,k,s), L=(rn+s)||1;
+    var f=function(n){ return Math.round(n*100)/100; };
+    var Px=cx-d+s*d/L,  Py=TOP+s+s*(k-s)/L;      // Berührpunkt linke Hohlkehle -> Kerbe
+    var Qx=cx+d-s*d/L,  Qy=Py;                    // spiegelbildlich rechts
+    return { from:cx-d,
+      d:' L '+f(cx-d)+' '+TOP+
+        ' A '+f(s)+' '+f(s)+' 0 0 1 '+f(Px)+' '+f(Py)+
+        ' A '+f(rn)+' '+f(rn)+' 0 0 0 '+f(Qx)+' '+f(Qy)+
+        ' A '+f(s)+' '+f(s)+' 0 0 1 '+f(cx+d)+' '+TOP };
+  }
   function nxPath(m,list){
     var W=m.W, H=m.H, R=m.R, TOP=m.TOP;
     list=list.slice().sort(function(a,b){ return a.from-b.from; });
@@ -10916,10 +10969,11 @@
       ' L 0 '+(TOP+R)+' A '+R+' '+R+' 0 0 1 '+R+' '+TOP+' Z';
   }
   // tabs: [{key,label,short,icon,on}] (genau 4)   center: {act,label,short,close,ci}
-  function navxRender(bn, tabs, center){
+  function navxRender(bn, tabs, center, variant){
+    NX.variant=(variant===2)?2:1;
     // renderChrome läuft bei jeder Neuzeichnung. Nur neu aufbauen, wenn sich wirklich
     // etwas ändert – sonst genügt ein Nachmessen (billig, fängt Drehungen ab).
-    var sig=tabs.map(function(t){ return t.key+(t.on?'1':'0'); }).join('|')+
+    var sig=NX.variant+'#'+tabs.map(function(t){ return t.key+(t.on?'1':'0'); }).join('|')+
       '#'+center.act+'#'+center.label+'#'+(center.close?1:0)+'#'+(center.ci?1:0);
     if(NX.sig===sig && bn.classList.contains('navx') && $('nxSkin')){ NX.tabs=tabs; NX.center=center; navxLayout(false); return; }
     NX.sig=sig;
@@ -10939,21 +10993,22 @@
       '<g clip-path="url(#nxClip)"><path class="nxShade" id="nxShade" fill="none" stroke="var(--nxShade)" stroke-width="4.5" filter="url(#nxSoft)" transform="translate(0,2.5)"></path></g>'+
       '<path id="nxLine" fill="none" stroke="url(#nxRim)" stroke-width="1.1"></path>'+
       '<circle id="nxPlusC" fill="url(#nxPlusG)" filter="url(#nxCastF)"></circle>'+
-      '<circle id="nxBeadC" fill="url(#nxBeadG)" filter="url(#nxCastF)"></circle>'+
+      (NX.variant===2?'':'<circle id="nxBeadC" fill="url(#nxBeadG)" filter="url(#nxCastF)"></circle>')+
       '</svg>';
     tabs.forEach(function(t,i){
       html+='<button class="nxTab'+(t.on?' on':'')+'" data-act="nav" data-arg="'+t.key+'" data-nxi="'+i+'"'+
         (t.on?' aria-current="page"':'')+'><span class="nxIc"><svg viewBox="0 0 24 24">'+t.icon+'</svg></span>'+
-        '<span class="nxLb">'+esc(t.label)+'</span></button>';
+        '<span class="nxLb">'+esc(t.label)+'</span>'+(NX.variant===2?'<span class="nxOnDot"></span>':'')+'</button>';
     });
     html+='<span class="nxPlusLb" id="nxPlusLb"></span>'+
-      '<span class="nxBead" id="nxBead"></span>'+
+      (NX.variant===2?'':'<span class="nxBead" id="nxBead"></span>')+
       '<button class="nxPlus" id="nxPlus" data-act="'+center.act+'" aria-label="'+esc(center.label)+'">'+
         (center.close ? svg('<path d="M6 6l12 12M18 6L6 18"></path>',{c:'#fff',w:2.5,s:24})
                       : svg('<path d="M12 5v14M5 12h14"></path>',{c:'#fff',w:2.6,s:26}))+'</button>'+
       (center.ci ? '<span class="nxCi" id="nxCi"></span>' : '');
     bn.innerHTML=html;
     bn.classList.add('navx');
+    bn.classList.toggle('navx2', NX.variant===2);
     NX.tabs=tabs; NX.center=center;
     navxLayout(true);
     navxWire(bn);
@@ -10966,9 +11021,9 @@
     var cenL=[NX.center.label]; if(NX.center.short) cenL.push(NX.center.short);
     if(narrow&&NX.center.short) cenL=[NX.center.short];
     var m=null, fs;
-    for(fs=(narrow?10:10.5); fs>=9.5; fs-=0.5){ m=nxMetrics(W,fs,tabL,cenL); if(m.fits) break; }
+    for(fs=(narrow?10:10.5); fs>=9.5; fs-=0.5){ m=nxMetrics(W,fs,tabL,cenL,NX.variant); if(m.fits) break; }
     if(!m.fits){ var tabS=NX.tabs.map(function(t){ return t.short||t.label; });
-      for(fs=(narrow?10:10.5); fs>=9; fs-=0.5){ m=nxMetrics(W,fs,tabS,cenL); if(m.fits) break; }
+      for(fs=(narrow?10:10.5); fs>=9; fs-=0.5){ m=nxMetrics(W,fs,tabS,cenL,NX.variant); if(m.fits) break; }
       tabL=tabS; }
     NX.m=m;
     var sk=$('nxSkin'); if(sk) sk.setAttribute('viewBox','0 0 '+m.W+' '+m.H);
@@ -10985,14 +11040,15 @@
     if(pl){ pl.textContent=(narrow&&NX.center.short)?NX.center.short:NX.center.label;
       pl.style.left=m.CX+'px'; pl.style.top=(m.H-10-m.FS*1.1)+'px'; pl.style.fontSize=m.FS+'px'; }
     var pb=$('nxPlus');
-    if(pb){ var d=Math.max(48,m.PRB*2); pb.style.width=d+'px'; pb.style.height=d+'px';
+    if(pb){ var d=Math.max(48,(m.variant===2?m.FR:m.PRB)*2); pb.style.width=d+'px'; pb.style.height=d+'px';
       var ps=pb.querySelector('svg'); if(ps){ ps.style.width=m.PIC+'px'; ps.style.height=m.PIC+'px'; } }
     var on=-1; NX.tabs.forEach(function(t,i){ if(t.on) on=i; });
     if(on<0) on=0;
+    NX.idx=on;
+    if(m.variant===2){ NX.bx=null; navxDraw(0,0,0); return; }   // Center-FAB: nur die feste Aussparung
     var target=m.tabX[on];
     // Beim Bereichswechsel fließt die Kugel hinüber; beim bloßen Neuzeichnen nicht.
     var jump = !fromRender || NX.bx===null || NX.idx===on || NX.reduced;
-    NX.idx=on;
     if(jump){ NX.bx=target; navxDraw(target,0,0); } else navxFlow(target);
     var bi=$('nxBead'); if(bi){ bi.innerHTML='<svg viewBox="0 0 24 24" style="width:'+m.BIC+'px;height:'+m.BIC+'px">'+NX.tabs[on].icon+'</svg>'; }
   }
@@ -11001,14 +11057,21 @@
     var f=$('nxFill'), cp=$('nxClipP'), sh=$('nxShade'), ln=$('nxLine'),
         bc=$('nxBeadC'), pc=$('nxPlusC'), bi=$('nxBead'), pb=$('nxPlus'), ci=$('nxCi');
     if(!f) return;
-    var sL=Math.max(4,m.S*(1+0.06*mag+0.40*q)), sR=Math.max(4,m.S*(1+0.06*mag-0.40*q));
-    var d=nxPath(m,[ nxSocket(m,x,m.RB,m.BY,sL,sR), nxSocket(m,m.CX,m.PRB,m.PBY,m.PS,m.PS) ]);
+    var socks=[ m.variant===2 ? nxNotch(m,m.CX,m.PRB,m.PBY,m.PS)
+                              : nxSocket(m,m.CX,m.PRB,m.PBY,m.PS,m.PS) ];
+    if(m.variant!==2){
+      var sL=Math.max(4,m.S*(1+0.06*mag+0.40*q)), sR=Math.max(4,m.S*(1+0.06*mag-0.40*q));
+      socks.push(nxSocket(m,x,m.RB,m.BY,sL,sR));
+    }
+    var d=nxPath(m,socks);
     f.setAttribute('d',d); if(cp) cp.setAttribute('d',d); if(sh) sh.setAttribute('d',d); if(ln) ln.setAttribute('d',d);
-    bc.setAttribute('cx',x); bc.setAttribute('cy',m.TOP-m.BY); bc.setAttribute('r',m.RB);
-    pc.setAttribute('cx',m.CX); pc.setAttribute('cy',m.TOP-m.PBY); pc.setAttribute('r',m.PRB);
+    if(bc){ bc.setAttribute('cx',x); bc.setAttribute('cy',m.TOP-m.BY); bc.setAttribute('r',m.RB); }
+    // Variante 2: der Knopf ist kleiner als die Aussparung – genau daraus entsteht der Spalt.
+    var fabR=(m.variant===2)?m.FR:m.PRB;
+    pc.setAttribute('cx',m.CX); pc.setAttribute('cy',m.FCY); pc.setAttribute('r',fabR);
     if(bi){ bi.style.left=x+'px'; bi.style.top=(m.TOP-m.BY)+'px'; }
-    if(pb){ pb.style.left=m.CX+'px'; pb.style.top=(m.TOP-m.PBY)+'px'; }
-    if(ci){ ci.style.left=(m.CX+m.PRB*0.72)+'px'; ci.style.top=(m.TOP-m.PBY-m.PRB*0.72)+'px'; }
+    if(pb){ pb.style.left=m.CX+'px'; pb.style.top=m.FCY+'px'; }
+    if(ci){ ci.style.left=(m.CX+fabR*0.72)+'px'; ci.style.top=(m.FCY-fabR*0.72)+'px'; }
   }
   function navxFlow(target){
     cancelAnimationFrame(NX.raf);
@@ -11029,7 +11092,7 @@
     var usePtr = !!window.PointerEvent;
     var cx=function(e){ return e.touches?e.touches[0].clientX:e.clientX; };
     bn.addEventListener(usePtr?'pointerdown':'touchstart', function(e){
-      var m=NX.m; if(!m||NX.bx==null) return;
+      var m=NX.m; if(!m||m.variant===2||NX.bx==null) return;   // Center-FAB hat keine bewegliche Kugel
       var r=bn.getBoundingClientRect(), x0=cx(e)-r.left;
       if(Math.abs(x0-NX.bx)>Math.max(28,m.RB*1.6)) return;      // nur die Kugel greifen
       NX.drag=true; cancelAnimationFrame(NX.raf);
@@ -11176,7 +11239,8 @@
       var fourth = ERN_ON ? ni('ern','Ernährung',FOOD_IC,sc==='ern') : ni('appt','Termine',IC.cal,sc==='appt');
       // Testleiste (nur bei fi_navx=1 auf diesem Gerät): gleiche Bereiche, gleiche
       // Klickziele – nur eine andere Darstellung.
-      if(navxOn() && window.innerWidth<1000){
+      var navxV=navxOn();
+      if(navxV && window.innerWidth<1000){
         try{ document.body.classList.add('navxOn'); }catch(_e){}
         navxRender(bn, [
           {key:'home',  label:'Start',     icon:DASH_IC,  on:sc==='home'},
@@ -11185,10 +11249,10 @@
                   : {key:'appt', label:'Termine',   icon:IC.cal,   on:sc==='appt'}),
           {key:'coach', label:'Coach',     icon:FINN_IC,  on:sc==='coach'}
         ], { act:centerAct, label:centerLabel, short:(centerLabel==='Hinzufügen'?'Neu':''), close:showClose,
-             ci:(!special&&!qaOpen&&ciIn) });
+             ci:(!special&&!qaOpen&&ciIn) }, navxV);
         return;
       }
-      bn.classList.remove('navx'); bn.style.height=''; NX.sig=null;
+      bn.classList.remove('navx'); bn.classList.remove('navx2'); bn.style.height=''; NX.sig=null;
       try{ document.body.classList.remove('navxOn'); }catch(_e){}
       bn.innerHTML = ni('home','Start',DASH_IC,sc==='home') + ni('tag','Training',TRAIN_IC,sc==='tag') + qaCenter + fourth + coachBtn;
     }
