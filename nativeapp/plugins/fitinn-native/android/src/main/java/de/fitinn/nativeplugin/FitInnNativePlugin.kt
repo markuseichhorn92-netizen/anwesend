@@ -33,7 +33,6 @@ import androidx.health.connect.client.records.Record
 import androidx.health.connect.client.records.RestingHeartRateRecord
 import androidx.health.connect.client.records.SleepSessionRecord
 import androidx.health.connect.client.records.StepsRecord
-import androidx.health.connect.client.records.TotalCaloriesBurnedRecord
 import androidx.health.connect.client.records.Vo2MaxRecord
 import androidx.health.connect.client.records.WeightRecord
 import androidx.health.connect.client.records.metadata.Metadata
@@ -121,24 +120,39 @@ class FitInnNativePlugin : Plugin() {
         if (hcAvailable()) HealthConnectClient.getOrCreate(context) else null
     } catch (e: Exception) { null }
 
-    // Alle Berechtigungen, die das Plugin (lesend + schreibend) nutzt.
+    // Berechtigungen, die das Plugin nutzt - AUSSCHLIESSLICH lesend.
+    //
+    // Jeder Eintrag hier hat eine Entsprechung weiter unten im Code:
+    //   ExerciseSession        readWorkouts()      Trainings importieren
+    //   HeartRate              aggregate()         Ø-/Max-Puls je Einheit
+    //   Distance               aggregate()         Strecke je Einheit
+    //   ActiveCaloriesBurned   aggregate()         Kalorien je Einheit
+    //   Steps                  stepsToday()        Schritte heute
+    //   RestingHeartRate       getHealthMetrics()  Vital-Check
+    //   HeartRateVariability   getHealthMetrics()  Vital-Check
+    //   Weight / BodyFat       getHealthMetrics()  Figur-Check
+    //   Vo2Max                 getHealthMetrics()  Vitalalter
+    //   SleepSession           sleepLastNight()    Erholung
+    //
+    // KEINE Schreibrechte: saveHealthWorkout meldet auf Android bewusst
+    // "not_supported". Eine angefragte Berechtigung ohne sichtbare Funktion fuehrt
+    // zur Ablehnung im Play-Review (Richtlinie zu Health-Connect-Berechtigungen).
+    // Wer das Zurueckschreiben nachruestet, muss die Rechte HIER, im Manifest UND
+    // in der Play-Console-Erklaerung gemeinsam wieder aufnehmen - siehe
+    // docs/PLAY-HEALTH-CONNECT.md.
     private val hcPermissions: Set<String> by lazy {
         setOf(
             HealthPermission.getReadPermission(ExerciseSessionRecord::class),
             HealthPermission.getReadPermission(HeartRateRecord::class),
             HealthPermission.getReadPermission(DistanceRecord::class),
             HealthPermission.getReadPermission(ActiveCaloriesBurnedRecord::class),
-            HealthPermission.getReadPermission(TotalCaloriesBurnedRecord::class),
             HealthPermission.getReadPermission(StepsRecord::class),
             HealthPermission.getReadPermission(RestingHeartRateRecord::class),
             HealthPermission.getReadPermission(HeartRateVariabilityRmssdRecord::class),
             HealthPermission.getReadPermission(WeightRecord::class),
             HealthPermission.getReadPermission(BodyFatRecord::class),
             HealthPermission.getReadPermission(Vo2MaxRecord::class),
-            HealthPermission.getReadPermission(SleepSessionRecord::class),
-            HealthPermission.getWritePermission(ExerciseSessionRecord::class),
-            HealthPermission.getWritePermission(ActiveCaloriesBurnedRecord::class),
-            HealthPermission.getWritePermission(DistanceRecord::class)
+            HealthPermission.getReadPermission(SleepSessionRecord::class)
         )
     }
 
@@ -175,10 +189,11 @@ class FitInnNativePlugin : Plugin() {
         }
     }
 
+    // Auf Android liest die App nur. write bleibt deshalb IMMER false - die Oberflaeche
+    // bietet das Zurueckschreiben dann gar nicht erst an (woHealthWriteOn in mitglieder.html).
     private fun authFrom(granted: Set<String>): JSObject {
         val read = granted.any { it.contains("READ") }
-        val write = granted.any { it.contains("WRITE") }
-        return authResult(read, read, write)
+        return authResult(read, read, false)
     }
 
     private fun authResult(ok: Boolean, read: Boolean, write: Boolean): JSObject =
@@ -355,11 +370,13 @@ class FitInnNativePlugin : Plugin() {
 
     @PluginMethod
     fun saveHealthWorkout(call: PluginCall) {
-        // Zurueckschreiben nach Health Connect ist laut Vertrag OPTIONAL. Das Insert-API
-        // (Metadata-/Record-Konstruktoren) unterscheidet sich zwischen den connect-client-
-        // Versionen und ist noch nicht auf Geraet verifiziert -> die Methode meldet sauber
-        // "nicht unterstuetzt", die App faellt darauf ab (kein harter Fehler). Das LESEN
-        // (Import von Trainings + Vitalwerten) ist davon unberuehrt und voll funktionsfaehig.
+        // Zurueckschreiben nach Health Connect gibt es auf Android BEWUSST nicht.
+        // Solange nichts geschrieben wird, duerfen auch keine WRITE-Berechtigungen
+        // angefragt werden - sonst lehnt Google die Health-Connect-Freigabe ab
+        // (Richtlinie zu Berechtigungen: kein zulaessiger Anwendungsfall).
+        // Das LESEN (Import von Trainings + Vitalwerten) ist davon unberuehrt.
+        // Beim Nachruesten: Rechte in hcPermissions, im Manifest UND in der
+        // Play-Console-Erklaerung gemeinsam ergaenzen (docs/PLAY-HEALTH-CONNECT.md).
         call.resolve(JSObject().put("ok", false).put("error", "not_supported"))
     }
 

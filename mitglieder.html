@@ -609,7 +609,19 @@
   // Erlaubte Screens für ehemalige Mitglieder (alles andere wird gesperrt)
   var FORMER_OK = ['home','checkins','help','postfach','settings','profil','recht','impressum','datenschutz','agb'];
   function isFormer(){ return DATA.membershipActive===false; }
-  var S = { screen: TOKEN?'home':'login',
+  // Rechtsseiten sind OHNE Login erreichbar: /datenschutz, /impressum, /agb.
+  // Der Health-Connect-Freigabeschirm und die Play Console verlinken die
+  // Datenschutzerklaerung; ein Google-Pruefer hat kein Mitgliedskonto und muss
+  // den Text trotzdem sehen. Siehe docs/PLAY-HEALTH-CONNECT.md.
+  var PUBLIC_LEGAL = { datenschutz:1, impressum:1, agb:1 };
+  function publicLegalScreen(){
+    try{
+      var seg=String(location.pathname||'').replace(/\/+$/,'').split('/').pop().toLowerCase();
+      return PUBLIC_LEGAL[seg] ? seg : '';
+    }catch(e){ return ''; }
+  }
+  var LEGAL_ENTRY = publicLegalScreen();
+  var S = { screen: TOKEN?'home':(LEGAL_ENTRY||'login'),
     msg:'', // generic success on data screen
     planEdit:false, planRemind:true, planBusy:false,
     cancelStep:0, cancelReason:'', cancelReasonId:'', pauseWeeks:6, offerDone:'', withdrawConfirm:false, withdrawDone:false, withdrawMsg:'', withdrawErr:'', cancelDone:false, revokeConfirm:false, revokeDone:false, revokeErr:'', busy:false,

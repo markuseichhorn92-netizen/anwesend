@@ -32,8 +32,19 @@ class HealthConnectRationaleActivity : Activity() {
     }
 
     companion object {
-        // Veroeffentlichte Datenschutzerklaerung von Fit-Inn Trier. Muss die Nutzung der
-        // Health-Connect-/Gesundheitsdaten benennen (Voraussetzung fuers Play-Review).
-        private const val PRIVACY_URL = "https://www.fit-inn-trier.de/datenschutz"
+        /**
+         * Datenschutzerklaerung der APP (nicht die der Studio-Website).
+         *
+         * Drei Bedingungen muessen erfuellt bleiben, sonst scheitert das Play-Review:
+         *  1. erreichbar OHNE Login - ein Google-Pruefer hat kein Mitgliedskonto
+         *     (die Route ist dafuer in mitglieder.html freigegeben, PUBLIC_LEGAL),
+         *  2. sie benennt Health Connect samt der gelesenen Datenarten ausdruecklich,
+         *  3. sie sagt, dass die Daten nicht fuer Werbung genutzt oder verkauft werden.
+         *
+         * Die Website-Erklaerung (fit-inn-trier.de) erfuellt (2) NICHT und darf hier
+         * deshalb nicht stehen. Dieselbe Adresse gehoert in die Play-Console-Erklaerung,
+         * siehe docs/PLAY-HEALTH-CONNECT.md.
+         */
+        private const val PRIVACY_URL = "https://mitglieder.fit-inn-trier.de/datenschutz"
     }
 }
