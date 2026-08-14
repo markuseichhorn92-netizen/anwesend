@@ -171,8 +171,21 @@ gewünschten Tages, getrennt nach `vormittag`, `nachmittag` und `abend`. Fragt d
 Anrufer anschließend „und wie sieht es nachmittags aus?", steht die Antwort also
 schon da — ein zweiter Aufruf ist dafür nicht nötig.
 
-Die Antwort enthält je Termin ein Feld `startDateTime` — genau dieser Wert gehört
-unverändert in die Buchung.
+Die Antwort enthält je Termin zwei Felder: `gesprochen` und `startDateTime`.
+
+> **Nur `gesprochen` vorlesen.** `startDateTime` ist ein technischer Wert in **UTC**
+> und im Sommer zwei Stunden von der Ortszeit entfernt. In einem Testgespräch hat
+> der Assistent die Rohliste vorgelesen und „elf Uhr, zwölf Uhr dreißig" angeboten —
+> gemeint waren 13:00 und 14:30, und samstags öffnet das Studio erst um 13 Uhr. Es
+> wurden also Zeiten genannt, zu denen abgeschlossen ist. Jede Antwort trägt dafür
+> jetzt ein Feld `hinweis`. `startDateTime` gehört **unverändert** in die Buchung —
+> aber nie in den gesprochenen Satz.
+
+**Probetraining wird immer mit Trainer gebucht.** Der Server fragt die Slots mit
+`trainerRequired=true` ab, damit Magicline dem Termin eine Ressource zuweist —
+sonst steht im Kalender niemand dafür ein. Angeboten werden dadurch nur Zeiten, zu
+denen wirklich jemand frei ist (gemessen: 22 statt 33 Slots pro Woche). Abschalten
+ließe sich das nur über `TRIAL_TRAINER=0` in Vercel.
 
 ### 4.3 Probetraining buchen
 
@@ -335,6 +348,10 @@ In fonio ins Systemprompt / die Anweisungen aufnehmen:
 > Fragt jemand nach einer anderen Tageszeit desselben Tages, steht die Antwort
 > bereits im Feld `zeitenAmTag` der letzten Antwort. Sage niemals „dazu habe ich
 > keine Informationen", wenn dort noch Zeiten stehen.
+>
+> Lies Uhrzeiten AUSSCHLIESSLICH aus den Feldern `gesprochen` und `text` vor.
+> `startDateTime` ist ein technischer Wert in UTC und NICHT die Ortszeit — er wird
+> nur unverändert zurückgeschickt, niemals ausgesprochen.
 >
 > Geht es um einen SCHON GEBUCHTEN Termin, frage nach der Rufnummer, unter der
 > gebucht wurde, und zusätzlich nach dem Nachnamen (oder dem Geburtsdatum). Beides

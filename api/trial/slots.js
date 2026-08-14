@@ -4,7 +4,8 @@
  * GET /api/trial/slots[?days=21][&trainer=1|0]
  * Liefert die freien Probetraining-Slots (über die öffentliche Connect API).
  * trainer=1 -> mit Trainer (trainerRequired=true, weniger Slots),
- * trainer=0/fehlt -> ohne Trainer (trainerRequired=false, mehr Slots).
+ * trainer=0 -> ohne Trainer (mehr Slots). Fehlt der Parameter, gilt der
+ * Standard aus lib/connect.js (mit Trainer).
  * Proxy, damit der Aufruf serverseitig läuft und einheitlich gecacht wird.
  */
 
@@ -17,7 +18,10 @@ module.exports = async function handler(req, res) {
   const u = require('url').parse(req.url, true);
   let days = parseInt(u.query.days, 10);
   if (!(days >= 1 && days <= 30)) days = 21;
-  const trainerRequired = String(u.query.trainer) === '1';
+  // Fehlt der Parameter, gilt der Standard (mit Trainer) - frueher war das
+  // hart 'ohne Trainer' und der Termin blieb ohne Ressource.
+  const trainerRequired = (u.query.trainer == null || u.query.trainer === '')
+    ? undefined : String(u.query.trainer) === '1';
 
   const now = new Date();
   const start = new Date(now.getTime());

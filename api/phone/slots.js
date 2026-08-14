@@ -155,7 +155,11 @@ module.exports = async function handler(req, res) {
   const u = new URL(req.url, 'http://x');
   let limit = parseInt(u.searchParams.get('limit'), 10);
   if (!(limit >= 1 && limit <= 10)) limit = 5;
-  const trainer = u.searchParams.get('trainer') === '1';
+  // Standard: mit Trainer/Ressource (lib/connect.js). Nur ein ausdrueckliches
+  // trainer=0 schaltet das ab. Wichtig: /api/phone/book prueft mit DEMSELBEN
+  // Flag - sonst enthaelt die Pruefliste Zeiten, zu denen kein Trainer frei ist.
+  const trainerQ = u.searchParams.get('trainer');
+  const trainer = (trainerQ == null || trainerQ === '') ? undefined : (trainerQ === '1');
 
   const w = P.slotWindow({
     datum: u.searchParams.get('datum') || u.searchParams.get('date') || u.searchParams.get('tag'),
@@ -242,8 +246,11 @@ module.exports = async function handler(req, res) {
     ok: true,
     text: text,
     count: spoken.length,
-    slots: take.map(function (s, i) { return { startDateTime: s, spoken: spoken[i] || null }; }),
-    trainerRequired: trainer,
+    // gesprochen ZUERST: der Rohwert daneben ist UTC und darf nie vorgelesen
+    // werden (siehe P.UTC_HINWEIS).
+    slots: take.map(function (s, i) { return { gesprochen: spoken[i] || null, startDateTime: s }; }),
+    hinweis: P.UTC_HINWEIS,
+    trainerRequired: C.wantTrainer(trainer),
     gesuchterTag: w.exactDay,
     tageszeit: tz ? tz.name : null,
     // Der ganze Tag nach Tageszeit – damit „und nachmittags?" ohne einen
@@ -253,7 +260,7 @@ module.exports = async function handler(req, res) {
       nachmittag: zeiten.nachmittag.map(sprechUhr).filter(Boolean),
       abend: zeiten.abend.map(sprechUhr).filter(Boolean),
     } : null,
-    alleAmTag: w.exactDay ? amTagAlle.map(function (s) { return { startDateTime: s, gesprochen: sprechUhr(s) }; }) : null,
+    alleAmTag: w.exactDay ? amTagAlle.map(function (s) { return { gesprochen: sprechUhr(s), startDateTime: s }; }) : null,
     zeitraum: { von: w.start, bis: end },
     // Ein Assistent hat den Termin einmal nur BEHAUPTET und die Buchung nie
     // aufgerufen - der Anrufer waere umsonst gekommen. Der Hinweis steht deshalb

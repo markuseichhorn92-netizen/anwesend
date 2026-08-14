@@ -459,6 +459,70 @@ ok('14d. ohne Wert -> null', P.loadText(null) === null && P.loadText({}) === nul
     ok('66. Und die Feldnamen, die ankamen (ohne Schluessel)',
       /empfangen: Object\.keys/.test(bk2) && /k !== 'key' && k !== 'apiKey'/.test(bk2));
 
+    // ── 13b. Rohe UTC-Zeiten duerfen nicht vorgelesen werden ──
+    // Echter Vorfall: Der Assistent hat die Liste freieSlots direkt vorgelesen und
+    // daraus „elf Uhr, zwoelf Uhr dreissig" gemacht. Das waren die UTC-Rohwerte -
+    // in Ortszeit 13:00 und 14:30. Samstags oeffnet das Studio erst um 13 Uhr, es
+    // wurden also Zeiten angeboten, zu denen abgeschlossen ist. Der Satz in `text`
+    // war richtig; das Modell hat nur das falsche Feld gelesen.
+    ok('91. Es gibt einen ausdruecklichen Hinweis zu UTC', /UTC_HINWEIS/.test(lib)
+      && /niemals vorlesen/.test(lib));
+    ok('91b. … und er steht in den Antworten mit Zeitpunkten',
+      /hinweis: P\.UTC_HINWEIS/.test(bk) && /hinweis: P\.UTC_HINWEIS/.test(slots));
+    // Der Rohwert wird zum Buchen gebraucht, laesst sich also nicht weglassen -
+    // aber er darf nie allein dastehen.
+    ok('92. Alternativen tragen immer eine gesprochene Form',
+      /freieSlots: frei\.slice\(0, 5\)\.map/.test(bk) && /gesprochen: sprich\(s/.test(bk));
+    ok('92b. „gesprochen" steht VOR dem technischen Wert',
+      /\{ gesprochen: sprich\(s[^}]*\), startDateTime: s \}/.test(bk));
+    ok('92c. Auch die Terminliste nennt zuerst die gesprochene Form',
+      /\{ gesprochen: spoken\[i\] \|\| null, startDateTime: s \}/.test(slots));
+    ok('92d. Der Diagnose-Hinweis nennt Ortszeit, nicht UTC',
+      /frei sind \(Ortszeit\)/.test(bk));
+    // Wirklich nachrechnen: die Rohwerte des Samstags gegen die Ortszeit.
+    (function () {
+      const roh = ['2026-08-15T11:00:00.000Z', '2026-08-15T12:30:00.000Z', '2026-08-15T14:00:00.000Z'];
+      const ortszeit = roh.map(function (iso) {
+        const q = new Intl.DateTimeFormat('de-DE', { timeZone: 'Europe/Berlin', hour: 'numeric', minute: '2-digit', hour12: false })
+          .formatToParts(new Date(iso)).reduce(function (a, x) { a[x.type] = x.value; return a; }, {});
+        return q.hour + ':' + q.minute;
+      });
+      ok('93. Rohwert 11:00Z ist in Wahrheit 13:00 Ortszeit', ortszeit[0] === '13:00', ortszeit.join(', '));
+      ok('93b. … und keiner der Rohwerte liegt in der Samstags-Oeffnungszeit',
+        parseInt(roh[0].slice(11, 13), 10) < 13, roh[0]);
+      ok('93c. In Ortszeit liegen dagegen alle drin (13-18 Uhr)',
+        ortszeit.every(function (t) { const h = parseInt(t, 10); return h >= 13 && h < 18; }), ortszeit.join(', '));
+    })();
+
+    // ── 13c. Probetraining MIT Trainer (Ressource) ──
+    // Ohne das Flag legt Magicline einen Termin ohne zugewiesene Ressource an -
+    // im Kalender steht dann niemand dafuer ein.
+    const conn = fs.readFileSync(path.join(ROOT, 'lib/connect.js'), 'utf8');
+    const C2 = require(path.join(ROOT, 'lib/connect.js'));
+    ok('94. Mit Trainer ist der Standard', C2.wantTrainer(undefined) === true && C2.wantTrainer(null) === true);
+    ok('94b. Ein ausdrueckliches false gewinnt (Web-Funnel laesst waehlen)', C2.wantTrainer(false) === false);
+    ok('94c. Ein ausdrueckliches true ebenso', C2.wantTrainer(true) === true);
+    ok('94d. Leerer String zaehlt als „nicht angegeben"', C2.wantTrainer('') === true);
+    ok('94e. Slot-Abfrage und Buchung nutzen denselben Helfer',
+      /trainerRequired=' \+ \(wantTrainer\(trainerRequired\)/.test(conn)
+      && /trainerRequired: wantTrainer\(d\.trainerRequired\)/.test(conn));
+    // Der entscheidende Punkt: pruefen und buchen MUESSEN dasselbe Flag benutzen.
+    // Sonst besteht ein Termin die Pruefung, zu dem gar kein Trainer frei ist.
+    ok('95. Buchung berechnet das Flag genau einmal', /const mitTrainer = C\.wantTrainer\(body\.trainerRequired\);/.test(bk));
+    ok('95b. … und nutzt es fuer Pruefung UND Buchung',
+      /getTrialSlots\(tag, P\.ymdAdd\(tag, P\.MAX_SPAN\), mitTrainer\)/.test(bk)
+      && /trainerRequired: mitTrainer,/.test(bk));
+    ok('95c. Kein rohes body.trainerRequired mehr im Buchungspfad',
+      !/!!body\.trainerRequired/.test(bk));
+    ok('96. Termin-Endpunkt schaltet nur bei ausdruecklichem trainer=0 ab',
+      /trainerQ === '1'/.test(slots) && /trainerQ == null \|\| trainerQ === ''/.test(slots));
+    const ts = fs.readFileSync(path.join(ROOT, 'api/trial/slots.js'), 'utf8');
+    ok('96b. Auch die Website-Slots nutzen den Standard statt hart false',
+      /\? undefined : String\(u\.query\.trainer\) === '1'/.test(ts));
+    const tb = fs.readFileSync(path.join(ROOT, 'team-backend.html'), 'utf8');
+    ok('96c. Team-Buchung setzt kein hartes trainerRequired:false mehr',
+      !/startDateTime:S\.trSlotSel\.start, trainerRequired:false/.test(tb));
+
     // ── 14. Termin am Telefon abrufen/aendern ──
     // Der erste Endpunkt, der Daten EINER BESTIMMTEN PERSON herausgibt. Am
     // Telefon ist niemand verifiziert, und eine Anruferkennung laesst sich

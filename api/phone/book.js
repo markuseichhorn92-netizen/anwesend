@@ -128,11 +128,14 @@ module.exports = async function handler(req, res) {
   // glauben dann, es hätte geklappt, und der Anrufer steht vor verschlossener Tür.
   // Deshalb hier gegen die echte Slot-Liste prüfen und sonst laut scheitern.
   const tag = startDateTime.slice(0, 10);
+  // EIN Wert fuer Pruefung und Buchung. Waeren beide verschieden, koennte ein
+  // Termin die Pruefung bestehen, zu dem gar kein Trainer frei ist.
+  const mitTrainer = C.wantTrainer(body.trainerRequired);
   let frei = null;
   try {
     // Ein Fenster ab dem Wunschtag statt nur des Tages selbst: dieselbe eine
     // Abfrage liefert die Ausweichtermine gleich mit, falls der Tag voll ist.
-    const sl = await C.getTrialSlots(tag, P.ymdAdd(tag, P.MAX_SPAN), !!body.trainerRequired);
+    const sl = await C.getTrialSlots(tag, P.ymdAdd(tag, P.MAX_SPAN), mitTrainer);
     if (sl && sl.status === 200 && sl.json && Array.isArray(sl.json.slots)) {
       frei = sl.json.slots.map(function (x) { return String(x && x.startDateTime || ''); }).filter(Boolean);
     }
@@ -158,13 +161,21 @@ module.exports = async function handler(req, res) {
     P.logAttempt({ schritt: 'book', ok: false, status: 'slot_ungueltig',
       startDateTime: startDateTime, magicline: 'Termin nicht in der Slot-Liste. Frei: ' + frei.slice(0, 8).join(', ').slice(0, 200) });
     return P.json(res, 200, {
-      ok: false, error: 'slot_unavailable', freieSlots: frei.slice(0, 5),
+      ok: false, error: 'slot_unavailable',
+      // gesprochen ZUERST und immer dabei: der Rohwert ist UTC. Ein Assistent hat
+      // die Liste einmal direkt vorgelesen und daraus „11 Uhr" gemacht - in
+      // Wirklichkeit 13 Uhr Ortszeit, zwei Stunden vor der Oeffnung. Der Anrufer
+      // bekam Zeiten genannt, zu denen das Studio geschlossen ist.
+      freieSlots: frei.slice(0, 5).map(function (s) {
+        return { gesprochen: sprich(s, s.slice(0, 10) !== tag), startDateTime: s };
+      }),
       text: alt.length
         ? ('Dieser Termin ist leider nicht buchbar. ' + wo + alt.join(', ') + '. Welcher passt?')
         : 'Dieser Termin ist leider nicht buchbar. Ich schaue gern noch einmal nach freien Zeiten.',
+      hinweis: P.UTC_HINWEIS,
       hint: 'startDateTime muss UNVERAENDERT aus der Antwort von /api/phone/slots stammen. '
-        + 'Gesendet wurde ' + startDateTime + ', frei sind: ' + frei.slice(0, 5).join(', ') + '. '
-        + 'Fuer einen anderen Zeitraum /api/phone/slots erneut mit datum, ab oder tage aufrufen.',
+        + 'Gesendet wurde ' + startDateTime + ', frei sind (Ortszeit): ' + alt.join(', ') + '. '
+        + 'Fuer einen anderen Zeitraum /api/phone/slots erneut mit datum, ab, tage oder wochentag aufrufen.',
     });
   }
 
@@ -221,7 +232,7 @@ module.exports = async function handler(req, res) {
       zip: address.zip,
       city: address.city,
       startDateTime: startDateTime,
-      trainerRequired: !!body.trainerRequired,
+      trainerRequired: mitTrainer,
       marketing: false,          // am Telefon nicht nachweisbar einholbar
       note: note,
     });

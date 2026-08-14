@@ -183,7 +183,7 @@ module.exports = async function handler(req, res) {
   }
 
   const alsAntwort = termine.slice(0, 5).map(function (t) {
-    return { bookingId: t.bookingId, titel: t.title, startDateTime: t.start, gesprochen: sprechDatum(t.start) };
+    return { gesprochen: sprechDatum(t.start), titel: t.title, bookingId: t.bookingId, startDateTime: t.start };
   });
 
   // ── Auskunft ───────────────────────────────────────────────────────────────
@@ -199,7 +199,7 @@ module.exports = async function handler(req, res) {
         + alsAntwort.map(function (t) { return t.titel + ' am ' + t.gesprochen; }).join(', ') + '.';
     }
     P.logAttempt({ schritt: 'appointment', aktion: 'auskunft', ok: true, anzahl: alsAntwort.length });
-    return P.json(res, 200, { ok: true, termine: alsAntwort, text: text,
+    return P.json(res, 200, { ok: true, termine: alsAntwort, text: text, hinweis: P.UTC_HINWEIS,
       naechsterSchritt: 'Zum Absagen oder Verschieben diese Aktion erneut aufrufen - mit aktion=stornieren '
         + 'bzw. aktion=umbuchen und der bookingId aus dieser Antwort.' });
   }
