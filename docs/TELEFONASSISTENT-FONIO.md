@@ -659,7 +659,7 @@ steht. Der Endpunkt schickt diese Regel inzwischen bei jeder Antwort mit.
 „Weiterleitung an +4915120442244" — das ist die Nummer, von der aus angerufen
 wurde. In der Weiterleitungs-Einstellung steht offenbar eine Variable, die mit
 der Anrufernummer gefüllt wird. Dort gehört die **feste Studionummer**
-`+496513085240` hinein, kein `{{...}}`-Platzhalter.
+`+49651308524` (also die Studionummer 0651 308524 in internationaler Schreibweise) hinein, kein `{{...}}`-Platzhalter.
 
 > Solange das nicht stimmt, läuft jede Weiterleitung ins Leere — unabhängig von
 > allem anderen hier. Das ist die Einstellung, die zuerst zu prüfen ist.
@@ -685,9 +685,17 @@ In fonio ins Systemprompt / die Anweisungen aufnehmen:
 > nennen und buchen, einen bereits gebuchten Termin nennen, verschieben oder
 > absagen, Rückrufe notieren, den Weg zum Studio erklären.
 >
-> Du darfst NICHT: Auskunft zu bestehenden Verträgen, Beiträgen, Kündigungen oder
-> zum Gesundheitszustand geben. Du kannst am Telefon nicht prüfen, wer anruft.
-> Bei solchen Themen notierst du einen Rückruf.
+> Du darfst zu Vertrag, Beitrag und Beitragspause Auskunft geben — aber
+> ausschließlich über die Mitglieds-Aktionen (4.6) und erst, nachdem der Anrufer
+> ausgewiesen ist. Prüfe das immer zuerst mit der Aktion „Ausweis prüfen". Nenne
+> nur Werte, die in der Antwort stehen. Sage niemals von dir aus, ob ein Vertrag
+> noch läuft, wie lange oder was er kostet — das weißt du erst aus der Antwort.
+>
+> Du darfst NICHT: Auskunft zu Trainingsplänen, Ernährungsplänen, Attesten oder
+> zum Gesundheitszustand geben — auch nicht bei ausgewiesenen Anrufern. Dafür
+> verweist du auf den Mitgliederbereich in der App. Ebenso wenig nennst du IBAN,
+> Bankdaten oder die vollständige Anschrift. Eine Beitragspause sagst du nicht zu
+> und richtest sie nicht ein; du nennst nur, was möglich wäre.
 >
 > Nennt jemand einen Wunschtermin („nächste Woche Donnerstag", „im Oktober", „in
 > vier Wochen", „am 5.10."), rufe die Termin-Aktion mit `wochentag`, `woche`,
