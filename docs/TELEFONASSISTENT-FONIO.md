@@ -171,6 +171,28 @@ unverändert in die Buchung.
 `gender` und `email` dürfen leer bleiben — der Server kommt damit zurecht. Die
 ersten fünf Felder sind Pflicht.
 
+**Beschreibung je Variable** (fonio verlangt sie — sie ist die Anweisung, nach der
+die KI den Wert füllt):
+
+| Variable | Beschreibung zum Einfügen |
+|---|---|
+| `firstname` | Nur der Vorname des Anrufers. Nennt er den vollen Namen („Markus Eichhorn"), trage hier nur „Markus" ein und frage nicht erneut nach. |
+| `lastname` | Nur der Nachname des Anrufers, ohne Vorname. Bei „Markus Eichhorn" also „Eichhorn". |
+| `phone` | Die Rufnummer des Anrufers, nur Ziffern und ggf. führendes Plus, ohne Leerzeichen und ohne ausgeschriebene Zahlwörter. Beispiel: 015120442044. Wenn die Nummer im Gespräch nicht genannt wurde, nutze die Nummer, von der aus angerufen wird. |
+| `dateOfBirth` | Das Geburtsdatum des Anrufers im Format JJJJ-MM-TT, also 1990-05-04. TT.MM.JJJJ wird ebenfalls verstanden. Immer erfragen — ohne Geburtsdatum lehnt das Studioverwaltungssystem die Buchung ab. Niemals schätzen oder erfinden. |
+| `startDateTime` | Der Zeitpunkt des gewählten Termins — **exakt und unverändert** der Wert aus dem Feld `startDateTime` der Termin-Abfrage, zum Beispiel 2026-08-15T11:00:00.000Z. Auf keinen Fall den gesprochenen Text („Samstag um 13 Uhr") eintragen und den Wert auch nicht umrechnen oder kürzen. |
+| `gender` | Anrede des Anrufers, falls im Gespräch klar geworden: MALE für Herr, FEMALE für Frau, sonst UNISEX. Nicht danach fragen und nicht aus dem Vornamen erraten — im Zweifel leer lassen. |
+| `email` | Die E-Mail-Adresse, aber NUR wenn der Anrufer sie von sich aus nennt. Niemals danach fragen und nicht buchstabieren lassen. Sonst leer lassen. |
+
+**Für die Rückruf-Aktion (4.4):**
+
+| Variable | Beschreibung zum Einfügen |
+|---|---|
+| `name` | Vor- und Nachname des Anrufers, so wie genannt. |
+| `phone` | Rufnummer für den Rückruf, nur Ziffern, ohne Leerzeichen. |
+| `topic` | Das Thema des Anliegens. Genau eines von: probetraining, vertrag, kuendigung, beitrag, kurse, beschwerde, sonstiges. |
+| `note` | Ein bis zwei Sätze, worum es geht — in eigenen Worten zusammengefasst. Keine Angaben zu Gesundheit, Krankheiten oder Beschwerden aufnehmen. |
+
 Wann verwenden:
 
 > Immer dann aufrufen, wenn der Anrufer einen genannten Termin verbindlich buchen
