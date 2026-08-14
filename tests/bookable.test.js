@@ -88,7 +88,57 @@ ok('6. Fuellwoerter loesen keinen Zufallstreffer aus', kurz.type === null, JSON.
 ok('7. norm entfernt Trennzeichen', B.norm('Geräte-Einweisung') === B.norm('geraeteeinweisung'));
 ok('7b. … und Leerzeichen', B.norm('Trainings Planung') === B.norm('trainingsplanung'));
 
-// ── 8. Die Fenstergrenze der API ──
+// ── 8. Die ECHTEN Terminarten von Fit-Inn Trier ──
+// Aus Magicline uebernommen. Der Abgleich muss gegen diese Namen sitzen, nicht
+// gegen ausgedachte - die deutschen Zusammenschreibungen sind hier das Problem.
+const ECHT = [
+  { id: '1', title: 'Beratung Stoffwechsel-Coaching', duration: 90, category: 'Termin-Leistung' },
+  { id: '2', title: 'Biocircuit Einweisung', duration: 30, category: 'Termin-Leistung' },
+  { id: '3', title: 'Einführungstraining', duration: 60, category: 'Termin-Leistung' },
+  { id: '4', title: 'Gesundheits-Check-Up', duration: 60, category: 'Termin-Leistung' },
+  { id: '5', title: 'Stoffwechsel Analyse', duration: 90, category: 'Termin-Leistung' },
+  { id: '6', title: 'Trainingsplanung', duration: 45, category: 'Termin-Leistung' },
+];
+const treffer = (q) => { const r = B.matchType(ECHT, q); return r.type ? r.type.title : null; };
+
+ok('9. Genaue Namen treffen', treffer('Stoffwechsel Analyse') === 'Stoffwechsel Analyse'
+  && treffer('Trainingsplanung') === 'Trainingsplanung'
+  && treffer('Einführungstraining') === 'Einführungstraining');
+// Im Deutschen wird zusammengeschrieben, was das Studio getrennt benannt hat.
+// „Stoffwechselberatung" ist EIN Wort - vorher fand das gar nichts.
+ok('10. Zusammengeschrieben trifft den getrennten Titel',
+  treffer('Stoffwechselberatung') === 'Beratung Stoffwechsel-Coaching', String(treffer('Stoffwechselberatung')));
+ok('10b. … auch bei der Analyse', treffer('Stoffwechselanalyse') === 'Stoffwechsel Analyse',
+  String(treffer('Stoffwechselanalyse')));
+ok('10c. … und beim Check-Up', treffer('Gesundheitscheckup') === 'Gesundheits-Check-Up',
+  String(treffer('Gesundheitscheckup')));
+ok('10d. Im ganzen Satz genauso',
+  treffer('ich möchte eine Stoffwechselberatung') === 'Beratung Stoffwechsel-Coaching');
+// Kurzformen
+ok('11. „Coaching" trifft eindeutig', treffer('Coaching') === 'Beratung Stoffwechsel-Coaching');
+ok('11b. „Analyse" trifft eindeutig', treffer('Analyse') === 'Stoffwechsel Analyse');
+ok('11c. „Check-Up" trifft eindeutig', treffer('Check-Up') === 'Gesundheits-Check-Up');
+ok('11d. „Biocircuit" trifft eindeutig', treffer('Biocircuit') === 'Biocircuit Einweisung');
+ok('11e. Umlaut aus der Spracherkennung', treffer('Einfuehrungstraining') === 'Einführungstraining');
+
+// Das Wichtigste: Das Studio hat ZWEI Stoffwechsel-Angebote (90 Min. Coaching
+// und 90 Min. Analyse) und ZWEI Trainings-Angebote. Wer nur „Stoffwechsel" sagt,
+// darf keinen Zufallstreffer bekommen.
+const stw = B.matchType(ECHT, 'Stoffwechsel');
+ok('12. Blosses „Stoffwechsel" ist mehrdeutig -> Rueckfrage', stw.type === null, String(stw.type && stw.type.title));
+ok('12b. … und nennt genau die beiden Stoffwechsel-Angebote',
+  stw.kandidaten.length === 2 && stw.kandidaten.every(function (t) { return /stoffwechsel/i.test(t.title); }),
+  JSON.stringify(stw.kandidaten.map(function (t) { return t.title; })));
+const tr = B.matchType(ECHT, 'Training');
+ok('12c. Blosses „Training" ebenso', tr.type === null && tr.kandidaten.length === 2,
+  JSON.stringify(tr.kandidaten.map(function (t) { return t.title; })));
+// Nichts erfinden.
+ok('13. Etwas, das es nicht gibt, trifft nichts', treffer('Fahrradreparatur') === null);
+ok('13b. Fuellwoerter treffen nichts', treffer('ein Termin bitte') === null);
+ok('13c. … und liefern die volle Auswahl zurueck',
+  B.matchType(ECHT, 'ein Termin bitte').kandidaten.length === 6);
+
+// ── 8b. Die Fenstergrenze der API ──
 // daysAhead ist auf 6 begrenzt; ein groesserer Zeitraum entsteht nur aus
 // mehreren Fenstern. Steht die Zahl falsch, liefert Magicline nichts.
 ok('8. Fenstergroesse entspricht der API-Vorgabe', B.WINDOW === 6, String(B.WINDOW));

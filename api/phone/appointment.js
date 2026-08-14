@@ -167,7 +167,9 @@ module.exports = async function handler(req, res) {
       return P.json(res, 200, { ok: false, error: 'unavailable',
         text: 'Die Terminarten kann ich gerade nicht abrufen. Ich notiere gern einen Rückruf.' });
     }
-    const namen = arten.map(function (t) { return t.title; });
+    const namen = arten.map(function (t) {
+      return t.title + (t.duration ? (', ' + t.duration + ' Minuten') : '');
+    });
     return P.json(res, 200, {
       ok: true,
       arten: arten.map(function (t) {
@@ -279,7 +281,11 @@ module.exports = async function handler(req, res) {
     const m = B.matchType(arten, body.art || body.terminart || body.titel);
     if (!m.type) {
       // Lieber nachfragen als die falsche Terminart buchen.
-      const namen = (m.kandidaten.length ? m.kandidaten : arten).map(function (t) { return t.title; });
+      // Mit Dauer: das Studio hat zwei Stoffwechsel-Angebote, der Name allein
+      // hilft dem Anrufer beim Unterscheiden nicht weiter.
+      const namen = (m.kandidaten.length ? m.kandidaten : arten).map(function (t) {
+        return t.title + (t.duration ? (', ' + t.duration + ' Minuten') : '');
+      });
       return P.json(res, 200, {
         ok: false, error: 'art_unklar',
         arten: namen,

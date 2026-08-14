@@ -326,6 +326,26 @@ Interessenten an und darf von jedem gebucht werden. Diese Termine gehören einem
 **bestehenden Kunden**, also auch Mitgliedern — deshalb ist die Zuordnung über
 Rufnummer und Nachname zwingend.
 
+**Die Terminarten des Studios** (Stand: aus Magicline übernommen):
+
+| Terminart | Dauer |
+|---|---|
+| Beratung Stoffwechsel-Coaching | 90 Min. |
+| Biocircuit Einweisung | 30 Min. |
+| Einführungstraining | 60 Min. |
+| Gesundheits-Check-Up | 60 Min. |
+| Stoffwechsel Analyse | 90 Min. |
+| Trainingsplanung | 45 Min. |
+
+Der Assistent muss diese Namen **nicht** kennen — er gibt weiter, was der Anrufer
+sagt, und der Server ordnet zu. „Stoffwechselberatung" trifft das Coaching,
+„Gesundheitscheckup" den Check-Up, „Biocircuit" die Einweisung.
+
+> **Zwei Fälle bleiben absichtlich offen.** Sagt jemand nur „Stoffwechsel", gibt es
+> zwei Angebote (Coaching und Analyse, beide 90 Min.); bei „Training" ebenso
+> (Einführungstraining und Trainingsplanung). Der Server bucht dann **nicht**,
+> sondern schickt beide samt Dauer zurück, damit der Assistent nachfragen kann.
+
 Der übliche Ablauf im Gespräch:
 
 1. `aktion=arten` — nennt, was buchbar ist. Braucht **keine** Identität.
