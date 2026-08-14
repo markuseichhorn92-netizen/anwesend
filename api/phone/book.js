@@ -151,6 +151,10 @@ module.exports = async function handler(req, res) {
     'Telefonisch per KI-Assistent gebucht.',
     'Rückruf: ' + phone + '.',
     flags.length ? ('PLATZHALTER: ' + flags.join(' + ') + ' - bitte ersetzen.') : '',
+    // Eine am Telefon aufgenommene Adresse ist NIE geprüft: Spracherkennung
+    // verhört sich, und ein Sprachassistent ergänzt im Zweifel selbst etwas.
+    // Das Team muss sie also gegenprüfen, bevor daran etwas verschickt wird.
+    placeholder ? '' : 'E-Mail ungeprüft (Telefon) - bitte bestätigen.',
     'Keine Werbeeinwilligung.',
     clean(body.note, 120),
   ].filter(Boolean).join(' ').slice(0, NOTE_MAX);

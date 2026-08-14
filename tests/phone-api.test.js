@@ -205,6 +205,7 @@ ok('14d. ohne Wert -> null', P.loadText(null) === null && P.loadText({}) === nul
           'Telefonisch per KI-Assistent gebucht.',
           'Rückruf: ' + ph + '.',
           flags.length ? ('PLATZHALTER: ' + flags.join(' + ') + ' - bitte ersetzen.') : '',
+          flags.length ? '' : 'E-Mail ungeprüft (Telefon) - bitte bestätigen.',
           'Keine Werbeeinwilligung.',
           String(extra).slice(0, 120),
         ].filter(Boolean).join(' ').slice(0, 300);
@@ -216,6 +217,8 @@ ok('14d. ohne Wert -> null', P.loadText(null) === null && P.loadText({}) === nul
         /Rückruf/.test(bauNotiz(maxPhone, maxNote, true)) && /PLATZHALTER/.test(bauNotiz(maxPhone, maxNote, true)));
       ok('31e. Normalfall bleibt lesbar kurz', bauNotiz('015120442044', '', true).length < 160,
         String(bauNotiz('015120442044', '', true).length));
+      ok('31f. Ohne Platzhalter: E-Mail wird als ungeprueft markiert',
+        /ungeprüft/.test(bauNotiz('015120442044', '', false)) && bauNotiz('015120442044', '', false).length <= 300);
     })();
     ok('32. Fehlgeschlagene Buchung wird ehrlich gemeldet', /booking_failed/.test(bk) && /nicht geklappt/.test(bk));
     ok('33. Erfolgssatz sagt bei Platzhalter, dass keine Mail kommt', /ohne Adresse nicht schicken/.test(bk));
