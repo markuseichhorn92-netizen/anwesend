@@ -454,7 +454,7 @@ abgesagt. Ist der neue Zeitpunkt nicht mehr frei, bleibt der bisherige stehen.
 
 | Variable | Beschreibung zum Einfügen |
 |---|---|
-| `aktion` | Was getan werden soll. Genau eines von: status, code, pruefen, vertrag, pause. „status" sagt, ob sich der Anrufer schon ausgewiesen hat. „code" schickt ihm einen Einmal-Code. „pruefen" prüft den vorgelesenen Code. „vertrag" nennt Tarif, Laufzeit und Beitrag. „pause" nennt den Pausenstatus. |
+| `aktion` | Was getan werden soll. Genau eines von: status, code, pruefen, vertrag, pause. „status" sagt, ob sich der Anrufer schon ausgewiesen hat. „code" schickt ihm einen Einmal-Code. „pruefen" prüft den vorgelesenen Code. „vertrag" nennt Tarif, Vertragsbeginn, Laufzeit, Kündigungsfrist und Beitrag — auch bei Fragen wie „seit wann habe ich den Vertrag?" oder „was zahle ich?". „pause" nennt den Pausenstatus. |
 | `phone` | Die Rufnummer, die im Studio hinterlegt ist, nur Ziffern und ggf. führendes Plus, ohne Leerzeichen. Wurde sie nicht genannt, nutze die Nummer, von der aus angerufen wird. |
 | `code` | Nur bei aktion=pruefen: der sechsstellige Code, den der Anrufer vorliest. Genau so übernehmen, wie er ihn nennt. Sonst leer lassen. |
 
@@ -470,6 +470,14 @@ abgesagt. Ist der neue Zeitpunkt nicht mehr frei, bleibt der bisherige stehen.
 >
 > Sage niemals Vertrags- oder Beitragsdaten, bevor die Prüfung erfolgreich war.
 > Der Server gibt sie ohnehin nicht heraus — behaupte sie also auch nicht.
+>
+> Nenne **nur** die Werte, die in der Antwort stehen. Sage niemals von dir aus
+> „dein Vertrag läuft noch" oder Ähnliches — ob er läuft, steht in der Antwort
+> oder du weißt es nicht. Fehlt ein Wert, sage das offen und biete einen
+> Rückruf an. Lies bei einer konkreten Vertragsfrage auch **nicht** zusätzlich
+> die allgemeinen Kündigungsfristen aus der Wissensdatenbank vor — die gelten
+> je nach Vertragsdatum unterschiedlich und können für genau diesen Vertrag
+> falsch sein.
 >
 > Eine Pause NICHT am Telefon zusagen oder einrichten. Zu Trainings-, Ernährungs-
 > und Gesundheitsdaten sagst du am Telefon grundsätzlich nichts und verweist auf
@@ -502,6 +510,37 @@ diese Nummer wurden die zwei Faktoren schon erbracht; die Verifizierung gilt
 Vor dem ersten echten Einsatz gehört das in `docs/VVT-TOM.md` und in die DSFA:
 Zweck, Rechtsgrundlage, Aufbewahrung der Verifizierung (60 Tage, gleitend) und
 die Einwilligungsversion (`PHONE_CONSENT_VERSION`).
+
+### Aus dem ersten Testgespräch — drei Dinge, die auffielen
+
+Ein Mitschnitt vom 14. August zeigt, woran es in der Praxis hakt. Zwei davon
+sind Einstellungen in fonio, eines war ein Fehler im Code.
+
+**1. Die Aktion war noch nicht angelegt.** Der Assistent hatte keinen Weg an die
+Vertragsdaten und griff zur Termin-Aktion. Ergebnis: Auf „Wie lang läuft mein
+Vertrag noch?" kamen die nächsten *Termine*. Aktion 4.6 muss in fonio angelegt
+werden — der Endpunkt allein genügt nicht.
+
+**2. Der Assistent hat sich etwas ausgedacht.** Wörtlich: „Dein Vertrag läuft
+noch" — ohne jede Datengrundlage, es lag nichts vor. Genau dafür stehen die
+Sätze oben in „Wann soll die KI das verwenden?": nur nennen, was in der Antwort
+steht. Der Endpunkt schickt diese Regel inzwischen bei jeder Antwort mit.
+
+**3. Die Weiterleitung ging an den Anrufer selbst.** Im Mitschnitt:
+„Weiterleitung an +4915120442244" — das ist die Nummer, von der aus angerufen
+wurde. In der Weiterleitungs-Einstellung steht offenbar eine Variable, die mit
+der Anrufernummer gefüllt wird. Dort gehört die **feste Studionummer**
+`+496513085240` hinein, kein `{{...}}`-Platzhalter.
+
+> Solange das nicht stimmt, läuft jede Weiterleitung ins Leere — unabhängig von
+> allem anderen hier. Das ist die Einstellung, die zuerst zu prüfen ist.
+
+**Was am Code lag:** Die Vertragsauskunft las drei Felder, die es so nicht gibt
+(`tariffName`, `monthlyPrice`, `lastPossibleCancellationDate`). Der Endpunkt
+hätte höflich geantwortet — nur ohne einen einzigen Wert. Behoben; ein Test
+gleicht die Feldnamen jetzt gegen `lib/members.js` ab, statt sie zu wiederholen.
+Zusätzlich beantwortet die Aktion jetzt auch „seit wann läuft mein Vertrag?"
+und nennt den Beitrag mit Zahlweise („39,90 Euro im Monat" statt „39,90 Euro").
 
 ---
 

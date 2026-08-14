@@ -50,6 +50,16 @@ function sprechTag(iso) {
     day: 'numeric', month: 'long', year: 'numeric' }).format(d);
 }
 
+// „im Monat" / „pro Woche" - ohne die Zahlweise ist ein Betrag nichtssagend.
+function zahlweise(unit) {
+  const u = String(unit || '').toUpperCase();
+  if (u.indexOf('MONTH') >= 0) return 'im Monat';
+  if (u.indexOf('WEEK') >= 0) return 'pro Woche';
+  if (u.indexOf('YEAR') >= 0) return 'im Jahr';
+  if (u.indexOf('QUARTER') >= 0) return 'im Quartal';
+  return '';
+}
+
 function euro(v) {
   const n = Number(v);
   if (!isFinite(n)) return null;
@@ -172,34 +182,54 @@ module.exports = async function handler(req, res) {
   try { ct = await M.getContract(mid); } catch (e) { ct = null; }
 
   // ── Vertrag ────────────────────────────────────────────────────────────────
-  if (aktion === 'vertrag' || aktion === 'mitgliedschaft' || aktion === 'laufzeit' || aktion === 'kuendigung') {
+  if (aktion === 'vertrag' || aktion === 'mitgliedschaft' || aktion === 'laufzeit'
+      || aktion === 'kuendigung' || aktion === 'beginn' || aktion === 'beitrag') {
     if (!ct || !ct.contractId) {
       return P.json(res, 200, { ok: false, error: 'kein_vertrag',
         text: 'Ich sehe gerade keinen laufenden Vertrag. Das schaut das Team besser persönlich an – '
           + 'ich notiere gern einen Rückruf.' });
     }
+    // getContract liefert die Daten bereits in deutscher Schreibweise (fmtDE),
+    // NICHT als ISO. Sie noch einmal durch eine Datumsformatierung zu schicken
+    // ergibt null - dann stuende der Assistent mit leeren Haenden da und
+    // erfaende sich etwas. Deshalb hier unveraendert uebernehmen.
     const teile = [];
-    if (ct.tariffName || ct.name) teile.push('Ihr Tarif ist ' + clean(ct.tariffName || ct.name, 60));
-    if (ct.endDate) teile.push('die Laufzeit endet am ' + sprechTag(ct.endDate));
-    if (ct.lastPossibleCancellationDate) {
-      teile.push('kündigen können Sie noch bis zum ' + sprechTag(ct.lastPossibleCancellationDate));
+    if (ct.rateName) teile.push('Ihr Tarif ist ' + clean(ct.rateName, 60));
+    if (ct.startDate) teile.push('der Vertrag läuft seit dem ' + ct.startDate);
+    if (ct.cancelled) {
+      teile.push('er ist zum ' + (ct.endDate || 'vereinbarten Ende') + ' gekündigt');
+    } else if (ct.endDate) {
+      teile.push('die Laufzeit endet am ' + ct.endDate);
+      if (ct.deadline && !ct.deadlinePassed) teile.push('kündigen können Sie noch bis zum ' + ct.deadline);
+      else if (ct.nextCancellationDate) teile.push('der nächste Kündigungstermin ist der ' + ct.nextCancellationDate);
     }
-    const preis = euro(ct.monthlyPrice != null ? ct.monthlyPrice : ct.price);
-    if (preis) teile.push('der Beitrag liegt bei ' + preis + ' im Monat');
+    if (ct.cancellationPeriod) teile.push('die Kündigungsfrist beträgt ' + ct.cancellationPeriod);
+    const preis = euro(ct.price);
+    if (preis) teile.push('der Beitrag liegt bei ' + preis + ' ' + zahlweise(ct.paymentFrequencyUnit));
 
     P.logAttempt({ schritt: 'member', aktion: 'vertrag', ok: true, quelle: st.quelle });
     return P.json(res, 200, {
       ok: true,
       vertrag: {
-        tarif: clean(ct.tariffName || ct.name, 60) || null,
+        tarif: clean(ct.rateName, 60) || null,
+        beginn: ct.startDate || null,
         laufzeitEnde: ct.endDate || null,
-        kuendigungBis: ct.lastPossibleCancellationDate || null,
+        gekuendigt: !!ct.cancelled,
+        kuendigungBis: (ct.deadline && !ct.deadlinePassed) ? ct.deadline : null,
+        naechsterKuendigungstermin: ct.nextCancellationDate || null,
+        kuendigungsfrist: ct.cancellationPeriod || null,
         beitrag: preis,
+        zahlweise: zahlweise(ct.paymentFrequencyUnit) || null,
         aktiv: ct.active !== false,
       },
       text: teile.length
         ? (teile.join(', ') + '.')
         : 'Zu Ihrem Vertrag kann ich hier gerade keine Einzelheiten sehen. Ich notiere gern einen Rückruf.',
+      // Die allgemeinen AGB-Fristen aus der Wissensdatenbank passen nicht
+      // zwangslaeufig zu diesem Vertrag. Was hier steht, gilt.
+      naechsterSchritt: 'Nur diese Werte nennen. Die allgemeinen Kuendigungsfristen aus der '
+        + 'Wissensdatenbank NICHT zusaetzlich vorlesen - sie koennen fuer diesen Vertrag falsch sein. '
+        + 'Fehlt ein Wert, sage das offen und biete einen Rueckruf an.',
     });
   }
 
