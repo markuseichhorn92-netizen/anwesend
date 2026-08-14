@@ -16,6 +16,7 @@
  *   firstname, lastname, email, phone, gender, dateOfBirth
  *   und eine Anschrift MIT Hausnummer (ohne houseNumber -> Ablehnung).
  *   gender kennt nur MALE, FEMALE, UNISEX – „UNKNOWN“ wird abgelehnt.
+ *   note ist auf 300 Zeichen begrenzt – daran ist die erste echte Buchung gescheitert.
  *
  * Zuschnitt hier:
  *   • Am Telefon erfragt werden Vorname, Nachname, Rufnummer, Termin und
@@ -126,16 +127,11 @@ module.exports = async function handler(req, res) {
   const placeholder = !emailOk;
   const emailPlaceholderUsed = placeholder;
 
-  const note = [
-    'Telefonisch über den KI-Assistenten gebucht.',
-    'Rückrufnummer: ' + phone,
-    placeholder
-      ? 'ACHTUNG: Keine E-Mail-Adresse genannt – die hinterlegte Adresse ist ein PLATZHALTER. Bitte beim Rückruf die echte Adresse erfragen und im Datensatz ersetzen.'
-      : 'E-Mail wurde am Telefon genannt – bitte auf Hörfehler prüfen.',
-    'Anschrift und Geburtsdatum wurden am Telefon NICHT erhoben.',
-    'Werbeeinwilligung liegt NICHT vor.',
-    clean(body.note, 200),
-  ].filter(Boolean).join(' | ');
+  // Magicline deckelt die Notiz auf 300 Zeichen ("note: size must be between 0
+  // and 300"). Genau daran ist die erste echte Buchung gescheitert. Fremde Limits
+  // halten wir selbst ein, statt uns auf eine hilfreiche Fehlermeldung zu verlassen:
+  // knapp formulieren UND am Ende hart kappen.
+  const NOTE_MAX = 300;
 
   // Anschrift: die genannte, sonst ein erkennbarer Platzhalter. Magicline lehnt
   // ohne Anschrift (inkl. Hausnummer) ab - ausgemessen, siehe Kopfkommentar.
@@ -145,6 +141,19 @@ module.exports = async function handler(req, res) {
     ? { street: clean(body.street, 80), houseNumber: clean(body.houseNumber, 20) || '-',
         zip: clean(body.zip, 12), city: clean(body.city, 60) }
     : { street: 'Telefonisch erfasst', houseNumber: '-', zip: '54296', city: 'Trier' };
+
+  // Kurz und in der Reihenfolge der Wichtigkeit - was hinten abgeschnitten wird,
+  // ist am ehesten verzichtbar.
+  const flags = [];
+  if (placeholder) flags.push('E-Mail');
+  if (addrPlaceholder) flags.push('Anschrift');
+  const note = [
+    'Telefonisch per KI-Assistent gebucht.',
+    'Rückruf: ' + phone + '.',
+    flags.length ? ('PLATZHALTER: ' + flags.join(' + ') + ' - bitte ersetzen.') : '',
+    'Keine Werbeeinwilligung.',
+    clean(body.note, 120),
+  ].filter(Boolean).join(' ').slice(0, NOTE_MAX);
 
   let r = null;
   try {
@@ -162,7 +171,7 @@ module.exports = async function handler(req, res) {
       startDateTime: startDateTime,
       trainerRequired: !!body.trainerRequired,
       marketing: false,          // am Telefon nicht nachweisbar einholbar
-      note: note + (addrPlaceholder ? ' | Anschrift ist ein PLATZHALTER (am Telefon nicht erhoben) - bitte ersetzen.' : ''),
+      note: note,
     });
   } catch (e) { r = null; }
 

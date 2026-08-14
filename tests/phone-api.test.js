@@ -191,6 +191,32 @@ ok('14d. ohne Wert -> null', P.loadText(null) === null && P.loadText({}) === nul
       /const dob = birthDate\(body\.dateOfBirth\)/.test(bk) && /if \(!dob\) missing\.push/.test(bk));
     ok('30. Werbeeinwilligung ist am Telefon immer false', /marketing: false/.test(bk));
     ok('31. Notiz warnt das Team vor der Platzhalter-Adresse', /PLATZHALTER/.test(bk));
+    // Der Fehler, an dem die erste echte Buchung gescheitert ist:
+    // "note: size must be between 0 and 300". Fremde Limits halten wir selbst ein.
+    ok('31b. Notiz wird hart auf 300 Zeichen gekappt', /const NOTE_MAX = 300;/.test(bk) && /\.slice\(0, NOTE_MAX\)/.test(bk));
+
+    // Wirklich ausfuehren: auch im schlimmsten Fall darf die Notiz 300 nicht reissen.
+    (function () {
+      const maxPhone = '+'.padEnd(40, '9');
+      const maxNote = 'x'.repeat(400);
+      const bauNotiz = (ph, extra, beideFlags) => {
+        const flags = beideFlags ? ['E-Mail', 'Anschrift'] : [];
+        return [
+          'Telefonisch per KI-Assistent gebucht.',
+          'Rückruf: ' + ph + '.',
+          flags.length ? ('PLATZHALTER: ' + flags.join(' + ') + ' - bitte ersetzen.') : '',
+          'Keine Werbeeinwilligung.',
+          String(extra).slice(0, 120),
+        ].filter(Boolean).join(' ').slice(0, 300);
+      };
+      ok('31c. Schlimmster Fall bleibt <= 300', bauNotiz(maxPhone, maxNote, true).length <= 300,
+        String(bauNotiz(maxPhone, maxNote, true).length));
+      // Das Wichtigste muss VOR der Kappung stehen, sonst faellt es weg.
+      ok('31d. Rueckrufnummer und Platzhalter-Warnung ueberleben die Kappung',
+        /Rückruf/.test(bauNotiz(maxPhone, maxNote, true)) && /PLATZHALTER/.test(bauNotiz(maxPhone, maxNote, true)));
+      ok('31e. Normalfall bleibt lesbar kurz', bauNotiz('015120442044', '', true).length < 160,
+        String(bauNotiz('015120442044', '', true).length));
+    })();
     ok('32. Fehlgeschlagene Buchung wird ehrlich gemeldet', /booking_failed/.test(bk) && /nicht geklappt/.test(bk));
     ok('33. Erfolgssatz sagt bei Platzhalter, dass keine Mail kommt', /ohne Adresse nicht schicken/.test(bk));
 
@@ -236,7 +262,7 @@ ok('14d. ohne Wert -> null', P.loadText(null) === null && P.loadText({}) === nul
     ok('47. Magicline-Fehler landet als hint im Log', /hint: detail/.test(bk2));
     ok('48. Markierte Platzhalter-Anschrift statt Ablehnung', /Telefonisch erfasst/.test(bk2));
     ok('49. … nur wenn wirklich keine Anschrift genannt wurde', /const addrPlaceholder = !hasAddr/.test(bk2));
-    ok('50. … und die Notiz weist darauf hin', /Anschrift ist ein PLATZHALTER/.test(bk2));
+    ok('50. … und die Notiz weist darauf hin', /flags\.push\('Anschrift'\)/.test(bk2) && /PLATZHALTER: /.test(bk2));
     ok('51. Antwort sagt, ob eine Platzhalter-Anschrift benutzt wurde', /addressPlaceholder: addrPlaceholder/.test(bk2));
 
     // ── 12. Gesprochene Angaben normalisieren (wirklich ausgefuehrt) ──
