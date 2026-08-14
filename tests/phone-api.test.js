@@ -148,6 +148,11 @@ ok('14d. ohne Wert -> null', P.loadText(null) === null && P.loadText({}) === nul
     ok('18. alle drei Endpunkte pruefen den Schluessel', /P\.guard\(/.test(info) && /P\.guard\(/.test(slots) && /P\.guard\(/.test(cb));
     ok('19. jede Antwort traegt einen vorlesbaren Satz', /text:/.test(info) && /text:/.test(slots) && /text:/.test(cb));
     ok('20. Termin-Endpunkt bucht NICHT', !/bookTrial|trial\/book/.test(slots));
+    // Ein Assistent hat den Termin einmal nur behauptet, ohne die Buchung
+    // aufzurufen. Der Hinweis steht deshalb in der Antwort selbst.
+    ok('20b. Termin-Antwort sagt, dass ohne Buchungsaufruf NICHTS gebucht ist',
+      /NICHTS ist gebucht/.test(slots) && /api\/phone\/book/.test(slots));
+    ok('20c. … und nennt die noetigen Felder', /dateOfBirth und startDateTime/.test(slots));
     ok('21. Rueckruf greift nicht auf Magicline zu', !/require\('\.\.\/\.\.\/lib\/(connect|members)'\)/.test(cb.replace(/lib\/phoneApi/g, '')));
     ok('22. Rueckruf weist das Team auf die fehlende Verifikation hin', /NICHT als Mitglied verifiziert/.test(cb));
     ok('23. Auskunft holt Oeffnungszeiten und Auslastung parallel', /Promise\.all/.test(info));

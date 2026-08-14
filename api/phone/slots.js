@@ -90,5 +90,11 @@ module.exports = async function handler(req, res) {
     count: spoken.length,
     slots: take.map(function (s, i) { return { startDateTime: s, spoken: spoken[i] || null }; }),
     trainerRequired: trainer,
+    // Ein Assistent hat den Termin einmal nur BEHAUPTET und die Buchung nie
+    // aufgerufen - der Anrufer waere umsonst gekommen. Der Hinweis steht deshalb
+    // in der Antwort selbst, nicht nur in der Anweisung: Modelle lesen ihn mit.
+    naechsterSchritt: 'NICHTS ist gebucht, solange die Aktion /api/phone/book nicht aufgerufen wurde. '
+      + 'Dafuer noetig: firstname, lastname, phone, dateOfBirth und startDateTime (exakt der Wert aus dieser Antwort). '
+      + 'Bestaetige den Termin dem Anrufer erst, wenn diese Aktion ok:true zurueckgibt.',
   });
 };

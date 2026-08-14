@@ -190,6 +190,11 @@ In fonio ins Systemprompt / die Anweisungen aufnehmen:
 > brauchst du nicht.
 >
 > Bei Gesundheitsfragen, Schmerzen oder Beschwerden verweist du an das Team.
+>
+> WICHTIG: Ein Termin ist erst gebucht, wenn du die Buchungs-Aktion aufgerufen
+> hast UND sie erfolgreich war. Sage NIEMALS „vorgemerkt", „reserviert" oder
+> „gebucht", bevor das passiert ist. Fehlt dir noch eine Angabe, frage danach.
+> Schlägt die Buchung fehl, sage das offen und biete einen Rückruf an.
 
 ---
 
@@ -309,3 +314,29 @@ Prüfe in dieser Reihenfolge:
 Alle Fehlerantworten enthalten ein Feld `text` mit einem vorlesbaren Satz — der
 Assistent muss sich also nichts mehr ausdenken; er sagt dann von selbst, dass er
 einen Rückruf notiert.
+
+
+---
+
+## Wenn der Assistent den Termin nur behauptet
+
+Symptom: Im Verlauf steht **kein** Aufruf von `/api/phone/book`, der Assistent sagt
+aber „ist vorgemerkt". Der Anrufer käme umsonst — das ist der gefährlichste Fehler
+von allen, weil niemand ihn bemerkt.
+
+Prüfe in fonio bei der Buchungs-Aktion:
+
+1. **Aktivität** steht auf „Immer" (nicht deaktiviert).
+2. **„Wann soll die KI das verwenden?"** ist eindeutig. Statt „Terminbuchen,
+   Probetraining" besser:
+   > Immer dann aufrufen, wenn der Anrufer einen genannten Termin verbindlich
+   > buchen möchte. Vorher Vorname, Nachname, Rufnummer und Geburtsdatum
+   > erfragen. Ohne diesen Aufruf ist NICHTS gebucht.
+3. **Dynamische Parameter** sind angelegt: `firstname`, `lastname`, `phone`,
+   `dateOfBirth`, `startDateTime`. Fehlt einer, kann die KI ihn nicht füllen.
+4. Im **Systemprompt** steht der Satz aus Schritt 5, dass ein Termin erst nach
+   erfolgreichem Aufruf bestätigt werden darf.
+
+Zusätzlich trägt die Termin-Antwort inzwischen selbst den Hinweis
+`naechsterSchritt`, dass ohne Buchungsaufruf nichts gebucht ist — Modelle lesen
+Werkzeug-Antworten mit und halten sich meist daran.
