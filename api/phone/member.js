@@ -12,6 +12,7 @@
  *   aktion=code     Einmal-Code an den hinterlegten Kanal schicken.
  *                   Mit neu=true auch dann, wenn schon ausgewiesen (zum Testen).
  *   aktion=abmelden Telefon-Verifizierung zuruecksetzen.
+ *   aktion=kuendigen Kuendigungslink per E-Mail schicken (ohne Ausweis).
  *   aktion=pruefen  Vorgelesenen Code prüfen -> ab jetzt verifiziert.
  *   aktion=vertrag  Tarif, Laufzeit, Kündigungsfrist, Beitrag.
  *   aktion=pause    Ob und wie pausiert werden kann, laufende Pausen.
@@ -39,6 +40,7 @@ const A = require('../../lib/phoneAuth');
 const M = require('../../lib/members');
 const MM = require('../../lib/mlMembership');
 const { sendLoginCode } = require('../../lib/loginCode');
+const { sendCancelLink } = require('../../lib/cancelLink');
 
 const STUDIO_PHONE = '0651 308524';
 
@@ -156,6 +158,51 @@ module.exports = async function handler(req, res) {
     await A.setVerified(phone, r.memberId, A.CONSENT_VERSION);
     return P.json(res, 200, { ok: true, verifiziert: true,
       text: 'Danke, das hat geklappt. Was möchten Sie wissen?' });
+  }
+
+  // ── Kündigungswunsch ───────────────────────────────────────────────────────
+  // Steht BEWUSST vor der Ausweispflicht. Hier wird nichts preisgegeben: Die
+  // Mail geht nur an die Adresse, die ohnehin im Profil steht, und der Link ist
+  // zusätzlich durch das Geburtsdatum gesichert. Vor das blosse Zusenden eines
+  // Kündigungswegs noch eine Code-Hürde zu bauen ginge in die falsche Richtung —
+  // eine Kündigung darf nicht erschwert werden.
+  if (aktion === 'kuendigen' || aktion === 'kuendigung-link' || aktion === 'beenden') {
+    let kunde = null;
+    try { kunde = await M.findByPhone(phone); } catch (e) { kunde = null; }
+    if (!kunde) {
+      P.logAttempt({ schritt: 'member', aktion: 'kuendigen', ok: false, status: 'nummer_unbekannt' });
+      return P.json(res, 200, { ok: false, error: 'kein_versand',
+        text: 'Unter dieser Nummer finde ich nichts. Damit Ihre Kündigung auf keinen Fall '
+          + 'liegen bleibt: Schreiben Sie an info@fit-inn-trier.de oder melden Sie sich unter '
+          + STUDIO_PHONE + '. Ich notiere Ihnen gern auch einen Rückruf.' });
+    }
+    let r = null;
+    try { r = await sendCancelLink(kunde, { quelle: 'telefon' }); } catch (e) { r = null; }
+    P.logAttempt({ schritt: 'member', aktion: 'kuendigen', ok: !!(r && r.ok), status: (r && r.grund) || 'fehler' });
+    if (!r || !r.ok) {
+      // Bei einer Kündigung ist ein blosses „hat nicht geklappt" zu wenig — es
+      // muss immer ein Weg genannt werden, der ohne uns funktioniert.
+      return P.json(res, 200, { ok: false, error: 'kein_versand', grund: (r && r.grund) || 'fehler',
+        text: 'Ich konnte Ihnen den Link gerade nicht zustellen. Ihre Kündigung soll daran '
+          + 'nicht scheitern: Schreiben Sie einfach an info@fit-inn-trier.de – das reicht in '
+          + 'Textform aus. Oder ich notiere einen Rückruf, dann meldet sich das Team.' });
+    }
+    if (r.schonGekuendigt) {
+      return P.json(res, 200, { ok: true, schonGekuendigt: true,
+        text: 'Ihre Kündigung liegt uns bereits vor – Sie müssen nichts weiter tun. '
+          + 'Ich habe Ihnen die Eckdaten noch einmal per E-Mail geschickt.' });
+    }
+    return P.json(res, 200, {
+      ok: true, gesendet: true, schonGekuendigt: false,
+      text: 'Ich habe Ihnen einen Link an Ihre hinterlegte E-Mail-Adresse geschickt. '
+        + 'Darüber können Sie die Kündigung selbst abschliessen – dort wird einmal Ihr '
+        + 'Geburtsdatum abgefragt. Mit der E-Mail allein ist noch nichts gekündigt.',
+      // Der Assistent darf auf keinen Fall den Eindruck erwecken, es sei erledigt.
+      naechsterSchritt: 'NICHT sagen, die Kuendigung sei erfolgt oder eingegangen - verschickt '
+        + 'wurde nur der Link. Ausdruecklich sagen, dass der Vorgang hinter dem Link noch '
+        + 'abgeschlossen werden muss. Keine Fristen aus der Wissensdatenbank vorlesen. '
+        + 'Fragt jemand nach seiner Frist, dafuer aktion=vertrag verwenden.',
+    });
   }
 
   // ── Abmelden ───────────────────────────────────────────────────────────────

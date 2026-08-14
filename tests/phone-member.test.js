@@ -96,6 +96,8 @@ stub('lib/mlMembership.js', {
   idleList: async () => ({ ok: true, current: [] }),
 });
 stub('lib/loginCode.js', { sendLoginCode: async () => ({ challenge: 'ch', channel: 'email' }) });
+let kuendLink = { ok: true, grund: 'ok', emailHinweis: 'm***@example.de', ablauf: 1, schonGekuendigt: false };
+stub('lib/cancelLink.js', { sendCancelLink: async () => kuendLink, MAX_PRO_TAG: 4 });
 
 const handler = require(path.join(ROOT, 'api/phone/member.js'));
 
@@ -193,6 +195,44 @@ async function ruf(aktion, extra) {
     ab2.verifiziert === false, JSON.stringify(ab2));
   ok('12b. … und die Vertragsauskunft ist wieder zu',
     (await ruf('vertrag')).ok === false);
+
+  // ── 11. Kuendigungswunsch ──
+  // Wer kuendigen will, soll nicht erst einen Code vorlesen muessen. Preisgegeben
+  // wird dabei nichts: Die Mail geht an die ohnehin hinterlegte Adresse, und der
+  // Link ist durch das Geburtsdatum gesichert.
+  verifiziert = false;
+  const k = await ruf('kuendigen');
+  ok('13. Kuendigungslink geht auch OHNE Ausweis raus', k.ok === true, JSON.stringify(k));
+  ok('13b. … und sagt, dass die Mail unterwegs ist', /E-Mail/.test(k.text || ''), k.text);
+
+  // Der gefaehrlichste Fehler waere, dass der Anrufer auflegt und glaubt, es sei
+  // erledigt. Dann laeuft der Vertrag weiter, bis die naechste Abbuchung kommt.
+  // Die Klarstellung selbst enthaelt „ist ... gekuendigt" und wuerde jede naive
+  // Suche ausloesen. Also erst herausnehmen, dann auf Erfolgsbehauptungen pruefen.
+  const ohneKlarstellung = String(k.text || '').replace(/noch nichts gekündigt/ig, '');
+  ok('14. Es wird NICHT behauptet, die Kuendigung sei erfolgt',
+    !/(ist|wurde|haben wir)[^.]{0,24}(gekündigt|eingegangen)|erledigt|storniert/i.test(ohneKlarstellung),
+    ohneKlarstellung);
+  ok('14b. … sondern ausdruecklich das Gegenteil',
+    /noch nichts gekündigt/i.test(k.text || ''), k.text);
+  ok('14c. … und der Assistent wird davon abgehalten, es zu sagen',
+    /NICHT sagen/.test(k.naechsterSchritt || ''), k.naechsterSchritt);
+
+  // Bereits gekuendigt: dann darf nicht zu einer zweiten Kuendigung gedraengt werden.
+  kuendLink = { ok: true, grund: 'ok', emailHinweis: 'm***@example.de', ablauf: 1, schonGekuendigt: true };
+  const k2 = await ruf('kuendigen');
+  ok('15. Bei bestehender Kuendigung wird das gesagt',
+    k2.schonGekuendigt === true && /bereits vor/i.test(k2.text || ''), k2.text);
+
+  // Scheitert der Versand, darf die Kuendigung nicht daran haengen bleiben -
+  // Textform per E-Mail genuegt, das muss der Anrufer erfahren.
+  kuendLink = { ok: false, grund: 'keine_email', emailHinweis: null, ablauf: null };
+  const k3 = await ruf('kuendigen');
+  ok('16. Scheitert der Versand, wird ein anderer Weg genannt',
+    k3.ok === false && /info@fit-inn-trier\.de/.test(k3.text || ''), k3.text);
+  ok('16b. … und kein Erfolg vorgetaeuscht',
+    !/geschickt|unterwegs/i.test(k3.text || ''), k3.text);
+  kuendLink = { ok: true, grund: 'ok', emailHinweis: 'm***@example.de', ablauf: 1, schonGekuendigt: false };
 
   console.log(pass ? 'PHONE-MEMBER PASS' : 'PHONE-MEMBER FAIL');
   process.exit(pass ? 0 : 1);

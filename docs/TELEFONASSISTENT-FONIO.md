@@ -578,6 +578,45 @@ Für die **Pause** eine fünfte Aktion nach demselben Muster anlegen, mit
 
 ---
 
+#### 4.6e — „Kündigen"
+
+**Body:**
+
+```json
+{
+  "aktion": "kuendigen",
+  "phone": "{{phone}}"
+}
+```
+
+Wann verwenden:
+
+> Aufrufen, sobald jemand sagt, dass er kündigen, aufhören oder seine
+> Mitgliedschaft beenden möchte. Dafür ist **kein** Ausweis nötig — rufe das
+> direkt auf, ohne vorher einen Code zu verlangen.
+>
+> Sage danach: Der Link ist per E-Mail unterwegs, und damit ist noch **nichts**
+> gekündigt — der Vorgang hinter dem Link muss noch abgeschlossen werden. Sage
+> niemals, die Kündigung sei eingegangen, erfolgt oder erledigt.
+>
+> Fragt jemand zusätzlich nach seiner Frist, ist das eine Vertragsauskunft und
+> läuft über die Aktion „Vertrag" — mit Ausweis. Lies keine Fristen aus der
+> Wissensdatenbank vor.
+
+> **Warum hier kein Code verlangt wird.** Anders als bei einer Vertragsauskunft
+> wird nichts preisgegeben: Die Mail geht ausschließlich an die Adresse, die
+> ohnehin im Profil steht, und der Link ist zusätzlich durch das Geburtsdatum
+> gesichert — derselbe Gedanke wie beim Passwort-Zurücksetzen. Dazu kommt: Eine
+> Kündigung darf nicht erschwert werden. Vor das bloße Zusenden eines
+> Kündigungswegs noch eine Hürde zu bauen ginge in die falsche Richtung.
+
+> **Der Kündigungsbutton nach § 312k BGB ist etwas anderes.** Für online
+> abgeschlossene Verträge muss auf der Website eine Kündigungsschaltfläche
+> erreichbar sein — ohne Login und ohne Umweg über eine E-Mail. Dieser
+> Telefonweg ist eine zusätzliche Bequemlichkeit, kein Ersatz dafür.
+
+---
+
 #### Der Ablauf im Gespräch
 
 ```
