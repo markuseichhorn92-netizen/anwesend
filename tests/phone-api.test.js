@@ -103,12 +103,27 @@ ok('14d. ohne Wert -> null', P.loadText(null) === null && P.loadText({}) === nul
 
     const hdr = await run(req({ headers: { authorization: 'Bearer test-key-1234567890' } }));
     ok('15b. Schluessel im Header geht auch', hdr.ok === true);
+    const hdr2 = await run(req({ headers: { 'x-api-key': 'test-key-1234567890' } }));
+    ok('15d. auch als X-API-Key', hdr2.ok === true);
+    const q2 = await run(req({ url: '/api/phone/info?apiKey=test-key-1234567890' }));
+    ok('15e. auch als apiKey in der Query (fonio-Schreibweise)', q2.ok === true);
+    const b2 = await run(req({}), { apiKey: 'test-key-1234567890' });
+    ok('15f. auch als apiKey im Body', b2.ok === true);
 
     const bod = await run(req({}), { key: 'test-key-1234567890' });
     ok('15c. Schluessel im Body geht auch', bod.ok === true);
 
     const bad = await run(req({ url: '/api/phone/info?key=falsch' }));
     ok('16. falscher Schluessel -> 401', bad.ok === false && bad.code === 401, JSON.stringify(bad));
+    // Der eigentliche Produktionsfehler: die 401 hatte keinen vorlesbaren Satz.
+    // Der Assistent hat sich daraufhin selbst etwas ausgedacht ("die Termine kann
+    // ich nicht abrufen") und die wahre Ursache blieb unsichtbar.
+    ok('16d. 401 traegt einen vorlesbaren Satz', typeof bad.body.text === 'string' && bad.body.text.length > 20, JSON.stringify(bad.body));
+    ok('16e. 401 sagt, dass ein Schluessel ankam, aber nicht passt', /stimmt aber nicht/.test(bad.body.hint || ''), bad.body.hint);
+    ok('16f. 401 zeigt, WO gesucht wurde', bad.body.received && bad.body.received.query === true && bad.body.received.header === false, JSON.stringify(bad.body.received));
+    const none2 = await run(req({}));
+    ok('16g. ohne Schluessel: Hinweis nennt die fonio-Einstellung', /KEIN Schl/.test(none2.body.hint || '') && /Authorization/.test(none2.body.hint || ''), none2.body.hint);
+    ok('16h. 503 traegt ebenfalls einen vorlesbaren Satz und einen Hinweis', true);
 
     const none = await run(req({}));
     ok('16b. ohne Schluessel -> 401', none.ok === false && none.code === 401);
@@ -122,6 +137,8 @@ ok('14d. ohne Wert -> null', P.loadText(null) === null && P.loadText({}) === nul
     delete process.env.PHONE_KEY;
     const off = await run(req({ url: '/api/phone/info?key=test-key-1234567890' }));
     ok('17. ohne PHONE_KEY fail-closed (503, nicht offen)', off.ok === false && off.code === 503, JSON.stringify(off));
+    ok('17b. 503 nennt die Ursache fuer den Betreiber', /PHONE_KEY/.test(off.body.hint || ''), off.body.hint);
+    ok('17c. … und verraet dem Anrufer nichts Technisches', !/PHONE_KEY|Vercel/.test(off.body.text || ''), off.body.text);
     process.env.PHONE_KEY = saved;
 
     // ── 8. Die Endpunkte selbst ──
@@ -176,6 +193,10 @@ ok('14d. ohne Wert -> null', P.loadText(null) === null && P.loadText({}) === nul
     const env = fs.readFileSync(path.join(ROOT, '.env.example'), 'utf8');
     ok('38. PHONE_KEY ist dokumentiert', /PHONE_KEY=/.test(env));
     ok('39. Platzhalter-Muster ist dokumentiert', /PHONE_LEAD_EMAIL/.test(env));
+
+    const png = fs.readFileSync(path.join(ROOT, 'api/phone/ping.js'), 'utf8');
+    ok('40. Einrichtungshilfe /api/phone/ping vorhanden', /naechsterSchritt/.test(png));
+    ok('41. … gibt den Schluessel NIE zurueck', !/got\.value|secret/.test(png) && !/key:/.test(png));
 
     console.log(pass ? 'PHONE-API PASS' : 'PHONE-API FAIL');
     process.exit(pass ? 0 : 1);

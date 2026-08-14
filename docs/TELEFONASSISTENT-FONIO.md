@@ -42,14 +42,45 @@ Die zweite Antwort ist die richtige — die Schnittstelle lebt und verlangt den 
 
 ## Schritt 3 — In fonio den Schlüssel hinterlegen
 
-In fonio beim Assistenten unter **API Request** → **Feste Parameter** (Default-Parameter):
+**Der sicherste Weg ist der Header.** Er funktioniert bei GET *und* POST gleich –
+feste Parameter landen bei GET in der URL und bei POST im Body, das ist eine
+Fehlerquelle mehr.
 
-| Feld | Wert |
+Im Reiter **Anfrage** → Feld **Header** eintragen (statt des leeren `{}`):
+
+```json
+{"Authorization": "Bearer DEIN_SCHLUESSEL"}
+```
+
+`DEIN_SCHLUESSEL` durch die Zeichenkette aus Schritt 1 ersetzen. Das Ergebnis muss
+gültiges JSON sein — also die Anführungszeichen stehen lassen.
+
+Alternativ als **fester Parameter** `key` (nicht dynamisch — sonst versucht die KI,
+ihn aus dem Gespräch zu füllen). Der Server akzeptiert beides, außerdem `apiKey`
+statt `key` und den Header `X-API-Key`.
+
+### Sofort prüfen, ob es angekommen ist
+
+Lege in fonio testweise eine Aktion auf diese URL an und drücke „Testen":
+
+```
+https://mitglieder.fit-inn-trier.de/api/phone/ping
+```
+
+Die Antwort sagt dir direkt, woran es liegt:
+
+| Antwort | Bedeutung |
 |---|---|
-| `key` | die Zeichenkette aus Schritt 1 |
+| `"Verbindung steht. Der Schlüssel passt."` | fertig — genauso für die anderen Aktionen |
+| `received: {header:false, query:false, body:false}` | es kam **gar kein** Schlüssel an |
+| `"Ein Schlüssel kam an, stimmt aber nicht überein"` | Tippfehler oder Leerzeichen |
+| `not_configured` | `PHONE_KEY` fehlt in Vercel |
 
-**Wichtig:** als *festen*, nicht als *dynamischen* Parameter. Sonst versucht die KI,
-den Schlüssel aus dem Gespräch zu füllen.
+Dasselbe geht auch vom Rechner aus:
+
+```
+curl "https://mitglieder.fit-inn-trier.de/api/phone/ping?key=DEIN_SCHLUESSEL"
+```
 
 ---
 
@@ -209,3 +240,26 @@ der Assistent bietet dann von selbst einen Rückruf an.
   Falls nicht, meldet der Endpunkt `booking_failed` und der Assistent nimmt einen
   Rückruf auf — es geht also nichts verloren. Sag Bescheid, dann ergänze ich die
   Anschrift als weiteres Pflichtfeld.
+
+
+---
+
+## Wenn der Assistent sagt „die Termine kann ich gerade nicht abrufen"
+
+Dieser Satz kommt fast immer daher, dass der **Schlüssel nicht mitgeschickt** wird.
+Der Server antwortet dann mit 401, und der Assistent formuliert selbst etwas.
+
+Prüfe in dieser Reihenfolge:
+
+1. `https://mitglieder.fit-inn-trier.de/api/phone/ping` in fonio testen (siehe Schritt 3).
+   Steht dort `received: {header:false, query:false, body:false}`, fehlt der Schlüssel
+   in der fonio-Konfiguration — er ist dann bei **jeder** Aktion einzeln einzutragen.
+2. Header-JSON prüfen: `{"Authorization": "Bearer abc123"}` — mit Anführungszeichen,
+   mit Leerzeichen nach `Bearer`, ohne Zeilenumbruch im Schlüssel.
+3. Steht der Schlüssel bei **allen vier** Aktionen? fonio übernimmt ihn nicht automatisch
+   von einer Aktion zur nächsten.
+4. Im fonio-Log die Roh-Antwort ansehen: Das Feld `hint` sagt im Klartext, was fehlt.
+
+Alle Fehlerantworten enthalten ein Feld `text` mit einem vorlesbaren Satz — der
+Assistent muss sich also nichts mehr ausdenken; er sagt dann von selbst, dass er
+einen Rückruf notiert.
