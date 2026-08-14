@@ -315,9 +315,35 @@ Der Rückruf landet per E-Mail beim Team (`MAIL_TO`).
 | `bookingId` | Nur ausfüllen, wenn eine vorherige Antwort mehrere Termine genannt hat — dann die ID des gemeinten Termins, unverändert übernehmen. Sonst leer lassen. |
 | `startDateTime` | Nur beim Umbuchen: der neue Zeitpunkt, **unverändert** aus der Antwort der Termin-Aktion (4.2). Niemals selbst ausrechnen. |
 
-Wann verwenden: *„Wenn jemand nach seinem bereits gebuchten Termin fragt, ihn
-verschieben oder absagen möchte — oder einen neuen Termin wie Stoffwechselberatung,
-Einweisung oder Trainingsplanung vereinbaren will."*
+**„Wann soll die KI das verwenden?"** — dieser Text gehört ins Feld:
+
+> Immer dann aufrufen, wenn es um einen Termin geht, der **kein Probetraining**
+> ist — also um einen bereits gebuchten Termin (nennen, verschieben, absagen) oder
+> um einen neuen Termin wie Stoffwechsel-Coaching, Stoffwechsel Analyse,
+> Gesundheits-Check-Up, Biocircuit Einweisung, Einführungstraining oder
+> Trainingsplanung. Das gilt auch für bestehende Mitglieder.
+>
+> Ebenfalls hier aufrufen, wenn jemand fragt, welche Termine oder Leistungen es
+> gibt — dann mit `aktion=arten`, dafür sind keine persönlichen Angaben nötig.
+>
+> Für alles andere brauche ich die Rufnummer, unter der gebucht wurde, **und**
+> zusätzlich den Nachnamen oder das Geburtsdatum. Beides erfragen, bevor ich diese
+> Aktion aufrufe.
+>
+> Reihenfolge beim Buchen: erst `aktion=termine` mit `art`, dann dem Anrufer zwei
+> bis drei Zeiten nennen, und erst nach seiner Zusage `aktion=buchen` mit
+> demselben `art` und dem `startDateTime` aus der vorherigen Antwort.
+>
+> NICHT für das Probetraining verwenden — dafür gibt es eine eigene Aktion.
+> Der Termin ist erst gebucht oder abgesagt, wenn diese Aktion `ok: true`
+> zurückgegeben hat.
+
+> **Die Abgrenzung ist der wichtigste Satz davon.** In einem Testgespräch wollte
+> ein Anrufer seinen Termin stornieren — der Assistent erfragte brav alle Daten und
+> rief dann die *Probetraining-Buchung* auf, weil das die einzige terminähnliche
+> Aktion war, die er kannte. Ergänze deshalb auch bei Aktion 4.3 im Feld „Wann
+> soll die KI das verwenden?": *„Nur für ein neues Probetraining. Nicht zum
+> Absagen, Verschieben oder für andere Terminarten."*
 
 **Andere Termine als das Probetraining.** Stoffwechselberatung, Einweisung,
 Trainingsplanung und was sonst in Magicline angelegt ist, laufen über **diese**
