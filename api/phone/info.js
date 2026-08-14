@@ -58,9 +58,25 @@ module.exports = async function handler(req, res) {
 
   const st = P.openStatus(hours || {}, Date.now());
   const lt = P.loadText(load);
+  const plan = P.weekPlan(hours || {});
 
-  const parts = [st.text];
-  if (lt && st.open) parts.push(lt);
+  // „Wann habt ihr samstags auf?" ist am Telefon die haeufigste Rueckfrage.
+  // Ohne ?tag= bleibt die Antwort wie bisher beim heutigen Tag.
+  let tag = '';
+  try { tag = String(new URL(req.url, 'http://x').searchParams.get('tag') || '').trim(); } catch (e) { /* egal */ }
+  const gefragt = tag
+    ? plan.filter(function (d) { return d.day === tag.toUpperCase() || d.tag.toLowerCase() === tag.toLowerCase(); })[0]
+    : null;
+
+  const parts = [];
+  if (gefragt) {
+    parts.push(gefragt.offen
+      ? ('Am ' + gefragt.tag + ' haben wir von ' + gefragt.text + ' geöffnet.')
+      : ('Am ' + gefragt.tag + ' haben wir geschlossen.'));
+  } else {
+    parts.push(st.text);
+    if (lt && st.open) parts.push(lt);
+  }
   const text = parts.join(' ');
 
   return P.json(res, 200, {
@@ -69,6 +85,10 @@ module.exports = async function handler(req, res) {
     open: st.open,
     closedReason: st.closedReason,
     todayHours: st.todayText,
+    // Die ganze Woche mitliefern: der Assistent kann dann nach Tagen antworten,
+    // ohne fuer jede Rueckfrage neu anzurufen (jeder Aufruf kostet Gespraechszeit).
+    weekHours: plan.map(function (d) { return { tag: d.tag, zeiten: d.text }; }),
+    weekText: P.weekText(hours || {}),
     occupancyPercent: (load && typeof load.percent === 'number') ? load.percent : null,
     studio: STUDIO,
     // Wenn die Öffnungszeiten gerade nicht erreichbar waren, soll der Assistent

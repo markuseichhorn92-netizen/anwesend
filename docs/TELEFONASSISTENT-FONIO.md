@@ -108,7 +108,7 @@ curl "https://mitglieder.fit-inn-trier.de/api/phone/ping?key=DEIN_SCHLUESSEL"
 
 ---
 
-## Schritt 4 — Die vier Aktionen anlegen
+## Schritt 4 — Die Aktionen anlegen
 
 Jede Aktion hat in fonio dieselben vier Felder: **URL**, **Methode**, **Header**
 und **Body**. Der Header ist überall gleich (Schritt 3).
@@ -132,16 +132,31 @@ und **Body**. Der Header ist überall gleich (Schritt 3).
 
 Wann verwenden: *„Wenn nach Öffnungszeiten, Andrang oder der Adresse gefragt wird."*
 
+Bei **GET**-Aktionen gibt es keinen Body. Zusätzliche Angaben hängst du dort als
+Query an die URL — auch mit `{{variable}}`.
+
 ### 4.2 Termine — „Wann könnte ich zum Probetraining kommen?"
 
 | Feld | Wert |
 |---|---|
-| URL | `https://mitglieder.fit-inn-trier.de/api/phone/slots` |
+| URL | `https://mitglieder.fit-inn-trier.de/api/phone/slots?datum={{datum}}&ab={{ab}}&tage={{tage}}` |
 | Methode | GET |
 | Header | wie Schritt 3 |
 | Body | leer lassen |
 
 Wann verwenden: *„Wenn nach freien Terminen für ein Probetraining gefragt wird."*
+
+Die drei Angaben sind alle **optional** — bleiben sie leer, kommen wie bisher die
+nächstmöglichen Termine. Sie sind dafür da, dass auch **später** gebucht werden kann:
+
+| Variable | Beschreibung für fonio | Beispiel |
+|---|---|---|
+| `datum` | Ein bestimmter Tag, wenn der Anrufer einen nennt. Format `JJJJ-MM-TT` oder `TT.MM.JJJJ`. Sonst leer lassen. | `2026-10-05` |
+| `ab` | Ab wann gesucht werden soll, wenn der Anrufer einen Zeitraum nennt („ab Oktober"). Sonst leer lassen. | `2026-10-01` |
+| `tage` | In wie vielen Tagen gesucht werden soll („in vier Wochen" = 28). Sonst leer lassen. | `28` |
+
+Ist der gewünschte Tag voll, nennt die Antwort von selbst Ausweichtermine.
+Weiter als ein halbes Jahr im Voraus wird nicht gesucht.
 
 Die Antwort enthält je Termin ein Feld `startDateTime` — genau dieser Wert gehört
 unverändert in die Buchung.
@@ -229,6 +244,57 @@ Kündigung, Beschwerde, persönliche Anliegen."*
 
 Der Rückruf landet per E-Mail beim Team (`MAIL_TO`).
 
+### 4.5 Bestehenden Termin nennen, verschieben oder absagen
+
+| Feld | Wert |
+|---|---|
+| URL | `https://mitglieder.fit-inn-trier.de/api/phone/appointment` |
+| Methode | POST |
+| Header | wie Schritt 3 |
+
+**Body:**
+
+```json
+{
+  "aktion": "{{aktion}}",
+  "phone": "{{phone}}",
+  "lastname": "{{lastname}}",
+  "dateOfBirth": "{{dateOfBirth}}",
+  "bookingId": "{{bookingId}}",
+  "startDateTime": "{{startDateTime}}"
+}
+```
+
+| Variable | Beschreibung für fonio |
+|---|---|
+| `aktion` | Genau eines von: `auskunft` (Termin nennen), `stornieren` (absagen), `umbuchen` (verschieben). |
+| `phone` | Die Rufnummer, unter der gebucht wurde. Immer erfragen. |
+| `lastname` | Nachname des Anrufers. Zur Zuordnung nötig, wenn kein Geburtsdatum genannt wird. |
+| `dateOfBirth` | Geburtsdatum, falls genannt. Format `TT.MM.JJJJ`. Alternative zum Nachnamen. |
+| `bookingId` | Nur ausfüllen, wenn eine vorherige Antwort mehrere Termine genannt hat — dann die ID des gemeinten Termins, unverändert übernehmen. Sonst leer lassen. |
+| `startDateTime` | Nur beim Umbuchen: der neue Zeitpunkt, **unverändert** aus der Antwort der Termin-Aktion (4.2). Niemals selbst ausrechnen. |
+
+Wann verwenden: *„Wenn jemand nach seinem bereits gebuchten Termin fragt, ihn
+verschieben oder absagen möchte."*
+
+**Warum zwei Angaben nötig sind:** Eine Rufnummer allein weist niemanden aus — eine
+Anruferkennung lässt sich fälschen. Der Server gibt einen Termin deshalb nur heraus,
+wenn Rufnummer **und** Nachname (oder Geburtsdatum) zusammenpassen. Passt das zweite
+Merkmal nicht, antwortet er genauso wie bei einer unbekannten Nummer; sonst ließe
+sich über die Leitung der Nachname zu einer Rufnummer erraten.
+
+Zurückgegeben werden nur Terminart und Zeitpunkt — keine E-Mail, keine Anschrift,
+keine Vertrags- oder Gesundheitsdaten.
+
+Beim Umbuchen wird **zuerst** der neue Termin gebucht und **erst danach** der alte
+abgesagt. Ist der neue Zeitpunkt nicht mehr frei, bleibt der bisherige stehen.
+
+> **Timeout dieser Aktion in fonio auf 10 Sekunden stellen.** Die Zuordnung über die
+> Rufnummer fragt mehrere Schreibweisen im Studioverwaltungssystem ab und braucht
+> deshalb länger als die anderen Aktionen. Der Server bricht nach 3,5 Sekunden von
+> selbst ab und bietet dann einen Rückruf an — bleibt fonios Standard bei 5 Sekunden,
+> hängt der Assistent stattdessen mitten im Satz.
+
 ---
 
 ## Schritt 5 — Anweisungen für den Assistenten
@@ -240,11 +306,22 @@ In fonio ins Systemprompt / die Anweisungen aufnehmen:
 > aufgezeichnet wird.
 >
 > Du darfst: Öffnungszeiten und Auslastung nennen, freie Probetraining-Termine
-> nennen und buchen, Rückrufe notieren, den Weg zum Studio erklären.
+> nennen und buchen, einen bereits gebuchten Termin nennen, verschieben oder
+> absagen, Rückrufe notieren, den Weg zum Studio erklären.
 >
 > Du darfst NICHT: Auskunft zu bestehenden Verträgen, Beiträgen, Kündigungen oder
 > zum Gesundheitszustand geben. Du kannst am Telefon nicht prüfen, wer anruft.
 > Bei solchen Themen notierst du einen Rückruf.
+>
+> Nennt jemand einen Wunschtermin weiter in der Zukunft („im Oktober", „in vier
+> Wochen", „am 5.10."), rufe die Termin-Aktion mit `datum`, `ab` oder `tage`
+> erneut auf. Rechne NIEMALS selbst einen Zeitpunkt aus und erfinde nie einen
+> Wert für `startDateTime` — übernimm ihn immer unverändert aus der Antwort.
+>
+> Geht es um einen SCHON GEBUCHTEN Termin, frage nach der Rufnummer, unter der
+> gebucht wurde, und zusätzlich nach dem Nachnamen (oder dem Geburtsdatum). Beides
+> ist nötig, damit ich den Termin zuordnen darf. Findet der Server nichts, biete
+> einen Rückruf an und rate nicht.
 >
 > Frage beim Probetraining nach Vorname, Nachname, Rufnummer und Geburtsdatum.
 > Nennt jemand einen vollständigen Namen, teile ihn selbst in Vor- und Nachname
@@ -363,16 +440,35 @@ der Assistent bietet dann von selbst einen Rückruf an.
 Dieser Satz kommt fast immer daher, dass der **Schlüssel nicht mitgeschickt** wird.
 Der Server antwortet dann mit 401, und der Assistent formuliert selbst etwas.
 
+Der mit Abstand häufigste Grund: **`PHONE_KEY` wurde in Vercel geändert, in fonio
+aber nicht.** Dann schlägt schlagartig *jede* Aktion fehl — Öffnungszeiten, Termine,
+Buchung, alles. Nach jeder Schlüssel-Änderung muss der neue Wert bei **jeder**
+fonio-Aktion einzeln nachgetragen werden; fonio übernimmt ihn nicht von einer
+Aktion zur nächsten.
+
 Prüfe in dieser Reihenfolge:
 
-1. `https://mitglieder.fit-inn-trier.de/api/phone/ping` in fonio testen (siehe Schritt 3).
-   Steht dort `received: {header:false, query:false, body:false}`, fehlt der Schlüssel
-   in der fonio-Konfiguration — er ist dann bei **jeder** Aktion einzeln einzutragen.
-2. Header-JSON prüfen: `{"Authorization": "Bearer abc123"}` — mit Anführungszeichen,
+1. Vom Rechner aus mit dem Wert testen, der in fonio steht:
+   ```
+   curl "https://mitglieder.fit-inn-trier.de/api/phone/ping?key=WERT-AUS-FONIO"
+   ```
+   - `"Verbindung steht"` → der Schlüssel ist richtig, die Ursache liegt woanders.
+   - `"Ein Schlüssel kam an, stimmt aber nicht überein"` → **fonio und Vercel tragen
+     verschiedene Werte.** Den Wert aus Vercel in alle fonio-Aktionen übernehmen.
+   - `not_configured` → `PHONE_KEY` fehlt in Vercel.
+2. Das Protokoll ansehen — es zeigt jetzt auch die **fehlgeschlagenen** Versuche,
+   also ob fonio überhaupt anruft und wo der Schlüssel lag:
+   ```
+   curl "https://mitglieder.fit-inn-trier.de/api/phone/ping?log=1&key=DEIN_SCHLUESSEL"
+   ```
+   Einträge mit `"schritt":"auth"` und `"status":"schluessel_falsch"` sind der
+   Beweis, dass fonio ankommt und nur der Wert nicht stimmt. Steht dort
+   `"kein_schluessel"`, ist das Header- oder Parameterfeld in fonio leer.
+   Der Schlüssel selbst wird dabei **nie** protokolliert.
+3. Header-JSON prüfen: `{"Authorization": "Bearer abc123"}` — mit Anführungszeichen,
    mit Leerzeichen nach `Bearer`, ohne Zeilenumbruch im Schlüssel.
-3. Steht der Schlüssel bei **allen vier** Aktionen? fonio übernimmt ihn nicht automatisch
-   von einer Aktion zur nächsten.
-4. Im fonio-Log die Roh-Antwort ansehen: Das Feld `hint` sagt im Klartext, was fehlt.
+4. Steht der Schlüssel bei **allen** Aktionen (inzwischen fünf)?
+5. Im fonio-Log die Roh-Antwort ansehen: Das Feld `hint` sagt im Klartext, was fehlt.
 
 Alle Fehlerantworten enthalten ein Feld `text` mit einem vorlesbaren Satz — der
 Assistent muss sich also nichts mehr ausdenken; er sagt dann von selbst, dass er

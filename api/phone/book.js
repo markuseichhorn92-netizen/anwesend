@@ -120,6 +120,54 @@ module.exports = async function handler(req, res) {
     });
   }
 
+  // ── Der Termin MUSS einer der angebotenen Slots sein ────────────────────────
+  // Warum das nötig ist: ein Sprachassistent baut den Wert notfalls selbst
+  // zusammen – aus „13 Uhr" wurde einmal 2026-08-15T13:00:00.000Z, also die
+  // Ortszeit als UTC ausgegeben. Magicline nimmt so eine Buchung an, legt den
+  // Lead an und liefert 200 – aber es entsteht KEIN Termin. Alle Beteiligten
+  // glauben dann, es hätte geklappt, und der Anrufer steht vor verschlossener Tür.
+  // Deshalb hier gegen die echte Slot-Liste prüfen und sonst laut scheitern.
+  const tag = startDateTime.slice(0, 10);
+  let frei = null;
+  try {
+    // Ein Fenster ab dem Wunschtag statt nur des Tages selbst: dieselbe eine
+    // Abfrage liefert die Ausweichtermine gleich mit, falls der Tag voll ist.
+    const sl = await C.getTrialSlots(tag, P.ymdAdd(tag, P.MAX_SPAN), !!body.trainerRequired);
+    if (sl && sl.status === 200 && sl.json && Array.isArray(sl.json.slots)) {
+      frei = sl.json.slots.map(function (x) { return String(x && x.startDateTime || ''); }).filter(Boolean);
+    }
+  } catch (e) { frei = null; }
+
+  if (frei && frei.indexOf(startDateTime) < 0) {
+    const sprich = function (iso, mitTag) {
+      try {
+        const q = new Intl.DateTimeFormat('de-DE', Object.assign(
+          { timeZone: 'Europe/Berlin', hour: 'numeric', minute: '2-digit', hour12: false },
+          mitTag ? { weekday: 'long', day: 'numeric', month: 'long' } : {}))
+          .formatToParts(new Date(iso)).reduce(function (a, x) { a[x.type] = x.value; return a; }, {});
+        const uhr = (q.minute === '00') ? (q.hour + ' Uhr') : (q.hour + ' Uhr ' + q.minute);
+        return mitTag ? (q.weekday + ', ' + q.day + '. ' + q.month + ' um ' + uhr) : uhr;
+      } catch (e2) { return null; }
+    };
+    // Erst der gewünschte Tag – wer „Samstag 13 Uhr" wollte, nimmt eher „Samstag
+    // 14 Uhr" als einen anderen Tag. Erst wenn der Tag leer ist, die Folgetage.
+    const amTag = frei.filter(function (s) { return s.slice(0, 10) === tag; });
+    const alt = (amTag.length ? amTag.slice(0, 3).map(function (s) { return sprich(s, false); })
+      : frei.slice(0, 3).map(function (s) { return sprich(s, true); })).filter(Boolean);
+    const wo = amTag.length ? 'An dem Tag wäre frei: ' : 'Frei wäre: ';
+    P.logAttempt({ schritt: 'book', ok: false, status: 'slot_ungueltig',
+      startDateTime: startDateTime, magicline: 'Termin nicht in der Slot-Liste. Frei: ' + frei.slice(0, 8).join(', ').slice(0, 200) });
+    return P.json(res, 200, {
+      ok: false, error: 'slot_unavailable', freieSlots: frei.slice(0, 5),
+      text: alt.length
+        ? ('Dieser Termin ist leider nicht buchbar. ' + wo + alt.join(', ') + '. Welcher passt?')
+        : 'Dieser Termin ist leider nicht buchbar. Ich schaue gern noch einmal nach freien Zeiten.',
+      hint: 'startDateTime muss UNVERAENDERT aus der Antwort von /api/phone/slots stammen. '
+        + 'Gesendet wurde ' + startDateTime + ', frei sind: ' + frei.slice(0, 5).join(', ') + '. '
+        + 'Fuer einen anderen Zeitraum /api/phone/slots erneut mit datum, ab oder tage aufrufen.',
+    });
+  }
+
   // E-Mail: die echte, wenn sie genannt wurde – sonst der Platzhalter.
   const given = clean(body.email, 120);
   const emailOk = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(given);

@@ -283,6 +283,97 @@ ok('14d. ohne Wert -> null', P.loadText(null) === null && P.loadText({}) === nul
     ok('58. Geschlecht: direkte Werte bleiben', N.g('MALE') === 'MALE' && N.g('UNISEX') === 'UNISEX');
     ok('59. Nicht genannt -> UNISEX (erlaubt), NIE UNKNOWN', N.g('') === 'UNISEX' && N.g('keine ahnung') === 'UNISEX');
 
+    // ── 12b. Der Termin MUSS aus der Slot-Liste stammen ──
+    // Der teuerste Fehler bisher: der Assistent hat die gesprochene Ortszeit als
+    // UTC formatiert (13 Uhr -> ...T13:00:00.000Z). Magicline nahm die Buchung an,
+    // legte den Lead an und antwortete 200 - aber es entstand KEIN Termin.
+    // Alle Beteiligten hielten die Buchung fuer erfolgreich.
+    ok('67. Buchung prueft den Termin gegen die echte Slot-Liste',
+      /C\.getTrialSlots\(/.test(bk) && /slot_unavailable/.test(bk));
+    ok('67b. … und tut das VOR dem Buchungsaufruf',
+      bk.indexOf('slot_unavailable') > 0 && bk.indexOf('slot_unavailable') < bk.indexOf('C.bookTrial('));
+    ok('67c. Der Fehlschlag landet im Protokoll', /status: 'slot_ungueltig'/.test(bk));
+    ok('67d. … und der Anrufer bekommt Alternativen genannt', /freieSlots/.test(bk) && /Welcher passt\?/.test(bk));
+
+    // Die Pruefung wirklich ausfuehren – gegen eine nachgebaute Slot-Antwort.
+    (function () {
+      const frei = ['2026-08-15T11:00:00.000Z', '2026-08-15T12:30:00.000Z', '2026-08-15T14:00:00.000Z'];
+      ok('68. Erfundener Zeitpunkt wird erkannt', frei.indexOf('2026-08-15T13:00:00.000Z') < 0);
+      ok('68b. Ein echter Wert aus der Liste geht durch', frei.indexOf('2026-08-15T12:30:00.000Z') >= 0);
+      // Genau die Struktur, die Magicline liefert: {slots:[{startDateTime,…}]}
+      const antwort = { status: 200, json: { slots: frei.map(function (s) { return { startDateTime: s, endDateTime: s }; }) } };
+      const gelesen = antwort.json.slots.map(function (x) { return String(x && x.startDateTime || ''); }).filter(Boolean);
+      ok('68c. Slot-Liste wird aus slots[].startDateTime gelesen', gelesen.length === 3 && gelesen[0] === frei[0], JSON.stringify(gelesen));
+    })();
+
+    // ── 12c. Weiter in der Zukunft buchen ──
+    // Magicline beantwortet hoechstens 30 Tage pro Abfrage („interval violation"),
+    // aber beliebig weit voraus. Frueher schaute der Endpunkt starr 21 Tage
+    // nach vorn - „im Oktober" war damit unmoeglich.
+    const HEUTE = Date.parse('2026-08-14T09:00:00Z');   // Freitag
+    ok('69. Ohne Angabe: ab heute', P.slotWindow({}, HEUTE).start === '2026-08-14');
+    ok('69b. Fenster reisst die 30-Tage-Grenze von Magicline nicht',
+      P.slotWindow({}, HEUTE).end === '2026-09-13', P.slotWindow({}, HEUTE).end);
+    ok('70. Wunschtag wird uebernommen', P.slotWindow({ datum: '2026-10-05' }, HEUTE).exactDay === '2026-10-05');
+    ok('70b. … und deutsch gesprochen genauso', P.slotWindow({ datum: '05.10.2026' }, HEUTE).exactDay === '2026-10-05');
+    ok('70c. Zum Wunschtag wird trotzdem ein ganzes Fenster geholt (Ausweichtermine)',
+      P.slotWindow({ datum: '2026-10-05' }, HEUTE).end === '2026-11-04', P.slotWindow({ datum: '2026-10-05' }, HEUTE).end);
+    ok('71. „ab" verschiebt den Start', P.slotWindow({ ab: '2026-09-20' }, HEUTE).start === '2026-09-20');
+    ok('71b. „in N Tagen" rechnet richtig', P.slotWindow({ tage: '28' }, HEUTE).start === '2026-09-11', P.slotWindow({ tage: '28' }, HEUTE).start);
+    // Ein verhoertes Datum darf nicht in einer Fehlermeldung enden - der Anrufer
+    // soll einen Vorschlag hoeren.
+    const vorbei = P.slotWindow({ datum: '2026-01-05' }, HEUTE);
+    ok('72. Vergangener Tag wird zurechtgerueckt, nicht abgelehnt',
+      vorbei.past === true && vorbei.start === '2026-08-14' && vorbei.exactDay === null);
+    const weit = P.slotWindow({ datum: '2029-01-05' }, HEUTE);
+    ok('72b. Absurd weit voraus wird gedeckelt', weit.tooFar === true && weit.start === P.ymdAdd('2026-08-14', P.MAX_AHEAD));
+    ok('72c. Unsinniges Datum -> normale Suche ab heute',
+      P.slotWindow({ datum: 'irgendwann' }, HEUTE).start === '2026-08-14' && P.slotWindow({ datum: 'irgendwann' }, HEUTE).exactDay === null);
+    ok('73. Datumsrechnung ueberlebt die Sommerzeit-Umstellung',
+      P.ymdAdd('2026-10-24', 3) === '2026-10-27' && P.ymdAdd('2026-03-28', 2) === '2026-03-30');
+    ok('73b. Monats- und Jahresgrenze', P.ymdAdd('2026-12-30', 5) === '2027-01-04' && P.ymdAdd('2026-02-27', 2) === '2026-03-01');
+
+    ok('74. Termin-Endpunkt nimmt datum/ab/tage entgegen',
+      /searchParams\.get\('datum'\)/.test(slots) && /searchParams\.get\('ab'\)/.test(slots) && /searchParams\.get\('tage'\)/.test(slots));
+    ok('74b. … und rueckt selbst weiter, wenn ein Fenster leer ist',
+      /MAX_FENSTER/.test(slots) && /P\.ymdAdd\(end, 1\)/.test(slots));
+    ok('74c. … bleibt dabei unter der 5-Sekunden-Grenze von fonio', /ZEITBUDGET = 3000/.test(slots));
+    ok('74d. Termine werden ueber mehrere Tage gestreut', /function streue/.test(slots));
+    ok('74e. Der Assistent wird angewiesen, KEINEN Zeitpunkt selbst zu rechnen',
+      /NIE einen Zeitpunkt selbst ausrechnen/.test(slots));
+    // Streuung wirklich ausfuehren.
+    (function () {
+      const src = slots.slice(slots.indexOf('function streue'), slots.indexOf('module.exports'));
+      const S = {};
+      // eslint-disable-next-line no-new-func
+      new Function('exports', src + '\nexports.s=streue;')(S);
+      const viele = ['2026-08-15T09:00:00Z', '2026-08-15T10:00:00Z', '2026-08-15T11:00:00Z',
+        '2026-08-16T09:00:00Z', '2026-08-16T10:00:00Z', '2026-08-17T09:00:00Z'];
+      const g = S.s(viele, 5, 2);
+      ok('74f. Hoechstens zwei Uhrzeiten pro Tag', g.filter(function (x) { return x.slice(0, 10) === '2026-08-15'; }).length === 2, JSON.stringify(g));
+      ok('74g. … und dadurch mehrere Tage im Vorschlag', new Set(g.map(function (x) { return x.slice(0, 10); })).size === 3, JSON.stringify(g));
+      ok('74h. Gibt es nur einen Tag, wird trotzdem etwas geliefert',
+        S.s(['2026-08-15T09:00:00Z', '2026-08-15T10:00:00Z', '2026-08-15T11:00:00Z'], 3, 2).length >= 2);
+    })();
+
+    // Auch die Buchung holt ein Fenster (Ausweichtermine bei vollem Tag).
+    ok('75. Buchung holt ein Fenster ab dem Wunschtag', /P\.ymdAdd\(tag, P\.MAX_SPAN\)/.test(bk));
+    ok('75b. … nennt aber zuerst Alternativen AM gewuenschten Tag', /const amTag = frei\.filter/.test(bk));
+
+    // ── 12d. Woechentliche Oeffnungszeiten ──
+    // „Wann habt ihr samstags auf?" war bisher nicht beantwortbar - openStatus
+    // kennt nur heute.
+    const wp = P.weekPlan(HOURS);
+    ok('76. Wochenplan hat sieben Tage, Montag zuerst', wp.length === 7 && wp[0].tag === 'Montag' && wp[6].tag === 'Sonntag');
+    ok('76b. Samstag korrekt', wp[5].text === '13:00 bis 18:00 Uhr', wp[5].text);
+    const wt = P.weekText(HOURS);
+    ok('77. Gleiche Tage werden zusammengefasst', /Montag bis Freitag/.test(wt), wt);
+    ok('77b. … und die Ausnahmen einzeln genannt', /Samstag 13:00 bis 18:00 Uhr/.test(wt) && /Sonntag 9:00 bis 15:00 Uhr/.test(wt), wt);
+    ok('77c. Geschlossene Tage werden als geschlossen benannt',
+      /geschlossen/.test(P.weekText({ openingHours: [{ dayOfWeekFrom: 'MONDAY', dayOfWeekTo: 'FRIDAY', timeFrom: '09:00:00', timeTo: '20:00:00' }] })));
+    ok('78. Auskunft liefert die ganze Woche mit', /weekHours/.test(info) && /weekText/.test(info));
+    ok('78b. … und kann nach einem bestimmten Tag gefragt werden', /searchParams\.get\('tag'\)/.test(info));
+
     const png = fs.readFileSync(path.join(ROOT, 'api/phone/ping.js'), 'utf8');
     ok('40. Einrichtungshilfe /api/phone/ping vorhanden', /naechsterSchritt/.test(png));
     ok('41. … gibt den Schluessel NIE zurueck', !/got\.value|secret/.test(png) && !/key:/.test(png));
@@ -305,6 +396,70 @@ ok('14d. ohne Wert -> null', P.loadText(null) === null && P.loadText({}) === nul
     ok('65. Magicline-Antwort wird protokolliert', /magicline: String/.test(bk2));
     ok('66. Und die Feldnamen, die ankamen (ohne Schluessel)',
       /empfangen: Object\.keys/.test(bk2) && /k !== 'key' && k !== 'apiKey'/.test(bk2));
+
+    // ── 14. Termin am Telefon abrufen/aendern ──
+    // Der erste Endpunkt, der Daten EINER BESTIMMTEN PERSON herausgibt. Am
+    // Telefon ist niemand verifiziert, und eine Anruferkennung laesst sich
+    // faelschen - deshalb muessen ZWEI Merkmale zusammenpassen.
+    const ap = fs.readFileSync(path.join(ROOT, 'api/phone/appointment.js'), 'utf8');
+    ok('79. Schluessel wird geprueft', /P\.guard\(/.test(ap));
+    ok('80. Rufnummer allein reicht NICHT', /if \(!lastname && !dob\)/.test(ap) && /missing_factor/.test(ap));
+    ok('80b. Zweites Merkmal ist Nachname ODER Geburtsdatum', /passt = nameOk \|\| dobOk/.test(ap));
+    // Der entscheidende Punkt: „Nummer unbekannt" und „Nachname passt nicht"
+    // muessen DIESELBE Antwort geben. Sonst liesse sich zu einer Rufnummer der
+    // Nachname erraten.
+    ok('81. Falsches Merkmal antwortet wie eine unbekannte Nummer',
+      /if \(!kunde \|\| !passt\)/.test(ap) && /return P\.json\(res, 200, UNBEKANNT\)/.test(ap));
+    ok('81b. … und der Unterschied steht nur im internen Protokoll',
+      /merkmal_passt_nicht/.test(ap) && /nummer_unbekannt/.test(ap));
+    ok('82. Durchprobieren wird pro Rufnummer begrenzt', /rateLimit\('phoneappt:/.test(ap));
+    // Datensparsamkeit: nur Terminart und Zeitpunkt zurueck.
+    ok('83. Antwort enthaelt keine E-Mail, Anschrift oder Kundennummer',
+      !/email/i.test(ap.slice(ap.indexOf('const alsAntwort'), ap.indexOf('// ── Auskunft')))
+      && !/customerNumber/.test(ap));
+    ok('83b. Nur Vorname zur Ansprache, kein Nachname in der Antwort',
+      /const vorname = clean\(kunde\.firstName/.test(ap) && !/lastName \+/.test(ap));
+    ok('84. Vergangene Termine werden nicht ausgeplaudert', /t > jetzt/.test(ap));
+    ok('84b. Stornierte Termine werden herausgefiltert', /function isCancelled/.test(ap) && /!isCancelled\(a\)/.test(ap));
+    // Umbuchen: die Reihenfolge entscheidet, ob der Anrufer im Fehlerfall ohne
+    // Termin dasteht.
+    ok('85. Umbuchen bucht ZUERST neu und storniert erst danach',
+      ap.indexOf("'/appointments/booking/book'") < ap.indexOf("d = await M.ml('DELETE'"));
+    ok('85b. Scheitert der neue Slot, bleibt der alte Termin bestehen',
+      /new_slot_failed/.test(ap) && /bleibt bestehen/.test(ap));
+    ok('85c. Ohne Terminart wird NICHT storniert', /reschedule_unsupported/.test(ap)
+      && ap.indexOf('reschedule_unsupported') < ap.indexOf('const dauer ='));
+    ok('86. Mehrere Termine -> Rueckfrage statt Raten', /ambiguous/.test(ap)
+      && /termine\.length === 1 \? termine\[0\] : null/.test(ap));
+    ok('87. Protokoll ohne personenbezogene Werte',
+      !/phone: phone/.test(ap) && !/lastname: lastname/.test(ap) && !/vorname: vorname/.test(ap));
+
+    // Namens- und Datumsvergleich wirklich ausfuehren.
+    (function () {
+      const src = ap.slice(ap.indexOf('function normName'), ap.indexOf('// Stornierte Buchungen'));
+      const A = {};
+      // eslint-disable-next-line no-new-func
+      new Function('exports', 'function clean(v,max){return String(v==null?\'\':v).trim().slice(0,max||80);}\n'
+        + src + '\nexports.n=normName;exports.d=normDob;')(A);
+      ok('88. Umlaute aus der Spracherkennung passen zusammen', A.n('Müller') === A.n('Mueller'));
+      ok('88b. Gross/Klein und Bindestriche stoeren nicht', A.n('von der Heide') === A.n('VONDERHEIDE')
+        && A.n('Meier-Schmitt') === A.n('meierschmitt'));
+      ok('88c. Verschiedene Namen bleiben verschieden', A.n('Meier') !== A.n('Maier'));
+      ok('88d. Leerer Name ergibt keinen Treffer auf leer',
+        A.n('') === '' && A.n('  ') === '');
+      ok('89. Geburtsdatum in beiden Schreibweisen', A.d('04.05.1990') === '1990-05-04' && A.d('1990-05-04') === '1990-05-04');
+      ok('89b. Unsinn -> leer (zaehlt dann nicht als Merkmal)', A.d('gestern') === '' && A.d('') === '');
+    })();
+
+    // ── 15. Fehlversuche beim Schluessel sichtbar machen ──
+    // Der haeufigste Produktionsfehler: die Telefon-Plattform ruft an, schickt
+    // einen veralteten Schluessel - und im Gespraech hoert man nur „kann ich
+    // gerade nicht abrufen". Ohne Protokoll ist das nicht von einer Stoerung
+    // zu unterscheiden.
+    ok('90. Auth-Fehlversuche werden protokolliert', /schritt: 'auth'/.test(lib)
+      && /schluessel_falsch/.test(lib) && /kein_schluessel/.test(lib));
+    ok('90b. … ohne den Schluessel selbst', !/wert: got\.value/.test(lib) && !/schluessel: got\.value/.test(lib));
+    ok('90c. … und begrenzt, damit ein Scanner nichts vollschreibt', /rateLimit\('phonelog:/.test(lib));
 
     console.log(pass ? 'PHONE-API PASS' : 'PHONE-API FAIL');
     process.exit(pass ? 0 : 1);
