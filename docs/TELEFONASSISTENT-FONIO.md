@@ -7,6 +7,17 @@ Der Code ist fertig und live; ohne den Schlüssel sind die Endpunkte geschlossen
 
 ## Schritt 1 — Schlüssel erzeugen
 
+> **Nicht den API-Schlüssel von fonio verwenden.**
+> Der fonio-Schlüssel ist der Zugang zu *deinem fonio-Konto* — mit ihm könnte man
+> dort Assistenten ändern und Gesprächsmitschriften lesen. Er hat in unserer
+> Umgebung nichts zu suchen und wird für die Anbindung auch nicht gebraucht:
+> fonio schickt ihn bei Anfragen an fremde Server nicht mit, er dient nur dem
+> Zugriff auf fonios eigene API.
+>
+> Gebraucht wird ein **eigener, neuer Zufallswert**, den es ausschließlich für
+> diese Schnittstelle gibt. Beide Seiten kennen ihn: Vercel prüft ihn, fonio
+> schickt ihn mit.
+
 Auf deinem Rechner, **nicht** in einem Chat:
 
 ```
@@ -46,14 +57,24 @@ Die zweite Antwort ist die richtige — die Schnittstelle lebt und verlangt den 
 feste Parameter landen bei GET in der URL und bei POST im Body, das ist eine
 Fehlerquelle mehr.
 
+> **Du erzeugst hier nichts in fonio.** Das Header-Feld ist ein freies Textfeld –
+> du tippst den Wert aus Schritt 1 einfach hinein. In fonio einen „API-Schlüssel
+> erstellen" ist etwas anderes: das ist der Zugang zu fonios eigener API und wird
+> hier nicht gebraucht.
+>
+> Das `{{apiKey}}` im Beispieltext von fonio ist nur ein **Platzhalter für eine
+> Variable**, die du dort selbst anlegen könntest. Nötig ist das nicht – der Wert
+> darf direkt im Feld stehen.
+
 Im Reiter **Anfrage** → Feld **Header** eintragen (statt des leeren `{}`):
 
 ```json
-{"Authorization": "Bearer DEIN_SCHLUESSEL"}
+{"Authorization": "Bearer 3f9a1c7e4b2d8a06f5e1c93b7d240a8e6c1f5b39"}
 ```
 
-`DEIN_SCHLUESSEL` durch die Zeichenkette aus Schritt 1 ersetzen. Das Ergebnis muss
-gültiges JSON sein — also die Anführungszeichen stehen lassen.
+Statt der Beispielzeichenkette dein Ergebnis aus Schritt 1. Das Ganze muss gültiges
+JSON bleiben — Anführungszeichen und geschweifte Klammern also stehen lassen, und
+nach `Bearer` genau ein Leerzeichen.
 
 Alternativ als **fester Parameter** `key` (nicht dynamisch — sonst versucht die KI,
 ihn aus dem Gespräch zu füllen). Der Server akzeptiert beides, außerdem `apiKey`
