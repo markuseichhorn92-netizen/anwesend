@@ -304,11 +304,25 @@ Der Rückruf landet per E-Mail beim Team (`MAIL_TO`).
 }
 ```
 
-| Variable | Beschreibung für fonio |
+**Beschreibung je Variable** (fonio verlangt sie für jede einzelne — hier in der
+Reihenfolge, in der sie im Formular stehen):
+
+| Variable | Beschreibung zum Einfügen |
 |---|---|
-| `aktion` | Genau eines von: `arten` (welche Termine gibt es?), `auskunft` (Termin nennen), `termine` (freie Zeiten einer Terminart), `buchen`, `stornieren` (absagen), `umbuchen` (verschieben). |
-| `art` | Nur bei `termine` und `buchen`: die gewünschte Terminart, so wie der Anrufer sie nennt („Stoffwechselberatung", „Einweisung"). Nicht raten — bei Unklarheit fragt der Server von selbst nach. |
-| `wochentag`, `woche`, `datum`, `tageszeit` | Wie bei Aktion 4.2, wenn der Anrufer einen Zeitraum nennt. Sonst leer lassen. |
+| `aktion` | Was getan werden soll. Genau eines von: arten, auskunft, termine, buchen, stornieren, umbuchen. „arten" nennt die buchbaren Terminarten. „auskunft" nennt die Termine des Anrufers. „termine" nennt freie Zeiten einer Terminart. „buchen" bucht einen Termin. „stornieren" sagt einen Termin ab. „umbuchen" verschiebt ihn. Immer genau eines dieser Wörter eintragen, nichts anderes. |
+| `phone` | Die Rufnummer, unter der der Termin gebucht wurde, nur Ziffern und ggf. führendes Plus, ohne Leerzeichen und ohne ausgeschriebene Zahlwörter. Beispiel: 015120442044. Wurde sie im Gespräch nicht genannt, nutze die Nummer, von der aus angerufen wird. Bei aktion=arten leer lassen. |
+| `lastname` | Nur der Nachname des Anrufers, ohne Vorname. Zur Zuordnung nötig, wenn kein Geburtsdatum genannt wurde. Bei aktion=arten leer lassen. |
+| `dateOfBirth` | Das Geburtsdatum des Anrufers im Format TT.MM.JJJJ, also 04.05.1990. JJJJ-MM-TT wird ebenfalls verstanden. Alternative zum Nachnamen — eines von beidem genügt. Niemals schätzen oder erfinden; wurde keines genannt, leer lassen. |
+| `art` | Die gewünschte Terminart, genau so weitergeben, wie der Anrufer sie nennt (zum Beispiel „Stoffwechselberatung", „Einweisung", „Trainingsplanung"). Niemals selbst auswählen oder auf einen anderen Namen ändern. Fragt der Server nach, weil mehrere Terminarten passen, nenne dem Anrufer die zurückgegebene Auswahl und trage danach seine Antwort ein. Nur bei aktion=termine und aktion=buchen nötig, sonst leer lassen. |
+| `startDateTime` | Der gewählte Zeitpunkt, UNVERÄNDERT aus dem Feld startDateTime einer vorherigen Antwort übernommen. Niemals selbst ausrechnen, umrechnen oder aus einer gesprochenen Uhrzeit bilden. Nur bei aktion=buchen und aktion=umbuchen nötig, sonst leer lassen. |
+| `bookingId` | Die Kennung des gemeinten Termins, unverändert aus einer vorherigen Antwort übernommen. Nur nötig, wenn der Server mehrere Termine genannt hat und gefragt hat, welcher gemeint ist. Sonst leer lassen. |
+| `wochentag` | Der Wochentag, den der Anrufer nennt, zum Beispiel „Donnerstag" — einfach so weitergeben, wie er gesagt wurde. Niemals selbst in ein Datum umrechnen. Wurde kein Wochentag genannt, leer lassen. |
+| `woche` | Nur das Wort „nächste" eintragen, wenn der Anrufer „nächste Woche" sagt. Sonst leer lassen. |
+| `tageszeit` | Eines von vormittag, nachmittag, abend — wenn der Anrufer eine Tageszeit nennt. Sonst leer lassen. |
+
+> **Leere Variablen sind ausdrücklich in Ordnung.** Der Server kommt damit zurecht;
+> er fragt von selbst nach, was ihm fehlt. Erfundene Werte kann er dagegen nicht
+> von echten unterscheiden.
 | `phone` | Die Rufnummer, unter der gebucht wurde. Immer erfragen. |
 | `lastname` | Nachname des Anrufers. Zur Zuordnung nötig, wenn kein Geburtsdatum genannt wird. |
 | `dateOfBirth` | Geburtsdatum, falls genannt. Format `TT.MM.JJJJ`. Alternative zum Nachnamen. |
