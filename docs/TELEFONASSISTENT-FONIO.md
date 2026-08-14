@@ -303,6 +303,14 @@ Der Rückruf landet per E-Mail beim Team (`MAIL_TO`).
 Wann verwenden: *„Wenn jemand nach seinem bereits gebuchten Termin fragt, ihn
 verschieben oder absagen möchte."*
 
+> **Erst ab jetzt gebuchte Termine sind sicher auffindbar.** Ein Probetraining legt
+> in Magicline einen *Lead* an, kein Mitglied — und Magiclines Kundensuche findet
+> vor allem Mitglieder. Deshalb merkt sich der Server beim Buchen selbst, welche
+> Rufnummer zu welchem Kunden gehört. Für Termine, die **vor** diesem Stand gebucht
+> wurden, bleibt nur die Kundensuche; findet sie nichts, biete einen Rückruf an.
+> Ob der Merker oder die Suche getragen hat, steht im Protokoll unter `quelle`
+> (`/api/phone/ping?log=1&key=…`).
+
 **Warum zwei Angaben nötig sind:** Eine Rufnummer allein weist niemanden aus — eine
 Anruferkennung lässt sich fälschen. Der Server gibt einen Termin deshalb nur heraus,
 wenn Rufnummer **und** Nachname (oder Geburtsdatum) zusammenpassen. Passt das zweite

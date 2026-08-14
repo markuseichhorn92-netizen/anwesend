@@ -143,17 +143,33 @@ module.exports = async function handler(req, res) {
       text: 'Das hat gerade nicht geklappt. Bitte melden Sie sich direkt unter ' + STUDIO_PHONE + '.' });
   } catch (e) { /* Begrenzung darf den Anruf nicht verhindern */ }
 
-  // Die Nummernsuche fragt mehrere Schreibweisen nacheinander ab und laedt im
-  // Zweifel Profile nach - das kann dauern. fonio bricht nach 5 Sekunden ab, und
-  // ein abgebrochener Aufruf ist im Gespraech das Schlimmste: der Assistent haengt
-  // und denkt sich dann etwas aus. Lieber ehrlich einen Rueckruf anbieten.
-  let kunde = null, langsam = false;
-  try {
-    kunde = await Promise.race([
-      M.findByPhone(phone).catch(function () { return null; }),
-      new Promise(function (r) { setTimeout(function () { langsam = true; r(null); }, 3500); }),
-    ]);
-  } catch (e) { kunde = null; }
+  // ── Wer ruft an? ───────────────────────────────────────────────────────────
+  // ZUERST der eigene Merker aus der Buchung. Das ist der verlaessliche Weg:
+  // Ein Probetraining legt in Magicline einen LEAD an, und die Kundensuche
+  // findet vor allem Mitglieder - genau deshalb blieb der Termin bisher
+  // unauffindbar. Beim Buchen kannten wir die Zuordnung dagegen sicher.
+  // Ein Treffer hier spart ausserdem bis zu sechs Suchanfragen.
+  let kunde = null, langsam = false, quelle = null;
+  const merker = await P.lookupLead(phone);
+  if (merker && merker.customerId) {
+    try { kunde = await M.getMember(merker.customerId); } catch (e) { kunde = null; }
+    if (kunde) quelle = 'merker';
+  }
+
+  // Erst wenn das nichts ergibt, die Kundensuche - fuer alle, die schon vor
+  // diesem Endpunkt gebucht haben oder laengst Mitglied sind. Sie fragt mehrere
+  // Schreibweisen nacheinander ab und laedt im Zweifel Profile nach, kann also
+  // dauern. fonio bricht nach 5 Sekunden ab, und ein abgebrochener Aufruf ist im
+  // Gespraech das Schlimmste: der Assistent haengt und denkt sich etwas aus.
+  if (!kunde) {
+    try {
+      kunde = await Promise.race([
+        M.findByPhone(phone).catch(function () { return null; }),
+        new Promise(function (r) { setTimeout(function () { langsam = true; r(null); }, 3500); }),
+      ]);
+    } catch (e) { kunde = null; }
+    if (kunde) quelle = 'suche';
+  }
   if (langsam && !kunde) {
     P.logAttempt({ schritt: 'appointment', aktion: aktion || 'auskunft', ok: false, status: 'suche_zu_langsam' });
     return P.json(res, 200, { ok: false, error: 'timeout',
@@ -170,8 +186,12 @@ module.exports = async function handler(req, res) {
     passt = nameOk || dobOk;
   }
   if (!kunde || !passt) {
+    // Die Spur unterscheidet die drei Faelle, die im Gespraech gleich klingen:
+    // Nummer nicht gefunden, Merkmal passt nicht, oder gar kein Merker vorhanden.
+    // Ohne das ist nach einem gescheiterten Anruf nicht zu sagen, WORAN es lag.
     P.logAttempt({ schritt: 'appointment', aktion: aktion || 'auskunft', ok: false,
-      status: kunde ? 'merkmal_passt_nicht' : 'nummer_unbekannt' });
+      status: kunde ? 'merkmal_passt_nicht' : 'nummer_unbekannt',
+      quelle: quelle, merker: !!(merker && merker.customerId) });
     return P.json(res, 200, UNBEKANNT);
   }
 
@@ -198,7 +218,8 @@ module.exports = async function handler(req, res) {
       text = (vorname ? ('Hallo ' + vorname + '. ') : '') + 'Sie haben ' + alsAntwort.length + ' Termine: '
         + alsAntwort.map(function (t) { return t.titel + ' am ' + t.gesprochen; }).join(', ') + '.';
     }
-    P.logAttempt({ schritt: 'appointment', aktion: 'auskunft', ok: true, anzahl: alsAntwort.length });
+    P.logAttempt({ schritt: 'appointment', aktion: 'auskunft', ok: true,
+      anzahl: alsAntwort.length, quelle: quelle });
     return P.json(res, 200, { ok: true, termine: alsAntwort, text: text, hinweis: P.UTC_HINWEIS,
       naechsterSchritt: 'Zum Absagen oder Verschieben diese Aktion erneut aufrufen - mit aktion=stornieren '
         + 'bzw. aktion=umbuchen und der bookingId aus dieser Antwort.' });

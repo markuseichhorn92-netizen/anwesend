@@ -279,6 +279,18 @@ module.exports = async function handler(req, res) {
     } catch (e) { return null; }
   })();
 
+  // Zuordnung Rufnummer -> Kunde merken, SOLANGE wir sie kennen.
+  // Ruft dieselbe Person spaeter an („storniere meinen Termin"), findet
+  // /api/phone/appointment sie damit sofort. Ueber Magiclines Kundensuche geht
+  // das schlecht: ein Probetraining legt einen LEAD an, kein Mitglied.
+  // Best effort - eine gelungene Buchung darf daran nie scheitern.
+  try {
+    await P.rememberLead(phone, {
+      customerId: P.customerIdFrom(r.json),
+      customerNumber: P.customerNumberFrom(r.json),
+    });
+  } catch (e) { /* egal */ }
+
   const hallo = firstWord(firstname);
   return P.json(res, 200, {
     ok: true,

@@ -577,6 +577,52 @@ ok('14d. ohne Wert -> null', P.loadText(null) === null && P.loadText({}) === nul
       ok('89b. Unsinn -> leer (zaehlt dann nicht als Merkmal)', A.d('gestern') === '' && A.d('') === '');
     })();
 
+    // ── 14b. Die Rufnummer muss wieder zum Kunden fuehren ──
+    // Der Grund, warum der gebuchte Termin nicht gefunden wurde: ein
+    // Probetraining legt in Magicline einen LEAD an, und /customers/search findet
+    // vor allem Mitglieder. Beim Buchen kennen wir die Zuordnung aber sicher -
+    // also merken wir sie uns dort, statt sie hinterher zu erraten.
+    ok('97. Die Buchung merkt sich Rufnummer -> Kunde', /P\.rememberLead\(phone, \{/.test(bk)
+      && /customerId: P\.customerIdFrom\(r\.json\)/.test(bk));
+    ok('97b. … erst NACH erfolgreicher Buchung', bk.indexOf('P.rememberLead') > bk.indexOf("error: 'booking_failed'"));
+    ok('97c. … und darf die Buchung nie scheitern lassen',
+      /try \{\s*await P\.rememberLead/.test(bk));
+    // Beide Stellen muessen VORHANDEN sein - sonst waere ein fehlendes
+    // indexOf (-1) faelschlich „steht davor".
+    ok('98. Der Termin-Abruf schaut ZUERST in den Merker',
+      ap.indexOf('P.lookupLead(phone)') >= 0 && ap.indexOf('M.findByPhone(phone)') >= 0
+      && ap.indexOf('P.lookupLead(phone)') < ap.indexOf('M.findByPhone(phone)'));
+    ok('98b. … faellt aber weiter auf die Kundensuche zurueck',
+      /if \(!kunde\) \{[\s\S]{0,300}M\.findByPhone/.test(ap));
+    ok('98c. Das Protokoll zeigt, welcher Weg getragen hat', /quelle: quelle/.test(ap)
+      && /merker: !!\(merker && merker\.customerId\)/.test(ap));
+    // Datensparsam: gemerkt wird NUR die Zuordnung, kein Name, kein Geburtsdatum.
+    ok('99. Der Merker speichert keine personenbezogenen Inhalte',
+      !/name:/.test(lib.slice(lib.indexOf('async function rememberLead'), lib.indexOf('async function lookupLead')))
+      && !/dateOfBirth/.test(lib.slice(lib.indexOf('async function rememberLead'), lib.indexOf('async function lookupLead'))));
+    ok('99b. … und laeuft von selbst ab', /LEAD_TTL = 60 \* 60 \* 24 \* 400/.test(lib));
+
+    // Schluessel und ID-Erkennung wirklich ausfuehren.
+    (function () {
+      // Dieselbe Nummer in vier Schreibweisen muss denselben Schluessel ergeben -
+      // sonst findet der Merker beim Rueckruf nichts.
+      const varianten = ['0151 2044 2244', '015120442244', '+4915120442244', '004915120442244'];
+      const keys = varianten.map(function (v) { return require(path.join(ROOT, 'lib/members.js')).normDePhone(v); });
+      ok('100. Alle Schreibweisen ergeben denselben Schluessel',
+        keys.every(function (k) { return k === keys[0]; }) && !!keys[0], JSON.stringify(keys));
+      // Magicline benennt die Kunden-ID je nach Endpunkt anders.
+      ok('101. customerId wird aus allen bekannten Feldnamen gelesen',
+        P.customerIdFrom({ customerId: 7 }) === '7'
+        && P.customerIdFrom({ leadCustomerId: 8 }) === '8'
+        && P.customerIdFrom({ customer: { id: 9 } }) === '9');
+      ok('101b. Fehlt sie, kommt sauber null zurueck',
+        P.customerIdFrom({}) === null && P.customerIdFrom(null) === null);
+      ok('101c. Kundennummer ebenso', P.customerNumberFrom({ customerNumber: 'M-1177' }) === 'M-1177'
+        && P.customerNumberFrom({}) === null);
+      ok('101d. Ohne Store wirft der Merker nicht',
+        P.rememberLead('015120442244', { customerId: 5 }) instanceof Promise);
+    })();
+
     // ── 15. Fehlversuche beim Schluessel sichtbar machen ──
     // Der haeufigste Produktionsfehler: die Telefon-Plattform ruft an, schickt
     // einen veralteten Schluessel - und im Gespraech hoert man nur „kann ich
