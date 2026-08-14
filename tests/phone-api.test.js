@@ -306,6 +306,55 @@ ok('14d. ohne Wert -> null', P.loadText(null) === null && P.loadText({}) === nul
       ok('68c. Slot-Liste wird aus slots[].startDateTime gelesen', gelesen.length === 3 && gelesen[0] === frei[0], JSON.stringify(gelesen));
     })();
 
+    // ── 12b2. Ortszeit, die als UTC formatiert wurde, geradeziehen ──
+    // Aus dem Produktionsprotokoll: dreimal hintereinander schickte der Assistent
+    // die gesprochene Ortszeit als UTC. Die Slot-Pruefung verhinderte zwar den
+    // Geistertermin, aber der Anrufer bekam seinen Termin trotzdem nicht - obwohl
+    // der Wunsch buchbar war. Nach dem dritten Versuch gab er auf.
+    // Die echten freien Slots am Samstag, 15.08.2026:
+    const FREI = ['2026-08-15T11:00:00.000Z', '2026-08-15T12:30:00.000Z', '2026-08-15T14:00:00.000Z'];
+    ok('69a1. „14:30" trifft als Ortszeit gelesen 12:30Z',
+      P.fixLocalAsUtc('2026-08-15T14:30:00.000Z', FREI) === '2026-08-15T12:30:00.000Z');
+    ok('69a2. „16:00" trifft 14:00Z', P.fixLocalAsUtc('2026-08-15T16:00:00.000Z', FREI) === '2026-08-15T14:00:00.000Z');
+    ok('69a3. „13:00" trifft 11:00Z', P.fixLocalAsUtc('2026-08-15T13:00:00.000Z', FREI) === '2026-08-15T11:00:00.000Z');
+    // Eng bleiben: nur korrigieren, wenn es eindeutig ist.
+    ok('69a4. Ein bereits gueltiger Wert wird NICHT verbogen',
+      P.fixLocalAsUtc('2026-08-15T12:30:00.000Z', FREI) === null);
+    ok('69a5. Trifft die Ortszeit-Lesart nichts, bleibt es beim Fehlschlag',
+      P.fixLocalAsUtc('2026-08-15T09:15:00.000Z', FREI) === null);
+    ok('69a6. Ohne Slot-Liste keine Korrektur',
+      P.fixLocalAsUtc('2026-08-15T14:30:00.000Z', []) === null
+      && P.fixLocalAsUtc('2026-08-15T14:30:00.000Z', null) === null);
+    ok('69a7. Muell wird nicht korrigiert', P.fixLocalAsUtc('morgen', FREI) === null);
+    // Winterzeit: Berlin ist dann UTC+1, die Korrektur muss eine Stunde betragen.
+    ok('69a8. Winterzeit wird richtig gerechnet',
+      P.fixLocalAsUtc('2026-12-05T14:30:00.000Z', ['2026-12-05T13:30:00.000Z']) === '2026-12-05T13:30:00.000Z');
+    ok('69a9. Sommerzeit sind zwei Stunden', P.berlinOffsetMs(Date.parse('2026-08-15T12:00:00Z')) === 7200000);
+    ok('69a10. Winterzeit ist eine Stunde', P.berlinOffsetMs(Date.parse('2026-12-05T12:00:00Z')) === 3600000);
+
+    ok('70a. Die Buchung nutzt die Korrektur', /P\.fixLocalAsUtc\(startEff, frei\)/.test(bk));
+    ok('70a2. … und bucht dann den KORRIGIERTEN Zeitpunkt',
+      /startDateTime: startEff,\n\s+trainerRequired: mitTrainer/.test(bk));
+    ok('70a3. … der Bestaetigungssatz nennt ebenfalls den echten Zeitpunkt',
+      /const d = new Date\(startEff\);/.test(bk) && !/new Date\(startDateTime\)/.test(bk));
+    ok('70a4. Die Korrektur steht im Protokoll', /status: 'ortszeit_korrigiert'/.test(bk));
+
+    // Magicline laesst kein zweites Probetraining zu. Das ist eine Auskunft,
+    // kein Fehler - und im Gespraech der Hinweis auf den bestehenden Termin.
+    ok('71a. Ein bereits gebuchtes Probetraining wird als solches erkannt',
+      /TRIALSESSION_ALREADY_BOOKED\|already booked a trial/.test(bk) && /error: 'already_booked'/.test(bk));
+    ok('71a2. … und verweist auf die Termin-Aktion statt auf einen Rueckruf',
+      /bereits ein Probetraining gebucht/.test(bk) && /api\/phone\/appointment/.test(bk));
+    ok('71a3. … mit der ausdruecklichen Anweisung, nicht erneut zu buchen',
+      /NICHT erneut buchen/.test(bk));
+
+    // Die echte Antwortform von Magicline (aus dem Protokoll) muss die Kunden-ID
+    // hergeben - sonst greift der Merker fuer den spaeteren Anruf nicht.
+    ok('72a. Kunden-ID aus der echten Buchungsantwort',
+      P.customerIdFrom({ id: 1218084290, customerNumber: 'M-2141', uuid: 'db6cd77c-742e-40be-beb0-e947b7c02c11' }) === '1218084290');
+    ok('72a2. … samt Kundennummer',
+      P.customerNumberFrom({ id: 1218084290, customerNumber: 'M-2141' }) === 'M-2141');
+
     // ── 12c. Weiter in der Zukunft buchen ──
     // Magicline beantwortet hoechstens 30 Tage pro Abfrage („interval violation"),
     // aber beliebig weit voraus. Frueher schaute der Endpunkt starr 21 Tage

@@ -141,7 +141,22 @@ module.exports = async function handler(req, res) {
     }
   } catch (e) { frei = null; }
 
-  if (frei && frei.indexOf(startDateTime) < 0) {
+  // Ortszeit-als-UTC geradeziehen. Im Protokoll dreimal hintereinander: der
+  // Anrufer sagt „14:30", der Assistent schickt ...T14:30:00.000Z - gemeint war
+  // 12:30Z, ein freier Termin. Ohne das scheitert die Buchung, obwohl der Wunsch
+  // buchbar ist; der Anrufer hat dreimal probiert und dann aufgegeben.
+  let startEff = startDateTime;
+  let korrigiert = null;
+  if (frei && frei.indexOf(startEff) < 0) {
+    korrigiert = P.fixLocalAsUtc(startEff, frei);
+    if (korrigiert) {
+      startEff = korrigiert;
+      P.logAttempt({ schritt: 'book', ok: true, status: 'ortszeit_korrigiert',
+        startDateTime: startDateTime, magicline: 'als Ortszeit gelesen -> ' + korrigiert });
+    }
+  }
+
+  if (frei && frei.indexOf(startEff) < 0) {
     const sprich = function (iso, mitTag) {
       try {
         const q = new Intl.DateTimeFormat('de-DE', Object.assign(
@@ -231,7 +246,7 @@ module.exports = async function handler(req, res) {
       houseNumber: address.houseNumber,
       zip: address.zip,
       city: address.city,
-      startDateTime: startDateTime,
+      startDateTime: startEff,
       trainerRequired: mitTrainer,
       marketing: false,          // am Telefon nicht nachweisbar einholbar
       note: note,
@@ -249,7 +264,7 @@ module.exports = async function handler(req, res) {
       dateOfBirth: !!dob, gender: genderOf(body.gender),
       emailGenannt: !emailPlaceholderUsed, anschriftGenannt: !addrPlaceholder,
     },
-    startDateTime: startDateTime,
+    startDateTime: startEff,
     magicline: String((r && (r.text || (r.json && JSON.stringify(r.json)))) || '').slice(0, 300),
     empfangen: Object.keys(body || {}).filter(function (k) { return k !== 'key' && k !== 'apiKey'; }).slice(0, 20),
   };
@@ -260,6 +275,23 @@ module.exports = async function handler(req, res) {
     // `hint` traegt die Rueckmeldung von Magicline ins fonio-Log – ohne sie ist
     // nicht zu erkennen, WELCHES Feld fehlt.
     const detail = String((r && (r.text || (r.json && JSON.stringify(r.json)))) || '').slice(0, 300);
+
+    // Magicline lehnt ein zweites Probetraining derselben Person ab
+    // (TRIALSESSION_ALREADY_BOOKED). Das ist kein Fehler, sondern eine Auskunft -
+    // und im Gespraech etwas voellig anderes als „hat nicht geklappt": die Person
+    // HAT bereits einen Termin. Genau danach fragt sie meist als Naechstes.
+    if (/TRIALSESSION_ALREADY_BOOKED|already booked a trial/i.test(detail)) {
+      return P.json(res, 200, {
+        ok: false, error: 'already_booked', status: (r && r.status) || null,
+        hint: detail,
+        text: 'Für Sie ist bereits ein Probetraining gebucht. Soll ich nachsehen, wann es ist – '
+          + 'oder möchten Sie es verschieben oder absagen?',
+        naechsterSchritt: 'Dafuer die Aktion /api/phone/appointment aufrufen: aktion=auskunft mit phone '
+          + 'und lastname bzw. dateOfBirth. NICHT erneut buchen - ein zweites Probetraining laesst '
+          + 'das Studioverwaltungssystem nicht zu.',
+      });
+    }
+
     return P.json(res, 200, {
       ok: false, error: 'booking_failed', status: (r && r.status) || null,
       hint: detail || 'Magicline war nicht erreichbar.',
@@ -269,7 +301,7 @@ module.exports = async function handler(req, res) {
 
   const when = (function () {
     try {
-      const d = new Date(startDateTime);
+      const d = new Date(startEff);
       const p = new Intl.DateTimeFormat('de-DE', {
         timeZone: 'Europe/Berlin', weekday: 'long', day: 'numeric', month: 'long',
         hour: 'numeric', minute: '2-digit', hour12: false,
@@ -301,6 +333,7 @@ module.exports = async function handler(req, res) {
       + (placeholder
         ? 'Eine Bestätigung per E-Mail kann ich ohne Adresse nicht schicken – das Team meldet sich noch einmal unter Ihrer Rufnummer.'
         : 'Die Bestätigung kommt gleich per E-Mail.'),
-    startDateTime: startDateTime,
+    startDateTime: startEff,
+    korrigiert: !!korrigiert,
   });
 };

@@ -181,6 +181,19 @@ Die Antwort enthält je Termin zwei Felder: `gesprochen` und `startDateTime`.
 > jetzt ein Feld `hinweis`. `startDateTime` gehört **unverändert** in die Buchung —
 > aber nie in den gesprochenen Satz.
 
+**Ortszeit als UTC wird geradegezogen.** Schickt der Assistent trotzdem die
+gesprochene Uhrzeit als UTC (`14:30 Uhr` → `…T14:30:00.000Z`), prüft der Server,
+ob diese Uhrzeit **als Ortszeit gelesen** genau einen freien Termin trifft — und
+bucht dann diesen. Nur wenn das eindeutig ist; sonst bleibt es beim ehrlichen
+Fehlschlag. Im Protokoll steht das als `ortszeit_korrigiert`. Die Bestätigung
+nennt immer den tatsächlich gebuchten Zeitpunkt, missverstehen kann der Anrufer
+das also nicht.
+
+**Ein zweites Probetraining lehnt Magicline ab.** Die Antwort ist dann
+`already_booked` — keine Störung, sondern die Auskunft, dass bereits ein Termin
+existiert. Der Assistent soll dann **nicht erneut buchen**, sondern mit Aktion 4.5
+nachsehen und ggf. verschieben oder absagen.
+
 **Probetraining wird immer mit Trainer gebucht.** Der Server fragt die Slots mit
 `trainerRequired=true` ab, damit Magicline dem Termin eine Ressource zuweist —
 sonst steht im Kalender niemand dafür ein. Angeboten werden dadurch nur Zeiten, zu
