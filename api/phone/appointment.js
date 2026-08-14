@@ -33,6 +33,7 @@
 
 const P = require('../../lib/phoneApi');
 const M = require('../../lib/members');
+const Leads = require('../../lib/leadflow');
 
 const STUDIO_PHONE = '0651 308524';
 
@@ -144,23 +145,38 @@ module.exports = async function handler(req, res) {
   } catch (e) { /* Begrenzung darf den Anruf nicht verhindern */ }
 
   // ── Wer ruft an? ───────────────────────────────────────────────────────────
-  // ZUERST der eigene Merker aus der Buchung. Das ist der verlaessliche Weg:
-  // Ein Probetraining legt in Magicline einen LEAD an, und die Kundensuche
-  // findet vor allem Mitglieder - genau deshalb blieb der Termin bisher
-  // unauffindbar. Beim Buchen kannten wir die Zuordnung dagegen sicher.
-  // Ein Treffer hier spart ausserdem bis zu sechs Suchanfragen.
+  // Gebucht wird ueber ganz verschiedene Wege: am Telefon, ueber die Website,
+  // vom Team, oder direkt in Magicline. Wer danach anruft und absagen will, nennt
+  // nur seine Rufnummer. Also drei Wege, vom schnellsten und sichersten zum
+  // langsamsten - der erste Treffer gewinnt.
   let kunde = null, langsam = false, quelle = null;
+
+  // 1. Eigener Merker aus einer Buchung ueber uns (Telefon oder Website).
+  //    Ein Probetraining legt in Magicline einen LEAD an, und die Kundensuche
+  //    findet vor allem Mitglieder - genau deshalb blieb der Termin bisher
+  //    unauffindbar. Beim Buchen kannten wir die Zuordnung dagegen sicher.
   const merker = await P.lookupLead(phone);
   if (merker && merker.customerId) {
     try { kunde = await M.getMember(merker.customerId); } catch (e) { kunde = null; }
     if (kunde) quelle = 'merker';
   }
 
-  // Erst wenn das nichts ergibt, die Kundensuche - fuer alle, die schon vor
-  // diesem Endpunkt gebucht haben oder laengst Mitglied sind. Sie fragt mehrere
-  // Schreibweisen nacheinander ab und laedt im Zweifel Profile nach, kann also
-  // dauern. fonio bricht nach 5 Sekunden ab, und ein abgebrochener Aufruf ist im
-  // Gespraech das Schlimmste: der Assistent haengt und denkt sich etwas aus.
+  // 2. Der Interessenten-Bestand. Er wird ueber die Magicline-Webhooks gefuellt,
+  //    also auch fuer Buchungen, die NIE ueber uns liefen. Ein Lesezugriff.
+  if (!kunde) {
+    let lead = null;
+    try { lead = await Leads.getLeadByPhone(phone); } catch (e) { lead = null; }
+    if (lead && lead.customerId) {
+      try { kunde = await M.getMember(lead.customerId); } catch (e) { kunde = null; }
+      if (kunde) quelle = 'lead';
+    }
+  }
+
+  // 3. Magiclines Kundensuche - fuer alle, die laengst Mitglied sind. Sie fragt
+  //    mehrere Schreibweisen nacheinander ab und laedt im Zweifel Profile nach,
+  //    kann also dauern. fonio bricht nach 5 Sekunden ab, und ein abgebrochener
+  //    Aufruf ist im Gespraech das Schlimmste: der Assistent haengt und denkt
+  //    sich dann etwas aus.
   if (!kunde) {
     try {
       kunde = await Promise.race([

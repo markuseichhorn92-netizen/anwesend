@@ -303,13 +303,23 @@ Der Rückruf landet per E-Mail beim Team (`MAIL_TO`).
 Wann verwenden: *„Wenn jemand nach seinem bereits gebuchten Termin fragt, ihn
 verschieben oder absagen möchte."*
 
-> **Erst ab jetzt gebuchte Termine sind sicher auffindbar.** Ein Probetraining legt
-> in Magicline einen *Lead* an, kein Mitglied — und Magiclines Kundensuche findet
-> vor allem Mitglieder. Deshalb merkt sich der Server beim Buchen selbst, welche
-> Rufnummer zu welchem Kunden gehört. Für Termine, die **vor** diesem Stand gebucht
-> wurden, bleibt nur die Kundensuche; findet sie nichts, biete einen Rückruf an.
-> Ob der Merker oder die Suche getragen hat, steht im Protokoll unter `quelle`
-> (`/api/phone/ping?log=1&key=…`).
+**Wie die Rufnummer zum Termin führt.** Gebucht wird über verschiedene Kanäle,
+abgesagt gern telefonisch — dann liegt nur die Nummer vor. Der Server geht drei
+Wege, der erste Treffer gewinnt:
+
+| Weg | deckt ab | Kosten |
+|---|---|---|
+| eigener Merker | über uns gebucht (Telefon **oder** Website) | ein Lesezugriff |
+| Interessenten-Bestand | alles, was über die Magicline-Webhooks kam — auch Buchungen, die nie über uns liefen | ein Lesezugriff |
+| Magicline-Kundensuche | bestehende Mitglieder | bis zu sechs Abfragen, langsam |
+
+> Ein Probetraining legt in Magicline einen *Lead* an, kein Mitglied — und die
+> Kundensuche findet vor allem Mitglieder. Genau daran ist die Zuordnung vorher
+> gescheitert. Welcher Weg getragen hat, steht im Protokoll unter `quelle`
+> (`/api/phone/ping?log=1&key=…`): `merker`, `lead` oder `suche`.
+
+> **Voraussetzung für den mittleren Weg:** die Magicline-Webhooks müssen aktiv
+> sein. Ohne sie bleibt für fremd gebuchte Termine nur die Kundensuche.
 
 **Warum zwei Angaben nötig sind:** Eine Rufnummer allein weist niemanden aus — eine
 Anruferkennung lässt sich fälschen. Der Server gibt einen Termin deshalb nur heraus,

@@ -11,6 +11,7 @@
 const crypto = require('node:crypto');
 const C = require('../../lib/connect');
 const M = require('../../lib/members');   // rateLimit (Missbrauchsschutz)
+const Phone = require('../../lib/phoneApi');   // Rufnummer -> Kunde merken
 const { redisPipeline, hasStore } = require('../../lib/store');
 const { sendMailRaw, hasMail } = require('../../lib/mail');
 const { renderEmail, BASE } = require('../../lib/emailTemplate');
@@ -107,6 +108,16 @@ module.exports = async function handler(req, res) {
   try {
     const r = await C.bookTrial(b);
     if (r.ok) {
+      // Rufnummer -> Kunde merken, damit ein spaeterer Anruf („bitte absagen")
+      // den Termin wiederfindet. Ein Probetraining legt einen LEAD an, und
+      // Magiclines Kundensuche findet vor allem Mitglieder - hier kennen wir
+      // die Zuordnung dagegen sicher. Best effort, nie buchungsrelevant.
+      try {
+        await Phone.rememberLead(b.phone, {
+          customerId: Phone.customerIdFrom(r.json),
+          customerNumber: Phone.customerNumberFrom(r.json),
+        });
+      } catch (e) { /* egal */ }
       const token = await storeTrial(b);
       const infoUrl = token ? (BASE + '/probetraining-info?t=' + token) : null;
       await sendTrialMail(b, infoUrl);

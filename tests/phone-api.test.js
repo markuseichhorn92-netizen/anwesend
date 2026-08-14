@@ -592,8 +592,23 @@ ok('14d. ohne Wert -> null', P.loadText(null) === null && P.loadText({}) === nul
     ok('98. Der Termin-Abruf schaut ZUERST in den Merker',
       ap.indexOf('P.lookupLead(phone)') >= 0 && ap.indexOf('M.findByPhone(phone)') >= 0
       && ap.indexOf('P.lookupLead(phone)') < ap.indexOf('M.findByPhone(phone)'));
-    ok('98b. … faellt aber weiter auf die Kundensuche zurueck',
-      /if \(!kunde\) \{[\s\S]{0,300}M\.findByPhone/.test(ap));
+    // Wer ueber einen anderen Kanal gebucht hat (Website, Team, direkt in
+    // Magicline), taucht im Merker nicht auf. Dafuer die beiden weiteren Wege.
+    ok('98b. Danach der Interessenten-Bestand aus den Webhooks',
+      /Leads\.getLeadByPhone\(phone\)/.test(ap)
+      && ap.indexOf('Leads.getLeadByPhone') > ap.indexOf('P.lookupLead(phone)')
+      && ap.indexOf('Leads.getLeadByPhone') < ap.indexOf('M.findByPhone(phone)'));
+    ok('98d. … und zuletzt Magiclines Kundensuche',
+      /if \(!kunde\) \{[\s\S]{0,400}M\.findByPhone/.test(ap));
+    ok('98e. Jeder Weg ist im Protokoll unterscheidbar',
+      /quelle = 'merker'/.test(ap) && /quelle = 'lead'/.test(ap) && /quelle = 'suche'/.test(ap));
+    // Auch die Website-Buchung muss die Zuordnung schreiben - sonst findet der
+    // spaetere Anruf nur telefonisch gebuchte Termine.
+    const tbk = fs.readFileSync(path.join(ROOT, 'api/trial/book.js'), 'utf8');
+    ok('98f. Website-Buchung merkt sich die Rufnummer ebenfalls',
+      /Phone\.rememberLead\(b\.phone/.test(tbk));
+    ok('98g. … erst nach erfolgreicher Buchung',
+      tbk.indexOf('Phone.rememberLead') > tbk.indexOf('if (r.ok) {'));
     ok('98c. Das Protokoll zeigt, welcher Weg getragen hat', /quelle: quelle/.test(ap)
       && /merker: !!\(merker && merker\.customerId\)/.test(ap));
     // Datensparsam: gemerkt wird NUR die Zuordnung, kein Name, kein Geburtsdatum.
