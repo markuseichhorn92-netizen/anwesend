@@ -435,6 +435,18 @@ abgesagt. Ist der neue Zeitpunkt nicht mehr frei, bleibt der bisherige stehen.
 
 ### 4.6 Eigene Daten — Vertrag, Beitrag, Pause
 
+Das sind **vier** Aktionen, nicht eine. Alle vier zeigen auf dieselbe URL und
+unterscheiden sich nur im Feld `aktion`, das jeweils **fest** eingetragen wird.
+
+> **Warum vier statt einer.** Eine einzelne Aktion mit `"aktion": "{{aktion}}"`
+> würde von der KI verlangen, sich für einen von fünf Textwerten zu entscheiden —
+> und den exakt richtig zu schreiben. Genau daran scheitern Sprachmodelle
+> zuverlässig. Vier getrennte Aktionen mit je eigener Beschreibung nehmen ihr
+> diese Entscheidung ab: Sie wählt nur noch *welche Aktion*, nie *welches Wort*.
+> Das Feld `aktion` steht dann ohne geschweifte Klammern im Body.
+
+Gemeinsam für alle vier:
+
 | Feld | Wert |
 |---|---|
 | URL | `https://mitglieder.fit-inn-trier.de/api/phone/member` |
@@ -442,11 +454,60 @@ abgesagt. Ist der neue Zeitpunkt nicht mehr frei, bleibt der bisherige stehen.
 | Header | wie Schritt 3 |
 | Timeout | **10 Sekunden** |
 
+Und in allen vier dieselbe Variablenbeschreibung für `phone`:
+
+| Variable | Beschreibung zum Einfügen |
+|---|---|
+| `phone` | Die Rufnummer des Anrufers, nur Ziffern und ggf. führendes Plus, ohne Leerzeichen und ohne ausgeschriebene Zahlwörter. Beispiel: 015120442044. Wenn die Nummer im Gespräch nicht genannt wurde, nutze die Nummer, von der aus angerufen wird. |
+
+---
+
+#### 4.6a — „Ausweis prüfen"
+
 **Body:**
 
 ```json
 {
-  "aktion": "{{aktion}}",
+  "aktion": "status",
+  "phone": "{{phone}}"
+}
+```
+
+Wann verwenden:
+
+> Rufe das auf, sobald der Anrufer etwas über seinen eigenen Vertrag, seinen
+> Beitrag oder eine Beitragspause wissen will — noch bevor du irgendetwas dazu
+> sagst. Die Antwort sagt dir, ob er schon ausgewiesen ist. Sie enthält
+> absichtlich keine Vertragsdaten.
+
+---
+
+#### 4.6b — „Code schicken"
+
+**Body:**
+
+```json
+{
+  "aktion": "code",
+  "phone": "{{phone}}"
+}
+```
+
+Wann verwenden:
+
+> Nur aufrufen, wenn die Ausweis-Prüfung ergeben hat, dass der Anrufer noch nicht
+> ausgewiesen ist, und er damit einverstanden ist, einen Code zu bekommen. Sage
+> ihm danach, dass er den sechsstelligen Code vorlesen soll.
+
+---
+
+#### 4.6c — „Code prüfen"
+
+**Body:**
+
+```json
+{
+  "aktion": "pruefen",
   "phone": "{{phone}}",
   "code": "{{code}}"
 }
@@ -454,34 +515,78 @@ abgesagt. Ist der neue Zeitpunkt nicht mehr frei, bleibt der bisherige stehen.
 
 | Variable | Beschreibung zum Einfügen |
 |---|---|
-| `aktion` | Was getan werden soll. Genau eines von: status, code, pruefen, vertrag, pause. „status" sagt, ob sich der Anrufer schon ausgewiesen hat. „code" schickt ihm einen Einmal-Code. „pruefen" prüft den vorgelesenen Code. „vertrag" nennt Tarif, Vertragsbeginn, Laufzeit, Kündigungsfrist und Beitrag — auch bei Fragen wie „seit wann habe ich den Vertrag?" oder „was zahle ich?". „pause" nennt den Pausenstatus. |
-| `phone` | Die Rufnummer, die im Studio hinterlegt ist, nur Ziffern und ggf. führendes Plus, ohne Leerzeichen. Wurde sie nicht genannt, nutze die Nummer, von der aus angerufen wird. |
-| `code` | Nur bei aktion=pruefen: der sechsstellige Code, den der Anrufer vorliest. Genau so übernehmen, wie er ihn nennt. Sonst leer lassen. |
+| `code` | Der sechsstellige Code, den der Anrufer vorliest. Genau die sechs Ziffern übernehmen, in der genannten Reihenfolge. Nichts ergänzen, nichts weglassen und nicht raten, wenn du ihn nicht verstanden hast — dann lieber noch einmal nachfragen. |
 
-**„Wann soll die KI das verwenden?"**
+Wann verwenden:
 
-> Immer dann aufrufen, wenn jemand etwas über SEINEN eigenen Vertrag wissen will —
-> Laufzeit, Kündigungsfrist, Beitragshöhe, Tarif — oder über eine Beitragspause.
->
-> Rufe zuerst `aktion=status` auf. Ist der Anrufer noch nicht ausgewiesen, biete
-> ihm an, einen kurzen Code zu schicken (`aktion=code`), lass ihn den Code
-> vorlesen und prüfe ihn (`aktion=pruefen`). Erst danach `aktion=vertrag` oder
-> `aktion=pause`.
->
-> Sage niemals Vertrags- oder Beitragsdaten, bevor die Prüfung erfolgreich war.
-> Der Server gibt sie ohnehin nicht heraus — behaupte sie also auch nicht.
+> Aufrufen, sobald der Anrufer den Code vorgelesen hat. Hat es nicht geklappt,
+> darf er es erneut versuchen; nach mehreren Fehlversuchen verweise auf das Studio.
+
+---
+
+#### 4.6d — „Vertrag und Pause"
+
+**Body:**
+
+```json
+{
+  "aktion": "vertrag",
+  "phone": "{{phone}}"
+}
+```
+
+Wann verwenden:
+
+> Aufrufen, wenn der Anrufer ausgewiesen ist und etwas über seinen Vertrag wissen
+> will: Laufzeit, Kündigungsfrist, Kündigungstermin, seit wann der Vertrag läuft,
+> welchen Tarif er hat oder was er zahlt. Die Antwort enthält alles davon auf
+> einmal — ein zweiter Aufruf ist für eine Anschlussfrage nicht nötig.
 >
 > Nenne **nur** die Werte, die in der Antwort stehen. Sage niemals von dir aus
 > „dein Vertrag läuft noch" oder Ähnliches — ob er läuft, steht in der Antwort
-> oder du weißt es nicht. Fehlt ein Wert, sage das offen und biete einen
-> Rückruf an. Lies bei einer konkreten Vertragsfrage auch **nicht** zusätzlich
-> die allgemeinen Kündigungsfristen aus der Wissensdatenbank vor — die gelten
-> je nach Vertragsdatum unterschiedlich und können für genau diesen Vertrag
-> falsch sein.
->
-> Eine Pause NICHT am Telefon zusagen oder einrichten. Zu Trainings-, Ernährungs-
-> und Gesundheitsdaten sagst du am Telefon grundsätzlich nichts und verweist auf
-> den Mitgliederbereich.
+> oder du weißt es nicht. Fehlt ein Wert, sage das offen und biete einen Rückruf
+> an. Lies bei einer konkreten Vertragsfrage auch **nicht** zusätzlich die
+> allgemeinen Kündigungsfristen aus der Wissensdatenbank vor — die gelten je nach
+> Vertragsdatum unterschiedlich und können für genau diesen Vertrag falsch sein.
+
+Für die **Pause** eine fünfte Aktion nach demselben Muster anlegen, mit
+`"aktion": "pause"` und dieser Beschreibung:
+
+> Aufrufen, wenn der ausgewiesene Anrufer wissen will, ob er seinen Vertrag
+> pausieren kann, wie lange, was es kostet oder ob gerade eine Pause läuft.
+> Die Pause am Telefon **nicht** zusagen und nicht einrichten — dafür auf den
+> Mitgliederbereich verweisen oder einen Rückruf notieren.
+
+---
+
+#### Der Ablauf im Gespräch
+
+```
+Anrufer fragt nach dem Vertrag
+        │
+        ▼
+   4.6a Ausweis prüfen
+        │
+        ├─ verifiziert: true  ──────────────►  4.6d Vertrag  ──►  vorlesen
+        │
+        └─ verifiziert: false
+                │
+                ▼
+        „Darf ich Ihnen einen kurzen Code schicken?"
+                │
+                ▼
+           4.6b Code schicken
+                │
+                ▼
+        Anrufer liest den Code vor
+                │
+                ▼
+           4.6c Code prüfen  ──────────────►  4.6d Vertrag  ──►  vorlesen
+```
+
+Die meisten Anrufer landen im kurzen Weg: Wer den WhatsApp-Assistenten schon
+genutzt hat, ist für diese Nummer bereits ausgewiesen und bekommt seine Auskunft
+direkt nach 4.6a.
 
 #### Warum ein Code und nicht nur die Anruferkennung
 
@@ -511,15 +616,39 @@ Vor dem ersten echten Einsatz gehört das in `docs/VVT-TOM.md` und in die DSFA:
 Zweck, Rechtsgrundlage, Aufbewahrung der Verifizierung (60 Tage, gleitend) und
 die Einwilligungsversion (`PHONE_CONSENT_VERSION`).
 
+#### Prüfen, ob es angekommen ist
+
+Vom Rechner aus, mit deinem Schlüssel aus Schritt 1:
+
+```
+curl -s -X POST "https://mitglieder.fit-inn-trier.de/api/phone/member" \
+  -H "Authorization: Bearer DEIN_SCHLUESSEL" \
+  -H "Content-Type: application/json" \
+  -d '{"aktion":"status","phone":"015120442244"}'
+```
+
+| Antwort | Bedeutung |
+|---|---|
+| `"verifiziert": true` | Die Nummer ist über WhatsApp schon ausgewiesen — 4.6d liefert sofort Daten |
+| `"verifiziert": false` | Alles richtig, es fehlt nur der Code-Schritt |
+| `unauthorized` | Der Schlüssel stimmt nicht |
+| `not_configured` | `PHONE_KEY` fehlt in Vercel |
+
+In fonio danach ein Testgespräch führen und in der Anrufübersicht prüfen, ob die
+Aktion mit Namen erscheint — im Mitschnitt vom 14. August stand dort nur
+„aPPOINTMENT", weil es die Vertragsaktion noch nicht gab.
+
+---
+
 ### Aus dem ersten Testgespräch — drei Dinge, die auffielen
 
 Ein Mitschnitt vom 14. August zeigt, woran es in der Praxis hakt. Zwei davon
 sind Einstellungen in fonio, eines war ein Fehler im Code.
 
-**1. Die Aktion war noch nicht angelegt.** Der Assistent hatte keinen Weg an die
-Vertragsdaten und griff zur Termin-Aktion. Ergebnis: Auf „Wie lang läuft mein
-Vertrag noch?" kamen die nächsten *Termine*. Aktion 4.6 muss in fonio angelegt
-werden — der Endpunkt allein genügt nicht.
+**1. Die Aktionen waren noch nicht angelegt.** Der Assistent hatte keinen Weg an
+die Vertragsdaten und griff zur Termin-Aktion. Ergebnis: Auf „Wie lang läuft mein
+Vertrag noch?" kamen die nächsten *Termine*. Die Aktionen aus 4.6 müssen in fonio
+angelegt werden — der Endpunkt allein genügt nicht.
 
 **2. Der Assistent hat sich etwas ausgedacht.** Wörtlich: „Dein Vertrag läuft
 noch" — ohne jede Datengrundlage, es lag nichts vor. Genau dafür stehen die
