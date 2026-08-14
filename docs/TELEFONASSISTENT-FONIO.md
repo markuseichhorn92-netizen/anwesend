@@ -69,12 +69,15 @@ Fehlerquelle mehr.
 Im Reiter **Anfrage** → Feld **Header** eintragen (statt des leeren `{}`):
 
 ```json
-{"Authorization": "Bearer 3f9a1c7e4b2d8a06f5e1c93b7d240a8e6c1f5b39"}
+{"Authorization": "Bearer HIER-DEINEN-SCHLUESSEL-EINSETZEN"}
 ```
 
-Statt der Beispielzeichenkette dein Ergebnis aus Schritt 1. Das Ganze muss gültiges
-JSON bleiben — Anführungszeichen und geschweifte Klammern also stehen lassen, und
-nach `Bearer` genau ein Leerzeichen.
+> **Nicht abtippen, sondern ersetzen.** Alles, was hier als Beispiel steht, ist
+> öffentlich (dieses Dokument liegt im Repository). Ein Schlüssel aus einer
+> Anleitung ist kein Schlüssel — er muss aus Schritt 1 kommen.
+
+Das Ganze muss gültiges JSON bleiben — Anführungszeichen und geschweifte Klammern
+stehen lassen, nach `Bearer` genau ein Leerzeichen.
 
 Alternativ als **fester Parameter** `key` (nicht dynamisch — sonst versucht die KI,
 ihn aus dem Gespräch zu füllen). Der Server akzeptiert beides, außerdem `apiKey`
@@ -107,62 +110,100 @@ curl "https://mitglieder.fit-inn-trier.de/api/phone/ping?key=DEIN_SCHLUESSEL"
 
 ## Schritt 4 — Die vier Aktionen anlegen
 
+Jede Aktion hat in fonio dieselben vier Felder: **URL**, **Methode**, **Header**
+und **Body**. Der Header ist überall gleich (Schritt 3).
+
+> **Der Body ist der Teil, den man leicht übersieht.** Bei `POST` werden die Daten
+> ausschließlich darüber übertragen. Bleibt `{}` stehen, kommt beim Server **nichts**
+> an — er meldet dann „Pflichtfelder fehlen", obwohl der Anrufer alles gesagt hat.
+>
+> Werte aus dem Gespräch setzt du mit doppelten geschweiften Klammern ein:
+> `{{firstname}}`. fonio legt die Variable an, sobald du sie eintippst, und füllt
+> sie im Gespräch mit dem, was der Anrufer sagt.
+
 ### 4.1 Auskunft — „Habt ihr offen?", „Ist gerade viel los?"
 
-- **Methode:** GET
-- **URL:** `https://mitglieder.fit-inn-trier.de/api/phone/info`
-- **Feste Parameter:** `key`
-- **Dynamische Parameter:** keine
-- **Während des Aufrufs sagen:** „Einen Moment, ich schaue nach."
+| Feld | Wert |
+|---|---|
+| URL | `https://mitglieder.fit-inn-trier.de/api/phone/info` |
+| Methode | GET |
+| Header | wie Schritt 3 |
+| Body | leer lassen (GET sendet keinen Body) |
 
-Antwort enthält `text` mit einem fertigen Satz, z. B.
-*„Wir haben gerade geöffnet, heute bis 21:30 Uhr. Aktuell ist normal viel los."*
+Wann verwenden: *„Wenn nach Öffnungszeiten, Andrang oder der Adresse gefragt wird."*
 
 ### 4.2 Termine — „Wann könnte ich zum Probetraining kommen?"
 
-- **Methode:** GET
-- **URL:** `https://mitglieder.fit-inn-trier.de/api/phone/slots`
-- **Feste Parameter:** `key`
-- **Dynamische Parameter (optional):** `limit` (1–10, Standard 5)
-- **Während des Aufrufs sagen:** „Ich schaue kurz, was frei ist."
+| Feld | Wert |
+|---|---|
+| URL | `https://mitglieder.fit-inn-trier.de/api/phone/slots` |
+| Methode | GET |
+| Header | wie Schritt 3 |
+| Body | leer lassen |
 
-Antwort: *„Frei wären zum Beispiel: Dienstag, 19. August um 17 Uhr, …"*
-Der Assistent soll sich den gewählten `startDateTime` merken — den braucht 4.3.
+Wann verwenden: *„Wenn nach freien Terminen für ein Probetraining gefragt wird."*
+
+Die Antwort enthält je Termin ein Feld `startDateTime` — genau dieser Wert gehört
+unverändert in die Buchung.
 
 ### 4.3 Probetraining buchen
 
-- **Methode:** POST
-- **URL:** `https://mitglieder.fit-inn-trier.de/api/phone/book`
-- **Feste Parameter:** `key`
-- **Dynamische Parameter:**
+| Feld | Wert |
+|---|---|
+| URL | `https://mitglieder.fit-inn-trier.de/api/phone/book` |
+| Methode | POST |
+| Header | wie Schritt 3 |
 
-| Feld | Pflicht | Hinweis |
-|---|---|---|
-| `firstname` | ja | |
-| `lastname` | ja | |
-| `phone` | ja | Rufnummer des Anrufers |
-| `startDateTime` | ja | exakt der Wert aus 4.2 |
-| `dateOfBirth` | **ja** | `1990-05-04` oder `04.05.1990` – beides wird verstanden |
-| `email` | nein | nur wenn der Anrufer sie von sich aus nennt |
-| `gender` | nein | `MALE`, `FEMALE`, `UNISEX` – auch „Herr"/„Frau" werden verstanden |
+**Body** (das leere `{}` ersetzen):
 
-**Das Geburtsdatum muss der Assistent erfragen.** Magicline verlangt es, und es
-lässt sich nicht ersetzen: eine erfundene Angabe könnte eine minderjährige Person
-als volljährig führen. Die Frage ist am Telefon unkritisch — anders als eine
-E-Mail-Adresse muss niemand etwas buchstabieren.
+```json
+{
+  "firstname": "{{firstname}}",
+  "lastname": "{{lastname}}",
+  "phone": "{{phone}}",
+  "dateOfBirth": "{{dateOfBirth}}",
+  "startDateTime": "{{startDateTime}}",
+  "gender": "{{gender}}",
+  "email": "{{email}}"
+}
+```
 
-**Nach der Anschrift soll der Assistent NICHT fragen.** Fehlt sie, setzt der Server
-einen erkennbaren Platzhalter, ebenso bei fehlender E-Mail (siehe unten).
+`gender` und `email` dürfen leer bleiben — der Server kommt damit zurecht. Die
+ersten fünf Felder sind Pflicht.
+
+Wann verwenden:
+
+> Immer dann aufrufen, wenn der Anrufer einen genannten Termin verbindlich buchen
+> möchte. Vorher Vorname, Nachname, Rufnummer und Geburtsdatum erfragen. Ohne
+> diesen Aufruf ist NICHTS gebucht.
+
+**Nach der Anschrift nicht fragen** — fehlt sie, setzt der Server einen erkennbaren
+Platzhalter, ebenso bei fehlender E-Mail.
 
 ### 4.4 Rückruf notieren — alles andere
 
-- **Methode:** POST
-- **URL:** `https://mitglieder.fit-inn-trier.de/api/phone/callback`
-- **Feste Parameter:** `key`
-- **Dynamische Parameter:** `name`, `phone`, `topic`, optional `note`, `preferred`, `email`
+| Feld | Wert |
+|---|---|
+| URL | `https://mitglieder.fit-inn-trier.de/api/phone/callback` |
+| Methode | POST |
+| Header | wie Schritt 3 |
+
+**Body:**
+
+```json
+{
+  "name": "{{name}}",
+  "phone": "{{phone}}",
+  "topic": "{{topic}}",
+  "note": "{{note}}"
+}
+```
 
 `topic` ist eines von: `probetraining`, `vertrag`, `kuendigung`, `beitrag`, `kurse`,
 `beschwerde`, `sonstiges`.
+
+Wann verwenden: *„Bei allem, was ich nicht selbst erledigen kann — Vertrag, Beitrag,
+Kündigung, Beschwerde, persönliche Anliegen."*
 
 Der Rückruf landet per E-Mail beim Team (`MAIL_TO`).
 
