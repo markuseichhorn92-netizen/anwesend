@@ -1,0 +1,145 @@
+'use strict';
+// Telefon-Schnittstelle fuer den KI-Assistenten (fonio & Co.).
+// Geprueft wird die reine Logik aus lib/phoneApi.js - Oeffnungsstatus, Zeitfenster,
+// Feiertage - und der Torwaechter (Schluessel, fail-closed). Keine Netzaufrufe.
+process.env.PHONE_KEY = 'test-key-1234567890';
+const path = require('path');
+const fs = require('fs');
+const ROOT = path.resolve(__dirname, '..');
+
+// KV abklemmen: rateLimit soll im Test immer durchlassen.
+const storePath = require.resolve(path.join(ROOT, 'lib/store.js'));
+require.cache[storePath] = { id: storePath, filename: storePath, loaded: true,
+  exports: { hasStore: false, redisPipeline: async () => [null] } };
+
+const P = require(path.join(ROOT, 'lib/phoneApi.js'));
+
+let pass = true;
+const ok = (l, c, extra) => { if (!c) pass = false; console.log((c ? 'OK  ' : 'FAIL') + ' ' + l + (c ? '' : ' -- ' + (extra || ''))); };
+
+// Echte Oeffnungszeiten aus Magicline (Stand der Pruefung).
+const HOURS = {
+  openingHours: [
+    { dayOfWeekFrom: 'MONDAY', dayOfWeekTo: 'FRIDAY', timeFrom: '09:30:00', timeTo: '13:00:00' },
+    { dayOfWeekFrom: 'MONDAY', dayOfWeekTo: 'FRIDAY', timeFrom: '15:00:00', timeTo: '21:30:00' },
+    { dayOfWeekFrom: 'SATURDAY', dayOfWeekTo: 'SATURDAY', timeFrom: '13:00:00', timeTo: '18:00:00' },
+    { dayOfWeekFrom: 'SUNDAY', dayOfWeekTo: 'SUNDAY', timeFrom: '09:00:00', timeTo: '15:00:00' },
+  ],
+  closingHours: [{ reason: 'Neujahr', dateTimeFrom: '2027-01-01T00:00:00', dateTimeTo: '2027-01-02T00:00:00' }],
+};
+
+// Feste Zeitpunkte (UTC), damit der Test unabhaengig von der Laufzeit ist.
+// Sommerzeit: Berlin = UTC+2. 2026-08-19 ist ein Mittwoch.
+const at = (iso) => Date.parse(iso);
+
+// ── 1. Wochentags-Zuordnung aus Spannen ──
+ok('1. Mittwoch faellt in MONDAY..FRIDAY', P.windowsFor(HOURS.openingHours, 'WEDNESDAY').length === 2);
+ok('2. Samstag hat genau ein Fenster', P.windowsFor(HOURS.openingHours, 'SATURDAY').length === 1);
+ok('3. Sonntag hat genau ein Fenster', P.windowsFor(HOURS.openingHours, 'SUNDAY').length === 1);
+const sa = P.windowsFor(HOURS.openingHours, 'SATURDAY')[0];
+ok('4. Samstag 13:00-18:00 korrekt gelesen', sa.from === 13 * 60 && sa.to === 18 * 60, JSON.stringify(sa));
+
+// ── 2. Status zu verschiedenen Uhrzeiten (Mittwoch) ──
+(function () {
+  const mittags = P.openStatus(HOURS, at('2026-08-19T09:00:00Z'));      // 11:00 Berlin
+  ok('5. 11 Uhr Mittwoch -> geoeffnet', mittags.open === true, mittags.text);
+  ok('5b. Satz nennt das Ende des Fensters', /bis 13 Uhr/.test(mittags.text), mittags.text);
+
+  const pause = P.openStatus(HOURS, at('2026-08-19T12:00:00Z'));        // 14:00 Berlin
+  ok('6. 14 Uhr Mittwoch -> Mittagspause, geschlossen', pause.open === false, pause.text);
+  ok('6b. Satz nennt die naechste Oeffnung', /oeffnen|öffnen/i.test(pause.text) && /15 Uhr/.test(pause.text), pause.text);
+
+  const abends = P.openStatus(HOURS, at('2026-08-19T18:00:00Z'));       // 20:00 Berlin
+  ok('7. 20 Uhr Mittwoch -> geoeffnet bis 21:30', abends.open === true && /21:30 Uhr/.test(abends.text), abends.text);
+
+  const nachts = P.openStatus(HOURS, at('2026-08-19T21:00:00Z'));       // 23:00 Berlin
+  ok('8. 23 Uhr Mittwoch -> zu, kein falsches "oeffnen wieder heute"', nachts.open === false && /bereits geschlossen/.test(nachts.text), nachts.text);
+
+  const frueh = P.openStatus(HOURS, at('2026-08-19T05:00:00Z'));        // 07:00 Berlin
+  ok('9. 7 Uhr Mittwoch -> zu, oeffnet um 9:30', frueh.open === false && /9:30 Uhr/.test(frueh.text), frueh.text);
+})();
+
+// ── 3. Sonderschliessung schlaegt die Oeffnungszeit ──
+(function () {
+  const nj = P.openStatus(HOURS, at('2027-01-01T10:00:00Z'));           // 11:00 Berlin, Neujahr
+  ok('10. Feiertag -> geschlossen', nj.open === false && nj.closedReason === 'Neujahr', nj.text);
+  ok('10b. Grund wird genannt', /Neujahr/.test(nj.text), nj.text);
+  const tagDanach = P.openStatus(HOURS, at('2027-01-02T10:00:00Z'));    // 2. Januar, Samstag
+  ok('11. dateTimeTo ist exklusiv - der Folgetag ist wieder normal', tagDanach.closedReason === null, tagDanach.text);
+})();
+
+// ── 4. Sommer-/Winterzeit ──
+(function () {
+  // 15.01. 12:00 UTC = 13:00 Berlin (Winterzeit, UTC+1) -> Mittagspause ab 13:00
+  const winter = P.openStatus(HOURS, at('2027-01-15T12:00:00Z'));
+  ok('12. Winterzeit korrekt umgerechnet (13 Uhr = Pause)', winter.open === false, winter.text);
+  // 15.07. 12:00 UTC = 14:00 Berlin (Sommerzeit, UTC+2) -> ebenfalls Pause
+  const sommer = P.openStatus(HOURS, at('2026-07-15T12:00:00Z'));
+  ok('12b. Sommerzeit korrekt umgerechnet', sommer.open === false, sommer.text);
+  // 15.07. 07:00 UTC = 09:00 Berlin -> noch zu (oeffnet 9:30)
+  const sommer2 = P.openStatus(HOURS, at('2026-07-15T07:00:00Z'));
+  ok('12c. 9 Uhr Sommerzeit -> noch zu', sommer2.open === false && /9:30/.test(sommer2.text), sommer2.text);
+})();
+
+// ── 5. Gesprochene Uhrzeiten ──
+ok('13. volle Stunde ohne Minuten', P.sprich(15 * 60) === '15 Uhr', P.sprich(15 * 60));
+ok('13b. halbe Stunde mit Minuten', P.sprich(9 * 60 + 30) === '9:30 Uhr', P.sprich(9 * 60 + 30));
+ok('13c. fuehrende Null bleibt erhalten', P.sprich(21 * 60 + 5) === '21:05 Uhr', P.sprich(21 * 60 + 5));
+
+// ── 6. Auslastung ──
+ok('14. wenig los', /wenig/.test(P.loadText({ percent: 20 })));
+ok('14b. normal', /normal/.test(P.loadText({ percent: 50 })));
+ok('14c. voll', /voll/.test(P.loadText({ percent: 85 })));
+ok('14d. ohne Wert -> null', P.loadText(null) === null && P.loadText({}) === null);
+
+// ── 7. Torwaechter ──
+(function () {
+  const req = (opts) => ({ url: opts.url || '/api/phone/info', headers: opts.headers || {} });
+  const run = async (r, body) => P.guard(r, body, 100);
+
+  (async function () {
+    const good = await run(req({ url: '/api/phone/info?key=test-key-1234567890' }));
+    ok('15. richtiger Schluessel in der Query -> Zugang', good.ok === true, JSON.stringify(good));
+
+    const hdr = await run(req({ headers: { authorization: 'Bearer test-key-1234567890' } }));
+    ok('15b. Schluessel im Header geht auch', hdr.ok === true);
+
+    const bod = await run(req({}), { key: 'test-key-1234567890' });
+    ok('15c. Schluessel im Body geht auch', bod.ok === true);
+
+    const bad = await run(req({ url: '/api/phone/info?key=falsch' }));
+    ok('16. falscher Schluessel -> 401', bad.ok === false && bad.code === 401, JSON.stringify(bad));
+
+    const none = await run(req({}));
+    ok('16b. ohne Schluessel -> 401', none.ok === false && none.code === 401);
+
+    // Laengenunterschied darf nicht zu einem anderen Verhalten fuehren
+    const shorter = await run(req({ url: '/api/phone/info?key=test-key' }));
+    ok('16c. Praefix des Schluessels reicht nicht', shorter.ok === false && shorter.code === 401);
+
+    // Fail-closed: ohne konfigurierten Schluessel ist die Schnittstelle ZU.
+    const saved = process.env.PHONE_KEY;
+    delete process.env.PHONE_KEY;
+    const off = await run(req({ url: '/api/phone/info?key=test-key-1234567890' }));
+    ok('17. ohne PHONE_KEY fail-closed (503, nicht offen)', off.ok === false && off.code === 503, JSON.stringify(off));
+    process.env.PHONE_KEY = saved;
+
+    // ── 8. Die Endpunkte selbst ──
+    const info = fs.readFileSync(path.join(ROOT, 'api/phone/info.js'), 'utf8');
+    const slots = fs.readFileSync(path.join(ROOT, 'api/phone/slots.js'), 'utf8');
+    const cb = fs.readFileSync(path.join(ROOT, 'api/phone/callback.js'), 'utf8');
+    ok('18. alle drei Endpunkte pruefen den Schluessel', /P\.guard\(/.test(info) && /P\.guard\(/.test(slots) && /P\.guard\(/.test(cb));
+    ok('19. jede Antwort traegt einen vorlesbaren Satz', /text:/.test(info) && /text:/.test(slots) && /text:/.test(cb));
+    ok('20. Termin-Endpunkt bucht NICHT', !/bookTrial|trial\/book/.test(slots));
+    ok('21. Rueckruf greift nicht auf Magicline zu', !/require\('\.\.\/\.\.\/lib\/(connect|members)'\)/.test(cb.replace(/lib\/phoneApi/g, '')));
+    ok('22. Rueckruf weist das Team auf die fehlende Verifikation hin', /NICHT als Mitglied verifiziert/.test(cb));
+    ok('23. Auskunft holt Oeffnungszeiten und Auslastung parallel', /Promise\.all/.test(info));
+    ok('24. … mit hartem Zeitlimit unter der 5-Sekunden-Grenze', /AbortController/.test(info) && /2500/.test(info));
+
+    const env = fs.readFileSync(path.join(ROOT, '.env.example'), 'utf8');
+    ok('25. PHONE_KEY ist dokumentiert', /PHONE_KEY=/.test(env));
+
+    console.log(pass ? 'PHONE-API PASS' : 'PHONE-API FAIL');
+    process.exit(pass ? 0 : 1);
+  })();
+})();
