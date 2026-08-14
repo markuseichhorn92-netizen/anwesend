@@ -258,6 +258,25 @@ ok('14d. ohne Wert -> null', P.loadText(null) === null && P.loadText({}) === nul
     ok('40. Einrichtungshilfe /api/phone/ping vorhanden', /naechsterSchritt/.test(png));
     ok('41. … gibt den Schluessel NIE zurueck', !/got\.value|secret/.test(png) && !/key:/.test(png));
 
+    // ── 13. Diagnose-Protokoll ──
+    // Die Telefon-Plattform zeigt ihre Logs nicht. Ohne eigene Spur bleibt nach
+    // einem gescheiterten Anruf nur Raten - aber die Spur darf keine
+    // personenbezogenen Werte enthalten.
+    const lib = fs.readFileSync(path.join(ROOT, 'lib/phoneApi.js'), 'utf8');
+    ok('60. Protokoll wird gefuehrt und gedeckelt', /LPUSH/.test(lib) && /LTRIM/.test(lib) && /LOG_MAX = 20/.test(lib));
+    ok('61. … laeuft nach einer Woche ab', /EXPIRE.*604800/.test(lib));
+    ok('62. … stoert den Anruf nie', /Diagnose darf den Anruf nie stoeren/.test(lib));
+    ok('63. Protokoll nur mit gueltigem Schluessel abrufbar', /if \(g\.ok\)[\s\S]{0,400}wantLog/.test(png));
+    // Der entscheidende Punkt: gespeichert werden BOOLEANS, keine Werte.
+    ok('64. Keine Namen/Nummern/Geburtsdaten im Protokoll',
+      /firstname: !!firstname/.test(bk2) && /dateOfBirth: !!dob/.test(bk2)
+      && !/firstname: firstname,\s*$/m.test(bk2.slice(bk2.indexOf('const spur'), bk2.indexOf('P.logAttempt'))));
+    const spurBlock = bk2.slice(bk2.indexOf('const spur'), bk2.indexOf('P.logAttempt'));
+    ok('64b. … auch nicht ueber Umwege', !/phone: phone/.test(spurBlock) && !/lastname: lastname/.test(spurBlock), spurBlock.slice(0, 120));
+    ok('65. Magicline-Antwort wird protokolliert', /magicline: String/.test(bk2));
+    ok('66. Und die Feldnamen, die ankamen (ohne Schluessel)',
+      /empfangen: Object\.keys/.test(bk2) && /k !== 'key' && k !== 'apiKey'/.test(bk2));
+
     console.log(pass ? 'PHONE-API PASS' : 'PHONE-API FAIL');
     process.exit(pass ? 0 : 1);
   })();

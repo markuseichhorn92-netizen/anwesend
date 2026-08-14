@@ -26,6 +26,14 @@ module.exports = async function handler(req, res) {
   const g = await P.guard(req, body, 200);
 
   if (g.ok) {
+    // ?log=1 -> die letzten Buchungsversuche. Enthaelt KEINE personenbezogenen
+    // Werte, nur ob ein Feld gefuellt war und was Magicline geantwortet hat.
+    let wantLog = false;
+    try { wantLog = new URL(req.url, 'http://x').searchParams.get('log') === '1'; } catch (e) { /* egal */ }
+    if (wantLog) {
+      const eintraege = await P.readLog();
+      return P.json(res, 200, { ok: true, anzahl: eintraege.length, eintraege: eintraege });
+    }
     return P.json(res, 200, {
       ok: true,
       text: 'Verbindung steht. Der Schlüssel passt.',

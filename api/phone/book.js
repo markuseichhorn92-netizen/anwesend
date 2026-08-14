@@ -124,6 +124,7 @@ module.exports = async function handler(req, res) {
   const emailOk = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(given);
   const email = emailOk ? given : placeholderEmail();
   const placeholder = !emailOk;
+  const emailPlaceholderUsed = placeholder;
 
   const note = [
     'Telefonisch über den KI-Assistenten gebucht.',
@@ -164,6 +165,23 @@ module.exports = async function handler(req, res) {
       note: note + (addrPlaceholder ? ' | Anschrift ist ein PLATZHALTER (am Telefon nicht erhoben) - bitte ersetzen.' : ''),
     });
   } catch (e) { r = null; }
+
+  // Diagnose: was kam an, was sagte Magicline. Ohne Namen, Nummer, Geburtsdatum -
+  // nur ob die Felder gefuellt waren.
+  const spur = {
+    schritt: 'book',
+    ok: !!(r && r.ok),
+    status: (r && r.status) || null,
+    felder: {
+      firstname: !!firstname, lastname: !!lastname, phone: !!phone,
+      dateOfBirth: !!dob, gender: genderOf(body.gender),
+      emailGenannt: !emailPlaceholderUsed, anschriftGenannt: !addrPlaceholder,
+    },
+    startDateTime: startDateTime,
+    magicline: String((r && (r.text || (r.json && JSON.stringify(r.json)))) || '').slice(0, 300),
+    empfangen: Object.keys(body || {}).filter(function (k) { return k !== 'key' && k !== 'apiKey'; }).slice(0, 20),
+  };
+  P.logAttempt(spur);
 
   if (!r || !r.ok) {
     // Ehrlich bleiben: lieber ein Rückruf als eine Bestätigung, die nicht stimmt.
