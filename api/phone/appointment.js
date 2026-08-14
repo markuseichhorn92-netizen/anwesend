@@ -2,11 +2,18 @@
 
 /**
  * POST /api/phone/appointment
- *   { key, aktion: 'auskunft'|'stornieren'|'umbuchen',
+ *   { key, aktion: 'arten'|'auskunft'|'termine'|'buchen'|'stornieren'|'umbuchen',
  *     phone, lastname?, dateOfBirth?,      // Identitaet
- *     bookingId?, startDateTime? }         // fuer stornieren / umbuchen
+ *     bookingId?, startDateTime?,          // fuer stornieren / umbuchen
+ *     art?, datum?, wochentag?, woche?, tageszeit? }   // fuer termine / buchen
  *
- * Termine eines Anrufers nachschlagen, verschieben oder absagen.
+ * Termine eines Anrufers nachschlagen, buchen, verschieben oder absagen.
+ *
+ * Neben dem Probetraining (das laeuft ueber /api/phone/book und die oeffentliche
+ * Connect-API) gibt es die buchbaren Terminarten des Studios: Stoffwechsel-
+ * beratung, Einweisung, Trainingsplanung. Die gehoeren einem BESTEHENDEN Kunden
+ * und laufen ueber die authentifizierte Open API - ohne Zuordnung geht nichts.
+ * Deshalb stehen sie hier, hinter der Identitaetspruefung, und nicht in /slots.
  *
  * ── Warum das heikel ist ────────────────────────────────────────────────────
  * Alle anderen Telefon-Endpunkte geben ausschliesslich oeffentliche Auskuenfte,
@@ -34,6 +41,7 @@
 const P = require('../../lib/phoneApi');
 const M = require('../../lib/members');
 const Leads = require('../../lib/leadflow');
+const B = require('../../lib/bookable');
 
 const STUDIO_PHONE = '0651 308524';
 
@@ -76,6 +84,28 @@ function isCancelled(a) {
   const s = [a.status, a.appointmentStatus, a.bookingStatus, a.state]
     .filter(Boolean).join(' ').toUpperCase();
   return /CANCEL|STORN|DELET|ABGESAGT|ABGELEHNT|NO_?SHOW|DECLIN/.test(s);
+}
+
+// Ortszeit-Stunde. Die Slots kommen in UTC - „nachmittags" waere sonst verschoben.
+function berlinStunde(iso) {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return -1;
+  return parseInt(new Intl.DateTimeFormat('de-DE', {
+    timeZone: 'Europe/Berlin', hour: '2-digit', hour12: false,
+  }).format(d), 10);
+}
+
+// Dieselben Grenzen wie in /api/phone/slots - „nachmittags" muss ueberall
+// dasselbe bedeuten, sonst widerspricht sich der Assistent im selben Gespraech.
+function tageszeit(v) {
+  const t = String(v == null ? '' : v).toLowerCase()
+    .replace(/ä/g, 'ae').replace(/ü/g, 'ue').replace(/[^a-z]/g, '');
+  if (!t) return null;
+  if (t.indexOf('nachmittag') >= 0) return { name: 'nachmittag', test: function (h) { return h >= 12 && h < 17; } };
+  if (t.indexOf('vormittag') >= 0 || t.indexOf('morgens') >= 0) return { name: 'vormittag', test: function (h) { return h < 12; } };
+  if (t.indexOf('abend') >= 0 || t.indexOf('spaet') >= 0) return { name: 'abend', test: function (h) { return h >= 17; } };
+  if (t.indexOf('mittag') >= 0) return { name: 'mittag', test: function (h) { return h >= 11 && h < 14; } };
+  return null;
 }
 
 function sprechDatum(iso) {
@@ -126,6 +156,30 @@ module.exports = async function handler(req, res) {
   const phone = clean(body.phone, 40);
   const lastname = clean(body.lastname, 60);
   const dob = normDob(body.dateOfBirth);
+
+  // ── Welche Termine gibt es ueberhaupt? ─────────────────────────────────────
+  // Die einzige Aktion ohne Identitaet: „Was bietet ihr an?" ist eine
+  // oeffentliche Auskunft. Jemanden dafuer erst seinen Nachnamen buchstabieren
+  // zu lassen, waere unsinnig.
+  if (aktion === 'arten' || aktion === 'terminarten' || aktion === 'angebot') {
+    const arten = await B.listTypes();
+    if (!arten.length) {
+      return P.json(res, 200, { ok: false, error: 'unavailable',
+        text: 'Die Terminarten kann ich gerade nicht abrufen. Ich notiere gern einen Rückruf.' });
+    }
+    const namen = arten.map(function (t) { return t.title; });
+    return P.json(res, 200, {
+      ok: true,
+      arten: arten.map(function (t) {
+        return { titel: t.title, dauer: t.duration ? (t.duration + ' Minuten') : null, id: t.id };
+      }),
+      text: 'Buchbar sind: ' + (namen.length > 1
+        ? (namen.slice(0, -1).join(', ') + ' und ' + namen[namen.length - 1]) : namen[0]) + '.',
+      naechsterSchritt: 'Fuer freie Zeiten diese Aktion mit aktion=termine und art=<Name> aufrufen. '
+        + 'Dafuer werden Rufnummer und Nachname bzw. Geburtsdatum gebraucht, weil der Termin '
+        + 'einem bestehenden Kunden gehoert.',
+    });
+  }
 
   if (phone.replace(/[^\d]/g, '').length < 6) {
     return P.json(res, 200, { ok: false, error: 'missing',
@@ -212,7 +266,111 @@ module.exports = async function handler(req, res) {
   }
 
   const vorname = clean(kunde.firstName || kunde.firstname, 40);
-  const termine = await kommendeTermine(kunde.id != null ? kunde.id : kunde.customerId);
+  const kundeId = kunde.id != null ? kunde.id : kunde.customerId;
+
+  // ── Freie Zeiten und Buchen einer Terminart ────────────────────────────────
+  // Stoffwechselberatung, Einweisung, Trainingsplanung … Anders als beim
+  // Probetraining gehoert so ein Termin einem bestehenden Kunden - deshalb
+  // steht das hier, hinter der Identitaetspruefung, und nicht in /slots.
+  const willTermine = (aktion === 'termine' || aktion === 'zeiten' || aktion === 'freie');
+  const willBuchen = (aktion === 'buchen' || aktion === 'neu' || aktion === 'vereinbaren');
+  if (willTermine || willBuchen) {
+    const arten = await B.listTypes();
+    const m = B.matchType(arten, body.art || body.terminart || body.titel);
+    if (!m.type) {
+      // Lieber nachfragen als die falsche Terminart buchen.
+      const namen = (m.kandidaten.length ? m.kandidaten : arten).map(function (t) { return t.title; });
+      return P.json(res, 200, {
+        ok: false, error: 'art_unklar',
+        arten: namen,
+        text: namen.length
+          ? ('Welchen Termin möchten Sie: ' + (namen.length > 1
+              ? (namen.slice(0, -1).join(', ') + ' oder ' + namen[namen.length - 1]) : namen[0]) + '?')
+          : 'Ich kann gerade nicht sehen, welche Termine buchbar sind. Ich notiere gern einen Rückruf.',
+        naechsterSchritt: 'Erneut aufrufen und art auf einen dieser Namen setzen - unveraendert uebernehmen.',
+      });
+    }
+
+    const w = P.slotWindow({
+      datum: body.datum, ab: body.ab, tage: body.tage,
+      wochentag: body.wochentag, woche: body.woche,
+    }, Date.now());
+    const frei = await B.freeSlots(m.type.id, kundeId, w.start, 21);
+    if (!frei.length) {
+      return P.json(res, 200, { ok: false, error: 'keine_zeiten', terminart: m.type.title,
+        text: 'Für ' + m.type.title + ' sehe ich in den nächsten Wochen leider keinen freien Termin. '
+          + 'Ich notiere gern einen Rückruf, dann meldet sich das Team.' });
+    }
+
+    // Wunschtag/Tageszeit nur als Filter - nie als Grund fuer eine leere Antwort.
+    const starts = frei.map(function (s) { return s.start; });
+    const amTag = w.exactDay ? frei.filter(function (s) { return s.start.slice(0, 10) === w.exactDay; }) : frei;
+    const tz = tageszeit(body.tageszeit);
+    const passend = tz ? amTag.filter(function (s) { return tz.test(berlinStunde(s.start)); }) : amTag;
+    const zeige = (passend.length ? passend : (amTag.length ? amTag : frei)).slice(0, 5);
+
+    // ── Nur nach Zeiten gefragt ──
+    if (willTermine) {
+      const gesprochen = zeige.map(function (s) { return sprechDatum(s.start); }).filter(Boolean);
+      return P.json(res, 200, {
+        ok: true, terminart: m.type.title, terminartId: m.type.id,
+        termine: zeige.map(function (s) {
+          return { gesprochen: sprechDatum(s.start), startDateTime: s.start, trainer: s.instructor || null };
+        }),
+        hinweis: P.UTC_HINWEIS,
+        text: 'Für ' + m.type.title + ' wäre frei: ' + (gesprochen.length > 1
+          ? (gesprochen.slice(0, -1).join(', ') + ' oder ' + gesprochen[gesprochen.length - 1]) : gesprochen[0]) + '.',
+        naechsterSchritt: 'Zum Buchen diese Aktion erneut mit aktion=buchen, derselben art und '
+          + 'startDateTime UNVERAENDERT aus dieser Antwort aufrufen. Endzeit und Trainer ergaenzt der Server.',
+      });
+    }
+
+    // ── Buchen ──
+    let gewuenscht = clean(body.startDateTime, 40);
+    if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(gewuenscht)) {
+      return P.json(res, 200, { ok: false, error: 'missing_start', terminart: m.type.title,
+        text: 'Wann soll der Termin sein?',
+        naechsterSchritt: 'Zuerst dieselbe Aktion mit aktion=termine aufrufen und startDateTime von dort uebernehmen.' });
+    }
+    // Dieselbe Falle wie beim Probetraining: gesprochene Ortszeit als UTC.
+    if (starts.indexOf(gewuenscht) < 0) {
+      const rep = P.fixLocalAsUtc(gewuenscht, starts);
+      if (rep) {
+        P.logAttempt({ schritt: 'appointment', aktion: 'buchen', ok: true, status: 'ortszeit_korrigiert' });
+        gewuenscht = rep;
+      }
+    }
+    const slot = frei.filter(function (s) { return s.start === gewuenscht; })[0];
+    if (!slot) {
+      const alt = zeige.map(function (s) { return sprechDatum(s.start); }).filter(Boolean).slice(0, 3);
+      P.logAttempt({ schritt: 'appointment', aktion: 'buchen', ok: false, status: 'slot_ungueltig' });
+      return P.json(res, 200, { ok: false, error: 'slot_unavailable', terminart: m.type.title,
+        freieSlots: zeige.map(function (s) { return { gesprochen: sprechDatum(s.start), startDateTime: s.start }; }),
+        hinweis: P.UTC_HINWEIS,
+        text: 'Dieser Termin ist leider nicht buchbar. Frei wäre: ' + alt.join(', ') + '. Welcher passt?' });
+    }
+
+    const r = await B.book(kundeId, m.type.id, slot);
+    P.logAttempt({ schritt: 'appointment', aktion: 'buchen', ok: r.ok, status: r.status,
+      quelle: quelle, magicline: r.ok ? null : r.text });
+    if (!r.ok) {
+      return P.json(res, 200, { ok: false, error: 'booking_failed', terminart: m.type.title, hint: r.text,
+        text: 'Die Buchung hat gerade nicht geklappt. Ich notiere den Wunsch, dann meldet sich das Team – '
+          + 'oder Sie erreichen uns direkt unter ' + STUDIO_PHONE + '.' });
+    }
+    // Manche Terminarten muessen vom Studio noch bestaetigt werden. Das gehoert
+    // in den Satz - sonst haelt der Anrufer einen Vorschlag fuer eine Zusage.
+    const offen = r.bookingStatus === 'BOOKED_WITH_CONFIRMATION_REQUIRED';
+    return P.json(res, 200, {
+      ok: true, terminart: m.type.title, startDateTime: slot.start, status: r.bookingStatus,
+      text: offen
+        ? (m.type.title + ' am ' + sprechDatum(slot.start) + ' ist eingetragen – das Team bestätigt den Termin noch.')
+        : (m.type.title + ' am ' + sprechDatum(slot.start) + ' ist gebucht.'
+           + (slot.instructor ? (' Betreut wird der Termin von ' + slot.instructor + '.') : '')),
+    });
+  }
+
+  const termine = await kommendeTermine(kundeId);
   if (termine === null) {
     return P.json(res, 200, { ok: false, error: 'unavailable',
       text: 'Die Termine kann ich gerade nicht abrufen. Ich notiere gern einen Rückruf, dann meldet sich das Team.' });

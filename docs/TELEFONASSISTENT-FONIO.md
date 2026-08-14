@@ -306,7 +306,9 @@ Der Rückruf landet per E-Mail beim Team (`MAIL_TO`).
 
 | Variable | Beschreibung für fonio |
 |---|---|
-| `aktion` | Genau eines von: `auskunft` (Termin nennen), `stornieren` (absagen), `umbuchen` (verschieben). |
+| `aktion` | Genau eines von: `arten` (welche Termine gibt es?), `auskunft` (Termin nennen), `termine` (freie Zeiten einer Terminart), `buchen`, `stornieren` (absagen), `umbuchen` (verschieben). |
+| `art` | Nur bei `termine` und `buchen`: die gewünschte Terminart, so wie der Anrufer sie nennt („Stoffwechselberatung", „Einweisung"). Nicht raten — bei Unklarheit fragt der Server von selbst nach. |
+| `wochentag`, `woche`, `datum`, `tageszeit` | Wie bei Aktion 4.2, wenn der Anrufer einen Zeitraum nennt. Sonst leer lassen. |
 | `phone` | Die Rufnummer, unter der gebucht wurde. Immer erfragen. |
 | `lastname` | Nachname des Anrufers. Zur Zuordnung nötig, wenn kein Geburtsdatum genannt wird. |
 | `dateOfBirth` | Geburtsdatum, falls genannt. Format `TT.MM.JJJJ`. Alternative zum Nachnamen. |
@@ -314,7 +316,26 @@ Der Rückruf landet per E-Mail beim Team (`MAIL_TO`).
 | `startDateTime` | Nur beim Umbuchen: der neue Zeitpunkt, **unverändert** aus der Antwort der Termin-Aktion (4.2). Niemals selbst ausrechnen. |
 
 Wann verwenden: *„Wenn jemand nach seinem bereits gebuchten Termin fragt, ihn
-verschieben oder absagen möchte."*
+verschieben oder absagen möchte — oder einen neuen Termin wie Stoffwechselberatung,
+Einweisung oder Trainingsplanung vereinbaren will."*
+
+**Andere Termine als das Probetraining.** Stoffwechselberatung, Einweisung,
+Trainingsplanung und was sonst in Magicline angelegt ist, laufen über **diese**
+Aktion — nicht über 4.2/4.3. Der Unterschied: ein Probetraining legt einen neuen
+Interessenten an und darf von jedem gebucht werden. Diese Termine gehören einem
+**bestehenden Kunden**, also auch Mitgliedern — deshalb ist die Zuordnung über
+Rufnummer und Nachname zwingend.
+
+Der übliche Ablauf im Gespräch:
+
+1. `aktion=arten` — nennt, was buchbar ist. Braucht **keine** Identität.
+2. `aktion=termine` mit `art` — nennt freie Zeiten.
+3. `aktion=buchen` mit `art` und `startDateTime` aus Schritt 2.
+
+Endzeit und Trainer holt der Server selbst aus dem gewählten Termin — die muss
+der Assistent nicht kennen und kann sie damit auch nicht falsch angeben. Ist die
+Terminart nicht eindeutig („Beratung" bei zwei Beratungsarten), bucht der Server
+**nicht**, sondern schickt die Auswahl zurück.
 
 **Wie die Rufnummer zum Termin führt.** Gebucht wird über verschiedene Kanäle,
 abgesagt gern telefonisch — dann liegt nur die Nummer vor. Der Server geht drei
@@ -388,6 +409,13 @@ In fonio ins Systemprompt / die Anweisungen aufnehmen:
 > gebucht wurde, und zusätzlich nach dem Nachnamen (oder dem Geburtsdatum). Beides
 > ist nötig, damit ich den Termin zuordnen darf. Findet der Server nichts, biete
 > einen Rückruf an und rate nicht.
+>
+> Neben dem Probetraining gibt es weitere Termine wie Stoffwechselberatung,
+> Einweisung oder Trainingsplanung — auch für bestehende Mitglieder. Die laufen
+> über die Termin-Aktion, nicht über die Probetraining-Buchung. Nenne mit
+> `aktion=arten` erst, was buchbar ist, dann mit `aktion=termine` die freien
+> Zeiten, und buche erst danach. Rate NIE, welche Terminart gemeint ist — fragt
+> der Server nach, gib ihm die Auswahl weiter.
 >
 > Frage beim Probetraining nach Vorname, Nachname, Rufnummer und Geburtsdatum.
 > Nennt jemand einen vollständigen Namen, teile ihn selbst in Vor- und Nachname

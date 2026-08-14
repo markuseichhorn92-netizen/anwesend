@@ -687,6 +687,44 @@ ok('14d. ohne Wert -> null', P.loadText(null) === null && P.loadText({}) === nul
         P.rememberLead('015120442244', { customerId: 5 }) instanceof Promise);
     })();
 
+    // ── 14c. Andere Terminarten - auch fuer Mitglieder ──
+    // Stoffwechselberatung, Einweisung, Trainingsplanung. Anders als das
+    // Probetraining gehoeren die einem BESTEHENDEN Kunden und laufen ueber die
+    // authentifizierte API - also nur hinter der Identitaetspruefung.
+    ok('102. Terminarten koennen genannt werden', /aktion === 'arten'/.test(ap) && /B\.listTypes\(\)/.test(ap));
+    // „Was bietet ihr an?" ist eine oeffentliche Auskunft - dafuer muss niemand
+    // seinen Nachnamen buchstabieren.
+    ok('102b. … ohne Identitaet, weil oeffentlich',
+      ap.indexOf("aktion === 'arten'") < ap.indexOf('P.lookupLead(phone)'));
+    ok('103. Freie Zeiten und Buchen liegen HINTER der Identitaetspruefung',
+      ap.indexOf("aktion === 'termine'") > ap.indexOf('return P.json(res, 200, UNBEKANNT)')
+      && ap.indexOf("aktion === 'buchen'") > ap.indexOf('return P.json(res, 200, UNBEKANNT)'));
+    ok('103b. Gebucht wird auf die Kunden-ID des zugeordneten Anrufers',
+      /B\.book\(kundeId, m\.type\.id, slot\)/.test(ap));
+    // Unklare Terminart -> nachfragen. Eine Stoffwechselberatung zu buchen, wo
+    // eine Einweisung gemeint war, ist schlimmer als eine Rueckfrage.
+    // Die BEDINGUNG mitpruefen, nicht nur die Stelle im Text - sonst bliebe die
+    // Zusicherung gruen, wenn die Sperre wegfaellt und der Satz stehen bleibt.
+    ok('104. Unklare Terminart fuehrt zur Rueckfrage, nicht zur Buchung',
+      /if \(!m\.type\) \{/.test(ap) && /error: 'art_unklar'/.test(ap)
+      && ap.indexOf("error: 'art_unklar'") < ap.indexOf('B.book('));
+    // Endzeit und Trainer kommen aus der Slot-Liste, nicht aus dem Gespraech.
+    ok('105. Endzeit und Trainer stammen aus dem Slot, nicht vom Modell',
+      /const slot = frei\.filter/.test(ap) && !/endDateTime: body\./.test(ap));
+    ok('105b. Der Zeitpunkt wird gegen die echten Slots geprueft',
+      /starts\.indexOf\(gewuenscht\) < 0/.test(ap) && /error: 'slot_unavailable'/.test(ap));
+    ok('105c. … samt Ortszeit-Korrektur wie beim Probetraining',
+      /P\.fixLocalAsUtc\(gewuenscht, starts\)/.test(ap));
+    // Manche Arten muss das Studio bestaetigen - das gehoert in den Satz.
+    ok('106. Bestaetigungspflicht wird ausgesprochen',
+      /BOOKED_WITH_CONFIRMATION_REQUIRED/.test(ap) && /bestätigt den Termin noch/.test(ap));
+    ok('106b. Kein Treffer im Zeitraum wird ehrlich gemeldet', /error: 'keine_zeiten'/.test(ap));
+    // Wochentag/Tageszeit muessen ueberall dasselbe bedeuten.
+    ok('107. Dieselben Wunsch-Angaben wie bei den Probetraining-Terminen',
+      /P\.slotWindow\(\{[\s\S]{0,200}wochentag: body\.wochentag/.test(ap) && /tageszeit\(body\.tageszeit\)/.test(ap));
+    ok('107b. Tageszeit-Grenzen stimmen mit /slots ueberein',
+      /h >= 12 && h < 17/.test(ap) && /h >= 12 && h < 17/.test(slots));
+
     // ── 15. Fehlversuche beim Schluessel sichtbar machen ──
     // Der haeufigste Produktionsfehler: die Telefon-Plattform ruft an, schickt
     // einen veralteten Schluessel - und im Gespraech hoert man nur „kann ich
