@@ -17,6 +17,7 @@ const Cap = require('../../lib/capabilities');
 const M = require('../../lib/members');
 const AL = require('../../lib/actionlink');
 const Outreach = require('../../lib/outreach');
+const { sendCancelLink } = require('../../lib/cancelLink');
 
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json');
@@ -45,7 +46,8 @@ module.exports = async function handler(req, res) {
 
   // Anrede aus dem echten Namen (falls verfügbar).
   let name = String(body.memberName || '');
-  try { const m = await M.getMember(memberId); if (m) { const nm = ((m.firstName || '') + ' ' + (m.lastName || '')).trim(); if (nm) name = nm; } } catch (e) {}
+  let mitglied = null;
+  try { const m = await M.getMember(memberId); if (m) { mitglied = m; const nm = ((m.firstName || '') + ' ' + (m.lastName || '')).trim(); if (nm) name = nm; } } catch (e) {}
   const first = (name.split(' ')[0] || '').trim();
 
   const doSend = body.send !== false;   // Standard: senden
@@ -53,13 +55,27 @@ module.exports = async function handler(req, res) {
   if (doSend) {
     const channels = { push: true };
     if (body.email) channels.email = true;
+    // Bei einer Kündigung reicht der Allzwecktext nicht: Dort gehören die
+    // Vertragsdaten hinein (steht die Frist noch offen?) und vor allem der Satz,
+    // dass mit der Mail allein noch nichts gekündigt ist. Deshalb übernimmt
+    // lib/cancelLink den E-Mail-Teil – mit demselben Link, nicht mit einem zweiten.
+    if (action === 'cancel' && channels.email && mitglied) {
+      try {
+        const cl = await sendCancelLink(mitglied, { url: url, ablauf: created.expiresAt, quelle: 'team' });
+        if (cl && cl.ok) { channels.email = false; sent = { ok: true, via: ['email'] }; }
+      } catch (e) { /* dann bleibt es beim Allzwecktext */ }
+    }
     if (body.whatsapp) channels.whatsapp = true;
     const bodyText = (first ? ('Hallo ' + first + ',\n\n') : 'Hallo,\n\n')
       + 'über diesen sicheren Link kommst du direkt in deinen Mitgliederbereich zu: ' + meta.label + '.\n\n'
       + url + '\n\n'
       + 'Zur Sicherheit fragen wir beim Öffnen einmal dein Geburtsdatum ab – danach bist du automatisch angemeldet. '
       + 'Der Link ist ' + AL.TTL_DAYS + ' Tage gültig.\n\nDein Fit-Inn Team';
-    try { sent = await Outreach.sendDirect(memberId, { title: meta.label, body: bodyText, channels: channels }); } catch (e) {}
+    try {
+      const r = await Outreach.sendDirect(memberId, { title: meta.label, body: bodyText, channels: channels });
+      // Die Kündigungsmail ist ggf. schon raus – ihr Erfolg darf nicht verloren gehen.
+      if (r) sent = { ok: !!(r.ok || sent.ok), via: (sent.via || []).concat(r.via || []) };
+    } catch (e) {}
   }
 
   res.statusCode = 200;

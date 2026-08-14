@@ -70,9 +70,17 @@ stub('lib/phoneApi.js', {
   guard: async () => ({ ok: true }),
   logAttempt: () => {},
 });
+// Steuerbar, um die Faelle „keine Nummer hinterlegt" und „keine E-Mail" zu bauen.
+let perTelefon = { id: '4711', firstName: 'Markus', email: 'x@y.z' };
+let perNummerDob = null;
+let perMailDob = null;
+let vollprofil = { id: '4711', firstName: 'Markus', email: 'x@y.z', phonePrivate: '015120442244' };
 stub('lib/members.js', {
   getContract: async () => VERTRAG,
-  findByPhone: async () => ({ id: '4711', firstName: 'Markus', email: 'x@y.z' }),
+  findByPhone: async () => perTelefon,
+  findByNumberDob: async () => perNummerDob,
+  findByEmailDob: async () => perMailDob,
+  getMember: async () => vollprofil,
   rateLimit: async () => true,
   normDePhone: (p) => String(p || '').replace(/[^\d]/g, ''),
   hashCode: (c) => 'h' + c, otpGet: async () => null, otpDel: async () => {}, otpSave: async () => {},
@@ -96,8 +104,11 @@ stub('lib/mlMembership.js', {
   idleList: async () => ({ ok: true, current: [] }),
 });
 stub('lib/loginCode.js', { sendLoginCode: async () => ({ challenge: 'ch', channel: 'email' }) });
-let kuendLink = { ok: true, grund: 'ok', emailHinweis: 'm***@example.de', ablauf: 1, schonGekuendigt: false };
-stub('lib/cancelLink.js', { sendCancelLink: async () => kuendLink, MAX_PRO_TAG: 4 });
+let studioMails = [];
+let studioOk = true;
+stub('lib/studioReply.js', {
+  notifyStudio: async (o) => { studioMails.push(o); return studioOk ? { ok: true } : { ok: false }; },
+});
 
 const handler = require(path.join(ROOT, 'api/phone/member.js'));
 
@@ -154,7 +165,7 @@ async function ruf(aktion, extra) {
   const p = await ruf('pause');
   ok('8. Pausenauskunft gelingt', p.ok === true, JSON.stringify(p));
   ok('8b. … und der Assistent wird vom Zusagen abgehalten',
-    /NICHT am Telefon/i.test(p.naechsterSchritt || ''), p.naechsterSchritt);
+    /NICHT zusagen und NICHT einrichten/i.test(p.naechsterSchritt || ''), p.naechsterSchritt);
   ok('8c. Kein undefined im Pausentext', !/undefined|null|NaN/.test(p.text || ''), p.text);
 
   // ── 9. Erneut ausweisen, obwohl schon ausgewiesen ──
@@ -196,43 +207,144 @@ async function ruf(aktion, extra) {
   ok('12b. … und die Vertragsauskunft ist wieder zu',
     (await ruf('vertrag')).ok === false);
 
-  // ── 11. Kuendigungswunsch ──
-  // Wer kuendigen will, soll nicht erst einen Code vorlesen muessen. Preisgegeben
-  // wird dabei nichts: Die Mail geht an die ohnehin hinterlegte Adresse, und der
-  // Link ist durch das Geburtsdatum gesichert.
+  // ── 11. Anliegen an einen Menschen uebergeben ──
+  // Grundsatz: Auskunft gibt der Assistent, HANDELN tut ein Mensch. Der
+  // gefaehrlichste Fehler ist derselbe wie zuvor - dass der Anrufer auflegt und
+  // glaubt, es sei erledigt.
   verifiziert = false;
-  const k = await ruf('kuendigen');
-  ok('13. Kuendigungslink geht auch OHNE Ausweis raus', k.ok === true, JSON.stringify(k));
-  ok('13b. … und sagt, dass die Mail unterwegs ist', /E-Mail/.test(k.text || ''), k.text);
+  studioMails = [];
+  const esk = await ruf('kuendigen', { name: 'Markus Eichhorn', notiz: 'Umzug nach Koeln' });
+  ok('13. Das Anliegen geht ohne Ausweis an das Team', esk.ok === true, JSON.stringify(esk));
+  ok('13b. … genau eine Uebergabe', studioMails.length === 1, String(studioMails.length));
+  const um = studioMails[0] || {};
+  ok('13c. … als Kuendigungswunsch erkennbar', /Kündigungswunsch/.test(um.subject || ''), um.subject);
 
-  // Der gefaehrlichste Fehler waere, dass der Anrufer auflegt und glaubt, es sei
-  // erledigt. Dann laeuft der Vertrag weiter, bis die naechste Abbuchung kommt.
-  // Die Klarstellung selbst enthaelt „ist ... gekuendigt" und wuerde jede naive
-  // Suche ausloesen. Also erst herausnehmen, dann auf Erfolgsbehauptungen pruefen.
-  const ohneKlarstellung = String(k.text || '').replace(/noch nichts gekündigt/ig, '');
-  ok('14. Es wird NICHT behauptet, die Kuendigung sei erfolgt',
-    !/(ist|wurde|haben wir)[^.]{0,24}(gekündigt|eingegangen)|erledigt|storniert/i.test(ohneKlarstellung),
-    ohneKlarstellung);
-  ok('14b. … sondern ausdruecklich das Gegenteil',
-    /noch nichts gekündigt/i.test(k.text || ''), k.text);
-  ok('14c. … und der Assistent wird davon abgehalten, es zu sagen',
-    /NICHT sagen/.test(k.naechsterSchritt || ''), k.naechsterSchritt);
+  // Bei einer Kuendigung zaehlt, WANN der Wunsch geaeussert wurde - nicht, wann
+  // das Team dazu kommt. Ohne Zeitstempel in der Uebergabe ist das nicht belegbar.
+  ok('14. Der Zeitpunkt steht in der Uebergabe',
+    /Eingegangen:/.test(um.text || '') && /\d{4}-\d{2}-\d{2}T/.test(um.text || ''),
+    (um.text || '').slice(0, 300));
+  ok('14b. … und das Team wird auf seine Bedeutung hingewiesen',
+    /massgeblich/i.test(um.text || ''), (um.text || '').slice(-400));
+  ok('14c. … samt Pflicht zur Bestaetigung in Textform',
+    /Textform/i.test(um.text || ''), (um.text || '').slice(-400));
 
-  // Bereits gekuendigt: dann darf nicht zu einer zweiten Kuendigung gedraengt werden.
-  kuendLink = { ok: true, grund: 'ok', emailHinweis: 'm***@example.de', ablauf: 1, schonGekuendigt: true };
-  const k2 = await ruf('kuendigen');
-  ok('15. Bei bestehender Kuendigung wird das gesagt',
-    k2.schonGekuendigt === true && /bereits vor/i.test(k2.text || ''), k2.text);
+  // Der wichtigste Satz fuer das Team: Wurde die Identitaet geprueft?
+  ok('15. Nicht ausgewiesene Anrufer sind als solche gekennzeichnet',
+    /AUSGEWIESEN:\s*NEIN/.test(um.text || ''), (um.text || '').slice(0, 500));
+  ok('15b. … mit der Aufforderung, vorher zu bestaetigen',
+    /Vor dem Handeln bestätigen/.test(um.text || ''), (um.text || '').slice(0, 500));
+  ok('15c. Das Gespraechsprotokoll ist dabei', /Umzug nach Koeln/.test(um.text || ''));
+  ok('15d. Die Vertragsdaten sind dabei', /Fit-Inn Komfort/.test(um.text || ''));
 
-  // Scheitert der Versand, darf die Kuendigung nicht daran haengen bleiben -
-  // Textform per E-Mail genuegt, das muss der Anrufer erfahren.
-  kuendLink = { ok: false, grund: 'keine_email', emailHinweis: null, ablauf: null };
-  const k3 = await ruf('kuendigen');
-  ok('16. Scheitert der Versand, wird ein anderer Weg genannt',
-    k3.ok === false && /info@fit-inn-trier\.de/.test(k3.text || ''), k3.text);
-  ok('16b. … und kein Erfolg vorgetaeuscht',
-    !/geschickt|unterwegs/i.test(k3.text || ''), k3.text);
-  kuendLink = { ok: true, grund: 'ok', emailHinweis: 'm***@example.de', ablauf: 1, schonGekuendigt: false };
+  verifiziert = true;
+  studioMails = [];
+  await ruf('kuendigen', { name: 'Markus Eichhorn' });
+  ok('16. Ausgewiesene Anrufer sind ebenfalls gekennzeichnet',
+    /AUSGEWIESEN:\s*ja/.test(studioMails[0].text || ''), (studioMails[0].text || '').slice(0, 500));
+
+  // Der Anrufer darf NICHT glauben, es sei erledigt.
+  ok('17. Es wird nicht behauptet, die Kuendigung sei erfolgt',
+    !/(ist|wurde).{0,20}gekündigt|erledigt|storniert/i.test(esk.text || ''), esk.text);
+  ok('17b. … sondern nur, dass es weitergegeben wurde',
+    /weitergegeben/i.test(esk.text || ''), esk.text);
+  ok('17c. … und der Assistent wird davon abgehalten, mehr zu sagen',
+    /NICHT sagen/.test(esk.naechsterSchritt || ''), esk.naechsterSchritt);
+  // Fuer die Frist ist der Anruftag entscheidend - das gehoert dem Anrufer gesagt.
+  ok('17d. … und der Anrufer erfaehrt, dass der heutige Tag zaehlt',
+    /heutige Tag/.test(esk.text || ''), esk.text);
+
+  // Pause ist ebenfalls eine Aktion - also auch Uebergabe, kein Einrichten.
+  studioMails = [];
+  const eskP = await ruf('eskalieren', { anliegen: 'pause', notiz: 'Januar bis Maerz' });
+  ok('18. Auch die Pause geht an einen Menschen',
+    eskP.ok === true && /Pausenwunsch/.test(studioMails[0].subject || ''), eskP.text);
+  ok('18b. … ohne sie zuzusagen',
+    !/(ist|wurde).{0,20}(pausiert|eingerichtet)/i.test(eskP.text || ''), eskP.text);
+
+  // Die Pausen-AUSKUNFT bleibt erlaubt, weist aber auf die Uebergabe hin.
+  const pAusk = await ruf('pause');
+  ok('19. Die Pausenauskunft verweist auf die Uebergabe',
+    /eskalieren/.test(pAusk.naechsterSchritt || ''), pAusk.naechsterSchritt);
+
+  // Scheitert die Uebergabe, wird kein Erfolg vorgetaeuscht.
+  studioOk = false;
+  const eskFail = await ruf('kuendigen');
+  ok('20. Scheitert die Uebergabe, wird das gesagt', eskFail.ok === false, JSON.stringify(eskFail));
+  ok('20b. … mit einem Weg, der ohne uns funktioniert',
+    /info@fit-inn-trier\.de/.test(eskFail.text || ''), eskFail.text);
+  studioOk = true;
+
+  // ── 12. Wenn die anrufende Nummer nicht im Profil steht ──
+  // Kommt oefter vor als gedacht: Festnetz eines Dritten, unterdrueckte Nummer,
+  // oder schlicht keine Nummer hinterlegt. Ein Sackgassen-„geht nicht" waere hier
+  // das Schlechteste - es gibt ja noch Angaben, die das Mitglied selbst nennt.
+  verifiziert = false;
+  perTelefon = null;
+  const nichts = await ruf('code');
+  ok('17. Unbekannte Nummer endet nicht in der Sackgasse',
+    nichts.ok === false && /Mitgliedsnummer/.test(nichts.text || ''), nichts.text);
+  // Verraten werden darf dabei NICHT, ob die Nummer im Studio bekannt ist -
+  // sonst liesse sich der Bestand durchprobieren.
+  ok('17b. … und verraet nicht, ob die Nummer bekannt ist',
+    !/unbekannt|nicht hinterlegt|kein Mitglied|existiert/i.test(nichts.text || ''), nichts.text);
+
+  perNummerDob = { id: '4711', firstName: 'Markus', email: 'x@y.z' };
+  const ueberNummer = await ruf('code', { customerNumber: 'M-2076', dateOfBirth: '28.12.1992' });
+  ok('18. Mitgliedsnummer + Geburtsdatum finden das Mitglied doch',
+    ueberNummer.ok === true && ueberNummer.kanal === 'email', JSON.stringify(ueberNummer));
+  // Deutsche Schreibweise muss genauso gehen - so wird es am Telefon gesagt.
+  ok('18b. … auch mit dem Datum in deutscher Schreibweise',
+    (await ruf('code', { customerNumber: 'M-2076', dateOfBirth: '1992-12-28' })).ok === true);
+  perNummerDob = null;
+
+  perMailDob = { id: '4711', firstName: 'Markus', email: 'x@y.z' };
+  ok('19. E-Mail + Geburtsdatum gehen ebenso',
+    (await ruf('code', { email: 'markus@example.de', dateOfBirth: '28.12.1992' })).ok === true);
+  perMailDob = null;
+
+  // Ohne Geburtsdatum darf die Mitgliedsnummer allein NICHT reichen.
+  perNummerDob = { id: '4711', email: 'x@y.z' };
+  ok('20. Mitgliedsnummer ohne Geburtsdatum reicht nicht',
+    (await ruf('code', { customerNumber: 'M-2076' })).ok === false);
+  perNummerDob = null;
+  perTelefon = { id: '4711', firstName: 'Markus', email: 'x@y.z' };
+
+  // ── 13. Wenn im Profil ueberhaupt kein Kanal steht ──
+  // Weder E-Mail noch Handy: Dann kann kein Code ankommen. Das gehoert gesagt,
+  // nicht dreimal vergeblich versucht.
+  vollprofil = { id: '4711', firstName: 'Markus', email: null };
+  perTelefon = { id: '4711', firstName: 'Markus', email: null };
+  const kanallos = await ruf('code');
+  ok('21. Ohne Kanal im Profil wird das offen gesagt',
+    kanallos.ok === false && kanallos.error === 'kein_kanal', JSON.stringify(kanallos));
+  ok('21b. … mit einem Weg, der wirklich funktioniert',
+    /Studio/.test(kanallos.text || ''), kanallos.text);
+
+  // Aber: Steht nur die Handynummer im Profil, geht es sehr wohl (WhatsApp).
+  vollprofil = { id: '4711', firstName: 'Markus', email: null, phonePrivate: '015120442244' };
+  ok('22. Handynummer allein genuegt fuer den Code', (await ruf('code')).ok === true);
+  vollprofil = { id: '4711', firstName: 'Markus', email: 'x@y.z', phonePrivate: '015120442244' };
+  perTelefon = { id: '4711', firstName: 'Markus', email: 'x@y.z' };
+
+  // ── 14. Uebergabe, wenn sich niemand zuordnen laesst ──
+  // Auch dann muss das Anliegen ankommen: Wer nicht gefunden wird, ist deshalb
+  // kein Nicht-Mitglied - die Nummer kann schlicht fehlen. Es faellt nur der
+  // Kontext weg, und genau das muss das Team sehen.
+  perTelefon = null;
+  studioMails = [];
+  const eskOhne = await ruf('kuendigen', { name: 'Markus Eichhorn' });
+  ok('24. Auch ohne Zuordnung geht die Uebergabe raus',
+    eskOhne.ok === true && studioMails.length === 1, JSON.stringify(eskOhne));
+  ok('24b. … und sagt dem Team, dass nichts zugeordnet werden konnte',
+    /Nicht zugeordnet/.test(studioMails[0].text || ''), (studioMails[0].text || '').slice(0, 400));
+  ok('24c. … enthaelt aber trotzdem Rufnummer und genannten Namen',
+    /Rufnummer:/.test(studioMails[0].text || '') && /Eichhorn/.test(studioMails[0].text || ''));
+  // Ohne Zuordnung duerfen KEINE Vertragsdaten in der Uebergabe stehen - sonst
+  // waeren es die eines Fremden.
+  ok('24d. … und keine Vertragsdaten',
+    !/Fit-Inn Komfort|39,90/.test(studioMails[0].text || ''), (studioMails[0].text || '').slice(0, 500));
+  perTelefon = { id: '4711', firstName: 'Markus', email: 'x@y.z' };
 
   console.log(pass ? 'PHONE-MEMBER PASS' : 'PHONE-MEMBER FAIL');
   process.exit(pass ? 0 : 1);

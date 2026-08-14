@@ -578,42 +578,60 @@ Für die **Pause** eine fünfte Aktion nach demselben Muster anlegen, mit
 
 ---
 
-#### 4.6e — „Kündigen"
+#### 4.6e — „An das Team übergeben"
 
 **Body:**
 
 ```json
 {
-  "aktion": "kuendigen",
-  "phone": "{{phone}}"
+  "aktion": "eskalieren",
+  "anliegen": "{{anliegen}}",
+  "phone": "{{phone}}",
+  "name": "{{name}}",
+  "notiz": "{{notiz}}",
+  "erreichbar": "{{erreichbar}}"
 }
 ```
 
+| Variable | Beschreibung zum Einfügen |
+|---|---|
+| `anliegen` | Worum es geht. Genau eines von: kuendigung, pause, vertrag, beitrag, beschwerde, sonstiges. |
+| `name` | Vor- und Nachname des Anrufers, so wie genannt. |
+| `notiz` | Ein bis drei Sätze, worum es genau geht — in eigenen Worten zusammengefasst. Keine Angaben zu Gesundheit, Krankheiten oder Beschwerden aufnehmen. |
+| `erreichbar` | Wann der Anrufer am besten erreichbar ist, falls er es sagt. Sonst leer lassen. |
+
 Wann verwenden:
 
-> Aufrufen, sobald jemand sagt, dass er kündigen, aufhören oder seine
-> Mitgliedschaft beenden möchte. Dafür ist **kein** Ausweis nötig — rufe das
-> direkt auf, ohne vorher einen Code zu verlangen.
+> Aufrufen, sobald der Anrufer etwas ÄNDERN möchte statt nur etwas zu wissen:
+> kündigen, pausieren, Vertrag oder Beitrag ändern, sich beschweren.
+> Dafür ist **kein** Ausweis nötig — rufe direkt auf.
 >
-> Sage danach: Der Link ist per E-Mail unterwegs, und damit ist noch **nichts**
-> gekündigt — der Vorgang hinter dem Link muss noch abgeschlossen werden. Sage
-> niemals, die Kündigung sei eingegangen, erfolgt oder erledigt.
+> Frage vorher, was das Team wissen muss: Name, worum es genau geht, und wann er
+> am besten erreichbar ist. Je vollständiger die Übergabe, desto weniger muss
+> nachtelefoniert werden.
 >
-> Fragt jemand zusätzlich nach seiner Frist, ist das eine Vertragsauskunft und
-> läuft über die Aktion „Vertrag" — mit Ausweis. Lies keine Fristen aus der
-> Wissensdatenbank vor.
+> Sage danach: Das Anliegen ist aufgenommen und an das Team weitergegeben, eine
+> Kollegin oder ein Kollege meldet sich. Sage **niemals**, es sei erledigt,
+> gekündigt, pausiert oder geändert — am Telefon wird nichts ausgeführt.
 
-> **Warum hier kein Code verlangt wird.** Anders als bei einer Vertragsauskunft
-> wird nichts preisgegeben: Die Mail geht ausschließlich an die Adresse, die
-> ohnehin im Profil steht, und der Link ist zusätzlich durch das Geburtsdatum
-> gesichert — derselbe Gedanke wie beim Passwort-Zurücksetzen. Dazu kommt: Eine
-> Kündigung darf nicht erschwert werden. Vor das bloße Zusenden eines
-> Kündigungswegs noch eine Hürde zu bauen ginge in die falsche Richtung.
+> **Der Grundsatz dahinter.** Auskunft gibt der Assistent, handeln tut ein Mensch.
+> Kündigung, Pause, Vertragsänderung: nichts davon wird am Telefon ausgeführt.
+> Der Assistent nimmt auf, was das Team braucht, und übergibt.
+
+**Was in der Übergabe steht:** Anliegen, Zeitpunkt, Rufnummer, genannter Name,
+die Zuordnung zum Mitglied samt Vertragsdaten — und ausdrücklich, **ob der
+Anrufer ausgewiesen war**. Ohne diese Zeile könnte jemand fremde Vertragsdaten in
+eine Übergabe hineinerzählen und das Team hielte sie für geprüft.
+
+> **Bei einer Kündigung zählt der Zeitpunkt.** Maßgeblich ist, wann der Wunsch
+> geäußert wurde — nicht, wann das Team dazu kommt. Der Zeitpunkt steht deshalb
+> oben in der Übergabe, mit einem Hinweis darauf. Das Team bestätigt dem Mitglied
+> anschließend den Eingang in Textform, mit dem genauen Vertragsende.
 
 > **Der Kündigungsbutton nach § 312k BGB ist etwas anderes.** Für online
 > abgeschlossene Verträge muss auf der Website eine Kündigungsschaltfläche
-> erreichbar sein — ohne Login und ohne Umweg über eine E-Mail. Dieser
-> Telefonweg ist eine zusätzliche Bequemlichkeit, kein Ersatz dafür.
+> erreichbar sein — ohne Login und ohne Umweg über einen Anruf. Dieser Weg hier
+> ist eine Ergänzung, kein Ersatz.
 
 ---
 

@@ -12,7 +12,8 @@
  *   aktion=code     Einmal-Code an den hinterlegten Kanal schicken.
  *                   Mit neu=true auch dann, wenn schon ausgewiesen (zum Testen).
  *   aktion=abmelden Telefon-Verifizierung zuruecksetzen.
- *   aktion=kuendigen Kuendigungslink per E-Mail schicken (ohne Ausweis).
+ *   aktion=eskalieren Anliegen mit allem Kontext an das Team uebergeben.
+ *                   Am Telefon wird NICHTS ausgefuehrt - das macht ein Mensch.
  *   aktion=pruefen  Vorgelesenen Code prüfen -> ab jetzt verifiziert.
  *   aktion=vertrag  Tarif, Laufzeit, Kündigungsfrist, Beitrag.
  *   aktion=pause    Ob und wie pausiert werden kann, laufende Pausen.
@@ -40,11 +41,123 @@ const A = require('../../lib/phoneAuth');
 const M = require('../../lib/members');
 const MM = require('../../lib/mlMembership');
 const { sendLoginCode } = require('../../lib/loginCode');
-const { sendCancelLink } = require('../../lib/cancelLink');
+const SR = require('../../lib/studioReply');
 
 const STUDIO_PHONE = '0651 308524';
 
+/**
+ * Was am Telefon NICHT ausgeführt wird, sondern an einen Menschen geht.
+ *
+ * `hinweis` steht in der Übergabe an das Team – dort, wo etwas leicht übersehen
+ * wird. `antwort` ist der Satz für den Anrufer und verspricht nie mehr als
+ * „weitergegeben". `ersatz` ist der Weg, der auch ohne uns funktioniert.
+ */
+const ANLIEGEN = {
+  kuendigung: {
+    key: 'kuendigung', label: 'Kündigung', betreff: 'Kündigungswunsch (telefonisch)',
+    // Rechtlich zählt, wann der Wunsch geäussert wurde – nicht, wann das Team
+    // dazu kommt. Deshalb steht der Zeitpunkt oben in der Übergabe.
+    hinweis: 'Der Kündigungswunsch wurde zum oben genannten Zeitpunkt telefonisch geäussert. '
+      + 'Dieser Zeitpunkt ist für die Frist massgeblich, nicht der Tag der Bearbeitung. '
+      + 'Bitte dem Mitglied den Eingang in Textform bestätigen, mit dem genauen Vertragsende.',
+    antwort: 'Ich habe Ihren Kündigungswunsch mit Datum und Uhrzeit aufgenommen und an das Team '
+      + 'weitergegeben – eine Kollegin oder ein Kollege meldet sich bei Ihnen und bestätigt '
+      + 'Ihnen das schriftlich. Für die Frist zählt der heutige Tag.',
+    ersatz: 'eine E-Mail an info@fit-inn-trier.de genügt in Textform, von jeder Adresse aus.',
+  },
+  pause: {
+    key: 'pause', label: 'Beitragspause', betreff: 'Pausenwunsch (telefonisch)',
+    hinweis: 'Bitte Zeitraum, Grund und mögliche Gebühr mit dem Mitglied klären.',
+    antwort: 'Ich habe Ihren Pausenwunsch aufgenommen und an das Team weitergegeben. '
+      + 'Eine Kollegin oder ein Kollege meldet sich bei Ihnen und richtet das ein.',
+    ersatz: 'die Kolleginnen und Kollegen richten die Pause gern für Sie ein.',
+  },
+  vertrag: {
+    key: 'vertrag', label: 'Vertragsänderung', betreff: 'Vertragsanliegen (telefonisch)',
+    hinweis: '', antwort: 'Ich habe Ihr Anliegen aufgenommen und an das Team weitergegeben. '
+      + 'Eine Kollegin oder ein Kollege meldet sich bei Ihnen.',
+    ersatz: 'das Team klärt das gern direkt mit Ihnen.',
+  },
+  beitrag: {
+    key: 'beitrag', label: 'Beitrag / Rechnung', betreff: 'Beitragsanliegen (telefonisch)',
+    hinweis: '', antwort: 'Ich habe Ihr Anliegen aufgenommen und an das Team weitergegeben. '
+      + 'Eine Kollegin oder ein Kollege meldet sich bei Ihnen.',
+    ersatz: 'das Team klärt das gern direkt mit Ihnen.',
+  },
+  beschwerde: {
+    key: 'beschwerde', label: 'Beschwerde', betreff: 'Beschwerde (telefonisch)',
+    hinweis: 'Bitte zeitnah persönlich melden.',
+    antwort: 'Danke, dass Sie das ansprechen. Ich habe es aufgenommen und weitergegeben – '
+      + 'jemand aus dem Team meldet sich bei Ihnen.',
+    ersatz: 'das Team meldet sich gern persönlich bei Ihnen.',
+  },
+  sonstiges: {
+    key: 'sonstiges', label: 'Sonstiges', betreff: 'Anliegen (telefonisch)',
+    hinweis: '', antwort: 'Ich habe Ihr Anliegen aufgenommen und an das Team weitergegeben. '
+      + 'Eine Kollegin oder ein Kollege meldet sich bei Ihnen.',
+    ersatz: 'das Team hilft Ihnen gern weiter.',
+  },
+};
+
 function clean(v, max) { return String(v == null ? '' : v).trim().slice(0, max || 80); }
+
+// „04.05.1990" und „1990-05-04" sind dasselbe Datum – wie in appointment.js.
+function normDob(v) {
+  const t = clean(v, 20);
+  let m = /^(\d{4})-(\d{2})-(\d{2})/.exec(t);
+  if (!m) {
+    const d = /^(\d{1,2})\.(\d{1,2})\.(\d{4})$/.exec(t);
+    if (d) m = [null, d[3], ('0' + d[2]).slice(-2), ('0' + d[1]).slice(-2)];
+  }
+  return m ? (m[1] + '-' + m[2] + '-' + m[3]) : '';
+}
+
+/**
+ * Wer ruft da an – auch wenn die Nummer nicht im Studio hinterlegt ist?
+ *
+ * Der Regelfall ist die Anruferkennung. Sie versagt aber genau dann, wenn jemand
+ * gar keine Nummer im Profil hat, vom Festnetz eines Dritten anruft oder die
+ * Nummer unterdrueckt. Dann bleibt der Weg ueber Angaben, die das Mitglied selbst
+ * nennen kann: Mitgliedsnummer plus Geburtsdatum, oder E-Mail plus Geburtsdatum.
+ *
+ * Beides identifiziert nur – es weist NICHT aus. Der Ausweis bleibt der Code, und
+ * der geht danach an einen Kanal aus dem Profil. Deshalb ist es unbedenklich,
+ * hier mehrere Wege anzubieten: Wer sich falsch identifiziert, bekommt einen Code
+ * an die Adresse eines Fremden und kommt keinen Schritt weiter.
+ */
+async function findeMitglied(body, phone) {
+  let kunde = null;
+  try { kunde = await M.findByPhone(phone); } catch (e) { kunde = null; }
+  if (kunde) return { kunde: kunde, weg: 'rufnummer' };
+
+  const dob = normDob(body.dateOfBirth || body.geburtsdatum);
+  if (dob) {
+    const nummer = clean(body.customerNumber || body.mitgliedsnummer, 24);
+    if (nummer) {
+      try { kunde = await M.findByNumberDob(nummer, dob); } catch (e) { kunde = null; }
+      if (kunde) return { kunde: kunde, weg: 'mitgliedsnummer' };
+    }
+    const mail = clean(body.email, 120);
+    if (mail) {
+      try { kunde = await M.findByEmailDob(mail, dob); } catch (e) { kunde = null; }
+      if (kunde) return { kunde: kunde, weg: 'email' };
+    }
+  }
+  return { kunde: null, weg: null };
+}
+
+// Ueber welche Kanaele koennte ein Code ueberhaupt zugestellt werden?
+// Ohne einen einzigen ist Selbstbedienung nicht moeglich – das muss der Anrufer
+// erfahren, statt es dreimal vergeblich zu versuchen.
+async function kanaeleVon(kunde) {
+  let voll = kunde;
+  if (kunde && !kunde.email && kunde.id != null) {
+    try { const m = await M.getMember(kunde.id); if (m) voll = m; } catch (e) { /* egal */ }
+  }
+  const hatMail = !!(voll && voll.email);
+  const hatHandy = !!(voll && (voll.phonePrivate || voll.phoneMobile || voll.phoneBusiness));
+  return { hatMail: hatMail, hatHandy: hatHandy, keiner: !hatMail && !hatHandy, voll: voll };
+}
 
 // „15. Oktober 2026“ – am Telefon liest niemand ein ISO-Datum vor.
 function sprechTag(iso) {
@@ -114,20 +227,43 @@ module.exports = async function handler(req, res) {
       return P.json(res, 200, { ok: true, verifiziert: true, quelle: st.quelle,
         text: 'Sie sind bereits ausgewiesen. Was möchten Sie wissen?' });
     }
-    let kunde = null;
-    try { kunde = await M.findByPhone(phone); } catch (e) { kunde = null; }
-    // Ist die Nummer unbekannt, sagen wir das NICHT als solches – sonst liesse
-    // sich durchprobieren, welche Nummern im Studio hinterlegt sind.
+    const gefunden = await findeMitglied(body, phone);
+    const kunde = gefunden.kunde;
+    // Ist niemand zu finden, sagen wir NICHT „diese Nummer kennen wir nicht" –
+    // sonst liesse sich durchprobieren, welche Nummern im Studio hinterlegt sind.
+    // Stattdessen der Hinweis auf die Angaben, mit denen es doch noch geht.
     if (!kunde) {
-      P.logAttempt({ schritt: 'member', aktion: 'code', ok: false, status: 'nummer_unbekannt' });
-      return P.json(res, 200, { ok: false, error: 'kein_versand',
-        text: 'Ich konnte dazu nichts zustellen. Das Team hilft Ihnen gern weiter – '
-          + 'unter ' + STUDIO_PHONE + ' oder über den Mitgliederbereich.' });
+      P.logAttempt({ schritt: 'member', aktion: 'code', ok: false, status: 'nicht_gefunden' });
+      return P.json(res, 200, {
+        ok: false, error: 'nicht_gefunden',
+        text: 'Über diese Nummer finde ich Sie nicht – vielleicht ist eine andere bei uns '
+          + 'hinterlegt. Nennen Sie mir Ihre Mitgliedsnummer und Ihr Geburtsdatum, dann '
+          + 'versuche ich es darüber.',
+        naechsterSchritt: 'Erneut aktion=code aufrufen, zusaetzlich mit customerNumber und '
+          + 'dateOfBirth. Alternativ email und dateOfBirth. Findet sich auch damit nichts: '
+          + 'Rueckruf notieren.',
+      });
+    }
+
+    // Weder E-Mail noch Handynummer im Profil: Dann gibt es keinen Weg, auf dem
+    // ein Code ankommen koennte. Das ehrlich sagen, statt es scheitern zu lassen.
+    const kan = await kanaeleVon(kunde);
+    if (kan.keiner) {
+      P.logAttempt({ schritt: 'member', aktion: 'code', ok: false, status: 'kein_kanal_im_profil' });
+      return P.json(res, 200, {
+        ok: false, error: 'kein_kanal',
+        text: 'Bei Ihnen ist weder eine E-Mail-Adresse noch eine Handynummer hinterlegt – '
+          + 'deshalb kann ich Ihnen keinen Code schicken. Am schnellsten geht es im Studio: '
+          + 'Dort tragen die Kolleginnen und Kollegen das kurz ein, danach klappt es auch '
+          + 'telefonisch. Soll ich einen Rückruf notieren?',
+        naechsterSchritt: 'Rueckruf mit topic=sonstiges notieren und im Text vermerken, dass '
+          + 'E-Mail oder Handynummer im Profil fehlen.',
+      });
     }
     // Eigene Basis-URL fuer den Magic-Link in der Mail (gleiche Region, schnell).
     const host = (req.headers && (req.headers['x-forwarded-host'] || req.headers.host)) || null;
     let r = null;
-    try { r = await sendLoginCode(kunde, host, { phone: phone }); } catch (e) { r = null; }
+    try { r = await sendLoginCode(kan.voll || kunde, host, { phone: phone }); } catch (e) { r = null; }
     if (r && r.challenge) await A.saveChallenge(phone, r.challenge);
     const wort = kanalWort(r && r.channel);
     P.logAttempt({ schritt: 'member', aktion: 'code', ok: !!wort, status: (r && r.channel) || 'kein_kanal' });
@@ -160,48 +296,89 @@ module.exports = async function handler(req, res) {
       text: 'Danke, das hat geklappt. Was möchten Sie wissen?' });
   }
 
-  // ── Kündigungswunsch ───────────────────────────────────────────────────────
-  // Steht BEWUSST vor der Ausweispflicht. Hier wird nichts preisgegeben: Die
-  // Mail geht nur an die Adresse, die ohnehin im Profil steht, und der Link ist
-  // zusätzlich durch das Geburtsdatum gesichert. Vor das blosse Zusenden eines
-  // Kündigungswegs noch eine Code-Hürde zu bauen ginge in die falsche Richtung —
-  // eine Kündigung darf nicht erschwert werden.
-  if (aktion === 'kuendigen' || aktion === 'kuendigung-link' || aktion === 'beenden') {
-    let kunde = null;
-    try { kunde = await M.findByPhone(phone); } catch (e) { kunde = null; }
-    if (!kunde) {
-      P.logAttempt({ schritt: 'member', aktion: 'kuendigen', ok: false, status: 'nummer_unbekannt' });
-      return P.json(res, 200, { ok: false, error: 'kein_versand',
-        text: 'Unter dieser Nummer finde ich nichts. Damit Ihre Kündigung auf keinen Fall '
-          + 'liegen bleibt: Schreiben Sie an info@fit-inn-trier.de oder melden Sie sich unter '
-          + STUDIO_PHONE + '. Ich notiere Ihnen gern auch einen Rückruf.' });
+  // ── Anliegen an einen Menschen übergeben ───────────────────────────────────
+  // Grundsatz: Auskunft gibt der Assistent, HANDELN tut ein Mensch. Kündigung,
+  // Pause, Vertragsänderung, Beschwerde — nichts davon wird am Telefon
+  // ausgeführt. Der Assistent nimmt auf, was das Team braucht, und übergibt.
+  //
+  // Steht bewusst VOR der Ausweispflicht: Wer sein Anliegen loswerden will, soll
+  // das immer können. Ob der Anrufer ausgewiesen war, steht in der Eskalation
+  // ausdrücklich drin — sonst könnte jemand fremde Vertragsdaten in eine
+  // Übergabe hineinerzählen und das Team hielte sie für geprüft.
+  if (aktion === 'eskalieren' || aktion === 'kuendigen' || aktion === 'kuendigung-link'
+      || aktion === 'beenden' || aktion === 'uebergeben' || aktion === 'mitarbeiter') {
+    const anliegen = ANLIEGEN[clean(body.anliegen, 24).toLowerCase()]
+      || (/kuendig|beenden/.test(aktion) ? ANLIEGEN.kuendigung : ANLIEGEN.sonstiges);
+    // Der Zeitpunkt ist bei einer Kündigung nicht Beiwerk: Massgeblich ist,
+    // wann der Wunsch geäussert wurde, nicht wann das Team dazu kommt.
+    const wannISO = new Date(Date.now()).toISOString();
+    const wann = new Intl.DateTimeFormat('de-DE', { timeZone: 'Europe/Berlin', dateStyle: 'full', timeStyle: 'short' })
+      .format(new Date(Date.now()));
+
+    const gef = await findeMitglied(body, phone);
+    const kunde = gef.kunde;
+    let ct = null;
+    if (kunde) { try { ct = await M.getContract(kunde.id); } catch (e) { ct = null; } }
+
+    const z = [];
+    z.push('Anliegen:      ' + anliegen.label);
+    z.push('Eingegangen:   ' + wann + '  (' + wannISO + ')');
+    z.push('Rufnummer:     ' + phone);
+    z.push('Name genannt:  ' + (clean(body.name, 80) || '—'));
+    z.push('');
+    if (kunde) {
+      z.push('── Zuordnung ──');
+      z.push('Mitglied:      ' + [kunde.firstName, kunde.lastName].filter(Boolean).join(' ')
+        + (kunde.customerNumber ? ' (' + kunde.customerNumber + ')' : ''));
+      z.push('Gefunden über: ' + gef.weg);
+      // Der wichtigste Satz für das Team: Wurde die Identität geprüft?
+      z.push(st.verified
+        ? ('AUSGEWIESEN:   ja (' + (st.quelle || 'unbekannt') + ') – Identität wurde geprüft.')
+        : 'AUSGEWIESEN:   NEIN – nur zugeordnet, NICHT geprüft. Vor dem Handeln bestätigen.');
+      if (ct) {
+        z.push('');
+        z.push('── Vertrag ──');
+        if (ct.rateName) z.push('Tarif:         ' + ct.rateName);
+        if (ct.startDate) z.push('Beginn:        ' + ct.startDate);
+        if (ct.endDate) z.push('Laufzeit bis:  ' + ct.endDate);
+        if (ct.deadline) z.push('Kündigung bis: ' + ct.deadline + (ct.deadlinePassed ? '  (VERSTRICHEN)' : ''));
+        if (ct.nextCancellationDate) z.push('Nächster Term.:' + ct.nextCancellationDate);
+        if (ct.cancellationPeriod) z.push('Frist:         ' + ct.cancellationPeriod);
+        if (ct.cancelled) z.push('Status:        BEREITS GEKÜNDIGT');
+      }
+    } else {
+      z.push('── Zuordnung ──');
+      z.push('Nicht zugeordnet – weder über die Rufnummer noch über Mitgliedsnummer/E-Mail.');
     }
-    let r = null;
-    try { r = await sendCancelLink(kunde, { quelle: 'telefon' }); } catch (e) { r = null; }
-    P.logAttempt({ schritt: 'member', aktion: 'kuendigen', ok: !!(r && r.ok), status: (r && r.grund) || 'fehler' });
-    if (!r || !r.ok) {
-      // Bei einer Kündigung ist ein blosses „hat nicht geklappt" zu wenig — es
-      // muss immer ein Weg genannt werden, der ohne uns funktioniert.
-      return P.json(res, 200, { ok: false, error: 'kein_versand', grund: (r && r.grund) || 'fehler',
-        text: 'Ich konnte Ihnen den Link gerade nicht zustellen. Ihre Kündigung soll daran '
-          + 'nicht scheitern: Schreiben Sie einfach an info@fit-inn-trier.de – das reicht in '
-          + 'Textform aus. Oder ich notiere einen Rückruf, dann meldet sich das Team.' });
-    }
-    if (r.schonGekuendigt) {
-      return P.json(res, 200, { ok: true, schonGekuendigt: true,
-        text: 'Ihre Kündigung liegt uns bereits vor – Sie müssen nichts weiter tun. '
-          + 'Ich habe Ihnen die Eckdaten noch einmal per E-Mail geschickt.' });
+    const notiz = clean(body.notiz || body.note, 500);
+    if (notiz) { z.push(''); z.push('── Aus dem Gespräch ──'); z.push(notiz); }
+    const erreichbar = clean(body.erreichbar, 120);
+    if (erreichbar) { z.push(''); z.push('Erreichbar:    ' + erreichbar); }
+    if (anliegen.hinweis) { z.push(''); z.push('── Hinweis ──'); z.push(anliegen.hinweis); }
+
+    let ok = false;
+    try {
+      const r = await SR.notifyStudio({
+        subject: anliegen.betreff + ' – ' + (clean(body.name, 60) || phone),
+        text: z.join('\n'),
+      });
+      ok = !!(r && r.ok !== false);
+    } catch (e) { ok = false; }
+    P.logAttempt({ schritt: 'member', aktion: 'eskalieren', ok: ok,
+      anliegen: anliegen.key, zugeordnet: !!kunde, ausgewiesen: st.verified });
+
+    if (!ok) {
+      return P.json(res, 200, { ok: false, error: 'uebergabe_fehlgeschlagen',
+        text: 'Ich konnte die Notiz gerade nicht weitergeben. Bitte melden Sie sich direkt unter '
+          + STUDIO_PHONE + ' oder schreiben Sie an info@fit-inn-trier.de – ' + anliegen.ersatz });
     }
     return P.json(res, 200, {
-      ok: true, gesendet: true, schonGekuendigt: false,
-      text: 'Ich habe Ihnen einen Link an Ihre hinterlegte E-Mail-Adresse geschickt. '
-        + 'Darüber können Sie die Kündigung selbst abschliessen – dort wird einmal Ihr '
-        + 'Geburtsdatum abgefragt. Mit der E-Mail allein ist noch nichts gekündigt.',
-      // Der Assistent darf auf keinen Fall den Eindruck erwecken, es sei erledigt.
-      naechsterSchritt: 'NICHT sagen, die Kuendigung sei erfolgt oder eingegangen - verschickt '
-        + 'wurde nur der Link. Ausdruecklich sagen, dass der Vorgang hinter dem Link noch '
-        + 'abgeschlossen werden muss. Keine Fristen aus der Wissensdatenbank vorlesen. '
-        + 'Fragt jemand nach seiner Frist, dafuer aktion=vertrag verwenden.',
+      ok: true, uebergeben: true, anliegen: anliegen.key, zugeordnet: !!kunde,
+      text: anliegen.antwort,
+      naechsterSchritt: 'Das Anliegen ist an das Team uebergeben, mehr nicht. NICHT sagen, es sei '
+        + 'erledigt, gekuendigt, pausiert oder geaendert. Fehlt noch etwas fuer die Uebergabe '
+        + '(Name, Erreichbarkeit, worum es genau geht), vorher erfragen und mit notiz und '
+        + 'erreichbar erneut senden.',
     });
   }
 
@@ -304,7 +481,8 @@ module.exports = async function handler(req, res) {
       // zwangslaeufig zu diesem Vertrag. Was hier steht, gilt.
       naechsterSchritt: 'Nur diese Werte nennen. Die allgemeinen Kuendigungsfristen aus der '
         + 'Wissensdatenbank NICHT zusaetzlich vorlesen - sie koennen fuer diesen Vertrag falsch sein. '
-        + 'Fehlt ein Wert, sage das offen und biete einen Rueckruf an.',
+        + 'Fehlt ein Wert, sage das offen. Will das Mitglied etwas AENDERN oder kuendigen: '
+        + 'aktion=eskalieren - am Telefon wird nichts ausgefuehrt.',
     });
   }
 
@@ -352,8 +530,10 @@ module.exports = async function handler(req, res) {
       text: teile.join(', ') + '.',
       // Einrichten heisst Vertrag aendern. Das laesst sich am Telefon nicht
       // nachweisbar erklaeren - dafuer der Mitgliederbereich oder das Team.
-      naechsterSchritt: 'Die Pause NICHT am Telefon zusagen oder einrichten. Auf den Mitgliederbereich '
-        + 'verweisen oder einen Rueckruf notieren.',
+      // Auskunft ja, Einrichten nein - dafuer uebernimmt ein Mensch.
+      naechsterSchritt: 'Das ist eine AUSKUNFT. Die Pause NICHT zusagen und NICHT einrichten. '
+        + 'Moechte das Mitglied sie wirklich, mit aktion=eskalieren und anliegen=pause an das '
+        + 'Team uebergeben - vorher Zeitraum und Grund erfragen und als notiz mitgeben.',
     });
   }
 
