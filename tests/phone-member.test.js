@@ -63,6 +63,7 @@ function stub(rel, exports) {
 }
 
 let verifiziert = true;
+let abgemeldet = false;
 stub('lib/phoneApi.js', {
   json: (res, code, body) => { res._code = code; res._body = body; return body; },
   readBody: async (req) => req._body || {},
@@ -77,7 +78,14 @@ stub('lib/members.js', {
   hashCode: (c) => 'h' + c, otpGet: async () => null, otpDel: async () => {}, otpSave: async () => {},
 });
 stub('lib/phoneAuth.js', {
-  status: async () => ({ verified: verifiziert, memberId: '4711', quelle: 'whatsapp', consentVersion: 'v1' }),
+  // quelle 'whatsapp' heisst: die Verifizierung liegt in einem ANDEREN Kanal.
+  // clearVerified raeumt nur den Telefon-Schluessel weg - der Status bleibt also
+  // bestehen. Genau dieses Verhalten wird unten geprueft.
+  status: async () => ({
+    verified: verifiziert, memberId: verifiziert ? '4711' : null,
+    quelle: verifiziert ? 'whatsapp' : null, consentVersion: verifiziert ? 'v1' : null,
+  }),
+  clearVerified: async () => { abgemeldet = true; return true; },
   touch: async () => {}, setVerified: async () => true, saveChallenge: async () => true,
   checkCode: async () => ({ ok: false, memberId: null, grund: 'ungueltig' }),
   CONSENT_VERSION: 'v1',
@@ -146,6 +154,45 @@ async function ruf(aktion, extra) {
   ok('8b. … und der Assistent wird vom Zusagen abgehalten',
     /NICHT am Telefon/i.test(p.naechsterSchritt || ''), p.naechsterSchritt);
   ok('8c. Kein undefined im Pausentext', !/undefined|null|NaN/.test(p.text || ''), p.text);
+
+  // ── 9. Erneut ausweisen, obwohl schon ausgewiesen ──
+  // Wer ueber WhatsApp verifiziert ist, ueberspringt den Code - und bekommt den
+  // Ablauf nie zu sehen. Zum Testen muss er sich erzwingen lassen.
+  verifiziert = true;
+  const schon = await ruf('code');
+  ok('9. Ohne neu=true kommt kein Code, weil schon ausgewiesen',
+    schon.verifiziert === true && !schon.kanal, JSON.stringify(schon));
+  ok('9b. … und die Antwort sagt, WOHER der Ausweis stammt',
+    schon.quelle === 'whatsapp', String(schon.quelle));
+
+  const erzwungen = await ruf('code', { neu: true });
+  ok('10. Mit neu=true wird trotzdem ein Code verschickt',
+    erzwungen.ok === true && erzwungen.kanal === 'email', JSON.stringify(erzwungen));
+  ok('10b. … und die Antwort verlangt den Code',
+    erzwungen.verifiziert === false, JSON.stringify(erzwungen));
+  // Als Text getippt zaehlt genauso - fonio schickt Felder gern als Zeichenkette.
+  ok('10c. neu als Zeichenkette wirkt ebenso',
+    (await ruf('code', { neu: 'true' })).kanal === 'email');
+  // Ein erzwungener Neu-Ausweis darf NICHTS aufweichen: es wird mehr verlangt,
+  // nie weniger. Ohne gueltigen Code bleibt es beim Nein.
+  ok('10d. Der erzwungene Weg gibt fuer sich genommen keine Daten frei',
+    !erzwungen.vertrag && !/Komfort|39,90/.test(erzwungen.text || ''), erzwungen.text);
+
+  // ── 10. Abmelden ──
+  abgemeldet = false;
+  const ab = await ruf('abmelden');
+  ok('11. Abmelden raeumt die Telefon-Verifizierung weg', abgemeldet === true);
+  ok('11b. … sagt aber ehrlich, dass WhatsApp weiter gilt',
+    ab.verifiziert === true && /WhatsApp/.test(ab.text || ''), JSON.stringify(ab));
+  ok('11c. … und weist auf den Weg zum Testen hin',
+    /neu=true/.test(ab.naechsterSchritt || ''), ab.naechsterSchritt);
+
+  verifiziert = false;
+  const ab2 = await ruf('abmelden');
+  ok('12. Ohne anderen Kanal ist danach wirklich Schluss',
+    ab2.verifiziert === false, JSON.stringify(ab2));
+  ok('12b. … und die Vertragsauskunft ist wieder zu',
+    (await ruf('vertrag')).ok === false);
 
   console.log(pass ? 'PHONE-MEMBER PASS' : 'PHONE-MEMBER FAIL');
   process.exit(pass ? 0 : 1);

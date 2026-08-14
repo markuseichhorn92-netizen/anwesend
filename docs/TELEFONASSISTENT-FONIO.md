@@ -44,6 +44,19 @@ Prüfen, ob es gewirkt hat:
 curl -s "https://mitglieder.fit-inn-trier.de/api/phone/info"
 ```
 
+> **Auf Windows in der PowerShell laufen diese Zeilen nicht.** Dort ist `curl` nur
+> ein anderer Name für `Invoke-WebRequest` und versteht `-X`, `-H` und `-d` nicht;
+> der Backslash am Zeilenende ist ebenfalls Unix (PowerShell nutzt ein Backtick).
+> Entweder `curl.exe` schreiben statt `curl` und alles in **eine** Zeile setzen —
+> oder die PowerShell-Fassung nehmen, die bei den jeweiligen Befehlen mit
+> dabeisteht.
+
+PowerShell:
+
+```powershell
+Invoke-RestMethod -Uri "https://mitglieder.fit-inn-trier.de/api/phone/info"
+```
+
 - Vorher: `{"ok":false,"error":"not_configured"}`
 - Nachher: `{"ok":false,"error":"unauthorized"}`
 
@@ -104,6 +117,12 @@ Dasselbe geht auch vom Rechner aus:
 
 ```
 curl "https://mitglieder.fit-inn-trier.de/api/phone/ping?key=DEIN_SCHLUESSEL"
+```
+
+PowerShell:
+
+```powershell
+Invoke-RestMethod -Uri "https://mitglieder.fit-inn-trier.de/api/phone/ping?key=DEIN_SCHLUESSEL"
 ```
 
 ---
@@ -616,6 +635,37 @@ Vor dem ersten echten Einsatz gehört das in `docs/VVT-TOM.md` und in die DSFA:
 Zweck, Rechtsgrundlage, Aufbewahrung der Verifizierung (60 Tage, gleitend) und
 die Einwilligungsversion (`PHONE_CONSENT_VERSION`).
 
+#### Den Code-Ablauf testen, obwohl man schon ausgewiesen ist
+
+Wer den WhatsApp-Assistenten nutzt, ist für seine Nummer bereits verifiziert und
+überspringt den Code — bekommt den Ablauf also nie zu sehen. Zum Testen lässt er
+sich erzwingen:
+
+```powershell
+Invoke-RestMethod -Uri "https://mitglieder.fit-inn-trier.de/api/phone/member" -Method POST -Headers @{Authorization="Bearer DEIN_SCHLUESSEL"} -ContentType "application/json" -Body '{"aktion":"code","phone":"015120442244","neu":true}'
+```
+
+Der Code kommt per E-Mail oder WhatsApp. Danach mit ihm prüfen:
+
+```powershell
+Invoke-RestMethod -Uri "https://mitglieder.fit-inn-trier.de/api/phone/member" -Method POST -Headers @{Authorization="Bearer DEIN_SCHLUESSEL"} -ContentType "application/json" -Body '{"aktion":"pruefen","phone":"015120442244","code":"123456"}'
+```
+
+`neu` weicht nichts auf — es wird dabei **mehr** verlangt, nie weniger. Ohne
+gültigen Code bleibt es beim Nein.
+
+Zum Zurücksetzen der Telefon-Verifizierung:
+
+```powershell
+Invoke-RestMethod -Uri "https://mitglieder.fit-inn-trier.de/api/phone/member" -Method POST -Headers @{Authorization="Bearer DEIN_SCHLUESSEL"} -ContentType "application/json" -Body '{"aktion":"abmelden","phone":"015120442244"}'
+```
+
+> Das räumt **nur** den Telefon-Ausweis weg. Eine bestehende
+> WhatsApp-Verifizierung bleibt bestehen — anderer Kanal, eigene Einwilligung.
+> Die Antwort sagt das ausdrücklich, statt „abgemeldet" zu melden und den
+> Anrufer trotzdem verifiziert zu lassen. Für einen Test des Code-Ablaufs ist
+> ohnehin `neu=true` der richtige Weg.
+
 #### Prüfen, ob es angekommen ist
 
 Vom Rechner aus, mit deinem Schlüssel aus Schritt 1:
@@ -625,6 +675,12 @@ curl -s -X POST "https://mitglieder.fit-inn-trier.de/api/phone/member" \
   -H "Authorization: Bearer DEIN_SCHLUESSEL" \
   -H "Content-Type: application/json" \
   -d '{"aktion":"status","phone":"015120442244"}'
+```
+
+PowerShell — **eine** Zeile, ohne Zeilenumbrüche:
+
+```powershell
+Invoke-RestMethod -Uri "https://mitglieder.fit-inn-trier.de/api/phone/member" -Method POST -Headers @{Authorization="Bearer DEIN_SCHLUESSEL"} -ContentType "application/json" -Body '{"aktion":"status","phone":"015120442244"}'
 ```
 
 | Antwort | Bedeutung |

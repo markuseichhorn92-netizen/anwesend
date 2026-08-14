@@ -2,7 +2,7 @@
 
 /**
  * POST /api/phone/member
- *   { key, aktion, phone, code?, lastname?, dateOfBirth? }
+ *   { key, aktion, phone, code?, neu? }
  *
  * Auskunft zu den EIGENEN Daten am Telefon – Vertrag, Beitrag, Pause.
  *
@@ -10,6 +10,8 @@
  *   aktion=status   Bin ich schon ausgewiesen? Gibt KEINE Daten heraus, nur
  *                   „ja/nein" und über welchen Weg es weitergeht.
  *   aktion=code     Einmal-Code an den hinterlegten Kanal schicken.
+ *                   Mit neu=true auch dann, wenn schon ausgewiesen (zum Testen).
+ *   aktion=abmelden Telefon-Verifizierung zuruecksetzen.
  *   aktion=pruefen  Vorgelesenen Code prüfen -> ab jetzt verifiziert.
  *   aktion=vertrag  Tarif, Laufzeit, Kündigungsfrist, Beitrag.
  *   aktion=pause    Ob und wie pausiert werden kann, laufende Pausen.
@@ -101,8 +103,13 @@ module.exports = async function handler(req, res) {
 
   // ── Code anfordern ─────────────────────────────────────────────────────────
   if (aktion === 'code' || aktion === 'ausweisen' || aktion === 'verifizieren') {
-    if (st.verified) {
-      return P.json(res, 200, { ok: true, verifiziert: true,
+    // `neu` erzwingt den Code-Weg, auch wenn die Nummer schon ausgewiesen ist.
+    // Gebraucht zum Testen: Wer ueber WhatsApp verifiziert ist, ueberspringt den
+    // Code sonst und bekaeme den Ablauf nie zu sehen. Kein Sicherheitsloch - es
+    // wird dabei nur MEHR verlangt, nie weniger.
+    const neuAusweisen = body.neu === true || body.neu === 'true' || body.neu === 1 || body.neu === '1';
+    if (st.verified && !neuAusweisen) {
+      return P.json(res, 200, { ok: true, verifiziert: true, quelle: st.quelle,
         text: 'Sie sind bereits ausgewiesen. Was möchten Sie wissen?' });
     }
     let kunde = null;
@@ -151,10 +158,31 @@ module.exports = async function handler(req, res) {
       text: 'Danke, das hat geklappt. Was möchten Sie wissen?' });
   }
 
+  // ── Abmelden ───────────────────────────────────────────────────────────────
+  // Nimmt Zugriff weg, gibt keinen. Deshalb unbedenklich ueber diese Leitung.
+  if (aktion === 'abmelden' || aktion === 'zuruecksetzen' || aktion === 'reset') {
+    await A.clearVerified(phone);
+    const danach = await A.status(phone);
+    P.logAttempt({ schritt: 'member', aktion: 'abmelden', ok: true, restVerified: danach.verified });
+    return P.json(res, 200, {
+      ok: true, verifiziert: danach.verified, quelle: danach.quelle,
+      text: danach.verified
+        ? 'Die Telefon-Verifizierung ist zurückgesetzt. Über WhatsApp sind Sie weiterhin '
+          + 'ausgewiesen – das ist ein eigener Kanal mit eigener Einwilligung und bleibt unberührt.'
+        : 'Erledigt. Beim nächsten Mal weisen Sie sich neu aus.',
+      // Der WhatsApp-Ausweis bleibt absichtlich stehen: ihn von hier aus zu
+      // loeschen wuerde in einen anderen Kanal hineingreifen. Zum Testen des
+      // Code-Ablaufs stattdessen aktion=code mit neu=true.
+      naechsterSchritt: danach.verified
+        ? 'Soll trotzdem der Code-Ablauf getestet werden: aktion=code mit neu=true.'
+        : 'Mit aktion=code einen Einmal-Code zustellen lassen.',
+    });
+  }
+
   // ── Status ─────────────────────────────────────────────────────────────────
   if (!aktion || aktion === 'status') {
     return P.json(res, 200, {
-      ok: true, verifiziert: st.verified,
+      ok: true, verifiziert: st.verified, quelle: st.quelle,
       text: st.verified
         ? 'Sie sind ausgewiesen. Was möchten Sie wissen?'
         : 'Für Auskünfte zu Ihrem Vertrag muss ich sichergehen, dass Sie es sind. '
