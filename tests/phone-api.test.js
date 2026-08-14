@@ -136,8 +136,46 @@ ok('14d. ohne Wert -> null', P.loadText(null) === null && P.loadText({}) === nul
     ok('23. Auskunft holt Oeffnungszeiten und Auslastung parallel', /Promise\.all/.test(info));
     ok('24. … mit hartem Zeitlimit unter der 5-Sekunden-Grenze', /AbortController/.test(info) && /2500/.test(info));
 
+    // ── 9. Probetraining am Telefon ──
+    const bk = fs.readFileSync(path.join(ROOT, 'api/phone/book.js'), 'utf8');
+    ok('25. Buchung verlangt nur Name, Rufnummer und Termin',
+      /if \(!firstname\) missing/.test(bk) && /if \(!lastname\) missing/.test(bk)
+      && /Rufnummer/.test(bk) && /Termin/.test(bk));
+    ok('26. Fehlende E-Mail wird durch einen Platzhalter ersetzt', /placeholderEmail\(\)/.test(bk));
+    ok('27. Eine genannte E-Mail wird bevorzugt', /emailOk \? given : placeholderEmail\(\)/.test(bk));
+    // Der wichtigste Punkt: NUR die E-Mail wird ersetzt. Anschrift und Geburtsdatum
+    // duerfen nicht erfunden werden - sie stuenden sonst als scheinbar echte Angabe
+    // im Kundendatensatz.
+    ok('28. Anschrift wird weggelassen, nicht erfunden',
+      /street: clean\(body\.street, 80\) \|\| undefined/.test(bk) && !/street: '/.test(bk));
+    ok('29. Geburtsdatum nur bei gueltigem Format, sonst weggelassen',
+      /\^\\d\{4\}-\\d\{2\}-\\d\{2\}\$/.test(bk) && /dateOfBirth, 10\) : undefined/.test(bk));
+    ok('30. Werbeeinwilligung ist am Telefon immer false', /marketing: false/.test(bk));
+    ok('31. Notiz warnt das Team vor der Platzhalter-Adresse', /PLATZHALTER/.test(bk));
+    ok('32. Fehlgeschlagene Buchung wird ehrlich gemeldet', /booking_failed/.test(bk) && /nicht geklappt/.test(bk));
+    ok('33. Erfolgssatz sagt bei Platzhalter, dass keine Mail kommt', /ohne Adresse nicht schicken/.test(bk));
+
+    // Platzhalter-Erzeugung wirklich ausfuehren (rein, kein Netz).
+    const mkBlock = bk.slice(bk.indexOf('function placeholderEmail'), bk.indexOf('function clean('));
+    const E = {};
+    // eslint-disable-next-line no-new-func
+    new Function('crypto', 'process', 'exports', mkBlock + '\nexports.f=placeholderEmail;')(
+      require('node:crypto'), { env: { MAIL_TO: 'info@fit-inn-trier.de' } }, E);
+    const a1 = E.f(), a2 = E.f();
+    ok('34. Platzhalter ist eine gueltige Adresse', /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(a1), a1);
+    ok('35. … liegt auf dem Studio-Postfach (zustellbar)', /@fit-inn-trier\.de$/.test(a1) && a1.indexOf('info+tel-') === 0, a1);
+    ok('36. … und ist pro Lead eindeutig (kein Zusammenfuehren in Magicline)', a1 !== a2, a1 + ' / ' + a2);
+
+    const E2 = {};
+    // eslint-disable-next-line no-new-func
+    new Function('crypto', 'process', 'exports', mkBlock + '\nexports.f=placeholderEmail;')(
+      require('node:crypto'), { env: { PHONE_LEAD_EMAIL: 'telefon-{id}@example.de' } }, E2);
+    const b1 = E2.f();
+    ok('37. Eigenes Muster wird beachtet und {id} ersetzt', /^telefon-[a-f0-9]{8}@example\.de$/.test(b1), b1);
+
     const env = fs.readFileSync(path.join(ROOT, '.env.example'), 'utf8');
-    ok('25. PHONE_KEY ist dokumentiert', /PHONE_KEY=/.test(env));
+    ok('38. PHONE_KEY ist dokumentiert', /PHONE_KEY=/.test(env));
+    ok('39. Platzhalter-Muster ist dokumentiert', /PHONE_LEAD_EMAIL/.test(env));
 
     console.log(pass ? 'PHONE-API PASS' : 'PHONE-API FAIL');
     process.exit(pass ? 0 : 1);
