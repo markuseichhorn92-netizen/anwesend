@@ -163,8 +163,14 @@ ok('14d. ohne Wert -> null', P.loadText(null) === null && P.loadText({}) === nul
     // Der wichtigste Punkt: NUR die E-Mail wird ersetzt. Anschrift und Geburtsdatum
     // duerfen nicht erfunden werden - sie stuenden sonst als scheinbar echte Angabe
     // im Kundendatensatz.
-    ok('28. Anschrift wird weggelassen, nicht erfunden',
-      /street: clean\(body\.street, 80\) \|\| undefined/.test(bk) && !/street: '/.test(bk));
+    // Der erste Versuch erfindet NICHTS. Erst wenn Magicline ohne Anschrift ablehnt,
+    // folgt ein zweiter mit einem ERKENNBAREN Platzhalter - „Telefonisch erfasst"
+    // liest niemand als echte Strasse. Eine plausibel klingende Fantasieadresse
+    // („Musterstrasse 1") waere das Gegenteil davon und ist hier ausgeschlossen.
+    ok('28. Erster Versuch ohne erfundene Anschrift',
+      /street: clean\(body\.street, 80\) \|\| undefined/.test(bk));
+    ok('28b. Platzhalter-Anschrift ist als solche erkennbar',
+      /street: 'Telefonisch erfasst'/.test(bk) && !/Musterstra|Beispielstra|Hauptstra/i.test(bk));
     ok('29. Geburtsdatum nur bei gueltigem Format, sonst weggelassen',
       /\^\\d\{4\}-\\d\{2\}-\\d\{2\}\$/.test(bk) && /dateOfBirth, 10\) : undefined/.test(bk));
     ok('30. Werbeeinwilligung ist am Telefon immer false', /marketing: false/.test(bk));
@@ -193,6 +199,29 @@ ok('14d. ohne Wert -> null', P.loadText(null) === null && P.loadText({}) === nul
     const env = fs.readFileSync(path.join(ROOT, '.env.example'), 'utf8');
     ok('38. PHONE_KEY ist dokumentiert', /PHONE_KEY=/.test(env));
     ok('39. Platzhalter-Muster ist dokumentiert', /PHONE_LEAD_EMAIL/.test(env));
+
+    // ── 10. Body-Verarbeitung: fremde Plattformen serialisieren unterschiedlich ──
+    // Ein stiller Parse-Fehler saehe aus wie "alle Pflichtfelder fehlen" und
+    // schickt die Fehlersuche in die voellig falsche Richtung.
+    ok('42. JSON-Body', P.parseBody('{"firstname":"Markus"}', 'application/json').firstname === 'Markus');
+    ok('43. form-urlencoded', P.parseBody('firstname=Markus&phone=0151', 'application/x-www-form-urlencoded').phone === '0151');
+    ok('43b. urlencoded auch ohne passenden Content-Type erkannt', P.parseBody('firstname=Markus&phone=0151', '').firstname === 'Markus');
+    ok('44. Felder in einem Umschlag werden ausgepackt',
+      P.parseBody('{"parameters":{"firstname":"Markus"}}', 'application/json').firstname === 'Markus');
+    ok('44b. auch bei "arguments" (Function-Calling-Schreibweise)',
+      P.parseBody('{"arguments":{"phone":"0151"}}', 'application/json').phone === '0151');
+    ok('45. leerer Body -> leeres Objekt, kein Absturz', JSON.stringify(P.parseBody('', '')) === '{}');
+    ok('45b. Muell -> leeres Objekt', typeof P.parseBody('<html>kaputt', '') === 'object');
+    ok('46. Aussenliegende Felder bleiben neben dem Umschlag erhalten',
+      P.parseBody('{"key":"k","parameters":{"firstname":"M"}}', 'application/json').key === 'k');
+
+    // ── 11. Buchung: Diagnose und Anschrift-Rueckfallebene ──
+    const bk2 = fs.readFileSync(path.join(ROOT, 'api/phone/book.js'), 'utf8');
+    ok('47. Magicline-Fehler landet als hint im Log', /hint: detail/.test(bk2));
+    ok('48. Zweiter Versuch mit markierter Platzhalter-Anschrift', /Telefonisch erfasst/.test(bk2));
+    ok('49. … nur wenn wirklich keine Anschrift genannt wurde', /const noAddress = !base\.street/.test(bk2));
+    ok('50. … und die Notiz weist darauf hin', /Anschrift ist ein PLATZHALTER/.test(bk2));
+    ok('51. Antwort sagt, ob eine Platzhalter-Anschrift benutzt wurde', /addressPlaceholder: addrPlaceholder/.test(bk2));
 
     const png = fs.readFileSync(path.join(ROOT, 'api/phone/ping.js'), 'utf8');
     ok('40. Einrichtungshilfe /api/phone/ping vorhanden', /naechsterSchritt/.test(png));

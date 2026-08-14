@@ -98,31 +98,54 @@ module.exports = async function handler(req, res) {
     clean(body.note, 200),
   ].filter(Boolean).join(' | ');
 
-  let r = null;
-  try {
-    r = await C.bookTrial({
-      firstname: firstname,
-      lastname: lastname,
-      email: email,
-      phone: phone,
-      // Nur durchreichen, was tatsächlich genannt wurde – nichts erfinden.
-      gender: clean(body.gender, 10) || undefined,
-      dateOfBirth: /^\d{4}-\d{2}-\d{2}$/.test(clean(body.dateOfBirth, 10)) ? clean(body.dateOfBirth, 10) : undefined,
-      street: clean(body.street, 80) || undefined,
-      houseNumber: clean(body.houseNumber, 20) || undefined,
-      zip: clean(body.zip, 12) || undefined,
-      city: clean(body.city, 60) || undefined,
-      startDateTime: startDateTime,
-      trainerRequired: !!body.trainerRequired,
-      marketing: false,          // am Telefon nicht nachweisbar einholbar
-      note: note,
-    });
-  } catch (e) { r = null; }
+  const base = {
+    firstname: firstname,
+    lastname: lastname,
+    email: email,
+    phone: phone,
+    // Nur durchreichen, was tatsächlich genannt wurde – nichts erfinden.
+    gender: clean(body.gender, 10) || undefined,
+    dateOfBirth: /^\d{4}-\d{2}-\d{2}$/.test(clean(body.dateOfBirth, 10)) ? clean(body.dateOfBirth, 10) : undefined,
+    street: clean(body.street, 80) || undefined,
+    houseNumber: clean(body.houseNumber, 20) || undefined,
+    zip: clean(body.zip, 12) || undefined,
+    city: clean(body.city, 60) || undefined,
+    startDateTime: startDateTime,
+    trainerRequired: !!body.trainerRequired,
+    marketing: false,          // am Telefon nicht nachweisbar einholbar
+    note: note,
+  };
+
+  const attempt = async (d) => { try { return await C.bookTrial(d); } catch (e) { return null; } };
+
+  let r = await attempt(base);
+
+  // Verlangt Magicline eine Anschrift, scheitert der erste Versuch. Dann ein
+  // ZWEITER mit einer erkennbaren Platzhalter-Anschrift – „Telefonisch erfasst“
+  // liest sich für niemanden wie eine echte Adresse, blockiert aber auch nicht
+  // die Buchung. Ort und Postleitzahl sind die des Studios.
+  let addrPlaceholder = false;
+  const noAddress = !base.street || !base.zip || !base.city;
+  if ((!r || !r.ok) && noAddress) {
+    addrPlaceholder = true;
+    r = await attempt(Object.assign({}, base, {
+      street: 'Telefonisch erfasst',
+      houseNumber: '-',
+      zip: '54296',
+      city: 'Trier',
+      note: note + ' | Anschrift ist ein PLATZHALTER (am Telefon nicht erhoben) – bitte ersetzen.',
+    }));
+  }
 
   if (!r || !r.ok) {
     // Ehrlich bleiben: lieber ein Rückruf als eine Bestätigung, die nicht stimmt.
+    // `hint` traegt die Rueckmeldung von Magicline ins fonio-Log – ohne sie ist
+    // nicht zu erkennen, WELCHES Feld fehlt.
+    const detail = String((r && (r.text || (r.json && JSON.stringify(r.json)))) || '').slice(0, 300);
     return P.json(res, 200, {
       ok: false, error: 'booking_failed', status: (r && r.status) || null,
+      hint: detail || 'Magicline war nicht erreichbar.',
+      triedAddressPlaceholder: addrPlaceholder,
       text: 'Die Buchung hat gerade nicht geklappt. Ich notiere den Wunsch, dann meldet sich das Team – oder Sie erreichen uns direkt unter ' + STUDIO_PHONE + '.',
     });
   }
@@ -143,6 +166,7 @@ module.exports = async function handler(req, res) {
   return P.json(res, 200, {
     ok: true,
     emailPlaceholder: placeholder,
+    addressPlaceholder: addrPlaceholder,
     text: 'Der Termin steht' + (when ? (': ' + when) : '') + '. '
       + (hallo ? ('Bis dahin, ' + hallo + '! ') : '')
       + (placeholder
