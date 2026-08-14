@@ -11,15 +11,23 @@
  * weil das Formular sie ohnehin abfragt. Am Telefon ist das nicht praktikabel –
  * eine Anschrift und eine E-Mail zu diktieren dauert und geht schief.
  *
+ * Was Magicline WIRKLICH verlangt (am 14.08. gegen die Connect-API ausgemessen,
+ * jeweils mit ungültigem Termin, damit nichts gebucht wird):
+ *   firstname, lastname, email, phone, gender, dateOfBirth
+ *   und eine Anschrift MIT Hausnummer (ohne houseNumber -> Ablehnung).
+ *   gender kennt nur MALE, FEMALE, UNISEX – „UNKNOWN“ wird abgelehnt.
+ *
  * Zuschnitt hier:
- *   • Pflicht sind nur Vorname, Nachname, Rufnummer und Termin.
- *   • Fehlt die E-Mail, setzen wir einen PLATZHALTER (siehe placeholderEmail).
- *   • Alles andere wird weggelassen statt erfunden. lib/connect.js reicht
- *     gender/dateOfBirth als `undefined` durch; eine erfundene Anschrift oder
- *     ein erfundenes Geburtsdatum stünde dagegen als scheinbar echte Angabe im
- *     Kundendatensatz – das machen wir nicht.
- *   • Lehnt Magicline die Buchung ab, meldet der Endpunkt das ehrlich und
- *     verweist auf den Rückruf, statt es zu vertuschen.
+ *   • Am Telefon erfragt werden Vorname, Nachname, Rufnummer, Termin und
+ *     GEBURTSDATUM. Das Geburtsdatum lässt sich nicht ersetzen: eine erfundene
+ *     Angabe könnte eine minderjährige Person als volljährig führen.
+ *   • E-Mail: Platzhalter, falls nicht genannt (siehe placeholderEmail).
+ *   • Anschrift: erkennbarer Platzhalter, falls nicht genannt. „Telefonisch
+ *     erfasst“ liest niemand als echte Straße.
+ *   • Geschlecht: UNISEX, falls nicht genannt – ein von Magicline erlaubter
+ *     Wert, keine erfundene Eigenschaft.
+ *   • Lehnt Magicline trotzdem ab, meldet der Endpunkt das ehrlich samt
+ *     Originalmeldung und verweist auf den Rückruf.
  *
  * Werbeeinwilligung ist IMMER false. Am Telefon lässt sich keine nachweisbare
  * Einwilligung einholen; die holt das Team beim Rückruf oder vor Ort.
@@ -55,6 +63,32 @@ function placeholderEmail() {
 
 function clean(v, max) { return String(v == null ? '' : v).trim().slice(0, max || 80); }
 
+// Geburtsdatum aus dem Gespräch: die Erkennung liefert mal „1990-05-04“, mal
+// „04.05.1990“, mal „4.5.1990“. Alles drei wird zu YYYY-MM-DD.
+function birthDate(v) {
+  const t = clean(v, 20);
+  let m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(t);
+  if (!m) {
+    const d = /^(\d{1,2})\.(\d{1,2})\.(\d{4})$/.exec(t);
+    if (d) m = [null, d[3], ('0' + d[2]).slice(-2), ('0' + d[1]).slice(-2)];
+  }
+  if (!m) return '';
+  const y = parseInt(m[1], 10), mo = parseInt(m[2], 10), da = parseInt(m[3], 10);
+  const now = new Date().getFullYear();
+  if (!(y >= 1900 && y <= now && mo >= 1 && mo <= 12 && da >= 1 && da <= 31)) return '';
+  return m[1] + '-' + m[2] + '-' + m[3];
+}
+
+// Magicline erlaubt genau diese drei Werte.
+const GENDERS = { MALE: 1, FEMALE: 1, UNISEX: 1 };
+function genderOf(v) {
+  const t = clean(v, 12).toUpperCase();
+  if (GENDERS[t]) return t;
+  if (/^(M|HERR|MANN|MAENNLICH|MÄNNLICH)$/.test(t)) return 'MALE';
+  if (/^(W|F|FRAU|WEIBLICH)$/.test(t)) return 'FEMALE';
+  return 'UNISEX';   // nicht genannt – erlaubter Wert, keine erfundene Eigenschaft
+}
+
 // Vorname zum Ansprechen im Bestätigungssatz.
 function firstWord(s) { return String(s || '').trim().split(/\s+/)[0] || ''; }
 
@@ -74,6 +108,10 @@ module.exports = async function handler(req, res) {
   if (!lastname) missing.push('Nachname');
   if (phone.replace(/[^\d]/g, '').length < 6) missing.push('Rufnummer');
   if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(startDateTime)) missing.push('Termin');
+  // Magicline verlangt das Geburtsdatum. Es laesst sich nicht ersetzen: eine
+  // erfundene Angabe koennte eine minderjaehrige Person als volljaehrig fuehren.
+  const dob = birthDate(body.dateOfBirth);
+  if (!dob) missing.push('Geburtsdatum');
   if (missing.length) {
     return P.json(res, 200, {
       ok: false, error: 'missing', missing: missing,
@@ -98,44 +136,34 @@ module.exports = async function handler(req, res) {
     clean(body.note, 200),
   ].filter(Boolean).join(' | ');
 
-  const base = {
-    firstname: firstname,
-    lastname: lastname,
-    email: email,
-    phone: phone,
-    // Nur durchreichen, was tatsächlich genannt wurde – nichts erfinden.
-    gender: clean(body.gender, 10) || undefined,
-    dateOfBirth: /^\d{4}-\d{2}-\d{2}$/.test(clean(body.dateOfBirth, 10)) ? clean(body.dateOfBirth, 10) : undefined,
-    street: clean(body.street, 80) || undefined,
-    houseNumber: clean(body.houseNumber, 20) || undefined,
-    zip: clean(body.zip, 12) || undefined,
-    city: clean(body.city, 60) || undefined,
-    startDateTime: startDateTime,
-    trainerRequired: !!body.trainerRequired,
-    marketing: false,          // am Telefon nicht nachweisbar einholbar
-    note: note,
-  };
+  // Anschrift: die genannte, sonst ein erkennbarer Platzhalter. Magicline lehnt
+  // ohne Anschrift (inkl. Hausnummer) ab - ausgemessen, siehe Kopfkommentar.
+  const hasAddr = clean(body.street, 80) && clean(body.zip, 12) && clean(body.city, 60);
+  const addrPlaceholder = !hasAddr;
+  const address = hasAddr
+    ? { street: clean(body.street, 80), houseNumber: clean(body.houseNumber, 20) || '-',
+        zip: clean(body.zip, 12), city: clean(body.city, 60) }
+    : { street: 'Telefonisch erfasst', houseNumber: '-', zip: '54296', city: 'Trier' };
 
-  const attempt = async (d) => { try { return await C.bookTrial(d); } catch (e) { return null; } };
-
-  let r = await attempt(base);
-
-  // Verlangt Magicline eine Anschrift, scheitert der erste Versuch. Dann ein
-  // ZWEITER mit einer erkennbaren Platzhalter-Anschrift – „Telefonisch erfasst“
-  // liest sich für niemanden wie eine echte Adresse, blockiert aber auch nicht
-  // die Buchung. Ort und Postleitzahl sind die des Studios.
-  let addrPlaceholder = false;
-  const noAddress = !base.street || !base.zip || !base.city;
-  if ((!r || !r.ok) && noAddress) {
-    addrPlaceholder = true;
-    r = await attempt(Object.assign({}, base, {
-      street: 'Telefonisch erfasst',
-      houseNumber: '-',
-      zip: '54296',
-      city: 'Trier',
-      note: note + ' | Anschrift ist ein PLATZHALTER (am Telefon nicht erhoben) – bitte ersetzen.',
-    }));
-  }
+  let r = null;
+  try {
+    r = await C.bookTrial({
+      firstname: firstname,
+      lastname: lastname,
+      email: email,
+      phone: phone,
+      gender: genderOf(body.gender),
+      dateOfBirth: dob,
+      street: address.street,
+      houseNumber: address.houseNumber,
+      zip: address.zip,
+      city: address.city,
+      startDateTime: startDateTime,
+      trainerRequired: !!body.trainerRequired,
+      marketing: false,          // am Telefon nicht nachweisbar einholbar
+      note: note + (addrPlaceholder ? ' | Anschrift ist ein PLATZHALTER (am Telefon nicht erhoben) - bitte ersetzen.' : ''),
+    });
+  } catch (e) { r = null; }
 
   if (!r || !r.ok) {
     // Ehrlich bleiben: lieber ein Rückruf als eine Bestätigung, die nicht stimmt.
@@ -145,7 +173,6 @@ module.exports = async function handler(req, res) {
     return P.json(res, 200, {
       ok: false, error: 'booking_failed', status: (r && r.status) || null,
       hint: detail || 'Magicline war nicht erreichbar.',
-      triedAddressPlaceholder: addrPlaceholder,
       text: 'Die Buchung hat gerade nicht geklappt. Ich notiere den Wunsch, dann meldet sich das Team – oder Sie erreichen uns direkt unter ' + STUDIO_PHONE + '.',
     });
   }

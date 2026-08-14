@@ -155,9 +155,9 @@ ok('14d. ohne Wert -> null', P.loadText(null) === null && P.loadText({}) === nul
 
     // ── 9. Probetraining am Telefon ──
     const bk = fs.readFileSync(path.join(ROOT, 'api/phone/book.js'), 'utf8');
-    ok('25. Buchung verlangt nur Name, Rufnummer und Termin',
+    ok('25. Buchung verlangt Name, Rufnummer, Termin und Geburtsdatum',
       /if \(!firstname\) missing/.test(bk) && /if \(!lastname\) missing/.test(bk)
-      && /Rufnummer/.test(bk) && /Termin/.test(bk));
+      && /Rufnummer/.test(bk) && /Termin/.test(bk) && /missing\.push\('Geburtsdatum'\)/.test(bk));
     ok('26. Fehlende E-Mail wird durch einen Platzhalter ersetzt', /placeholderEmail\(\)/.test(bk));
     ok('27. Eine genannte E-Mail wird bevorzugt', /emailOk \? given : placeholderEmail\(\)/.test(bk));
     // Der wichtigste Punkt: NUR die E-Mail wird ersetzt. Anschrift und Geburtsdatum
@@ -167,12 +167,23 @@ ok('14d. ohne Wert -> null', P.loadText(null) === null && P.loadText({}) === nul
     // folgt ein zweiter mit einem ERKENNBAREN Platzhalter - „Telefonisch erfasst"
     // liest niemand als echte Strasse. Eine plausibel klingende Fantasieadresse
     // („Musterstrasse 1") waere das Gegenteil davon und ist hier ausgeschlossen.
-    ok('28. Erster Versuch ohne erfundene Anschrift',
-      /street: clean\(body\.street, 80\) \|\| undefined/.test(bk));
+    // Genannte Anschrift hat Vorrang; nur wenn keine kommt, greift der Platzhalter.
+    ok('28. Genannte Anschrift wird bevorzugt',
+      /const hasAddr = clean\(body\.street, 80\)/.test(bk) && /hasAddr\s*\n?\s*\?/.test(bk));
     ok('28b. Platzhalter-Anschrift ist als solche erkennbar',
       /street: 'Telefonisch erfasst'/.test(bk) && !/Musterstra|Beispielstra|Hauptstra/i.test(bk));
-    ok('29. Geburtsdatum nur bei gueltigem Format, sonst weggelassen',
-      /\^\\d\{4\}-\\d\{2\}-\\d\{2\}\$/.test(bk) && /dateOfBirth, 10\) : undefined/.test(bk));
+    // Magicline lehnt eine Anschrift OHNE Hausnummer ab (ausgemessen).
+    ok('28c. Hausnummer wird immer mitgeschickt', /houseNumber: clean\(body\.houseNumber, 20\) \|\| '-'/.test(bk) && /houseNumber: '-'/.test(bk));
+    // Das Geburtsdatum darf NICHT ersetzt werden - eine erfundene Angabe koennte
+    // eine minderjaehrige Person als volljaehrig fuehren.
+    ok('29b. Kein Platzhalter fuers Geburtsdatum', !/dateOfBirth: '\d/.test(bk) && /dateOfBirth: dob/.test(bk));
+    // Die Liste im Code muss genau Magiclines Werte enthalten - „UNKNOWN" wird
+    // abgelehnt (ausgemessen) und darf nicht in der Zuordnung auftauchen.
+    ok('30b. Nur die von Magicline erlaubten Geschlechter',
+      /const GENDERS = \{ MALE: 1, FEMALE: 1, UNISEX: 1 \};/.test(bk)
+      && !/return 'UNKNOWN'/.test(bk));
+    ok('29. Ungueltiges Geburtsdatum -> Nachfrage statt Notloesung',
+      /const dob = birthDate\(body\.dateOfBirth\)/.test(bk) && /if \(!dob\) missing\.push/.test(bk));
     ok('30. Werbeeinwilligung ist am Telefon immer false', /marketing: false/.test(bk));
     ok('31. Notiz warnt das Team vor der Platzhalter-Adresse', /PLATZHALTER/.test(bk));
     ok('32. Fehlgeschlagene Buchung wird ehrlich gemeldet', /booking_failed/.test(bk) && /nicht geklappt/.test(bk));
@@ -218,10 +229,25 @@ ok('14d. ohne Wert -> null', P.loadText(null) === null && P.loadText({}) === nul
     // ── 11. Buchung: Diagnose und Anschrift-Rueckfallebene ──
     const bk2 = fs.readFileSync(path.join(ROOT, 'api/phone/book.js'), 'utf8');
     ok('47. Magicline-Fehler landet als hint im Log', /hint: detail/.test(bk2));
-    ok('48. Zweiter Versuch mit markierter Platzhalter-Anschrift', /Telefonisch erfasst/.test(bk2));
-    ok('49. … nur wenn wirklich keine Anschrift genannt wurde', /const noAddress = !base\.street/.test(bk2));
+    ok('48. Markierte Platzhalter-Anschrift statt Ablehnung', /Telefonisch erfasst/.test(bk2));
+    ok('49. … nur wenn wirklich keine Anschrift genannt wurde', /const addrPlaceholder = !hasAddr/.test(bk2));
     ok('50. … und die Notiz weist darauf hin', /Anschrift ist ein PLATZHALTER/.test(bk2));
     ok('51. Antwort sagt, ob eine Platzhalter-Anschrift benutzt wurde', /addressPlaceholder: addrPlaceholder/.test(bk2));
+
+    // ── 12. Gesprochene Angaben normalisieren (wirklich ausgefuehrt) ──
+    const nb = bk.slice(bk.indexOf('function birthDate'), bk.indexOf('module.exports'));
+    const N = {};
+    // eslint-disable-next-line no-new-func
+    new Function('exports', 'function clean(v,max){return String(v==null?\'\':v).trim().slice(0,max||80);}\n'
+      + nb + '\nexports.b=birthDate;exports.g=genderOf;')(N);
+    ok('52. Geburtsdatum ISO', N.b('1990-05-04') === '1990-05-04');
+    ok('53. Geburtsdatum deutsch', N.b('04.05.1990') === '1990-05-04', N.b('04.05.1990'));
+    ok('54. Geburtsdatum deutsch ohne fuehrende Null', N.b('4.5.1990') === '1990-05-04', N.b('4.5.1990'));
+    ok('55. Unsinn -> leer (Buchung fragt dann nach)', N.b('irgendwann') === '' && N.b('') === '');
+    ok('56. Unmoegliches Datum -> leer', N.b('1800-01-01') === '' && N.b('1990-13-01') === '');
+    ok('57. Geschlecht: Herr/Frau werden verstanden', N.g('Herr') === 'MALE' && N.g('frau') === 'FEMALE');
+    ok('58. Geschlecht: direkte Werte bleiben', N.g('MALE') === 'MALE' && N.g('UNISEX') === 'UNISEX');
+    ok('59. Nicht genannt -> UNISEX (erlaubt), NIE UNKNOWN', N.g('') === 'UNISEX' && N.g('keine ahnung') === 'UNISEX');
 
     const png = fs.readFileSync(path.join(ROOT, 'api/phone/ping.js'), 'utf8');
     ok('40. Einrichtungshilfe /api/phone/ping vorhanden', /naechsterSchritt/.test(png));

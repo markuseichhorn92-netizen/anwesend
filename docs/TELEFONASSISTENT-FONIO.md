@@ -142,13 +142,17 @@ Der Assistent soll sich den gewählten `startDateTime` merken — den braucht 4.
 | `lastname` | ja | |
 | `phone` | ja | Rufnummer des Anrufers |
 | `startDateTime` | ja | exakt der Wert aus 4.2 |
+| `dateOfBirth` | **ja** | `1990-05-04` oder `04.05.1990` – beides wird verstanden |
 | `email` | nein | nur wenn der Anrufer sie von sich aus nennt |
-| `gender` | nein | |
-| `dateOfBirth` | nein | Format JJJJ-MM-TT |
+| `gender` | nein | `MALE`, `FEMALE`, `UNISEX` – auch „Herr"/„Frau" werden verstanden |
 
-**Nach Anschrift und Geburtsdatum soll der Assistent nicht fragen.** Das Team ergänzt
-das beim Termin. Nennt der Anrufer keine E-Mail, setzt der Server automatisch eine
-Platzhalter-Adresse (siehe unten) — die Buchung geht trotzdem durch.
+**Das Geburtsdatum muss der Assistent erfragen.** Magicline verlangt es, und es
+lässt sich nicht ersetzen: eine erfundene Angabe könnte eine minderjährige Person
+als volljährig führen. Die Frage ist am Telefon unkritisch — anders als eine
+E-Mail-Adresse muss niemand etwas buchstabieren.
+
+**Nach der Anschrift soll der Assistent NICHT fragen.** Fehlt sie, setzt der Server
+einen erkennbaren Platzhalter, ebenso bei fehlender E-Mail (siehe unten).
 
 ### 4.4 Rückruf notieren — alles andere
 
@@ -179,11 +183,32 @@ In fonio ins Systemprompt / die Anweisungen aufnehmen:
 > zum Gesundheitszustand geben. Du kannst am Telefon nicht prüfen, wer anruft.
 > Bei solchen Themen notierst du einen Rückruf.
 >
-> Frage beim Probetraining nur nach Vorname, Nachname und Rufnummer. Frage NICHT
-> nach Anschrift oder Geburtsdatum. Eine E-Mail-Adresse nimmst du nur auf, wenn
-> sie von selbst genannt wird — buchstabieren lassen brauchst du nicht.
+> Frage beim Probetraining nach Vorname, Nachname, Rufnummer und Geburtsdatum.
+> Nennt jemand einen vollständigen Namen, teile ihn selbst in Vor- und Nachname
+> auf und frage nicht erneut. Frage NICHT nach der Anschrift. Eine E-Mail-Adresse
+> nimmst du nur auf, wenn sie von selbst genannt wird — buchstabieren lassen
+> brauchst du nicht.
 >
 > Bei Gesundheitsfragen, Schmerzen oder Beschwerden verweist du an das Team.
+
+---
+
+## Was Magicline wirklich verlangt
+
+Am 14.08. gegen die Connect-API ausgemessen — jeweils mit einem ungültigen Termin,
+damit dabei nichts gebucht wird:
+
+| Feld | Pflicht? | am Telefon |
+|---|---|---|
+| firstname, lastname | ja | erfragen |
+| phone | ja | erfragen |
+| **dateOfBirth** | **ja** | **erfragen** (nicht ersetzbar) |
+| **gender** | **ja** | optional erfragen, sonst `UNISEX` |
+| email | ja | Platzhalter, falls nicht genannt |
+| **Anschrift inkl. Hausnummer** | **ja** | Platzhalter |
+
+`gender` kennt nur `MALE`, `FEMALE`, `UNISEX` — „UNKNOWN" wird abgelehnt. Eine
+Anschrift **ohne Hausnummer** wird ebenfalls abgelehnt.
 
 ---
 
