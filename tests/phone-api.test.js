@@ -339,8 +339,8 @@ ok('14d. ohne Wert -> null', P.loadText(null) === null && P.loadText({}) === nul
       /MAX_FENSTER/.test(slots) && /P\.ymdAdd\(end, 1\)/.test(slots));
     ok('74c. … bleibt dabei unter der 5-Sekunden-Grenze von fonio', /ZEITBUDGET = 3000/.test(slots));
     ok('74d. Termine werden ueber mehrere Tage gestreut', /function streue/.test(slots));
-    ok('74e. Der Assistent wird angewiesen, KEINEN Zeitpunkt selbst zu rechnen',
-      /NIE einen Zeitpunkt selbst ausrechnen/.test(slots));
+    ok('74e. Der Assistent wird angewiesen, KEINEN Wochentag selbst zu rechnen',
+      /NIE einen Wochentag oder ein Datum selbst ausrechnen/.test(slots));
     // Streuung wirklich ausfuehren.
     (function () {
       const src = slots.slice(slots.indexOf('function streue'), slots.indexOf('module.exports'));
@@ -354,6 +354,68 @@ ok('14d. ohne Wert -> null', P.loadText(null) === null && P.loadText({}) === nul
       ok('74g. … und dadurch mehrere Tage im Vorschlag', new Set(g.map(function (x) { return x.slice(0, 10); })).size === 3, JSON.stringify(g));
       ok('74h. Gibt es nur einen Tag, wird trotzdem etwas geliefert',
         S.s(['2026-08-15T09:00:00Z', '2026-08-15T10:00:00Z', '2026-08-15T11:00:00Z'], 3, 2).length >= 2);
+    })();
+
+    // ── 12e. „Nächste Woche Donnerstag" ──
+    // Im echten Gespraech gefragt: „naechste Woche, Donnerstagvormittag".
+    // Angeboten wurde Montag, der 17. August - ein anderer Wochentag. Wochentags-
+    // Rechnung ist nichts, was ein Sprachmodell zuverlaessig kann; also rechnet
+    // der Server. HEUTE ist Freitag, der 14.08.2026.
+    ok('79a. „naechste Woche Donnerstag" trifft den Donnerstag',
+      P.wochentagDatum('Donnerstag', 'nächste', HEUTE) === '2026-08-20', P.wochentagDatum('Donnerstag', 'nächste', HEUTE));
+    ok('79b2. … und NICHT den Montag', P.wochentagDatum('Donnerstag', 'nächste', HEUTE) !== '2026-08-17');
+    ok('79c. „naechste Woche Montag" ist der Montag der Folgewoche',
+      P.wochentagDatum('Montag', 'nächste', HEUTE) === '2026-08-17');
+    ok('79d. Ohne „naechste": der naechste dieser Wochentage',
+      P.wochentagDatum('Samstag', '', HEUTE) === '2026-08-15');
+    // Wer am Freitag „Freitag" sagt, meint nicht heute in zwei Stunden.
+    ok('79e. Der heutige Wochentag meint die kommende Woche',
+      P.wochentagDatum('Freitag', '', HEUTE) === '2026-08-21');
+    ok('79f. „Sonnabend" wird verstanden', P.wochentagDatum('Sonnabend', '', HEUTE) === '2026-08-15');
+    ok('79g. Umlaut-Schreibweisen von „naechste"',
+      P.wochentagDatum('Donnerstag', 'naechste', HEUTE) === '2026-08-20'
+      && P.wochentagDatum('Donnerstag', 'kommende', HEUTE) === '2026-08-20');
+    ok('79h. Unsinn -> leer, dann greift die normale Suche', P.wochentagDatum('Blubbtag', '', HEUTE) === '');
+    ok('79i. Wochentag setzt den Wunschtag im Fenster',
+      P.slotWindow({ wochentag: 'Donnerstag', woche: 'nächste' }, HEUTE).exactDay === '2026-08-20');
+    ok('79j. Ein ausdrueckliches Datum hat Vorrang vor dem Wochentag',
+      P.slotWindow({ datum: '2026-09-01', wochentag: 'Donnerstag' }, HEUTE).exactDay === '2026-09-01');
+    ok('79k. Termin-Endpunkt nimmt wochentag/woche entgegen',
+      /searchParams\.get\('wochentag'\)/.test(slots) && /searchParams\.get\('woche'\)/.test(slots));
+
+    // ── 12f. Tageszeit ──
+    // „Wie sieht es nachmittags aus?" endete im Gespraech in einer Sackgasse:
+    // der Assistent hatte nur die Vormittagstermine und musste passen.
+    ok('80a. Termin-Endpunkt kennt die Tageszeit', /searchParams\.get\('tageszeit'\)/.test(slots));
+    ok('80c. Der ganze Tag wird mitgeliefert, damit kein zweiter Aufruf noetig ist',
+      /zeitenAmTag/.test(slots) && /dafuer ist KEIN weiterer Aufruf noetig/.test(slots));
+    ok('80d. Ein Tag mit Terminen zur falschen Zeit ist nicht „ausgebucht"',
+      /An dem Tag ginge noch/.test(slots));
+    // Wirklich ausfuehren – gegen die echten Slots von Donnerstag, 20.08.2026
+    // (gegen die Connect-API geprueft: 09:30, 11:00, 15:00, 16:30, 18:00, 19:30).
+    (function () {
+      const src = slots.slice(slots.indexOf('function berlinStunde'), slots.indexOf('// Die Connect-API liefert'));
+      const T = {};
+      // eslint-disable-next-line no-new-func
+      new Function('exports', src + '\nexports.f=tageszeitFilter;exports.n=nachTageszeit;exports.h=berlinStunde;')(T);
+      const do2008 = ['2026-08-20T07:30:00.000Z', '2026-08-20T09:00:00.000Z', '2026-08-20T13:00:00.000Z',
+        '2026-08-20T14:30:00.000Z', '2026-08-20T16:00:00.000Z', '2026-08-20T17:30:00.000Z'];
+      ok('81a. UTC wird in Ortszeit umgerechnet', T.h('2026-08-20T13:00:00.000Z') === 15,
+        String(T.h('2026-08-20T13:00:00.000Z')));
+      const g = T.n(do2008);
+      ok('81b. Vormittag richtig erkannt', g.vormittag.length === 2, JSON.stringify(g.vormittag));
+      ok('81c. Nachmittag richtig erkannt', g.nachmittag.length === 2, JSON.stringify(g.nachmittag));
+      ok('81d. Abend richtig erkannt', g.abend.length === 2, JSON.stringify(g.abend));
+      ok('81e. Gesprochene Formen werden verstanden',
+        T.f('nachmittags').name === 'nachmittag' && T.f('Vormittag').name === 'vormittag'
+        && T.f('am Abend').name === 'abend');
+      ok('81f. Ohne Angabe kein Filter', T.f('') === null && T.f('egal') === null);
+      const nm = T.f('nachmittags');
+      ok('81g. Filter trifft genau die Nachmittagstermine',
+        do2008.filter(function (s) { return nm.test(T.h(s)); }).length === 2);
+      // Winterzeit: dieselbe UTC-Stunde liegt eine Stunde frueher.
+      ok('81h. Winterzeit wird beachtet', T.h('2026-12-10T13:00:00.000Z') === 14,
+        String(T.h('2026-12-10T13:00:00.000Z')));
     })();
 
     // Auch die Buchung holt ein Fenster (Ausweichtermine bei vollem Tag).

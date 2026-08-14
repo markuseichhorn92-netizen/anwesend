@@ -139,24 +139,37 @@ Query an die URL — auch mit `{{variable}}`.
 
 | Feld | Wert |
 |---|---|
-| URL | `https://mitglieder.fit-inn-trier.de/api/phone/slots?datum={{datum}}&ab={{ab}}&tage={{tage}}` |
+| URL | `https://mitglieder.fit-inn-trier.de/api/phone/slots?wochentag={{wochentag}}&woche={{woche}}&tageszeit={{tageszeit}}&datum={{datum}}&ab={{ab}}&tage={{tage}}` |
 | Methode | GET |
 | Header | wie Schritt 3 |
 | Body | leer lassen |
 
 Wann verwenden: *„Wenn nach freien Terminen für ein Probetraining gefragt wird."*
 
-Die drei Angaben sind alle **optional** — bleiben sie leer, kommen wie bisher die
-nächstmöglichen Termine. Sie sind dafür da, dass auch **später** gebucht werden kann:
+Alle Angaben sind **optional** — bleiben sie leer, kommen wie bisher die
+nächstmöglichen Termine.
 
 | Variable | Beschreibung für fonio | Beispiel |
 |---|---|---|
-| `datum` | Ein bestimmter Tag, wenn der Anrufer einen nennt. Format `JJJJ-MM-TT` oder `TT.MM.JJJJ`. Sonst leer lassen. | `2026-10-05` |
+| `wochentag` | Der Wochentag, den der Anrufer nennt — einfach so weitergeben, wie er gesagt wurde. Niemals selbst in ein Datum umrechnen. Sonst leer lassen. | `Donnerstag` |
+| `woche` | Nur `nächste`, wenn der Anrufer „nächste Woche" sagt. Sonst leer lassen. | `nächste` |
+| `tageszeit` | Eines von `vormittag`, `nachmittag`, `abend`, wenn der Anrufer eine Tageszeit nennt. Sonst leer lassen. | `nachmittag` |
+| `datum` | Ein konkretes Datum, wenn der Anrufer eines nennt. Format `JJJJ-MM-TT` oder `TT.MM.JJJJ`. Sonst leer lassen. | `2026-10-05` |
 | `ab` | Ab wann gesucht werden soll, wenn der Anrufer einen Zeitraum nennt („ab Oktober"). Sonst leer lassen. | `2026-10-01` |
 | `tage` | In wie vielen Tagen gesucht werden soll („in vier Wochen" = 28). Sonst leer lassen. | `28` |
 
+> **Wochentage rechnet der Server aus, nicht die KI.** „Nächste Woche Donnerstag"
+> in ein Datum umzurechnen ist etwas, das Sprachmodelle zuverlässig falsch machen —
+> in einem Testgespräch wurde daraufhin Montag angeboten. Gib `wochentag` und
+> `woche` deshalb unverändert weiter.
+
 Ist der gewünschte Tag voll, nennt die Antwort von selbst Ausweichtermine.
 Weiter als ein halbes Jahr im Voraus wird nicht gesucht.
+
+**Die Antwort enthält den ganzen Tag.** Unter `zeitenAmTag` stehen alle Zeiten des
+gewünschten Tages, getrennt nach `vormittag`, `nachmittag` und `abend`. Fragt der
+Anrufer anschließend „und wie sieht es nachmittags aus?", steht die Antwort also
+schon da — ein zweiter Aufruf ist dafür nicht nötig.
 
 Die Antwort enthält je Termin ein Feld `startDateTime` — genau dieser Wert gehört
 unverändert in die Buchung.
@@ -313,10 +326,15 @@ In fonio ins Systemprompt / die Anweisungen aufnehmen:
 > zum Gesundheitszustand geben. Du kannst am Telefon nicht prüfen, wer anruft.
 > Bei solchen Themen notierst du einen Rückruf.
 >
-> Nennt jemand einen Wunschtermin weiter in der Zukunft („im Oktober", „in vier
-> Wochen", „am 5.10."), rufe die Termin-Aktion mit `datum`, `ab` oder `tage`
-> erneut auf. Rechne NIEMALS selbst einen Zeitpunkt aus und erfinde nie einen
-> Wert für `startDateTime` — übernimm ihn immer unverändert aus der Antwort.
+> Nennt jemand einen Wunschtermin („nächste Woche Donnerstag", „im Oktober", „in
+> vier Wochen", „am 5.10."), rufe die Termin-Aktion mit `wochentag`, `woche`,
+> `datum`, `ab` oder `tage` auf und gib weiter, was gesagt wurde. Rechne NIEMALS
+> selbst ein Datum oder einen Wochentag aus — das macht der Server. Erfinde nie
+> einen Wert für `startDateTime`, sondern übernimm ihn unverändert aus der Antwort.
+>
+> Fragt jemand nach einer anderen Tageszeit desselben Tages, steht die Antwort
+> bereits im Feld `zeitenAmTag` der letzten Antwort. Sage niemals „dazu habe ich
+> keine Informationen", wenn dort noch Zeiten stehen.
 >
 > Geht es um einen SCHON GEBUCHTEN Termin, frage nach der Rufnummer, unter der
 > gebucht wurde, und zusätzlich nach dem Nachnamen (oder dem Geburtsdatum). Beides
@@ -499,3 +517,45 @@ Prüfe in fonio bei der Buchungs-Aktion:
 Zusätzlich trägt die Termin-Antwort inzwischen selbst den Hinweis
 `naechsterSchritt`, dass ohne Buchungsaufruf nichts gebucht ist — Modelle lesen
 Werkzeug-Antworten mit und halten sich meist daran.
+
+---
+
+## Wenn der Assistent sagt „das kann ich nicht direkt erledigen"
+
+Symptom: Der Anrufer will einen Termin absagen, der Assistent erfragt brav Name,
+Rufnummer und Geburtsdatum — und sagt dann, er könne es doch nicht.
+
+Das heißt fast immer: **die Aktion 4.5 ist in fonio noch nicht angelegt.** Ein
+Assistent kann nur aufrufen, was als Aktion existiert; alles andere endet in einer
+freundlichen Absage. Lege 4.5 an und beschreibe unter „Wann soll die KI das
+verwenden?" ausdrücklich auch das Absagen und Verschieben.
+
+---
+
+## Weiterleitung ins Leere
+
+Symptom: Im Verlauf steht „Weiterleitung an +49…" mit **der Nummer des Anrufers**,
+danach „das geht leider nicht, weil es ein Webanruf ist".
+
+Der Assistent hat sich in dem Fall die einzige Nummer genommen, die im Gespräch
+vorkam — nämlich die des Anrufers. Zu tun:
+
+1. In fonio eine feste **Weiterleitungsnummer** des Studios hinterlegen
+   (`0651 308524`), niemals eine Variable aus dem Gespräch.
+2. Solange Weiterleitung über Webanrufe nicht funktioniert: die Funktion
+   **abschalten** und im Systemprompt ergänzen:
+   > Du kannst Anrufe NICHT weiterleiten. Biete stattdessen an, einen Rückruf zu
+   > notieren, oder nenne die Studionummer 0651 308524.
+
+Ein Angebot, das dann scheitert, ist im Gespräch schlechter als gar kein Angebot.
+
+---
+
+## Wenn der Assistent einen falschen Wochentag anbietet
+
+Symptom: Gefragt war „nächste Woche Donnerstag", angeboten wurde Montag.
+
+Ursache: Die KI hat versucht, das Datum selbst auszurechnen. Das ist behoben —
+`wochentag` und `woche` gehen unverändert an den Server, der daraus das Datum
+bildet. Prüfe, dass beide Variablen in der Termin-Aktion angelegt sind und ihre
+Beschreibung ausdrücklich sagt: *„Niemals selbst in ein Datum umrechnen."*
