@@ -433,6 +433,76 @@ abgesagt. Ist der neue Zeitpunkt nicht mehr frei, bleibt der bisherige stehen.
 > selbst ab und bietet dann einen Rückruf an — bleibt fonios Standard bei 5 Sekunden,
 > hängt der Assistent stattdessen mitten im Satz.
 
+### 4.6 Eigene Daten — Vertrag, Beitrag, Pause
+
+| Feld | Wert |
+|---|---|
+| URL | `https://mitglieder.fit-inn-trier.de/api/phone/member` |
+| Methode | POST |
+| Header | wie Schritt 3 |
+| Timeout | **10 Sekunden** |
+
+**Body:**
+
+```json
+{
+  "aktion": "{{aktion}}",
+  "phone": "{{phone}}",
+  "code": "{{code}}"
+}
+```
+
+| Variable | Beschreibung zum Einfügen |
+|---|---|
+| `aktion` | Was getan werden soll. Genau eines von: status, code, pruefen, vertrag, pause. „status" sagt, ob sich der Anrufer schon ausgewiesen hat. „code" schickt ihm einen Einmal-Code. „pruefen" prüft den vorgelesenen Code. „vertrag" nennt Tarif, Laufzeit und Beitrag. „pause" nennt den Pausenstatus. |
+| `phone` | Die Rufnummer, die im Studio hinterlegt ist, nur Ziffern und ggf. führendes Plus, ohne Leerzeichen. Wurde sie nicht genannt, nutze die Nummer, von der aus angerufen wird. |
+| `code` | Nur bei aktion=pruefen: der sechsstellige Code, den der Anrufer vorliest. Genau so übernehmen, wie er ihn nennt. Sonst leer lassen. |
+
+**„Wann soll die KI das verwenden?"**
+
+> Immer dann aufrufen, wenn jemand etwas über SEINEN eigenen Vertrag wissen will —
+> Laufzeit, Kündigungsfrist, Beitragshöhe, Tarif — oder über eine Beitragspause.
+>
+> Rufe zuerst `aktion=status` auf. Ist der Anrufer noch nicht ausgewiesen, biete
+> ihm an, einen kurzen Code zu schicken (`aktion=code`), lass ihn den Code
+> vorlesen und prüfe ihn (`aktion=pruefen`). Erst danach `aktion=vertrag` oder
+> `aktion=pause`.
+>
+> Sage niemals Vertrags- oder Beitragsdaten, bevor die Prüfung erfolgreich war.
+> Der Server gibt sie ohnehin nicht heraus — behaupte sie also auch nicht.
+>
+> Eine Pause NICHT am Telefon zusagen oder einrichten. Zu Trainings-, Ernährungs-
+> und Gesundheitsdaten sagst du am Telefon grundsätzlich nichts und verweist auf
+> den Mitgliederbereich.
+
+#### Warum ein Code und nicht nur die Anruferkennung
+
+Die anrufende Nummer gegen Magicline zu prüfen ist der **erste** Faktor — und nur
+der. Rufnummern lassen sich fälschen, über VoIP ohne großen Aufwand. Wer allein
+darauf baut, liest Vertragsdaten an jeden vor, der eine Nummer kennt und sie
+setzen kann. Der Code geht deshalb an einen Kanal, der wirklich dem Mitglied
+gehört (E-Mail oder WhatsApp aus dem Magicline-Profil). Eine gefälschte
+Anruferkennung nützt dann nichts.
+
+Das ist genau der Maßstab, den die WhatsApp-KI schon anlegt — dort werden für
+dieselben Auskünfte ebenfalls zwei Faktoren verlangt.
+
+**Wer über WhatsApp bereits verifiziert ist, braucht am Telefon keinen Code.** Für
+diese Nummer wurden die zwei Faktoren schon erbracht; die Verifizierung gilt
+60 Tage und verlängert sich bei jeder Nutzung.
+
+#### Was bewusst NICHT am Telefon herausgeht
+
+| | |
+|---|---|
+| Trainings- und Ernährungsdaten, Atteste | Gesundheitsdaten nach Art. 9 DSGVO. Brauchen eine eigene, nachweisbare Einwilligung — die lässt sich im Gespräch nicht sauber einholen. Verweis auf den Mitgliederbereich. |
+| IBAN, vollständige Anschrift, Dokumente | Beantworten keine typische Telefonfrage, erhöhen aber den Schaden bei einer Fehlzuordnung. |
+| Pause einrichten, Vertrag ändern | Vertragsänderung. Gehört ins Team oder in den Mitgliederbereich, nicht auf die Leitung. |
+
+Vor dem ersten echten Einsatz gehört das in `docs/VVT-TOM.md` und in die DSFA:
+Zweck, Rechtsgrundlage, Aufbewahrung der Verifizierung (60 Tage, gleitend) und
+die Einwilligungsversion (`PHONE_CONSENT_VERSION`).
+
 ---
 
 ## Schritt 5 — Anweisungen für den Assistenten
