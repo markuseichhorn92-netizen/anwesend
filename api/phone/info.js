@@ -15,6 +15,8 @@
  */
 
 const P = require('../../lib/phoneApi');
+const U = require('../../lib/utilization');
+const { fetchHours } = require('../../lib/studioHours');
 
 const STUDIO = {
   name: 'Fit-Inn Trier',
@@ -24,36 +26,18 @@ const STUDIO = {
 };
 
 // Interne Endpunkte über die eigene Basis-URL abrufen (gleiche Region, schnell).
-function baseFrom(req) {
-  const h = (req && req.headers) || {};
-  const host = h['x-forwarded-host'] || h.host;
-  const proto = h['x-forwarded-proto'] || 'https';
-  if (host) return proto + '://' + host;
-  return String(process.env.PUBLIC_BASE_URL || 'https://mitglieder.fit-inn-trier.de').replace(/\/+$/, '');
-}
-
-// Nie länger warten als der Anrufer aushält: fonio bricht nach 5 s ab, wir
-// geben lieber eine Teilauskunft als gar keine.
-async function grab(url, ms) {
-  const ac = new AbortController();
-  const t = setTimeout(function () { ac.abort(); }, ms);
-  try {
-    const r = await fetch(url, { signal: ac.signal });
-    if (!r.ok) return null;
-    return await r.json();
-  } catch (e) { return null; } finally { clearTimeout(t); }
-}
-
 module.exports = async function handler(req, res) {
   if (req.method !== 'GET') return P.json(res, 405, { ok: false, error: 'method_not_allowed' });
   const g = await P.guard(req, null, 120);
   if (!g.ok) return P.json(res, g.code, g.body);
 
-  const base = baseFrom(req);
-  // Parallel holen – zusammen bleibt das deutlich unter der 5-Sekunden-Grenze.
+  // Direkt aus den geteilten Bibliotheken statt ueber HTTP an die eigene
+  // Bereitstellung: das war eine zweite Funktionsausfuehrung samt moeglichem
+  // Kaltstart, und bei jedem ueberschrittenen Zeitlimit fiel die Angabe
+  // stillschweigend weg. Beide Aufrufe scheitern sanft (null).
   const [hours, load] = await Promise.all([
-    grab(base + '/api/hours', 2500),
-    grab(base + '/api/auslastung', 2000),
+    fetchHours().then(function (h) { return (h && h.available) ? h : null; }, function () { return null; }),
+    U.fetchUtilization().then(function (u) { return u || null; }, function () { return null; }),
   ]);
 
   const st = P.openStatus(hours || {}, Date.now());

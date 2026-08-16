@@ -154,6 +154,54 @@ Wann verwenden: *„Wenn nach Öffnungszeiten, Andrang oder der Adresse gefragt 
 Bei **GET**-Aktionen gibt es keinen Body. Zusätzliche Angaben hängst du dort als
 Query an die URL — auch mit `{{variable}}`.
 
+### 4.1b Auslastung — „Ist gerade viel los?"
+
+| Feld | Wert |
+|---|---|
+| URL | `https://mitglieder.fit-inn-trier.de/api/phone/auslastung` |
+| Methode | GET |
+| Header | wie Schritt 3 |
+| Body | leer lassen (GET sendet keinen Body) |
+
+Wann verwenden:
+
+> Aufrufen, wenn jemand wissen will, wie voll es gerade ist, ob sich das Kommen
+> jetzt lohnt oder wann es ruhiger wird.
+>
+> Lies **nur** das Feld `text` vor. Nenne niemals die Personenzahl oder einen
+> Prozentwert — das sind Betriebszahlen. Fragt jemand nach einer genauen Zahl,
+> bleib freundlich bei der Einschätzung.
+
+Die Antwort verbindet zwei Dinge, die vorher getrennt herumlagen: die Live-Zahl
+aus Magicline und die typische Auslastung für diesen Wochentag und diese
+Uhrzeit. Daraus wird ein Satz, der die eigentliche Frage beantwortet:
+
+```text
+Aktuell ist ziemlich voll. Das ist etwas mehr als sonst um diese Zeit.
+Ruhiger wird es erfahrungsgemäß ab 20:00.
+```
+
+| Feld | Bedeutung |
+|---|---|
+| `text` | Der vorzulesende Satz — das einzige Feld für das Gespräch |
+| `stufe` | `wenig los` / `normal viel los` / `ziemlich voll` |
+| `imVergleich` | Einordnung gegen die übliche Auslastung dieser Uhrzeit |
+| `ruhigerAb` | Wann es heute noch spürbar ruhiger wird, sonst `null` |
+| `prozent` | Für den Assistenten, **nicht** zum Vorlesen |
+| `datenlage` | Ob Live-Zahl und Erfahrungswerte überhaupt vorlagen |
+
+> **Ist geschlossen, kommt keine Auslastung.** Sonst hieße es „aktuell ist wenig
+> los", während die Tür zu ist — und jemand fährt hin. Dann nennt die Antwort
+> stattdessen die Öffnungszeit.
+
+> **Bei dünner Datenlage kein Vergleich.** „Mehr als sonst" auf Basis von zwei
+> Messwerten wäre geraten. Erst ab drei Erfahrungswerten für diesen Zeitpunkt
+> erscheint die Einordnung.
+
+Die Aktion 4.1 (Auskunft) nennt die Auslastung weiterhin nebenbei. Für die
+gezielte Frage ist diese hier besser: Sie sagt auch, ob das für die Uhrzeit
+normal ist und wann es sich lohnt, später zu kommen.
+
 ### 4.2 Termine — „Wann könnte ich zum Probetraining kommen?"
 
 | Feld | Wert |

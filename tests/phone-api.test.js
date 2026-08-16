@@ -156,7 +156,27 @@ ok('14d. ohne Wert -> null', P.loadText(null) === null && P.loadText({}) === nul
     ok('21. Rueckruf greift nicht auf Magicline zu', !/require\('\.\.\/\.\.\/lib\/(connect|members)'\)/.test(cb.replace(/lib\/phoneApi/g, '')));
     ok('22. Rueckruf weist das Team auf die fehlende Verifikation hin', /NICHT als Mitglied verifiziert/.test(cb));
     ok('23. Auskunft holt Oeffnungszeiten und Auslastung parallel', /Promise\.all/.test(info));
-    ok('24. … mit hartem Zeitlimit unter der 5-Sekunden-Grenze', /AbortController/.test(info) && /2500/.test(info));
+    // Frueher lagen Abruf und Zeitlimit im Endpunkt selbst (HTTP-Aufruf an die
+    // eigene Bereitstellung). Beides liegt jetzt in den geteilten Bibliotheken -
+    // geprueft wird deshalb dort, sonst wuerde der Test eine Umsetzung
+    // festschreiben statt der Absicht: nichts darf ueber fonios 5-Sekunden-Grenze
+    // hinauslaufen.
+    const utilLib = fs.readFileSync(path.join(ROOT, 'lib/utilization.js'), 'utf8');
+    const hoursLib = fs.readFileSync(path.join(ROOT, 'lib/studioHours.js'), 'utf8');
+    ok('24. Auslastungsabruf hat ein hartes Zeitlimit',
+      /AbortController/.test(utilLib) && /signal:\s*ac\.signal/.test(utilLib));
+    ok('24b. Oeffnungszeiten-Abruf ebenso',
+      /AbortController/.test(hoursLib) && /signal:\s*ac\.signal/.test(hoursLib));
+    // Beide zusammen muessen unter 5 Sekunden bleiben - sie laufen parallel,
+    // also zaehlt das groessere Limit.
+    const utilMs = parseInt((/ML_UTIL_TIMEOUT_MS \|\| '(\d+)'/.exec(utilLib) || [])[1] || '99999', 10);
+    const hoursMs = parseInt((/TIMEOUT_MS = (\d+)/.exec(hoursLib) || [])[1] || '99999', 10);
+    ok('24c. … und beide bleiben unter der 5-Sekunden-Grenze',
+      utilMs < 5000 && hoursMs < 5000, 'util=' + utilMs + ' hours=' + hoursMs);
+    // Der Endpunkt darf sich NICHT mehr selbst ueber HTTP aufrufen: das war eine
+    // zweite Funktionsausfuehrung samt Kaltstart und die Quelle des Problems.
+    ok('24d. Die Auskunft ruft nicht mehr die eigene Bereitstellung auf',
+      !/fetch\(base|\/api\/auslastung|\/api\/hours/.test(info), info.slice(0, 200));
 
     // ── 9. Probetraining am Telefon ──
     const bk = fs.readFileSync(path.join(ROOT, 'api/phone/book.js'), 'utf8');
