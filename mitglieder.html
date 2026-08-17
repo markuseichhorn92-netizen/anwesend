@@ -221,6 +221,8 @@
   input.inp[type="date"]::-webkit-date-and-time-value{text-align:left;margin:0}
   input.inp[type="date"]::-webkit-calendar-picker-indicator{opacity:.5;cursor:pointer;padding-left:6px}
   /* Rad-Datumsauswahl (Geburtstag) – wie native iOS-Trommel, aber gebrandet & auf iOS+Android gleich */
+  /* Ungueltige Eingabe: nur Rahmen + Hinweiszeile, kein roter Flaechenschock. */
+  .inp.inpErr{border-color:#b53a2c}
   .dpTrigger{width:100%;min-height:52px;display:flex;align-items:center;gap:10px;padding:13px 15px;border:1.5px solid var(--border);border-radius:13px;background:var(--surface);color:var(--text);font-size:16px;font-weight:600;cursor:pointer;text-align:left}
   .dpTrigger .dpPh{color:var(--text-soft);font-weight:500}
   .dpSheetWrap{position:fixed;inset:0;z-index:2147483000;display:flex;flex-direction:column;justify-content:flex-end}
@@ -678,7 +680,7 @@
     alToken:'', alLabel:'', alAction:'', alBusy:false, alErr:'', alGo:'', alSub:'', alState:'loading',
     copied:false, dlMsg:false, dlMsg2:'', emailing:false,
     ciRange:'all', ciFrom:'', ciTo:'',
-    liEmail:'', liNum:'', liPhone:'', remember:(localStorage.getItem('fi_remember')==='1'),
+    liEmail:'', liNum:'', liPhone:'', liDobText:'', remember:(localStorage.getItem('fi_remember')==='1'),
     loginStep:'request', challenge:'', otp:'',
     liDob:'', waLogin:false, waLoginFetched:false, loginVia:'email', channels:[],
     loginErr:'' };
@@ -1168,6 +1170,19 @@
   // Feld = angetippter „Button", der das Rad öffnet. Nur Geburtstag (field='liDob').
   function dpField(){
     var v=S.liDob||''; var lbl=dpLabelDE(v);
+    // Desktop: einfach tippen. Dasselbe Eingabefeld wie E-Mail daneben, damit das
+    // Formular eine Reihe bleibt und nicht ein Feld aus der Reihe tanzt.
+    if(dpDesktop()){
+      // Der Rohtext gewinnt, solange getippt wird; erst danach die ISO-Form.
+      var mm=String(v).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      var txt=S.liDobText||(mm?(mm[3]+'.'+mm[2]+'.'+mm[1]):'');
+      return '<div><label class="lbl">Geburtsdatum</label>'+
+        '<input id="li_dob" type="text" inputmode="numeric" autocomplete="bday" '+
+          'placeholder="TT.MM.JJJJ" maxlength="10" class="inp" value="'+esc(txt)+'" '+
+          'oninput="window.__setDobText(this)">'+
+        '<div id="li_dob_hint" style="font-size:12.5px;font-weight:600;color:var(--text-muted);margin-top:6px;padding-left:2px">TT.MM.JJJJ</div>'+
+      '</div>';
+    }
     var cal=svg('<rect x="3" y="4" width="18" height="17" rx="2"></rect><path d="M3 9h18M8 2v4M16 2v4"></path>',{c:'var(--text-soft)',w:1.9,s:20});
     return '<div><label class="lbl">Geburtsdatum</label>'+
       '<button type="button" class="dpTrigger" data-act="dpOpen" data-arg="liDob">'+
@@ -1194,9 +1209,64 @@
     var lis=items.map(function(it,i){ return '<div class="dpItem'+(i===selIdx?' on':'')+'">'+esc(it)+'</div>'; }).join('');
     return '<div class="dpCol dpCol'+kind+'" id="dpCol'+kind+'" data-dpcol="'+kind+'">'+lis+'</div>';
   }
-  // Scroll-Rad auf iOS/Desktop; auf Android native Dropdowns (die Trommel-Physik
-  // ist in Android-WebViews hakelig -> klare, verlässliche <select>-Felder).
-  function dpUseWheel(){ try{ return !/Android/i.test(navigator.userAgent||''); }catch(e){ return true; } }
+  // Zeigegerät statt Betriebssystem fragen: Ein Trommel-Rad lebt vom Wischen mit
+  // dem Daumen. Mit Maus oder Trackpad ist es eine Zumutung – das Scrollrad springt
+  // in Sprüngen, Ziehen zielt daneben, und für einen Geburtstag scrollt man sich
+  // durch 100 Jahre. Wer eine Tastatur hat, tippt das Datum in einem Bruchteil der
+  // Zeit; dafür braucht es gar keine Auswahl-Fläche (siehe dpField).
+  function dpDesktop(){
+    try{
+      if(!window.matchMedia) return false;
+      return window.matchMedia('(hover:hover) and (pointer:fine)').matches;
+    }catch(e){ return false; }
+  }
+  // Rad nur da, wo es hingehört: Touch ohne Android. Auf Android ist die
+  // Trommel-Physik in WebViews hakelig -> native Dropdowns.
+  function dpUseWheel(){
+    try{
+      if(dpDesktop()) return false;
+      return !/Android/i.test(navigator.userAgent||'');
+    }catch(e){ return true; }
+  }
+
+  // ── Eingetipptes Datum ──
+  // „28.12.1992" -> ISO. Leerer Rückgabewert heisst: noch nicht vollständig oder
+  // unplausibel – dann bleibt S.liDob leer und der Login fragt nach.
+  function dpParseDE(digits){
+    var t=String(digits||'').replace(/\D/g,'');
+    if(t.length!==8) return '';
+    var d=+t.slice(0,2), m=+t.slice(2,4), y=+t.slice(4);
+    if(m<1||m>12) return '';
+    var ty=new Date().getFullYear();
+    if(y<1900||y>ty) return '';
+    if(d<1||d>dpDaysIn(y,m)) return '';
+    return t.slice(4)+'-'+t.slice(2,4)+'-'+t.slice(0,2);
+  }
+  // Punkte beim Tippen selbst setzen – aber nur, wenn der Textcursor am Ende steht.
+  // Sonst würde eine Korrektur in der Mitte den Cursor ans Ende reissen.
+  window.__setDobText=function(el){
+    if(!el) return;
+    var digits=String(el.value||'').replace(/\D/g,'').slice(0,8);
+    var amEnde=false;
+    try{ amEnde=(el.selectionStart===el.value.length); }catch(e){ amEnde=true; }
+    if(amEnde){
+      var out=digits;
+      if(digits.length>4) out=digits.slice(0,2)+'.'+digits.slice(2,4)+'.'+digits.slice(4);
+      else if(digits.length>2) out=digits.slice(0,2)+'.'+digits.slice(2);
+      if(out!==el.value) el.value=out;
+    }
+    // Rohtext mitführen: Ein Neuzeichnen zwischendurch (etwa „Angemeldet bleiben"
+    // antippen) baut das Feld neu auf. Ohne den Rohtext stünde dort nur das
+    // fertige Datum – eine halbe Eingabe wäre weg.
+    S.liDobText=el.value;
+    S.liDob=dpParseDE(digits);
+    // Rückmeldung erst, wenn alle acht Ziffern da sind – nicht schon beim Tippen.
+    var falsch=(digits.length===8 && !S.liDob);
+    el.classList.toggle('inpErr', falsch);
+    var h=document.getElementById('li_dob_hint');
+    if(h) h.textContent=falsch?'Dieses Datum gibt es nicht.':'TT.MM.JJJJ';
+    if(h) h.style.color=falsch?'var(--err-ink,#b53a2c)':'var(--text-muted)';
+  };
   function dpSelects(dp){
     var dim=dpDaysIn(dp.y,dp.m); var dCur=Math.min(dp.d,dim);
     var dOpts=''; for(var i=1;i<=31;i++){ dOpts+='<option value="'+i+'"'+(i===dCur?' selected':'')+'>'+i+'.</option>'; }
@@ -11858,7 +11928,7 @@
           S.alBusy=false;
           if(j&&j.ok&&j.token){
             TOKEN=j.token; localStorage.setItem('fi_member_token',TOKEN); localStorage.setItem('fi_remember','1');
-            S.alToken=''; S.alErr=''; S.liDob=''; cleanMlt();
+            S.alToken=''; S.alErr=''; S.liDob=''; S.liDobText=''; cleanMlt();
             var go=(j.go&&TITLES[j.go])?j.go:'home', sub=j.sub||'';
             loadMe().then(function(){ loadAppts(); loadPlan(); loadPlanAgg(); loadInbox(); loadPrefs(); if(DATA.checkins===null) loadCheckins(); nav(go); actionSub(sub); })
               .catch(function(){ nav(go); actionSub(sub); });
@@ -11877,7 +11947,7 @@
         })
         .catch(function(){ S.alBusy=false; setQuiet({alErr:'Verbindung fehlgeschlagen. Bitte erneut versuchen.'}); });
     },
-    alToLogin:function(){ try{ cleanMlt(); }catch(e){} S.alToken=''; S.liDob=''; S.alErr=''; S.alState='loading'; setS({screen:'login'}); },
+    alToLogin:function(){ try{ cleanMlt(); }catch(e){} S.alToken=''; S.liDob=''; S.liDobText=''; S.alErr=''; S.alState='loading'; setS({screen:'login'}); },
     // Versteckter Team-Zugang: 5× schnell auf den Avatar (Startseite) tippen -> /team.
     teamTap:function(){ window.__tt=(window.__tt||0)+1; if(window.__ttT) clearTimeout(window.__ttT); window.__ttT=setTimeout(function(){ window.__tt=0; },1500); if(window.__tt>=5){ window.__tt=0; clearTimeout(window.__ttT); if(confirm('Team-Bereich öffnen?')) location.assign('/team'); } },
     // Initialen-Avatar: EIN Tipp öffnet das Funktions-Menü (Dropdown); 5× schnell
@@ -13672,7 +13742,7 @@
   function cleanMlt(){ try{ var u=new URL(window.location.href); var ch=false; ['mlt','go','nfc','alt','kochen'].forEach(function(k){ if(u.searchParams.has(k)){ u.searchParams.delete(k); ch=true; } }); if(ch) window.history.replaceState({}, document.title, u.pathname+u.search+u.hash); }catch(e){} }
   // Aktions-Link (?alt=): Bestätigungsseite laden; das eigentliche Login macht ACT.alSubmit.
   function bootActionLogin(tok){
-    S.alToken=tok; S.alState='loading'; S.alErr=''; S.liDob=''; S.screen='alogin'; render();
+    S.alToken=tok; S.alState='loading'; S.alErr=''; S.liDob=''; S.liDobText=''; S.screen='alogin'; render();
     fetch('/api/member/action-login?token='+encodeURIComponent(tok))
       .then(function(r){return r.json();})
       .then(function(j){
