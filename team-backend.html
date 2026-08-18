@@ -56,6 +56,29 @@
     .ctx-toggle{display:inline-flex!important}
   }
   @media (min-width:1101px){ .ctx-toggle,.ctx-overlay{display:none!important} }
+  /* „Mehr" auf dem Telefon: Blatt von unten statt Schublade von links.
+     Auf dem Desktop existiert es gar nicht - dort ist die Seitenleiste richtig. */
+  .mb-more{display:none}
+  @media (max-width:860px){
+    /* Die Seitenleiste ist Desktop-Navigation. Auf dem Telefon bleibt sie weg,
+       auch geoeffnet - sonst gaebe es zwei Menues fuer dieselbe Sache. */
+    .mb-sidebar{display:none!important}
+    .mb-more{display:block;position:fixed;inset:0;z-index:60}
+    .mb-more-scrim{position:absolute;inset:0;background:rgba(0,18,22,.45);animation:mbFade .2s ease}
+    .mb-more-sheet{position:absolute;left:0;right:0;bottom:0;background:#fff;
+      border-radius:22px 22px 0 0;box-shadow:0 -18px 50px rgba(4,33,40,.28);
+      padding:10px 16px calc(14px + env(safe-area-inset-bottom,0px));
+      max-height:86dvh;overflow-y:auto;-webkit-overflow-scrolling:touch;
+      animation:mbUp .24s cubic-bezier(.22,.61,.36,1)}
+    .mb-more-grip{width:40px;height:4px;border-radius:99px;background:#dde4e6;margin:0 auto 14px}
+    /* Drei Spalten ab 360px, darunter zwei - sonst bricht „Neue Mitglieder" um. */
+    .mb-more-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+    @media (min-width:360px){ .mb-more-grid{grid-template-columns:repeat(3,1fr)} }
+    .mb-more-sheet button:active{opacity:.65}
+  }
+  @keyframes mbUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
+  @keyframes mbFade{from{opacity:0}to{opacity:1}}
+  @media (prefers-reduced-motion:reduce){ .mb-more-sheet,.mb-more-scrim{animation:none} }
   @media (max-width:860px){
     .mb-sidebar{position:fixed;top:0;left:0;height:100dvh;width:264px;z-index:60;transform:translateX(-100%);transition:transform .25s ease;box-shadow:0 0 70px rgba(0,0,0,.45)}
     .mb-sidebar.open{transform:none}
@@ -2101,6 +2124,79 @@ function renderLogin(){
 }
 
 // ---------- render: shell ----------
+// „Mehr" auf dem Telefon.
+// -----------------------------------------------------------------------------
+// Vorher schob sich hier die 268 Pixel breite Desktop-Seitenleiste von links ins
+// Bild: dunkel, achtzehn Eintraege untereinander, Scrollen noetig — und die
+// obersten drei standen schon in der Leiste darunter. Eine Schublade am linken
+// Rand ist ausserdem genau dort, wo der Daumen NICHT ist.
+//
+// Stattdessen ein Blatt, das von unten aufsteigt — aus derselben Leiste, die
+// angetippt wurde. Die Ziele liegen als Kacheln nebeneinander statt untereinander:
+// Auf einen Blick sichtbar, grosse Trefferflaechen, keine Doppelung mit der
+// Leiste. Die Seitenleiste bleibt unveraendert das, was sie ist: Desktop-Navigation.
+function moreSheet(openCount, apptCount){
+  // Was schon unten in der Leiste steht, gehoert nicht noch einmal ins Blatt.
+  var inLeiste = { dash:1, inbox:1, members:1 };
+  var alle = [
+    {k:'assist',      l:'Assistent',      ic:IC.assist},
+    {k:'newmembers',  l:'Neue Mitglieder',ic:IC.newmembers},
+    {k:'appts',       l:'Termine',        ic:IC.appts, badge:apptCount},
+    {k:'trial',       l:'Probetraining',  ic:IC.appts},
+    {k:'todo',        l:'Aufgaben',       ic:IC.todo},
+    {k:'schicht',     l:'Schichtplan',    ic:IC.shift},
+    {k:'help',        l:'Hilfe-Artikel',  ic:IC.help},
+    {k:'stats',       l:'Statistiken',    ic:IC.stats},
+    {k:'msg',         l:'Nachrichten',    ic:IC.msg},
+    {k:'leads',       l:'Leads',          ic:IC.leads},
+    {k:'wb',          l:'Rückholung',     ic:IC.wb},
+    {k:'kassenbuch',  l:'Kassenbuch',     ic:IC.kassenbuch},
+    {k:'feedback',    l:'App-Feedback',   ic:IC.feedback},
+    {k:'tester',      l:'App-Tester',     ic:IC.tester},
+    {k:'community',   l:'Community',      ic:IC.members}
+  ];
+  var items = alle.filter(function(it){ return !inLeiste[it.k] && canSee(it.k); });
+
+  var kacheln = items.map(function(it){
+    var aktiv = S.screen===it.k;
+    // Aktiv = getoente Flaeche + Marken-Ton. Kein zweiter Rahmen, kein Schatten:
+    // fuenfzehn Kacheln mit Schatten waeren Unruhe, keine Hierarchie.
+    return '<button data-more="'+it.k+'" style="position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;'+
+      'min-height:74px;padding:11px 6px;border:none;border-radius:16px;cursor:pointer;'+
+      'background:'+(aktiv?'#e7f1f3':'#f4f7f7')+';color:'+(aktiv?TEAL:'#42454b')+';font-family:inherit">'+
+      '<span style="display:flex;color:'+(aktiv?TEAL:'#5f6b70')+'">'+it.ic+'</span>'+
+      (it.badge?'<span style="position:absolute;top:9px;right:9px;background:'+ORANGE+';color:#fff;font-size:10px;font-weight:800;min-width:18px;height:18px;border-radius:9px;padding:0 5px;display:flex;align-items:center;justify-content:center">'+it.badge+'</span>':'')+
+      '<span style="font-size:11.5px;font-weight:'+(aktiv?'800':'700')+';line-height:1.25;text-align:center">'+esc(it.l)+'</span>'+
+    '</button>';
+  }).join('');
+
+  var fuss = '<button data-more="__toapp" style="display:flex;align-items:center;gap:11px;width:100%;padding:13px 4px;border:none;background:none;'+
+      'font-family:inherit;font-size:14px;font-weight:700;color:#42454b;cursor:pointer;text-align:left">'+
+      '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8a929a" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>'+
+      '<span>Zur Mitglieder-App</span></button>'+
+    '<button data-more="__logout" style="display:flex;align-items:center;gap:11px;width:100%;padding:13px 4px;border:none;background:none;'+
+      'font-family:inherit;font-size:14px;font-weight:700;color:#b53a2c;cursor:pointer;text-align:left">'+
+      '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5M21 12H9"/></svg>'+
+      '<span>Abmelden</span></button>';
+
+  return '<div class="mb-more" role="dialog" aria-label="Mehr">'+
+    '<div class="mb-more-scrim" data-more="__close"></div>'+
+    '<div class="mb-more-sheet">'+
+      '<div class="mb-more-grip"></div>'+
+      '<div style="display:flex;align-items:center;gap:11px;padding:2px 2px 16px">'+
+        '<div style="width:40px;height:40px;border-radius:12px;background:linear-gradient(150deg,#0e6072,#063540);color:#fff;font-weight:900;font-size:14px;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+esc(meInitials())+'</div>'+
+        '<div style="min-width:0;flex:1">'+
+          '<div style="font-size:14.5px;font-weight:800;color:#15171B;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(meDisplayName())+'</div>'+
+          '<div style="font-size:11.5px;color:#8a929a;font-weight:700;margin-top:2px">'+esc(roleLabel())+' · Fit-Inn Trier</div>'+
+        '</div>'+
+        '<button data-more="__close" aria-label="Schließen" style="width:36px;height:36px;border:none;border-radius:11px;background:#f4f7f7;color:#5f6b70;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'+
+          '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button>'+
+      '</div>'+
+      '<div class="mb-more-grid">'+kacheln+'</div>'+
+      '<div style="border-top:1px solid #eef2f3;margin-top:14px;padding-top:4px">'+fuss+'</div>'+
+    '</div></div>';
+}
+
 function navItem(key,label,icon,badge){
   var active=S.screen===key;
   return '<button class="navbtn" data-nav="'+key+'" style="display:flex;align-items:center;gap:13px;padding:11px 13px;border:none;border-radius:11px;font-weight:700;font-size:14.5px;background:'+(active?'rgba(255,255,255,.16)':'transparent')+';color:'+(active?'#fff':'#bcd7dc')+';width:100%;text-align:left">'+
@@ -2172,7 +2268,22 @@ function renderShell(content, title, sub){
       '<button class="navbtn" data-logout="1" style="display:flex;align-items:center;gap:13px;padding:11px 13px;border:none;border-radius:11px;font-weight:600;font-size:13.5px;background:transparent;color:#9fc3ca;width:100%;text-align:left">'+IC.logout+'<span>Abmelden</span></button>'+
     '</div>';
   row.appendChild(side);
-  if(S.navOpen){ var ov=el('<div class="mb-overlay" style="position:fixed;inset:0;background:rgba(0,18,22,.45);z-index:55"></div>'); ov.onclick=function(){ S.navOpen=false; render(); }; row.appendChild(ov); }
+  // Das Blatt haengt am selben Zustand wie die Seitenleiste; welches von beiden
+  // zu sehen ist, entscheidet die Breite (CSS), nicht das Skript. So bleibt es
+  // auch beim Drehen des Geraets richtig, ohne auf resize zu lauschen.
+  if(S.navOpen){
+    var sheet=el(moreSheet(open, apptOpen));
+    sheet.querySelectorAll('[data-more]').forEach(function(b){
+      b.onclick=function(){
+        var k=b.getAttribute('data-more');
+        if(k==='__close'){ S.navOpen=false; render(); return; }
+        if(k==='__logout'){ S.navOpen=false; logout(); return; }
+        if(k==='__toapp'){ S.navOpen=false; location.assign('/mitglieder'); return; }
+        goScreen(k);          // setzt navOpen selbst zurueck
+      };
+    });
+    row.appendChild(sheet);
+  }
 
   var main=el('<main style="flex:1;min-width:0;display:flex;flex-direction:column;height:100dvh"></main>');
   var head=el('<header class="hdr-mobile" style="display:flex;align-items:center;justify-content:space-between;padding:16px 26px;border-bottom:1px solid #dde4e6;background:#eef2f3;flex-shrink:0"></header>');
