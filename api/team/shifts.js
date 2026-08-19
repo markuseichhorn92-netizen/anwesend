@@ -87,11 +87,39 @@ async function weekPayload(sess, week) {
   } catch (e) { vacations = []; }
   const vacPending = vacations.filter((v) => v.status === 'pending').length;
 
+  // Stammdaten + gerechnete Monatsstunden. Die Stunden werden aus den Schichten
+  // gerechnet, nicht gepflegt – gepflegte Zahlen laufen auseinander.
+  //
+  // Wer eingeplant ist oder Zeiten gemeldet hat, aber noch keinen Stammsatz hat,
+  // kommt trotzdem mit (stored:false). Sonst wäre er im Plan sichtbar und in der
+  // Mitarbeiterliste unsichtbar – und niemand käme darauf, ihn anzulegen.
+  let staff = [];
+  try {
+    staff = await SH.allStaff();
+    const bekannt = {};
+    staff.forEach((s) => { bekannt[String(s.id)] = 1; });
+    const fehlend = {};
+    days.forEach((d) => {
+      d.shifts.forEach((sh) => {
+        if (sh.assignee && sh.assignee.id != null && !bekannt[String(sh.assignee.id)]) {
+          fehlend[String(sh.assignee.id)] = sh.assignee.name || null;
+        }
+      });
+    });
+    availability.forEach((a) => { if (!bekannt[String(a.employeeId)]) fehlend[String(a.employeeId)] = a.name || null; });
+    vacations.forEach((v) => { if (!bekannt[String(v.employeeId)]) fehlend[String(v.employeeId)] = v.name || null; });
+    const ids = Object.keys(fehlend);
+    for (let i = 0; i < ids.length; i++) staff.push(await SH.getStaff(ids[i], fehlend[ids[i]]));
+    staff.sort((a, b) => String(a.name).localeCompare(String(b.name), 'de'));
+    const std = await SH.monthHours(monday);
+    staff.forEach((s) => { s.monthHours = std[String(s.id)] || 0; });
+  } catch (e) { staff = []; }
+
   return {
     ok: true, me: me, week: monday, days: days,
     openCount: openCount, swapBadge: swapBadge,
     availability: availability, vacations: vacations, vacPending: vacPending,
-    blocks: SH.WEEKLY_TEMPLATE, canDecide: leitung,
+    staff: staff, blocks: SH.WEEKLY_TEMPLATE, areas: SH.AREAS, canDecide: leitung,
   };
 }
 
@@ -328,6 +356,61 @@ module.exports = async function handler(req, res) {
     const r = await SH.acceptApplicant(id, who);
     if (!r) return fail('Bewerbung nicht gefunden.');
     return done({ shift: r.shift, accepted: r.accepted, rejected: r.rejected });
+  }
+
+  // ── Mitarbeiter-Stammdaten ──
+  // Bereich, Stundengrenze und Urlaubsanspruch entscheiden mit, wer eingeplant
+  // werden darf. Das ist eine Leitungsentscheidung, keine Einstellung.
+  if (action === 'staff-set') {
+    if (!istLeitung(sess)) return fail('Mitarbeiterdaten pflegt die Leitung.');
+    const id = String((body && body.employeeId) || '').trim();
+    if (!id) { res.statusCode = 400; return res.end(JSON.stringify({ ok: false, error: 'missing_id' })); }
+    const has = (k) => Object.prototype.hasOwnProperty.call(body, k);
+    const patch = {};
+    ['name', 'type', 'areas', 'monthMax', 'vacDays', 'active'].forEach((k) => { if (has(k)) patch[k] = body[k]; });
+    const e = await SH.setStaff(id, patch);
+    if (!e) return fail('Mitarbeiter konnte nicht gespeichert werden.');
+    return done({ staffMember: e });
+  }
+
+  if (action === 'staff-remove') {
+    if (!istLeitung(sess)) return fail('Mitarbeiterdaten pflegt die Leitung.');
+    const id = String((body && body.employeeId) || '').trim();
+    if (!id) { res.statusCode = 400; return res.end(JSON.stringify({ ok: false, error: 'missing_id' })); }
+    await SH.removeStaff(id);
+    return done();
+  }
+
+  // Aus Magicline uebernehmen: legt fehlende Stammdaten an, ruehrt bestehende
+  // NICHT an – sonst waeren gepflegte Bereiche und Grenzen nach jedem Import weg.
+  if (action === 'staff-import') {
+    if (!istLeitung(sess)) return fail('Mitarbeiterdaten pflegt die Leitung.');
+    let liste = [];
+    try {
+      const r = await M.ml('GET', '/employees?sliceSize=50');
+      if (r && r.status === 200 && r.json) {
+        liste = Array.isArray(r.json.result) ? r.json.result : (Array.isArray(r.json) ? r.json : []);
+      }
+    } catch (e) {}
+    if (!liste.length) return fail('Mitarbeiterliste ist gerade nicht abrufbar (Berechtigung EMPLOYEE_READ nötig).');
+    const vorhanden = {};
+    try { (await SH.allStaff()).forEach((s) => { vorhanden[String(s.id)] = 1; }); } catch (e) {}
+    let neu = 0;
+    for (let i = 0; i < liste.length; i++) {
+      const e = liste[i];
+      if (!e || e.id == null) continue;
+      const id = String(e.id);
+      if (vorhanden[id]) continue;
+      const name = ((String(e.firstName || '').trim() + ' ' + String(e.lastName || '').trim()).trim())
+        || String(e.publicName || e.name || '').trim() || ('Mitarbeiter ' + id);
+      const r2 = await SH.setStaff(id, { name: name });
+      if (r2) neu++;
+    }
+    return done({
+      imported: neu,
+      message: neu ? (neu + ' Mitarbeiter übernommen. Bitte Bereich und Stundengrenze prüfen.')
+        : 'Alle Mitarbeiter sind bereits angelegt – bestehende Angaben bleiben unverändert.',
+    });
   }
 
   res.statusCode = 400; return res.end(JSON.stringify({ ok: false, error: 'unknown_action' }));

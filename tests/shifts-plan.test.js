@@ -234,7 +234,50 @@ async function run() {
   ok('23b. … und sieht auch nicht alles', r.json.canDecide === false && r.json.availability.length === 0,
     JSON.stringify({ d: r.json.canDecide, n: r.json.availability.length }));
 
-  // ── 6. Ohne Sitzung gar nichts ──
+  // ── 6. Mitarbeiter-Stammdaten ──
+  // Bereich und Stundengrenze entscheiden mit, wer eingeplant werden darf.
+  alsAnna();
+  r = await call('POST', { action: 'staff-set', week: WOCHE, employeeId: 'e1', areas: ['reinigung'], monthMax: 300 });
+  ok('25. Eine Angestellte pflegt KEINE Stammdaten', r.json.ok === false, JSON.stringify(r.json));
+
+  alsLeitung();
+  r = await call('POST', { action: 'staff-set', week: WOCHE, employeeId: 'e1', name: 'Anna Beck', type: 'Teilzeit', areas: ['flaeche', 'reinigung'], monthMax: 90, vacDays: 28 });
+  const emp = await SH.getStaff('e1');
+  ok('26. Die Leitung pflegt sie', r.json.ok === true && emp.type === 'Teilzeit' && emp.monthMax === 90 && emp.vacDays === 28,
+    JSON.stringify(emp));
+  ok('26b. … Bereiche werden gesaeubert', emp.areas.join(',') === 'flaeche,reinigung', emp.areas.join(','));
+  ok('26c. … Initialen kommen aus dem Namen', emp.initials === 'AB', emp.initials);
+
+  // Ausreisser kappen: eine 9999 im Stundenfeld waere kein Limit mehr.
+  await call('POST', { action: 'staff-set', week: WOCHE, employeeId: 'e1', monthMax: 99999, vacDays: 999, areas: ['gibtesnicht'] });
+  const emp2 = await SH.getStaff('e1');
+  ok('27. Unsinnige Werte werden gekappt',
+    emp2.monthMax === 400 && emp2.vacDays === 60 && emp2.areas.join(',') === 'flaeche',
+    JSON.stringify({ m: emp2.monthMax, v: emp2.vacDays, a: emp2.areas }));
+
+  // Ein Import darf gepflegte Angaben NICHT ueberschreiben - sonst waeren
+  // Bereiche und Grenzen nach jedem Abgleich wieder Standard.
+  await call('POST', { action: 'staff-set', week: WOCHE, employeeId: 'e1', type: 'Minijob', monthMax: 43.5 });
+  r = await call('POST', { action: 'staff-import', week: WOCHE });
+  const emp3 = await SH.getStaff('e1');
+  ok('28. Import ohne Magicline meldet das ehrlich', r.json.ok === false, JSON.stringify(r.json.message || ''));
+  ok('28b. … und ruehrt bestehende Angaben nicht an', emp3.type === 'Minijob' && emp3.monthMax === 43.5,
+    JSON.stringify({ t: emp3.type, m: emp3.monthMax }));
+
+  r = await call('GET');
+  ok('29. Die Stammdaten kommen in der Wochenantwort mit',
+    Array.isArray(r.json.staff) && r.json.staff.some((s) => s.id === 'e1'), JSON.stringify((r.json.staff || []).map((s) => s.id)));
+  // Monatsstunden werden gerechnet, nicht gepflegt. Ben hat zwei Schichten im
+  // August: 2 Std + 2,5 Std.
+  const ben = (r.json.staff || []).filter((s) => s.id === 'e2')[0];
+  ok('29b. Monatsstunden kommen aus den Schichten', ben && ben.monthHours === 4.5, JSON.stringify(ben && ben.monthHours));
+  // Ben ist eingeplant, hat aber noch keinen Stammsatz. Er muss trotzdem in der
+  // Liste stehen – sonst waere er im Plan sichtbar und in der Mitarbeiterliste
+  // unsichtbar, und niemand kaeme darauf, ihn anzulegen.
+  ok('29c. Wer eingeplant ist, steht in der Liste – auch ohne Stammsatz',
+    ben && ben.stored === false && ben.name === 'Ben Cordes', JSON.stringify(ben && { s: ben.stored, n: ben.name }));
+
+  // ── 7. Ohne Sitzung gar nichts ──
   session = null;
   r = await call('GET');
   ok('24. Ohne Sitzung 401', r.status === 401 && r.json.error === 'unauthorized', JSON.stringify(r));

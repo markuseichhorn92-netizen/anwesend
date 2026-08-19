@@ -4924,7 +4924,7 @@ async function shPost(body){
   body=body||{}; body.week=S.shWeek||shMonday();
   try{
     var r=await tapi('/api/team/shifts',{method:'POST',body:body});
-    if(r && r.days){ S.shData=r; }
+    if(r && r.days){ S.shData=r; render(); }
     if(r && r.ok===false && r.message) alert(r.message);
     return r;
   }catch(e){ alert('Verbindung fehlgeschlagen.'); return null; }
@@ -5437,28 +5437,116 @@ function shEditorHTML(){
 // stehen dort; hier ist nur die Uebersetzung von React/<sc-for> nach der
 // Render-Art dieser Anwendung. Wo der Entwurf `{{ x }}` schreibt, steht hier
 // Zeichenkettenverkettung - die Werte selbst sind dieselben.
-var SP_DAYS=[['Mo','05.10.','Montag'],['Di','06.10.','Dienstag'],['Mi','07.10.','Mittwoch'],['Do','08.10.','Donnerstag'],['Fr','09.10.','Freitag'],['Sa','10.10.','Samstag'],['So','11.10.','Sonntag']];
+// ── Echte Daten statt Entwurfsdaten ────────────────────────────────────────
+// Der Entwurf bringt acht erfundene Personen und eine feste Woche mit. Beides
+// wird ersetzt, sobald der Server geantwortet hat: `S.shData` traegt Schichten,
+// Verfuegbarkeiten, Urlaub und Mitarbeiter-Stammdaten der wirklich gewaehlten
+// Woche. Die Bildschirme selbst bleiben unveraendert - sie fragen nur nicht mehr
+// eine Konstante, sondern eine Funktion.
+//
+// Ohne Antwort (noch nicht geladen) zeigt der Planer weiter das Beispiel, aber
+// sichtbar als solches gekennzeichnet. Erfundene Namen, die wie echte aussehen,
+// waeren hier gefaehrlich: jemand koennte danach planen.
+function spLive(){ return !!(S.shData && Array.isArray(S.shData.days)); }
+function spWeekISO(){
+  var mon=S.shWeek||shMonday(shToday()), out=[];
+  for(var i=0;i<7;i++) out.push(shAddDays(mon,i));
+  return out;
+}
+function spHM(t){ var m=/^(\d{1,2}):(\d{2})/.exec(String(t||'')); return m?(parseInt(m[1],10)+parseInt(m[2],10)/60):0; }
+// Der Entwurf zaehlt Mo=0..So=6, Date.getDay() zaehlt So=0..Sa=6.
+function spDow(dayIdx){ return (dayIdx+1)%7; }
+
+var SP_DAYS_DEMO=[['Mo','05.10.','Montag'],['Di','06.10.','Dienstag'],['Mi','07.10.','Mittwoch'],['Do','08.10.','Donnerstag'],['Fr','09.10.','Freitag'],['Sa','10.10.','Samstag'],['So','11.10.','Sonntag']];
+function spKW(){ return spLive()?('KW '+shKW(S.shWeek||shMonday(shToday()))):'KW 41'; }
+function spKWNr(){ return spLive()?shKW(S.shWeek||shMonday(shToday())):41; }
+function spSpanneKurz(){
+  if(!spLive()) return '05.–11.10.';
+  var d=spWeekISO(); return shDM(d[0])+'–'+shDM(d[6]);
+}
+function spSpanneLang(){
+  if(!spLive()) return '05.–11. Oktober 2026';
+  var d=spWeekISO(), b=shParse(d[6]);
+  return shDM(d[0])+'–'+shDM(d[6])+b.getFullYear();
+}
+function spDays(){
+  if(!spLive()) return SP_DAYS_DEMO;
+  if(window.__spDaysSrc===S.shWeek && window.__spDaysVal) return window.__spDaysVal;
+  var out=spWeekISO().map(function(iso){
+    var d=shParse(iso);
+    return [SH_DOW[d.getDay()], shDM(iso), SH_DOWFULL[d.getDay()], iso];
+  });
+  window.__spDaysSrc=S.shWeek; window.__spDaysVal=out;
+  return out;
+}
 var SP_HOURS={wd:'9:30–13 · 15–21:30', sa:'13:00–18:00', so:'9:00–15:00'};
-var SP_STAFF={
-  ma:{name:'Markus', short:'Markus', ini:'MA', type:'Vollzeit · Leitung', typeShort:'Leitung', areas:['flaeche','reinigung'], h:118, max:160},
-  ha:{name:'Harald', short:'Harald', ini:'HA', type:'Vollzeit', typeShort:'Vollzeit', areas:['flaeche'], h:126, max:160},
-  pe:{name:'Peter', short:'Peter', ini:'PE', type:'Vollzeit', typeShort:'Vollzeit', areas:['flaeche'], h:131, max:160},
-  gu:{name:'Gudrun', short:'Gudrun', ini:'GU', type:'Teilzeit', typeShort:'Teilzeit', areas:['flaeche'], h:74, max:90},
-  st:{name:'Steffi', short:'Steffi', ini:'ST', type:'Teilzeit', typeShort:'Teilzeit', areas:['flaeche','reinigung'], h:68, max:90},
-  ka:{name:'Kathrin', short:'Kathrin', ini:'KA', type:'Minijob', typeShort:'Minijob', areas:['flaeche'], h:41.5, max:43.5},
-  hy:{name:'Harry', short:'Harry', ini:'HY', type:'Aushilfe auf Abruf', typeShort:'Aushilfe', areas:['reinigung'], h:18, max:43.5},
-  to:{name:'Tom', short:'Tom', ini:'TO', type:'Reinigung · Teilzeit', typeShort:'Reinigung', areas:['reinigung'], h:52, max:70}
+
+var SP_STAFF_DEMO={
+  ma:{name:'Markus', short:'Markus', ini:'MA', type:'Vollzeit · Leitung', typeShort:'Leitung', areas:['flaeche','reinigung'], h:118, max:160, vacDays:30},
+  ha:{name:'Harald', short:'Harald', ini:'HA', type:'Vollzeit', typeShort:'Vollzeit', areas:['flaeche'], h:126, max:160, vacDays:30},
+  pe:{name:'Peter', short:'Peter', ini:'PE', type:'Vollzeit', typeShort:'Vollzeit', areas:['flaeche'], h:131, max:160, vacDays:30},
+  gu:{name:'Gudrun', short:'Gudrun', ini:'GU', type:'Teilzeit', typeShort:'Teilzeit', areas:['flaeche'], h:74, max:90, vacDays:28},
+  st:{name:'Steffi', short:'Steffi', ini:'ST', type:'Teilzeit', typeShort:'Teilzeit', areas:['flaeche','reinigung'], h:68, max:90, vacDays:28},
+  ka:{name:'Kathrin', short:'Kathrin', ini:'KA', type:'Minijob', typeShort:'Minijob', areas:['flaeche'], h:41.5, max:43.5, vacDays:24},
+  hy:{name:'Harry', short:'Harry', ini:'HY', type:'Aushilfe auf Abruf', typeShort:'Aushilfe', areas:['reinigung'], h:18, max:43.5, vacDays:24},
+  to:{name:'Tom', short:'Tom', ini:'TO', type:'Reinigung · Teilzeit', typeShort:'Reinigung', areas:['reinigung'], h:52, max:70, vacDays:26}
 };
-var SP_AREA={flaeche:{label:'Trainingsfläche', v:'--ac'}, reinigung:{label:'Reinigung', v:'--wn'}};
+function spTeam(){
+  var d=S.shData;
+  if(!d || !Array.isArray(d.staff)) return SP_STAFF_DEMO;
+  if(window.__spTeamSrc===d && window.__spTeamVal) return window.__spTeamVal;
+  var out={};
+  d.staff.forEach(function(s){
+    var nm=String(s.name||'').trim()||('Mitarbeiter '+s.id);
+    out[String(s.id)]={
+      name:nm, short:(nm.split(' ')[0]||nm), ini:s.initials||shInitials(nm),
+      type:s.type||'—', typeShort:s.type||'—',
+      areas:(Array.isArray(s.areas)&&s.areas.length)?s.areas:['flaeche'],
+      h:s.monthHours||0, max:s.monthMax||160, vacDays:s.vacDays||30,
+      stored:s.stored!==false
+    };
+  });
+  window.__spTeamSrc=d; window.__spTeamVal=out;
+  return out;
+}
+
+// Der Entwurf kennt zwei Bereiche, das Studio vier Rollen. Beide Welten passen
+// zusammen, wenn die Rolle die Wahrheit bleibt und der Entwurf sie einfaerbt.
+var SP_AREA={
+  flaeche:{label:'Trainingsfläche', v:'--ac'},
+  reinigung:{label:'Reinigung', v:'--wn'},
+  theke:{label:'Theke', v:'--vi'},
+  kurs:{label:'Kurs', v:'--ok'}
+};
+function spArea(k){ return SP_AREA[k]||SP_AREA.theke; }
+// Person zu einer ID. Wer im Plan steht, aber noch keinen Stammsatz hat, bekommt
+// einen Platzhalter - eine fehlende Person darf die Seite nicht zerlegen.
+function spP(id){
+  var p=spTeam()[id];
+  if(p) return p;
+  var nm=id?('Mitarbeiter '+id):'Unbekannt';
+  return {name:nm, short:nm, ini:'?', type:'—', typeShort:'—', areas:['flaeche'], h:0, max:160, vacDays:30, stored:false};
+}
 var SP_SLOTS={ wd:[[9.5,11.5],[11.5,13],[15,17.5],[17.5,21.5]], sa:[[13,16],[16,18]], so:[[9,12],[12,15]] };
 
 function spT(h){ var hh=Math.floor(h), mm=Math.round((h-hh)*60); return hh+':'+(mm<10?'0'+mm:mm); }
 function spSpan(a,b){ return spT(a)+'–'+spT(b); }
 function spDur(a,b){ var d=b-a; return (d%1?d.toFixed(1).replace('.',','):d)+' Std'; }
-function spOpenHours(day){ return day===5?[13,18]:day===6?[9,15]:[9.5,21.5]; }
-function spSlotsFor(day){ return day===5?SP_SLOTS.sa:day===6?SP_SLOTS.so:SP_SLOTS.wd; }
+function spSlotsFor(day){
+  if(spLive()){
+    var b=(S.shData.blocks||{})[spDow(day)];
+    if(Array.isArray(b)&&b.length) return b.map(function(p){ return [spHM(p[0]), spHM(p[1])]; });
+  }
+  return day===5?SP_SLOTS.sa:day===6?SP_SLOTS.so:SP_SLOTS.wd;
+}
+function spOpenHours(day){
+  if(spLive()){ var s=spSlotsFor(day); if(s.length) return [s[0][0], s[s.length-1][1]]; }
+  return day===5?[13,18]:day===6?[9,15]:[9.5,21.5];
+}
 function spReinTime(day){ var lo=spOpenHours(day)[0]; return [lo-0.5, lo]; }
-function spDomOf(dayIdx){ return 5+dayIdx; }   // KW41 = 5.–11. Oktober
+// Liefert den Kalendertag der Spalte: live als ISO-Datum, im Beispiel als
+// Tagesnummer im Oktober 2026. Beides vergleicht spVacOn gegen dieselbe Form.
+function spDomOf(dayIdx){ return spLive()?spWeekISO()[dayIdx]:('2026-10-'+(5+dayIdx<10?'0':'')+(5+dayIdx)); }
 
 // Raster = die tatsaechlichen Schichtgrenzen des Tages (+ Vor-/Nachlauf 30 Min)
 function spEdges(day){
@@ -5512,14 +5600,36 @@ function spSeedShifts(){
     mk('so-2',6,'flaeche',O[1][0],O[1][1],'hy',null,{note:'Ersatzruhetag offen'})
   ];
 }
-function spSeedVacations(){ return [
-  {id:'v1', staffId:'gu', from:19, to:24, status:'pending', days:6},
-  {id:'v2', staffId:'pe', from:5, to:9, status:'approved', days:5},
-  {id:'v3', staffId:'ha', from:22, to:23, status:'approved', days:2},
-  {id:'v4', staffId:'ma', from:26, to:30, status:'approved', days:5}
-]; }
-function spVacOn(staffId, dom){
-  return (S.spVac||[]).some(function(v){ return v.staffId===staffId && v.status!=='declined' && dom>=v.from && dom<=v.to; });
+function spSeedVacations(){
+  var mk=function(id,staff,von,bis,status){
+    var f='2026-10-'+(von<10?'0':'')+von, t='2026-10-'+(bis<10?'0':'')+bis;
+    return {id:id, staffId:staff, fromISO:f, toISO:t, status:status, days:bis-von+1, kind:'urlaub'};
+  };
+  return [mk('v1','gu',19,24,'pending'), mk('v2','pe',5,9,'approved'),
+    mk('v3','ha',22,23,'approved'), mk('v4','ma',26,30,'approved')];
+}
+// Urlaub: live vom Server, sonst das Beispiel. Beide Formen tragen fromISO/toISO,
+// damit alles darueber mit demselben Vergleich auskommt.
+function spVacs(){
+  var d=S.shData;
+  if(!d || !Array.isArray(d.vacations)){ if(!S.spVac) S.spVac=spSeedVacations(); return S.spVac; }
+  if(window.__spVacSrc===d && window.__spVacVal) return window.__spVacVal;
+  var out=d.vacations.map(function(v){
+    return { id:v.id, staffId:String(v.employeeId), name:v.name||'',
+      fromISO:v.from, toISO:v.to, status:v.status, days:v.days, kind:v.kind||'urlaub' };
+  });
+  window.__spVacSrc=d; window.__spVacVal=out;
+  return out;
+}
+function spVacLabel(v){
+  if(!v) return '';
+  var a=shParse(v.fromISO), b=shParse(v.toISO);
+  return shDM(v.fromISO)+'–'+shDM(v.toISO)+(a.getFullYear()===b.getFullYear()?b.getFullYear():'');
+}
+function spVacOn(staffId, iso){
+  return spVacs().some(function(v){
+    return v.staffId===staffId && v.status!=='declined' && iso>=v.fromISO && iso<=v.toISO;
+  });
 }
 
 // Zeitlich ueberlappende Schichten buendeln und innerhalb des Buendels
@@ -5552,13 +5662,36 @@ function spToast(m){
   clearTimeout(window.__spToastT);
   window.__spToastT=setTimeout(function(){ S.spToast=''; render(); },2600);
 }
-function spShifts(){ if(!S.spShifts) S.spShifts=spSeedShifts(); return S.spShifts; }
+// Schichten der gewaehlten Woche. Live: aus der Serverantwort in die Form des
+// Entwurfs uebersetzt (Spaltenindex statt Datum, Dezimalstunden statt HH:MM).
+function spShifts(){
+  var d=S.shData;
+  if(!d || !Array.isArray(d.days)){ if(!S.spShifts) S.spShifts=spSeedShifts(); return S.spShifts; }
+  if(window.__spShSrc===d && window.__spShVal) return window.__spShVal;
+  var dates=spWeekISO(), out=[];
+  d.days.forEach(function(tag){
+    var idx=dates.indexOf(tag.date); if(idx<0) return;
+    (tag.shifts||[]).forEach(function(sh){
+      out.push({
+        id:String(sh.id), day:idx, area:sh.role||'theke',
+        a:spHM(sh.start), b:spHM(sh.end),
+        who:(sh.assignee&&sh.assignee.id!=null)?String(sh.assignee.id):null,
+        st: sh.board?'posted':(sh.assignee?'ai':'open'),
+        postMode:sh.postMode||null, deadline:sh.deadline||null,
+        applicants:Array.isArray(sh.applicants)?sh.applicants:[],
+        note:sh.note||''
+      });
+    });
+  });
+  window.__spShSrc=d; window.__spShVal=out;
+  return out;
+}
 
 // ── Ansichtsmodell + Markup der Wochenansicht ──────────────────────────────
 // Masse aus dem Entwurf: Raster von 9 bis 22 Uhr, 42 Pixel je Stunde.
 var SP_GRID_TOP=9, SP_GRID_BOT=22, SP_PX=42;
 function spY(h){ return Math.round((h-SP_GRID_TOP)*SP_PX); }
-function spAreaVar(a){ return a==='reinigung'?'var(--wn)':'var(--ac)'; }
+function spAreaVar(a){ return 'var('+spArea(a).v+')'; }
 
 function spDayLights(d){
   var inD=spShifts().filter(function(x){ return x.day===d; });
@@ -5580,7 +5713,7 @@ function spDecorate(x){
   var lanes=x._lanes||1, lane=x._lane||0, compact=lanes>1, tiny=(x.b-x.a)<=0.75;
   var pinned=(S.spPinned||[]).indexOf(x.id)>=0, open=!x.who;
   var blocked=x.st==='blocked', conflict=x.st==='conflict', posted=x.st==='posted';
-  var who=x.who?SP_STAFF[x.who]:null;
+  var who=x.who?spTeam()[x.who]:null;
   var dimmed=S.spConflictOnly&&!(blocked||conflict||open);
   var av=spAreaVar(x.area);
   var bg='var(--surf2)', border='1px dashed '+(x.area==='reinigung'?'var(--wnb)':'var(--acb)'), glow='none';
@@ -5640,7 +5773,7 @@ function spShiftHTML(s){
 }
 
 function spWeekGridHTML(){
-  var D=SP_DAYS, shifts=spShifts();
+  var D=spDays(), shifts=spShifts();
   // Kopfzeile je Tag: Kuerzel, Datum, Oeffnungszeit, drei Ampelbalken, „+ Schicht".
   var heads=D.map(function(d,i){
     var lights=spDayLights(i).map(function(l){ return '<div style="flex:1;height:3px;border-radius:2px;background:'+l+'"></div>'; }).join('');
@@ -5661,7 +5794,7 @@ function spWeekGridHTML(){
         '<button data-spreinadd="'+i+'" class="tap" style="flex:1;border-radius:9px;border:1px dashed var(--line2);background:transparent;color:var(--tx3);font-family:inherit;font-size:9.5px;font-weight:800;cursor:pointer;padding:4px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;min-width:0">'+
         '<span style="font-size:13px;line-height:1;color:var(--wn);font-weight:900">+</span></button></div>';
     }
-    var who=sh.who?SP_STAFF[sh.who]:null;
+    var who=sh.who?spTeam()[sh.who]:null;
     var onVac=sh.who&&spVacOn(sh.who,spDomOf(sh.day));
     var isDrop=S.spDropId===sh.id, dropBad=isDrop&&S.spDropOk===false;
     var bg=onVac?'var(--dgs)':(who?'var(--wns)':'transparent');
@@ -5712,7 +5845,7 @@ function spWeekGridHTML(){
   var offen=shifts.filter(function(x){ return !x.who||x.st==='blocked'; }).length;
   return '<div class="sc" style="background:var(--surf);border:1px solid var(--line);border-radius:20px;overflow-x:auto"><div style="min-width:660px">'+
     '<div style="display:grid;grid-template-columns:56px repeat(7,1fr);border-bottom:1px solid var(--line)">'+
-      '<div style="padding:11px 7px"><div style="font-size:9px;font-weight:900;color:var(--tx4);letter-spacing:1px;text-transform:uppercase">KW 41</div></div>'+heads+'</div>'+
+      '<div style="padding:11px 7px"><div style="font-size:9px;font-weight:900;color:var(--tx4);letter-spacing:1px;text-transform:uppercase">'+esc(spKW())+'</div></div>'+heads+'</div>'+
     '<div style="display:grid;grid-template-columns:56px repeat(7,1fr);border-bottom:1px solid var(--line);background:var(--shade)">'+
       '<div style="padding:8px 7px;display:flex;flex-direction:column;justify-content:center">'+
         '<span style="display:inline-flex;align-items:center;gap:5px"><span style="width:6px;height:6px;border-radius:2px;background:var(--wn);flex-shrink:0"></span><span style="font-size:8.5px;font-weight:900;color:var(--wn);letter-spacing:.7px;text-transform:uppercase">Reinig.</span></span>'+
@@ -5734,7 +5867,7 @@ function spWeekGridHTML(){
 function spResultHTML(){
   var shifts=spShifts();
   var conflicts=shifts.filter(function(x){ return x.st==='blocked'||x.st==='conflict'; });
-  var pub=(S.spWeekStatus||{})[41]||'draft';
+  var pub=(S.spWeekStatus||{})[spKWNr()]||'draft';
   var stMap={draft:['Entwurf','var(--wn)','var(--wns)'], published:['Veröffentlicht','var(--ok)','var(--oks)'], none:['Nicht gespeichert','var(--tx3)','var(--surf2)']};
   var tup=stMap[pub]||stMap.none;
 
@@ -5760,8 +5893,8 @@ function spResultHTML(){
   }).join('');
 
   var cfOn=!!S.spConflictOnly;
-  var rail=Object.keys(SP_STAFF).map(function(id){
-    var p=SP_STAFF[id];
+  var rail=Object.keys(spTeam()).map(function(id){
+    var p=spTeam()[id];
     var wk=shifts.filter(function(x){ return x.who===id; }).reduce(function(n,x){ return n+(x.b-x.a); },0);
     var pct=Math.min(100,Math.round(p.h/p.max*100));
     var barColor=pct>95?'var(--dg)':pct>85?'var(--wn)':'var(--ac)';
@@ -5790,10 +5923,10 @@ function spResultHTML(){
           '<span style="display:inline-flex;align-items:center;gap:6px;padding:4px 9px;border-radius:7px;border:1px dashed var(--acb);background:var(--acs)">'+
             '<span style="width:5px;height:5px;border-radius:50%;background:var(--ac)"></span>'+
             '<span style="font-size:9px;font-weight:900;color:var(--ac);letter-spacing:1.3px;text-transform:uppercase">KI-Vorschlag</span></span>'+
-          '<span style="font-size:9px;font-weight:900;color:'+tup[1]+';letter-spacing:1.3px;text-transform:uppercase;padding:4px 9px;border-radius:6px;background:'+tup[2]+'">KW 41 · '+tup[0]+'</span>'+
+          '<span style="font-size:9px;font-weight:900;color:'+tup[1]+';letter-spacing:1.3px;text-transform:uppercase;padding:4px 9px;border-radius:6px;background:'+tup[2]+'">'+esc(spKW())+' · '+tup[0]+'</span>'+
         '</div>'+
-        '<div style="font-size:25px;font-weight:900;letter-spacing:-.7px;margin-top:9px">Plan für KW 41</div>'+
-        '<div style="font-size:12.5px;font-weight:600;color:var(--tx2);margin-top:3px">05.–11. Oktober 2026 · '+shifts.length+' Schichten · '+conflicts.length+' zu klären</div>'+
+        '<div style="font-size:25px;font-weight:900;letter-spacing:-.7px;margin-top:9px">Plan für '+esc(spKW())+'</div>'+
+        '<div style="font-size:12.5px;font-weight:600;color:var(--tx2);margin-top:3px">'+esc(spSpanneLang())+' · '+shifts.length+' Schichten · '+conflicts.length+' zu klären</div>'+
       '</div>'+
       '<div style="display:flex;align-items:center;gap:9px;flex-shrink:0">'+
         '<button data-spdraft="1" class="tap" style="height:42px;padding:0 14px;border-radius:12px;border:1px solid var(--line2);background:var(--surf);color:var(--tx);font-family:inherit;font-size:12.5px;font-weight:700;cursor:pointer">Entwurf speichern</button>'+
@@ -5810,9 +5943,9 @@ function spResultHTML(){
       '<div style="display:flex;align-items:center;gap:10px">'+
         '<div style="display:flex;gap:3px;background:var(--surf);border:1px solid var(--line);border-radius:11px;padding:3px">'+zoomTabs+'</div>'+
         '<div style="display:flex;align-items:center;gap:6px">'+
-          '<button class="tap" style="width:31px;height:31px;border-radius:9px;border:1px solid var(--line2);background:transparent;display:flex;align-items:center;justify-content:center;cursor:pointer"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--tx2)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"></path></svg></button>'+
-          '<span style="font-size:11.5px;font-weight:800;color:var(--tx2);min-width:104px;text-align:center;font-variant-numeric:tabular-nums">KW 41 · 05.–11.10.</span>'+
-          '<button class="tap" style="width:31px;height:31px;border-radius:9px;border:1px solid var(--line2);background:transparent;display:flex;align-items:center;justify-content:center;cursor:pointer"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--tx2)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"></path></svg></button>'+
+          '<button data-spweek="-7" class="tap" style="width:31px;height:31px;border-radius:9px;border:1px solid var(--line2);background:transparent;display:flex;align-items:center;justify-content:center;cursor:pointer" title="Woche zurück"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--tx2)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"></path></svg></button>'+
+          '<span style="font-size:11.5px;font-weight:800;color:var(--tx2);min-width:104px;text-align:center;font-variant-numeric:tabular-nums">'+esc(spKW()+' · '+spSpanneKurz())+'</span>'+
+          '<button data-spweek="7" class="tap" style="width:31px;height:31px;border-radius:9px;border:1px solid var(--line2);background:transparent;display:flex;align-items:center;justify-content:center;cursor:pointer" title="Woche vor"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--tx2)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"></path></svg></button>'+
         '</div></div>'+
       '<div style="display:flex;align-items:center;gap:8px">'+
         '<button data-spcf="1" class="tap" style="height:36px;padding:0 12px;border-radius:10px;border:1px solid '+(cfOn?'var(--ac)':'var(--line2)')+';background:'+(cfOn?'var(--acs)':'transparent')+';color:'+(cfOn?'var(--ac)':'var(--tx2)')+';font-family:inherit;font-size:11.5px;font-weight:800;cursor:pointer">Nur Konflikte</button>'+
@@ -5892,7 +6025,7 @@ function spStartDrag(e,id,mode){
         src.a=a0; src.b=b0; src.day=day0;
         var tmp=src.who; src.who=dst.who; dst.who=tmp;
         src.st=src.who?'ai':'open'; dst.st=dst.who?'ai':'open';
-        var nm=function(w){ return w?SP_STAFF[w].short:'Offen'; };
+        var nm=function(w){ return w?spP(w).short:'Offen'; };
         S.spDragId=null; S.spDropId=null;
         spToast(nm(dst.who)+' ↔ '+nm(src.who)+' getauscht');
         return;
@@ -5901,7 +6034,7 @@ function spStartDrag(e,id,mode){
     var cur=list.filter(function(x){ return x.id===id; })[0];
     S.spDragId=null; S.spDropId=null;
     if(cur&&(cur.a!==a0||cur.b!==b0||cur.day!==day0))
-      spToast(SP_DAYS[cur.day][0]+' '+SP_DAYS[cur.day][1]+' · '+spSpan(cur.a,cur.b)+' · '+spDur(cur.a,cur.b));
+      spToast(spDays()[cur.day][0]+' '+spDays()[cur.day][1]+' · '+spSpan(cur.a,cur.b)+' · '+spDur(cur.a,cur.b));
     else render();
   };
   document.addEventListener('pointermove',move); document.addEventListener('pointerup',up); document.addEventListener('pointercancel',up);
@@ -5914,9 +6047,9 @@ function spStartDrag(e,id,mode){
 // Verfuegbarkeit knapp verfehlt oder Stundenkonto fast voll ist kein Verbot,
 // sondern etwas, das die Leitung sehen und entscheiden soll.
 function spFitCheck(staffId, sh){
-  var p=SP_STAFF[staffId];
+  var p=spTeam()[staffId];
   if(!p) return {ok:false, why:'Unbekannte Person'};
-  if((p.areas||[]).indexOf(sh.area)<0) return {ok:false, why:p.short+' ist nicht für '+SP_AREA[sh.area].label+' freigegeben'};
+  if((p.areas||[]).indexOf(sh.area)<0) return {ok:false, why:p.short+' ist nicht für '+spArea(sh.area).label+' freigegeben'};
   if(spVacOn(staffId, spDomOf(sh.day))) return {ok:false, why:p.short+' ist an dem Tag im Urlaub'};
   var clash=spShifts().filter(function(x){
     return x.id!==sh.id && x.day===sh.day && x.who===staffId && x.a<sh.b && x.b>sh.a; })[0];
@@ -5954,8 +6087,8 @@ function spStartStaffDrag(e, staffId){
     if(!chk.ok){ spToast('Nicht möglich · '+chk.why); return; }
     var prev=sh.who;
     sh.who=staffId; sh.st=chk.soft?'conflict':'ai'; sh.conflict=chk.soft?chk.why:null; S.spSel=tid;
-    var nm=SP_STAFF[staffId].short;
-    spToast(prev? (nm+' ersetzt '+SP_STAFF[prev].short+' · '+spSpan(sh.a,sh.b)) : (nm+' eingeplant · '+spSpan(sh.a,sh.b)));
+    var nm=spP(staffId).short;
+    spToast(prev? (nm+' ersetzt '+spP(prev).short+' · '+spSpan(sh.a,sh.b)) : (nm+' eingeplant · '+spSpan(sh.a,sh.b)));
   };
   document.addEventListener('pointermove',move); document.addEventListener('pointerup',up); document.addEventListener('pointercancel',up);
 }
@@ -5986,12 +6119,15 @@ function spWireResult(node){
   node.querySelectorAll('[data-spzoom]').forEach(function(b){
     b.onclick=function(){ S.spZoom=b.getAttribute('data-spzoom'); render(); };
   });
+  node.querySelectorAll('[data-spweek]').forEach(function(b){
+    b.onclick=function(){ shShiftWeek(parseInt(b.getAttribute('data-spweek'),10)); };
+  });
   var cf=node.querySelector('[data-spcf]'); if(cf) cf.onclick=function(){ S.spConflictOnly=!S.spConflictOnly; render(); };
   var rs=node.querySelector('[data-spreset]'); if(rs) rs.onclick=function(){ S.spShifts=spSeedShifts(); spToast('Auf Standard-Schichtblöcke zurückgesetzt'); };
   var dr=node.querySelector('[data-spdraft]'); if(dr) dr.onclick=function(){
-    S.spWeekStatus=S.spWeekStatus||{}; S.spWeekStatus[41]='draft'; spToast('KW 41 als Entwurf gespeichert · Team sieht ihn noch nicht'); };
+    S.spWeekStatus=S.spWeekStatus||{}; S.spWeekStatus[spKWNr()]='draft'; spToast(spKW()+' als Entwurf gespeichert · Team sieht ihn noch nicht'); };
   var pb=node.querySelector('[data-sppub]'); if(pb) pb.onclick=function(){
-    S.spWeekStatus=S.spWeekStatus||{}; S.spWeekStatus[41]='published'; spToast('KW 41 veröffentlicht · das Team ist informiert'); };
+    S.spWeekStatus=S.spWeekStatus||{}; S.spWeekStatus[spKWNr()]='published'; spToast(spKW()+' veröffentlicht · das Team ist informiert'); };
 }
 
 
@@ -5999,7 +6135,7 @@ function spWireResult(node){
 // Uebernommen aus Schichtplan.dc.html. Die Werte in den Kaesten sind die des
 // Entwurfs; sie zeigen den Rahmen, innerhalb dessen geplant wird.
 var SP_RANGE_HINTS={
-  woche:'KW 41 · 05.–11.10.2026 · Feinplanung mit Namen',
+  woche:'diese Woche · Feinplanung mit Namen',
   monat:'Oktober 2026 · 4,5 Wochen · Feinplanung',
   quartal:'Q4 2026 · KW 40–52 · Feinplanung bis KW 48, danach Grobplanung',
   halb:'Okt 2026 – Mär 2027 · überwiegend Grobplanung'
@@ -6316,7 +6452,7 @@ var SP_APPS=[
 
 function spApplicantsHTML(){
   var karten=SP_APPS.map(function(a){
-    var p=SP_STAFF[a[0]], rec=a[2];
+    var p=spTeam()[a[0]], rec=a[2];
     var facts=a[3].map(function(f){
       return '<div style="padding:8px 11px;border-radius:10px;background:var(--surf2);border:1px solid var(--line)">'+
         '<div style="font-size:8.5px;font-weight:900;color:var(--tx4);letter-spacing:1px;text-transform:uppercase">'+esc(f[0])+'</div>'+
@@ -6376,17 +6512,59 @@ function spSeedAvail(){
     to:{d:[r(9.5,15),r(9.5,15),r(9.5,15),r(9.5,15),r(9.5,15),r(13,16),r(9,12)], src:'self'}
   };
 }
-function spAvail(){ if(!S.spAvail) S.spAvail=spSeedAvail(); return S.spAvail; }
+// Verfuegbarkeit. Gespeichert wird sie als Bloecke - die Matrix und die
+// Personenansicht zeichnen daraus ein Von-Bis-Fenster. Wer nichts gemeldet hat,
+// steht mit leerer Zeile drin: „fehlt" ist eine Aussage, Weglassen waere keine.
+var SP_AVKEYS=['mo','di','mi','do','fr','sa','so'];
+function spAvail(){
+  var d=S.shData;
+  if(!d || !Array.isArray(d.availability)){ if(!S.spAvail) S.spAvail=spSeedAvail(); return S.spAvail; }
+  if(window.__spAvSrc===d && window.__spAvVal) return window.__spAvVal;
+  var out={};
+  d.availability.forEach(function(a){
+    var row={d:[], src:(a.src==='lead'?'lead':'self'), soft:[], blocks:{}, reported:a.reported!==false};
+    SP_AVKEYS.forEach(function(k,i){
+      var sel=(a.blocks&&Array.isArray(a.blocks[k]))?a.blocks[k]:[];
+      var slots=spSlotsFor(i);
+      row.blocks[i]=sel.slice();
+      if(!sel.length){ row.d.push(null); }
+      else{
+        var lo=null, hi=null;
+        sel.forEach(function(n){ var s=slots[n]; if(!s) return;
+          if(lo===null||s[0]<lo) lo=s[0]; if(hi===null||s[1]>hi) hi=s[1]; });
+        row.d.push((lo!==null&&hi!==null&&hi>lo)?[lo,hi]:null);
+      }
+      if(a.soft&&a.soft[k]) row.soft.push(i);
+    });
+    out[String(a.employeeId)]=row;
+  });
+  Object.keys(spTeam()).forEach(function(id){
+    if(!out[id]) out[id]={d:[null,null,null,null,null,null,null], src:'self', soft:[], blocks:{}, reported:false};
+  });
+  window.__spAvSrc=d; window.__spAvVal=out;
+  return out;
+}
+// Gemeldete Bloecke einer Person fuer einen Wochentag (Spaltenindex).
+function spAvBlocks(staffId, dayIdx){
+  var row=spAvail()[staffId];
+  if(row && row.blocks && Array.isArray(row.blocks[dayIdx])) return row.blocks[dayIdx];
+  // Beispielzeile: aus dem Fenster die passenden Bloecke ableiten.
+  var win=row&&row.d?row.d[dayIdx]:null;
+  if(!win) return [];
+  var out=[];
+  spSlotsFor(dayIdx).forEach(function(s,i){ if(s[0]>=win[0]-0.001 && s[1]<=win[1]+0.001) out.push(i); });
+  return out;
+}
 
 function spMatrixHTML(){
   var avail=spAvail();
-  var heads=SP_DAYS.map(function(d,i){
+  var heads=spDays().map(function(d,i){
     return '<div style="text-align:center"><div style="font-size:11px;font-weight:900">'+d[0]+'</div>'+
       '<div style="font-size:9px;font-weight:700;color:var(--tx4);margin-top:1px;font-variant-numeric:tabular-nums">'+(i===5?'13–18':i===6?'9–15':'9:30–21:30')+'</div></div>';
   }).join('');
 
-  var rows=Object.keys(SP_STAFF).map(function(id){
-    var p=SP_STAFF[id], row=avail[id], soft=row.soft||[];
+  var rows=Object.keys(spTeam()).map(function(id){
+    var p=spTeam()[id], row=avail[id], soft=row.soft||[];
     var fehlt=(id==='hy'||id==='st');
     var cells=row.d.map(function(v,i){
       var oh=spOpenHours(i), lo=oh[0], hi=oh[1];
@@ -6469,11 +6647,11 @@ function spWireInbox(node){
     b.onclick=function(){ var p=b.getAttribute('data-spcycle').split(':'); spCycleCell(p[0], parseInt(p[1],10)); };
   });
   node.querySelectorAll('[data-spaccept]').forEach(function(b){
-    b.onclick=function(){ var p=SP_STAFF[b.getAttribute('data-spaccept')];
+    b.onclick=function(){ var p=spTeam()[b.getAttribute('data-spaccept')];
       S.spScreen='inbox'; spToast('Zusage an '+p.short+' · andere erhalten automatisch eine Absage'); };
   });
   node.querySelectorAll('[data-spdecline]').forEach(function(b){
-    b.onclick=function(){ spToast('Absage an '+SP_STAFF[b.getAttribute('data-spdecline')].short+' gesendet'); };
+    b.onclick=function(){ spToast('Absage an '+spP(b.getAttribute('data-spdecline')).short+' gesendet'); };
   });
   node.querySelectorAll('[data-spact]').forEach(function(b){
     b.onclick=function(){
@@ -6496,21 +6674,23 @@ function spWireInbox(node){
 // „was ist unbesetzt und wer koennte", „wer ist ueberhaupt da" und die einzelne
 // Person mit Stunden, Urlaub, Verfuegbarkeit und Schichten.
 function spAreaLabel(p){
-  var a=p.areas||[];
+  var a=(p&&p.areas)||[];
   if(!a.length) return 'kein Bereich';
-  return a.length>1?'Fläche + Reinigung':SP_AREA[a[0]].label;
+  if(a.length===1) return spArea(a[0]).label;
+  return a.map(function(k){ return spArea(k).label.split(' ')[0]; }).join(' + ');
 }
 function spAreaColor(p){
-  var a=p.areas||[];
+  var a=(p&&p.areas)||[];
   if(!a.length) return 'var(--tx4)';
-  return a.length>1?'var(--vi)':(a[0]==='reinigung'?'var(--wn)':'var(--ac)');
+  if(a.length>1) return 'var(--vi)';
+  return 'var('+spArea(a[0]).v+')';
 }
 
 // Wer koennte diese Schicht uebernehmen? Sortiert nach Eignung, nicht
 // alphabetisch - die Reihenfolge ist hier die eigentliche Aussage.
 function spCandidatesFor(sh){
-  return Object.keys(SP_STAFF).map(function(id){
-    var chk=spFitCheck(id,sh), p=SP_STAFF[id], left=p.max-p.h;
+  return Object.keys(spTeam()).map(function(id){
+    var chk=spFitCheck(id,sh), p=spTeam()[id], left=p.max-p.h;
     var score=chk.ok?((chk.soft?55:88)-Math.max(0,10-left)):15;
     return { id:id, name:p.name, short:p.short, ini:p.ini, type:p.typeShort,
       ok:chk.ok, soft:!!chk.soft, why:chk.why, score:Math.max(5,score) };
@@ -6519,54 +6699,97 @@ function spCandidatesFor(sh){
 
 function spShiftById(id){ return spShifts().filter(function(x){ return x.id===id; })[0]||null; }
 
+// Wer bin ich? Live die Mitarbeiter-ID der Sitzung; im Beispiel Markus.
+// Ein Passwort-Login der Leitung hat keine - die Mitarbeiter-Seite sagt das dann.
+function spMe(){
+  if(!spLive()) return 'ma';
+  var m=S.shData.me||{};
+  return (m.employeeId!=null && String(m.employeeId).trim()!=='')?String(m.employeeId):null;
+}
+function spCanDecide(){ return spLive()?!!S.shData.canDecide:true; }
+
+// Jede Aenderung geht an den Server; die Antwort ist die neue Wahrheit. Im
+// Beispielbetrieb bleibt es beim oertlichen Zustand - dort gibt es nichts zu
+// speichern, und ein stiller Fehlschlag waere schlimmer als kein Speichern.
+async function spApi(body, gut){
+  var r=await shPost(body);
+  if(r && r.ok!==false && gut) spToast(gut); else render();
+  return r;
+}
+
 function spAssignTo(id,who){
+  var p=spTeam()[who];
+  if(spLive()){
+    return spApi({action:'update', id:id, assignee:{id:who, name:(p&&p.name)||who, initials:(p&&p.ini)||''}},
+      'Zugewiesen an '+((p&&p.short)||who));
+  }
   var sh=spShiftById(id); if(!sh) return;
   sh.who=who; sh.st='ai'; sh.conflict=null;
-  spToast('Zugewiesen an '+SP_STAFF[who].short);
+  spToast('Zugewiesen an '+((p&&p.short)||who));
 }
 function spPublishShift(id,mode){
-  var sh=spShiftById(id); if(!sh) return;
   var m=mode||'apply';
+  var text=m==='instant'?'Zur Sofort-Übernahme freigegeben · wer zuerst zusagt':'Ausgeschrieben · Push an alle, die passen';
+  if(spLive()) return spApi({action:'post', id:id, mode:m, deadline:m==='instant'?null:'Frist heute 20:00'}, text);
+  var sh=spShiftById(id); if(!sh) return;
   sh.st='posted'; sh.postMode=m; sh.who=null;
-  spToast(m==='instant'?'Zur Sofort-Übernahme freigegeben · wer zuerst zusagt':'Ausgeschrieben · Push an alle, die passen');
+  spToast(text);
 }
 function spUnpostShift(id){
+  if(spLive()) return spApi({action:'unpost', id:id}, 'Ausschreibung zurückgezogen');
   var sh=spShiftById(id); if(!sh) return;
   sh.st='open'; sh.postMode=null;
   spToast('Ausschreibung zurückgezogen');
 }
-function spPostAllOpen(){
+async function spPostAllOpen(){
   var list=spShifts().filter(function(x){ return (!x.who||x.st==='blocked')&&x.st!=='posted'; });
   if(!list.length){ spToast('Nichts offen — alles besetzt'); return; }
+  if(spLive()){
+    for(var i=0;i<list.length;i++){ await shPost({action:'post', id:list[i].id, mode:'apply', deadline:'Frist heute 20:00'}); }
+    spToast(list.length+' Schichten ausgeschrieben · Push an alle, die passen');
+    return;
+  }
   list.forEach(function(x){ x.st='posted'; x.postMode='apply'; x.who=null; });
   spToast(list.length+' Schichten ausgeschrieben · Push an alle, die passen');
 }
 function spFreeShift(id){
   var sh=spShiftById(id); if(!sh) return;
-  var nm=sh.who?SP_STAFF[sh.who].short:'';
+  var p=sh.who?spTeam()[sh.who]:null, nm=p?p.short:'';
+  var text=nm?(nm+' aus der Schicht genommen · jetzt offen'):'Schicht ist jetzt offen';
+  if(spLive()) return spApi({action:'update', id:id, assignee:null}, text);
   sh.who=null; sh.st='open'; sh.conflict=null;
-  spToast(nm?(nm+' aus der Schicht genommen · jetzt offen'):'Schicht ist jetzt offen');
+  spToast(text);
 }
 function spDecideVac(id,ok){
-  (S.spVac||[]).forEach(function(v){ if(v.id===id) v.status=ok?'approved':'declined'; });
-  spToast(ok?'Genehmigt · betroffene Schichten werden markiert':'Abgelehnt · Mitarbeiter wird freundlich informiert');
+  var text=ok?'Genehmigt · betroffene Schichten werden markiert':'Abgelehnt · Mitarbeiter wird freundlich informiert';
+  if(spLive()) return spApi({action:'vac-decide', id:id, ok:!!ok}, text);
+  spVacs().forEach(function(v){ if(v.id===id) v.status=ok?'approved':'declined'; });
+  spToast(text);
 }
 function spOpenPerson(id){ S.spScreen='person'; S.spPerson=id; render(); }
 
 // Bereich entziehen heisst: die damit besetzten Schichten sind wieder offen.
 // Sonst stuende dort jemand, der dafuer gar nicht mehr freigegeben ist.
-function spToggleArea(id,k){
-  var p=SP_STAFF[id]; if(!p) return;
+async function spToggleArea(id,k){
+  var p=spTeam()[id]; if(!p) return;
   var cur=p.areas||[], hat=cur.indexOf(k)>=0;
   if(hat&&cur.length===1){ spToast(p.short+' braucht mindestens einen Bereich'); return; }
-  p.areas = hat ? cur.filter(function(x){ return x!==k; }) : cur.concat([k]);
-  if(hat){
-    var drop=spShifts().filter(function(x){ return x.who===id&&x.area===k; });
-    if(drop.length){
-      drop.forEach(function(x){ x.who=null; x.st='open'; x.conflict=null; });
-      spToast(p.short+': '+SP_AREA[k].label+' entzogen · '+drop.length+' Schicht'+(drop.length>1?'en':'')+' jetzt offen');
-      return;
-    }
+  var neu = hat ? cur.filter(function(x){ return x!==k; }) : cur.concat([k]);
+  var drop=hat?spShifts().filter(function(x){ return x.who===id&&x.area===k; }):[];
+  var text=drop.length
+    ? (p.short+': '+spArea(k).label+' entzogen · '+drop.length+' Schicht'+(drop.length>1?'en':'')+' jetzt offen')
+    : '';
+  if(spLive()){
+    var r=await shPost({action:'staff-set', employeeId:id, name:p.name, areas:neu});
+    if(!r || r.ok===false) return;
+    for(var i=0;i<drop.length;i++) await shPost({action:'update', id:drop[i].id, assignee:null});
+    if(text) spToast(text); else render();
+    return;
+  }
+  p.areas=neu;
+  if(drop.length){
+    drop.forEach(function(x){ x.who=null; x.st='open'; x.conflict=null; });
+    spToast(text); return;
   }
   render();
 }
@@ -6580,7 +6803,7 @@ function spPostingsHTML(){
   // Warum braucht die Schicht Besetzung? Urlaub schlaegt alles andere - er ist
   // der Grund, den die Leitung zuerst verstehen muss.
   var grundVon=function(x){
-    if(x.who&&spVacOn(x.who,spDomOf(x.day))) return ['Urlaub','var(--dgt)','var(--dgs)',SP_STAFF[x.who].short+' ist im Urlaub'];
+    if(x.who&&spVacOn(x.who,spDomOf(x.day))) return ['Urlaub','var(--dgt)','var(--dgs)',spP(x.who).short+' ist im Urlaub'];
     if(x.st==='blocked') return ['Nicht besetzbar','var(--dgt)','var(--dgs)','Keine passende Person verfügbar'];
     if(x.st==='conflict') return ['Konflikt','var(--wn)','var(--wns)',x.conflict||'Regelkonflikt'];
     return ['Offen','var(--wn)','var(--wns)','Noch niemand eingeplant'];
@@ -6605,14 +6828,14 @@ function spPostingsHTML(){
     return '<div style="background:var(--surf);border:1px solid var(--line);border-left:3px solid '+akzent+';border-radius:16px;padding:15px 16px">'+
       '<div style="display:flex;align-items:flex-start;gap:14px">'+
         '<div style="width:52px;flex-shrink:0;text-align:center">'+
-          '<div style="font-size:10px;font-weight:800;color:var(--tx3);letter-spacing:.5px;text-transform:uppercase">'+SP_DAYS[x.day][0]+'</div>'+
-          '<div style="font-size:15px;font-weight:900;line-height:1.1;font-variant-numeric:tabular-nums">'+SP_DAYS[x.day][1]+'</div></div>'+
+          '<div style="font-size:10px;font-weight:800;color:var(--tx3);letter-spacing:.5px;text-transform:uppercase">'+spDays()[x.day][0]+'</div>'+
+          '<div style="font-size:15px;font-weight:900;line-height:1.1;font-variant-numeric:tabular-nums">'+spDays()[x.day][1]+'</div></div>'+
         '<div style="flex:1;min-width:0">'+
           '<div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">'+
             '<span style="font-size:15px;font-weight:900;letter-spacing:-.3px;font-variant-numeric:tabular-nums">'+esc(zeit)+'</span>'+
             '<span style="font-size:11.5px;font-weight:700;color:var(--tx3)">'+esc(dauer)+'</span>'+
             '<span style="display:inline-flex;align-items:center;gap:6px"><span style="width:6px;height:6px;border-radius:2px;background:'+av+'"></span>'+
-              '<span style="font-size:11.5px;font-weight:800;color:'+av+'">'+esc(SP_AREA[x.area].label)+'</span></span>'+
+              '<span style="font-size:11.5px;font-weight:800;color:'+av+'">'+esc(spArea(x.area).label)+'</span></span>'+
             '<span style="font-size:8.5px;font-weight:900;color:'+rs[1]+';letter-spacing:1.1px;text-transform:uppercase;padding:3px 8px;border-radius:5px;background:'+rs[2]+'">'+esc(rs[0])+'</span>'+
           '</div>'+
           '<div style="font-size:11.5px;font-weight:700;color:var(--tx2);margin-top:6px">'+esc(rs[3])+'</div>'+
@@ -6621,9 +6844,10 @@ function spPostingsHTML(){
           '</div>'+
         '</div>'+
         '<div style="display:flex;flex-direction:column;gap:7px;flex-shrink:0;width:150px">'+
-          '<button data-sppost="'+esc(x.id)+'" class="tap" style="height:36px;border-radius:10px;border:none;background:var(--ac);color:var(--acfg);font-family:inherit;font-size:12px;font-weight:900;cursor:pointer">Ausschreiben</button>'+
+          (spCanDecide()?('<button data-sppost="'+esc(x.id)+'" class="tap" style="height:36px;border-radius:10px;border:none;background:var(--ac);color:var(--acfg);font-family:inherit;font-size:12px;font-weight:900;cursor:pointer">Ausschreiben</button>'+
           '<button data-sppostnow="'+esc(x.id)+'" class="tap" style="height:32px;border-radius:10px;border:1px solid var(--line2);background:transparent;color:var(--tx2);font-family:inherit;font-size:11px;font-weight:800;cursor:pointer">Sofort-Übernahme</button>'+
-          (x.who?('<button data-spfree="'+esc(x.id)+'" class="tap" style="height:30px;border-radius:10px;border:1px solid var(--line2);background:transparent;color:var(--dgt);font-family:inherit;font-size:11px;font-weight:800;cursor:pointer">Person freistellen</button>'):'')+
+          (x.who?('<button data-spfree="'+esc(x.id)+'" class="tap" style="height:30px;border-radius:10px;border:1px solid var(--line2);background:transparent;color:var(--dgt);font-family:inherit;font-size:11px;font-weight:800;cursor:pointer">Person freistellen</button>'):'')):
+          '<span style="font-size:10.5px;font-weight:700;color:var(--tx3);line-height:1.4">Ausschreiben entscheidet die Leitung.</span>')+
           '<button data-spinspect="'+esc(x.id)+'" style="border:none;background:none;color:var(--tx3);font-family:inherit;font-size:10.5px;font-weight:800;cursor:pointer;padding:0;text-decoration:underline">im Plan zeigen</button>'+
         '</div>'+
       '</div></div>';
@@ -6638,12 +6862,12 @@ function spPostingsHTML(){
     var sofort=x.postMode==='instant';
     return '<div style="background:var(--surf);border:1px solid var(--line);border-radius:15px;padding:14px 16px;display:flex;align-items:center;gap:14px">'+
       '<div style="width:52px;flex-shrink:0;text-align:center">'+
-        '<div style="font-size:10px;font-weight:800;color:var(--tx3);letter-spacing:.5px;text-transform:uppercase">'+SP_DAYS[x.day][0]+'</div>'+
-        '<div style="font-size:15px;font-weight:900;line-height:1.1;font-variant-numeric:tabular-nums">'+SP_DAYS[x.day][1]+'</div></div>'+
+        '<div style="font-size:10px;font-weight:800;color:var(--tx3);letter-spacing:.5px;text-transform:uppercase">'+spDays()[x.day][0]+'</div>'+
+        '<div style="font-size:15px;font-weight:900;line-height:1.1;font-variant-numeric:tabular-nums">'+spDays()[x.day][1]+'</div></div>'+
       '<div style="flex:1;min-width:0">'+
         '<div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">'+
           '<span style="font-size:14px;font-weight:900;font-variant-numeric:tabular-nums">'+esc(spSpan(x.a,x.b))+'</span>'+
-          '<span style="font-size:11.5px;font-weight:700;color:var(--tx3)">'+esc(SP_AREA[x.area].label)+'</span>'+
+          '<span style="font-size:11.5px;font-weight:700;color:var(--tx3)">'+esc(spArea(x.area).label)+'</span>'+
           '<span style="font-size:8.5px;font-weight:900;color:'+(sofort?'var(--ok)':'var(--wn)')+';letter-spacing:1.1px;text-transform:uppercase;padding:3px 8px;border-radius:5px;background:'+(sofort?'var(--oks)':'var(--wns)')+'">'+(sofort?'Sofort-Übernahme':'Bewerbung')+'</span>'+
         '</div>'+
         '<div style="font-size:11px;font-weight:700;color:var(--tx3);margin-top:4px">'+(sofort?'wer zuerst zusagt':'Frist heute 20:00')+'</div>'+
@@ -6652,7 +6876,7 @@ function spPostingsHTML(){
           :'<span style="font-size:11.5px;font-weight:800;color:var(--wn);flex-shrink:0">noch keine Bewerbung</span>')+
       '<div style="display:flex;gap:7px;flex-shrink:0">'+
         '<button data-spact="goapplicants" class="tap" style="height:34px;padding:0 12px;border-radius:10px;border:none;background:var(--ac);color:var(--acfg);font-family:inherit;font-size:11.5px;font-weight:900;cursor:pointer">Bewerber</button>'+
-        '<button data-spunpost="'+esc(x.id)+'" class="tap" style="height:34px;padding:0 11px;border-radius:10px;border:1px solid var(--line2);background:transparent;color:var(--tx3);font-family:inherit;font-size:11px;font-weight:800;cursor:pointer">Zurückziehen</button>'+
+        (spCanDecide()?('<button data-spunpost="'+esc(x.id)+'" class="tap" style="height:34px;padding:0 11px;border-radius:10px;border:1px solid var(--line2);background:transparent;color:var(--tx3);font-family:inherit;font-size:11px;font-weight:800;cursor:pointer">Zurückziehen</button>'):'')+
       '</div></div>';
   }).join('');
 
@@ -6662,9 +6886,9 @@ function spPostingsHTML(){
     '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:20px">'+
       '<div><div style="font-size:25px;font-weight:900;letter-spacing:-.7px">Ausschreibungen</div>'+
         '<div style="font-size:12.5px;font-weight:600;color:var(--tx2);margin-top:4px">Offene Schichten, Urlaubslücken und Konflikte — mit Vorschlag, wer da könnte.</div>'+
-        '<div style="font-size:11px;font-weight:700;color:var(--tx3);margin-top:6px">Gilt je Schicht · aktuell KW 41 · andere Wochen über den Plan wechseln</div></div>'+
-      '<button data-sppostall="1" class="tap" style="height:42px;padding:0 16px;border-radius:12px;border:none;background:var(--ac);color:var(--acfg);font-family:inherit;font-size:13px;font-weight:900;cursor:pointer;flex-shrink:0;display:flex;align-items:center;gap:8px">'+
-        spIc(SPI.bell,'var(--acfg)',16)+'Alle offenen dieser Woche</button>'+
+        '<div style="font-size:11px;font-weight:700;color:var(--tx3);margin-top:6px">Gilt je Schicht · aktuell '+esc(spKW())+' · andere Wochen über den Plan wechseln</div></div>'+
+      (spCanDecide()?('<button data-sppostall="1" class="tap" style="height:42px;padding:0 16px;border-radius:12px;border:none;background:var(--ac);color:var(--acfg);font-family:inherit;font-size:13px;font-weight:900;cursor:pointer;flex-shrink:0;display:flex;align-items:center;gap:8px">'+
+        spIc(SPI.bell,'var(--acfg)',16)+'Alle offenen dieser Woche</button>'):'')+
     '</div>'+
     '<div style="display:flex;align-items:center;gap:10px;margin:22px 0 12px">'+
       '<span style="font-size:10px;font-weight:900;color:var(--wn);letter-spacing:1.5px;text-transform:uppercase">Braucht Besetzung</span>'+
@@ -6680,12 +6904,12 @@ function spPostingsHTML(){
 
 function spTeamHTML(){
   var shifts=spShifts(), avail=spAvail();
-  var zeilen=Object.keys(SP_STAFF).map(function(id){
-    var p=SP_STAFF[id];
+  var zeilen=Object.keys(spTeam()).map(function(id){
+    var p=spTeam()[id];
     var woche=shifts.filter(function(x){ return x.who===id; }).reduce(function(n,x){ return n+(x.b-x.a); },0);
-    var urlaubstage=(S.spVac||[]).filter(function(v){ return v.staffId===id&&v.status!=='declined'; })
+    var urlaubstage=spVacs().filter(function(v){ return v.staffId===id&&v.status!=='declined'; })
       .reduce(function(n,v){ return n+v.days; },0);
-    var offen=(S.spVac||[]).filter(function(v){ return v.staffId===id&&v.status==='pending'; }).length;
+    var offen=spVacs().filter(function(v){ return v.staffId===id&&v.status==='pending'; }).length;
     var tage=(avail[id].d||[]).filter(function(x){ return !!x; }).length;
     var knapp=p.max-p.h<=4;
     return '<div data-spperson="'+esc(id)+'" class="tap" style="background:var(--surf);border:1px solid var(--line);border-radius:16px;padding:14px 16px;cursor:pointer;display:flex;align-items:center;gap:14px">'+
@@ -6702,7 +6926,7 @@ function spTeamHTML(){
           '<div style="flex:1;height:4px;border-radius:2px;background:var(--surf3);overflow:hidden"><div style="width:'+Math.min(100,Math.round(p.h/p.max*100))+'%;height:100%;background:'+(knapp?'var(--wn)':'var(--ac)')+'"></div></div>'+
           '<span style="font-size:10px;font-weight:800;color:var(--tx2);font-variant-numeric:tabular-nums;white-space:nowrap">'+p.h+' / '+p.max+' Std</span></div>'+
       '</div>'+
-      '<div style="width:76px;flex-shrink:0"><div style="font-size:9px;font-weight:900;color:var(--tx4);letter-spacing:1.1px;text-transform:uppercase">KW 41</div>'+
+      '<div style="width:76px;flex-shrink:0"><div style="font-size:9px;font-weight:900;color:var(--tx4);letter-spacing:1.1px;text-transform:uppercase">'+esc(spKW())+'</div>'+
         '<div style="font-size:12.5px;font-weight:800;margin-top:3px;font-variant-numeric:tabular-nums">'+(woche%1?woche.toFixed(1).replace('.',','):woche)+' Std</div></div>'+
       '<div style="width:84px;flex-shrink:0"><div style="font-size:9px;font-weight:900;color:var(--tx4);letter-spacing:1.1px;text-transform:uppercase">Urlaub</div>'+
         '<div style="font-size:12.5px;font-weight:800;margin-top:3px;font-variant-numeric:tabular-nums">'+urlaubstage+' Tage</div></div>'+
@@ -6728,8 +6952,11 @@ var SP_VAC_STATUS={
 };
 
 function spPersonHTML(){
-  var pid=S.spPerson||'ma', p=SP_STAFF[pid];
-  if(!p){ pid='ma'; p=SP_STAFF[pid]; }
+  var team=spTeam(), ids=Object.keys(team);
+  var pid=S.spPerson||ids[0], p=team[pid];
+  if(!p){ pid=ids[0]; p=team[pid]; }
+  if(!p) return '<div style="max-width:940px"><button data-spnav="team" style="border:none;background:none;color:var(--tx3);font-family:inherit;font-size:11.5px;font-weight:800;cursor:pointer;padding:0">Alle Mitarbeiter</button>'+
+    '<div style="font-size:13px;font-weight:700;color:var(--tx3);padding:40px 0;text-align:center">Noch keine Mitarbeiter angelegt.</div></div>';
   var row=spAvail()[pid], weich=row.soft||[];
 
   var chips=['flaeche','reinigung'].map(function(k){
@@ -6739,27 +6966,27 @@ function spPersonHTML(){
     return '<button data-sparea="'+esc(pid)+':'+k+'" class="tap" style="display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border-radius:9px;border:1.5px solid '+bd+';background:'+bg+';color:'+fg+';font-family:inherit;font-size:11px;font-weight:800;cursor:pointer">'+
       '<span style="width:13px;height:13px;border-radius:4px;border:1.5px solid '+bd+';background:'+bg+';display:flex;align-items:center;justify-content:center;flex-shrink:0">'+
       (an?'<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="'+fg+'" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg>':'')+
-      '</span>'+esc(SP_AREA[k].label)+'</button>';
+      '</span>'+esc(spArea(k).label)+'</button>';
   }).join('');
 
-  var urlaube=(S.spVac||[]).filter(function(v){ return v.staffId===pid; })
+  var urlaube=spVacs().filter(function(v){ return v.staffId===pid; })
     .sort(function(a,b){ return a.from-b.from; }).map(function(v){
     var st=SP_VAC_STATUS[v.status]||SP_VAC_STATUS.pending;
     return '<div style="background:var(--surf2);border:1px solid var(--line);border-radius:13px;padding:12px 13px">'+
       '<div style="display:flex;align-items:center;gap:10px">'+
         '<div style="flex:1;min-width:0">'+
-          '<div style="font-size:13px;font-weight:900;font-variant-numeric:tabular-nums">'+v.from+'.–'+v.to+'. Oktober 2026</div>'+
+          '<div style="font-size:13px;font-weight:900;font-variant-numeric:tabular-nums">'+esc(spVacLabel(v))+'</div>'+
           '<div style="font-size:10.5px;font-weight:700;color:var(--tx3);margin-top:2px">'+v.days+' Tage</div></div>'+
         '<span style="font-size:9.5px;font-weight:900;color:'+st[1]+';letter-spacing:.9px;text-transform:uppercase;padding:4px 9px;border-radius:6px;background:'+st[2]+';flex-shrink:0">'+st[0]+'</span>'+
       '</div>'+
-      (v.status==='pending'?('<div style="display:flex;gap:7px;margin-top:11px">'+
+      ((v.status==='pending'&&spCanDecide())?('<div style="display:flex;gap:7px;margin-top:11px">'+
         '<button data-spvacok="'+esc(v.id)+'" class="tap" style="flex:1;height:34px;border-radius:10px;border:none;background:var(--ac);color:var(--acfg);font-family:inherit;font-size:11.5px;font-weight:900;cursor:pointer">Genehmigen</button>'+
         '<button data-spvacno="'+esc(v.id)+'" class="tap" style="flex:1;height:34px;border-radius:10px;border:1px solid var(--line2);background:transparent;color:var(--tx2);font-family:inherit;font-size:11.5px;font-weight:800;cursor:pointer">Ablehnen</button></div>'):'')+
     '</div>';
   }).join('');
   var urlaubLeer='<div style="font-size:12px;font-weight:700;color:var(--tx3);padding:14px 0;text-align:center">Kein Urlaub eingetragen.</div>';
 
-  var verfuegbar=SP_DAYS.map(function(d,i){
+  var verfuegbar=spDays().map(function(d,i){
     var win=row.d[i], oh=spOpenHours(i), lo=oh[0], hi=oh[1];
     var w=weich.indexOf(i)>=0;
     var fg=win?(w?'var(--wn)':'var(--tx)'):'var(--tx4)';
@@ -6777,11 +7004,11 @@ function spPersonHTML(){
   var schichten=eigene.map(function(x){
     var av=spAreaVar(x.area);
     return '<div data-spinspect="'+esc(x.id)+'" class="tap" style="background:var(--surf2);border:1px solid var(--line);border-radius:12px;padding:11px 13px;cursor:pointer;display:flex;align-items:center;gap:12px">'+
-      '<span style="width:56px;flex-shrink:0;font-size:11.5px;font-weight:900;font-variant-numeric:tabular-nums">'+SP_DAYS[x.day][0]+' '+SP_DAYS[x.day][1]+'</span>'+
+      '<span style="width:56px;flex-shrink:0;font-size:11.5px;font-weight:900;font-variant-numeric:tabular-nums">'+spDays()[x.day][0]+' '+spDays()[x.day][1]+'</span>'+
       '<span style="width:104px;flex-shrink:0;font-size:12.5px;font-weight:800;font-variant-numeric:tabular-nums">'+esc(x.area==='reinigung'?'vor Öffnung':spSpan(x.a,x.b))+'</span>'+
       '<span style="width:56px;flex-shrink:0;font-size:10.5px;font-weight:700;color:var(--tx3);font-variant-numeric:tabular-nums">'+esc(x.area==='reinigung'?'':spDur(x.a,x.b))+'</span>'+
       '<span style="display:inline-flex;align-items:center;gap:6px;flex:1"><span style="width:6px;height:6px;border-radius:2px;background:'+av+'"></span>'+
-        '<span style="font-size:11.5px;font-weight:700;color:var(--tx2)">'+esc(SP_AREA[x.area].label)+'</span></span>'+
+        '<span style="font-size:11.5px;font-weight:700;color:var(--tx2)">'+esc(spArea(x.area).label)+'</span></span>'+
       (spVacOn(pid,spDomOf(x.day))?'<span style="font-size:9px;font-weight:900;color:var(--dgt);letter-spacing:.8px;text-transform:uppercase;padding:3px 8px;border-radius:5px;background:var(--dgs);flex-shrink:0">Urlaub</span>':'')+
     '</div>';
   }).join('');
@@ -6789,7 +7016,7 @@ function spPersonHTML(){
 
   var wochenStd=eigene.reduce(function(n,x){ return n+(x.b-x.a); },0);
   var wochenende=eigene.filter(function(x){ return x.day>4; }).length;
-  var genommen=(S.spVac||[]).filter(function(v){ return v.staffId===pid&&v.status==='approved'; })
+  var genommen=spVacs().filter(function(v){ return v.staffId===pid&&v.status==='approved'; })
     .reduce(function(n,v){ return n+v.days; },0);
   var knapp=p.max-p.h<=4;
 
@@ -6832,7 +7059,7 @@ function spPersonHTML(){
         '<div style="display:flex;flex-direction:column;gap:7px;margin-top:12px">'+verfuegbar+'</div></div>'+
     '</div>'+
     '<div style="background:var(--surf);border:1px solid var(--line);border-radius:18px;padding:16px;margin-top:12px">'+
-      '<div style="font-size:10px;font-weight:900;color:var(--tx3);letter-spacing:1.3px;text-transform:uppercase">Schichten KW 41</div>'+
+      '<div style="font-size:10px;font-weight:900;color:var(--tx3);letter-spacing:1.3px;text-transform:uppercase">Schichten '+esc(spKW())+'</div>'+
       '<div class="sc" style="overflow-x:auto"><div style="display:flex;flex-direction:column;gap:8px;margin-top:12px;min-width:460px">'+(schichten||schichtLeer)+'</div></div></div>'+
   '</div>';
 }
@@ -6901,8 +7128,8 @@ function spYearHTML(){
   var kopf=SP_MONTHS.map(function(m,i){
     return '<div style="text-align:center;font-size:9.5px;font-weight:800;color:'+(i===9?'var(--ac)':'var(--tx4)')+'">'+m+'</div>';
   }).join('');
-  var zeilen=Object.keys(SP_STAFF).map(function(id){
-    var p=SP_STAFF[id];
+  var zeilen=Object.keys(spTeam()).map(function(id){
+    var p=spTeam()[id];
     var balken=(defs[id]||[]).map(function(b){
       return '<div style="position:absolute;left:'+b.left+';width:'+b.width+';top:3px;height:18px;border-radius:5px;background:'+b.bg+';border:1px solid '+b.bd+';display:flex;align-items:center;padding:0 5px;overflow:hidden">'+
         '<span style="font-size:8.5px;font-weight:900;color:'+b.fg+';white-space:nowrap">'+esc(b.label)+'</span></div>';
@@ -7107,8 +7334,8 @@ function spSettingsHTML(){
   } else if(sec==='team'){
     inhalt=spSetSub('Wer darf wo eingesetzt werden. Bestimmt, was beim Ziehen erlaubt ist.')+
       '<div class="sc" style="overflow-x:auto"><div style="display:flex;flex-direction:column;gap:2px;margin-top:16px;min-width:620px">'+
-      Object.keys(SP_STAFF).map(function(id){
-        var p=SP_STAFF[id];
+      Object.keys(spTeam()).map(function(id){
+        var p=spTeam()[id];
         var chips=['flaeche','reinigung'].map(function(k){
           var an=(p.areas||[]).indexOf(k)>=0;
           var c=k==='reinigung'?'var(--wn)':'var(--ac)', bgc=k==='reinigung'?'var(--wns)':'var(--acs)';
@@ -7116,7 +7343,7 @@ function spSettingsHTML(){
           return '<button data-sparea="'+esc(id)+':'+k+'" class="tap" style="display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 11px;border-radius:9px;border:1.5px solid '+bd+';background:'+bg+';color:'+fg+';font-family:inherit;font-size:11px;font-weight:800;cursor:pointer;white-space:nowrap">'+
             '<span style="width:14px;height:14px;border-radius:4px;border:1.5px solid '+bd+';background:'+(an?c:'transparent')+';display:flex;align-items:center;justify-content:center;flex-shrink:0">'+
             (an?'<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="var(--surf)" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg>':'')+
-            '</span>'+esc(SP_AREA[k].label)+'</button>';
+            '</span>'+esc(spArea(k).label)+'</button>';
         }).join('');
         return '<div style="display:flex;align-items:center;gap:13px;padding:11px 0;border-bottom:1px solid var(--line)">'+
           '<div style="width:30px;height:30px;border-radius:50%;background:var(--surf2);color:var(--tx2);font-size:10px;font-weight:900;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+esc(p.ini)+'</div>'+
@@ -7129,9 +7356,9 @@ function spSettingsHTML(){
   } else if(sec==='urlaub'){
     inhalt=spSetSub('Kontingente pro Jahr. Resturlaub wird automatisch fortgeschrieben.')+
       '<div class="sc" style="overflow-x:auto"><div style="display:flex;flex-direction:column;gap:2px;margin-top:16px;min-width:560px">'+
-      Object.keys(SP_STAFF).map(function(id){
-        var p=SP_STAFF[id];
-        var genommen=(S.spVac||[]).filter(function(v){ return v.staffId===id&&v.status==='approved'; })
+      Object.keys(spTeam()).map(function(id){
+        var p=spTeam()[id];
+        var genommen=spVacs().filter(function(v){ return v.staffId===id&&v.status==='approved'; })
           .reduce(function(n,v){ return n+v.days; },0);
         var kontingent=(p.typeShort==='Minijob'||p.typeShort==='Aushilfe')?24:30;
         return '<div style="display:flex;align-items:center;gap:13px;padding:12px 0;border-bottom:1px solid var(--line)">'+
@@ -7197,11 +7424,11 @@ function spZahl(v){ return v%1?v.toFixed(1).replace('.',','):String(v); }
 function spPrintHTML(){
   var shifts=spShifts(), cfg=spCfg();
   var pm=S.spPrintMode||'aushang', entwurf=pm==='entwurf';
-  var stand=(S.spWeekStatus||{})[41]||'draft';
+  var stand=(S.spWeekStatus||{})[spKWNr()]||'draft';
   var statusLabel=stand==='published'?'Veröffentlicht':(stand==='draft'?'Entwurf':'Nicht gespeichert');
-  var person=S.spPrintPerson||'ma';
+  var person=S.spPrintPerson||Object.keys(spTeam())[0]||'';
 
-  var kopf=SP_DAYS.map(function(d,i){
+  var kopf=spDays().map(function(d,i){
     var h=i===5?'13:00–18:00':i===6?'09:00–15:00':'09:30–13 · 15–21:30';
     return '<div style="padding:8px 7px;border-left:1px solid #D7DDE1;text-align:center">'+
       '<div style="font-size:11.5px;font-weight:900">'+d[2]+'</div>'+
@@ -7209,10 +7436,10 @@ function spPrintHTML(){
       '<div style="font-size:8px;font-weight:700;color:#8B959C;margin-top:2px;font-variant-numeric:tabular-nums">'+h+'</div></div>';
   }).join('');
 
-  var wer=function(id){ return cfg.exportNames?SP_STAFF[id].name:SP_STAFF[id].ini; };
+  var wer=function(id){ return cfg.exportNames?spP(id).name:spP(id).ini; };
 
   var bloecke=[0,1,2,3].map(function(bi){
-    var zellen=SP_DAYS.map(function(d,di){
+    var zellen=spDays().map(function(d,di){
       var sl=spSlotsFor(di);
       if(bi>=sl.length) return '<div style="padding:8px 7px;border-left:1px solid #E4E9EC;background:#F1F3F4;min-height:46px"></div>';
       var t=sl[bi];
@@ -7229,7 +7456,7 @@ function spPrintHTML(){
       '<div style="padding:9px 8px;background:#F7F9FA;font-size:9.5px;font-weight:900;color:#4A555C;letter-spacing:.6px;text-transform:uppercase;display:flex;align-items:center">Block '+(bi+1)+'</div>'+zellen+'</div>';
   }).join('');
 
-  var rein=SP_DAYS.map(function(d,di){
+  var rein=spDays().map(function(d,di){
     var r=shifts.filter(function(x){ return x.day===di&&x.area==='reinigung'; });
     var w=(r.length&&r[0].who)?wer(r[0].who):null;
     var bg=r.length?(w?'#FFFFFF':'#FDF3E7'):'#F1F3F4';
@@ -7251,8 +7478,8 @@ function spPrintHTML(){
     var th=['Name','Vertrag','Dienste','Std KW','Wo-End','Monat'].map(function(t,i){
       return '<div style="padding:9px 10px;font-size:9.5px;font-weight:900;letter-spacing:.7px;text-transform:uppercase;color:#4A555C'+(i>=2?';text-align:right':'')+'">'+t+'</div>';
     }).join('');
-    var rows=Object.keys(SP_STAFF).map(function(id){
-      var p=SP_STAFF[id], list=shifts.filter(function(x){ return x.who===id; });
+    var rows=Object.keys(spTeam()).map(function(id){
+      var p=spTeam()[id], list=shifts.filter(function(x){ return x.who===id; });
       var tot=list.reduce(function(n,x){ return n+(x.b-x.a); },0);
       var we=list.filter(function(x){ return x.day>4; }).length;
       return '<div style="display:grid;grid-template-columns:'+sp[0]+';border-bottom:1px solid #E4E9EC">'+
@@ -7268,17 +7495,17 @@ function spPrintHTML(){
   })();
 
   var personBlatt=(function(){
-    var p=SP_STAFF[person]||SP_STAFF.ma;
+    var team=spTeam(), p=team[person]||team[Object.keys(team)[0]]||{name:'—', type:''};
     var list=shifts.filter(function(x){ return x.who===person; })
       .sort(function(a,b){ return a.day-b.day||a.a-b.a; });
     var summe=list.reduce(function(n,x){ return n+(x.b-x.a); },0);
     var rows=list.map(function(x){
       return '<div style="display:grid;grid-template-columns:1.2fr .7fr 1fr .7fr 1.2fr;border-bottom:1px solid #E4E9EC">'+
-        '<div style="padding:10px;font-size:12px;font-weight:800">'+SP_DAYS[x.day][2]+'</div>'+
-        '<div style="padding:10px;font-size:11.5px;font-weight:700;color:#4A555C;font-variant-numeric:tabular-nums">'+SP_DAYS[x.day][1]+'</div>'+
+        '<div style="padding:10px;font-size:12px;font-weight:800">'+spDays()[x.day][2]+'</div>'+
+        '<div style="padding:10px;font-size:11.5px;font-weight:700;color:#4A555C;font-variant-numeric:tabular-nums">'+spDays()[x.day][1]+'</div>'+
         '<div style="padding:10px;font-size:12.5px;font-weight:900;font-variant-numeric:tabular-nums">'+esc(x.area==='reinigung'?'vor Öffnung':spSpan(x.a,x.b))+'</div>'+
         '<div style="padding:10px;font-size:11.5px;font-weight:700;color:#4A555C;font-variant-numeric:tabular-nums">'+esc(x.area==='reinigung'?'':spDur(x.a,x.b))+'</div>'+
-        '<div style="padding:10px;font-size:11.5px;font-weight:700;color:#4A555C">'+esc(SP_AREA[x.area].label)+'</div></div>';
+        '<div style="padding:10px;font-size:11.5px;font-weight:700;color:#4A555C">'+esc(spArea(x.area).label)+'</div></div>';
     }).join('');
     return '<div style="position:relative;margin-top:16px">'+
       '<div style="font-size:17px;font-weight:900">'+esc(p.name)+'</div>'+
@@ -7288,9 +7515,9 @@ function spPrintHTML(){
   })();
 
   var personWahl=(pm==='person')?('<div style="display:flex;gap:5px;flex-wrap:wrap">'+
-    Object.keys(SP_STAFF).map(function(id){
+    Object.keys(spTeam()).map(function(id){
       var a=person===id;
-      return '<button data-spprintwho="'+esc(id)+'" class="tap" style="height:30px;padding:0 10px;border-radius:9px;border:1px solid '+(a?'var(--ac)':'var(--line2)')+';background:'+(a?'var(--ac)':'transparent')+';color:'+(a?'var(--acfg)':'var(--tx2)')+';font-family:inherit;font-size:11px;font-weight:800;cursor:pointer">'+esc(SP_STAFF[id].short)+'</button>';
+      return '<button data-spprintwho="'+esc(id)+'" class="tap" style="height:30px;padding:0 10px;border-radius:9px;border:1px solid '+(a?'var(--ac)':'var(--line2)')+';background:'+(a?'var(--ac)':'transparent')+';color:'+(a?'var(--acfg)':'var(--tx2)')+';font-family:inherit;font-size:11px;font-weight:800;cursor:pointer">'+esc(spP(id).short)+'</button>';
     }).join('')+'</div>'):'';
 
   var fuss=entwurf
@@ -7310,7 +7537,7 @@ function spPrintHTML(){
         '<span style="font-size:120px;font-weight:900;color:rgba(200,56,42,.10);letter-spacing:14px;transform:rotate(-22deg);white-space:nowrap">ENTWURF</span></div>':'')+
       '<div style="position:relative;display:flex;align-items:flex-start;justify-content:space-between;gap:20px;border-bottom:2px solid #15181B;padding-bottom:12px">'+
         '<div><div style="font-size:19px;font-weight:900;letter-spacing:-.4px">Fit-Inn Trier · Schichtplan</div>'+
-          '<div style="font-size:13px;font-weight:700;color:#4A555C;margin-top:3px;font-variant-numeric:tabular-nums">KW 41 · 05.–11. Oktober 2026 · '+esc(SP_PRINT_MODES[pm]||SP_PRINT_MODES.aushang)+'</div></div>'+
+          '<div style="font-size:13px;font-weight:700;color:#4A555C;margin-top:3px;font-variant-numeric:tabular-nums">'+esc(spKW()+' · '+spSpanneLang())+' · '+esc(SP_PRINT_MODES[pm]||SP_PRINT_MODES.aushang)+'</div></div>'+
         '<div style="text-align:right"><div style="font-size:10px;font-weight:900;color:#6E7C86;letter-spacing:1.3px;text-transform:uppercase">Status</div>'+
           '<div style="font-size:14px;font-weight:900;margin-top:3px">'+esc(statusLabel)+'</div></div>'+
       '</div>'+
@@ -7330,10 +7557,10 @@ function spPrintHTML(){
 function spCsvExport(){
   var zeilen=[['KW','Tag','Datum','Von','Bis','Stunden','Bereich','Person','Beschäftigung','Status']];
   spShifts().slice().sort(function(a,b){ return a.day-b.day||a.a-b.a; }).forEach(function(x){
-    var p=x.who?SP_STAFF[x.who]:null, rein=x.area==='reinigung';
-    zeilen.push(['KW 41', SP_DAYS[x.day][2], SP_DAYS[x.day][1]+'2026',
+    var p=x.who?spTeam()[x.who]:null, rein=x.area==='reinigung';
+    zeilen.push([spKW(), spDays()[x.day][2], spDays()[x.day][1]+(spLive()?String(shParse(spWeekISO()[x.day]).getFullYear()):'2026'),
       rein?'vor Öffnung':spT(x.a), rein?'':spT(x.b),
-      rein?'':String(x.b-x.a).replace('.',','), SP_AREA[x.area].label,
+      rein?'':String(x.b-x.a).replace('.',','), spArea(x.area).label,
       p?p.name:'OFFEN', p?p.type:'',
       x.st==='blocked'?'nicht besetzbar':(x.st==='conflict'?'Konflikt':(x.who?'besetzt':'offen'))]);
   });
@@ -7343,7 +7570,7 @@ function spCsvExport(){
   try{
     var blob=new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'});
     var a=document.createElement('a');
-    a.href=URL.createObjectURL(blob); a.download='Schichtplan_KW41_FitInn.csv';
+    a.href=URL.createObjectURL(blob); a.download='Schichtplan_'+spKW().replace(/\s+/g,'')+'_FitInn.csv';
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     setTimeout(function(){ try{ URL.revokeObjectURL(a.href); }catch(e){} },4000);
     S.spExportOpen=false; spToast('CSV heruntergeladen · für Excel und Lohnbüro');
@@ -7351,7 +7578,7 @@ function spCsvExport(){
 }
 function spCopyLink(){
   S.spExportOpen=false;
-  var txt='Fit-Inn Schichtplan KW 41 (Entwurf zur Rücksprache)';
+  var txt='Fit-Inn Schichtplan '+spKW()+' (Entwurf zur Rücksprache)';
   try{ if(navigator.clipboard&&navigator.clipboard.writeText) navigator.clipboard.writeText(txt).catch(function(){}); }catch(e){}
   spToast('Link kopiert · nur mit Leitung teilen, Entwurf');
 }
@@ -7421,9 +7648,26 @@ function spWireSys(node){
 // Telefon: acht Bildschirme in einem Geraeterahmen, mit eigener Fussleiste.
 // Genau so steht sie hier - die Leitung sieht am Schreibtisch, was das Team auf
 // dem Handy sieht.
-var SP_OCT={days:31, firstDow:3, name:'Oktober 2026'};
-var SP_HEUTE_DOM=9;      // Freitag, 9. Oktober - der Tag des Entwurfs
-var SP_HEUTE_TAG=4;      // derselbe Tag als Index in SP_DAYS
+// Der Monat des Urlaubskalenders: live der Monat der gewaehlten Woche, im
+// Beispiel der Oktober des Entwurfs.
+function spVacMonth(){
+  var iso=spLive()?(S.spVacMonat||(S.shWeek||shMonday(shToday()))):'2026-10-01';
+  var d=shParse(iso), jahr=d.getFullYear(), monat=d.getMonth();
+  var erster=new Date(jahr,monat,1), letzter=new Date(jahr,monat+1,0);
+  return { jahr:jahr, monat:monat, days:letzter.getDate(),
+    firstDow:(erster.getDay()+6)%7,      // 0 = Montag
+    name:['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'][monat]+' '+jahr };
+}
+function spVacISO(tag){
+  var m=spVacMonth();
+  return m.jahr+'-'+(m.monat+1<10?'0':'')+(m.monat+1)+'-'+(tag<10?'0':'')+tag;
+}
+// Heute – live der echte Tag, im Beispiel der Freitag des Entwurfs.
+function spHeuteISO(){ return spLive()?shToday():'2026-10-09'; }
+function spHeuteTag(){
+  var i=spWeekISO().indexOf(spHeuteISO());
+  return spLive()?i:4;                    // -1 heisst: heute liegt nicht in dieser Woche
+}
 
 function spStaffScreen(){ return S.spStaff||'home'; }
 function spGoStaff(k){
@@ -7432,8 +7676,30 @@ function spGoStaff(k){
     var el=document.querySelector('.sp-phonescroll'); if(el) el.scrollTop=0;
   },0);
 }
-function spSA(){ if(!S.spSA) S.spSA=[[0,1],[0,1,2],[0,1,2,3],[2,3],[0,1],[],[]]; return S.spSA; }
-function spSoft(){ if(!S.spSoft) S.spSoft={}; return S.spSoft; }
+// Die eigene Verfuegbarkeit als Bloecke je Wochentag. Live kommt sie vom
+// Server; Aenderungen bleiben oertlich, bis „melden" gedrueckt wird - sonst
+// waere jeder Fehltipper sofort gespeichert.
+function spSA(){
+  if(!S.spSA){
+    var id=spMe(), row=id?spAvail()[id]:null;
+    if(row && row.blocks){
+      S.spSA=[0,1,2,3,4,5,6].map(function(i){ return (row.blocks[i]||[]).slice(); });
+    } else if(row && row.d){
+      S.spSA=[0,1,2,3,4,5,6].map(function(i){ return spAvBlocks(id,i).slice(); });
+    } else {
+      S.spSA=spLive()?[[],[],[],[],[],[],[]]:[[0,1],[0,1,2],[0,1,2,3],[2,3],[0,1],[],[]];
+    }
+  }
+  return S.spSA;
+}
+function spSoft(){
+  if(!S.spSoft){
+    S.spSoft={};
+    var id=spMe(), row=id?spAvail()[id]:null;
+    if(row && Array.isArray(row.soft)) row.soft.forEach(function(i){ S.spSoft[i]=true; });
+  }
+  return S.spSoft;
+}
 function spToggleBlock(day,i){
   var set=spSA()[day], at=set.indexOf(i);
   if(at>=0) set.splice(at,1); else set.push(i);
@@ -7443,10 +7709,27 @@ function spToggleBlock(day,i){
 function spSetDayBlocks(day,arr){ spSA()[day]=arr.slice(); render(); }
 function spBlocksHours(day,sel){
   var sl=spSlotsFor(day);
-  return (sel||[]).reduce(function(n,i){ return n+(sl[i][1]-sl[i][0]); },0);
+  return (sel||[]).reduce(function(n,i){ return sl[i]?(n+(sl[i][1]-sl[i][0])):n; },0);
 }
-function spMyShifts(){ return spShifts().filter(function(x){ return x.who==='ma'; }); }
-function spMyVac(){ return (S.spVac||[]).filter(function(v){ return v.staffId==='ma'; }); }
+function spSaveAvail(){
+  if(!spLive()){ spToast('Verfügbarkeit gemeldet'); return; }
+  var id=spMe();
+  if(!id){ spToast('Dafür braucht es den persönlichen Zugang.'); return; }
+  var blocks={}, soft={};
+  SP_AVKEYS.forEach(function(k,i){ blocks[k]=(spSA()[i]||[]).slice(); soft[k]=!!spSoft()[i]; });
+  S.spSA=null; S.spSoft=null;
+  return spApi({action:'avail-set', blocks:blocks, soft:soft}, 'Verfügbarkeit gemeldet');
+}
+function spMyShifts(){
+  var id=spMe();
+  if(!id) return [];
+  return spShifts().filter(function(x){ return x.who===id; });
+}
+function spMyVac(){
+  var id=spMe();
+  if(!id) return [];
+  return spVacs().filter(function(v){ return v.staffId===id; });
+}
 
 // Die Stechuhr laeuft im Sekundentakt. Sie darf nur laufen, solange dieser
 // Bildschirm auch sichtbar ist - sonst zeichnet die Seite im Hintergrund weiter.
@@ -7462,13 +7745,27 @@ function spTogglePunch(){
     spToast('Eingestempelt um 9:41');
   } else spToast('Ausgestempelt · '+Math.floor((S.spPunchSek||0)/60)+' Std erfasst');
 }
+// Habe ich mich auf diese Schicht beworben? Live steht das in der Schicht
+// selbst - eine oertliche Liste liefe nach dem naechsten Laden auseinander.
+function spBeworben(sh){
+  if(!spLive()) return (S.spApplied||[]).indexOf(sh.id)>=0;
+  var id=spMe(); if(!id) return false;
+  return (sh.applicants||[]).some(function(x){ return String(x.id)===id; });
+}
 function spApplyShift(id){
+  var sh=spShiftById(id); if(!sh) return;
+  var drin=spBeworben(sh);
+  if(spLive()){
+    if(!spMe()){ spToast('Dafür braucht es den persönlichen Zugang.'); return; }
+    return spApi({action:drin?'withdraw':'apply-shift', id:id},
+      drin?'Bewerbung zurückgezogen':(sh.postMode==='instant'?'Schicht übernommen':'Bewerbung gesendet · Leitung entscheidet'));
+  }
   if(!S.spApplied) S.spApplied=[];
   var at=S.spApplied.indexOf(id);
   if(at>=0){ S.spApplied.splice(at,1); spToast('Bewerbung zurückgezogen'); }
   else { S.spApplied.push(id); spToast('Bewerbung gesendet · Leitung entscheidet'); }
 }
-function spAskSwap(who){ S.spSwapOpen=false; S.spSwapAsked=who; spToast('Tauschanfrage an '+SP_STAFF[who].short+' gesendet'); }
+function spAskSwap(who){ S.spSwapOpen=false; S.spSwapAsked=who; spToast('Tauschanfrage an '+spP(who).short+' gesendet'); }
 function spPickVacDay(d){
   var a=S.spVacFrom, b=S.spVacTo;
   if(a===null||a===undefined||(a!==null&&a!==undefined&&b!==null&&b!==undefined)){ S.spVacFrom=d; S.spVacTo=null; render(); return; }
@@ -7481,11 +7778,20 @@ function spVacCount(){
   if(b===null||b===undefined) return 1;
   return b-a+1;
 }
-function spSubmitVac(){
+async function spSubmitVac(){
   var a=S.spVacFrom, b=(S.spVacTo===null||S.spVacTo===undefined)?S.spVacFrom:S.spVacTo;
   if(a===null||a===undefined){ spToast('Bitte Zeitraum im Kalender wählen'); return; }
   var n=b-a+1;
-  S.spVac=(S.spVac||[]).concat([{id:'v'+n+'-'+a+'-'+b, staffId:'ma', from:a, to:b, status:'pending', days:n}]);
+  if(spLive()){
+    if(!spMe()){ spToast('Dafür braucht es den persönlichen Zugang.'); return; }
+    var r=await shPost({action:'vac-create', from:spVacISO(a), to:spVacISO(b)});
+    if(!r || r.ok===false) return;
+    S.spVacFrom=null; S.spVacTo=null; S.spStaff='absence';
+    spToast(n+' Tage beantragt · Leitung sieht die Folgen sofort');
+    return;
+  }
+  S.spVac=spVacs().concat([{id:'v'+n+'-'+a+'-'+b, staffId:'ma',
+    fromISO:spVacISO(a), toISO:spVacISO(b), status:'pending', days:n, kind:'urlaub'}]);
   S.spVacFrom=null; S.spVacTo=null; S.spStaff='absence';
   spToast(n+' Tage beantragt · Leitung sieht die Folgen sofort');
 }
@@ -7522,12 +7828,12 @@ function spStaffHomeHTML(){
   }).join('');
 
   var woche=spMyShifts().slice(0,4).map(function(x){
-    var heute=x.day===SP_HEUTE_TAG;
+    var heute=x.day===spHeuteTag();
     return '<div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-bottom:1px solid var(--line);background:'+(heute?'var(--acs)':'transparent')+'">'+
-      '<div style="width:34px;flex-shrink:0"><div style="font-size:10px;font-weight:800;color:'+(heute?'var(--ac)':'var(--tx3)')+'">'+SP_DAYS[x.day][0]+'</div>'+
-      '<div style="font-size:14px;font-weight:900;line-height:1.1;color:'+(heute?'var(--ac)':'var(--tx)')+';font-variant-numeric:tabular-nums">'+SP_DAYS[x.day][1].slice(0,2)+'</div></div>'+
+      '<div style="width:34px;flex-shrink:0"><div style="font-size:10px;font-weight:800;color:'+(heute?'var(--ac)':'var(--tx3)')+'">'+spDays()[x.day][0]+'</div>'+
+      '<div style="font-size:14px;font-weight:900;line-height:1.1;color:'+(heute?'var(--ac)':'var(--tx)')+';font-variant-numeric:tabular-nums">'+spDays()[x.day][1].slice(0,2)+'</div></div>'+
       '<div style="flex:1;min-width:0"><div style="font-size:12.5px;font-weight:800;font-variant-numeric:tabular-nums">'+esc(spSpan(x.a,x.b))+'</div>'+
-      '<div style="font-size:10.5px;font-weight:700;color:var(--tx3);margin-top:1px">'+esc(SP_AREA[x.area].label+' · '+spDur(x.a,x.b))+'</div></div>'+
+      '<div style="font-size:10.5px;font-weight:700;color:var(--tx3);margin-top:1px">'+esc(spArea(x.area).label+' · '+spDur(x.a,x.b))+'</div></div>'+
       (heute?'<span style="font-size:8.5px;font-weight:900;color:var(--ac);letter-spacing:.7px;text-transform:uppercase;padding:3px 7px;border-radius:5px;background:var(--acs);flex-shrink:0">Heute</span>':'')+
     '</div>';
   }).join('');
@@ -7590,16 +7896,17 @@ function spStaffHomeHTML(){
 
 function spStaffPlanHTML(){
   var karten=spMyShifts().map(function(x){
-    var heute=x.day===SP_HEUTE_TAG;
-    var kollegen=spShifts().filter(function(o){ return o.day===x.day&&o.who&&o.who!=='ma'; }).slice(0,2);
+    var heute=x.day===spHeuteTag();
+    var ich=spMe();
+    var kollegen=spShifts().filter(function(o){ return o.day===x.day&&o.who&&o.who!==ich; }).slice(0,2);
     var avatare=kollegen.map(function(o){
-      return '<span style="width:22px;height:22px;border-radius:50%;background:var(--surf2);color:var(--tx2);font-size:8.5px;font-weight:900;display:flex;align-items:center;justify-content:center">'+esc(SP_STAFF[o.who].ini)+'</span>';
+      return '<span style="width:22px;height:22px;border-radius:50%;background:var(--surf2);color:var(--tx2);font-size:8.5px;font-weight:900;display:flex;align-items:center;justify-content:center">'+esc(spP(o.who).ini)+'</span>';
     }).join('');
     return '<div data-spdet="'+esc(x.id)+'" class="tap" style="background:var(--surf);border:1px solid '+(heute?'var(--acb)':'var(--line)')+';border-left:3px solid '+(heute?'var(--ac)':'var(--line2)')+';border-radius:15px;padding:14px;cursor:pointer">'+
       '<div style="display:flex;align-items:center;gap:13px">'+
         '<div style="width:44px;flex-shrink:0;text-align:center">'+
-          '<div style="font-size:10px;font-weight:800;color:'+(heute?'var(--ac)':'var(--tx3)')+';letter-spacing:.5px;text-transform:uppercase">'+SP_DAYS[x.day][0]+'</div>'+
-          '<div style="font-size:19px;font-weight:900;line-height:1.05;color:'+(heute?'var(--ac)':'var(--tx)')+';font-variant-numeric:tabular-nums">'+SP_DAYS[x.day][1].slice(0,2)+'</div>'+
+          '<div style="font-size:10px;font-weight:800;color:'+(heute?'var(--ac)':'var(--tx3)')+';letter-spacing:.5px;text-transform:uppercase">'+spDays()[x.day][0]+'</div>'+
+          '<div style="font-size:19px;font-weight:900;line-height:1.05;color:'+(heute?'var(--ac)':'var(--tx)')+';font-variant-numeric:tabular-nums">'+spDays()[x.day][1].slice(0,2)+'</div>'+
           '<div style="font-size:9px;font-weight:700;color:var(--tx4)">Okt</div></div>'+
         '<div style="width:1px;align-self:stretch;background:var(--line)"></div>'+
         '<div style="flex:1;min-width:0">'+
@@ -7607,7 +7914,7 @@ function spStaffPlanHTML(){
             '<span style="font-size:14.5px;font-weight:900;letter-spacing:-.3px;font-variant-numeric:tabular-nums">'+esc(spSpan(x.a,x.b))+'</span>'+
             (heute?'<span style="font-size:8.5px;font-weight:900;color:var(--ac);letter-spacing:.7px;text-transform:uppercase;padding:3px 7px;border-radius:5px;background:var(--acs)">Heute</span>':'')+
           '</div>'+
-          '<div style="font-size:11.5px;font-weight:700;color:var(--tx3);margin-top:3px">'+esc(SP_AREA[x.area].label+' · '+spDur(x.a,x.b))+'</div>'+
+          '<div style="font-size:11.5px;font-weight:700;color:var(--tx3);margin-top:3px">'+esc(spArea(x.area).label+' · '+spDur(x.a,x.b))+'</div>'+
           (kollegen.length?('<div style="display:flex;align-items:center;gap:6px;margin-top:8px">'+avatare+
             '<span style="font-size:10.5px;font-weight:700;color:var(--tx3)">'+(kollegen.length===1?'1 Kollege':kollegen.length+' Kollegen')+'</span></div>'):'')+
         '</div>'+
@@ -7622,7 +7929,7 @@ function spStaffPlanHTML(){
     '</div>'+
     '<div style="padding:14px 18px 20px">'+
       '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px">'+
-        '<span style="font-size:12.5px;font-weight:900">KW 41 · 05.–11. Oktober</span>'+
+        '<span style="font-size:12.5px;font-weight:900">'+esc(spKW()+' · '+spSpanneLang())+'</span>'+
         '<span style="font-size:10px;font-weight:900;color:var(--ok);letter-spacing:1px;text-transform:uppercase;padding:3px 8px;border-radius:6px;background:var(--oks)">Veröffentlicht</span></div>'+
       '<div style="display:flex;flex-direction:column;gap:10px">'+(karten||
         '<div style="font-size:12px;font-weight:700;color:var(--tx3);padding:20px 0;text-align:center">Keine eigenen Schichten in dieser Woche.</div>')+'</div>'+
@@ -7632,20 +7939,21 @@ function spStaffPlanHTML(){
 
 function spStaffDetailHTML(){
   var eigene=spMyShifts();
-  var det=spShifts().filter(function(x){ return x.id===S.spDetId&&x.who==='ma'; })[0]||eigene[0]||spShifts()[0];
+  var ich=spMe();
+  var det=spShifts().filter(function(x){ return x.id===S.spDetId&&x.who===ich; })[0]||eigene[0]||null;
   if(!det) return spStaffKopf('Schicht','','plan')+'<div style="padding:20px;font-size:12px;font-weight:700;color:var(--tx3)">Keine Schicht gewählt.</div>';
   var getauscht=S.spSwapAsked;
 
-  var kollegen=spShifts().filter(function(o){ return o.day===det.day&&o.who&&o.who!=='ma'; }).map(function(o){
+  var kollegen=spShifts().filter(function(o){ return o.day===det.day&&o.who&&o.who!==ich; }).map(function(o){
     return '<div style="display:flex;align-items:center;gap:11px">'+
-      '<div style="width:34px;height:34px;border-radius:50%;background:var(--surf2);color:var(--tx2);font-size:11px;font-weight:900;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+esc(SP_STAFF[o.who].ini)+'</div>'+
-      '<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:800">'+esc(SP_STAFF[o.who].name)+'</div>'+
-      '<div style="font-size:11px;font-weight:700;color:var(--tx3);font-variant-numeric:tabular-nums">'+esc(spSpan(o.a,o.b)+' · '+SP_AREA[o.area].label)+'</div></div></div>';
+      '<div style="width:34px;height:34px;border-radius:50%;background:var(--surf2);color:var(--tx2);font-size:11px;font-weight:900;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+esc(spP(o.who).ini)+'</div>'+
+      '<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:800">'+esc(spP(o.who).name)+'</div>'+
+      '<div style="font-size:11px;font-weight:700;color:var(--tx3);font-variant-numeric:tabular-nums">'+esc(spSpan(o.a,o.b)+' · '+spArea(o.area).label)+'</div></div></div>';
   }).join('');
 
   var kette=getauscht?[
     ['Tausch angeboten','heute 9:41','var(--ac)','var(--ac)',true,true,'var(--ac)','var(--tx)'],
-    [SP_STAFF[getauscht].short+' hat angenommen','heute 9:44','var(--ac)','var(--ac)',true,true,'var(--wn)','var(--tx)'],
+    [spP(getauscht).short+' hat angenommen','heute 9:44','var(--ac)','var(--ac)',true,true,'var(--wn)','var(--tx)'],
     ['Wartet auf Freigabe der Leitung','kritische Schicht · Freigabe nötig','var(--wns)','var(--wn)',false,true,'var(--line)','var(--tx)'],
     ['Bestätigt','offen','transparent','var(--line2)',false,false,'var(--line)','var(--tx4)']
   ].map(function(c){
@@ -7665,15 +7973,15 @@ function spStaffDetailHTML(){
       '<button data-spgiveup="1" class="tap" style="width:100%;height:48px;border-radius:14px;border:1px solid var(--line2);background:transparent;color:var(--tx2);font-family:inherit;font-size:14px;font-weight:700;cursor:pointer">Schicht abgeben</button>';
 
   return '<div>'+
-    spStaffKopf(SP_DAYS[det.day][2]+', '+SP_DAYS[det.day][1], spSpan(det.a,det.b)+' · '+spDur(det.a,det.b), 'plan')+
+    spStaffKopf(spDays()[det.day][2]+', '+spDays()[det.day][1], spSpan(det.a,det.b)+' · '+spDur(det.a,det.b), 'plan')+
     '<div style="padding:16px 18px 20px">'+
       '<div style="background:var(--surf);border:1px solid var(--line);border-radius:18px;padding:17px">'+
         '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px">'+
-          '<span style="font-size:9.5px;font-weight:900;color:var(--ac);letter-spacing:1.2px;text-transform:uppercase;padding:4px 9px;border-radius:6px;background:var(--acs)">'+esc(SP_AREA[det.area].label)+'</span>'+
+          '<span style="font-size:9.5px;font-weight:900;color:var(--ac);letter-spacing:1.2px;text-transform:uppercase;padding:4px 9px;border-radius:6px;background:var(--acs)">'+esc(spArea(det.area).label)+'</span>'+
           (getauscht?'<span style="font-size:9.5px;font-weight:900;color:var(--wn);letter-spacing:1px;text-transform:uppercase;padding:4px 9px;border-radius:6px;background:var(--wns)">Im Tausch</span>':'')+
         '</div>'+
         '<div style="font-size:29px;font-weight:900;letter-spacing:-1px;margin-top:13px;font-variant-numeric:tabular-nums">'+esc(spSpan(det.a,det.b))+'</div>'+
-        '<div style="font-size:12.5px;font-weight:700;color:var(--tx2);margin-top:3px">'+esc(spDur(det.a,det.b)+' · '+SP_AREA[det.area].label)+'</div>'+
+        '<div style="font-size:12.5px;font-weight:700;color:var(--tx2);margin-top:3px">'+esc(spDur(det.a,det.b)+' · '+spArea(det.area).label)+'</div>'+
         (det.split?('<div style="display:flex;align-items:center;gap:9px;background:var(--wns);border:1px solid var(--wnb);border-radius:12px;padding:11px 12px;margin-top:13px">'+
           '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--wn)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M8 3v18M16 3v18M3 8h5M16 8h5M3 16h5M16 16h5"></path></svg>'+
           '<span style="font-size:11.5px;font-weight:700;color:var(--tx2);line-height:1.4">Geteilter Dienst mit Pause 13:00–15:00 während der Mittagsschließung</span></div>'):'')+
@@ -7694,7 +8002,7 @@ function spStaffAvailHTML(){
   var tab=S.spAvailTab||'woche', sa=spSA(), soft=spSoft();
   var inhalt;
   if(tab==='woche'){
-    var zeilen=SP_DAYS.map(function(d,i){
+    var zeilen=spDays().map(function(d,i){
       var slots=spSlotsFor(i), sel=sa[i]||[], weich=!!soft[i];
       var stunden=spBlocksHours(i,sel);
       var farbe=weich?'var(--wn)':'var(--ac)';
@@ -7769,18 +8077,18 @@ function spStaffOpenHTML(){
   var inhalt;
   if(tab==='offen'){
     var karten=spShifts().filter(function(x){ return !x.who; }).map(function(x){
-      var beworben=(S.spApplied||[]).indexOf(x.id)>=0;
+      var beworben=spBeworben(x);
       var bewerbung=x.day===6;
       return '<div style="background:var(--surf);border:1px solid '+(beworben?'var(--acb)':'var(--line)')+';border-left:3px solid var(--wn);border-radius:15px;padding:15px">'+
         '<div style="display:flex;align-items:flex-start;gap:12px">'+
           '<div style="width:46px;height:46px;border-radius:13px;background:var(--wns);display:flex;flex-direction:column;align-items:center;justify-content:center;flex-shrink:0">'+
-            '<span style="font-size:9.5px;font-weight:900;color:var(--wn);letter-spacing:.4px">'+SP_DAYS[x.day][0]+'</span>'+
-            '<span style="font-size:16px;font-weight:900;color:var(--wn);line-height:1;font-variant-numeric:tabular-nums">'+SP_DAYS[x.day][1].slice(0,2)+'</span></div>'+
+            '<span style="font-size:9.5px;font-weight:900;color:var(--wn);letter-spacing:.4px">'+spDays()[x.day][0]+'</span>'+
+            '<span style="font-size:16px;font-weight:900;color:var(--wn);line-height:1;font-variant-numeric:tabular-nums">'+spDays()[x.day][1].slice(0,2)+'</span></div>'+
           '<div style="flex:1;min-width:0">'+
             '<div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">'+
               '<span style="font-size:14.5px;font-weight:900;letter-spacing:-.3px;font-variant-numeric:tabular-nums">'+esc(spSpan(x.a,x.b))+'</span>'+
               '<span style="font-size:8.5px;font-weight:900;color:'+(bewerbung?'var(--wn)':'var(--ok)')+';letter-spacing:.7px;text-transform:uppercase;padding:3px 7px;border-radius:5px;background:'+(bewerbung?'var(--wns)':'var(--oks)')+'">'+(bewerbung?'Bewerbung':'Sofort')+'</span></div>'+
-            '<div style="font-size:11.5px;font-weight:700;color:var(--tx3);margin-top:3px">'+esc(SP_AREA[x.area].label+' · '+spDur(x.a,x.b))+'</div>'+
+            '<div style="font-size:11.5px;font-weight:700;color:var(--tx3);margin-top:3px">'+esc(spArea(x.area).label+' · '+spDur(x.a,x.b))+'</div>'+
             '<div style="font-size:11px;font-weight:800;color:'+(bewerbung?'var(--wn)':'var(--tx3)')+';margin-top:6px">'+(bewerbung?'Frist: heute 20:00':'Wer zuerst zusagt, bekommt sie')+'</div></div>'+
         '</div>'+
         (bewerbung?('<div style="display:flex;align-items:center;gap:8px;background:var(--oks);border-radius:11px;padding:9px 11px;margin-top:11px">'+
@@ -7841,19 +8149,25 @@ function spStaffNotifHTML(){
 
 function spStaffVacNewHTML(){
   var vf=S.spVacFrom, vt=S.spVacTo;
-  var alle=S.spVac||[];
-  var genommen=13;
-  var geplant=spMyVac().filter(function(v){ return v.status!=='declined'; }).reduce(function(n,v){ return n+v.days; },0);
-  var rest=30-genommen-geplant;
+  var alle=spVacs(), ich=spMe();
+  var mein=spTeam()[ich]||{};
+  var anspruch=mein.vacDays||30;
+  var genommen=spMyVac().filter(function(v){ return v.status==='approved'&&v.toISO<spHeuteISO(); })
+    .reduce(function(n,v){ return n+v.days; },0);
+  var geplant=spMyVac().filter(function(v){ return v.status!=='declined'&&v.toISO>=spHeuteISO(); })
+    .reduce(function(n,v){ return n+v.days; },0);
+  var rest=Math.max(0,anspruch-genommen-geplant);
   var anzahl=spVacCount();
 
   var zellen='';
-  for(var i=0;i<SP_OCT.firstDow;i++) zellen+='<div></div>';
-  for(var d=1;d<=SP_OCT.days;d++){
-    var dow=(SP_OCT.firstDow+d-1)%7;
+  var kal=spVacMonth();
+  for(var i=0;i<kal.firstDow;i++) zellen+='<div></div>';
+  for(var d=1;d<=kal.days;d++){
+    var dow=(kal.firstDow+d-1)%7;
     var drin=(vf!==null&&vf!==undefined)&&((vt===null||vt===undefined)?(d===vf):(d>=vf&&d<=vt));
-    var andere=alle.filter(function(v){ return v.staffId!=='ma'&&v.status!=='declined'&&d>=v.from&&d<=v.to; }).length;
-    var meins=alle.some(function(v){ return v.staffId==='ma'&&v.status!=='declined'&&d>=v.from&&d<=v.to; });
+    var iso=spVacISO(d);
+    var andere=alle.filter(function(v){ return v.staffId!==ich&&v.status!=='declined'&&iso>=v.fromISO&&iso<=v.toISO; }).length;
+    var meins=alle.some(function(v){ return v.staffId===ich&&v.status!=='declined'&&iso>=v.fromISO&&iso<=v.toISO; });
     var bg=drin?'var(--ac)':(meins?'var(--vis)':'transparent');
     var fg=drin?'var(--acfg)':(meins?'var(--vi)':(dow>4?'var(--tx3)':'var(--tx)'));
     var bd=drin?'var(--ac)':(andere>1?'var(--wnb)':'var(--line)');
@@ -7867,7 +8181,8 @@ function spStaffVacNewHTML(){
   if(vf!==null&&vf!==undefined){
     var bis=(vt===null||vt===undefined)?vf:vt, schlimmste=0;
     for(var t=vf;t<=bis;t++){
-      var n=alle.filter(function(v){ return v.staffId!=='ma'&&v.status!=='declined'&&t>=v.from&&t<=v.to; }).length;
+      var tISO=spVacISO(t);
+      var n=alle.filter(function(v){ return v.staffId!==ich&&v.status!=='declined'&&tISO>=v.fromISO&&tISO<=v.toISO; }).length;
       if(n>schlimmste) schlimmste=n;
     }
     warn=schlimmste>=2
@@ -7878,11 +8193,11 @@ function spStaffVacNewHTML(){
   }
 
   return '<div>'+
-    spStaffKopf('Urlaub eintragen', rest+' von 30 Tagen frei', 'absence')+
+    spStaffKopf('Urlaub eintragen', rest+' von '+anspruch+' Tagen frei', 'absence')+
     '<div style="padding:16px 18px 20px">'+
       '<div style="background:var(--surf);border:1px solid var(--line);border-radius:18px;padding:16px">'+
         '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px">'+
-          '<span style="font-size:14px;font-weight:900">'+SP_OCT.name+'</span>'+
+          '<span style="font-size:14px;font-weight:900">'+esc(kal.name)+'</span>'+
           (anzahl?'<button data-spvacclear="1" style="border:none;background:none;color:var(--tx3);font-family:inherit;font-size:11px;font-weight:800;cursor:pointer;padding:0;text-decoration:underline">Auswahl löschen</button>':'')+
         '</div>'+
         '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-top:13px">'+
@@ -7914,37 +8229,36 @@ function spStaffVacNewHTML(){
 }
 
 function spStaffAbsenceHTML(){
-  var meine=spMyVac();
-  var genommen=13;
-  var geplant=meine.filter(function(v){ return v.status!=='declined'; }).reduce(function(n,v){ return n+v.days; },0);
-  var rest=30-genommen-geplant;
-  var kommend=meine.filter(function(v){ return v.status!=='declined'&&v.to>=SP_HEUTE_DOM; })
-    .sort(function(a,b){ return a.from-b.from; })[0]||null;
+  var meine=spMyVac(), heute=spHeuteISO();
+  var mein=spTeam()[spMe()]||{};
+  var anspruch=mein.vacDays||30;
+  var genommen=meine.filter(function(v){ return v.status==='approved'&&v.toISO<heute; })
+    .reduce(function(n,v){ return n+v.days; },0);
+  var geplant=meine.filter(function(v){ return v.status!=='declined'&&v.toISO>=heute; })
+    .reduce(function(n,v){ return n+v.days; },0);
+  var rest=Math.max(0,anspruch-genommen-geplant);
+  var kommend=meine.filter(function(v){ return v.status!=='declined'&&v.toISO>=heute; })
+    .sort(function(a,b){ return a.fromISO<b.fromISO?-1:1; })[0]||null;
 
   var antraege=meine.map(function(v){
     var st=SP_VAC_STATUS[v.status]||SP_VAC_STATUS.pending;
     return '<div style="background:var(--surf);border:1px solid var(--line);border-radius:15px;padding:14px">'+
       '<div style="display:flex;align-items:center;gap:11px">'+
-        '<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:900;font-variant-numeric:tabular-nums">'+v.from+'.–'+v.to+'. Oktober 2026</div>'+
+        '<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:900;font-variant-numeric:tabular-nums">'+esc(spVacLabel(v))+'</div>'+
         '<div style="font-size:11px;font-weight:700;color:var(--tx3);margin-top:2px">'+v.days+' Tage · Urlaub</div></div>'+
         '<span style="font-size:9.5px;font-weight:900;color:'+st[1]+';letter-spacing:.9px;text-transform:uppercase;padding:4px 9px;border-radius:6px;background:'+st[2]+';flex-shrink:0">'+st[0]+'</span></div>'+
       (v.status==='declined'?('<div style="font-size:11.5px;font-weight:600;color:var(--tx2);background:var(--surf2);border-radius:11px;padding:10px 12px;margin-top:11px;line-height:1.45">In der Woche sind schon zwei Kolleg:innen weg — magst du eine Woche später nehmen? Melde dich gern bei mir.</div>'):'')+
     '</div>';
-  }).join('')+
-  '<div style="background:var(--surf);border:1px solid var(--line);border-radius:15px;padding:14px">'+
-    '<div style="display:flex;align-items:center;gap:11px">'+
-      '<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:900;font-variant-numeric:tabular-nums">23.12.2026 – 02.01.2027</div>'+
-      '<div style="font-size:11px;font-weight:700;color:var(--tx3);margin-top:2px">8 Tage · Urlaub</div></div>'+
-      '<span style="font-size:9.5px;font-weight:900;color:var(--ok);letter-spacing:.9px;text-transform:uppercase;padding:4px 9px;border-radius:6px;background:var(--oks);flex-shrink:0">Genehmigt</span></div></div>';
+  }).join('') || '<div style="font-size:12px;font-weight:700;color:var(--tx3);padding:16px 0;text-align:center">Noch kein Antrag gestellt.</div>';
 
   var kst=kommend?(SP_VAC_STATUS[kommend.status]||SP_VAC_STATUS.pending):null;
 
   return '<div>'+
-    spStaffKopf('Mein Urlaub', rest+' von 30 Tagen frei', 'home')+
+    spStaffKopf('Mein Urlaub', rest+' von '+anspruch+' Tagen frei', 'home')+
     '<div style="padding:16px 18px 20px">'+
       '<div style="background:var(--surf);border:1px solid var(--line);border-radius:18px;padding:17px">'+
         '<div style="display:flex;gap:22px">'+
-          '<div><div style="font-size:9px;font-weight:900;color:var(--tx4);letter-spacing:1.2px;text-transform:uppercase">Rest 2026</div><div style="font-size:22px;font-weight:900;margin-top:4px;color:var(--ac);font-variant-numeric:tabular-nums">'+rest+'</div></div>'+
+          '<div><div style="font-size:9px;font-weight:900;color:var(--tx4);letter-spacing:1.2px;text-transform:uppercase">Rest</div><div style="font-size:22px;font-weight:900;margin-top:4px;color:var(--ac);font-variant-numeric:tabular-nums">'+rest+'</div></div>'+
           '<div><div style="font-size:9px;font-weight:900;color:var(--tx4);letter-spacing:1.2px;text-transform:uppercase">Genommen</div><div style="font-size:22px;font-weight:900;margin-top:4px;color:var(--tx2);font-variant-numeric:tabular-nums">'+genommen+'</div></div>'+
           '<div><div style="font-size:9px;font-weight:900;color:var(--tx4);letter-spacing:1.2px;text-transform:uppercase">Geplant</div><div style="font-size:22px;font-weight:900;margin-top:4px;color:var(--vi);font-variant-numeric:tabular-nums">'+geplant+'</div></div></div>'+
         '<div style="display:flex;height:7px;border-radius:4px;overflow:hidden;margin-top:14px;gap:2px">'+
@@ -7961,9 +8275,9 @@ function spStaffAbsenceHTML(){
         '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px">'+
           '<span style="font-size:9.5px;font-weight:900;color:var(--tx4);letter-spacing:1.3px;text-transform:uppercase">Nächster Urlaub</span>'+
           '<span style="font-size:9.5px;font-weight:900;color:'+kst[1]+';letter-spacing:.9px;text-transform:uppercase;padding:4px 9px;border-radius:6px;background:'+kst[2]+'">'+kst[0]+'</span></div>'+
-        '<div style="font-size:19px;font-weight:900;letter-spacing:-.5px;margin-top:9px;font-variant-numeric:tabular-nums">'+kommend.from+'.–'+kommend.to+'. Oktober 2026</div>'+
+        '<div style="font-size:19px;font-weight:900;letter-spacing:-.5px;margin-top:9px;font-variant-numeric:tabular-nums">'+esc(spVacLabel(kommend))+'</div>'+
         '<div style="font-size:12px;font-weight:700;color:var(--tx2);margin-top:3px">'+kommend.days+' Tage · '+
-          (kommend.from<=SP_HEUTE_DOM?'läuft gerade':('in '+(kommend.from-SP_HEUTE_DOM)+' Tagen'))+'</div></div>'):'')+
+          (kommend.fromISO<=heute?'läuft gerade':('in '+Math.round((shParse(kommend.fromISO)-shParse(heute))/86400000)+' Tagen'))+'</div></div>'):'')+
       '<div style="font-size:9.5px;font-weight:900;color:var(--tx4);letter-spacing:1.3px;text-transform:uppercase;margin:22px 2px 11px">Deine Anträge</div>'+
       '<div style="display:flex;flex-direction:column;gap:10px">'+antraege+'</div>'+
     '</div>'+
@@ -8000,7 +8314,7 @@ function spSwapSheetHTML(){
     ['ka','Minijob-Grenze fast erreicht',false],
     ['ha','Hat den Tag als „kann nicht" gemeldet',false]
   ].map(function(c){
-    var p=SP_STAFF[c[0]], kann=c[2];
+    var p=spTeam()[c[0]], kann=c[2];
     return '<div style="background:var(--surf);border:1px solid var(--line);border-radius:14px;padding:13px;display:flex;align-items:center;gap:11px;opacity:'+(kann?'1':'.55')+'">'+
       '<div style="width:36px;height:36px;border-radius:50%;background:'+(kann?'var(--acs)':'var(--surf2)')+';color:'+(kann?'var(--ac)':'var(--tx3)')+';font-size:11.5px;font-weight:900;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+esc(p.ini)+'</div>'+
       '<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:900;color:'+(kann?'var(--tx)':'var(--tx2)')+'">'+esc(p.name)+'</div>'+
@@ -8082,7 +8396,7 @@ function spWireStaff(node){
     b.onclick=function(){ var k=b.getAttribute('data-spmuster'); var m=spMuster(); m[k]=!m[k]; render(); };
   });
   var mn=node.querySelector('[data-spmusterneu]'); if(mn) mn.onclick=function(){ spToast('Muster anlegen folgt'); };
-  var av=node.querySelector('[data-spavsave]'); if(av) av.onclick=function(){ spToast('Verfügbarkeit für November gemeldet'); };
+  var av=node.querySelector('[data-spavsave]'); if(av) av.onclick=spSaveAvail;
   node.querySelectorAll('[data-spapply]').forEach(function(b){
     b.onclick=function(){ spApplyShift(b.getAttribute('data-spapply')); };
   });
@@ -8217,6 +8531,13 @@ function spSideHTML(){
 }
 
 // Noch nicht gebaute Bildschirme: ehrlich benennen statt leere Flaeche zeigen.
+function spBeispielHTML(){
+  if(spLive()) return '';
+  return '<div style="display:flex;align-items:center;gap:11px;background:var(--wns);border:1px solid var(--wnb);border-radius:14px;padding:11px 14px;margin-bottom:16px">'+
+    spIc(SPI.warn,'var(--wn)',16)+
+    '<span style="font-size:11.5px;font-weight:800;color:var(--tx2);line-height:1.4;flex:1">Beispieldaten — die echten Schichten werden noch geladen. Namen und Zahlen hier sind erfunden.</span></div>';
+}
+
 function spTodoHTML(titel){
   return '<div style="max-width:560px;margin:60px auto;text-align:center">'+
     '<div style="width:52px;height:52px;border-radius:16px;background:var(--surf2);display:flex;align-items:center;justify-content:center;margin:0 auto 16px">'+spIc(SPI.gear,'var(--tx4)',24)+'</div>'+
@@ -8247,6 +8568,7 @@ function schichtNode(){
     '<div style="display:flex;align-items:flex-start">'+
       (S.spMode==='planner'?spSideHTML():'')+
       '<div style="flex:1;min-width:0;padding:20px 22px 44px">'+
+        (S.spMode==='planner'?spBeispielHTML():'')+
         (S.spMode==='planner'
           ? (S.spScreen==='result' ? spResultHTML()
             : S.spScreen==='setup' ? spSetupHTML()

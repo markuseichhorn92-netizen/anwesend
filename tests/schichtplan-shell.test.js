@@ -281,7 +281,7 @@ ok('18d. Abstriche landen sichtbar als Konflikt im Plan',
   await zeige('team');
   const zeilen=await p.$$eval('[data-spperson]',function(e){ return e.length; });
   ok('21. Jede Person steht in der Liste',
-    zeilen===(await p.evaluate(function(){ return Object.keys(SP_STAFF).length; })), String(zeilen));
+    zeilen===(await p.evaluate(function(){ return Object.keys(spTeam()).length; })), String(zeilen));
   // Knappe Stundenkonten muessen sich abheben, sonst faellt es niemandem auf.
   const knapp=await p.evaluate(function(){
     const z=Array.from(document.querySelectorAll('[data-spperson]'))
@@ -305,7 +305,7 @@ ok('18d. Abstriche landen sichtbar als Konflikt im Plan',
   // Der letzte Bereich darf nicht entzogen werden - sonst haette jemand einen
   // Dienstplan-Eintrag ohne jede Qualifikation.
   await p.click('[data-sparea="gu:flaeche"]'); await p.waitForTimeout(260);
-  const bereiche=await p.evaluate(function(){ return SP_STAFF.gu.areas.join(','); });
+  const bereiche=await p.evaluate(function(){ return spTeam().gu.areas.join(','); });
   ok('22c. Der letzte Bereich laesst sich nicht entziehen',
     bereiche==='flaeche' && /mindestens einen Bereich/.test(await toastText()), bereiche);
 
