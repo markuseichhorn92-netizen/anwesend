@@ -76,6 +76,7 @@
   .sp .sc::-webkit-scrollbar-track{background:transparent}
   @keyframes spSpin{to{transform:rotate(360deg)}}
   @keyframes spPop{0%{transform:translateY(14px);opacity:0}100%{transform:translateY(0);opacity:1}}
+  @keyframes spPulse{0%,100%{opacity:.35}50%{opacity:1}}
   /* Der Entwurf ist fuer den Schreibtisch gezeichnet (Inhalt ab 1000px). Auf dem
      Telefon bleibt deshalb die bisherige schmale Ansicht - sie funktioniert dort,
      und ein 1000px-Raster waere unbenutzbar. */
@@ -248,7 +249,8 @@ var S={ token:null, role:null, meName:null, screen:'dash', convs:[], counts:{}, 
         spTheme:spThemeGespeichert(), spMode:'planner', spScreen:'result', spStaff:'home',
         spShifts:null, spVac:null, spSel:'so-1', spPinned:['mo-1','sa-1'], spZoom:'woche',
         spConflictOnly:false, spDragId:null, spDropId:null, spDropOk:true, spDragStaff:null,
-        spWeekStatus:{41:'draft'}, spToast:'',
+        spWeekStatus:{41:'draft'}, spToast:'', spNeed:null, spRules:null,
+        spRange:'quartal', spGoal:'balanced', spGenPct:0, spGenStep:0,
         shWeek:null, shTab:'plan', shView:'tag', shDay:'', shData:null, shLoaded:false, shLoading:false, shBusy:'',
         shSwap:null, shSwapLoading:false, shThreads:[], shChatMe:null,
         shAvail:null, shAvailLoading:false, shAvailFor:'', shAvailBusy:false, shAvailSaved:false,
@@ -5959,6 +5961,209 @@ function spWireResult(node){
     S.spWeekStatus=S.spWeekStatus||{}; S.spWeekStatus[41]='published'; spToast('KW 41 veröffentlicht · das Team ist informiert'); };
 }
 
+
+// ── Schichtplan · Setup (Planer, „KI-Planung") ──────────────────────────────
+// Uebernommen aus Schichtplan.dc.html. Die Werte in den Kaesten sind die des
+// Entwurfs; sie zeigen den Rahmen, innerhalb dessen geplant wird.
+var SP_RANGE_HINTS={
+  woche:'KW 41 · 05.–11.10.2026 · Feinplanung mit Namen',
+  monat:'Oktober 2026 · 4,5 Wochen · Feinplanung',
+  quartal:'Q4 2026 · KW 40–52 · Feinplanung bis KW 48, danach Grobplanung',
+  halb:'Okt 2026 – Mär 2027 · überwiegend Grobplanung'
+};
+var SP_GOALS=[
+  ['cost','Kosten minimieren','Weniger Personalstunden in ruhigen Fenstern'],
+  ['wish','Mitarbeiterwünsche maximieren','Verfügbarkeiten und Vorlieben zuerst'],
+  ['quality','Betreuung in Stoßzeiten','Mehr Personal 17–21 Uhr und Sa'],
+  ['balanced','Ausgewogen','Fairer Kompromiss aus allen drei']
+];
+var SP_RULES=[
+  ['rest','11-Std-Ruhezeit','Zwischen zwei Diensten'],
+  ['daymax','Tageshöchstarbeitszeit','Max. 10 Std, Ø 8 Std'],
+  ['minijob','Minijob-Grenze','556 € · 43,5 Std/Monat'],
+  ['fairness','Wochenenden fair verteilen','Sa/So und Spätdienste rotieren'],
+  ['nosplit','Geteilte Dienste vermeiden','Mittagsschließung nicht überbrücken'],
+  ['sunday','Ersatzruhetage prüfen','Nach Sonntagsarbeit binnen 2 Wochen']
+];
+function spNeed(){ if(!S.spNeed) S.spNeed={flaeche:[2,2,1,1], reinigung:[1,1,1,0]}; return S.spNeed; }
+function spRules(){ if(!S.spRules) S.spRules={rest:true,daymax:true,minijob:true,fairness:true,nosplit:false,sunday:true}; return S.spRules; }
+
+function spSetupHTML(){
+  var need=spNeed(), rules=spRules();
+  var range=S.spRange||'quartal', goal=S.spGoal||'balanced';
+
+  var chips=[['woche','Woche'],['monat','Monat'],['quartal','Quartal'],['halb','6 Monate']].map(function(c){
+    var a=range===c[0];
+    return '<button data-sprange="'+c[0]+'" class="tap" style="padding:11px 17px;border:1.5px solid '+(a?'var(--ac)':'var(--line2)')+';border-radius:12px;background:'+(a?'var(--ac)':'transparent')+';color:'+(a?'var(--acfg)':'var(--tx2)')+';font-family:inherit;font-size:12.5px;font-weight:800;cursor:pointer">'+c[1]+'</button>';
+  }).join('');
+
+  var blocks=[['Block 1','9:30–11:30'],['Block 2','11:30–13:00'],['Block 3','15:00–17:30'],['Block 4','17:30–21:30']].map(function(b){
+    return '<div style="padding:9px 8px;text-align:center;border-left:1px solid var(--line)"><div style="font-size:10.5px;font-weight:900">'+b[0]+'</div><div style="font-size:9px;font-weight:700;color:var(--tx3);font-variant-numeric:tabular-nums">'+b[1]+'</div></div>';
+  }).join('');
+
+  var rows=[['flaeche','Trainingsfläche','var(--ac)'],['reinigung','Reinigung','var(--wn)']].map(function(r){
+    var cells=need[r[0]].map(function(n,i){
+      // Null Personen in einem Fenster ist kein neutraler Wert, sondern eine
+      // Luecke - deshalb faerbt der Entwurf sie rot.
+      var bg=(n===0&&r[0]==='flaeche')?'var(--dgs)':'transparent';
+      var fg=(n===0&&r[0]==='flaeche')?'var(--dgt)':'var(--tx)';
+      return '<div style="border-left:1px solid var(--line);padding:8px;display:flex;align-items:center;justify-content:center;gap:7px;background:'+bg+'">'+
+        '<button data-spneed="'+r[0]+':'+i+':-1" class="tap" style="width:25px;height:25px;border-radius:7px;border:1px solid var(--line2);background:transparent;color:var(--tx2);font-family:inherit;font-size:14px;font-weight:800;cursor:pointer;line-height:1">–</button>'+
+        '<span style="font-size:14px;font-weight:900;min-width:14px;text-align:center;color:'+fg+';font-variant-numeric:tabular-nums">'+n+'</span>'+
+        '<button data-spneed="'+r[0]+':'+i+':1" class="tap" style="width:25px;height:25px;border-radius:7px;border:1px solid var(--line2);background:transparent;color:var(--tx2);font-family:inherit;font-size:14px;font-weight:800;cursor:pointer;line-height:1">+</button>'+
+      '</div>';
+    }).join('');
+    return '<div style="display:grid;grid-template-columns:150px repeat(4,1fr);border-top:1px solid var(--line)">'+
+      '<div style="padding:12px;display:flex;align-items:center;gap:8px">'+
+        '<span style="width:8px;height:8px;border-radius:3px;background:'+r[2]+';flex-shrink:0"></span>'+
+        '<span style="font-size:12px;font-weight:800">'+r[1]+'</span></div>'+cells+'</div>';
+  }).join('');
+
+  var goals=SP_GOALS.map(function(g){
+    var a=goal===g[0];
+    return '<button data-spgoal="'+g[0]+'" class="tap" style="display:flex;align-items:flex-start;gap:11px;width:100%;text-align:left;padding:12px 13px;border:1.5px solid '+(a?'var(--ac)':'var(--line)')+';border-radius:13px;background:'+(a?'var(--acs)':'transparent')+';cursor:pointer;font-family:inherit">'+
+      '<span style="width:17px;height:17px;border-radius:50%;border:2px solid '+(a?'var(--ac)':'var(--line2)')+';background:'+(a?'var(--ac)':'transparent')+';flex-shrink:0;margin-top:1px"></span>'+
+      '<span style="flex:1"><span style="display:block;font-size:12.5px;font-weight:800;color:var(--tx)">'+esc(g[1])+'</span>'+
+      '<span style="display:block;font-size:11px;font-weight:600;color:var(--tx3);margin-top:2px;line-height:1.4">'+esc(g[2])+'</span></span></button>';
+  }).join('');
+
+  var ruleRows=SP_RULES.map(function(r){
+    var on=!!rules[r[0]];
+    return '<div style="display:flex;align-items:center;gap:11px;padding:9px 0;border-bottom:1px solid var(--line)">'+
+      '<div style="flex:1;min-width:0">'+
+        '<div style="font-size:12px;font-weight:800;color:var(--tx)">'+esc(r[1])+'</div>'+
+        '<div style="font-size:10.5px;font-weight:600;color:var(--tx3);margin-top:1px">'+esc(r[2])+'</div></div>'+
+      '<button data-sprule="'+r[0]+'" class="tap" style="width:40px;height:23px;border-radius:12px;border:none;background:'+(on?'var(--ac)':'var(--surf3)')+';position:relative;cursor:pointer;flex-shrink:0;padding:0">'+
+        '<span style="position:absolute;top:3px;left:'+(on?'20px':'3px')+';width:17px;height:17px;border-radius:50%;background:'+(on?'var(--acfg)':'var(--tx3)')+';transition:left .16s ease"></span></button>'+
+    '</div>';
+  }).join('');
+
+  return '<div style="max-width:1000px">'+
+    '<div style="font-size:9.5px;font-weight:900;color:var(--tx4);letter-spacing:1.5px;text-transform:uppercase">Schritt 1 von 3</div>'+
+    '<div style="font-size:27px;font-weight:900;letter-spacing:-.8px;margin-top:8px">Plan generieren</div>'+
+    '<div style="font-size:13px;font-weight:600;color:var(--tx2);margin-top:4px">Stell den Rahmen ein — die KI plant nur innerhalb deiner echten Öffnungszeiten.</div>'+
+
+    '<div style="background:var(--surf);border:1px solid var(--line);border-radius:18px;padding:18px;margin-top:20px">'+
+      '<div style="font-size:10px;font-weight:900;color:var(--tx3);letter-spacing:1.3px;text-transform:uppercase">Zeitraum</div>'+
+      '<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">'+chips+'</div>'+
+      '<div style="font-size:11.5px;font-weight:700;color:var(--tx3);margin-top:12px">'+esc(SP_RANGE_HINTS[range])+'</div>'+
+    '</div>'+
+
+    '<div style="background:var(--surf);border:1px solid var(--line);border-radius:18px;padding:18px;margin-top:12px">'+
+      '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px">'+
+        '<div><div style="font-size:10px;font-weight:900;color:var(--tx3);letter-spacing:1.3px;text-transform:uppercase">Besetzungsbedarf</div>'+
+        '<div style="font-size:11.5px;font-weight:600;color:var(--tx3);margin-top:4px">Wie viele Personen pro Bereich und Zeitfenster? Direkt anpassbar.</div></div>'+
+        '<button class="tap" style="height:34px;padding:0 12px;border-radius:10px;border:1px solid var(--line2);background:transparent;color:var(--tx2);font-family:inherit;font-size:11.5px;font-weight:800;cursor:pointer">Als Vorlage speichern</button>'+
+      '</div>'+
+      '<div style="margin-top:15px;border:1px solid var(--line);border-radius:13px;overflow:hidden">'+
+        '<div style="display:grid;grid-template-columns:150px repeat(4,1fr);background:var(--surf2)">'+
+          '<div style="padding:9px 12px;font-size:9.5px;font-weight:900;color:var(--tx4);letter-spacing:1px;text-transform:uppercase">Bereich</div>'+blocks+'</div>'+
+        rows+'</div>'+
+      '<div style="display:flex;align-items:center;gap:8px;margin-top:11px">'+
+        '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--tx4)" stroke-width="2" stroke-linecap="round" style="flex-shrink:0"><circle cx="12" cy="12" r="9"></circle><path d="M12 16v-4M12 8h.01"></path></svg>'+
+        '<span style="font-size:11px;font-weight:700;color:var(--tx3);line-height:1.4">Sa (13–16 · 16–18) und So (9–12 · 12–15) haben eigene Blöcke. Die Reinigung wird immer vormittags vor Öffnung geplant, nie in der Mittagsschließung. Im Plan lassen sich alle Balken frei ziehen.</span>'+
+      '</div>'+
+    '</div>'+
+
+    '<div style="display:flex;gap:12px;margin-top:12px">'+
+      '<div style="flex:1;background:var(--surf);border:1px solid var(--line);border-radius:18px;padding:18px">'+
+        '<div style="font-size:10px;font-weight:900;color:var(--tx3);letter-spacing:1.3px;text-transform:uppercase">Worauf optimieren?</div>'+
+        '<div style="display:flex;flex-direction:column;gap:8px;margin-top:13px">'+goals+'</div></div>'+
+      '<div style="flex:1;background:var(--surf);border:1px solid var(--line);border-radius:18px;padding:18px">'+
+        '<div style="font-size:10px;font-weight:900;color:var(--tx3);letter-spacing:1.3px;text-transform:uppercase">Regeln</div>'+
+        '<div style="display:flex;flex-direction:column;gap:2px;margin-top:9px">'+ruleRows+'</div></div>'+
+    '</div>'+
+
+    '<div style="background:var(--wns);border:1px solid var(--wnb);border-radius:18px;padding:16px 18px;margin-top:12px;display:flex;align-items:center;gap:15px">'+
+      '<div style="width:38px;height:38px;border-radius:11px;background:var(--surf);display:flex;align-items:center;justify-content:center;flex-shrink:0">'+
+        '<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="var(--wn)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"></path></svg></div>'+
+      '<div style="flex:1;min-width:0">'+
+        '<div style="font-size:13.5px;font-weight:900;color:var(--tx)">6 von 8 haben Verfügbarkeiten gemeldet</div>'+
+        '<div style="font-size:11.5px;font-weight:600;color:var(--tx2);margin-top:2px">Harry und Steffi fehlen — für sie plant die KI konservativ.</div></div>'+
+      '<button data-spremind="1" class="tap" style="height:36px;padding:0 14px;border-radius:11px;border:1px solid var(--line2);background:var(--surf);color:var(--tx);font-family:inherit;font-size:12px;font-weight:800;cursor:pointer;flex-shrink:0">Erinnerung senden</button>'+
+    '</div>'+
+
+    '<div style="display:flex;align-items:center;gap:12px;margin-top:20px">'+
+      '<button data-spgen="1" class="tap" style="height:48px;padding:0 24px;border-radius:14px;border:none;background:var(--ac);color:var(--acfg);font-family:inherit;font-size:14.5px;font-weight:900;cursor:pointer;display:flex;align-items:center;gap:9px">'+
+        '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--acfg)" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"></circle><path d="M12 3v2M12 19v2M5 12H3M21 12h-2M6 6l1.5 1.5M18 18l-1.5-1.5M6 18l1.5-1.5M18 6l-1.5 1.5"></path></svg>Plan generieren</button>'+
+      '<span style="font-size:11.5px;font-weight:700;color:var(--tx3)">Dauert etwa 4 Sekunden · du kannst jederzeit abbrechen</span>'+
+    '</div>'+
+  '</div>';
+}
+
+// ── Schichtplan · Generierung ───────────────────────────────────────────────
+// Fuenf Schritte, die der Reihe nach abgehakt werden. Der Entwurf laesst sie
+// zeitgesteuert durchlaufen - das bleibt so, bis die echte Planung dranhaengt.
+var SP_GEN_LABELS=['Verfügbarkeiten einlesen','Öffnungszeiten & Feiertage abgleichen','Qualifikationen und Stundenkonten prüfen','Faire Verteilung berechnen','Vorschlag zusammenstellen'];
+var SP_GEN_META=['6 von 8','61 Std/Woche','8 Personen','1.240 Varianten','54 Schichten'];
+
+function spStartGen(){
+  S.spScreen='gen'; S.spGenPct=0; S.spGenStep=0; render();
+  var tick=function(i){
+    window.__spGenT=setTimeout(function(){
+      // Abgebrochen? Dann steht der Bildschirm schon wieder auf setup.
+      if(S.spScreen!=='gen') return;
+      if(i>=5){ S.spScreen='result'; S.spSel='so-1'; spToast('Vorschlag fertig · 2 Punkte brauchen dich'); return; }
+      S.spGenStep=i+1; S.spGenPct=Math.round((i+1)/5*100); render(); tick(i+1);
+    }, i===0?500:820);
+  };
+  tick(0);
+}
+function spCancelGen(){ clearTimeout(window.__spGenT); S.spScreen='setup'; spToast('Generierung abgebrochen'); }
+
+function spGenHTML(){
+  var step=S.spGenStep||0, pct=S.spGenPct||0;
+  var steps=SP_GEN_LABELS.map(function(l,i){
+    var done=step>i, active=step===i;
+    var icon=done
+      ? '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--ok)" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg>'
+      : (active
+        ? '<span style="width:8px;height:8px;border-radius:50%;background:var(--ac);animation:spPulse 1.2s ease-in-out infinite;display:block"></span>'
+        : '<span style="width:7px;height:7px;border-radius:50%;background:var(--surf3);display:block"></span>');
+    return '<div style="display:flex;align-items:center;gap:11px;padding:11px 13px;border-radius:12px;background:'+(active?'var(--acs)':'transparent')+';border:1px solid '+(active?'var(--acb)':'var(--line)')+'">'+
+      '<span style="width:19px;height:19px;flex-shrink:0;display:flex;align-items:center;justify-content:center">'+icon+'</span>'+
+      '<span style="flex:1;font-size:12.5px;font-weight:'+(active?'900':(done?'700':'600'))+';color:'+((done||active)?'var(--tx)':'var(--tx3)')+'">'+esc(l)+'</span>'+
+      ((done||active)?'<span style="font-size:11px;font-weight:800;color:var(--tx3);font-variant-numeric:tabular-nums">'+esc(SP_GEN_META[i])+'</span>':'')+
+    '</div>';
+  }).join('');
+
+  return '<div style="max-width:620px;margin:40px auto">'+
+    '<div style="background:var(--surf);border:1px solid var(--line);border-radius:22px;padding:28px">'+
+      '<div style="display:flex;align-items:center;gap:15px">'+
+        '<div style="width:44px;height:44px;border-radius:50%;border:3px solid var(--surf3);border-top-color:var(--ac);animation:spSpin .8s linear infinite;flex-shrink:0"></div>'+
+        '<div style="flex:1;min-width:0">'+
+          '<div style="font-size:18px;font-weight:900;letter-spacing:-.4px">Plane Q4 2026 …</div>'+
+          '<div style="font-size:12.5px;font-weight:600;color:var(--tx2);margin-top:3px">13 Wochen · 61 Öffnungsstunden pro Woche · 8 Mitarbeitende</div></div>'+
+        '<button data-spcancelgen="1" class="tap" style="height:38px;padding:0 14px;border-radius:11px;border:1px solid var(--line2);background:transparent;color:var(--tx2);font-family:inherit;font-size:12.5px;font-weight:800;cursor:pointer;flex-shrink:0">Abbrechen</button>'+
+      '</div>'+
+      '<div style="height:5px;border-radius:3px;background:var(--surf3);margin-top:22px;overflow:hidden">'+
+        '<div style="width:'+pct+'%;height:100%;background:var(--ac);border-radius:3px;transition:width .5s ease"></div></div>'+
+      '<div style="display:flex;flex-direction:column;gap:9px;margin-top:20px">'+steps+'</div>'+
+    '</div></div>';
+}
+
+function spWireSetup(node){
+  node.querySelectorAll('[data-sprange]').forEach(function(b){
+    b.onclick=function(){ S.spRange=b.getAttribute('data-sprange'); render(); };
+  });
+  node.querySelectorAll('[data-spgoal]').forEach(function(b){
+    b.onclick=function(){ S.spGoal=b.getAttribute('data-spgoal'); render(); };
+  });
+  node.querySelectorAll('[data-sprule]').forEach(function(b){
+    b.onclick=function(){ var k=b.getAttribute('data-sprule'); var r=spRules(); r[k]=!r[k]; render(); };
+  });
+  node.querySelectorAll('[data-spneed]').forEach(function(b){
+    b.onclick=function(){
+      var p=b.getAttribute('data-spneed').split(':');
+      var n=spNeed(), arr=n[p[0]], i=parseInt(p[1],10), d=parseInt(p[2],10);
+      arr[i]=Math.max(0,Math.min(5,arr[i]+d)); render();
+    };
+  });
+  var rm=node.querySelector('[data-spremind]'); if(rm) rm.onclick=function(){ spToast('Sammel-Erinnerung an 3 Personen gesendet'); };
+  var gn=node.querySelector('[data-spgen]'); if(gn) gn.onclick=spStartGen;
+  var cg=node.querySelector('[data-spcancelgen]'); if(cg) cg.onclick=spCancelGen;
+}
+
 // ── Schichtplan: Huelle aus dem Entwurf ─────────────────────────────────────
 // Symbole des Entwurfs. Gleiche Strichstaerke und Rundungen wie dort; die Farbe
 // kommt von aussen, damit aktiv/inaktiv nur eine Token-Frage ist.
@@ -5989,7 +6194,7 @@ function spToggleTheme(){ S.spTheme=spDark()?'light':'dark'; try{ localStorage.s
 // unfertige Ziele werden angezeigt, aber ehrlich als „in Arbeit" gekennzeichnet,
 // statt sie zu verstecken und die Navigation spaeter umzubauen.
 var SP_PLAN=[
-  {k:'setup',   l:'KI-Planung',      ic:'spark', bereit:false},
+  {k:'setup',   l:'KI-Planung',      ic:'spark', bereit:true},
   {k:'result',  l:'Plan',            ic:'cal',   bereit:true},
   {k:'inbox',   l:'Freigaben',       ic:'inbox', bereit:false},
   {k:'postings',l:'Ausschreibungen', ic:'bell',  bereit:false}
@@ -6099,14 +6304,17 @@ function schichtNode(){
       (S.spMode==='planner'?spSideHTML():'')+
       '<div style="flex:1;min-width:0;padding:20px 22px 44px">'+
         (S.spMode==='planner'
-          ? (S.spScreen==='result' ? spResultHTML() : spTodoHTML(spTitel(S.spScreen)))
+          ? (S.spScreen==='result' ? spResultHTML()
+            : S.spScreen==='setup' ? spSetupHTML()
+            : S.spScreen==='gen' ? spGenHTML()
+            : spTodoHTML(spTitel(S.spScreen)))
           : spTodoHTML('Mitarbeiter-Ansicht'))+
       '</div>'+
     '</div></div>';
   var hand='<div class="sp-hand" style="padding:20px 16px 44px">'+bestand+'</div>';
 
   node.innerHTML=desk+hand+shKiHTML()+shEditorHTML()+shChatHTML();
-  setTimeout(function(){ wireSchicht(node); wireSp(node); spWireResult(node); },0);
+  setTimeout(function(){ wireSchicht(node); wireSp(node); spWireResult(node); spWireSetup(node); },0);
   return node;
 }
 function spTitel(k){

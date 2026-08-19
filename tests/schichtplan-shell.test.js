@@ -76,5 +76,32 @@ ok('8e. Ueberlappungen werden nebeneinander gelegt', /function spPackLanes/.test
 ok('9. Die doppelte Kopfzeile wird wirklich unterdrueckt',
   /body\.sp-on \.hdr-mobile\{display:none!important\}/.test(html));
 
+// ── Setup und Generierung ──
+const setup=html.slice(html.indexOf('function spSetupHTML'), html.indexOf('// ── Schichtplan · Generierung'));
+ok('10. Der Setup-Bildschirm ist uebernommen', setup.length>2000, String(setup.length));
+ok('10b. … mit den vier Zeitraeumen', /'woche','Woche'.*'halb','6 Monate'/s.test(setup));
+ok('10c. … der Besetzungsbedarf-Matrix', /data-spneed/.test(setup));
+const goalsBlock=(html.match(/var SP_GOALS=\[[\s\S]*?\n\];/)||[''])[0];
+const rulesBlock=(html.match(/var SP_RULES=\[[\s\S]*?\n\];/)||[''])[0];
+ok('10d. … den vier Optimierungszielen',
+  (goalsBlock.match(/^\s*\['/gm)||[]).length===4, String((goalsBlock.match(/^\s*\['/gm)||[]).length));
+ok('10e. … und den sechs Regeln',
+  (rulesBlock.match(/^\s*\['/gm)||[]).length===6, String((rulesBlock.match(/^\s*\['/gm)||[]).length));
+
+// Die Bedarfszahlen sind begrenzt: unter 0 waere unsinnig, ueber 5 unrealistisch.
+const bump=html.slice(html.indexOf("data-spneed]').forEach"), html.indexOf("var rm=node.querySelector('[data-spremind]')"));
+ok('11. Der Bedarf laesst sich nicht ins Unsinnige drehen',
+  /Math\.max\(0,Math\.min\(5,/.test(bump), bump.slice(0,200));
+
+// Der Zaehler laeuft zeitgesteuert. Bricht man ab, darf er NICHT weiterlaufen
+// und am Ende doch auf das Ergebnis springen.
+const gen=html.slice(html.indexOf('function spStartGen'), html.indexOf('function spGenHTML'));
+ok('12. Die Generierung bricht wirklich ab',
+  /if\(S\.spScreen!=='gen'\) return;/.test(gen), gen.slice(0,300));
+ok('12b. … und der Abbruch stoppt auch den Zeitgeber', /clearTimeout\(window\.__spGenT\)/.test(html));
+const genBlock=(html.match(/var SP_GEN_LABELS=\[[^\]]*\];/)||[''])[0];
+ok('12c. Fuenf Schritte wie im Entwurf',
+  genBlock.split("','").length===5, String(genBlock.split("','").length));
+
 console.log(pass?'SP-SHELL PASS':'SP-SHELL FAIL');
 process.exit(pass?0:1);
