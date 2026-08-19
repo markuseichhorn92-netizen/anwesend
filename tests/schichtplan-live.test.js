@@ -315,6 +315,100 @@ ok('2b. Sie stehen aber weiter als Beispiel bereit',
     zusage && zusage.action === 'accept-applicant' && zusage.id === 's2' && zusage.employeeId === 'e2',
     JSON.stringify(zusage));
 
+  // ── Der erste Start ──
+  // Frisches Studio: Speicher da, aber nichts drin. Genau hier war der Plan
+  // vorher eine Sackgasse - kein Mitarbeiter, und kein Weg, einen anzulegen.
+  const leer = { ok: true, week: MON, me: { employeeId: null, name: 'Admin', role: 'admin', initials: 'A' },
+    canDecide: true,
+    days: [0, 1, 2, 3, 4, 5, 6].map((i) => ({ date: ADD(MON, i), shifts: [] })),
+    openCount: 0, swapBadge: 0, availability: [], vacations: [], vacPending: 0,
+    staff: [], blocks: BLOCKS, areas: ['flaeche', 'reinigung', 'theke', 'kurs'] };
+  await p.evaluate(function (pl) {
+    window.__calls = [];
+    window.tapi = async function (pfad, opts) { window.__calls.push({ body: (opts && opts.body) || null }); return JSON.parse(JSON.stringify(pl)); };
+    S.token = 'x'; S.screen = 'schicht'; S.role = 'admin'; S.booted = true;
+    S.spMode = 'planner'; S.spScreen = 'result'; S.spEmpForm = null;
+    S.shWeek = pl.week; S.shData = JSON.parse(JSON.stringify(pl));
+    render();
+  }, leer);
+  await p.waitForTimeout(250);
+  const start = await p.evaluate(function () {
+    const t = document.querySelector('.sp-desk').innerText;
+    return { live: spLive(), hinweis: /Zuerst das Team anlegen/.test(t), knopf: !!document.querySelector('[data-spgoteam]') };
+  });
+  ok('15. Der leere Plan sagt, was zuerst zu tun ist',
+    start.live === true && start.hinweis === true && start.knopf === true, JSON.stringify(start));
+
+  await p.click('[data-spgoteam]');
+  await p.waitForTimeout(220);
+  const beiTeam = await p.evaluate(function () {
+    return { screen: S.spScreen, sec: S.spSetSec,
+      anlegen: !!document.querySelector('[data-spempnew]'),
+      importieren: !!document.querySelector('[data-spempimport]') };
+  });
+  ok('15b. … und fuehrt dorthin, wo man es tut',
+    beiTeam.screen === 'settings' && beiTeam.sec === 'team' && beiTeam.anlegen && beiTeam.importieren,
+    JSON.stringify(beiTeam));
+
+  // Anlegen von Hand: Name, Beschaeftigung, Grenzen, Bereiche.
+  await p.click('[data-spempnew]');
+  await p.waitForTimeout(200);
+  await p.fill('#spempf_name', 'Clara Dorn');
+  await p.fill('#spempf_type', 'Teilzeit');
+  await p.fill('#spempf_max', '90');
+  await p.fill('#spempf_vac', '28');
+  await p.click('[data-spempfarea="reinigung"]');       // zweiter Bereich dazu
+  await p.waitForTimeout(200);
+  const nachChip = await p.evaluate(function () {
+    return { name: document.querySelector('#spempf_name').value, areas: spEmpForm().areas.join(',') };
+  });
+  // Der Klick auf einen Chip zeichnet neu. Ginge der getippte Name dabei
+  // verloren, waere das Formular unbenutzbar.
+  ok('16. Ein Bereichsklick verliert die getippten Werte nicht',
+    nachChip.name === 'Clara Dorn' && nachChip.areas === 'flaeche,reinigung', JSON.stringify(nachChip));
+
+  await p.evaluate(function () { window.__calls = []; });
+  await p.click('[data-spempsave]');
+  await p.waitForTimeout(280);
+  const gespeichert = await p.evaluate(function () {
+    return (window.__calls.map(function (c) { return c.body; }).filter(Boolean)[0]) || null; });
+  ok('16b. Speichern legt den Mitarbeiter wirklich an',
+    gespeichert && gespeichert.action === 'staff-set' && gespeichert.name === 'Clara Dorn'
+      && gespeichert.monthMax === 90 && gespeichert.vacDays === 28 && gespeichert.areas.join(',') === 'flaeche,reinigung',
+    JSON.stringify(gespeichert));
+  ok('16c. … und vergibt eine Kennung, wenn keine da ist',
+    gespeichert && !!String(gespeichert.employeeId || '').trim(), JSON.stringify(gespeichert && gespeichert.employeeId));
+
+  await p.evaluate(function () { window.__calls = []; });
+  await p.click('[data-spempimport]');
+  await p.waitForTimeout(250);
+  const importiert = await p.evaluate(function () {
+    return (window.__calls.map(function (c) { return c.body; }).filter(Boolean)[0]) || null; });
+  ok('16d. „Aus Magicline übernehmen" ruft den Abgleich',
+    importiert && importiert.action === 'staff-import', JSON.stringify(importiert));
+
+  // Team da, Woche leer: der naechste Schritt ist der Wochenplan.
+  await p.evaluate(function (pl) {
+    pl.staff = [{ id: 'e1', name: 'Anna Beck', initials: 'AB', type: 'Teilzeit', areas: ['flaeche'], monthMax: 90, vacDays: 28, monthHours: 0, stored: true, active: true }];
+    S.shData = JSON.parse(JSON.stringify(pl)); S.spScreen = 'result'; render();
+  }, leer);
+  await p.waitForTimeout(220);
+  const ohneSchichten = await p.evaluate(function () {
+    return { text: /keine Schichten/.test(document.querySelector('.sp-desk').innerText),
+      knopf: document.querySelectorAll('[data-spreset]').length };
+  });
+  ok('17. Ist das Team da, fehlt nur noch der Wochenplan',
+    ohneSchichten.text === true && ohneSchichten.knopf >= 1, JSON.stringify(ohneSchichten));
+
+  await p.evaluate(function () { window.__calls = []; });
+  await p.click('[data-spreset]');
+  await p.waitForTimeout(250);
+  const gefuellt = await p.evaluate(function () {
+    return (window.__calls.map(function (c) { return c.body; }).filter(Boolean)[0]) || null; });
+  // Live darf der Knopf NICHTS wegwerfen - er legt nur die fehlenden Tage an.
+  ok('17b. Der Knopf legt an, statt zurueckzusetzen',
+    gefuellt && gefuellt.action === 'fillTemplate', JSON.stringify(gefuellt));
+
   ok('12. Kein Skriptfehler auf allen Bildschirmen', fehler.length === 0, fehler.join(' | '));
 
   await b.close();

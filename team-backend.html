@@ -5857,13 +5857,35 @@ function spWeekGridHTML(){
       '<div style="display:flex;align-items:center;gap:12px">'+
         '<span style="display:inline-flex;align-items:center;gap:6px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--tx3)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18M8 7l4-4 4 4M8 17l4 4 4-4"></path></svg>'+
         '<span style="font-size:10.5px;font-weight:700;color:var(--tx3)">Balken ziehen · Kanten fassen · über eine andere Schicht ziehen tauscht</span></span>'+
-        '<button data-spreset="1" class="tap" style="height:28px;padding:0 10px;border-radius:8px;border:1px solid var(--line2);background:transparent;color:var(--tx3);font-family:inherit;font-size:10.5px;font-weight:800;cursor:pointer">Standardblöcke</button>'+
+        '<button data-spreset="1" class="tap" style="height:28px;padding:0 10px;border-radius:8px;border:1px solid var(--line2);background:transparent;color:var(--tx3);font-family:inherit;font-size:10.5px;font-weight:800;cursor:pointer">'+(spLive()?'Wochenplan anlegen':'Standardblöcke')+'</button>'+
         '<span style="font-size:10.5px;font-weight:700;color:var(--tx3)">'+offen+' offen</span>'+
       '</div></div>'+
   '</div></div>';
 }
 
 // ── Kopfbereich, Kennzahlen, Werkzeugleiste, Personalleiste ────────────────
+// Ein leeres Raster erklaert nichts. Wenn die Woche noch keine Schichten hat
+// oder niemand angelegt ist, steht hier der naechste Schritt - mit dem Knopf.
+function spPlanLeerHTML(){
+  if(!spLive()) return '';
+  var leute=Object.keys(spTeam()).length, schichten=spShifts().length;
+  if(leute && schichten) return '';
+  var titel, text, knopf;
+  if(!leute){
+    titel='Zuerst das Team anlegen';
+    text='Ohne Mitarbeiter lässt sich keine Schicht besetzen. Unter Einstellungen → Mitarbeiter & Qualifikationen anlegen oder aus Magicline übernehmen.';
+    knopf='<button data-spgoteam="1" class="tap" style="height:38px;padding:0 15px;border-radius:11px;border:none;background:var(--ac);color:var(--acfg);font-family:inherit;font-size:12.5px;font-weight:900;cursor:pointer">Zu den Mitarbeitern</button>';
+  } else {
+    titel='Diese Woche hat noch keine Schichten';
+    text='Der Studio-Wochenplan legt sie an: Mo–Fr fünf, Samstag zwei, Sonntag zwei. Bestehende Tage bleiben unangetastet.';
+    knopf='<button data-spreset="1" class="tap" style="height:38px;padding:0 15px;border-radius:11px;border:none;background:var(--ac);color:var(--acfg);font-family:inherit;font-size:12.5px;font-weight:900;cursor:pointer">Wochenplan anlegen</button>';
+  }
+  return '<div style="background:var(--surf);border:1px solid var(--acb);border-radius:16px;padding:16px 18px;margin-top:16px;display:flex;align-items:center;gap:16px;flex-wrap:wrap">'+
+    '<div style="flex:1;min-width:240px"><div style="font-size:14px;font-weight:900">'+esc(titel)+'</div>'+
+    '<div style="font-size:12px;font-weight:600;color:var(--tx2);margin-top:4px;line-height:1.5">'+esc(text)+'</div></div>'+
+    knopf+'</div>';
+}
+
 function spResultHTML(){
   var shifts=spShifts();
   var conflicts=shifts.filter(function(x){ return x.st==='blocked'||x.st==='conflict'; });
@@ -5938,6 +5960,7 @@ function spResultHTML(){
         '<button data-sppub="1" class="tap" style="height:42px;padding:0 18px;border-radius:12px;border:none;background:var(--ac);color:var(--acfg);font-family:inherit;font-size:13px;font-weight:900;cursor:pointer;display:flex;align-items:center;gap:8px">'+
           '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--acfg)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg>Veröffentlichen</button>'+
       '</div></div>'+
+    spPlanLeerHTML()+
     '<div style="display:flex;gap:10px;margin-top:18px">'+scores+'</div>'+
     '<div style="display:flex;align-items:center;justify-content:space-between;gap:16px;margin-top:18px">'+
       '<div style="display:flex;align-items:center;gap:10px">'+
@@ -6112,6 +6135,7 @@ function spWireResult(node){
   node.querySelectorAll('[data-spdel]').forEach(function(b){
     b.onclick=function(e){ e.stopPropagation();
       var id=b.getAttribute('data-spdel');
+      if(spLive()){ S.spSel=null; return spApi({action:'delete', id:id}, 'Schicht gelöscht'); }
       S.spShifts=spShifts().filter(function(x){ return x.id!==id; });
       S.spSel=null; spToast('Schicht gelöscht');
     };
@@ -6122,8 +6146,16 @@ function spWireResult(node){
   node.querySelectorAll('[data-spweek]').forEach(function(b){
     b.onclick=function(){ shShiftWeek(parseInt(b.getAttribute('data-spweek'),10)); };
   });
+  var gt=node.querySelector('[data-spgoteam]');
+  if(gt) gt.onclick=function(){ S.spScreen='settings'; S.spSetSec='team'; render(); };
   var cf=node.querySelector('[data-spcf]'); if(cf) cf.onclick=function(){ S.spConflictOnly=!S.spConflictOnly; render(); };
-  var rs=node.querySelector('[data-spreset]'); if(rs) rs.onclick=function(){ S.spShifts=spSeedShifts(); spToast('Auf Standard-Schichtblöcke zurückgesetzt'); };
+  // Live legt der Knopf die fehlenden Schichten der Woche aus dem Studio-
+  // Wochenplan an - er wirft NICHTS weg. Im Beispielbetrieb setzt er zurueck.
+  var rs=node.querySelector('[data-spreset]');
+  if(rs) rs.onclick=function(){
+    if(spLive()) return spApi({action:'fillTemplate'}, null);
+    S.spShifts=spSeedShifts(); spToast('Auf Standard-Schichtblöcke zurückgesetzt');
+  };
   var dr=node.querySelector('[data-spdraft]'); if(dr) dr.onclick=function(){
     S.spWeekStatus=S.spWeekStatus||{}; S.spWeekStatus[spKWNr()]='draft'; spToast(spKW()+' als Entwurf gespeichert · Team sieht ihn noch nicht'); };
   var pb=node.querySelector('[data-sppub]'); if(pb) pb.onclick=function(){
@@ -6266,8 +6298,39 @@ function spSetupHTML(){
 var SP_GEN_LABELS=['Verfügbarkeiten einlesen','Öffnungszeiten & Feiertage abgleichen','Qualifikationen und Stundenkonten prüfen','Faire Verteilung berechnen','Vorschlag zusammenstellen'];
 var SP_GEN_META=['6 von 8','61 Std/Woche','8 Personen','1.240 Varianten','54 Schichten'];
 
-function spStartGen(){
+async function spStartGen(){
   S.spScreen='gen'; S.spGenPct=0; S.spGenStep=0; render();
+
+  if(spLive()){
+    // Erst rechnen lassen, dann die Schritte anzeigen - sonst behauptet die
+    // Anzeige einen Fortschritt, den es nicht gibt.
+    var vorschlag=null;
+    try{ vorschlag=await tapi('/api/team/shifts',{method:'POST',body:{action:'plan', week:S.shWeek||shMonday()}}); }catch(e){}
+    if(S.spScreen!=='gen') return;                       // zwischendurch abgebrochen
+    if(!vorschlag || vorschlag.ok===false){
+      S.spScreen='setup'; spToast('Verteilung nicht möglich – bitte später erneut versuchen.'); return;
+    }
+    var liste=(vorschlag.proposals||[]).map(function(x){ return {shiftId:x.shiftId, employee:x.employee}; });
+    for(var i=0;i<5;i++){
+      if(S.spScreen!=='gen') return;
+      S.spGenStep=i+1; S.spGenPct=Math.round((i+1)/5*100); render();
+      await new Promise(function(r){ window.__spGenT=setTimeout(r, i===0?400:260); });
+    }
+    if(S.spScreen!=='gen') return;
+    if(!liste.length){
+      S.spScreen='result';
+      spToast((vorschlag.leftover||[]).length
+        ? ('Nichts zu verteilen · '+vorschlag.leftover.length+' Schichten findet niemanden')
+        : 'Alles besetzt – nichts zu verteilen');
+      return;
+    }
+    var r2=await shPost({action:'apply', assignments:liste});
+    S.spScreen='result';
+    var offen=(vorschlag.leftover||[]).length;
+    spToast(((r2&&r2.applied)||liste.length)+' Schichten verteilt'+(offen?(' · '+offen+' bleiben offen'):''));
+    return;
+  }
+
   var tick=function(i){
     window.__spGenT=setTimeout(function(){
       // Abgebrochen? Dann steht der Bildschirm schon wieder auf setup.
@@ -7386,6 +7449,60 @@ var SP_STUNDEN=[
   ['Reinigung · Teilzeit','70 Std/Monat','Tom']
 ];
 
+// Anlegen und Bearbeiten in einem: ohne ID ist es ein neuer Datensatz.
+// Bereich, Stundengrenze und Urlaubsanspruch stehen nirgends sonst - Magicline
+// kennt sie nicht, und ohne sie kann die Eignungspruefung nichts sagen.
+function spEmpForm(){
+  if(!S.spEmpForm) return null;
+  return S.spEmpForm;
+}
+function spEmpFormHTML(){
+  var f=spEmpForm();
+  if(!f) return '';
+  var neu=!f.id;
+  var chips=(spLive()?(S.shData.areas||['flaeche','reinigung','theke','kurs']):['flaeche','reinigung']).map(function(k){
+    var an=(f.areas||[]).indexOf(k)>=0;
+    var c=spArea(k).v;
+    return '<button data-spempfarea="'+k+'" class="tap" style="display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border-radius:9px;border:1.5px solid '+(an?('var('+c+')'):'var(--line2)')+';background:'+(an?('var('+c+')'):'transparent')+';color:'+(an?'var(--bg)':'var(--tx3)')+';font-family:inherit;font-size:11.5px;font-weight:800;cursor:pointer">'+esc(spArea(k).label)+'</button>';
+  }).join('');
+  var feld=function(id,label,wert,typ,breite){
+    return '<div style="flex:'+(breite||1)+';min-width:120px"><div style="font-size:9px;font-weight:900;color:var(--tx4);letter-spacing:1.1px;text-transform:uppercase">'+esc(label)+'</div>'+
+      '<input id="'+id+'" type="'+(typ||'text')+'" value="'+esc(String(wert==null?'':wert))+'" style="width:100%;margin-top:5px;height:38px;border-radius:10px;border:1px solid var(--line2);background:var(--surf2);color:var(--tx);font-family:inherit;font-size:13px;font-weight:700;padding:0 11px;box-sizing:border-box" /></div>';
+  };
+  return '<div style="background:var(--surf2);border:1px solid var(--line2);border-radius:16px;padding:16px;margin-top:14px">'+
+    '<div style="font-size:13px;font-weight:900">'+(neu?'Neuer Mitarbeiter':'Mitarbeiter bearbeiten')+'</div>'+
+    '<div style="display:flex;gap:10px;margin-top:12px;flex-wrap:wrap">'+
+      feld('spempf_name','Name', f.name, 'text', 2)+
+      feld('spempf_type','Beschäftigung', f.type, 'text', 1.4)+
+    '</div>'+
+    '<div style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap">'+
+      feld('spempf_max','Stunden je Monat', f.monthMax, 'number')+
+      feld('spempf_vac','Urlaubstage je Jahr', f.vacDays, 'number')+
+      (neu?feld('spempf_id','Kennung (Magicline-ID, optional)', f.id, 'text', 1.4):'')+
+    '</div>'+
+    '<div style="font-size:9px;font-weight:900;color:var(--tx4);letter-spacing:1.1px;text-transform:uppercase;margin-top:14px">Bereiche</div>'+
+    '<div style="display:flex;gap:7px;margin-top:8px;flex-wrap:wrap">'+chips+'</div>'+
+    '<div style="display:flex;gap:9px;margin-top:16px;flex-wrap:wrap">'+
+      '<button data-spempsave="1" class="tap" style="height:38px;padding:0 16px;border-radius:11px;border:none;background:var(--ac);color:var(--acfg);font-family:inherit;font-size:12.5px;font-weight:900;cursor:pointer">Speichern</button>'+
+      '<button data-spempcancel="1" class="tap" style="height:38px;padding:0 14px;border-radius:11px;border:1px solid var(--line2);background:transparent;color:var(--tx2);font-family:inherit;font-size:12.5px;font-weight:800;cursor:pointer">Abbrechen</button>'+
+      (neu?'':'<div style="flex:1"></div><button data-spempdel="'+esc(f.id)+'" class="tap" style="height:38px;padding:0 14px;border-radius:11px;border:1px solid var(--line2);background:transparent;color:var(--dgt);font-family:inherit;font-size:12px;font-weight:800;cursor:pointer">Entfernen</button>')+
+    '</div>'+
+    (neu?'<div style="font-size:10.5px;font-weight:700;color:var(--tx3);margin-top:10px;line-height:1.45">Ohne Kennung wird eine vergeben. Wer sich spaeter mit dem persoenlichen Zugang anmeldet, braucht die Magicline-ID — dann lieber gleich uebernehmen.</div>':'')+
+  '</div>';
+}
+
+// Getippte Werte vor jedem Neuzeichnen einsammeln - sonst ist beim Klick auf
+// einen Bereichs-Chip der halb getippte Name wieder weg.
+function spEmpFormLesen(node){
+  var f=spEmpForm(); if(!f||!node) return;
+  var g=function(id){ var el=node.querySelector('#'+id); return el?el.value:null; };
+  var n=g('spempf_name'); if(n!==null) f.name=n;
+  var t=g('spempf_type'); if(t!==null) f.type=t;
+  var m=g('spempf_max'); if(m!==null&&m!=='') f.monthMax=Number(m);
+  var v=g('spempf_vac'); if(v!==null&&v!=='') f.vacDays=Number(v);
+  var i=g('spempf_id'); if(i!==null) f.id=i;
+}
+
 function spSettingsHTML(){
   var cfg=spCfg(), sec=S.spSetSec||'freigaben';
   var titel=(SP_SET_SECS.filter(function(x){ return x[0]===sec; })[0]||['','Einstellungen'])[1];
@@ -7465,7 +7582,11 @@ function spSettingsHTML(){
           '<div style="font-size:18px;font-weight:900;margin-top:4px">'+esc(k[1])+'</div></div>';
       }).join('')+'</div>';
   } else if(sec==='team'){
-    inhalt=spSetSub('Wer darf wo eingesetzt werden. Bestimmt, was beim Ziehen erlaubt ist.')+
+    var leer=Object.keys(spTeam()).length===0;
+    inhalt=spSetSub('Wer darf wo eingesetzt werden. Bestimmt, was beim Ziehen erlaubt ist — und damit den ganzen Plan.')+
+      (leer?('<div style="background:var(--wns);border:1px solid var(--wnb);border-radius:14px;padding:14px 16px;margin-top:14px">'+
+        '<div style="font-size:13px;font-weight:900;color:var(--tx)">Hier fängt alles an</div>'+
+        '<div style="font-size:12px;font-weight:600;color:var(--tx2);margin-top:4px;line-height:1.5">Solange niemand angelegt ist, lässt sich keine Schicht besetzen. Übernimm das Team aus Magicline oder lege die Leute von Hand an.</div></div>'):'')+
       '<div class="sc" style="overflow-x:auto"><div style="display:flex;flex-direction:column;gap:2px;margin-top:16px;min-width:620px">'+
       Object.keys(spTeam()).map(function(id){
         var p=spTeam()[id];
@@ -7483,9 +7604,16 @@ function spSettingsHTML(){
           '<div style="width:130px;flex-shrink:0;font-size:13px;font-weight:800">'+esc(p.name)+'</div>'+
           '<div style="width:150px;flex-shrink:0;font-size:11.5px;font-weight:700;color:var(--tx3)">'+esc(p.type)+'</div>'+
           '<div style="display:flex;gap:6px;flex:1">'+chips+'</div>'+
+          '<span style="width:150px;flex-shrink:0;font-size:11px;font-weight:700;color:var(--tx3);font-variant-numeric:tabular-nums;text-align:right">'+p.h+' / '+p.max+' Std · '+p.vacDays+' Urlaubstage</span>'+
+          '<button data-spempedit="'+esc(id)+'" style="border:none;background:none;color:var(--ac);font-family:inherit;font-size:10.5px;font-weight:800;cursor:pointer;padding:0;flex-shrink:0;text-decoration:underline">Bearbeiten</button>'+
           '<button data-spperson="'+esc(id)+'" style="border:none;background:none;color:var(--tx3);font-family:inherit;font-size:10.5px;font-weight:800;cursor:pointer;padding:0;flex-shrink:0;text-decoration:underline">Details</button></div>';
       }).join('')+'</div></div>'+
-      '<button data-spsettodo="Mitarbeiter anlegen" class="tap" style="margin-top:14px;height:38px;padding:0 14px;border-radius:11px;border:1.5px dashed var(--line2);background:transparent;color:var(--tx2);font-family:inherit;font-size:12.5px;font-weight:800;cursor:pointer">+ Mitarbeiter anlegen</button>';
+      '<div style="display:flex;gap:9px;margin-top:14px;flex-wrap:wrap">'+
+        '<button data-spempnew="1" class="tap" style="height:38px;padding:0 14px;border-radius:11px;border:1.5px dashed var(--line2);background:transparent;color:var(--tx2);font-family:inherit;font-size:12.5px;font-weight:800;cursor:pointer">+ Mitarbeiter anlegen</button>'+
+        '<button data-spempimport="1" class="tap" style="height:38px;padding:0 14px;border-radius:11px;border:none;background:var(--ac);color:var(--acfg);font-family:inherit;font-size:12.5px;font-weight:900;cursor:pointer">Aus Magicline übernehmen</button>'+
+      '</div>'+
+      '<div style="font-size:10.5px;font-weight:700;color:var(--tx3);margin-top:9px;line-height:1.45">Der Abgleich holt nur die Namen. Bereich, Stundengrenze und Urlaubsanspruch bleiben, wie du sie hier gesetzt hast.</div>'+
+      spEmpFormHTML();
   } else if(sec==='urlaub'){
     inhalt=spSetSub('Kontingente pro Jahr. Resturlaub wird automatisch fortgeschrieben.')+
       '<div class="sc" style="overflow-x:auto"><div style="display:flex;flex-direction:column;gap:2px;margin-top:16px;min-width:560px">'+
@@ -7772,6 +7900,56 @@ function spWireSys(node){
   if(ex) ex.onclick=function(e){ e.stopPropagation(); S.spExportOpen=!S.spExportOpen; render(); };
   var xc=node.querySelector('[data-spexpclose]');
   if(xc) xc.onclick=function(){ S.spExportOpen=false; render(); };
+  // ── Mitarbeiter anlegen / bearbeiten ──
+  var neu=node.querySelector('[data-spempnew]');
+  if(neu) neu.onclick=function(){
+    S.spEmpForm={id:'', name:'', type:'Vollzeit', monthMax:160, vacDays:30, areas:['flaeche']};
+    render();
+  };
+  node.querySelectorAll('[data-spempedit]').forEach(function(b){
+    b.onclick=function(){
+      var id=b.getAttribute('data-spempedit'), p=spP(id);
+      S.spEmpForm={id:id, name:p.name, type:p.type, monthMax:p.max, vacDays:p.vacDays, areas:(p.areas||[]).slice()};
+      render();
+    };
+  });
+  node.querySelectorAll('[data-spempfarea]').forEach(function(b){
+    b.onclick=function(){
+      var f=spEmpForm(); if(!f) return;
+      spEmpFormLesen(node);
+      var k=b.getAttribute('data-spempfarea'), at=(f.areas||[]).indexOf(k);
+      if(at>=0){ if(f.areas.length===1){ spToast('Mindestens ein Bereich'); return; } f.areas.splice(at,1); }
+      else f.areas.push(k);
+      render();
+    };
+  });
+  var abbr=node.querySelector('[data-spempcancel]');
+  if(abbr) abbr.onclick=function(){ S.spEmpForm=null; render(); };
+  var sav=node.querySelector('[data-spempsave]');
+  if(sav) sav.onclick=async function(){
+    var f=spEmpForm(); if(!f) return;
+    spEmpFormLesen(node);
+    if(!String(f.name||'').trim()){ spToast('Bitte einen Namen eintragen'); return; }
+    var id=String(f.id||'').trim() || ('mn'+Date.now().toString(36));
+    if(!spLive()){ spToast('Im Beispielbetrieb wird nichts gespeichert'); S.spEmpForm=null; render(); return; }
+    var r=await shPost({action:'staff-set', employeeId:id, name:f.name, type:f.type,
+      areas:f.areas, monthMax:f.monthMax, vacDays:f.vacDays});
+    if(!r || r.ok===false) return;
+    S.spEmpForm=null; spToast(f.name+' gespeichert');
+  };
+  var edel=node.querySelector('[data-spempdel]');
+  if(edel) edel.onclick=async function(){
+    var id=edel.getAttribute('data-spempdel');
+    if(!confirm('„'+spP(id).name+'" aus der Mitarbeiterliste entfernen? Bereits geplante Schichten bleiben bestehen.')) return;
+    if(spLive()) await shPost({action:'staff-remove', employeeId:id});
+    S.spEmpForm=null; spToast('Entfernt');
+  };
+  var imp=node.querySelector('[data-spempimport]');
+  if(imp) imp.onclick=function(){
+    if(!spLive()){ spToast('Im Beispielbetrieb gibt es nichts zu übernehmen'); return; }
+    return spApi({action:'staff-import'}, null);
+  };
+
   var yc=node.querySelector('[data-spyearcheck]');
   if(yc) yc.onclick=function(){ spToast('Ende Juli prüfen · drei Urlaube überschneiden sich'); };
 }
