@@ -19,7 +19,9 @@ const M = require('../../lib/members');   // readBody
 function ident(sess) {
   const employeeId = (sess && sess.employeeId != null && String(sess.employeeId).trim() !== '')
     ? String(sess.employeeId).trim() : null;
-  return { employeeId: employeeId, name: String((sess && sess.user) || 'Team'), role: (sess && sess.role) || 'admin' };
+  // Ohne Rollenfeld gilt die kleinere Berechtigung – sonst laese eine
+  // Angestellte durch einen Schreibfehler die Zeiten des ganzen Teams.
+  return { employeeId: employeeId, name: String((sess && sess.user) || 'Team'), role: TA.roleOf(sess) || 'trainer' };
 }
 
 module.exports = async function handler(req, res) {
