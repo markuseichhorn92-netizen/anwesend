@@ -108,8 +108,8 @@ async function weekPayload(sess, week) {
     });
     availability.forEach((a) => { if (!bekannt[String(a.employeeId)]) fehlend[String(a.employeeId)] = a.name || null; });
     vacations.forEach((v) => { if (!bekannt[String(v.employeeId)]) fehlend[String(v.employeeId)] = v.name || null; });
-    const ids = Object.keys(fehlend);
-    for (let i = 0; i < ids.length; i++) staff.push(await SH.getStaff(ids[i], fehlend[ids[i]]));
+    const fehlendeIds = Object.keys(fehlend);
+    if (fehlendeIds.length) staff = staff.concat(await SH.staffByIds(fehlendeIds, fehlend));
     staff.sort((a, b) => String(a.name).localeCompare(String(b.name), 'de'));
     const std = await SH.monthHours(monday);
     staff.forEach((s) => { s.monthHours = std[String(s.id)] || 0; });

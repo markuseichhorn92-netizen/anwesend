@@ -19,7 +19,8 @@ async function run() {
 
   // ── Speicher im Arbeitsspeicher ──
   const kv = new Map(), sets = new Map();
-  const redisPipeline = async (cmds) => cmds.map((c) => {
+  let runden = 0;
+  const redisPipeline = async (cmds) => { runden++; return cmds.map((c) => {
     const op = String(c[0]).toUpperCase(), k = String(c[1]);
     if (op === 'GET') return kv.has(k) ? kv.get(k) : null;
     if (op === 'SET') { kv.set(k, c[2]); return 'OK'; }
@@ -29,7 +30,7 @@ async function run() {
     if (op === 'SREM') { if (sets.has(k)) sets.get(k).delete(String(c[2])); return 1; }
     if (op === 'SMEMBERS') return sets.has(k) ? Array.from(sets.get(k)) : [];
     return 0;
-  });
+  }); };
   inject('lib/store.js', { hasStore: true, redisPipeline: redisPipeline });
 
   // Die Rollenlogik selbst wird NICHT nachgebaut - lib/capabilities.js laeuft
@@ -277,7 +278,21 @@ async function run() {
   ok('29c. Wer eingeplant ist, steht in der Liste – auch ohne Stammsatz',
     ben && ben.stored === false && ben.name === 'Ben Cordes', JSON.stringify(ben && { s: ben.stored, n: ben.name }));
 
-  // ── 7. Ohne Sitzung gar nichts ──
+  // ── 7. Die Wochenantwort darf nicht mit dem Team wachsen ──
+  // Sie wird bei JEDEM Lesen und nach JEDER Aenderung gebaut. Eine Redis-Runde
+  // je Person waere bei zehn Leuten zehn Netzwerkwege hintereinander - das
+  // merkt man in der Oberflaeche.
+  for (let i = 0; i < 8; i++) {
+    await call('POST', { action: 'staff-set', week: WOCHE, employeeId: 'x' + i, name: 'Person ' + i });
+  }
+  alsLeitung();
+  runden = 0;
+  r = await call('GET');
+  const mitVielen = runden;
+  ok('30. Die Wochenantwort waechst nicht mit der Teamgroesse',
+    mitVielen <= 12, mitVielen + ' Redis-Runden bei ' + (r.json.staff || []).length + ' Personen');
+
+  // ── 8. Ohne Sitzung gar nichts ──
   session = null;
   r = await call('GET');
   ok('24. Ohne Sitzung 401', r.status === 401 && r.json.error === 'unauthorized', JSON.stringify(r));
