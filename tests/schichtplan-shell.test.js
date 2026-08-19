@@ -306,6 +306,120 @@ ok('18d. Abstriche landen sichtbar als Konflikt im Plan',
 
   ok('22d. Kein Skriptfehler in allen drei Bildschirmen', fehler.length===0, fehler.join(' | '));
 
+  // ── Jahreskalender ──
+  await zeige('year');
+  const jahr=await p.evaluate(function(){
+    const d=document.querySelector('.sp-desk');
+    const balken=Array.from(d.querySelectorAll('[style*="top:3px;height:18px"]'));
+    const soll=Object.keys(spYearDefs()).reduce(function(n,k){ return n+spYearDefs()[k].length; },0);
+    const raus=balken.filter(function(x){
+      const l=parseFloat(x.style.left), w=parseFloat(x.style.width);
+      return !(l>=0 && l<100 && w>0); });
+    // Gudruns Urlaub laeuft ueber Neujahr hinaus. Er darf ueberstehen - aber der
+    // Rahmen muss ihn abschneiden, sonst ragt er in die Nachbarspalte.
+    const clip=balken.every(function(x){ return getComputedStyle(x.parentNode).overflow==='hidden'; });
+    return { balken:balken.length, soll:soll, raus:raus.length, clip:clip,
+      monate:d.innerText.indexOf('Kollision')>=0 };
+  });
+  ok('23. Jede Abwesenheit hat einen Balken', jahr.balken===jahr.soll && jahr.soll>0, JSON.stringify(jahr));
+  // Ein Balken, der ausserhalb des Jahres beginnt, sitzt im falschen Monat.
+  ok('23b. Jeder Balken beginnt im Jahr', jahr.raus===0, String(jahr.raus));
+  ok('23c. … und der Rahmen schneidet Ueberstehendes ab', jahr.clip===true);
+  ok('23d. Die Urlaubskollision wird benannt', jahr.monate===true);
+
+  // ── Einstellungen ──
+  await zeige('settings');
+  const abschnitte=await p.$$eval('[data-spsetsec]',function(e){ return e.map(function(x){ return x.getAttribute('data-spsetsec'); }); });
+  ok('24. Alle zehn Abschnitte sind da', abschnitte.length===10, abschnitte.join(','));
+  // Ein Abschnitt, der leer bleibt, sieht aus wie ein Fehler - und ist einer.
+  const leer=[];
+  for(const s of abschnitte){
+    await p.click('[data-spsetsec="'+s+'"]'); await p.waitForTimeout(140);
+    const zeilenZahl=await p.evaluate(function(){
+      const k=document.querySelector('.sp-desk [style*="min-width:320px"]');
+      return k?k.innerText.trim().split('\n').length:0; });
+    if(zeilenZahl<6) leer.push(s+':'+zeilenZahl);
+  }
+  ok('24b. Kein Abschnitt bleibt leer', leer.length===0, leer.join(', '));
+
+  await p.click('[data-spsetsec="freigaben"]'); await p.waitForTimeout(160);
+  const vorCfg=await p.evaluate(function(){ return spCfg().autoSwap; });
+  await p.click('[data-spcfg="autoSwap"]'); await p.waitForTimeout(200);
+  const nachCfg=await p.evaluate(function(){
+    return { wert:spCfg().autoSwap,
+      zeile:document.querySelector('.sp-desk').innerText.split('\n')
+        .filter(function(l){ return /Automatiken aktiv/.test(l); })[0]||'' }; });
+  ok('25. Ein Schalter aendert die Einstellung wirklich', nachCfg.wert===!vorCfg, JSON.stringify(nachCfg));
+  // Die Zahl oben zaehlt genau die vier Automatiken - nicht die Wachpunkte.
+  ok('25b. … und der Zaehler oben geht mit',
+    nachCfg.zeile.indexOf('3 Automatiken')===0, nachCfg.zeile);
+
+  // ── Export und Druck ──
+  await zeige('result');
+  await p.click('[data-spexport]'); await p.waitForTimeout(200);
+  ok('26. Das Export-Menue bietet vier Druckarten',
+    (await p.$$eval('[data-spprint]',function(e){ return e.length; }))===4);
+  ok('26b. … dazu CSV und Link', !!(await p.$('[data-spcsv]')) && !!(await p.$('[data-spcopylink]')));
+  await p.click('[data-spexpclose]'); await p.waitForTimeout(180);
+  ok('26c. … und es schliesst sich beim Klick daneben',
+    (await p.evaluate(function(){ return !!S.spExportOpen; }))===false);
+
+  const druck={};
+  for(const m of ['aushang','entwurf','stunden','person']){
+    await p.evaluate(function(mm){ S.spScreen='print'; S.spPrintMode=mm; render(); }, m);
+    await p.waitForTimeout(200);
+    druck[m]=await p.evaluate(function(){
+      const s=document.querySelector('.sp-desk .psheet');
+      return { da:!!s, weiss:s?getComputedStyle(s).backgroundColor:'',
+        wasser:/ENTWURF/.test(s?s.innerText:''),
+        zeilen:s?s.innerText.trim().split('\n').length:0 }; });
+  }
+  ok('27. Alle vier Druckarten liefern ein Blatt',
+    Object.keys(druck).every(function(k){ return druck[k].da && druck[k].zeilen>12; }), JSON.stringify(druck));
+  // Weisses Papier unabhaengig vom Farbschema - sonst druckt jemand dunkelgrau.
+  ok('27b. Das Blatt ist immer weiss',
+    Object.keys(druck).every(function(k){ return druck[k].weiss==='rgb(255, 255, 255)'; }));
+  // Das Wasserzeichen gehoert NUR auf den Entwurf. Faellt es weg, haengt ein
+  // unfertiger Plan im Studio; steht es ueberall, glaubt niemand mehr daran.
+  ok('27c. Das Wasserzeichen steht nur auf dem Entwurf',
+    druck.entwurf.wasser===true && !druck.aushang.wasser && !druck.stunden.wasser && !druck.person.wasser,
+    JSON.stringify({e:druck.entwurf.wasser, a:druck.aushang.wasser}));
+
+  // Der Aushang haengt oeffentlich. „Namen zeigen: aus" muss deshalb wirklich
+  // die Namen ersetzen, nicht nur eine Vorschau umschalten.
+  const namen=await (async function(){
+    await p.evaluate(function(){ S.spPrintMode='aushang'; spCfg().exportNames=false; render(); });
+    await p.waitForTimeout(200);
+    const aus=await p.evaluate(function(){ const t=document.querySelector('.psheet').innerText;
+      return { voll:/Harald/.test(t), ini:/\bHA\b/.test(t) }; });
+    await p.evaluate(function(){ spCfg().exportNames=true; render(); });
+    await p.waitForTimeout(200);
+    const an=await p.evaluate(function(){ return /Harald/.test(document.querySelector('.psheet').innerText); });
+    return { aus:aus, an:an };
+  })();
+  ok('28. „Namen zeigen: aus" nimmt die Namen wirklich aus dem Aushang',
+    namen.aus.voll===false && namen.aus.ini===true && namen.an===true, JSON.stringify(namen));
+
+  // Gedruckt wird das Blatt, nicht die Bedienung.
+  await p.emulateMedia({ media:'print' });
+  await p.waitForTimeout(200);
+  const gedruckt=await p.evaluate(function(){
+    const sicht=function(el){ return !!el && getComputedStyle(el).display!=='none'; };
+    return { kopf:sicht(document.querySelector('.sp-desk [data-noprint]')),
+      blatt:sicht(document.querySelector('.psheet')),
+      hand:sicht(document.querySelector('.sp-hand')) }; });
+  await p.emulateMedia({ media:'screen' });
+  ok('28b. Im Druck bleibt nur das Blatt',
+    gedruckt.blatt===true && gedruckt.kopf===false && gedruckt.hand===false, JSON.stringify(gedruckt));
+
+  // Jetzt ist jeder Navigationspunkt gebaut - kein „in Arbeit" mehr.
+  ok('29. Kein Planer-Bildschirm ist mehr „in Arbeit"',
+    (await p.evaluate(function(){
+      return SP_PLAN.concat(SP_TEAM).concat(SP_SYS).filter(function(n){ return !n.bereit; })
+        .map(function(n){ return n.k; }).join(','); }))==='');
+
+  ok('29b. Kein Skriptfehler auf allen Bildschirmen', fehler.length===0, fehler.join(' | '));
+
   await b.close();
   console.log(pass?'SP-SHELL PASS':'SP-SHELL FAIL');
   process.exit(pass?0:1);
