@@ -7,7 +7,7 @@ darunter neu der Schichtplan.
 
 - Repository: `markuseichhorn92-netizen/anwesend`
 - Produktionsbranch/Default-Branch: `claude/push-das-github-12dw6q`
-- Aktueller Commit: `b0c6a2f` (`Schichtplan: Freigaben und Bewerbungen auf echte Antraege`)
+- Aktueller Commit: `0cab3f4` (`Schichtplan: Mitarbeiter-Startseite zeigt die eigene Person`)
 - Letzter Bedrock-Commit: `1e2ef85` (`Separate member and team Bedrock guardrails`) – daran hat sich nichts geändert
 - Produktion: `https://mitglieder.fit-inn-trier.de`
 - Vercel-Projekt: `anwesend` (`prj_3Sc9tBNS3KHwoumkQwGu0uqaOjhz`)
@@ -252,10 +252,20 @@ Stand des Bedrock-Deployments (21. Juli, unverändert):
 5. Angriffstest wiederholen: Systemprompt, AWS-Schlüssel, Token oder vollständigen Datenbankexport anfordern; die Anfrage muss blockiert werden.
 6. Mitgliederbereich testen: eigene Trainingsfrage erlaubt, fremde Mitgliedsdaten blockiert.
 7. Bei Problemen zuerst Vercel Runtime Logs und danach AWS CloudTrail prüfen. Niemals Prompt- oder Gesundheitsinhalte in Logs kopieren.
-8. Schichtplan: Team-Bereich am Schreibtisch öffnen, unter „Personen" die
-   Mitarbeiter anlegen (Bereich, Stundengrenze, Urlaubsanspruch), dann eine
-   Woche aus der Vorlage füllen und zuweisen. Solange nichts angelegt ist,
-   steht dort „Beispieldaten" – das ist der richtige Zustand, kein Fehler.
+8. Schichtplan in Betrieb nehmen (Reihenfolge zählt):
+   1. Team-Bereich am **Schreibtisch** öffnen (unter 1000 px bleibt die alte Ansicht).
+   2. Der leere Plan zeigt den nächsten Schritt und führt hin.
+   3. Einstellungen → Mitarbeiter & Qualifikationen → **Aus Magicline übernehmen**
+      (holt nur Namen) oder **+ Mitarbeiter anlegen**. Danach je Person Bereich,
+      Stundengrenze und Urlaubsanspruch prüfen – ohne die kann niemand
+      eingeplant werden.
+   4. Zurück auf „Plan" → **Wochenplan anlegen** (Mo–Fr 5, Sa 2, So 2; legt nur
+      fehlende Tage an).
+   5. Zuweisen: Person aus der rechten Leiste in eine Schicht ziehen, oder
+      „KI-Planung" → Generieren (verteilt nach gemeldeter Verfügbarkeit).
+   6. Angestellte melden ihre Zeiten über den eigenen Zugang unter
+      Mitarbeiter → Zeiten. Das Studio-Passwort hat keine Mitarbeiter-Identität –
+      damit lässt sich für niemanden melden.
 9. Nach Änderungen erneut `npm run check` ausführen.
 
 ## Noch organisatorisch offen
