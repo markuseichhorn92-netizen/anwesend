@@ -5814,8 +5814,15 @@ function spResultHTML(){
       '</div>'+
       '<div style="flex:1;min-width:0">'+spWeekGridHTML()+'</div>'+
     '</div>'+
-    (S.spToast?'<div style="position:fixed;left:50%;bottom:26px;transform:translateX(-50%);z-index:90;background:var(--surf);border:1px solid var(--line2);border-radius:12px;padding:11px 17px;box-shadow:0 18px 44px rgba(0,0,0,.4);font-size:12.5px;font-weight:800;color:var(--tx);animation:spPop .18s ease both">'+esc(S.spToast)+'</div>':'')+
   '</div>';
+}
+
+// Die Rueckmeldung gehoert an die Huelle, nicht an einen Bildschirm: sie stand
+// frueher nur im Plan, also blieben Zusagen, Ausschreibungen und genehmigte
+// Urlaube anderswo stumm - man klickte und sah nichts.
+function spToastHTML(){
+  if(!S.spToast) return '';
+  return '<div style="position:fixed;left:50%;bottom:26px;transform:translateX(-50%);z-index:90;background:var(--surf);border:1px solid var(--line2);border-radius:12px;padding:11px 17px;box-shadow:0 18px 44px rgba(0,0,0,.4);font-size:12.5px;font-weight:800;color:var(--tx);animation:spPop .18s ease both;max-width:90vw;text-align:center">'+esc(S.spToast)+'</div>';
 }
 
 // ── Ziehen ──────────────────────────────────────────────────────────────────
@@ -5887,14 +5894,26 @@ function spStartDrag(e,id,mode){
   document.addEventListener('pointermove',move); document.addEventListener('pointerup',up); document.addEventListener('pointercancel',up);
 }
 
-// Passt die Person auf diese Schicht? Bereich, Urlaub und Stundenkonto.
+// Passt die Person auf diese Schicht?
+//
+// Der Entwurf unterscheidet drei Ausgaenge, nicht zwei: geht, geht nicht - und
+// „geht, aber mit Abstrich". Das Dritte ist der eigentliche Gewinn: gemeldete
+// Verfuegbarkeit knapp verfehlt oder Stundenkonto fast voll ist kein Verbot,
+// sondern etwas, das die Leitung sehen und entscheiden soll.
 function spFitCheck(staffId, sh){
   var p=SP_STAFF[staffId];
   if(!p) return {ok:false, why:'Unbekannte Person'};
-  if((p.areas||[]).indexOf(sh.area)<0) return {ok:false, why:'nicht für '+SP_AREA[sh.area].label+' freigegeben'};
-  if(spVacOn(staffId, spDomOf(sh.day))) return {ok:false, why:'ist an dem Tag im Urlaub'};
-  if(p.h+(sh.b-sh.a)>p.max) return {ok:false, why:'Stundenkonto reicht nicht ('+p.h+' von '+p.max+' Std)'};
-  return {ok:true, why:'Passt: qualifiziert, verfügbar, Stunden reichen'};
+  if((p.areas||[]).indexOf(sh.area)<0) return {ok:false, why:p.short+' ist nicht für '+SP_AREA[sh.area].label+' freigegeben'};
+  if(spVacOn(staffId, spDomOf(sh.day))) return {ok:false, why:p.short+' ist an dem Tag im Urlaub'};
+  var clash=spShifts().filter(function(x){
+    return x.id!==sh.id && x.day===sh.day && x.who===staffId && x.a<sh.b && x.b>sh.a; })[0];
+  if(clash) return {ok:false, why:p.short+' ist um '+spSpan(clash.a,clash.b)+' schon eingeplant'};
+  var row=spAvail()[staffId], win=row&&row.d[sh.day];
+  if(!win) return {ok:false, why:p.short+' hat den Tag als „kann nicht" gemeldet'};
+  if(sh.a<win[0]-0.001||sh.b>win[1]+0.001) return {ok:true, soft:true, why:p.short+' ist nur '+spT(win[0])+'–'+spT(win[1])+' verfügbar'};
+  var left=p.max-p.h;
+  if(left<(sh.b-sh.a)) return {ok:true, soft:true, why:p.short+': nur noch '+left+' Std bis zur Grenze'};
+  return {ok:true, why:'Passt: verfügbar, qualifiziert, Stunden reichen'};
 }
 
 function spStartStaffDrag(e, staffId){
@@ -5921,7 +5940,7 @@ function spStartStaffDrag(e, staffId){
     var chk=spFitCheck(staffId,sh);
     if(!chk.ok){ spToast('Nicht möglich · '+chk.why); return; }
     var prev=sh.who;
-    sh.who=staffId; sh.st='ai'; sh.conflict=null; S.spSel=tid;
+    sh.who=staffId; sh.st=chk.soft?'conflict':'ai'; sh.conflict=chk.soft?chk.why:null; S.spSel=tid;
     var nm=SP_STAFF[staffId].short;
     spToast(prev? (nm+' ersetzt '+SP_STAFF[prev].short+' · '+spSpan(sh.a,sh.b)) : (nm+' eingeplant · '+spSpan(sh.a,sh.b)));
   };
@@ -6459,6 +6478,386 @@ function spWireInbox(node){
   });
 }
 
+// ── Ausschreibungen, Personen ───────────────────────────────────────────────
+// Uebernommen aus Schichtplan.dc.html. Drei Bildschirme, die zusammengehoeren:
+// „was ist unbesetzt und wer koennte", „wer ist ueberhaupt da" und die einzelne
+// Person mit Stunden, Urlaub, Verfuegbarkeit und Schichten.
+function spAreaLabel(p){
+  var a=p.areas||[];
+  if(!a.length) return 'kein Bereich';
+  return a.length>1?'Fläche + Reinigung':SP_AREA[a[0]].label;
+}
+function spAreaColor(p){
+  var a=p.areas||[];
+  if(!a.length) return 'var(--tx4)';
+  return a.length>1?'var(--vi)':(a[0]==='reinigung'?'var(--wn)':'var(--ac)');
+}
+
+// Wer koennte diese Schicht uebernehmen? Sortiert nach Eignung, nicht
+// alphabetisch - die Reihenfolge ist hier die eigentliche Aussage.
+function spCandidatesFor(sh){
+  return Object.keys(SP_STAFF).map(function(id){
+    var chk=spFitCheck(id,sh), p=SP_STAFF[id], left=p.max-p.h;
+    var score=chk.ok?((chk.soft?55:88)-Math.max(0,10-left)):15;
+    return { id:id, name:p.name, short:p.short, ini:p.ini, type:p.typeShort,
+      ok:chk.ok, soft:!!chk.soft, why:chk.why, score:Math.max(5,score) };
+  }).sort(function(a,b){ return b.score-a.score; });
+}
+
+function spShiftById(id){ return spShifts().filter(function(x){ return x.id===id; })[0]||null; }
+
+function spAssignTo(id,who){
+  var sh=spShiftById(id); if(!sh) return;
+  sh.who=who; sh.st='ai'; sh.conflict=null;
+  spToast('Zugewiesen an '+SP_STAFF[who].short);
+}
+function spPublishShift(id,mode){
+  var sh=spShiftById(id); if(!sh) return;
+  var m=mode||'apply';
+  sh.st='posted'; sh.postMode=m; sh.who=null;
+  spToast(m==='instant'?'Zur Sofort-Übernahme freigegeben · wer zuerst zusagt':'Ausgeschrieben · Push an alle, die passen');
+}
+function spUnpostShift(id){
+  var sh=spShiftById(id); if(!sh) return;
+  sh.st='open'; sh.postMode=null;
+  spToast('Ausschreibung zurückgezogen');
+}
+function spPostAllOpen(){
+  var list=spShifts().filter(function(x){ return (!x.who||x.st==='blocked')&&x.st!=='posted'; });
+  if(!list.length){ spToast('Nichts offen — alles besetzt'); return; }
+  list.forEach(function(x){ x.st='posted'; x.postMode='apply'; x.who=null; });
+  spToast(list.length+' Schichten ausgeschrieben · Push an alle, die passen');
+}
+function spFreeShift(id){
+  var sh=spShiftById(id); if(!sh) return;
+  var nm=sh.who?SP_STAFF[sh.who].short:'';
+  sh.who=null; sh.st='open'; sh.conflict=null;
+  spToast(nm?(nm+' aus der Schicht genommen · jetzt offen'):'Schicht ist jetzt offen');
+}
+function spDecideVac(id,ok){
+  (S.spVac||[]).forEach(function(v){ if(v.id===id) v.status=ok?'approved':'declined'; });
+  spToast(ok?'Genehmigt · betroffene Schichten werden markiert':'Abgelehnt · Mitarbeiter wird freundlich informiert');
+}
+function spOpenPerson(id){ S.spScreen='person'; S.spPerson=id; render(); }
+
+// Bereich entziehen heisst: die damit besetzten Schichten sind wieder offen.
+// Sonst stuende dort jemand, der dafuer gar nicht mehr freigegeben ist.
+function spToggleArea(id,k){
+  var p=SP_STAFF[id]; if(!p) return;
+  var cur=p.areas||[], hat=cur.indexOf(k)>=0;
+  if(hat&&cur.length===1){ spToast(p.short+' braucht mindestens einen Bereich'); return; }
+  p.areas = hat ? cur.filter(function(x){ return x!==k; }) : cur.concat([k]);
+  if(hat){
+    var drop=spShifts().filter(function(x){ return x.who===id&&x.area===k; });
+    if(drop.length){
+      drop.forEach(function(x){ x.who=null; x.st='open'; x.conflict=null; });
+      spToast(p.short+': '+SP_AREA[k].label+' entzogen · '+drop.length+' Schicht'+(drop.length>1?'en':'')+' jetzt offen');
+      return;
+    }
+  }
+  render();
+}
+
+function spPostingsHTML(){
+  var shifts=spShifts();
+  var needsCover=shifts.filter(function(x){
+    return x.st!=='posted' && (!x.who || x.st==='blocked' || (x.who&&spVacOn(x.who,spDomOf(x.day))) || x.st==='conflict');
+  });
+  var running=shifts.filter(function(x){ return x.st==='posted'; });
+  // Warum braucht die Schicht Besetzung? Urlaub schlaegt alles andere - er ist
+  // der Grund, den die Leitung zuerst verstehen muss.
+  var grundVon=function(x){
+    if(x.who&&spVacOn(x.who,spDomOf(x.day))) return ['Urlaub','var(--dgt)','var(--dgs)',SP_STAFF[x.who].short+' ist im Urlaub'];
+    if(x.st==='blocked') return ['Nicht besetzbar','var(--dgt)','var(--dgs)','Keine passende Person verfügbar'];
+    if(x.st==='conflict') return ['Konflikt','var(--wn)','var(--wns)',x.conflict||'Regelkonflikt'];
+    return ['Offen','var(--wn)','var(--wns)','Noch niemand eingeplant'];
+  };
+
+  var karten=needsCover.map(function(x){
+    var rs=grundVon(x), cands=spCandidatesFor(x);
+    var gut=cands.filter(function(c){ return c.ok&&!c.soft; });
+    var weich=cands.filter(function(c){ return c.ok&&c.soft; });
+    var akzent=(rs[0]==='Offen'||rs[0]==='Konflikt')?'var(--wn)':'var(--dg)';
+    var candLabel=gut.length?(gut.length+' könnten'):(weich.length?(weich.length+' nur mit Abstrich'):'niemand passt');
+    var candColor=gut.length?'var(--ok)':(weich.length?'var(--wn)':'var(--dgt)');
+    var chips=gut.concat(weich).slice(0,3).map(function(c){
+      var fg=c.soft?'var(--wn)':'var(--ac)', bg=c.soft?'var(--wns)':'var(--acs)';
+      return '<button data-spassign="'+esc(x.id)+':'+esc(c.id)+'" class="tap" title="'+esc(c.why)+'" style="display:inline-flex;align-items:center;gap:7px;padding:5px 9px 5px 5px;border-radius:9px;border:1px solid '+fg+';background:'+bg+';cursor:pointer;font-family:inherit">'+
+        '<span style="width:20px;height:20px;border-radius:50%;background:'+fg+';color:var(--surf);font-size:8px;font-weight:900;display:flex;align-items:center;justify-content:center">'+esc(c.ini)+'</span>'+
+        '<span style="font-size:11px;font-weight:800;color:'+fg+'">'+esc(c.short)+'</span></button>';
+    }).join('');
+    var zeit=x.area==='reinigung'?'vor Öffnung':spSpan(x.a,x.b);
+    var dauer=x.area==='reinigung'?'':spDur(x.a,x.b);
+    var av=spAreaVar(x.area);
+    return '<div style="background:var(--surf);border:1px solid var(--line);border-left:3px solid '+akzent+';border-radius:16px;padding:15px 16px">'+
+      '<div style="display:flex;align-items:flex-start;gap:14px">'+
+        '<div style="width:52px;flex-shrink:0;text-align:center">'+
+          '<div style="font-size:10px;font-weight:800;color:var(--tx3);letter-spacing:.5px;text-transform:uppercase">'+SP_DAYS[x.day][0]+'</div>'+
+          '<div style="font-size:15px;font-weight:900;line-height:1.1;font-variant-numeric:tabular-nums">'+SP_DAYS[x.day][1]+'</div></div>'+
+        '<div style="flex:1;min-width:0">'+
+          '<div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">'+
+            '<span style="font-size:15px;font-weight:900;letter-spacing:-.3px;font-variant-numeric:tabular-nums">'+esc(zeit)+'</span>'+
+            '<span style="font-size:11.5px;font-weight:700;color:var(--tx3)">'+esc(dauer)+'</span>'+
+            '<span style="display:inline-flex;align-items:center;gap:6px"><span style="width:6px;height:6px;border-radius:2px;background:'+av+'"></span>'+
+              '<span style="font-size:11.5px;font-weight:800;color:'+av+'">'+esc(SP_AREA[x.area].label)+'</span></span>'+
+            '<span style="font-size:8.5px;font-weight:900;color:'+rs[1]+';letter-spacing:1.1px;text-transform:uppercase;padding:3px 8px;border-radius:5px;background:'+rs[2]+'">'+esc(rs[0])+'</span>'+
+          '</div>'+
+          '<div style="font-size:11.5px;font-weight:700;color:var(--tx2);margin-top:6px">'+esc(rs[3])+'</div>'+
+          '<div style="display:flex;align-items:center;gap:9px;margin-top:11px;flex-wrap:wrap">'+
+            '<span style="font-size:10px;font-weight:900;color:'+candColor+';letter-spacing:1px;text-transform:uppercase">'+esc(candLabel)+'</span>'+chips+
+          '</div>'+
+        '</div>'+
+        '<div style="display:flex;flex-direction:column;gap:7px;flex-shrink:0;width:150px">'+
+          '<button data-sppost="'+esc(x.id)+'" class="tap" style="height:36px;border-radius:10px;border:none;background:var(--ac);color:var(--acfg);font-family:inherit;font-size:12px;font-weight:900;cursor:pointer">Ausschreiben</button>'+
+          '<button data-sppostnow="'+esc(x.id)+'" class="tap" style="height:32px;border-radius:10px;border:1px solid var(--line2);background:transparent;color:var(--tx2);font-family:inherit;font-size:11px;font-weight:800;cursor:pointer">Sofort-Übernahme</button>'+
+          (x.who?('<button data-spfree="'+esc(x.id)+'" class="tap" style="height:30px;border-radius:10px;border:1px solid var(--line2);background:transparent;color:var(--dgt);font-family:inherit;font-size:11px;font-weight:800;cursor:pointer">Person freistellen</button>'):'')+
+          '<button data-spinspect="'+esc(x.id)+'" style="border:none;background:none;color:var(--tx3);font-family:inherit;font-size:10.5px;font-weight:800;cursor:pointer;padding:0;text-decoration:underline">im Plan zeigen</button>'+
+        '</div>'+
+      '</div></div>';
+  }).join('');
+
+  var leer='<div style="background:var(--surf);border:1px solid var(--line);border-radius:18px;padding:40px 20px;text-align:center">'+
+    '<div style="font-size:15px;font-weight:900">Alles besetzt</div>'+
+    '<div style="font-size:12.5px;font-weight:600;color:var(--tx2);margin-top:4px">Keine offenen Schichten, keine Urlaubslücken.</div></div>';
+
+  var laufend=running.map(function(x){
+    var n=x.id==='so-1'?3:(x.id==='di-4'?1:0);
+    var sofort=x.postMode==='instant';
+    return '<div style="background:var(--surf);border:1px solid var(--line);border-radius:15px;padding:14px 16px;display:flex;align-items:center;gap:14px">'+
+      '<div style="width:52px;flex-shrink:0;text-align:center">'+
+        '<div style="font-size:10px;font-weight:800;color:var(--tx3);letter-spacing:.5px;text-transform:uppercase">'+SP_DAYS[x.day][0]+'</div>'+
+        '<div style="font-size:15px;font-weight:900;line-height:1.1;font-variant-numeric:tabular-nums">'+SP_DAYS[x.day][1]+'</div></div>'+
+      '<div style="flex:1;min-width:0">'+
+        '<div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">'+
+          '<span style="font-size:14px;font-weight:900;font-variant-numeric:tabular-nums">'+esc(spSpan(x.a,x.b))+'</span>'+
+          '<span style="font-size:11.5px;font-weight:700;color:var(--tx3)">'+esc(SP_AREA[x.area].label)+'</span>'+
+          '<span style="font-size:8.5px;font-weight:900;color:'+(sofort?'var(--ok)':'var(--wn)')+';letter-spacing:1.1px;text-transform:uppercase;padding:3px 8px;border-radius:5px;background:'+(sofort?'var(--oks)':'var(--wns)')+'">'+(sofort?'Sofort-Übernahme':'Bewerbung')+'</span>'+
+        '</div>'+
+        '<div style="font-size:11px;font-weight:700;color:var(--tx3);margin-top:4px">'+(sofort?'wer zuerst zusagt':'Frist heute 20:00')+'</div>'+
+      '</div>'+
+      (n>0?('<span style="font-size:12px;font-weight:900;color:var(--ac);flex-shrink:0">'+(n===1?'1 Bewerbung':n+' Bewerbungen')+'</span>')
+          :'<span style="font-size:11.5px;font-weight:800;color:var(--wn);flex-shrink:0">noch keine Bewerbung</span>')+
+      '<div style="display:flex;gap:7px;flex-shrink:0">'+
+        '<button data-spact="goapplicants" class="tap" style="height:34px;padding:0 12px;border-radius:10px;border:none;background:var(--ac);color:var(--acfg);font-family:inherit;font-size:11.5px;font-weight:900;cursor:pointer">Bewerber</button>'+
+        '<button data-spunpost="'+esc(x.id)+'" class="tap" style="height:34px;padding:0 11px;border-radius:10px;border:1px solid var(--line2);background:transparent;color:var(--tx3);font-family:inherit;font-size:11px;font-weight:800;cursor:pointer">Zurückziehen</button>'+
+      '</div></div>';
+  }).join('');
+
+  var laufendLeer='<div style="font-size:12.5px;font-weight:700;color:var(--tx3);padding:18px;text-align:center;background:var(--surf);border:1px solid var(--line);border-radius:15px">Aktuell ist nichts ausgeschrieben.</div>';
+
+  return '<div style="max-width:940px">'+
+    '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:20px">'+
+      '<div><div style="font-size:25px;font-weight:900;letter-spacing:-.7px">Ausschreibungen</div>'+
+        '<div style="font-size:12.5px;font-weight:600;color:var(--tx2);margin-top:4px">Offene Schichten, Urlaubslücken und Konflikte — mit Vorschlag, wer da könnte.</div>'+
+        '<div style="font-size:11px;font-weight:700;color:var(--tx3);margin-top:6px">Gilt je Schicht · aktuell KW 41 · andere Wochen über den Plan wechseln</div></div>'+
+      '<button data-sppostall="1" class="tap" style="height:42px;padding:0 16px;border-radius:12px;border:none;background:var(--ac);color:var(--acfg);font-family:inherit;font-size:13px;font-weight:900;cursor:pointer;flex-shrink:0;display:flex;align-items:center;gap:8px">'+
+        spIc(SPI.bell,'var(--acfg)',16)+'Alle offenen dieser Woche</button>'+
+    '</div>'+
+    '<div style="display:flex;align-items:center;gap:10px;margin:22px 0 12px">'+
+      '<span style="font-size:10px;font-weight:900;color:var(--wn);letter-spacing:1.5px;text-transform:uppercase">Braucht Besetzung</span>'+
+      '<span style="font-size:10px;font-weight:800;color:var(--tx4)">'+needsCover.length+'</span>'+
+      '<div style="flex:1;height:1px;background:var(--line)"></div></div>'+
+    '<div style="display:flex;flex-direction:column;gap:11px">'+(needsCover.length?karten:leer)+'</div>'+
+    '<div style="display:flex;align-items:center;gap:10px;margin:26px 0 12px">'+
+      '<span style="font-size:10px;font-weight:900;color:var(--tx3);letter-spacing:1.5px;text-transform:uppercase">Laufende Ausschreibungen</span>'+
+      '<div style="flex:1;height:1px;background:var(--line)"></div></div>'+
+    '<div style="display:flex;flex-direction:column;gap:10px">'+(running.length?laufend:laufendLeer)+'</div>'+
+  '</div>';
+}
+
+function spTeamHTML(){
+  var shifts=spShifts(), avail=spAvail();
+  var zeilen=Object.keys(SP_STAFF).map(function(id){
+    var p=SP_STAFF[id];
+    var woche=shifts.filter(function(x){ return x.who===id; }).reduce(function(n,x){ return n+(x.b-x.a); },0);
+    var urlaubstage=(S.spVac||[]).filter(function(v){ return v.staffId===id&&v.status!=='declined'; })
+      .reduce(function(n,v){ return n+v.days; },0);
+    var offen=(S.spVac||[]).filter(function(v){ return v.staffId===id&&v.status==='pending'; }).length;
+    var tage=(avail[id].d||[]).filter(function(x){ return !!x; }).length;
+    var knapp=p.max-p.h<=4;
+    return '<div data-spperson="'+esc(id)+'" class="tap" style="background:var(--surf);border:1px solid var(--line);border-radius:16px;padding:14px 16px;cursor:pointer;display:flex;align-items:center;gap:14px">'+
+      '<div style="width:40px;height:40px;border-radius:50%;background:var(--surf2);color:var(--tx2);font-size:12.5px;font-weight:900;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+esc(p.ini)+'</div>'+
+      '<div style="width:186px;flex-shrink:0;min-width:0">'+
+        '<div style="font-size:14.5px;font-weight:900;letter-spacing:-.2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(p.name)+'</div>'+
+        '<div style="display:flex;align-items:center;gap:7px;margin-top:2px">'+
+          '<span style="width:6px;height:6px;border-radius:2px;background:'+spAreaColor(p)+';flex-shrink:0"></span>'+
+          '<span style="font-size:10.5px;font-weight:700;color:var(--tx3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(p.type)+'</span></div>'+
+      '</div>'+
+      '<div style="width:150px;flex-shrink:0">'+
+        '<div style="font-size:9px;font-weight:900;color:var(--tx4);letter-spacing:1.1px;text-transform:uppercase">Monat</div>'+
+        '<div style="display:flex;align-items:center;gap:7px;margin-top:5px">'+
+          '<div style="flex:1;height:4px;border-radius:2px;background:var(--surf3);overflow:hidden"><div style="width:'+Math.min(100,Math.round(p.h/p.max*100))+'%;height:100%;background:'+(knapp?'var(--wn)':'var(--ac)')+'"></div></div>'+
+          '<span style="font-size:10px;font-weight:800;color:var(--tx2);font-variant-numeric:tabular-nums;white-space:nowrap">'+p.h+' / '+p.max+' Std</span></div>'+
+      '</div>'+
+      '<div style="width:76px;flex-shrink:0"><div style="font-size:9px;font-weight:900;color:var(--tx4);letter-spacing:1.1px;text-transform:uppercase">KW 41</div>'+
+        '<div style="font-size:12.5px;font-weight:800;margin-top:3px;font-variant-numeric:tabular-nums">'+(woche%1?woche.toFixed(1).replace('.',','):woche)+' Std</div></div>'+
+      '<div style="width:84px;flex-shrink:0"><div style="font-size:9px;font-weight:900;color:var(--tx4);letter-spacing:1.1px;text-transform:uppercase">Urlaub</div>'+
+        '<div style="font-size:12.5px;font-weight:800;margin-top:3px;font-variant-numeric:tabular-nums">'+urlaubstage+' Tage</div></div>'+
+      '<div style="width:86px;flex-shrink:0"><div style="font-size:9px;font-weight:900;color:var(--tx4);letter-spacing:1.1px;text-transform:uppercase">Verfügbar</div>'+
+        '<div style="font-size:12.5px;font-weight:800;margin-top:3px;font-variant-numeric:tabular-nums">'+tage+'/7 Tage</div></div>'+
+      '<div style="flex:1;display:flex;justify-content:flex-end;gap:8px;align-items:center">'+
+        (offen>0?('<span style="font-size:9.5px;font-weight:900;color:var(--wn);letter-spacing:.8px;text-transform:uppercase;padding:3px 8px;border-radius:6px;background:var(--wns);white-space:nowrap">'+offen+' offen</span>'):'')+
+        '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--tx4)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M9 18l6-6-6-6"></path></svg>'+
+      '</div></div>';
+  }).join('');
+
+  return '<div style="max-width:940px">'+
+    '<div style="font-size:25px;font-weight:900;letter-spacing:-.7px">Mitarbeiter</div>'+
+    '<div style="font-size:12.5px;font-weight:600;color:var(--tx2);margin-top:4px">Urlaub, Verfügbarkeit, Stunden und Schichten pro Person.</div>'+
+    '<div class="sc" style="overflow-x:auto"><div style="display:flex;flex-direction:column;gap:9px;margin-top:18px;min-width:860px">'+zeilen+'</div></div>'+
+  '</div>';
+}
+
+var SP_VAC_STATUS={
+  pending:['In Prüfung','var(--wn)','var(--wns)'],
+  approved:['Genehmigt','var(--ok)','var(--oks)'],
+  declined:['Abgelehnt','var(--dgt)','var(--dgs)']
+};
+
+function spPersonHTML(){
+  var pid=S.spPerson||'ma', p=SP_STAFF[pid];
+  if(!p){ pid='ma'; p=SP_STAFF[pid]; }
+  var row=spAvail()[pid], weich=row.soft||[];
+
+  var chips=['flaeche','reinigung'].map(function(k){
+    var an=(p.areas||[]).indexOf(k)>=0;
+    var c=k==='reinigung'?'var(--wn)':'var(--ac)', bgc=k==='reinigung'?'var(--wns)':'var(--acs)';
+    var bg=an?bgc:'transparent', bd=an?c:'var(--line2)', fg=an?c:'var(--tx3)';
+    return '<button data-sparea="'+esc(pid)+':'+k+'" class="tap" style="display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border-radius:9px;border:1.5px solid '+bd+';background:'+bg+';color:'+fg+';font-family:inherit;font-size:11px;font-weight:800;cursor:pointer">'+
+      '<span style="width:13px;height:13px;border-radius:4px;border:1.5px solid '+bd+';background:'+bg+';display:flex;align-items:center;justify-content:center;flex-shrink:0">'+
+      (an?'<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="'+fg+'" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg>':'')+
+      '</span>'+esc(SP_AREA[k].label)+'</button>';
+  }).join('');
+
+  var urlaube=(S.spVac||[]).filter(function(v){ return v.staffId===pid; })
+    .sort(function(a,b){ return a.from-b.from; }).map(function(v){
+    var st=SP_VAC_STATUS[v.status]||SP_VAC_STATUS.pending;
+    return '<div style="background:var(--surf2);border:1px solid var(--line);border-radius:13px;padding:12px 13px">'+
+      '<div style="display:flex;align-items:center;gap:10px">'+
+        '<div style="flex:1;min-width:0">'+
+          '<div style="font-size:13px;font-weight:900;font-variant-numeric:tabular-nums">'+v.from+'.–'+v.to+'. Oktober 2026</div>'+
+          '<div style="font-size:10.5px;font-weight:700;color:var(--tx3);margin-top:2px">'+v.days+' Tage</div></div>'+
+        '<span style="font-size:9.5px;font-weight:900;color:'+st[1]+';letter-spacing:.9px;text-transform:uppercase;padding:4px 9px;border-radius:6px;background:'+st[2]+';flex-shrink:0">'+st[0]+'</span>'+
+      '</div>'+
+      (v.status==='pending'?('<div style="display:flex;gap:7px;margin-top:11px">'+
+        '<button data-spvacok="'+esc(v.id)+'" class="tap" style="flex:1;height:34px;border-radius:10px;border:none;background:var(--ac);color:var(--acfg);font-family:inherit;font-size:11.5px;font-weight:900;cursor:pointer">Genehmigen</button>'+
+        '<button data-spvacno="'+esc(v.id)+'" class="tap" style="flex:1;height:34px;border-radius:10px;border:1px solid var(--line2);background:transparent;color:var(--tx2);font-family:inherit;font-size:11.5px;font-weight:800;cursor:pointer">Ablehnen</button></div>'):'')+
+    '</div>';
+  }).join('');
+  var urlaubLeer='<div style="font-size:12px;font-weight:700;color:var(--tx3);padding:14px 0;text-align:center">Kein Urlaub eingetragen.</div>';
+
+  var verfuegbar=SP_DAYS.map(function(d,i){
+    var win=row.d[i], oh=spOpenHours(i), lo=oh[0], hi=oh[1];
+    var w=weich.indexOf(i)>=0;
+    var fg=win?(w?'var(--wn)':'var(--tx)'):'var(--tx4)';
+    return '<div style="display:flex;align-items:center;gap:10px">'+
+      '<span style="width:22px;flex-shrink:0;font-size:10.5px;font-weight:900;color:var(--tx3)">'+d[0]+'</span>'+
+      '<div style="flex:1;position:relative;height:16px;border-radius:5px;background:var(--surf2);overflow:hidden">'+
+        (win?('<div style="position:absolute;left:'+((win[0]-lo)/(hi-lo)*100).toFixed(1)+'%;width:'+((win[1]-win[0])/(hi-lo)*100).toFixed(1)+'%;top:0;bottom:0;border-radius:5px;background:'+(w?'var(--wn)':'var(--ac)')+'"></div>'):'')+
+      '</div>'+
+      '<span style="width:82px;flex-shrink:0;text-align:right;font-size:10px;font-weight:800;color:'+fg+';font-variant-numeric:tabular-nums">'+(win?(spT(win[0])+'–'+spT(win[1])):'kann nicht')+'</span>'+
+    '</div>';
+  }).join('');
+
+  var eigene=spShifts().filter(function(x){ return x.who===pid; })
+    .sort(function(a,b){ return a.day-b.day||a.a-b.a; });
+  var schichten=eigene.map(function(x){
+    var av=spAreaVar(x.area);
+    return '<div data-spinspect="'+esc(x.id)+'" class="tap" style="background:var(--surf2);border:1px solid var(--line);border-radius:12px;padding:11px 13px;cursor:pointer;display:flex;align-items:center;gap:12px">'+
+      '<span style="width:56px;flex-shrink:0;font-size:11.5px;font-weight:900;font-variant-numeric:tabular-nums">'+SP_DAYS[x.day][0]+' '+SP_DAYS[x.day][1]+'</span>'+
+      '<span style="width:104px;flex-shrink:0;font-size:12.5px;font-weight:800;font-variant-numeric:tabular-nums">'+esc(x.area==='reinigung'?'vor Öffnung':spSpan(x.a,x.b))+'</span>'+
+      '<span style="width:56px;flex-shrink:0;font-size:10.5px;font-weight:700;color:var(--tx3);font-variant-numeric:tabular-nums">'+esc(x.area==='reinigung'?'':spDur(x.a,x.b))+'</span>'+
+      '<span style="display:inline-flex;align-items:center;gap:6px;flex:1"><span style="width:6px;height:6px;border-radius:2px;background:'+av+'"></span>'+
+        '<span style="font-size:11.5px;font-weight:700;color:var(--tx2)">'+esc(SP_AREA[x.area].label)+'</span></span>'+
+      (spVacOn(pid,spDomOf(x.day))?'<span style="font-size:9px;font-weight:900;color:var(--dgt);letter-spacing:.8px;text-transform:uppercase;padding:3px 8px;border-radius:5px;background:var(--dgs);flex-shrink:0">Urlaub</span>':'')+
+    '</div>';
+  }).join('');
+  var schichtLeer='<div style="font-size:12px;font-weight:700;color:var(--tx3);padding:14px 0;text-align:center">Keine Schichten in dieser Woche.</div>';
+
+  var wochenStd=eigene.reduce(function(n,x){ return n+(x.b-x.a); },0);
+  var wochenende=eigene.filter(function(x){ return x.day>4; }).length;
+  var genommen=(S.spVac||[]).filter(function(v){ return v.staffId===pid&&v.status==='approved'; })
+    .reduce(function(n,v){ return n+v.days; },0);
+  var knapp=p.max-p.h<=4;
+
+  return '<div style="max-width:940px">'+
+    '<button data-spnav="team" style="border:none;background:none;color:var(--tx3);font-family:inherit;font-size:11.5px;font-weight:800;cursor:pointer;padding:0;display:flex;align-items:center;gap:6px">'+
+      '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"></path></svg>Alle Mitarbeiter</button>'+
+    '<div style="display:flex;align-items:center;gap:16px;margin-top:14px">'+
+      '<div style="width:56px;height:56px;border-radius:50%;background:var(--surf2);color:var(--tx2);font-size:17px;font-weight:900;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+esc(p.ini)+'</div>'+
+      '<div style="flex:1;min-width:0">'+
+        '<div style="font-size:24px;font-weight:900;letter-spacing:-.7px">'+esc(p.name)+'</div>'+
+        '<div style="display:flex;align-items:center;gap:9px;margin-top:4px;flex-wrap:wrap">'+
+          '<span style="font-size:12px;font-weight:700;color:var(--tx2)">'+esc(p.type)+'</span>'+
+          '<span style="width:1px;height:12px;background:var(--line2)"></span>'+chips+
+        '</div></div>'+
+    '</div>'+
+    '<div style="display:flex;gap:10px;margin-top:18px;flex-wrap:wrap">'+
+      '<div style="flex:1;min-width:180px;background:var(--surf);border:1px solid var(--line);border-radius:16px;padding:14px 15px">'+
+        '<div style="font-size:9px;font-weight:900;color:var(--tx4);letter-spacing:1.2px;text-transform:uppercase">Monatsstunden</div>'+
+        '<div style="font-size:21px;font-weight:900;letter-spacing:-.6px;margin-top:6px;font-variant-numeric:tabular-nums">'+p.h+' / '+p.max+'</div>'+
+        '<div style="height:4px;border-radius:2px;background:var(--surf3);margin-top:9px;overflow:hidden"><div style="width:'+Math.min(100,Math.round(p.h/p.max*100))+'%;height:100%;background:'+(knapp?'var(--wn)':'var(--ac)')+'"></div></div>'+
+        '<div style="font-size:10px;font-weight:800;color:var(--tx3);margin-top:7px">'+(p.max-p.h)+' Std bis zur Grenze</div></div>'+
+      '<div style="flex:1;min-width:180px;background:var(--surf);border:1px solid var(--line);border-radius:16px;padding:14px 15px">'+
+        '<div style="font-size:9px;font-weight:900;color:var(--tx4);letter-spacing:1.2px;text-transform:uppercase">Diese Woche</div>'+
+        '<div style="font-size:21px;font-weight:900;letter-spacing:-.6px;margin-top:6px;font-variant-numeric:tabular-nums">'+(wochenStd%1?wochenStd.toFixed(1).replace('.',','):wochenStd)+' Std</div>'+
+        '<div style="font-size:10px;font-weight:800;color:var(--tx3);margin-top:9px">'+wochenende+' Wochenenddienste</div></div>'+
+      '<div style="flex:1;min-width:180px;background:var(--surf);border:1px solid var(--line);border-radius:16px;padding:14px 15px">'+
+        '<div style="font-size:9px;font-weight:900;color:var(--tx4);letter-spacing:1.2px;text-transform:uppercase">Urlaub genommen</div>'+
+        '<div style="font-size:21px;font-weight:900;letter-spacing:-.6px;margin-top:6px;color:var(--vi);font-variant-numeric:tabular-nums">'+genommen+'</div>'+
+        '<div style="font-size:10px;font-weight:800;color:var(--tx3);margin-top:9px">Tage in 2026</div></div>'+
+    '</div>'+
+    '<div style="display:flex;gap:12px;margin-top:12px;align-items:flex-start;flex-wrap:wrap">'+
+      '<div style="flex:1;min-width:280px;background:var(--surf);border:1px solid var(--line);border-radius:18px;padding:16px">'+
+        '<div style="font-size:10px;font-weight:900;color:var(--tx3);letter-spacing:1.3px;text-transform:uppercase">Urlaub &amp; Abwesenheit</div>'+
+        '<div style="display:flex;flex-direction:column;gap:9px;margin-top:12px">'+(urlaube||urlaubLeer)+'</div></div>'+
+      '<div style="flex:1;min-width:280px;background:var(--surf);border:1px solid var(--line);border-radius:18px;padding:16px">'+
+        '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px">'+
+          '<span style="font-size:10px;font-weight:900;color:var(--tx3);letter-spacing:1.3px;text-transform:uppercase">Verfügbarkeit</span>'+
+          '<span style="display:inline-flex;align-items:center;gap:6px"><span style="width:12px;height:2px;border-radius:1px;background:'+(row.src==='self'?'var(--ac)':'var(--vi)')+'"></span>'+
+            '<span style="font-size:9.5px;font-weight:800;color:var(--tx3)">'+(row.src==='self'?'selbst gemeldet':'von Leitung eingetragen')+'</span></span></div>'+
+        '<div style="display:flex;flex-direction:column;gap:7px;margin-top:12px">'+verfuegbar+'</div></div>'+
+    '</div>'+
+    '<div style="background:var(--surf);border:1px solid var(--line);border-radius:18px;padding:16px;margin-top:12px">'+
+      '<div style="font-size:10px;font-weight:900;color:var(--tx3);letter-spacing:1.3px;text-transform:uppercase">Schichten KW 41</div>'+
+      '<div class="sc" style="overflow-x:auto"><div style="display:flex;flex-direction:column;gap:8px;margin-top:12px;min-width:460px">'+(schichten||schichtLeer)+'</div></div></div>'+
+  '</div>';
+}
+
+function spWireTeam(node){
+  node.querySelectorAll('[data-spperson]').forEach(function(b){
+    b.onclick=function(){ spOpenPerson(b.getAttribute('data-spperson')); };
+  });
+  node.querySelectorAll('[data-sparea]').forEach(function(b){
+    b.onclick=function(){ var p=b.getAttribute('data-sparea').split(':'); spToggleArea(p[0],p[1]); };
+  });
+  node.querySelectorAll('[data-spvacok]').forEach(function(b){
+    b.onclick=function(){ spDecideVac(b.getAttribute('data-spvacok'),true); };
+  });
+  node.querySelectorAll('[data-spvacno]').forEach(function(b){
+    b.onclick=function(){ spDecideVac(b.getAttribute('data-spvacno'),false); };
+  });
+  node.querySelectorAll('[data-spassign]').forEach(function(b){
+    b.onclick=function(){ var p=b.getAttribute('data-spassign').split(':'); spAssignTo(p[0],p[1]); };
+  });
+  node.querySelectorAll('[data-sppost]').forEach(function(b){
+    b.onclick=function(){ spPublishShift(b.getAttribute('data-sppost'),'apply'); };
+  });
+  node.querySelectorAll('[data-sppostnow]').forEach(function(b){
+    b.onclick=function(){ spPublishShift(b.getAttribute('data-sppostnow'),'instant'); };
+  });
+  node.querySelectorAll('[data-spunpost]').forEach(function(b){
+    b.onclick=function(){ spUnpostShift(b.getAttribute('data-spunpost')); };
+  });
+  node.querySelectorAll('[data-spfree]').forEach(function(b){
+    b.onclick=function(){ spFreeShift(b.getAttribute('data-spfree')); };
+  });
+  node.querySelectorAll('[data-spinspect]').forEach(function(b){
+    b.onclick=function(){ S.spScreen='result'; S.spSel=b.getAttribute('data-spinspect'); render(); };
+  });
+  var pa=node.querySelector('[data-sppostall]'); if(pa) pa.onclick=spPostAllOpen;
+}
+
 // ── Schichtplan: Huelle aus dem Entwurf ─────────────────────────────────────
 // Symbole des Entwurfs. Gleiche Strichstaerke und Rundungen wie dort; die Farbe
 // kommt von aussen, damit aktiv/inaktiv nur eine Token-Frage ist.
@@ -6492,10 +6891,10 @@ var SP_PLAN=[
   {k:'setup',   l:'KI-Planung',      ic:'spark', bereit:true},
   {k:'result',  l:'Plan',            ic:'cal',   bereit:true},
   {k:'inbox',   l:'Freigaben',       ic:'inbox', bereit:true},
-  {k:'postings',l:'Ausschreibungen', ic:'bell',  bereit:false}
+  {k:'postings',l:'Ausschreibungen', ic:'bell',  bereit:true}
 ];
 var SP_TEAM=[
-  {k:'team',   l:'Personen',        ic:'users', bereit:false},
+  {k:'team',   l:'Personen',        ic:'users', bereit:true},
   {k:'matrix', l:'Verfügbarkeiten', ic:'grid',  bereit:true},
   {k:'year',   l:'Jahreskalender',  ic:'year',  bereit:false}
 ];
@@ -6605,14 +7004,17 @@ function schichtNode(){
             : S.spScreen==='inbox' ? spInboxHTML()
             : S.spScreen==='applicants' ? spApplicantsHTML()
             : S.spScreen==='matrix' ? spMatrixHTML()
+            : S.spScreen==='postings' ? spPostingsHTML()
+            : S.spScreen==='team' ? spTeamHTML()
+            : S.spScreen==='person' ? spPersonHTML()
             : spTodoHTML(spTitel(S.spScreen)))
           : spTodoHTML('Mitarbeiter-Ansicht'))+
       '</div>'+
-    '</div></div>';
+    '</div>'+spToastHTML()+'</div>';
   var hand='<div class="sp-hand" style="padding:20px 16px 44px">'+bestand+'</div>';
 
   node.innerHTML=desk+hand+shKiHTML()+shEditorHTML()+shChatHTML();
-  setTimeout(function(){ wireSchicht(node); wireSp(node); spWireResult(node); spWireSetup(node); spWireInbox(node); },0);
+  setTimeout(function(){ wireSchicht(node); wireSp(node); spWireResult(node); spWireSetup(node); spWireInbox(node); spWireTeam(node); },0);
   return node;
 }
 function spTitel(k){

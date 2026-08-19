@@ -140,5 +140,173 @@ ok('15e. Eintragen durch die Leitung aendert die Quelle', /row\.src='lead'/.test
 ok('15f. … und schaltet durch fuenf Zustaende',
   /\(at\+1\)%opts\.length/.test(cyc));
 
-console.log(pass?'SP-SHELL PASS':'SP-SHELL FAIL');
-process.exit(pass?0:1);
+// ── Ausschreibungen, Mitarbeiter, Person ──
+ok('16. Ausschreibungen sind uebernommen', /function spPostingsHTML/.test(html));
+ok('16b. Die Mitarbeiterliste ebenso', /function spTeamHTML/.test(html));
+ok('16c. … und die Personenansicht', /function spPersonHTML/.test(html));
+// Erreichbar muessen sie auch sein - eine Funktion, die niemand aufruft, ist
+// gebaut und trotzdem nicht da.
+const dispatch=html.slice(html.indexOf('function schichtNode'), html.indexOf('function spTitel'));
+['spPostingsHTML','spTeamHTML','spPersonHTML'].forEach(function(fn){
+  ok('16d. '+fn+' haengt am Bildschirmwechsel', dispatch.indexOf(fn+'()')>=0, dispatch.slice(0,400));
+});
+// Und die Navigation darf sie nicht weiter als „in Arbeit" fuehren.
+const nav2=html.slice(html.indexOf('var SP_PLAN='), html.indexOf('function spNavBtn'));
+ok('16e. Ausschreibungen und Personen sind nicht mehr „in Arbeit"',
+  /\{k:'postings',l:'Ausschreibungen', ic:'bell',  bereit:true\}/.test(nav2) &&
+  /\{k:'team',   l:'Personen',        ic:'users', bereit:true\}/.test(nav2), nav2);
+
+// Die Rueckmeldung stand frueher NUR im Plan. Damit blieben Zusagen, Freigaben
+// und Ausschreibungen anderswo stumm: klicken, nichts sehen.
+ok('17. Die Rueckmeldung haengt an der Huelle', /function spToastHTML/.test(html));
+const res=html.slice(html.indexOf('function spResultHTML'), html.indexOf('// Die Rueckmeldung gehoert'));
+ok('17b. … und nicht mehr nur im Plan', res.indexOf('S.spToast')<0, res.slice(-260));
+ok('17c. … sie wird in der Huelle gezeichnet', /\+spToastHTML\(\)\+/.test(dispatch), dispatch.slice(-300));
+
+// Die Eignungspruefung kennt drei Ausgaenge, nicht zwei. Faellt „mit Abstrich"
+// weg, verschwindet der halbe Nutzen: knappe Faelle waeren entweder verboten
+// oder unsichtbar durchgewunken.
+const fit=html.slice(html.indexOf('function spFitCheck'), html.indexOf('function spStartStaffDrag'));
+ok('18. Die Eignungspruefung kennt „geht, aber mit Abstrich"',
+  (fit.match(/soft:true/g)||[]).length===2, String((fit.match(/soft:true/g)||[]).length)+' von 2');
+ok('18b. … prueft die gemeldete Verfuegbarkeit', /spAvail\(\)\[staffId\]/.test(fit), fit.slice(0,200));
+ok('18c. … und Doppelbelegung am selben Tag', /x\.a<sh\.b && x\.b>sh\.a/.test(fit), fit.slice(0,200));
+// Wer „nur mit Abstrich" passt, wird als Konflikt eingeplant - sonst sieht die
+// Leitung spaeter nicht mehr, dass da etwas klemmt.
+const sdrag=html.slice(html.indexOf('function spStartStaffDrag'), html.indexOf('function spWireResult'));
+ok('18d. Abstriche landen sichtbar als Konflikt im Plan',
+  /st=chk\.soft\?'conflict':'ai'/.test(sdrag), sdrag.slice(-400));
+
+// ── Mit Browser: das Verhalten selbst ──
+(async function(){
+  let chromium=null;
+  try{ chromium=require('playwright-core').chromium; }catch(e){ chromium=null; }
+  const kandidaten=['/opt/pw-browsers/chromium-1194/chrome-linux/chrome','/opt/pw-browsers/chromium/chrome-linux/chrome'];
+  const bin=kandidaten.filter(function(p){ try{ return fs.existsSync(p); }catch(e){ return false; } })[0];
+  if(!chromium||!bin){
+    console.log('HINWEIS Kein Browser vorhanden – die Verhaltenspruefungen (19–22) liefen NICHT.');
+    console.log(pass?'SP-SHELL PASS (ohne Browser)':'SP-SHELL FAIL');
+    process.exit(pass?0:1);
+  }
+
+  const b=await chromium.launch({executablePath:bin});
+  const p=await b.newPage({viewport:{width:1440,height:1000}});
+  const fehler=[];
+  p.on('pageerror',function(e){ fehler.push(String(e.message)); });
+  await p.setContent(html,{waitUntil:'domcontentloaded'});
+  await p.waitForTimeout(250);
+  const zeige=async function(sc){
+    await p.evaluate(function(s){
+      window.S.token='x'; window.S.screen='schicht'; window.S.role='admin'; window.S.booted=true;
+      window.S.spMode='planner'; window.S.spScreen=s;
+      window.S.spShifts=null; window.S.spVac=null; window.S.spAvail=null; window.S.spToast='';
+      window.render();
+    }, sc);
+    await p.waitForTimeout(220);
+  };
+  const toastText=function(){ return p.evaluate(function(){
+    const d=Array.from(document.querySelectorAll('.sp-desk > div'))
+      .filter(function(x){ return /bottom:26px/.test(x.getAttribute('style')||''); })[0];
+    return d?(d.innerText+'|'+Math.round(d.getBoundingClientRect().width)):'';
+  }); };
+
+  await zeige('postings');
+
+  // Die Karten muessen genau den Schichten entsprechen, die Besetzung brauchen.
+  // Zaehlt die Ansicht anders als die Daten, sieht die Leitung Luecken nicht.
+  const soll=await p.evaluate(function(){
+    return spShifts().filter(function(x){
+      return x.st!=='posted' && (!x.who||x.st==='blocked'||(x.who&&spVacOn(x.who,spDomOf(x.day)))||x.st==='conflict');
+    }).length;
+  });
+  const ist=await p.$$eval('[data-sppost]',function(e){ return e.length; });
+  ok('19. Jede Schicht, die Besetzung braucht, hat eine Karte', soll===ist && soll>0, ist+' von '+soll);
+
+  // Urlaub muss der genannte Grund sein, auch wenn zusaetzlich ein Konflikt
+  // haengt - sonst sucht jemand nach einem Regelfehler, der keiner ist.
+  const gruende=await p.evaluate(function(){
+    return Array.from(document.querySelectorAll('.sp-desk [style*="border-left:3px"]')).map(function(c){
+      return c.innerText.replace(/\n/g,' ');
+    });
+  });
+  ok('19b. Urlaub wird als Grund genannt', gruende.some(function(t){ return /URLAUB/i.test(t) && /im Urlaub/.test(t); }),
+    gruende.join(' // ').slice(0,300));
+
+  // Der erste Vorschlag muss der beste sein. Waere die Liste unsortiert, waere
+  // der schnelle Klick der schlechteste Griff.
+  const erste=await p.evaluate(function(){
+    const karte=document.querySelector('.sp-desk [data-sppost]').closest('[style*="border-left:3px"]');
+    const id=karte.querySelector('[data-sppost]').getAttribute('data-sppost');
+    const sh=spShifts().filter(function(x){ return x.id===id; })[0];
+    const c=spCandidatesFor(sh);
+    const chip=karte.querySelector('[data-spassign]');
+    return { chipWer:chip?chip.getAttribute('data-spassign').split(':')[1]:null,
+      besterWer:c[0]?c[0].id:null, bestOk:c[0]?!!c[0].ok:false,
+      sortiert:c.every(function(x,i){ return i===0||c[i-1].score>=x.score; }) };
+  });
+  ok('19c. Der erste Vorschlag ist der bestbewertete',
+    erste.chipWer===erste.besterWer && erste.sortiert, JSON.stringify(erste));
+
+  // „Alle offenen" darf NUR wirklich offene Schichten ausschreiben. Wer im
+  // Urlaub eingeplant ist, gehoert einzeln entschieden, nicht per Sammelklick.
+  const vorher=await p.evaluate(function(){
+    return { offen:spShifts().filter(function(x){ return (!x.who||x.st==='blocked')&&x.st!=='posted'; }).length,
+      karten:document.querySelectorAll('[data-sppost]').length }; });
+  await p.click('[data-sppostall]'); await p.waitForTimeout(260);
+  const nachher=await p.$$eval('[data-spunpost]',function(e){ return e.length; });
+  ok('20. Sammelausschreibung nimmt nur die wirklich offenen',
+    nachher===vorher.offen && vorher.offen<vorher.karten, JSON.stringify({nachher:nachher, vorher:vorher}));
+  const t1=await toastText();
+  ok('20b. … und sagt sichtbar Bescheid', /Schichten ausgeschrieben/.test(t1) && parseInt(t1.split('|')[1],10)>0, t1);
+
+  await p.click('[data-spunpost]'); await p.waitForTimeout(260);
+  ok('20c. Zurueckziehen wirkt', (await p.$$eval('[data-spunpost]',function(e){ return e.length; }))===nachher-1);
+
+  // Ein Klick auf einen Vorschlag besetzt die Schicht wirklich.
+  await zeige('postings');
+  const wen=await p.$eval('[data-spassign]',function(e){ return e.getAttribute('data-spassign'); });
+  await p.click('[data-spassign]'); await p.waitForTimeout(260);
+  const besetzt=await p.evaluate(function(id){
+    const t=id.split(':'); const sh=spShifts().filter(function(x){ return x.id===t[0]; })[0];
+    return { who:sh.who, st:sh.st, conflict:sh.conflict }; }, wen);
+  ok('20d. Ein Vorschlag besetzt die Schicht',
+    besetzt.who===wen.split(':')[1] && besetzt.st==='ai' && !besetzt.conflict, JSON.stringify(besetzt));
+
+  // ── Mitarbeiterliste und Person ──
+  await zeige('team');
+  const zeilen=await p.$$eval('[data-spperson]',function(e){ return e.length; });
+  ok('21. Jede Person steht in der Liste',
+    zeilen===(await p.evaluate(function(){ return Object.keys(SP_STAFF).length; })), String(zeilen));
+  // Knappe Stundenkonten muessen sich abheben, sonst faellt es niemandem auf.
+  const knapp=await p.evaluate(function(){
+    const z=Array.from(document.querySelectorAll('[data-spperson]'))
+      .filter(function(d){ return d.getAttribute('data-spperson')==='ka'; })[0];
+    return /var\(--wn\)/.test(z.innerHTML); });
+  ok('21b. Ein fast volles Stundenkonto ist gewarnt gefaerbt', knapp===true);
+
+  await p.click('[data-spperson="gu"]'); await p.waitForTimeout(260);
+  ok('21c. Der Klick fuehrt zur Person', (await p.evaluate(function(){ return S.spScreen+':'+S.spPerson; }))==='person:gu');
+
+  // Urlaub genehmigen: Zustand UND Oberflaeche muessen mitgehen.
+  const vorStatus=await p.evaluate(function(){ return S.spVac.filter(function(v){ return v.staffId==='gu'; })[0].status; });
+  await p.click('[data-spvacok]'); await p.waitForTimeout(260);
+  const nachStatus=await p.evaluate(function(){
+    return { st:S.spVac.filter(function(v){ return v.staffId==='gu'; })[0].status,
+      knoepfe:document.querySelectorAll('[data-spvacok]').length }; });
+  ok('22. Genehmigen aendert den Antrag',
+    vorStatus==='pending' && nachStatus.st==='approved' && nachStatus.knoepfe===0, JSON.stringify(nachStatus));
+  ok('22b. … und meldet es sichtbar', /Genehmigt/.test(await toastText()));
+
+  // Der letzte Bereich darf nicht entzogen werden - sonst haette jemand einen
+  // Dienstplan-Eintrag ohne jede Qualifikation.
+  await p.click('[data-sparea="gu:flaeche"]'); await p.waitForTimeout(260);
+  const bereiche=await p.evaluate(function(){ return SP_STAFF.gu.areas.join(','); });
+  ok('22c. Der letzte Bereich laesst sich nicht entziehen',
+    bereiche==='flaeche' && /mindestens einen Bereich/.test(await toastText()), bereiche);
+
+  ok('22d. Kein Skriptfehler in allen drei Bildschirmen', fehler.length===0, fehler.join(' | '));
+
+  await b.close();
+  console.log(pass?'SP-SHELL PASS':'SP-SHELL FAIL');
+  process.exit(pass?0:1);
+})();
