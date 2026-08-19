@@ -183,9 +183,41 @@ ok('2b. Sie stehen aber weiter als Beispiel bereit',
       const el = document.querySelector('.sp-phonescroll');
       return el ? el.innerText.trim().split('\n').length : 0;
     });
-    if (n < 6) staffKaputt.push(sc + ':' + n);
+    // Mitteilungen sind live erst mal leer – das ist ein Zustand, kein Fehler.
+    if (n < (sc === 'notif' ? 3 : 6)) staffKaputt.push(sc + ':' + n);
   }
   ok('8b. Und die Mitarbeiter-Seite ebenso', staffKaputt.length === 0, staffKaputt.join(', '));
+  // Erfundene Mitteilungen waeren hier besonders schlecht: „Tauschanfrage von
+  // Kathrin" liest sich wie eine echte Bitte an einen echten Menschen.
+  const mitteilungen = await p.evaluate(function () {
+    S.spMode = 'staff'; S.spStaff = 'notif'; render();
+    return new Promise(function (r) {
+      setTimeout(function () {
+        const t = document.querySelector('.sp-phonescroll').innerText;
+        r({ leer: /Keine Mitteilungen/.test(t), kathrin: /Kathrin/.test(t) });
+      }, 200);
+    });
+  });
+  ok('8c. Mitteilungen sind live ehrlich leer statt erfunden',
+    mitteilungen.leer === true && mitteilungen.kathrin === false, JSON.stringify(mitteilungen));
+
+  // Die Startseite gruesst mit dem echten Namen und rechnet mit echten Zahlen.
+  await anmelden('trainer');
+  const zuhause = await p.evaluate(function () {
+    S.spMode = 'staff'; S.spStaff = 'home'; render();
+    return new Promise(function (r) {
+      setTimeout(function () {
+        const t = document.querySelector('.sp-phonescroll').innerText;
+        r({ anna: /Anna/.test(t), markus: /Markus/.test(t), std: /12/.test(t) && /90/.test(t),
+          erfunden: /118/.test(t) || /Kathrin/.test(t) });
+      }, 220);
+    });
+  });
+  ok('8d. Die Mitarbeiter-Startseite gruesst die richtige Person',
+    zuhause.anna === true && zuhause.markus === false, JSON.stringify(zuhause));
+  ok('8e. … mit den eigenen Stunden statt denen des Entwurfs',
+    zuhause.std === true && zuhause.erfunden === false, JSON.stringify(zuhause));
+  await anmelden('admin');
 
   // Die eigene Verfuegbarkeit kommt vom Server, nicht aus dem Entwurf. Das
   // braucht eine persoenliche Anmeldung - ein Passwort-Login der Leitung hat

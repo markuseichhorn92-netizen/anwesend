@@ -8126,11 +8126,54 @@ function spStaffHomeHTML(){
   var live=!!S.spPunched, sek=S.spPunchSek||0;
   var mmz=Math.floor(sek/60), ssz=sek%60;
   var offen=spShifts().filter(function(x){ return !x.who; }).length;
-  var todos=[
-    ['Tauschanfrage von Kathrin','Fr 09.10. · 17:30–21:30 Fläche','var(--vi)','var(--vis)','swap','plan'],
-    ['2 neue offene Schichten','Sa und So · Bewerbung bis heute 20 Uhr','var(--wn)','var(--wns)','bell','open'],
-    ['Verfügbarkeit November fehlt','Noch 4 Tage — sonst plant die KI ohne dich','var(--dg)','var(--dgs)','warn','avail']
-  ].map(function(t){
+  var ich=spMe(), mein=spP(ich);
+
+  // Gruss und Zahlen: live die eigenen, sonst die des Entwurfs.
+  var heuteISO=spHeuteISO(), hd=shParse(heuteISO);
+  var datum=spLive()?(SH_DOWFULL[hd.getDay()]+', '+hd.getDate()+'. '+
+    ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'][hd.getMonth()])
+    :'Freitag, 9. Oktober';
+  var gruss=spLive()?('Moin, '+(mein.short||'zusammen')):'Moin, Markus';
+  var kuerzel=spLive()?(mein.ini||'?'):'MA';
+
+  // Die naechste eigene Schicht heute - oder die naechste ueberhaupt.
+  var meine=spMyShifts().slice().sort(function(a,b){ return a.day-b.day||a.a-b.a; });
+  var heuteIdx=spHeuteTag();
+  var naechste=meine.filter(function(x){ return x.day===heuteIdx; })[0]
+    || meine.filter(function(x){ return heuteIdx<0||x.day>=heuteIdx; })[0] || null;
+
+  var monatStd=spLive()?(mein.h||0):118, monatMax=spLive()?(mein.max||160):160;
+  var monatPct=monatMax?Math.min(100,Math.round(monatStd/monatMax*100)):0;
+  var monatRest=Math.max(0,monatMax-monatStd);
+
+  var anspruch=spLive()?(mein.vacDays||30):30;
+  var vGenommen=spMyVac().filter(function(v){ return v.status==='approved'&&v.toISO<heuteISO; }).reduce(function(n,v){ return n+v.days; },0);
+  var vGeplant=spMyVac().filter(function(v){ return v.status!=='declined'&&v.toISO>=heuteISO; }).reduce(function(n,v){ return n+v.days; },0);
+  var restUrlaub=spLive()?Math.max(0,anspruch-vGenommen-vGeplant):11;
+
+  // „Braucht dich": live aus dem tatsaechlichen Stand statt aus dem Entwurf.
+  var punkte;
+  if(spLive()){
+    punkte=[];
+    var ausgeschrieben=spShifts().filter(function(x){ return x.st==='posted'&&!spBeworben(x); }).length;
+    if(ausgeschrieben) punkte.push([ausgeschrieben===1?'1 offene Schicht':(ausgeschrieben+' offene Schichten'),
+      'Ausgeschrieben – du kannst dich melden','var(--wn)','var(--wns)','bell','open']);
+    var row=ich?spAvail()[ich]:null;
+    if(ich && (!row||row.reported===false)) punkte.push(['Verfügbarkeit fehlt',
+      'Ohne deine Zeiten wird ohne dich geplant','var(--dg)','var(--dgs)','warn','avail']);
+    var eigeneOffen=spMyVac().filter(function(v){ return v.status==='pending'; }).length;
+    if(eigeneOffen) punkte.push([eigeneOffen===1?'1 Urlaubsantrag offen':(eigeneOffen+' Urlaubsanträge offen'),
+      'Die Leitung hat noch nicht entschieden','var(--vi)','var(--vis)','swap','absence']);
+    if(!ich) punkte.push(['Kein persönlicher Zugang',
+      'Diese Ansicht zeigt dein Team – zum Melden braucht es den eigenen Login','var(--wn)','var(--wns)','warn','plan']);
+  } else {
+    punkte=[
+      ['Tauschanfrage von Kathrin','Fr 09.10. · 17:30–21:30 Fläche','var(--vi)','var(--vis)','swap','plan'],
+      ['2 neue offene Schichten','Sa und So · Bewerbung bis heute 20 Uhr','var(--wn)','var(--wns)','bell','open'],
+      ['Verfügbarkeit November fehlt','Noch 4 Tage — sonst plant die KI ohne dich','var(--dg)','var(--dgs)','warn','avail']
+    ];
+  }
+  var todos=punkte.map(function(t){
     return '<div data-spstaff="'+t[5]+'" class="tap" style="background:var(--surf);border:1px solid var(--line);border-left:3px solid '+t[2]+';border-radius:15px;padding:14px;cursor:pointer;display:flex;align-items:center;gap:12px">'+
       '<div style="width:36px;height:36px;border-radius:11px;background:'+t[3]+';display:flex;align-items:center;justify-content:center;flex-shrink:0">'+spIc(SPI[t[4]],t[4]==='warn'?'var(--dgt)':t[2],18)+'</div>'+
       '<div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:900;letter-spacing:-.2px">'+esc(t[0])+'</div>'+
@@ -8149,32 +8192,36 @@ function spStaffHomeHTML(){
     '</div>';
   }).join('');
 
-  var rest=30-13-spMyVac().filter(function(v){ return v.status!=='declined'; }).reduce(function(n,v){ return n+v.days; },0);
-
   return '<div>'+
     '<div style="padding:56px 20px 20px;background:var(--surf);border-bottom:1px solid var(--line)">'+
       '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px">'+
-        '<div><div style="font-size:9.5px;font-weight:900;color:var(--tx4);letter-spacing:1.5px;text-transform:uppercase">Freitag, 9. Oktober</div>'+
-          '<div style="font-size:21px;font-weight:900;letter-spacing:-.5px;margin-top:5px">Moin, Markus</div></div>'+
+        '<div><div style="font-size:9.5px;font-weight:900;color:var(--tx4);letter-spacing:1.5px;text-transform:uppercase">'+esc(datum)+'</div>'+
+          '<div style="font-size:21px;font-weight:900;letter-spacing:-.5px;margin-top:5px">'+esc(gruss)+'</div></div>'+
         '<div style="display:flex;align-items:center;gap:8px">'+
           '<button data-spstaff="notif" class="tap" style="position:relative;width:42px;height:42px;border-radius:13px;border:1px solid var(--line);background:var(--surf2);display:flex;align-items:center;justify-content:center;cursor:pointer">'+
             spIc(SPI.bell,'var(--tx)',19)+
             '<span style="position:absolute;top:8px;right:9px;width:8px;height:8px;border-radius:50%;background:var(--wn);border:2px solid var(--surf)"></span></button>'+
-          '<div style="width:42px;height:42px;border-radius:50%;background:var(--acs);color:var(--ac);font-size:13px;font-weight:900;display:flex;align-items:center;justify-content:center">MA</div>'+
+          '<div style="width:42px;height:42px;border-radius:50%;background:var(--acs);color:var(--ac);font-size:13px;font-weight:900;display:flex;align-items:center;justify-content:center">'+esc(kuerzel)+'</div>'+
         '</div></div></div>'+
     '<div style="padding:16px 18px 20px">'+
       '<div style="background:'+(live?'var(--oks)':'var(--surf)')+';border:1px solid '+(live?'var(--ok)':'var(--line)')+';border-radius:20px;padding:17px">'+
         '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px">'+
-          '<span style="font-size:9.5px;font-weight:900;color:'+(live?'var(--ok)':'var(--tx3)')+';letter-spacing:1.4px;text-transform:uppercase">'+(live?'Eingestempelt seit 9:41':'Nächste Schicht · heute')+'</span>'+
+          '<span style="font-size:9.5px;font-weight:900;color:'+(live?'var(--ok)':'var(--tx3)')+';letter-spacing:1.4px;text-transform:uppercase">'+
+            (live?'Eingestempelt':(spLive()?(naechste?('Nächste Schicht · '+spDays()[naechste.day][0]+' '+spDays()[naechste.day][1]):'Keine Schicht geplant'):'Nächste Schicht · heute'))+'</span>'+
           (live?'<span style="display:inline-flex;align-items:center;gap:6px"><span style="width:6px;height:6px;border-radius:50%;background:var(--ok);animation:spPulse 1.4s ease-in-out infinite"></span><span style="font-size:11px;font-weight:800;color:var(--ok)">läuft</span></span>':'')+
         '</div>'+
         '<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-top:11px">'+
           '<div style="min-width:0">'+
-            '<div style="font-size:26px;font-weight:900;letter-spacing:-.8px;line-height:1.05">'+(live?'Läuft':'09:30 – 13:00')+'</div>'+
-            '<div style="font-size:13px;font-weight:700;color:var(--tx2);margin-top:4px;font-variant-numeric:tabular-nums">'+(live?'geplant bis 13:00 Uhr':'Freitag · 3,5 Std · Trainingsfläche')+'</div>'+
+            '<div style="font-size:26px;font-weight:900;letter-spacing:-.8px;line-height:1.05">'+
+              (live?'Läuft':(spLive()?(naechste?esc(spSpan(naechste.a,naechste.b)):'—'):'09:30 – 13:00'))+'</div>'+
+            '<div style="font-size:13px;font-weight:700;color:var(--tx2);margin-top:4px;font-variant-numeric:tabular-nums">'+
+              (live?'läuft seit dem Einstempeln'
+                :(spLive()?(naechste?esc(spDays()[naechste.day][2]+' · '+spDur(naechste.a,naechste.b)+' · '+spArea(naechste.area).label):'Für dich ist diese Woche nichts eingeplant.')
+                  :'Freitag · 3,5 Std · Trainingsfläche'))+'</div>'+
             (live?'<div style="font-size:31px;font-weight:900;letter-spacing:-1.4px;color:var(--ok);margin-top:9px;font-variant-numeric:tabular-nums">'+(mmz<10?'0'+mmz:mmz)+':'+(ssz<10?'0'+ssz:ssz)+'</div>':'')+
           '</div>'+
-          '<span style="font-size:9.5px;font-weight:900;color:var(--ac);letter-spacing:1px;text-transform:uppercase;padding:4px 9px;border-radius:6px;background:var(--acs);flex-shrink:0">Trainingsfläche</span>'+
+          (naechste||!spLive()?('<span style="font-size:9.5px;font-weight:900;color:var(--ac);letter-spacing:1px;text-transform:uppercase;padding:4px 9px;border-radius:6px;background:var(--acs);flex-shrink:0">'+
+            esc(naechste?spArea(naechste.area).label:'Trainingsfläche')+'</span>'):'')+
         '</div>'+
         '<button data-sppunch="1" class="tap" style="width:100%;height:52px;margin-top:15px;border-radius:15px;border:none;background:'+(live?'var(--dg)':'var(--ac)')+';color:'+(live?'var(--dgfg)':'var(--acfg)')+';font-family:inherit;font-size:15.5px;font-weight:900;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:9px">'+
           spIc(SPI.clock,live?'var(--dgfg)':'var(--acfg)',19)+(live?'Ausstempeln':'Einstempeln')+'</button>'+
@@ -8182,18 +8229,19 @@ function spStaffHomeHTML(){
       '<div style="display:flex;gap:9px;margin-top:12px">'+
         '<div style="flex:1;background:var(--surf);border:1px solid var(--line);border-radius:16px;padding:13px 14px">'+
           '<div style="font-size:9px;font-weight:900;color:var(--tx4);letter-spacing:1.2px;text-transform:uppercase">Diesen Monat</div>'+
-          '<div style="display:flex;align-items:baseline;gap:3px;margin-top:6px"><span style="font-size:21px;font-weight:900;letter-spacing:-.7px;line-height:1;font-variant-numeric:tabular-nums">118</span><span style="font-size:11px;font-weight:800;color:var(--tx3)">/ 160 Std</span></div>'+
-          '<div style="height:4px;border-radius:2px;background:var(--surf3);margin-top:9px;overflow:hidden"><div style="width:74%;height:100%;background:var(--ac)"></div></div>'+
-          '<div style="font-size:9.5px;font-weight:800;color:var(--tx3);margin-top:7px">42 Std Rest</div></div>'+
+          '<div style="display:flex;align-items:baseline;gap:3px;margin-top:6px"><span style="font-size:21px;font-weight:900;letter-spacing:-.7px;line-height:1;font-variant-numeric:tabular-nums">'+monatStd+'</span><span style="font-size:11px;font-weight:800;color:var(--tx3)">/ '+monatMax+' Std</span></div>'+
+          '<div style="height:4px;border-radius:2px;background:var(--surf3);margin-top:9px;overflow:hidden"><div style="width:'+monatPct+'%;height:100%;background:'+(monatRest<=4?'var(--wn)':'var(--ac)')+'"></div></div>'+
+          '<div style="font-size:9.5px;font-weight:800;color:var(--tx3);margin-top:7px">'+monatRest+' Std Rest</div></div>'+
         '<div style="flex:1;background:var(--surf);border:1px solid var(--line);border-radius:16px;padding:13px 14px">'+
           '<div style="font-size:9px;font-weight:900;color:var(--tx4);letter-spacing:1.2px;text-transform:uppercase">Resturlaub</div>'+
-          '<div style="display:flex;align-items:baseline;gap:3px;margin-top:6px"><span style="font-size:21px;font-weight:900;letter-spacing:-.7px;line-height:1;font-variant-numeric:tabular-nums">'+rest+'</span><span style="font-size:11px;font-weight:800;color:var(--tx3)">Tage</span></div>'+
+          '<div style="display:flex;align-items:baseline;gap:3px;margin-top:6px"><span style="font-size:21px;font-weight:900;letter-spacing:-.7px;line-height:1;font-variant-numeric:tabular-nums">'+restUrlaub+'</span><span style="font-size:11px;font-weight:800;color:var(--tx3)">Tage</span></div>'+
           '<button data-spstaff="absence" style="border:none;background:none;color:var(--ac);font-family:inherit;font-size:11px;font-weight:900;cursor:pointer;padding:0;margin-top:11px">Antrag stellen</button></div>'+
       '</div>'+
       '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin:22px 2px 11px">'+
         '<span style="font-size:10px;font-weight:900;color:var(--tx3);letter-spacing:1.4px;text-transform:uppercase">Braucht dich</span>'+
-        '<span style="font-size:10px;font-weight:800;color:var(--tx4)">3 Punkte</span></div>'+
-      '<div style="display:flex;flex-direction:column;gap:10px">'+todos+'</div>'+
+        '<span style="font-size:10px;font-weight:800;color:var(--tx4)">'+punkte.length+(punkte.length===1?' Punkt':' Punkte')+'</span></div>'+
+      '<div style="display:flex;flex-direction:column;gap:10px">'+(todos||
+        '<div style="background:var(--surf);border:1px solid var(--line);border-radius:15px;padding:18px;text-align:center;font-size:12px;font-weight:700;color:var(--tx3)">Nichts offen — alles erledigt.</div>')+'</div>'+
       '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin:22px 2px 11px">'+
         '<span style="font-size:10px;font-weight:900;color:var(--tx3);letter-spacing:1.4px;text-transform:uppercase">Deine Woche</span>'+
         '<button data-spstaff="plan" style="border:none;background:none;color:var(--ac);font-family:inherit;font-size:11px;font-weight:900;cursor:pointer;padding:0">Ganzer Plan</button></div>'+
@@ -8437,6 +8485,12 @@ function spStaffOpenHTML(){
 }
 
 function spStaffNotifHTML(){
+  if(spLive()) return '<div>'+spStaffKopf('Mitteilungen','','home')+
+    '<div style="padding:24px 18px 20px;text-align:center">'+
+      '<div style="width:46px;height:46px;border-radius:14px;background:var(--surf2);display:flex;align-items:center;justify-content:center;margin:0 auto">'+
+        spIc(SPI.bell,'var(--tx4)',22)+'</div>'+
+      '<div style="font-size:14px;font-weight:900;margin-top:14px">Keine Mitteilungen</div>'+
+      '<div style="font-size:12px;font-weight:600;color:var(--tx2);margin-top:5px;line-height:1.5">Neuer Plan, Tauschanfragen und Entscheidungen erscheinen hier. Bis dahin ist es still.</div></div></div>';
   var karten=[
     ['Neuer Plan veröffentlicht','KW 41–48 stehen. Deine Schichten sind eingetragen.','vor 2 Std',true,'cal','var(--acs)','var(--ac)'],
     ['Tauschanfrage von Kathrin','Fr 09.10. 17:30–21:30 — sie fragt, ob du übernimmst.','vor 3 Std',true,'swap','var(--vis)','var(--vi)'],
