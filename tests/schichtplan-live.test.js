@@ -260,6 +260,61 @@ ok('2b. Sie stehen aber weiter als Beispiel bereit',
   const alsChef = await p.$$eval('[data-spvacok]', function (e) { return e.length; });
   ok('11d. Die Leitung dagegen schon', alsChef === 1, String(alsChef));
 
+  // ── Freigaben und Bewerbungen ──
+  // Der gefaehrlichste Bildschirm: ein erfundener Antrag mit echt aussehendem
+  // Namen und einem Knopf „Genehmigen". Wer den drueckt, glaubt entschieden zu
+  // haben. Live muessen dort die WIRKLICH offenen Antraege stehen.
+  await p.evaluate(function () { S.spMode = 'planner'; S.spScreen = 'inbox'; S.spInboxTab = 'urlaub'; render(); });
+  await p.waitForTimeout(220);
+  const freigaben = await p.evaluate(function () {
+    const t = document.querySelector('.sp-desk').innerText;
+    return { text: t, gudrun: /Gudrun/.test(t), ben: /Ben Cordes/.test(t),
+      knoepfe: Array.from(document.querySelectorAll('[data-spact]'))
+        .map(function (b) { return b.getAttribute('data-spact'); }).join(',') };
+  });
+  ok('13. Die Freigaben zeigen den echten offenen Antrag',
+    freigaben.ben === true && freigaben.gudrun === false, JSON.stringify({ b: freigaben.ben, g: freigaben.gudrun }));
+  ok('13b. … und die Knoepfe tragen dessen ID',
+    /vacok:u1/.test(freigaben.knoepfe) && /vacno:u1/.test(freigaben.knoepfe), freigaben.knoepfe);
+  // Die Folgenabschaetzung ist gerechnet, nicht behauptet: Ben hat in dem
+  // beantragten Zeitraum genau eine Schicht (Mi).
+  ok('13c. Die Folgen sind aus den Schichten gerechnet',
+    /1\s*Schichten/.test(freigaben.text.replace(/\n/g, ' ')), freigaben.text.replace(/\n/g, ' ').slice(0, 300));
+
+  // Fehlt der Knopf, haengen alle folgenden Pruefungen in der Luft – dann lieber
+  // hier sauber abbrechen als mit einem Stapelabzug enden.
+  if (!/vacok:u1/.test(freigaben.knoepfe)) { console.log('SP-LIVE FAIL'); await b.close(); process.exit(1); }
+  await p.evaluate(function () { window.__calls = []; });
+  await p.click('[data-spact="vacok:u1"]');
+  await p.waitForTimeout(250);
+  const entschied = await p.evaluate(function () {
+    return (window.__calls.map(function (c) { return c.body; }).filter(Boolean)[0]) || null; });
+  ok('13d. Genehmigen entscheidet wirklich den Antrag',
+    entschied && entschied.action === 'vac-decide' && entschied.id === 'u1' && entschied.ok === true,
+    JSON.stringify(entschied));
+
+  // Bewerbungen: echte Bewerber mit gerechneten Fakten statt erfundener.
+  await p.evaluate(function () { S.spScreen = 'applicants'; S.spApplFor = 's2'; render(); });
+  await p.waitForTimeout(220);
+  const bew = await p.evaluate(function () {
+    const t = document.querySelector('.sp-desk').innerText;
+    return { ben: /Ben Cordes/.test(t), gudrun: /Gudrun/.test(t),
+      zusagen: Array.from(document.querySelectorAll('[data-spaccept]'))
+        .map(function (b) { return b.getAttribute('data-spaccept'); }).join(',') };
+  });
+  ok('14. Die Bewerbungen sind die echten',
+    bew.ben === true && bew.gudrun === false && bew.zusagen === 's2:e2', JSON.stringify(bew));
+
+  if (bew.zusagen !== 's2:e2') { console.log('SP-LIVE FAIL'); await b.close(); process.exit(1); }
+  await p.evaluate(function () { window.__calls = []; });
+  await p.click('[data-spaccept="s2:e2"]');
+  await p.waitForTimeout(250);
+  const zusage = await p.evaluate(function () {
+    return (window.__calls.map(function (c) { return c.body; }).filter(Boolean)[0]) || null; });
+  ok('14b. Zusagen vergibt die Schicht wirklich',
+    zusage && zusage.action === 'accept-applicant' && zusage.id === 's2' && zusage.employeeId === 'e2',
+    JSON.stringify(zusage));
+
   ok('12. Kein Skriptfehler auf allen Bildschirmen', fehler.length === 0, fehler.join(' | '));
 
   await b.close();

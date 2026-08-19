@@ -6358,8 +6358,17 @@ var SP_INBOX_SUBS={
 
 function spInboxHTML(){
   var tab=S.spInboxTab||'urlaub', entschieden=!!S.spVacDecided;
+  var live=spLive();
+  // Live: die wirklich offenen Antraege und Bewerbungen. Ein Beispielantrag mit
+  // echt aussehendem Namen und einem Knopf „Genehmigen" waere hier das
+  // Schlimmste - jemand glaubt, entschieden zu haben.
+  var offeneVac=live?spVacs().filter(function(v){ return v.status==='pending'; }):[];
+  var mitBew=live?spShifts().filter(function(x){ return (x.applicants||[]).length>0; }):[];
+  var zVac=live?String(offeneVac.length):'1';
+  var zTausch=live?'':'1';
+  var zBew=live?String(mitBew.length):'3';
 
-  var tabs=[['urlaub','Urlaub','1'],['tausch','Tausche','1'],['bewerb','Bewerbungen','3'],['stempel','Stempelzeiten','']].map(function(t){
+  var tabs=[['urlaub','Urlaub',zVac==='0'?'':zVac],['tausch','Tausche',zTausch],['bewerb','Bewerbungen',zBew==='0'?'':zBew],['stempel','Stempelzeiten','']].map(function(t){
     var a=tab===t[0];
     return '<button data-spinboxtab="'+t[0]+'" style="padding:8px 14px;border:none;border-radius:9px;background:'+(a?'var(--ac)':'transparent')+';color:'+(a?'var(--acfg)':'var(--tx3)')+';font-family:inherit;font-size:11.5px;font-weight:800;cursor:pointer;display:flex;align-items:center;gap:7px">'+t[1]+
       (t[2]?'<span style="min-width:16px;height:16px;padding:0 4px;border-radius:8px;background:'+(a?(spDark()?'rgba(0,0,0,.25)':'rgba(255,255,255,.3)'):'var(--surf3)')+';color:'+(a?'var(--acfg)':'var(--tx2)')+';font-size:9px;font-weight:900;display:inline-flex;align-items:center;justify-content:center">'+t[2]+'</span>':'')+'</button>';
@@ -6367,31 +6376,77 @@ function spInboxHTML(){
 
   var items=[];
   if(tab==='urlaub'){
-    items=[{
-      initials:'GU', avBg:'var(--acs)', avFg:'var(--ac)', accent:entschieden?'var(--ok)':'var(--wn)',
-      kind:'Urlaubsantrag', kindBg:'var(--wns)', kindFg:'var(--wn)', title:'Gudrun · 6 Tage',
-      meta:'Mo 19.10. – Sa 24.10.2026 · eingereicht vor 2 Tagen',
-      note:'Familienbesuch, lange geplant. Harald hat schon gesagt, dass er den Samstag übernehmen könnte.',
-      impactShow:!entschieden, impShifts:'7', impCritical:'2', impLeft:'5',
-      actions: entschieden
-        ? [['KI plant um (nur betroffene Schichten)','vacreplan','pri'],['Restlücken ausschreiben','goapplicants',''],['Manuell umbesetzen','manuell','']]
-        : [['Genehmigen','vacok','pri'],['Ablehnen','vacno',''],['Rückfrage stellen','vacask','']]
-    }];
+    if(!live){
+      items=[{
+        initials:'GU', avBg:'var(--acs)', avFg:'var(--ac)', accent:entschieden?'var(--ok)':'var(--wn)',
+        kind:'Urlaubsantrag', kindBg:'var(--wns)', kindFg:'var(--wn)', title:'Gudrun · 6 Tage',
+        meta:'Mo 19.10. – Sa 24.10.2026 · Beispiel',
+        note:'Familienbesuch, lange geplant. Harald hat schon gesagt, dass er den Samstag übernehmen könnte.',
+        impactShow:!entschieden, impShifts:'7', impCritical:'2', impLeft:'5',
+        actions: entschieden
+          ? [['KI plant um (nur betroffene Schichten)','vacreplan','pri'],['Restlücken ausschreiben','goapplicants',''],['Manuell umbesetzen','manuell','']]
+          : [['Genehmigen','vacok','pri'],['Ablehnen','vacno',''],['Rückfrage stellen','vacask','']]
+      }];
+    } else {
+      items=offeneVac.map(function(v){
+        var p=spP(v.staffId);
+        // Folgen der Genehmigung, gerechnet statt behauptet: die Schichten
+        // dieser Person, die in den beantragten Zeitraum fallen.
+        var betroffen=spShifts().filter(function(x){
+          if(x.who!==v.staffId) return false;
+          var iso=spDomOf(x.day);
+          return iso>=v.fromISO && iso<=v.toISO;
+        });
+        var allein=betroffen.filter(function(x){
+          return spShifts().filter(function(o){ return o.day===x.day&&o.area===x.area&&o.who; }).length<=1;
+        }).length;
+        var genommen=spVacs().filter(function(w){ return w.staffId===v.staffId&&w.status==='approved'; })
+          .reduce(function(n,w){ return n+w.days; },0);
+        return {
+          initials:p.ini, avBg:'var(--acs)', avFg:'var(--ac)', accent:'var(--wn)',
+          kind:'Urlaubsantrag', kindBg:'var(--wns)', kindFg:'var(--wn)',
+          title:p.name+' · '+v.days+' Tage',
+          meta:spVacLabel(v)+' · '+(v.kind==='krank'?'Abwesenheit':'Urlaub'),
+          note:'',
+          impactShow:spCanDecide(), impShifts:String(betroffen.length), impCritical:String(allein),
+          impLeft:String(Math.max(0,(p.vacDays||30)-genommen-v.days)),
+          impListe:betroffen.map(function(x){
+            return {shift:spDays()[x.day][0]+' '+spDays()[x.day][1]+' '+spSpan(x.a,x.b), note:spArea(x.area).label,
+              bg:'var(--surf2)', bd:'var(--line)', dot:'var(--wn)', noteColor:'var(--tx3)'};
+          }),
+          actions: spCanDecide()?[['Genehmigen','vacok:'+v.id,'pri'],['Ablehnen','vacno:'+v.id,'']]:[]
+        };
+      });
+    }
   } else if(tab==='tausch'){
-    items=[{
+    if(!live) items=[{
       initials:'KA', avBg:'var(--vis)', avFg:'var(--vi)', accent:'var(--vi)',
       kind:'Schichttausch', kindBg:'var(--vis)', kindFg:'var(--vi)', title:'Kathrin ↔ Peter',
-      meta:'Fr 09.10. 17:30–21:30 · beide haben zugestimmt · wartet auf dich',
+      meta:'Fr 09.10. 17:30–21:30 · Beispiel',
       note:'Kathrin: Ich bin über der Minijob-Grenze, Peter übernimmt gerne.',
       impactShow:false, actions:[['Freigeben','swapok','pri'],['Ablehnen','swapno','']]
     }];
   } else if(tab==='bewerb'){
-    items=[{
-      initials:'3', avBg:'var(--wns)', avFg:'var(--wn)', accent:'var(--wn)',
-      kind:'Ausschreibung', kindBg:'var(--wns)', kindFg:'var(--wn)', title:'So 11.10. · 3 Bewerbungen',
-      meta:'09:00–15:00 Trainingsfläche · Frist läuft in 6 Std',
-      note:'', impactShow:false, actions:[['Bewerbungen ansehen','goapplicants','pri']]
-    }];
+    if(!live){
+      items=[{
+        initials:'3', avBg:'var(--wns)', avFg:'var(--wn)', accent:'var(--wn)',
+        kind:'Ausschreibung', kindBg:'var(--wns)', kindFg:'var(--wn)', title:'So 11.10. · 3 Bewerbungen',
+        meta:'09:00–15:00 Trainingsfläche · Beispiel',
+        note:'', impactShow:false, actions:[['Bewerbungen ansehen','goapplicants','pri']]
+      }];
+    } else {
+      items=mitBew.map(function(x){
+        var n=(x.applicants||[]).length;
+        return {
+          initials:String(n), avBg:'var(--wns)', avFg:'var(--wn)', accent:'var(--wn)',
+          kind:'Ausschreibung', kindBg:'var(--wns)', kindFg:'var(--wn)',
+          title:spDays()[x.day][0]+' '+spDays()[x.day][1]+' · '+(n===1?'1 Bewerbung':n+' Bewerbungen'),
+          meta:spSpan(x.a,x.b)+' '+spArea(x.area).label+(x.deadline?(' · '+x.deadline):''),
+          note:'', impactShow:false,
+          actions:[['Bewerbungen ansehen','goapplicants:'+x.id,'pri']]
+        };
+      });
+    }
   }
 
   var karten=items.map(function(i){
@@ -6405,7 +6460,7 @@ function spInboxHTML(){
             '<div><div style="font-size:9px;font-weight:900;color:var(--dgt);letter-spacing:1.1px;text-transform:uppercase">Kritisch</div><div style="font-size:19px;font-weight:900;margin-top:3px;color:var(--dgt);font-variant-numeric:tabular-nums">'+i.impCritical+'</div></div>'+
             '<div><div style="font-size:9px;font-weight:900;color:var(--tx4);letter-spacing:1.1px;text-transform:uppercase">Resturlaub danach</div><div style="font-size:19px;font-weight:900;margin-top:3px;font-variant-numeric:tabular-nums">'+i.impLeft+'<span style="font-size:11px;font-weight:800;color:var(--tx3)"> Tage</span></div></div>'+
           '</div><div style="display:flex;flex-direction:column;gap:7px;margin-top:13px">'+
-            SP_IMPACT.map(function(x){
+            (i.impListe||SP_IMPACT).map(function(x){
               return '<div style="display:flex;align-items:center;gap:9px;padding:9px 11px;border-radius:10px;background:'+x.bg+';border:1px solid '+x.bd+'">'+
                 '<span style="width:6px;height:6px;border-radius:50%;background:'+x.dot+';flex-shrink:0"></span>'+
                 '<span style="flex:1;font-size:11.5px;font-weight:800;color:var(--tx)">'+esc(x.shift)+'</span>'+
@@ -6451,8 +6506,9 @@ var SP_APPS=[
 ];
 
 function spApplicantsHTML(){
+  if(spLive()) return spApplicantsLiveHTML();
   var karten=SP_APPS.map(function(a){
-    var p=spTeam()[a[0]], rec=a[2];
+    var p=spP(a[0]), rec=a[2];
     var facts=a[3].map(function(f){
       return '<div style="padding:8px 11px;border-radius:10px;background:var(--surf2);border:1px solid var(--line)">'+
         '<div style="font-size:8.5px;font-weight:900;color:var(--tx4);letter-spacing:1px;text-transform:uppercase">'+esc(f[0])+'</div>'+
@@ -6487,6 +6543,71 @@ function spApplicantsHTML(){
       '<div style="display:flex;gap:9px;flex-shrink:0">'+
         '<button class="tap" style="height:40px;padding:0 14px;border-radius:12px;border:1px solid var(--line2);background:transparent;color:var(--tx2);font-family:inherit;font-size:12.5px;font-weight:700;cursor:pointer">Frist verlängern</button>'+
         '<button class="tap" style="height:40px;padding:0 14px;border-radius:12px;border:1px solid var(--line2);background:var(--surf);color:var(--tx);font-family:inherit;font-size:12.5px;font-weight:700;cursor:pointer">Auf Sofort-Übernahme</button></div>'+
+    '</div>'+
+    '<div style="display:flex;flex-direction:column;gap:11px;margin-top:20px">'+karten+'</div>'+
+    '<div style="display:flex;align-items:center;gap:11px;background:var(--surf2);border-radius:14px;padding:13px 15px;margin-top:14px">'+
+      '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--tx3)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><circle cx="12" cy="12" r="9"></circle><path d="M12 16v-4M12 8h.01"></path></svg>'+
+      '<span style="font-size:11.5px;font-weight:700;color:var(--tx2);line-height:1.45;flex:1">Sagst du einer Person zu, bekommen die anderen automatisch eine freundliche Absage — du musst nichts einzeln tippen.</span></div>'+
+  '</div>';
+}
+
+// Live: die echten Bewerbungen auf eine ausgeschriebene Schicht. Die „Fakten"
+// je Person sind hier gerechnet, nicht erfunden - Qualifikation, Stundenkonto
+// und ob die Person an dem Tag im Urlaub ist.
+function spApplicantsLiveHTML(){
+  var mit=spShifts().filter(function(x){ return (x.applicants||[]).length>0; });
+  var sh=mit.filter(function(x){ return x.id===S.spApplFor; })[0]||mit[0]||null;
+  var kopf='<button data-spact="goinbox" style="border:none;background:none;color:var(--tx3);font-family:inherit;font-size:11.5px;font-weight:800;cursor:pointer;padding:0;display:flex;align-items:center;gap:6px">'+
+    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"></path></svg>Zurück zu Freigaben</button>';
+  if(!sh) return '<div style="max-width:900px">'+kopf+
+    '<div style="background:var(--surf);border:1px solid var(--line);border-radius:18px;padding:44px 20px;text-align:center;margin-top:16px">'+
+      '<div style="font-size:15px;font-weight:900">Keine Bewerbungen</div>'+
+      '<div style="font-size:12.5px;font-weight:600;color:var(--tx2);margin-top:4px">Auf die ausgeschriebenen Schichten hat sich noch niemand gemeldet.</div></div></div>';
+
+  var n=sh.applicants.length;
+  var karten=sh.applicants.map(function(a){
+    var id=String(a.id), p=spP(id);
+    var chk=spFitCheck(id, sh);
+    var rest=Math.max(0,(p.max||0)-(p.h||0));
+    var passt=chk.ok&&!chk.soft;
+    var imUrlaub=spVacOn(id,spDomOf(sh.day));
+    var freigegeben=(p.areas||[]).indexOf(sh.area)>=0;
+    var fakten=[
+      ['Qualifikation', freigegeben?'passt':'nicht freigegeben', freigegeben?'var(--ok)':'var(--dgt)'],
+      ['Monat',(p.h||0)+' / '+(p.max||0)+' Std', rest<(sh.b-sh.a)?'var(--dgt)':'var(--tx)'],
+      ['Urlaub', imUrlaub?'an dem Tag weg':'frei', imUrlaub?'var(--dgt)':'var(--ok)'],
+      ['Einschätzung', chk.why, passt?'var(--ok)':(chk.ok?'var(--wn)':'var(--dgt)')]
+    ].map(function(f){
+      return '<div style="padding:8px 11px;border-radius:10px;background:var(--surf2);border:1px solid var(--line)">'+
+        '<div style="font-size:8.5px;font-weight:900;color:var(--tx4);letter-spacing:1px;text-transform:uppercase">'+esc(f[0])+'</div>'+
+        '<div style="font-size:12px;font-weight:800;color:'+f[2]+';margin-top:3px">'+esc(f[1])+'</div></div>';
+    }).join('');
+    return '<div style="background:var(--surf);border:1px solid '+(passt?'var(--acb)':'var(--line)')+';border-radius:16px;padding:16px 17px">'+
+      '<div style="display:flex;align-items:flex-start;gap:14px">'+
+        '<div style="width:42px;height:42px;border-radius:50%;background:'+(passt?'var(--acs)':'var(--surf2)')+';color:'+(passt?'var(--ac)':'var(--tx2)')+';font-size:13px;font-weight:900;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+esc(p.ini)+'</div>'+
+        '<div style="flex:1;min-width:0">'+
+          '<div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">'+
+            '<span style="font-size:15.5px;font-weight:900;letter-spacing:-.3px">'+esc(p.name)+'</span>'+
+            '<span style="font-size:9px;font-weight:800;color:var(--tx3);letter-spacing:.8px;text-transform:uppercase;padding:2px 7px;border-radius:5px;background:var(--surf2)">'+esc(p.typeShort)+'</span>'+
+            (passt?'<span style="font-size:9px;font-weight:900;color:var(--ac);letter-spacing:.8px;text-transform:uppercase;padding:2px 7px;border-radius:5px;background:var(--acs)">Empfehlung</span>':'')+'</div>'+
+          '<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">'+fakten+'</div>'+
+        '</div>'+
+        (spCanDecide()?('<div style="display:flex;flex-direction:column;gap:8px;flex-shrink:0;width:132px">'+
+          '<button data-spaccept="'+esc(sh.id)+':'+esc(id)+'" class="tap" style="height:38px;border-radius:11px;border:none;background:'+(passt?'var(--ac)':'var(--surf2)')+';color:'+(passt?'var(--acfg)':'var(--tx)')+';font-family:inherit;font-size:12.5px;font-weight:900;cursor:pointer">Zusagen</button>'+
+          '<button data-spdecline="'+esc(sh.id)+':'+esc(id)+'" class="tap" style="height:34px;border-radius:11px;border:1px solid var(--line2);background:transparent;color:var(--tx3);font-family:inherit;font-size:11.5px;font-weight:800;cursor:pointer">Absagen</button></div>')
+          :'<span style="font-size:10.5px;font-weight:700;color:var(--tx3);width:132px;flex-shrink:0">Über Bewerbungen entscheidet die Leitung.</span>')+
+      '</div></div>';
+  }).join('');
+
+  return '<div style="max-width:900px">'+kopf+
+    '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:20px;margin-top:12px">'+
+      '<div><div style="display:flex;align-items:center;gap:9px">'+
+        '<span style="font-size:8.5px;font-weight:900;color:var(--wn);letter-spacing:1.2px;text-transform:uppercase;padding:3px 8px;border-radius:6px;background:var(--wns)">Ausgeschrieben</span>'+
+        (sh.deadline?('<span style="font-size:11px;font-weight:800;color:var(--tx3)">'+esc(sh.deadline)+'</span>'):'')+'</div>'+
+        '<div style="font-size:25px;font-weight:900;letter-spacing:-.7px;margin-top:10px">'+esc(spDays()[sh.day][2]+' '+spDays()[sh.day][1]+' · '+spArea(sh.area).label)+'</div>'+
+        '<div style="font-size:12.5px;font-weight:700;color:var(--tx2);margin-top:3px;font-variant-numeric:tabular-nums">'+esc(spSpan(sh.a,sh.b)+' · '+spDur(sh.a,sh.b)+' · '+(n===1?'1 Bewerbung':n+' Bewerbungen'))+'</div></div>'+
+      (spCanDecide()?('<div style="display:flex;gap:9px;flex-shrink:0">'+
+        '<button data-sppostnow="'+esc(sh.id)+'" class="tap" style="height:40px;padding:0 14px;border-radius:12px;border:1px solid var(--line2);background:var(--surf);color:var(--tx);font-family:inherit;font-size:12.5px;font-weight:700;cursor:pointer">Auf Sofort-Übernahme</button></div>'):'')+
     '</div>'+
     '<div style="display:flex;flex-direction:column;gap:11px;margin-top:20px">'+karten+'</div>'+
     '<div style="display:flex;align-items:center;gap:11px;background:var(--surf2);border-radius:14px;padding:13px 15px;margin-top:14px">'+
@@ -6647,17 +6768,29 @@ function spWireInbox(node){
     b.onclick=function(){ var p=b.getAttribute('data-spcycle').split(':'); spCycleCell(p[0], parseInt(p[1],10)); };
   });
   node.querySelectorAll('[data-spaccept]').forEach(function(b){
-    b.onclick=function(){ var p=spTeam()[b.getAttribute('data-spaccept')];
-      S.spScreen='inbox'; spToast('Zusage an '+p.short+' · andere erhalten automatisch eine Absage'); };
+    b.onclick=function(){
+      var w=b.getAttribute('data-spaccept').split(':');
+      var p=spP(w.length>1?w[1]:w[0]);
+      if(spLive()&&w.length>1) return spApi({action:'accept-applicant', id:w[0], employeeId:w[1]},
+        'Zusage an '+p.short+' · andere erhalten automatisch eine Absage');
+      S.spScreen='inbox'; spToast('Zusage an '+p.short+' · andere erhalten automatisch eine Absage');
+    };
   });
   node.querySelectorAll('[data-spdecline]').forEach(function(b){
-    b.onclick=function(){ spToast('Absage an '+spP(b.getAttribute('data-spdecline')).short+' gesendet'); };
+    b.onclick=function(){
+      var w=b.getAttribute('data-spdecline').split(':');
+      spToast('Absage an '+spP(w.length>1?w[1]:w[0]).short+' gesendet');
+    };
   });
   node.querySelectorAll('[data-spact]').forEach(function(b){
     b.onclick=function(){
       var a=b.getAttribute('data-spact');
-      if(a==='vacok'){ S.spVacDecided=true; spToast('Urlaub genehmigt · 7 Schichten betroffen'); return; }
-      if(a==='vacno'){ spToast('Antrag abgelehnt · Gudrun wird informiert'); return; }
+      // Live tragen die Knoepfe die ID des Antrags bzw. der Schicht mit sich.
+      var t=a.indexOf(':'), arg=t>=0?a.slice(t+1):null;
+      if(t>=0) a=a.slice(0,t);
+      if(a==='vacok'){ if(arg) return spDecideVac(arg,true); S.spVacDecided=true; spToast('Urlaub genehmigt · 7 Schichten betroffen'); return; }
+      if(a==='vacno'){ if(arg) return spDecideVac(arg,false); spToast('Antrag abgelehnt · Gudrun wird informiert'); return; }
+      if(a==='goapplicants'&&arg){ S.spApplFor=arg; S.spScreen='applicants'; render(); return; }
       if(a==='vacask'){ spToast('Nachricht an Gudrun'); return; }
       if(a==='vacreplan'){ S.spScreen='result'; spToast('7 Schichten neu geplant · 2 bleiben offen'); return; }
       if(a==='goapplicants'){ S.spScreen='applicants'; render(); return; }
