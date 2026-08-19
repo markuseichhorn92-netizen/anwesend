@@ -156,6 +156,11 @@ ok('16e. Ausschreibungen und Personen sind nicht mehr „in Arbeit"',
   /\{k:'postings',l:'Ausschreibungen', ic:'bell',  bereit:true\}/.test(nav2) &&
   /\{k:'team',   l:'Personen',        ic:'users', bereit:true\}/.test(nav2), nav2);
 
+// Die Mitarbeiter-Seite ist der Entwurf als Telefon. Bliebe hier der Platzhalter
+// stehen, waere die Halfte der Anwendung unsichtbar.
+ok('16f. Die Mitarbeiter-Seite haengt am Rollenumschalter',
+  dispatch.indexOf('spPhoneHTML()')>=0 && dispatch.indexOf("spTodoHTML('Mitarbeiter-Ansicht')")<0, dispatch.slice(-500));
+
 // Die Rueckmeldung stand frueher NUR im Plan. Damit blieben Zusagen, Freigaben
 // und Ausschreibungen anderswo stumm: klicken, nichts sehen.
 ok('17. Die Rueckmeldung haengt an der Huelle', /function spToastHTML/.test(html));
@@ -418,7 +423,135 @@ ok('18d. Abstriche landen sichtbar als Konflikt im Plan',
       return SP_PLAN.concat(SP_TEAM).concat(SP_SYS).filter(function(n){ return !n.bereit; })
         .map(function(n){ return n.k; }).join(','); }))==='');
 
-  ok('29b. Kein Skriptfehler auf allen Bildschirmen', fehler.length===0, fehler.join(' | '));
+  // ── Mitarbeiter-Seite ──
+  const staffGo=async function(sc){
+    await p.evaluate(function(s){
+      S.token='x'; S.screen='schicht'; S.role='admin'; S.booted=true;
+      S.spMode='staff'; S.spStaff=s;
+      S.spShifts=null; S.spVac=null; S.spSA=null; S.spSoft=null; S.spApplied=null;
+      S.spSwapAsked=null; S.spSwapOpen=false; S.spVacFrom=null; S.spVacTo=null;
+      S.spPunched=false; S.spToast='';
+      render();
+    }, sc);
+    await p.waitForTimeout(240);
+  };
+  const phoneText=function(){ return p.evaluate(function(){
+    const el=document.querySelector('.sp-phonescroll'); return el?el.innerText.toLowerCase():''; }); };
+
+  // Jeder der acht Bildschirme muss im Rahmen erscheinen - und der Rahmen die
+  // Masse des Entwurfs behalten, sonst ist es keine Telefonvorschau mehr.
+  const schirme=['home','plan','detail','avail','open','notif','vacnew','absence'];
+  const kaputt=[];
+  for(const sc of schirme){
+    await staffGo(sc);
+    const r=await p.evaluate(function(){
+      const f=document.querySelector('.sp-desk .sp-phonescroll');
+      if(!f) return null;
+      const box=f.closest('[style*="height:812px"]');
+      return { h:Math.round(box.getBoundingClientRect().height),
+        zeilen:f.innerText.trim().split('\n').length,
+        nav:!!box.querySelector('[data-spstaff="home"]'),
+        quer:f.scrollWidth<=f.clientWidth+1 };
+    });
+    if(!r||r.h!==812||r.zeilen<6||!r.nav||!r.quer) kaputt.push(sc+':'+JSON.stringify(r));
+  }
+  ok('30. Alle acht Mitarbeiter-Bildschirme stehen im Telefonrahmen', kaputt.length===0, kaputt.join(' | '));
+
+  // Die Stechuhr laeuft im Sekundentakt und zeichnet dabei die ganze Seite neu.
+  // Laeuft sie weiter, nachdem man den Bereich verlassen hat, rechnet der Browser
+  // dauerhaft im Leerlauf - genau das darf nicht passieren.
+  await staffGo('home');
+  await p.click('[data-sppunch]'); await p.waitForTimeout(1300);
+  const uhr=await p.evaluate(function(){ return { an:!!S.spPunched, sek:S.spPunchSek }; });
+  ok('31. Die Stechuhr laeuft', uhr.an===true && uhr.sek>=1, JSON.stringify(uhr));
+  const gestoppt=await p.evaluate(function(){
+    S.spMode='planner'; S.spScreen='result'; render();
+    const vor=S.spPunchSek;
+    return new Promise(function(r){ setTimeout(function(){ r({vor:vor, nach:S.spPunchSek}); },1600); });
+  });
+  ok('31b. … und steht still, sobald man den Bereich verlaesst',
+    gestoppt.vor===gestoppt.nach, JSON.stringify(gestoppt));
+
+  // Verfuegbarkeit: die Bloecke sind der Kern des Bildschirms.
+  await staffGo('avail');
+  const vorMo=await p.evaluate(function(){ return spSA()[0].join(','); });
+  await p.click('[data-spblock="0:2"]'); await p.waitForTimeout(200);
+  const nachMo=await p.evaluate(function(){ return spSA()[0].join(','); });
+  ok('32. Ein Block laesst sich zuschalten', vorMo==='0,1' && nachMo==='0,1,2', vorMo+' -> '+nachMo);
+  await p.click('[data-spallday="0"]'); await p.waitForTimeout(200);
+  const alle=await p.evaluate(function(){ return spSA()[0].join(','); });
+  await p.click('[data-spallday="0"]'); await p.waitForTimeout(200);
+  const keiner=await p.evaluate(function(){ return spSA()[0].join(','); });
+  ok('32b. „Alle" und „Keiner" schalten den ganzen Tag', alle==='0,1,2,3' && keiner==='', alle+' / '+keiner);
+  await p.click('[data-spsoft="1"]'); await p.waitForTimeout(200);
+  ok('32c. „nur wenn nötig" wird gemerkt', (await p.evaluate(function(){ return !!spSoft()[1]; }))===true);
+
+  // Bewerben und zuruecknehmen.
+  await staffGo('open');
+  const wieViele=await p.$$eval('[data-spapply]',function(e){ return e.length; });
+  const shiftId=await p.$eval('[data-spapply]',function(e){ return e.getAttribute('data-spapply'); });
+  await p.click('[data-spapply]'); await p.waitForTimeout(220);
+  const beworben=await p.evaluate(function(){ return (S.spApplied||[]).join(','); });
+  const knopf=await p.$eval('[data-spapply="'+shiftId+'"]',function(e){ return e.innerText; });
+  await p.click('[data-spapply="'+shiftId+'"]'); await p.waitForTimeout(220);
+  const zurueckgezogen=await p.evaluate(function(){ return (S.spApplied||[]).length; });
+  ok('33. Bewerben und zuruecknehmen wirken beide',
+    wieViele>0 && beworben===shiftId && /zurückziehen/i.test(knopf) && zurueckgezogen===0,
+    JSON.stringify({wieViele:wieViele, beworben:beworben, knopf:knopf, zurueckgezogen:zurueckgezogen}));
+
+  // Urlaubskalender: rueckwaerts gewaehlt muss der Zeitraum sich drehen, sonst
+  // stuende „vom 20. bis zum 18." im Antrag.
+  await staffGo('vacnew');
+  await p.click('[data-spvacday="20"]'); await p.waitForTimeout(160);
+  await p.click('[data-spvacday="18"]'); await p.waitForTimeout(160);
+  const rueck=await p.evaluate(function(){ return { von:S.spVacFrom, bis:S.spVacTo, n:spVacCount() }; });
+  ok('34. Rueckwaerts gewaehlter Zeitraum dreht sich um',
+    rueck.von===18 && rueck.bis===20 && rueck.n===3, JSON.stringify(rueck));
+
+  // Die Warnung wird aus den Daten gerechnet. Ein fester Text waere schlimmer als
+  // keiner: die Person plant danach ihren Urlaub.
+  const warnFuer=async function(a,bb){
+    await p.evaluate(function(x){ S.spVacFrom=x[0]; S.spVacTo=x[1]; render(); }, [a,bb]);
+    await p.waitForTimeout(200);
+    return await phoneText();
+  };
+  const wKeine=await warnFuer(1,3);        // niemand sonst weg
+  const wEine=await warnFuer(5,9);         // Peter im Urlaub
+  const wZwei=await warnFuer(22,23);       // Harald + Gudrun
+  ok('34b. Ohne Ueberschneidung meldet sie gute Chancen',
+    wKeine.indexOf('keine überschneidung')>=0, wKeine.slice(0,120));
+  ok('34c. Bei einer Kollegin sagt sie „sollte machbar"',
+    wEine.indexOf('sollte machbar')>=0, wEine.slice(0,120));
+  ok('34d. Bei zweien warnt sie mit Zahl',
+    wZwei.indexOf('schon 2 kolleg')>=0, wZwei.slice(0,160));
+
+  await p.evaluate(function(){ S.spVacFrom=12; S.spVacTo=16; render(); }); await p.waitForTimeout(200);
+  const beschriftung=await p.$eval('[data-spvacsend]',function(e){ return e.innerText; });
+  await p.click('[data-spvacsend]'); await p.waitForTimeout(280);
+  const gesendet=await p.evaluate(function(){
+    return { screen:S.spStaff, meine:S.spVac.filter(function(v){ return v.staffId==='ma'; }).length,
+      offen:S.spVac.filter(function(v){ return v.staffId==='ma'&&v.status==='pending'; }).length }; });
+  ok('35. Ein Antrag landet in der Liste und fuehrt dorthin',
+    /5 Tage/.test(beschriftung) && gesendet.screen==='absence' && gesendet.meine===2 && gesendet.offen===1,
+    JSON.stringify({knopf:beschriftung, gesendet:gesendet}));
+
+  // Tausch: anfragen zeigt die Kette, zuruecknehmen raeumt sie weg.
+  await staffGo('plan');
+  await p.click('[data-spdet]'); await p.waitForTimeout(240);
+  await p.click('[data-spswapopen]'); await p.waitForTimeout(240);
+  const auswaehlbar=await p.$$eval('[data-spswapask]',function(e){ return e.length; });
+  await p.click('[data-spswapask]'); await p.waitForTimeout(240);
+  const nachTausch=await p.evaluate(function(){
+    return { wer:S.spSwapAsked, offen:!!S.spSwapOpen,
+      kette:/Wartet auf Freigabe/.test(document.querySelector('.sp-phonescroll').innerText) }; });
+  ok('36. Eine Tauschanfrage zeigt den Stand der Kette',
+    auswaehlbar>0 && !!nachTausch.wer && nachTausch.offen===false && nachTausch.kette===true,
+    JSON.stringify({auswaehlbar:auswaehlbar, nachTausch:nachTausch}));
+  // Nur regelkonforme Personen duerfen angefragt werden - der Rest steht mit
+  // Schloss da. Waeren alle anfragbar, waere die Pruefung nur Optik.
+  ok('36b. Nicht jede Person ist anfragbar', auswaehlbar<4, String(auswaehlbar)+' von 4');
+
+  ok('37. Kein Skriptfehler auf allen Bildschirmen', fehler.length===0, fehler.join(' | '));
 
   await b.close();
   console.log(pass?'SP-SHELL PASS':'SP-SHELL FAIL');

@@ -7416,6 +7416,692 @@ function spWireSys(node){
   if(yc) yc.onclick=function(){ spToast('Ende Juli prüfen · drei Urlaube überschneiden sich'); };
 }
 
+// ── Mitarbeiter-Seite ───────────────────────────────────────────────────────
+// Uebernommen aus Schichtplan.dc.html. Der Entwurf zeichnet diese Seite als
+// Telefon: acht Bildschirme in einem Geraeterahmen, mit eigener Fussleiste.
+// Genau so steht sie hier - die Leitung sieht am Schreibtisch, was das Team auf
+// dem Handy sieht.
+var SP_OCT={days:31, firstDow:3, name:'Oktober 2026'};
+var SP_HEUTE_DOM=9;      // Freitag, 9. Oktober - der Tag des Entwurfs
+var SP_HEUTE_TAG=4;      // derselbe Tag als Index in SP_DAYS
+
+function spStaffScreen(){ return S.spStaff||'home'; }
+function spGoStaff(k){
+  S.spStaff=k; render();
+  setTimeout(function(){
+    var el=document.querySelector('.sp-phonescroll'); if(el) el.scrollTop=0;
+  },0);
+}
+function spSA(){ if(!S.spSA) S.spSA=[[0,1],[0,1,2],[0,1,2,3],[2,3],[0,1],[],[]]; return S.spSA; }
+function spSoft(){ if(!S.spSoft) S.spSoft={}; return S.spSoft; }
+function spToggleBlock(day,i){
+  var set=spSA()[day], at=set.indexOf(i);
+  if(at>=0) set.splice(at,1); else set.push(i);
+  set.sort(function(a,b){ return a-b; });
+  render();
+}
+function spSetDayBlocks(day,arr){ spSA()[day]=arr.slice(); render(); }
+function spBlocksHours(day,sel){
+  var sl=spSlotsFor(day);
+  return (sel||[]).reduce(function(n,i){ return n+(sl[i][1]-sl[i][0]); },0);
+}
+function spMyShifts(){ return spShifts().filter(function(x){ return x.who==='ma'; }); }
+function spMyVac(){ return (S.spVac||[]).filter(function(v){ return v.staffId==='ma'; }); }
+
+// Die Stechuhr laeuft im Sekundentakt. Sie darf nur laufen, solange dieser
+// Bildschirm auch sichtbar ist - sonst zeichnet die Seite im Hintergrund weiter.
+function spTogglePunch(){
+  var an=!S.spPunched;
+  S.spPunched=an; if(an) S.spPunchSek=0;
+  clearInterval(window.__spPunchT);
+  if(an){
+    window.__spPunchT=setInterval(function(){
+      if(S.screen!=='schicht'||S.spMode!=='staff'||!S.spPunched){ clearInterval(window.__spPunchT); return; }
+      S.spPunchSek=(S.spPunchSek||0)+1; render();
+    },1000);
+    spToast('Eingestempelt um 9:41');
+  } else spToast('Ausgestempelt · '+Math.floor((S.spPunchSek||0)/60)+' Std erfasst');
+}
+function spApplyShift(id){
+  if(!S.spApplied) S.spApplied=[];
+  var at=S.spApplied.indexOf(id);
+  if(at>=0){ S.spApplied.splice(at,1); spToast('Bewerbung zurückgezogen'); }
+  else { S.spApplied.push(id); spToast('Bewerbung gesendet · Leitung entscheidet'); }
+}
+function spAskSwap(who){ S.spSwapOpen=false; S.spSwapAsked=who; spToast('Tauschanfrage an '+SP_STAFF[who].short+' gesendet'); }
+function spPickVacDay(d){
+  var a=S.spVacFrom, b=S.spVacTo;
+  if(a===null||a===undefined||(a!==null&&a!==undefined&&b!==null&&b!==undefined)){ S.spVacFrom=d; S.spVacTo=null; render(); return; }
+  if(d<a){ S.spVacTo=a; S.spVacFrom=d; render(); return; }
+  S.spVacTo=d; render();
+}
+function spVacCount(){
+  var a=S.spVacFrom, b=S.spVacTo;
+  if(a===null||a===undefined) return 0;
+  if(b===null||b===undefined) return 1;
+  return b-a+1;
+}
+function spSubmitVac(){
+  var a=S.spVacFrom, b=(S.spVacTo===null||S.spVacTo===undefined)?S.spVacFrom:S.spVacTo;
+  if(a===null||a===undefined){ spToast('Bitte Zeitraum im Kalender wählen'); return; }
+  var n=b-a+1;
+  S.spVac=(S.spVac||[]).concat([{id:'v'+n+'-'+a+'-'+b, staffId:'ma', from:a, to:b, status:'pending', days:n}]);
+  S.spVacFrom=null; S.spVacTo=null; S.spStaff='absence';
+  spToast(n+' Tage beantragt · Leitung sieht die Folgen sofort');
+}
+
+function spStaffKopf(titel, unter, zurueck){
+  return '<div style="padding:56px 18px 16px;background:var(--surf);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px">'+
+    (zurueck?('<button data-spstaff="'+zurueck+'" class="tap" style="width:40px;height:40px;border-radius:13px;border:1px solid var(--line);background:var(--surf2);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'+
+      '<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="var(--tx)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"></path></svg></button>'):'')+
+    '<div style="flex:1;min-width:0"><div style="font-size:'+(zurueck?'19px':'21px')+';font-weight:900;letter-spacing:-.4px">'+esc(titel)+'</div>'+
+    (unter?'<div style="font-size:11px;font-weight:700;color:var(--tx3);font-variant-numeric:tabular-nums">'+esc(unter)+'</div>':'')+'</div></div>';
+}
+function spTabs(attr, aktiv, paare){
+  return '<div style="display:flex;gap:3px;background:var(--surf2);border-radius:11px;padding:3px">'+
+    paare.map(function(t){
+      var a=aktiv===t[0];
+      return '<button '+attr+'="'+t[0]+'" style="flex:1;padding:9px 0;border:none;border-radius:8px;background:'+(a?'var(--surf)':'transparent')+';color:'+(a?'var(--tx)':'var(--tx3)')+';font-family:inherit;font-size:12px;font-weight:800;cursor:pointer">'+esc(t[1])+'</button>';
+    }).join('')+'</div>';
+}
+
+function spStaffHomeHTML(){
+  var live=!!S.spPunched, sek=S.spPunchSek||0;
+  var mmz=Math.floor(sek/60), ssz=sek%60;
+  var offen=spShifts().filter(function(x){ return !x.who; }).length;
+  var todos=[
+    ['Tauschanfrage von Kathrin','Fr 09.10. · 17:30–21:30 Fläche','var(--vi)','var(--vis)','swap','plan'],
+    ['2 neue offene Schichten','Sa und So · Bewerbung bis heute 20 Uhr','var(--wn)','var(--wns)','bell','open'],
+    ['Verfügbarkeit November fehlt','Noch 4 Tage — sonst plant die KI ohne dich','var(--dg)','var(--dgs)','warn','avail']
+  ].map(function(t){
+    return '<div data-spstaff="'+t[5]+'" class="tap" style="background:var(--surf);border:1px solid var(--line);border-left:3px solid '+t[2]+';border-radius:15px;padding:14px;cursor:pointer;display:flex;align-items:center;gap:12px">'+
+      '<div style="width:36px;height:36px;border-radius:11px;background:'+t[3]+';display:flex;align-items:center;justify-content:center;flex-shrink:0">'+spIc(SPI[t[4]],t[4]==='warn'?'var(--dgt)':t[2],18)+'</div>'+
+      '<div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:900;letter-spacing:-.2px">'+esc(t[0])+'</div>'+
+      '<div style="font-size:11.5px;font-weight:700;color:var(--tx3);margin-top:2px">'+esc(t[1])+'</div></div>'+
+      '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--tx4)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M9 18l6-6-6-6"></path></svg></div>';
+  }).join('');
+
+  var woche=spMyShifts().slice(0,4).map(function(x){
+    var heute=x.day===SP_HEUTE_TAG;
+    return '<div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-bottom:1px solid var(--line);background:'+(heute?'var(--acs)':'transparent')+'">'+
+      '<div style="width:34px;flex-shrink:0"><div style="font-size:10px;font-weight:800;color:'+(heute?'var(--ac)':'var(--tx3)')+'">'+SP_DAYS[x.day][0]+'</div>'+
+      '<div style="font-size:14px;font-weight:900;line-height:1.1;color:'+(heute?'var(--ac)':'var(--tx)')+';font-variant-numeric:tabular-nums">'+SP_DAYS[x.day][1].slice(0,2)+'</div></div>'+
+      '<div style="flex:1;min-width:0"><div style="font-size:12.5px;font-weight:800;font-variant-numeric:tabular-nums">'+esc(spSpan(x.a,x.b))+'</div>'+
+      '<div style="font-size:10.5px;font-weight:700;color:var(--tx3);margin-top:1px">'+esc(SP_AREA[x.area].label+' · '+spDur(x.a,x.b))+'</div></div>'+
+      (heute?'<span style="font-size:8.5px;font-weight:900;color:var(--ac);letter-spacing:.7px;text-transform:uppercase;padding:3px 7px;border-radius:5px;background:var(--acs);flex-shrink:0">Heute</span>':'')+
+    '</div>';
+  }).join('');
+
+  var rest=30-13-spMyVac().filter(function(v){ return v.status!=='declined'; }).reduce(function(n,v){ return n+v.days; },0);
+
+  return '<div>'+
+    '<div style="padding:56px 20px 20px;background:var(--surf);border-bottom:1px solid var(--line)">'+
+      '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px">'+
+        '<div><div style="font-size:9.5px;font-weight:900;color:var(--tx4);letter-spacing:1.5px;text-transform:uppercase">Freitag, 9. Oktober</div>'+
+          '<div style="font-size:21px;font-weight:900;letter-spacing:-.5px;margin-top:5px">Moin, Markus</div></div>'+
+        '<div style="display:flex;align-items:center;gap:8px">'+
+          '<button data-spstaff="notif" class="tap" style="position:relative;width:42px;height:42px;border-radius:13px;border:1px solid var(--line);background:var(--surf2);display:flex;align-items:center;justify-content:center;cursor:pointer">'+
+            spIc(SPI.bell,'var(--tx)',19)+
+            '<span style="position:absolute;top:8px;right:9px;width:8px;height:8px;border-radius:50%;background:var(--wn);border:2px solid var(--surf)"></span></button>'+
+          '<div style="width:42px;height:42px;border-radius:50%;background:var(--acs);color:var(--ac);font-size:13px;font-weight:900;display:flex;align-items:center;justify-content:center">MA</div>'+
+        '</div></div></div>'+
+    '<div style="padding:16px 18px 20px">'+
+      '<div style="background:'+(live?'var(--oks)':'var(--surf)')+';border:1px solid '+(live?'var(--ok)':'var(--line)')+';border-radius:20px;padding:17px">'+
+        '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px">'+
+          '<span style="font-size:9.5px;font-weight:900;color:'+(live?'var(--ok)':'var(--tx3)')+';letter-spacing:1.4px;text-transform:uppercase">'+(live?'Eingestempelt seit 9:41':'Nächste Schicht · heute')+'</span>'+
+          (live?'<span style="display:inline-flex;align-items:center;gap:6px"><span style="width:6px;height:6px;border-radius:50%;background:var(--ok);animation:spPulse 1.4s ease-in-out infinite"></span><span style="font-size:11px;font-weight:800;color:var(--ok)">läuft</span></span>':'')+
+        '</div>'+
+        '<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-top:11px">'+
+          '<div style="min-width:0">'+
+            '<div style="font-size:26px;font-weight:900;letter-spacing:-.8px;line-height:1.05">'+(live?'Läuft':'09:30 – 13:00')+'</div>'+
+            '<div style="font-size:13px;font-weight:700;color:var(--tx2);margin-top:4px;font-variant-numeric:tabular-nums">'+(live?'geplant bis 13:00 Uhr':'Freitag · 3,5 Std · Trainingsfläche')+'</div>'+
+            (live?'<div style="font-size:31px;font-weight:900;letter-spacing:-1.4px;color:var(--ok);margin-top:9px;font-variant-numeric:tabular-nums">'+(mmz<10?'0'+mmz:mmz)+':'+(ssz<10?'0'+ssz:ssz)+'</div>':'')+
+          '</div>'+
+          '<span style="font-size:9.5px;font-weight:900;color:var(--ac);letter-spacing:1px;text-transform:uppercase;padding:4px 9px;border-radius:6px;background:var(--acs);flex-shrink:0">Trainingsfläche</span>'+
+        '</div>'+
+        '<button data-sppunch="1" class="tap" style="width:100%;height:52px;margin-top:15px;border-radius:15px;border:none;background:'+(live?'var(--dg)':'var(--ac)')+';color:'+(live?'var(--dgfg)':'var(--acfg)')+';font-family:inherit;font-size:15.5px;font-weight:900;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:9px">'+
+          spIc(SPI.clock,live?'var(--dgfg)':'var(--acfg)',19)+(live?'Ausstempeln':'Einstempeln')+'</button>'+
+      '</div>'+
+      '<div style="display:flex;gap:9px;margin-top:12px">'+
+        '<div style="flex:1;background:var(--surf);border:1px solid var(--line);border-radius:16px;padding:13px 14px">'+
+          '<div style="font-size:9px;font-weight:900;color:var(--tx4);letter-spacing:1.2px;text-transform:uppercase">Diesen Monat</div>'+
+          '<div style="display:flex;align-items:baseline;gap:3px;margin-top:6px"><span style="font-size:21px;font-weight:900;letter-spacing:-.7px;line-height:1;font-variant-numeric:tabular-nums">118</span><span style="font-size:11px;font-weight:800;color:var(--tx3)">/ 160 Std</span></div>'+
+          '<div style="height:4px;border-radius:2px;background:var(--surf3);margin-top:9px;overflow:hidden"><div style="width:74%;height:100%;background:var(--ac)"></div></div>'+
+          '<div style="font-size:9.5px;font-weight:800;color:var(--tx3);margin-top:7px">42 Std Rest</div></div>'+
+        '<div style="flex:1;background:var(--surf);border:1px solid var(--line);border-radius:16px;padding:13px 14px">'+
+          '<div style="font-size:9px;font-weight:900;color:var(--tx4);letter-spacing:1.2px;text-transform:uppercase">Resturlaub</div>'+
+          '<div style="display:flex;align-items:baseline;gap:3px;margin-top:6px"><span style="font-size:21px;font-weight:900;letter-spacing:-.7px;line-height:1;font-variant-numeric:tabular-nums">'+rest+'</span><span style="font-size:11px;font-weight:800;color:var(--tx3)">Tage</span></div>'+
+          '<button data-spstaff="absence" style="border:none;background:none;color:var(--ac);font-family:inherit;font-size:11px;font-weight:900;cursor:pointer;padding:0;margin-top:11px">Antrag stellen</button></div>'+
+      '</div>'+
+      '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin:22px 2px 11px">'+
+        '<span style="font-size:10px;font-weight:900;color:var(--tx3);letter-spacing:1.4px;text-transform:uppercase">Braucht dich</span>'+
+        '<span style="font-size:10px;font-weight:800;color:var(--tx4)">3 Punkte</span></div>'+
+      '<div style="display:flex;flex-direction:column;gap:10px">'+todos+'</div>'+
+      '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin:22px 2px 11px">'+
+        '<span style="font-size:10px;font-weight:900;color:var(--tx3);letter-spacing:1.4px;text-transform:uppercase">Deine Woche</span>'+
+        '<button data-spstaff="plan" style="border:none;background:none;color:var(--ac);font-family:inherit;font-size:11px;font-weight:900;cursor:pointer;padding:0">Ganzer Plan</button></div>'+
+      '<div style="background:var(--surf);border:1px solid var(--line);border-radius:16px;overflow:hidden">'+(woche||
+        '<div style="padding:16px;font-size:12px;font-weight:700;color:var(--tx3);text-align:center">Diese Woche keine Schichten.</div>')+'</div>'+
+      '<div style="height:4px"></div>'+
+      '<span style="display:none">'+offen+'</span>'+
+    '</div>'+
+  '</div>';
+}
+
+function spStaffPlanHTML(){
+  var karten=spMyShifts().map(function(x){
+    var heute=x.day===SP_HEUTE_TAG;
+    var kollegen=spShifts().filter(function(o){ return o.day===x.day&&o.who&&o.who!=='ma'; }).slice(0,2);
+    var avatare=kollegen.map(function(o){
+      return '<span style="width:22px;height:22px;border-radius:50%;background:var(--surf2);color:var(--tx2);font-size:8.5px;font-weight:900;display:flex;align-items:center;justify-content:center">'+esc(SP_STAFF[o.who].ini)+'</span>';
+    }).join('');
+    return '<div data-spdet="'+esc(x.id)+'" class="tap" style="background:var(--surf);border:1px solid '+(heute?'var(--acb)':'var(--line)')+';border-left:3px solid '+(heute?'var(--ac)':'var(--line2)')+';border-radius:15px;padding:14px;cursor:pointer">'+
+      '<div style="display:flex;align-items:center;gap:13px">'+
+        '<div style="width:44px;flex-shrink:0;text-align:center">'+
+          '<div style="font-size:10px;font-weight:800;color:'+(heute?'var(--ac)':'var(--tx3)')+';letter-spacing:.5px;text-transform:uppercase">'+SP_DAYS[x.day][0]+'</div>'+
+          '<div style="font-size:19px;font-weight:900;line-height:1.05;color:'+(heute?'var(--ac)':'var(--tx)')+';font-variant-numeric:tabular-nums">'+SP_DAYS[x.day][1].slice(0,2)+'</div>'+
+          '<div style="font-size:9px;font-weight:700;color:var(--tx4)">Okt</div></div>'+
+        '<div style="width:1px;align-self:stretch;background:var(--line)"></div>'+
+        '<div style="flex:1;min-width:0">'+
+          '<div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">'+
+            '<span style="font-size:14.5px;font-weight:900;letter-spacing:-.3px;font-variant-numeric:tabular-nums">'+esc(spSpan(x.a,x.b))+'</span>'+
+            (heute?'<span style="font-size:8.5px;font-weight:900;color:var(--ac);letter-spacing:.7px;text-transform:uppercase;padding:3px 7px;border-radius:5px;background:var(--acs)">Heute</span>':'')+
+          '</div>'+
+          '<div style="font-size:11.5px;font-weight:700;color:var(--tx3);margin-top:3px">'+esc(SP_AREA[x.area].label+' · '+spDur(x.a,x.b))+'</div>'+
+          (kollegen.length?('<div style="display:flex;align-items:center;gap:6px;margin-top:8px">'+avatare+
+            '<span style="font-size:10.5px;font-weight:700;color:var(--tx3)">'+(kollegen.length===1?'1 Kollege':kollegen.length+' Kollegen')+'</span></div>'):'')+
+        '</div>'+
+        '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--tx4)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M9 18l6-6-6-6"></path></svg>'+
+      '</div></div>';
+  }).join('');
+
+  return '<div>'+
+    '<div style="padding:56px 20px 15px;background:var(--surf);border-bottom:1px solid var(--line)">'+
+      '<div style="font-size:21px;font-weight:900;letter-spacing:-.5px">Mein Plan</div>'+
+      '<div style="margin-top:13px">'+spTabs('data-spplanzoom', S.spStaffZoom||'woche', [['woche','Woche'],['monat','Monat'],['quartal','Quartal']])+'</div>'+
+    '</div>'+
+    '<div style="padding:14px 18px 20px">'+
+      '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px">'+
+        '<span style="font-size:12.5px;font-weight:900">KW 41 · 05.–11. Oktober</span>'+
+        '<span style="font-size:10px;font-weight:900;color:var(--ok);letter-spacing:1px;text-transform:uppercase;padding:3px 8px;border-radius:6px;background:var(--oks)">Veröffentlicht</span></div>'+
+      '<div style="display:flex;flex-direction:column;gap:10px">'+(karten||
+        '<div style="font-size:12px;font-weight:700;color:var(--tx3);padding:20px 0;text-align:center">Keine eigenen Schichten in dieser Woche.</div>')+'</div>'+
+    '</div>'+
+  '</div>';
+}
+
+function spStaffDetailHTML(){
+  var eigene=spMyShifts();
+  var det=spShifts().filter(function(x){ return x.id===S.spDetId&&x.who==='ma'; })[0]||eigene[0]||spShifts()[0];
+  if(!det) return spStaffKopf('Schicht','','plan')+'<div style="padding:20px;font-size:12px;font-weight:700;color:var(--tx3)">Keine Schicht gewählt.</div>';
+  var getauscht=S.spSwapAsked;
+
+  var kollegen=spShifts().filter(function(o){ return o.day===det.day&&o.who&&o.who!=='ma'; }).map(function(o){
+    return '<div style="display:flex;align-items:center;gap:11px">'+
+      '<div style="width:34px;height:34px;border-radius:50%;background:var(--surf2);color:var(--tx2);font-size:11px;font-weight:900;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+esc(SP_STAFF[o.who].ini)+'</div>'+
+      '<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:800">'+esc(SP_STAFF[o.who].name)+'</div>'+
+      '<div style="font-size:11px;font-weight:700;color:var(--tx3);font-variant-numeric:tabular-nums">'+esc(spSpan(o.a,o.b)+' · '+SP_AREA[o.area].label)+'</div></div></div>';
+  }).join('');
+
+  var kette=getauscht?[
+    ['Tausch angeboten','heute 9:41','var(--ac)','var(--ac)',true,true,'var(--ac)','var(--tx)'],
+    [SP_STAFF[getauscht].short+' hat angenommen','heute 9:44','var(--ac)','var(--ac)',true,true,'var(--wn)','var(--tx)'],
+    ['Wartet auf Freigabe der Leitung','kritische Schicht · Freigabe nötig','var(--wns)','var(--wn)',false,true,'var(--line)','var(--tx)'],
+    ['Bestätigt','offen','transparent','var(--line2)',false,false,'var(--line)','var(--tx4)']
+  ].map(function(c){
+    return '<div style="display:flex;gap:12px">'+
+      '<div style="display:flex;flex-direction:column;align-items:center;width:19px;flex-shrink:0">'+
+        '<div style="width:19px;height:19px;border-radius:50%;background:'+c[2]+';border:2px solid '+c[3]+';display:flex;align-items:center;justify-content:center">'+
+        (c[4]?spIc(SPI.check,'var(--acfg)',11):'')+'</div>'+
+        (c[5]?'<div style="width:2px;flex:1;min-height:22px;background:'+c[6]+'"></div>':'')+'</div>'+
+      '<div style="flex:1;min-width:0;padding-bottom:14px">'+
+        '<div style="font-size:12.5px;font-weight:800;color:'+c[7]+'">'+esc(c[0])+'</div>'+
+        '<div style="font-size:10.5px;font-weight:700;color:var(--tx3);margin-top:1px;font-variant-numeric:tabular-nums">'+esc(c[1])+'</div></div></div>';
+  }).join(''):'';
+
+  var aktionen=getauscht
+    ? '<button data-spswapundo="1" class="tap" style="width:100%;height:48px;border-radius:14px;border:1px solid var(--line2);background:transparent;color:var(--tx2);font-family:inherit;font-size:14px;font-weight:700;cursor:pointer">Anfrage zurückziehen</button>'
+    : '<button data-spswapopen="1" class="tap" style="width:100%;height:48px;border-radius:14px;border:none;background:var(--ac);color:var(--acfg);font-family:inherit;font-size:14px;font-weight:900;cursor:pointer">Tauschen</button>'+
+      '<button data-spgiveup="1" class="tap" style="width:100%;height:48px;border-radius:14px;border:1px solid var(--line2);background:transparent;color:var(--tx2);font-family:inherit;font-size:14px;font-weight:700;cursor:pointer">Schicht abgeben</button>';
+
+  return '<div>'+
+    spStaffKopf(SP_DAYS[det.day][2]+', '+SP_DAYS[det.day][1], spSpan(det.a,det.b)+' · '+spDur(det.a,det.b), 'plan')+
+    '<div style="padding:16px 18px 20px">'+
+      '<div style="background:var(--surf);border:1px solid var(--line);border-radius:18px;padding:17px">'+
+        '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px">'+
+          '<span style="font-size:9.5px;font-weight:900;color:var(--ac);letter-spacing:1.2px;text-transform:uppercase;padding:4px 9px;border-radius:6px;background:var(--acs)">'+esc(SP_AREA[det.area].label)+'</span>'+
+          (getauscht?'<span style="font-size:9.5px;font-weight:900;color:var(--wn);letter-spacing:1px;text-transform:uppercase;padding:4px 9px;border-radius:6px;background:var(--wns)">Im Tausch</span>':'')+
+        '</div>'+
+        '<div style="font-size:29px;font-weight:900;letter-spacing:-1px;margin-top:13px;font-variant-numeric:tabular-nums">'+esc(spSpan(det.a,det.b))+'</div>'+
+        '<div style="font-size:12.5px;font-weight:700;color:var(--tx2);margin-top:3px">'+esc(spDur(det.a,det.b)+' · '+SP_AREA[det.area].label)+'</div>'+
+        (det.split?('<div style="display:flex;align-items:center;gap:9px;background:var(--wns);border:1px solid var(--wnb);border-radius:12px;padding:11px 12px;margin-top:13px">'+
+          '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--wn)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M8 3v18M16 3v18M3 8h5M16 8h5M3 16h5M16 16h5"></path></svg>'+
+          '<span style="font-size:11.5px;font-weight:700;color:var(--tx2);line-height:1.4">Geteilter Dienst mit Pause 13:00–15:00 während der Mittagsschließung</span></div>'):'')+
+      '</div>'+
+      '<div style="background:var(--surf);border:1px solid var(--line);border-radius:18px;padding:17px;margin-top:12px">'+
+        '<div style="font-size:9.5px;font-weight:900;color:var(--tx4);letter-spacing:1.3px;text-transform:uppercase">Mit dir im Dienst</div>'+
+        '<div style="display:flex;flex-direction:column;gap:11px;margin-top:12px">'+(kollegen||
+          '<div style="font-size:11.5px;font-weight:700;color:var(--tx3)">Du bist allein eingeteilt.</div>')+'</div></div>'+
+      (getauscht?('<div style="background:var(--surf);border:1px solid var(--line);border-radius:18px;padding:17px;margin-top:12px">'+
+        '<div style="font-size:9.5px;font-weight:900;color:var(--tx4);letter-spacing:1.3px;text-transform:uppercase">Status Tauschanfrage</div>'+
+        '<div style="display:flex;flex-direction:column;margin-top:13px">'+kette+'</div></div>'):'')+
+      '<div style="display:flex;flex-direction:column;gap:9px;margin-top:14px">'+aktionen+'</div>'+
+    '</div>'+
+  '</div>';
+}
+
+function spStaffAvailHTML(){
+  var tab=S.spAvailTab||'woche', sa=spSA(), soft=spSoft();
+  var inhalt;
+  if(tab==='woche'){
+    var zeilen=SP_DAYS.map(function(d,i){
+      var slots=spSlotsFor(i), sel=sa[i]||[], weich=!!soft[i];
+      var stunden=spBlocksHours(i,sel);
+      var farbe=weich?'var(--wn)':'var(--ac)';
+      var alle=sel.length===slots.length, keiner=sel.length===0;
+      var bloecke=slots.map(function(sl,k){
+        var an=sel.indexOf(k)>=0;
+        return '<button data-spblock="'+i+':'+k+'" class="tap" style="width:100%;height:46px;border-radius:11px;border:1.5px solid '+(an?farbe:'var(--line2)')+';background:'+(an?(weich?'var(--wns)':'var(--acs)'):'transparent')+';color:'+(an?farbe:'var(--tx3)')+';font-family:inherit;font-size:14px;font-weight:'+(an?'900':'700')+';cursor:pointer;display:flex;align-items:center;gap:11px;padding:0 13px;font-variant-numeric:tabular-nums">'+
+          '<span style="width:20px;height:20px;border-radius:6px;border:2px solid '+(an?farbe:'var(--line2)')+';background:'+(an?farbe:'transparent')+';flex-shrink:0;display:flex;align-items:center;justify-content:center">'+
+          (an?spIc(SPI.check,'var(--surf)',13):'')+'</span>'+
+          '<span style="flex:1;text-align:left">'+spT(sl[0])+'–'+spT(sl[1])+'</span></button>';
+      }).join('');
+      return '<div style="background:var(--surf);border:1px solid var(--line);border-radius:15px;padding:13px 14px">'+
+        '<div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px">'+
+          '<div style="display:flex;align-items:baseline;gap:9px;min-width:0">'+
+            '<span style="font-size:13px;font-weight:900">'+d[2]+'</span>'+
+            '<span style="font-size:11.5px;font-weight:800;color:'+(keiner?'var(--tx3)':farbe)+'">'+(keiner?'Kann nicht':(sel.length+' von '+slots.length+' Blöcken'))+'</span>'+
+            '<span style="font-size:10.5px;font-weight:700;color:var(--tx3);font-variant-numeric:tabular-nums">'+(keiner?'':(stunden%1?stunden.toFixed(1).replace('.',','):stunden)+' Std')+'</span></div>'+
+          '<div style="display:flex;gap:6px;flex-shrink:0">'+
+            '<button data-spallday="'+i+'" class="tap" style="height:24px;padding:0 9px;border-radius:7px;border:1px solid var(--line2);background:transparent;color:var(--tx3);font-family:inherit;font-size:9.5px;font-weight:800;cursor:pointer;white-space:nowrap">'+(alle?'Keiner':'Alle')+'</button>'+
+            '<button data-spsoft="'+i+'" class="tap" style="height:24px;padding:0 9px;border-radius:7px;border:1px solid '+(weich?'var(--wnb)':'var(--line2)')+';background:'+(weich?'var(--wns)':'transparent')+';color:'+(weich?'var(--wn)':'var(--tx3)')+';font-family:inherit;font-size:9.5px;font-weight:800;cursor:pointer;white-space:nowrap">nur wenn nötig</button>'+
+          '</div></div>'+
+        '<div style="display:flex;flex-direction:column;gap:6px;margin-top:11px">'+bloecke+'</div></div>';
+    }).join('');
+    inhalt='<div style="display:flex;flex-direction:column;gap:10px;margin-top:14px">'+zeilen+'</div>'+
+      '<button data-spavsave="1" class="tap" style="width:100%;height:50px;margin-top:14px;border-radius:14px;border:none;background:var(--ac);color:var(--acfg);font-family:inherit;font-size:15px;font-weight:900;cursor:pointer">Für November melden</button>';
+  } else {
+    var muster=[
+      ['p1','Jeden Montag vormittags','ab 01.09.2026 · ohne Enddatum'],
+      ['p2','Jedes zweite Wochenende frei','ab 01.10.2026 · bis 31.03.2027']
+    ].map(function(m){
+      var an=!!spMuster()[m[0]];
+      return '<div style="background:var(--surf);border:1px solid var(--line);border-radius:15px;padding:14px">'+
+        '<div style="display:flex;align-items:flex-start;gap:11px">'+
+          '<div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:900;letter-spacing:-.2px">'+esc(m[1])+'</div>'+
+          '<div style="font-size:11.5px;font-weight:700;color:var(--tx3);margin-top:3px">'+esc(m[2])+'</div></div>'+
+          '<button data-spmuster="'+m[0]+'" class="tap" style="width:40px;height:23px;border-radius:12px;border:none;background:'+(an?'var(--ac)':'var(--surf3)')+';position:relative;cursor:pointer;flex-shrink:0;padding:0">'+
+            '<span style="position:absolute;top:3px;left:'+(an?'20px':'3px')+';width:17px;height:17px;border-radius:50%;background:'+(an?'var(--acfg)':'var(--tx3)')+';transition:left .16s ease"></span></button>'+
+        '</div></div>';
+    }).join('');
+    var ausnahmen=[['Fr 23.10.2026','Kann nicht','var(--dgt)','var(--dg)'],['Sa 07.11.2026','Kann ganztags','var(--ok)','var(--ok)']].map(function(e){
+      return '<div style="display:flex;align-items:center;gap:10px">'+
+        '<span style="width:7px;height:7px;border-radius:50%;background:'+e[3]+';flex-shrink:0"></span>'+
+        '<span style="flex:1;font-size:12px;font-weight:800;font-variant-numeric:tabular-nums">'+esc(e[0])+'</span>'+
+        '<span style="font-size:11px;font-weight:800;color:'+e[2]+'">'+esc(e[1])+'</span></div>';
+    }).join('');
+    inhalt='<div style="display:flex;flex-direction:column;gap:11px;margin-top:14px">'+muster+
+      '<button data-spmusterneu="1" class="tap" style="width:100%;height:46px;border-radius:14px;border:1.5px dashed var(--line2);background:transparent;color:var(--tx2);font-family:inherit;font-size:13px;font-weight:800;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px">'+
+        '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>Muster hinzufügen</button>'+
+      '<div style="background:var(--surf);border:1px solid var(--line);border-radius:15px;padding:14px;margin-top:3px">'+
+        '<div style="font-size:9.5px;font-weight:900;color:var(--tx4);letter-spacing:1.3px;text-transform:uppercase">Einzeltag-Ausnahmen</div>'+
+        '<div style="display:flex;flex-direction:column;gap:9px;margin-top:11px">'+ausnahmen+'</div></div>'+
+    '</div>';
+  }
+
+  return '<div>'+
+    '<div style="padding:56px 20px 16px;background:var(--surf);border-bottom:1px solid var(--line)">'+
+      '<div style="font-size:21px;font-weight:900;letter-spacing:-.5px">Verfügbarkeit</div>'+
+      '<div style="display:flex;align-items:center;gap:9px;background:var(--wns);border:1px solid var(--wnb);border-radius:12px;padding:10px 12px;margin-top:12px">'+
+        spIc(SPI.clock,'var(--wn)',15)+
+        '<span style="font-size:11.5px;font-weight:800;color:var(--tx2);flex:1">Noch 4 Tage für November</span></div>'+
+    '</div>'+
+    '<div style="padding:16px 18px 20px">'+
+      spTabs('data-spavtab', tab, [['woche','Wochenraster'],['muster','Muster & Ausnahmen']])+
+      inhalt+
+    '</div>'+
+  '</div>';
+}
+function spMuster(){ if(!S.spMuster) S.spMuster={p1:true,p2:false}; return S.spMuster; }
+
+function spStaffOpenHTML(){
+  var tab=S.spOpenTab||'offen';
+  var inhalt;
+  if(tab==='offen'){
+    var karten=spShifts().filter(function(x){ return !x.who; }).map(function(x){
+      var beworben=(S.spApplied||[]).indexOf(x.id)>=0;
+      var bewerbung=x.day===6;
+      return '<div style="background:var(--surf);border:1px solid '+(beworben?'var(--acb)':'var(--line)')+';border-left:3px solid var(--wn);border-radius:15px;padding:15px">'+
+        '<div style="display:flex;align-items:flex-start;gap:12px">'+
+          '<div style="width:46px;height:46px;border-radius:13px;background:var(--wns);display:flex;flex-direction:column;align-items:center;justify-content:center;flex-shrink:0">'+
+            '<span style="font-size:9.5px;font-weight:900;color:var(--wn);letter-spacing:.4px">'+SP_DAYS[x.day][0]+'</span>'+
+            '<span style="font-size:16px;font-weight:900;color:var(--wn);line-height:1;font-variant-numeric:tabular-nums">'+SP_DAYS[x.day][1].slice(0,2)+'</span></div>'+
+          '<div style="flex:1;min-width:0">'+
+            '<div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">'+
+              '<span style="font-size:14.5px;font-weight:900;letter-spacing:-.3px;font-variant-numeric:tabular-nums">'+esc(spSpan(x.a,x.b))+'</span>'+
+              '<span style="font-size:8.5px;font-weight:900;color:'+(bewerbung?'var(--wn)':'var(--ok)')+';letter-spacing:.7px;text-transform:uppercase;padding:3px 7px;border-radius:5px;background:'+(bewerbung?'var(--wns)':'var(--oks)')+'">'+(bewerbung?'Bewerbung':'Sofort')+'</span></div>'+
+            '<div style="font-size:11.5px;font-weight:700;color:var(--tx3);margin-top:3px">'+esc(SP_AREA[x.area].label+' · '+spDur(x.a,x.b))+'</div>'+
+            '<div style="font-size:11px;font-weight:800;color:'+(bewerbung?'var(--wn)':'var(--tx3)')+';margin-top:6px">'+(bewerbung?'Frist: heute 20:00':'Wer zuerst zusagt, bekommt sie')+'</div></div>'+
+        '</div>'+
+        (bewerbung?('<div style="display:flex;align-items:center;gap:8px;background:var(--oks);border-radius:11px;padding:9px 11px;margin-top:11px">'+
+          spIc(SPI.check,'var(--ok)',14)+
+          '<span style="font-size:11px;font-weight:700;color:var(--tx2);line-height:1.4">Passt zu dir: Qualifikation ok, 42 Std Rest im Monat, Ruhezeit frei</span></div>'):'')+
+        '<button data-spapply="'+esc(x.id)+'" class="tap" style="width:100%;height:44px;margin-top:12px;border-radius:12px;border:'+(beworben?'1px solid var(--line2)':'none')+';background:'+(beworben?'transparent':'var(--ac)')+';color:'+(beworben?'var(--dgt)':'var(--acfg)')+';font-family:inherit;font-size:13.5px;font-weight:900;cursor:pointer">'+
+          (beworben?'Bewerbung zurückziehen':(bewerbung?'Bewerben':'Sofort übernehmen'))+'</button>'+
+      '</div>';
+    }).join('');
+    inhalt='<div style="display:flex;flex-direction:column;gap:11px">'+(karten||
+      '<div style="font-size:12.5px;font-weight:700;color:var(--tx3);padding:24px 0;text-align:center">Zurzeit ist nichts ausgeschrieben.</div>')+'</div>';
+  } else {
+    inhalt='<div style="display:flex;flex-direction:column;gap:11px">'+[
+      ['So 11.10. · 09:00–15:00','Trainingsfläche · 6 Std','Zugesagt','var(--ok)','var(--oks)','Du hast die Schicht bekommen — sie steht jetzt in deinem Plan.'],
+      ['Sa 03.10. · 13:00–18:00','Trainingsfläche · 5 Std','Abgelehnt','var(--tx3)','var(--surf2)','Diesmal hat Gudrun die Schicht übernommen — sie war länger nicht am Wochenende dran. Danke fürs Melden!'],
+      ['Fr 02.10. · 17:00–21:30','Trainingsfläche · 4,5 Std','Verfallen','var(--tx3)','var(--surf2)','']
+    ].map(function(m){
+      return '<div style="background:var(--surf);border:1px solid var(--line);border-radius:15px;padding:14px">'+
+        '<div style="display:flex;align-items:center;gap:12px">'+
+          '<div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:900;font-variant-numeric:tabular-nums">'+esc(m[0])+'</div>'+
+          '<div style="font-size:11px;font-weight:700;color:var(--tx3);margin-top:2px">'+esc(m[1])+'</div></div>'+
+          '<span style="font-size:9.5px;font-weight:900;color:'+m[3]+';letter-spacing:.9px;text-transform:uppercase;padding:4px 9px;border-radius:6px;background:'+m[4]+';flex-shrink:0">'+esc(m[2])+'</span></div>'+
+        (m[5]?('<div style="font-size:11.5px;font-weight:600;color:var(--tx2);background:var(--surf2);border-radius:11px;padding:10px 12px;margin-top:11px;line-height:1.45">'+esc(m[5])+'</div>'):'')+
+      '</div>';
+    }).join('')+'</div>';
+  }
+
+  return '<div>'+
+    '<div style="padding:56px 20px 15px;background:var(--surf);border-bottom:1px solid var(--line)">'+
+      '<div style="font-size:21px;font-weight:900;letter-spacing:-.5px">Offene Schichten</div>'+
+      '<div style="margin-top:13px">'+spTabs('data-spopentab', tab, [['offen','Ausschreibungen'],['meine','Meine Bewerbungen']])+'</div>'+
+    '</div>'+
+    '<div style="padding:15px 18px 20px">'+inhalt+'</div>'+
+  '</div>';
+}
+
+function spStaffNotifHTML(){
+  var karten=[
+    ['Neuer Plan veröffentlicht','KW 41–48 stehen. Deine Schichten sind eingetragen.','vor 2 Std',true,'cal','var(--acs)','var(--ac)'],
+    ['Tauschanfrage von Kathrin','Fr 09.10. 17:30–21:30 — sie fragt, ob du übernimmst.','vor 3 Std',true,'swap','var(--vis)','var(--vi)'],
+    ['Neue offene Schicht','So 11.10. 09:00–15:00 Fläche. Frist heute 20 Uhr.','vor 5 Std',false,'bell','var(--wns)','var(--wn)'],
+    ['Bewerbung angenommen','Du hast die Sonntagsschicht bekommen.','gestern',false,'check','var(--oks)','var(--ok)'],
+    ['Ausstempeln vergessen','Mi 07.10. — bitte Zeit nachtragen.','vor 2 Tagen',false,'warn','var(--dgs)','var(--dgt)']
+  ].map(function(n){
+    return '<div style="background:var(--surf);border:1px solid var(--line);border-radius:15px;padding:14px;display:flex;gap:12px;opacity:'+(n[3]?'1':'.72')+'">'+
+      '<div style="width:34px;height:34px;border-radius:11px;background:'+n[5]+';display:flex;align-items:center;justify-content:center;flex-shrink:0">'+spIc(SPI[n[4]],n[6],17)+'</div>'+
+      '<div style="flex:1;min-width:0">'+
+        '<div style="display:flex;align-items:baseline;justify-content:space-between;gap:9px">'+
+          '<span style="font-size:13px;font-weight:900;letter-spacing:-.2px">'+esc(n[0])+'</span>'+
+          '<span style="font-size:10px;font-weight:700;color:var(--tx4);flex-shrink:0">'+esc(n[2])+'</span></div>'+
+        '<div style="font-size:11.5px;font-weight:600;color:var(--tx2);margin-top:3px;line-height:1.45">'+esc(n[1])+'</div></div>'+
+      (n[3]?'<span style="width:8px;height:8px;border-radius:50%;background:var(--ac);flex-shrink:0;margin-top:4px"></span>':'')+
+    '</div>';
+  }).join('');
+  return '<div>'+spStaffKopf('Mitteilungen','','home')+
+    '<div style="padding:14px 18px 20px;display:flex;flex-direction:column;gap:10px">'+karten+'</div></div>';
+}
+
+function spStaffVacNewHTML(){
+  var vf=S.spVacFrom, vt=S.spVacTo;
+  var alle=S.spVac||[];
+  var genommen=13;
+  var geplant=spMyVac().filter(function(v){ return v.status!=='declined'; }).reduce(function(n,v){ return n+v.days; },0);
+  var rest=30-genommen-geplant;
+  var anzahl=spVacCount();
+
+  var zellen='';
+  for(var i=0;i<SP_OCT.firstDow;i++) zellen+='<div></div>';
+  for(var d=1;d<=SP_OCT.days;d++){
+    var dow=(SP_OCT.firstDow+d-1)%7;
+    var drin=(vf!==null&&vf!==undefined)&&((vt===null||vt===undefined)?(d===vf):(d>=vf&&d<=vt));
+    var andere=alle.filter(function(v){ return v.staffId!=='ma'&&v.status!=='declined'&&d>=v.from&&d<=v.to; }).length;
+    var meins=alle.some(function(v){ return v.staffId==='ma'&&v.status!=='declined'&&d>=v.from&&d<=v.to; });
+    var bg=drin?'var(--ac)':(meins?'var(--vis)':'transparent');
+    var fg=drin?'var(--acfg)':(meins?'var(--vi)':(dow>4?'var(--tx3)':'var(--tx)'));
+    var bd=drin?'var(--ac)':(andere>1?'var(--wnb)':'var(--line)');
+    zellen+='<button data-spvacday="'+d+'" class="tap" style="position:relative;aspect-ratio:1;border-radius:10px;border:1px solid '+bd+';background:'+bg+';color:'+fg+';font-family:inherit;font-size:12.5px;font-weight:'+((drin||meins)?'900':'700')+';cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;font-variant-numeric:tabular-nums">'+d+
+      (andere>0?('<span style="position:absolute;bottom:3px;left:50%;transform:translateX(-50%);width:4px;height:4px;border-radius:50%;background:'+(andere>1?'var(--wn)':'var(--tx4)')+'"></span>'):'')+'</button>';
+  }
+
+  // Warnung aus den Daten, nicht aus einem festen Text: sie sagt der Person
+  // VOR dem Antrag, wie die Chancen stehen.
+  var warn=null;
+  if(vf!==null&&vf!==undefined){
+    var bis=(vt===null||vt===undefined)?vf:vt, schlimmste=0;
+    for(var t=vf;t<=bis;t++){
+      var n=alle.filter(function(v){ return v.staffId!=='ma'&&v.status!=='declined'&&t>=v.from&&t<=v.to; }).length;
+      if(n>schlimmste) schlimmste=n;
+    }
+    warn=schlimmste>=2
+      ? {t:'In diesem Zeitraum sind schon '+schlimmste+' Kolleg:innen weg — die Leitung muss genauer prüfen.', c:'var(--wn)', bg:'var(--wns)', bd:'var(--wnb)'}
+      : schlimmste===1
+        ? {t:'Eine Kollegin ist im Zeitraum ebenfalls weg — sollte machbar sein.', c:'var(--tx2)', bg:'var(--surf2)', bd:'var(--line)'}
+        : {t:'Keine Überschneidung mit anderen — gute Chance auf Genehmigung.', c:'var(--ok)', bg:'var(--oks)', bd:'var(--line)'};
+  }
+
+  return '<div>'+
+    spStaffKopf('Urlaub eintragen', rest+' von 30 Tagen frei', 'absence')+
+    '<div style="padding:16px 18px 20px">'+
+      '<div style="background:var(--surf);border:1px solid var(--line);border-radius:18px;padding:16px">'+
+        '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px">'+
+          '<span style="font-size:14px;font-weight:900">'+SP_OCT.name+'</span>'+
+          (anzahl?'<button data-spvacclear="1" style="border:none;background:none;color:var(--tx3);font-family:inherit;font-size:11px;font-weight:800;cursor:pointer;padding:0;text-decoration:underline">Auswahl löschen</button>':'')+
+        '</div>'+
+        '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-top:13px">'+
+          ['Mo','Di','Mi','Do','Fr','Sa','So'].map(function(h){
+            return '<div style="text-align:center;font-size:9px;font-weight:900;color:var(--tx4);letter-spacing:.8px;text-transform:uppercase;padding-bottom:3px">'+h+'</div>'; }).join('')+
+          zellen+'</div>'+
+        '<div style="display:flex;align-items:center;gap:14px;margin-top:13px;padding-top:12px;border-top:1px solid var(--line);flex-wrap:wrap">'+
+          '<span style="display:inline-flex;align-items:center;gap:6px"><span style="width:11px;height:11px;border-radius:4px;background:var(--ac)"></span><span style="font-size:10px;font-weight:700;color:var(--tx3)">Deine Auswahl</span></span>'+
+          '<span style="display:inline-flex;align-items:center;gap:6px"><span style="width:11px;height:11px;border-radius:4px;background:var(--vis)"></span><span style="font-size:10px;font-weight:700;color:var(--tx3)">Schon beantragt</span></span>'+
+          '<span style="display:inline-flex;align-items:center;gap:6px"><span style="width:4px;height:4px;border-radius:50%;background:var(--wn)"></span><span style="font-size:10px;font-weight:700;color:var(--tx3)">Kolleg:innen weg</span></span>'+
+        '</div></div>'+
+      '<div style="background:var(--surf);border:1px solid var(--line);border-radius:18px;padding:16px;margin-top:12px">'+
+        '<div style="font-size:9.5px;font-weight:900;color:var(--tx4);letter-spacing:1.3px;text-transform:uppercase">Dein Zeitraum</div>'+
+        '<div style="font-size:17px;font-weight:900;letter-spacing:-.4px;margin-top:6px;font-variant-numeric:tabular-nums">'+
+          (anzahl?(anzahl===1?(vf+'. Oktober'):(vf+'.–'+((vt===null||vt===undefined)?vf:vt)+'. Oktober')):'Tippe Start und Ende an')+'</div>'+
+        '<div style="display:flex;gap:20px;margin-top:14px">'+
+          '<div><div style="font-size:9px;font-weight:900;color:var(--tx4);letter-spacing:1.1px;text-transform:uppercase">Beantragt</div><div style="font-size:19px;font-weight:900;margin-top:3px;font-variant-numeric:tabular-nums">'+anzahl+'</div></div>'+
+          '<div><div style="font-size:9px;font-weight:900;color:var(--tx4);letter-spacing:1.1px;text-transform:uppercase">Rest danach</div><div style="font-size:19px;font-weight:900;margin-top:3px;color:var(--ac);font-variant-numeric:tabular-nums">'+(rest-anzahl)+'</div></div>'+
+          '<div><div style="font-size:9px;font-weight:900;color:var(--tx4);letter-spacing:1.1px;text-transform:uppercase">Schon genommen</div><div style="font-size:19px;font-weight:900;margin-top:3px;color:var(--tx2);font-variant-numeric:tabular-nums">'+genommen+'</div></div></div>'+
+        (warn?('<div style="display:flex;align-items:flex-start;gap:9px;background:'+warn.bg+';border:1px solid '+warn.bd+';border-radius:12px;padding:11px 12px;margin-top:14px">'+
+          '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="'+warn.c+'" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;margin-top:1px"><circle cx="12" cy="12" r="9"></circle><path d="M12 16v-4M12 8h.01"></path></svg>'+
+          '<span style="font-size:11.5px;font-weight:700;color:'+warn.c+';line-height:1.45">'+esc(warn.t)+'</span></div>'):'')+
+      '</div>'+
+      '<button data-spvacsend="1" class="tap" style="width:100%;height:52px;margin-top:14px;border-radius:14px;border:none;background:'+(anzahl?'var(--ac)':'var(--surf3)')+';color:'+(anzahl?'var(--acfg)':'var(--tx4)')+';font-family:inherit;font-size:15px;font-weight:900;cursor:pointer">'+
+        (anzahl?(anzahl+' Tage beantragen'):'Zeitraum wählen')+'</button>'+
+      '<div style="font-size:10.5px;font-weight:700;color:var(--tx3);text-align:center;margin-top:10px;line-height:1.45">Die Leitung sieht sofort, welche Schichten betroffen sind — und kann sie neu planen oder ausschreiben.</div>'+
+    '</div>'+
+  '</div>';
+}
+
+function spStaffAbsenceHTML(){
+  var meine=spMyVac();
+  var genommen=13;
+  var geplant=meine.filter(function(v){ return v.status!=='declined'; }).reduce(function(n,v){ return n+v.days; },0);
+  var rest=30-genommen-geplant;
+  var kommend=meine.filter(function(v){ return v.status!=='declined'&&v.to>=SP_HEUTE_DOM; })
+    .sort(function(a,b){ return a.from-b.from; })[0]||null;
+
+  var antraege=meine.map(function(v){
+    var st=SP_VAC_STATUS[v.status]||SP_VAC_STATUS.pending;
+    return '<div style="background:var(--surf);border:1px solid var(--line);border-radius:15px;padding:14px">'+
+      '<div style="display:flex;align-items:center;gap:11px">'+
+        '<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:900;font-variant-numeric:tabular-nums">'+v.from+'.–'+v.to+'. Oktober 2026</div>'+
+        '<div style="font-size:11px;font-weight:700;color:var(--tx3);margin-top:2px">'+v.days+' Tage · Urlaub</div></div>'+
+        '<span style="font-size:9.5px;font-weight:900;color:'+st[1]+';letter-spacing:.9px;text-transform:uppercase;padding:4px 9px;border-radius:6px;background:'+st[2]+';flex-shrink:0">'+st[0]+'</span></div>'+
+      (v.status==='declined'?('<div style="font-size:11.5px;font-weight:600;color:var(--tx2);background:var(--surf2);border-radius:11px;padding:10px 12px;margin-top:11px;line-height:1.45">In der Woche sind schon zwei Kolleg:innen weg — magst du eine Woche später nehmen? Melde dich gern bei mir.</div>'):'')+
+    '</div>';
+  }).join('')+
+  '<div style="background:var(--surf);border:1px solid var(--line);border-radius:15px;padding:14px">'+
+    '<div style="display:flex;align-items:center;gap:11px">'+
+      '<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:900;font-variant-numeric:tabular-nums">23.12.2026 – 02.01.2027</div>'+
+      '<div style="font-size:11px;font-weight:700;color:var(--tx3);margin-top:2px">8 Tage · Urlaub</div></div>'+
+      '<span style="font-size:9.5px;font-weight:900;color:var(--ok);letter-spacing:.9px;text-transform:uppercase;padding:4px 9px;border-radius:6px;background:var(--oks);flex-shrink:0">Genehmigt</span></div></div>';
+
+  var kst=kommend?(SP_VAC_STATUS[kommend.status]||SP_VAC_STATUS.pending):null;
+
+  return '<div>'+
+    spStaffKopf('Mein Urlaub', rest+' von 30 Tagen frei', 'home')+
+    '<div style="padding:16px 18px 20px">'+
+      '<div style="background:var(--surf);border:1px solid var(--line);border-radius:18px;padding:17px">'+
+        '<div style="display:flex;gap:22px">'+
+          '<div><div style="font-size:9px;font-weight:900;color:var(--tx4);letter-spacing:1.2px;text-transform:uppercase">Rest 2026</div><div style="font-size:22px;font-weight:900;margin-top:4px;color:var(--ac);font-variant-numeric:tabular-nums">'+rest+'</div></div>'+
+          '<div><div style="font-size:9px;font-weight:900;color:var(--tx4);letter-spacing:1.2px;text-transform:uppercase">Genommen</div><div style="font-size:22px;font-weight:900;margin-top:4px;color:var(--tx2);font-variant-numeric:tabular-nums">'+genommen+'</div></div>'+
+          '<div><div style="font-size:9px;font-weight:900;color:var(--tx4);letter-spacing:1.2px;text-transform:uppercase">Geplant</div><div style="font-size:22px;font-weight:900;margin-top:4px;color:var(--vi);font-variant-numeric:tabular-nums">'+geplant+'</div></div></div>'+
+        '<div style="display:flex;height:7px;border-radius:4px;overflow:hidden;margin-top:14px;gap:2px">'+
+          '<div style="flex:'+genommen+';background:var(--tx4);border-radius:4px"></div>'+
+          '<div style="flex:'+geplant+';background:var(--vi);border-radius:4px"></div>'+
+          '<div style="flex:'+Math.max(0,rest)+';background:var(--surf3);border-radius:4px"></div></div>'+
+        '<div style="display:flex;align-items:center;gap:14px;margin-top:10px;flex-wrap:wrap">'+
+          [['var(--tx4)','genommen'],['var(--vi)','geplant'],['var(--surf3)','frei']].map(function(l){
+            return '<span style="display:inline-flex;align-items:center;gap:6px"><span style="width:10px;height:6px;border-radius:3px;background:'+l[0]+'"></span><span style="font-size:10px;font-weight:700;color:var(--tx3)">'+l[1]+'</span></span>'; }).join('')+
+        '</div></div>'+
+      '<button data-spstaff="vacnew" class="tap" style="width:100%;height:50px;margin-top:12px;border-radius:14px;border:none;background:var(--ac);color:var(--acfg);font-family:inherit;font-size:14.5px;font-weight:900;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:9px">'+
+        '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--acfg)" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>Urlaub beantragen</button>'+
+      (kommend?('<div style="background:var(--surf);border:1px solid var(--line);border-left:3px solid var(--vi);border-radius:18px;padding:16px;margin-top:12px">'+
+        '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px">'+
+          '<span style="font-size:9.5px;font-weight:900;color:var(--tx4);letter-spacing:1.3px;text-transform:uppercase">Nächster Urlaub</span>'+
+          '<span style="font-size:9.5px;font-weight:900;color:'+kst[1]+';letter-spacing:.9px;text-transform:uppercase;padding:4px 9px;border-radius:6px;background:'+kst[2]+'">'+kst[0]+'</span></div>'+
+        '<div style="font-size:19px;font-weight:900;letter-spacing:-.5px;margin-top:9px;font-variant-numeric:tabular-nums">'+kommend.from+'.–'+kommend.to+'. Oktober 2026</div>'+
+        '<div style="font-size:12px;font-weight:700;color:var(--tx2);margin-top:3px">'+kommend.days+' Tage · '+
+          (kommend.from<=SP_HEUTE_DOM?'läuft gerade':('in '+(kommend.from-SP_HEUTE_DOM)+' Tagen'))+'</div></div>'):'')+
+      '<div style="font-size:9.5px;font-weight:900;color:var(--tx4);letter-spacing:1.3px;text-transform:uppercase;margin:22px 2px 11px">Deine Anträge</div>'+
+      '<div style="display:flex;flex-direction:column;gap:10px">'+antraege+'</div>'+
+    '</div>'+
+  '</div>';
+}
+
+function spStaffNavHTML(){
+  var sc=spStaffScreen();
+  var offen=spShifts().filter(function(x){ return !x.who; }).length;
+  var offeneAntraege=spMyVac().filter(function(v){ return v.status==='pending'; }).length;
+  var defs=[
+    ['home','Start','cal',''],
+    ['plan','Mein Plan','clock',''],
+    ['open','Offene','swap', offen?String(offen):''],
+    ['avail','Zeiten','grid',''],
+    ['absence','Urlaub','sunS', offeneAntraege?String(offeneAntraege):'']
+  ];
+  return '<div style="border-top:1px solid var(--line);background:var(--surf);padding:8px 10px 20px;display:flex;align-items:flex-end;gap:2px">'+
+    defs.map(function(n){
+      var a=sc===n[0]||(n[0]==='plan'&&sc==='detail')||(n[0]==='absence'&&sc==='vacnew')||(n[0]==='home'&&sc==='notif');
+      return '<button data-spstaff="'+n[0]+'" style="flex:1;border:none;background:none;cursor:pointer;padding:6px 2px 2px;display:flex;flex-direction:column;align-items:center;gap:4px;font-family:inherit">'+
+        '<span style="position:relative;width:24px;height:24px;display:flex;align-items:center;justify-content:center">'+spIc(SPI[n[2]], a?'var(--ac)':'var(--tx4)', 23)+
+        (n[3]?('<span style="position:absolute;top:-2px;right:-4px;min-width:15px;height:15px;padding:0 3px;border-radius:8px;background:var(--wn);color:'+(spDark()?'#2A1706':'#fff')+';font-size:9px;font-weight:900;display:flex;align-items:center;justify-content:center">'+esc(n[3])+'</span>'):'')+'</span>'+
+        '<span style="font-size:9.5px;font-weight:'+(a?'900':'700')+';color:'+(a?'var(--ac)':'var(--tx4)')+';letter-spacing:.2px">'+esc(n[1])+'</span></button>';
+    }).join('')+
+  '</div>';
+}
+
+function spSwapSheetHTML(){
+  if(!S.spSwapOpen) return '';
+  var karten=[
+    ['pe','Verfügbar · Ruhezeit passt',true],
+    ['gu','Verfügbar · Qualifikation passt',true],
+    ['ka','Minijob-Grenze fast erreicht',false],
+    ['ha','Hat den Tag als „kann nicht" gemeldet',false]
+  ].map(function(c){
+    var p=SP_STAFF[c[0]], kann=c[2];
+    return '<div style="background:var(--surf);border:1px solid var(--line);border-radius:14px;padding:13px;display:flex;align-items:center;gap:11px;opacity:'+(kann?'1':'.55')+'">'+
+      '<div style="width:36px;height:36px;border-radius:50%;background:'+(kann?'var(--acs)':'var(--surf2)')+';color:'+(kann?'var(--ac)':'var(--tx3)')+';font-size:11.5px;font-weight:900;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+esc(p.ini)+'</div>'+
+      '<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:900;color:'+(kann?'var(--tx)':'var(--tx2)')+'">'+esc(p.name)+'</div>'+
+      '<div style="font-size:11px;font-weight:700;color:'+(kann?'var(--ok)':'var(--tx3)')+';margin-top:1px">'+esc(c[1])+'</div></div>'+
+      (kann?('<button data-spswapask="'+esc(c[0])+'" class="tap" style="height:34px;padding:0 13px;border-radius:10px;border:none;background:var(--ac);color:var(--acfg);font-family:inherit;font-size:11.5px;font-weight:900;cursor:pointer;flex-shrink:0">Anfragen</button>')
+        :'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--tx4)" stroke-width="2.2" stroke-linecap="round" style="flex-shrink:0"><circle cx="12" cy="12" r="9"></circle><path d="M5.6 5.6l12.8 12.8"></path></svg>')+
+    '</div>';
+  }).join('');
+  return '<div data-spswapclose="1" style="position:absolute;inset:0;z-index:92;background:var(--ov);display:flex;align-items:flex-end;justify-content:center">'+
+    '<div style="width:100%;background:var(--bg);border-radius:24px 24px 0 0;border-top:1px solid var(--line2);max-height:80%;display:flex;flex-direction:column;animation:spPop .26s ease both">'+
+      '<div style="padding:18px 20px 12px;border-bottom:1px solid var(--line)">'+
+        '<div style="font-size:17px;font-weight:900;letter-spacing:-.4px">Mit wem tauschen?</div>'+
+        '<div style="font-size:11.5px;font-weight:600;color:var(--tx2);margin-top:3px">Nur regelkonforme Personen sind auswählbar.</div></div>'+
+      '<div class="sc" style="flex:1;overflow-y:auto;padding:14px 20px 20px;display:flex;flex-direction:column;gap:9px">'+karten+'</div>'+
+    '</div></div>';
+}
+
+function spPhoneHTML(){
+  var sc=spStaffScreen();
+  var inhalt=sc==='plan'?spStaffPlanHTML()
+    :sc==='detail'?spStaffDetailHTML()
+    :sc==='avail'?spStaffAvailHTML()
+    :sc==='open'?spStaffOpenHTML()
+    :sc==='notif'?spStaffNotifHTML()
+    :sc==='vacnew'?spStaffVacNewHTML()
+    :sc==='absence'?spStaffAbsenceHTML()
+    :spStaffHomeHTML();
+
+  return '<div style="display:flex;justify-content:center;padding:26px 20px 40px">'+
+    '<div style="width:392px;flex-shrink:0">'+
+      '<div style="background:var(--frame);border-radius:46px;padding:9px;box-shadow:0 30px 70px rgba(0,0,0,.35)">'+
+        '<div style="background:var(--bg);border-radius:38px;overflow:hidden;position:relative;height:812px;display:flex;flex-direction:column">'+
+          '<div style="position:absolute;top:0;left:0;right:0;height:46px;z-index:50;display:flex;align-items:flex-end;justify-content:space-between;padding:0 24px 7px;pointer-events:none">'+
+            '<span style="font-size:12.5px;font-weight:800;color:var(--tx)">9:41</span>'+
+            '<div style="display:flex;align-items:center;gap:5px">'+
+              '<svg width="16" height="11" viewBox="0 0 18 12" fill="var(--tx)"><rect x="0" y="8" width="3" height="4" rx="1"></rect><rect x="5" y="5.5" width="3" height="6.5" rx="1"></rect><rect x="10" y="3" width="3" height="9" rx="1"></rect><rect x="15" y="0" width="3" height="12" rx="1"></rect></svg>'+
+              '<svg width="15" height="11" viewBox="0 0 16 12" fill="none" stroke="var(--tx)" stroke-width="1.6" stroke-linecap="round"><path d="M1 4.2a10 10 0 0 1 14 0M3.6 7a6.4 6.4 0 0 1 8.8 0"></path><circle cx="8" cy="10" r="1.1" fill="var(--tx)" stroke="none"></circle></svg>'+
+              '<svg width="23" height="11" viewBox="0 0 25 12"><rect x="0.6" y="0.6" width="20" height="10.8" rx="3" fill="none" stroke="var(--tx)" stroke-opacity=".45"></rect><rect x="2.2" y="2.2" width="15" height="7.6" rx="1.8" fill="var(--tx)"></rect><path d="M22.5 4.2v3.6a2 2 0 0 0 0-3.6z" fill="var(--tx)" fill-opacity=".45"></path></svg>'+
+            '</div></div>'+
+          '<div class="sc sp-phonescroll" style="flex:1;overflow-y:auto;overflow-x:hidden">'+inhalt+'</div>'+
+          spStaffNavHTML()+
+          spSwapSheetHTML()+
+        '</div>'+
+      '</div>'+
+    '</div></div>';
+}
+
+function spWireStaff(node){
+  node.querySelectorAll('[data-spstaff]').forEach(function(b){
+    b.onclick=function(){ spGoStaff(b.getAttribute('data-spstaff')); };
+  });
+  node.querySelectorAll('[data-spdet]').forEach(function(b){
+    b.onclick=function(){ S.spDetId=b.getAttribute('data-spdet'); spGoStaff('detail'); };
+  });
+  var pu=node.querySelector('[data-sppunch]'); if(pu) pu.onclick=spTogglePunch;
+  node.querySelectorAll('[data-spplanzoom]').forEach(function(b){
+    b.onclick=function(){ S.spStaffZoom=b.getAttribute('data-spplanzoom'); render(); };
+  });
+  node.querySelectorAll('[data-spavtab]').forEach(function(b){
+    b.onclick=function(){ S.spAvailTab=b.getAttribute('data-spavtab'); render(); };
+  });
+  node.querySelectorAll('[data-spopentab]').forEach(function(b){
+    b.onclick=function(){ S.spOpenTab=b.getAttribute('data-spopentab'); render(); };
+  });
+  node.querySelectorAll('[data-spblock]').forEach(function(b){
+    b.onclick=function(){ var p=b.getAttribute('data-spblock').split(':'); spToggleBlock(parseInt(p[0],10), parseInt(p[1],10)); };
+  });
+  node.querySelectorAll('[data-spallday]').forEach(function(b){
+    b.onclick=function(){
+      var i=parseInt(b.getAttribute('data-spallday'),10);
+      var slots=spSlotsFor(i), sel=spSA()[i]||[];
+      spSetDayBlocks(i, sel.length===slots.length?[]:slots.map(function(_,k){ return k; }));
+    };
+  });
+  node.querySelectorAll('[data-spsoft]').forEach(function(b){
+    b.onclick=function(){ var i=b.getAttribute('data-spsoft'); var s=spSoft(); s[i]=!s[i]; render(); };
+  });
+  node.querySelectorAll('[data-spmuster]').forEach(function(b){
+    b.onclick=function(){ var k=b.getAttribute('data-spmuster'); var m=spMuster(); m[k]=!m[k]; render(); };
+  });
+  var mn=node.querySelector('[data-spmusterneu]'); if(mn) mn.onclick=function(){ spToast('Muster anlegen folgt'); };
+  var av=node.querySelector('[data-spavsave]'); if(av) av.onclick=function(){ spToast('Verfügbarkeit für November gemeldet'); };
+  node.querySelectorAll('[data-spapply]').forEach(function(b){
+    b.onclick=function(){ spApplyShift(b.getAttribute('data-spapply')); };
+  });
+  var so=node.querySelector('[data-spswapopen]'); if(so) so.onclick=function(){ S.spSwapOpen=true; render(); };
+  var sx=node.querySelector('[data-spswapclose]');
+  if(sx) sx.onclick=function(e){ if(e.target===sx){ S.spSwapOpen=false; render(); } };
+  node.querySelectorAll('[data-spswapask]').forEach(function(b){
+    b.onclick=function(){ spAskSwap(b.getAttribute('data-spswapask')); };
+  });
+  var su=node.querySelector('[data-spswapundo]');
+  if(su) su.onclick=function(){ S.spSwapAsked=null; spToast('Anfrage zurückgezogen'); };
+  var gu=node.querySelector('[data-spgiveup]'); if(gu) gu.onclick=function(){ spToast('Am Schwarzen Brett angeboten'); };
+  node.querySelectorAll('[data-spvacday]').forEach(function(b){
+    b.onclick=function(){ spPickVacDay(parseInt(b.getAttribute('data-spvacday'),10)); };
+  });
+  var vc=node.querySelector('[data-spvacclear]'); if(vc) vc.onclick=function(){ S.spVacFrom=null; S.spVacTo=null; render(); };
+  var vs=node.querySelector('[data-spvacsend]'); if(vs) vs.onclick=spSubmitVac;
+}
+
 // ── Schichtplan: Huelle aus dem Entwurf ─────────────────────────────────────
 // Symbole des Entwurfs. Gleiche Strichstaerke und Rundungen wie dort; die Farbe
 // kommt von aussen, damit aktiv/inaktiv nur eine Token-Frage ist.
@@ -7436,7 +8122,13 @@ var SPI={
   bell:'<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.7 21a2 2 0 0 1-3.4 0"></path>',
   gear:'<circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2 2 2 0 1 1-4 0 1.7 1.7 0 0 0-2.9-1.2l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.7 1.7 0 0 0 2.6 15a2 2 0 1 1 0-4 1.7 1.7 0 0 0 1.7-2.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.7 1.7 0 0 0 10 4.6a2 2 0 1 1 4 0 1.7 1.7 0 0 0 2.9 1.2l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1A1.7 1.7 0 0 0 21.4 11a2 2 0 1 1 0 4z"></path>',
   sun:'<circle cx="12" cy="12" r="4.5"></circle><path d="M12 2v2M12 20v2M4 12H2M22 12h-2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M5.6 18.4 7 17M17 7l1.4-1.4"></path>',
-  moon:'<path d="M21 12.8A8.5 8.5 0 1 1 11.2 3a6.6 6.6 0 0 0 9.8 9.8z"></path>'
+  moon:'<path d="M21 12.8A8.5 8.5 0 1 1 11.2 3a6.6 6.6 0 0 0 9.8 9.8z"></path>',
+  // Zusaetzlich fuer die Mitarbeiter-Seite (gleiche Quelle, gleicher Strich)
+  clock:'<circle cx="12" cy="12" r="9"></circle><path d="M12 8v4l3 2"></path>',
+  swap:'<path d="M7 4L3 8l4 4"></path><path d="M3 8h13a4 4 0 0 1 0 8h-3"></path><path d="M17 20l4-4-4-4"></path>',
+  check:'<path d="M20 6L9 17l-5-5"></path>',
+  warn:'<path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"></path>',
+  sunS:'<circle cx="12" cy="12" r="4.2"></circle><path d="M12 2.5v2M12 19.5v2M3.5 12h2M18.5 12h-2M6 6l1.4 1.4M16.6 16.6L18 18M6 18l1.4-1.4M16.6 7.4L18 6"></path>'
 };
 function spIc(p,c,sz){ return '<svg width="'+(sz||18)+'" height="'+(sz||18)+'" viewBox="0 0 24 24" fill="none" stroke="'+c+'" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">'+p+'</svg>'; }
 function spDark(){ return S.spTheme!=='light'; }
@@ -7569,13 +8261,13 @@ function schichtNode(){
             : S.spScreen==='settings' ? spSettingsHTML()
             : S.spScreen==='print' ? spPrintHTML()
             : spTodoHTML(spTitel(S.spScreen)))
-          : spTodoHTML('Mitarbeiter-Ansicht'))+
+          : spPhoneHTML())+
       '</div>'+
     '</div>'+spToastHTML()+'</div>';
   var hand='<div class="sp-hand" style="padding:20px 16px 44px">'+bestand+'</div>';
 
   node.innerHTML=desk+hand+shKiHTML()+shEditorHTML()+shChatHTML();
-  setTimeout(function(){ wireSchicht(node); wireSp(node); spWireResult(node); spWireSetup(node); spWireInbox(node); spWireTeam(node); spWireSys(node); },0);
+  setTimeout(function(){ wireSchicht(node); wireSp(node); spWireResult(node); spWireSetup(node); spWireInbox(node); spWireTeam(node); spWireSys(node); spWireStaff(node); },0);
   return node;
 }
 function spTitel(k){
