@@ -56,6 +56,37 @@
     .ctx-toggle{display:inline-flex!important}
   }
   @media (min-width:1101px){ .ctx-toggle,.ctx-overlay{display:none!important} }
+  /* ── Schichtplan ────────────────────────────────────────────────────────────
+     Der Entwurf aus Claude Design bringt eine eigene Palette mit: dunkler Grund,
+     Mint als Akzent, Violett fuer „von der Leitung eingetragen". Bewusste
+     Entscheidung: Der Schichtplan ist eine eigene Welt und sieht anders aus als
+     Posteingang oder Mitglieder.
+
+     Deshalb haengen die Tokens an `.sp` und NICHT an :root - sonst faerbte der
+     Umschalter das ganze Backend um. `data-sptheme` steht auf demselben Knoten,
+     damit hell/dunkel ohne Neuaufbau der Seite umschaltet. */
+  .sp[data-sptheme="dark"]{--bg:#0B0D10;--surf:#14171C;--surf2:rgba(255,255,255,.045);--surf3:rgba(255,255,255,.08);--line:rgba(255,255,255,.07);--line2:rgba(255,255,255,.12);--tx:#F3F5F7;--tx2:#AAB3BA;--tx3:#8D979F;--tx4:#7E8890;--ac:#2FD4B6;--ac2:#5FE0A0;--acfg:#06231F;--acs:rgba(47,212,182,.13);--acb:rgba(47,212,182,.42);--ok:#5FE0A0;--oks:rgba(95,224,160,.13);--wn:#F6A964;--wns:rgba(246,169,100,.12);--wnb:rgba(246,169,100,.45);--dg:#FF6E5E;--dgt:#FF9C90;--dgs:rgba(255,110,94,.11);--dgfg:#2A0B06;--vi:#9B8CFF;--vis:rgba(155,140,255,.14);--hatch:rgba(255,255,255,.04);--shade:rgba(255,255,255,.02);--frame:#000;--ov:rgba(0,0,0,.7)}
+  .sp[data-sptheme="light"]{--bg:#F2F5F6;--surf:#FFFFFF;--surf2:rgba(10,40,45,.04);--surf3:rgba(10,40,45,.07);--line:rgba(10,40,45,.10);--line2:rgba(10,40,45,.16);--tx:#12181C;--tx2:#3D4A54;--tx3:#4E5861;--tx4:#5C666F;--ac:#0C8E79;--ac2:#0A7565;--acfg:#FFFFFF;--acs:rgba(12,142,121,.10);--acb:rgba(12,142,121,.40);--ok:#12804C;--oks:rgba(18,128,76,.11);--wn:#A35E12;--wns:rgba(214,138,44,.14);--wnb:rgba(163,94,18,.42);--dg:#C8382A;--dgt:#A82D21;--dgs:rgba(200,56,42,.08);--dgfg:#FFFFFF;--vi:#5B45C4;--vis:rgba(91,69,196,.10);--hatch:rgba(10,40,45,.05);--shade:rgba(10,40,45,.02);--frame:#C3CDD1;--ov:rgba(12,24,28,.45)}
+  .sp{background:var(--bg);color:var(--tx);min-height:100%}
+  .sp *{box-sizing:border-box}
+  .sp .tap{transition:transform .12s ease,filter .12s ease}
+  .sp .tap:active{transform:scale(.97);filter:brightness(1.08)}
+  .sp .sc::-webkit-scrollbar{width:9px;height:9px}
+  .sp .sc::-webkit-scrollbar-thumb{background:var(--line2);border-radius:6px}
+  .sp .sc::-webkit-scrollbar-track{background:transparent}
+  @keyframes spSpin{to{transform:rotate(360deg)}}
+  @keyframes spPop{0%{transform:translateY(14px);opacity:0}100%{transform:translateY(0);opacity:1}}
+  /* Der Entwurf ist fuer den Schreibtisch gezeichnet (Inhalt ab 1000px). Auf dem
+     Telefon bleibt deshalb die bisherige schmale Ansicht - sie funktioniert dort,
+     und ein 1000px-Raster waere unbenutzbar. */
+  /* Der Schichtplan bringt seine eigene Kopfzeile mit. Auf dem Schreibtisch
+     waeren es sonst zwei uebereinander. */
+  @media (min-width:1000px){ body.sp-on .hdr-mobile{display:none} }
+  .sp-desk{display:none}
+  .sp-hand{display:block}
+  @media (min-width:1000px){ .sp-desk{display:block} .sp-hand{display:none} }
+  @media print{ .sp [data-noprint]{display:none!important} }
+
   /* „Mehr" auf dem Telefon: Blatt von unten statt Schublade von links.
      Auf dem Desktop existiert es gar nicht - dort ist die Seitenleiste richtig. */
   .mb-more{display:none}
@@ -214,6 +245,7 @@ var S={ token:null, role:null, meName:null, screen:'dash', convs:[], counts:{}, 
         trFirst:'', trLast:'', trEmail:'', trPhone:'', trGender:'', trDob:'', trStreet:'', trHouse:'', trZip:'', trCity:'', trMarketing:false,
         trSlots:null, trSlotsLoading:false, trSlotSel:null, trBusy:false, trResult:'', trDone:'',
         // Schichtplan: Dienstplan, Tausch (Schwarzes Brett), Verfügbarkeiten, Team-Chat
+        spTheme:spThemeGespeichert(), spMode:'planner', spScreen:'result', spStaff:'home',
         shWeek:null, shTab:'plan', shView:'tag', shDay:'', shData:null, shLoaded:false, shLoading:false, shBusy:'',
         shSwap:null, shSwapLoading:false, shThreads:[], shChatMe:null,
         shAvail:null, shAvailLoading:false, shAvailFor:'', shAvailBusy:false, shAvailSaved:false,
@@ -5384,18 +5416,168 @@ function shEditorHTML(){
 }
 
 // ---- Screen: zentrierte Phone-Spalte (max. 520px) + Overlays ----
+// ── Schichtplan: Huelle aus dem Entwurf ─────────────────────────────────────
+// Symbole des Entwurfs. Gleiche Strichstaerke und Rundungen wie dort; die Farbe
+// kommt von aussen, damit aktiv/inaktiv nur eine Token-Frage ist.
+// localStorage kann werfen, nicht nur leer sein: privates Fenster, gesperrte
+// Einbettung, abgeschaltete Speicherung. Beim Aufbau des Zustands waere das
+// toedlich - also hier einmal sauber gekapselt.
+function spThemeGespeichert(){
+  try{ var v=localStorage.getItem('fi_sp_theme'); return (v==='light'||v==='dark')?v:'dark'; }
+  catch(e){ return 'dark'; }
+}
+var SPI={
+  cal:'<rect x="3" y="4" width="18" height="17" rx="3"></rect><path d="M3 9h18M8 2v4M16 2v4"></path>',
+  spark:'<circle cx="12" cy="12" r="3.2"></circle><path d="M12 3v2M12 19v2M5 12H3M21 12h-2M6 6l1.5 1.5M18 18l-1.5-1.5M6 18l1.5-1.5M18 6l-1.5 1.5"></path>',
+  inbox:'<path d="M22 12h-6l-2 3h-4l-2-3H2"></path><path d="M5.5 5.5h13l3.5 6.5v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-6z"></path>',
+  grid:'<rect x="3" y="3" width="18" height="18" rx="2.5"></rect><path d="M3 9h18M3 15h18M9 3v18"></path>',
+  year:'<rect x="3" y="4" width="18" height="17" rx="3"></rect><path d="M3 10h18M8 2v4M16 2v4M8 15h3M14 15h2"></path>',
+  users:'<path d="M16 20v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 20v-2a4 4 0 0 0-3-3.9"></path>',
+  bell:'<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.7 21a2 2 0 0 1-3.4 0"></path>',
+  gear:'<circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2 2 2 0 1 1-4 0 1.7 1.7 0 0 0-2.9-1.2l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.7 1.7 0 0 0 2.6 15a2 2 0 1 1 0-4 1.7 1.7 0 0 0 1.7-2.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.7 1.7 0 0 0 10 4.6a2 2 0 1 1 4 0 1.7 1.7 0 0 0 2.9 1.2l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1A1.7 1.7 0 0 0 21.4 11a2 2 0 1 1 0 4z"></path>',
+  sun:'<circle cx="12" cy="12" r="4.5"></circle><path d="M12 2v2M12 20v2M4 12H2M22 12h-2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M5.6 18.4 7 17M17 7l1.4-1.4"></path>',
+  moon:'<path d="M21 12.8A8.5 8.5 0 1 1 11.2 3a6.6 6.6 0 0 0 9.8 9.8z"></path>'
+};
+function spIc(p,c,sz){ return '<svg width="'+(sz||18)+'" height="'+(sz||18)+'" viewBox="0 0 24 24" fill="none" stroke="'+c+'" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">'+p+'</svg>'; }
+function spDark(){ return S.spTheme!=='light'; }
+function spToggleTheme(){ S.spTheme=spDark()?'light':'dark'; try{ localStorage.setItem('fi_sp_theme',S.spTheme); }catch(e){} render(); }
+
+// Bildschirme des Entwurfs. `bereit` sagt, ob die Etappe schon gebaut ist -
+// unfertige Ziele werden angezeigt, aber ehrlich als „in Arbeit" gekennzeichnet,
+// statt sie zu verstecken und die Navigation spaeter umzubauen.
+var SP_PLAN=[
+  {k:'setup',   l:'KI-Planung',      ic:'spark', bereit:false},
+  {k:'result',  l:'Plan',            ic:'cal',   bereit:true},
+  {k:'inbox',   l:'Freigaben',       ic:'inbox', bereit:false},
+  {k:'postings',l:'Ausschreibungen', ic:'bell',  bereit:false}
+];
+var SP_TEAM=[
+  {k:'team',   l:'Personen',        ic:'users', bereit:false},
+  {k:'matrix', l:'Verfügbarkeiten', ic:'grid',  bereit:false},
+  {k:'year',   l:'Jahreskalender',  ic:'year',  bereit:false}
+];
+var SP_SYS=[{k:'settings', l:'Einstellungen', ic:'gear', bereit:false}];
+
+function spNavBtn(n){
+  var a=S.spScreen===n.k;
+  var badge=(n.k==='inbox'&&S.shData&&S.shData.swapBadge)?String(S.shData.swapBadge)
+    :(n.k==='postings'&&S.shData&&S.shData.openCount)?String(S.shData.openCount):'';
+  return '<button data-spnav="'+n.k+'" style="display:flex;align-items:center;gap:10px;width:100%;padding:9px 10px;border:none;border-radius:10px;'+
+    'background:'+(a?'var(--acs)':'transparent')+';color:'+(a?'var(--ac)':'var(--tx2)')+';font-family:inherit;font-size:12.5px;font-weight:'+(a?'900':'700')+';cursor:pointer;text-align:left">'+
+    '<span style="width:16px;height:16px;flex-shrink:0;display:flex;align-items:center;justify-content:center">'+spIc(SPI[n.ic], a?'var(--ac)':'var(--tx3)', 16)+'</span>'+
+    '<span style="flex:1">'+esc(n.l)+'</span>'+
+    (badge?'<span style="min-width:17px;height:17px;padding:0 4px;border-radius:9px;background:var(--wn);color:'+(spDark()?'#2A1706':'#fff')+';font-size:9.5px;font-weight:900;display:flex;align-items:center;justify-content:center">'+esc(badge)+'</span>':'')+
+    (n.bereit?'':'<span title="noch in Arbeit" style="width:6px;height:6px;border-radius:50%;background:var(--line2);flex-shrink:0"></span>')+
+  '</button>';
+}
+function spNavGroup(titel, items){
+  return '<div><div style="font-size:9px;font-weight:900;color:var(--tx4);letter-spacing:1.4px;text-transform:uppercase;padding:0 8px 9px">'+esc(titel)+'</div>'+
+    '<div style="display:flex;flex-direction:column;gap:2px">'+items.map(spNavBtn).join('')+'</div></div>';
+}
+
+function spHeaderHTML(){
+  var d=S.shData||{};
+  var tabs=[['planner','Planer'],['staff','Mitarbeiter']].map(function(t){
+    var a=S.spMode===t[0];
+    return '<button data-spmode="'+t[0]+'" style="padding:7px 13px;border:none;border-radius:8px;background:'+(a?'var(--surf)':'transparent')+';color:'+(a?'var(--tx)':'var(--tx3)')+';font-family:inherit;font-size:11.5px;font-weight:800;cursor:pointer">'+t[1]+'</button>';
+  }).join('');
+  var offen=(d.openCount||0)+(d.swapBadge||0);
+  return '<div style="position:sticky;top:0;z-index:60;display:flex;align-items:center;gap:14px;padding:11px 18px;background:var(--surf);border-bottom:1px solid var(--line)">'+
+    '<div style="display:flex;align-items:center;gap:9px">'+
+      '<div style="width:29px;height:29px;border-radius:9px;background:var(--ac);display:flex;align-items:center;justify-content:center;flex-shrink:0">'+spIc(SPI.cal,'var(--acfg)',17)+'</div>'+
+      '<div><div style="font-size:13px;font-weight:900;letter-spacing:-.2px;line-height:1.1">Schichtplan</div>'+
+        '<div style="font-size:9px;font-weight:700;color:var(--tx3);letter-spacing:.6px;text-transform:uppercase">Fit-Inn Trier</div></div>'+
+    '</div>'+
+    '<div style="width:1px;height:26px;background:var(--line)"></div>'+
+    '<div style="display:flex;gap:3px;background:var(--surf2);border-radius:10px;padding:3px">'+tabs+'</div>'+
+    '<div style="flex:1"></div>'+
+    '<div style="display:flex;align-items:center;gap:8px">'+
+      (S.spMode==='planner'&&offen?('<div style="display:flex;align-items:center;gap:7px;padding:6px 11px;border-radius:9px;background:var(--surf2)">'+
+        '<span style="width:6px;height:6px;border-radius:50%;background:var(--wn)"></span>'+
+        '<span style="font-size:10.5px;font-weight:800;color:var(--tx2)">'+offen+' zu entscheiden</span></div>'):'')+
+      '<button data-sptheme="1" class="tap" style="height:33px;padding:0 11px;border-radius:9px;border:1px solid var(--line2);background:transparent;color:var(--tx2);font-family:inherit;font-size:11px;font-weight:800;cursor:pointer;display:flex;align-items:center;gap:6px">'+
+        spIc(spDark()?SPI.sun:SPI.moon,'currentColor',14)+(spDark()?'Hell':'Dunkel')+'</button>'+
+    '</div>'+
+  '</div>';
+}
+
+function spSideHTML(){
+  return '<div style="width:216px;flex-shrink:0;position:sticky;top:53px;height:calc(100vh - 53px);border-right:1px solid var(--line);background:var(--surf);padding:16px 12px;display:flex;flex-direction:column;gap:22px;overflow-y:auto" class="sc">'+
+    spNavGroup('Planung', SP_PLAN)+
+    spNavGroup('Team', SP_TEAM)+
+    '<div style="flex:1"></div>'+
+    spNavGroup('System', SP_SYS)+
+    '<div style="background:var(--surf2);border-radius:13px;padding:12px">'+
+      '<div style="font-size:9px;font-weight:900;color:var(--tx4);letter-spacing:1.2px;text-transform:uppercase">Öffnungszeiten</div>'+
+      '<div style="display:flex;flex-direction:column;gap:5px;margin-top:9px">'+
+        '<div style="display:flex;justify-content:space-between;gap:8px"><span style="font-size:10.5px;font-weight:800;color:var(--tx2)">Mo–Fr</span><span style="font-size:10px;font-weight:700;color:var(--tx3);font-variant-numeric:tabular-nums">9:30–13 · 15–21:30</span></div>'+
+        '<div style="display:flex;justify-content:space-between;gap:8px"><span style="font-size:10.5px;font-weight:800;color:var(--tx2)">Sa</span><span style="font-size:10px;font-weight:700;color:var(--tx3);font-variant-numeric:tabular-nums">13:00–18:00</span></div>'+
+        '<div style="display:flex;justify-content:space-between;gap:8px"><span style="font-size:10.5px;font-weight:800;color:var(--tx2)">So</span><span style="font-size:10px;font-weight:700;color:var(--tx3);font-variant-numeric:tabular-nums">9:00–15:00</span></div>'+
+      '</div>'+
+      '<div style="font-size:9px;font-weight:900;color:var(--tx4);letter-spacing:1.2px;text-transform:uppercase;margin-top:11px;padding-top:10px;border-top:1px solid var(--line)">Schichtblöcke</div>'+
+      '<div style="display:flex;flex-direction:column;gap:3px;margin-top:7px">'+
+        '<span style="font-size:9.5px;font-weight:700;color:var(--tx3);font-variant-numeric:tabular-nums">Mo–Fr 9:30–11:30 · 11:30–13:00</span>'+
+        '<span style="font-size:9.5px;font-weight:700;color:var(--tx3);font-variant-numeric:tabular-nums">Mo–Fr 15:00–17:30 · 17:30–21:30</span>'+
+        '<span style="font-size:9.5px;font-weight:700;color:var(--tx3);font-variant-numeric:tabular-nums">Sa 13–16 · 16–18 · So 9–12 · 12–15</span>'+
+      '</div>'+
+    '</div>'+
+  '</div>';
+}
+
+// Noch nicht gebaute Bildschirme: ehrlich benennen statt leere Flaeche zeigen.
+function spTodoHTML(titel){
+  return '<div style="max-width:560px;margin:60px auto;text-align:center">'+
+    '<div style="width:52px;height:52px;border-radius:16px;background:var(--surf2);display:flex;align-items:center;justify-content:center;margin:0 auto 16px">'+spIc(SPI.gear,'var(--tx4)',24)+'</div>'+
+    '<div style="font-size:19px;font-weight:900;letter-spacing:-.4px">'+esc(titel)+'</div>'+
+    '<div style="font-size:13px;font-weight:600;color:var(--tx2);margin-top:6px;line-height:1.5">Dieser Bildschirm ist in Arbeit. Der Plan, offene Schichten, Tausch und Zeiten funktionieren bereits — sie stehen unter „Plan".</div>'+
+  '</div>';
+}
+
 function schichtNode(){
-  var node=el('<div class="scrl" style="flex:1;min-height:0;overflow-y:auto;padding:20px 16px 44px"></div>');
+  var node=el('<div class="scrl sp" data-sptheme="'+(spDark()?'dark':'light')+'" style="flex:1;min-height:0;overflow-y:auto"></div>');
   if(!S.shWeek) S.shWeek=shMonday(shToday());
+
+  // Der bisherige Inhalt bleibt vollstaendig erhalten - er ist die einzige Stelle,
+  // an der echte Schichtdaten haengen. Die neue Huelle legt sich darum.
   var content;
   if(S.shLoading && !S.shData) content='<div style="padding:60px;text-align:center"><span class="spin"></span></div>';
   else if(S.shTab==='offen') content=shOffenTabHTML();
   else if(S.shTab==='tausch') content=shTauschTabHTML();
   else if(S.shTab==='zeiten') content=shZeitenTabHTML();
   else content=shPlanTabHTML();
-  node.innerHTML='<div style="max-width:520px;margin:0 auto">'+shHeaderHTML()+content+'</div>'+shKiHTML()+shEditorHTML()+shChatHTML();
-  setTimeout(function(){ wireSchicht(node); },0);
+  var bestand='<div style="max-width:520px">'+shHeaderHTML()+content+'</div>';
+
+  // Schreibtisch: Huelle des Entwurfs. Telefon: die bisherige schmale Spalte -
+  // ein 1000px-Raster waere dort unbenutzbar, und der Entwurf ist fuer den
+  // Schreibtisch gezeichnet.
+  var desk='<div class="sp-desk">'+spHeaderHTML()+
+    '<div style="display:flex;align-items:flex-start">'+
+      (S.spMode==='planner'?spSideHTML():'')+
+      '<div style="flex:1;min-width:0;padding:20px 22px 44px">'+
+        (S.spMode==='planner'
+          ? (S.spScreen==='result' ? bestand : spTodoHTML(spTitel(S.spScreen)))
+          : spTodoHTML('Mitarbeiter-Ansicht'))+
+      '</div>'+
+    '</div></div>';
+  var hand='<div class="sp-hand" style="padding:20px 16px 44px">'+bestand+'</div>';
+
+  node.innerHTML=desk+hand+shKiHTML()+shEditorHTML()+shChatHTML();
+  setTimeout(function(){ wireSchicht(node); wireSp(node); },0);
   return node;
+}
+function spTitel(k){
+  var alle=SP_PLAN.concat(SP_TEAM).concat(SP_SYS);
+  for(var i=0;i<alle.length;i++){ if(alle[i].k===k) return alle[i].l; }
+  return 'Schichtplan';
+}
+function wireSp(node){
+  node.querySelectorAll('[data-spnav]').forEach(function(b){
+    b.onclick=function(){ S.spScreen=b.getAttribute('data-spnav'); render(); };
+  });
+  node.querySelectorAll('[data-spmode]').forEach(function(b){
+    b.onclick=function(){ S.spMode=b.getAttribute('data-spmode'); render(); };
+  });
+  var t=node.querySelector('[data-sptheme]'); if(t) t.onclick=spToggleTheme;
 }
 function wireSchicht(node){
   node.querySelectorAll('[data-shtab]').forEach(function(b){ b.onclick=function(){ shSetTab(b.getAttribute('data-shtab')); }; });
@@ -6501,6 +6683,10 @@ function render(){
   else if(S.screen==='wb') content=wbNode();
   else if(S.screen==='community') content=communityNode();
   else content=placeholderNode(titles[S.screen]||'');
+  // Der Schichtplan bringt auf dem Schreibtisch seine eigene Kopfzeile mit; ohne
+  // diese Marke staenden zwei uebereinander. Hier gesetzt UND geloescht, weil
+  // jeder Bildschirmwechsel hier vorbeikommt.
+  try{ document.body.classList.toggle('sp-on', S.screen==='schicht'); }catch(e){}
   renderShell(content, titles[S.screen]||'', subs[S.screen]||'');
 }
 // ── URL-Routing: die Adresszeile spiegelt Screen + offenes Mitglied wider ──
