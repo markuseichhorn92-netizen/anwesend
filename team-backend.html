@@ -251,6 +251,7 @@ var S={ token:null, role:null, meName:null, screen:'dash', convs:[], counts:{}, 
         spConflictOnly:false, spDragId:null, spDropId:null, spDropOk:true, spDragStaff:null,
         spWeekStatus:{41:'draft'}, spToast:'', spNeed:null, spRules:null,
         spRange:'quartal', spGoal:'balanced', spGenPct:0, spGenStep:0,
+        spInboxTab:'urlaub', spVacDecided:false, spAvail:null,
         shWeek:null, shTab:'plan', shView:'tag', shDay:'', shData:null, shLoaded:false, shLoading:false, shBusy:'',
         shSwap:null, shSwapLoading:false, shThreads:[], shChatMe:null,
         shAvail:null, shAvailLoading:false, shAvailFor:'', shAvailBusy:false, shAvailSaved:false,
@@ -6164,6 +6165,300 @@ function spWireSetup(node){
   var cg=node.querySelector('[data-spcancelgen]'); if(cg) cg.onclick=spCancelGen;
 }
 
+
+// ── Schichtplan · Freigaben, Bewerbungen, Verfügbarkeitsmatrix ──────────────
+// Uebernommen aus Schichtplan.dc.html.
+function spBtn(label,act,kind){
+  return '<button data-spact="'+act+'" class="tap" style="height:38px;padding:0 15px;border-radius:11px;border:'+
+    (kind==='pri'||kind==='dan'?'none':'1px solid var(--line2)')+';background:'+
+    (kind==='pri'?'var(--ac)':(kind==='dan'?'var(--dg)':'transparent'))+';color:'+
+    (kind==='pri'?'var(--acfg)':(kind==='dan'?'var(--dgfg)':'var(--tx2)'))+
+    ';font-family:inherit;font-size:12.5px;font-weight:'+(kind==='pri'?'900':'700')+';cursor:pointer">'+esc(label)+'</button>';
+}
+
+var SP_IMPACT=[
+  {shift:'So 25.10. · 09:00–15:00 Fläche', note:'kritisch · keine 2. Person', bg:'var(--dgs)', bd:'var(--dg)', dot:'var(--dg)', noteColor:'var(--dgt)'},
+  {shift:'Sa 24.10. · 13:00–18:00 Fläche', note:'kritisch · nur Harry möglich', bg:'var(--dgs)', bd:'var(--dg)', dot:'var(--dg)', noteColor:'var(--dgt)'},
+  {shift:'5 weitere Schichten Mo–Fr', note:'unkritisch · KI kann umplanen', bg:'var(--surf2)', bd:'var(--line)', dot:'var(--ok)', noteColor:'var(--tx3)'}
+];
+var SP_INBOX_SUBS={
+  urlaub:'Ein Antrag wartet — mit Folgenabschätzung, bevor du entscheidest.',
+  tausch:'Ein Tausch braucht deine Freigabe (nur kritische Schichten).',
+  bewerb:'Drei Bewerbungen auf eine ausgeschriebene Schicht.',
+  stempel:'Keine auffälligen Stempelzeiten.'
+};
+
+function spInboxHTML(){
+  var tab=S.spInboxTab||'urlaub', entschieden=!!S.spVacDecided;
+
+  var tabs=[['urlaub','Urlaub','1'],['tausch','Tausche','1'],['bewerb','Bewerbungen','3'],['stempel','Stempelzeiten','']].map(function(t){
+    var a=tab===t[0];
+    return '<button data-spinboxtab="'+t[0]+'" style="padding:8px 14px;border:none;border-radius:9px;background:'+(a?'var(--ac)':'transparent')+';color:'+(a?'var(--acfg)':'var(--tx3)')+';font-family:inherit;font-size:11.5px;font-weight:800;cursor:pointer;display:flex;align-items:center;gap:7px">'+t[1]+
+      (t[2]?'<span style="min-width:16px;height:16px;padding:0 4px;border-radius:8px;background:'+(a?(spDark()?'rgba(0,0,0,.25)':'rgba(255,255,255,.3)'):'var(--surf3)')+';color:'+(a?'var(--acfg)':'var(--tx2)')+';font-size:9px;font-weight:900;display:inline-flex;align-items:center;justify-content:center">'+t[2]+'</span>':'')+'</button>';
+  }).join('');
+
+  var items=[];
+  if(tab==='urlaub'){
+    items=[{
+      initials:'GU', avBg:'var(--acs)', avFg:'var(--ac)', accent:entschieden?'var(--ok)':'var(--wn)',
+      kind:'Urlaubsantrag', kindBg:'var(--wns)', kindFg:'var(--wn)', title:'Gudrun · 6 Tage',
+      meta:'Mo 19.10. – Sa 24.10.2026 · eingereicht vor 2 Tagen',
+      note:'Familienbesuch, lange geplant. Harald hat schon gesagt, dass er den Samstag übernehmen könnte.',
+      impactShow:!entschieden, impShifts:'7', impCritical:'2', impLeft:'5',
+      actions: entschieden
+        ? [['KI plant um (nur betroffene Schichten)','vacreplan','pri'],['Restlücken ausschreiben','goapplicants',''],['Manuell umbesetzen','manuell','']]
+        : [['Genehmigen','vacok','pri'],['Ablehnen','vacno',''],['Rückfrage stellen','vacask','']]
+    }];
+  } else if(tab==='tausch'){
+    items=[{
+      initials:'KA', avBg:'var(--vis)', avFg:'var(--vi)', accent:'var(--vi)',
+      kind:'Schichttausch', kindBg:'var(--vis)', kindFg:'var(--vi)', title:'Kathrin ↔ Peter',
+      meta:'Fr 09.10. 17:30–21:30 · beide haben zugestimmt · wartet auf dich',
+      note:'Kathrin: Ich bin über der Minijob-Grenze, Peter übernimmt gerne.',
+      impactShow:false, actions:[['Freigeben','swapok','pri'],['Ablehnen','swapno','']]
+    }];
+  } else if(tab==='bewerb'){
+    items=[{
+      initials:'3', avBg:'var(--wns)', avFg:'var(--wn)', accent:'var(--wn)',
+      kind:'Ausschreibung', kindBg:'var(--wns)', kindFg:'var(--wn)', title:'So 11.10. · 3 Bewerbungen',
+      meta:'09:00–15:00 Trainingsfläche · Frist läuft in 6 Std',
+      note:'', impactShow:false, actions:[['Bewerbungen ansehen','goapplicants','pri']]
+    }];
+  }
+
+  var karten=items.map(function(i){
+    var impact=i.impactShow
+      ? '<div style="border:1px solid var(--line);border-radius:13px;margin-top:12px;overflow:hidden">'+
+          '<div style="display:flex;align-items:center;gap:9px;padding:10px 12px;background:var(--surf2);border-bottom:1px solid var(--line)">'+
+            '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--wn)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"></path></svg>'+
+            '<span style="font-size:11.5px;font-weight:900;color:var(--tx)">Folgen der Genehmigung</span></div>'+
+          '<div style="padding:12px"><div style="display:flex;gap:20px;flex-wrap:wrap">'+
+            '<div><div style="font-size:9px;font-weight:900;color:var(--tx4);letter-spacing:1.1px;text-transform:uppercase">Betroffen</div><div style="font-size:19px;font-weight:900;margin-top:3px;font-variant-numeric:tabular-nums">'+i.impShifts+'<span style="font-size:11px;font-weight:800;color:var(--tx3)"> Schichten</span></div></div>'+
+            '<div><div style="font-size:9px;font-weight:900;color:var(--dgt);letter-spacing:1.1px;text-transform:uppercase">Kritisch</div><div style="font-size:19px;font-weight:900;margin-top:3px;color:var(--dgt);font-variant-numeric:tabular-nums">'+i.impCritical+'</div></div>'+
+            '<div><div style="font-size:9px;font-weight:900;color:var(--tx4);letter-spacing:1.1px;text-transform:uppercase">Resturlaub danach</div><div style="font-size:19px;font-weight:900;margin-top:3px;font-variant-numeric:tabular-nums">'+i.impLeft+'<span style="font-size:11px;font-weight:800;color:var(--tx3)"> Tage</span></div></div>'+
+          '</div><div style="display:flex;flex-direction:column;gap:7px;margin-top:13px">'+
+            SP_IMPACT.map(function(x){
+              return '<div style="display:flex;align-items:center;gap:9px;padding:9px 11px;border-radius:10px;background:'+x.bg+';border:1px solid '+x.bd+'">'+
+                '<span style="width:6px;height:6px;border-radius:50%;background:'+x.dot+';flex-shrink:0"></span>'+
+                '<span style="flex:1;font-size:11.5px;font-weight:800;color:var(--tx)">'+esc(x.shift)+'</span>'+
+                '<span style="font-size:10.5px;font-weight:700;color:'+x.noteColor+'">'+esc(x.note)+'</span></div>';
+            }).join('')+'</div></div></div>'
+      : '';
+    return '<div style="background:var(--surf);border:1px solid var(--line);border-left:3px solid '+i.accent+';border-radius:16px;padding:17px 18px">'+
+      '<div style="display:flex;align-items:flex-start;gap:14px">'+
+        '<div style="width:40px;height:40px;border-radius:50%;background:'+i.avBg+';color:'+i.avFg+';font-size:12.5px;font-weight:900;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+i.initials+'</div>'+
+        '<div style="flex:1;min-width:0">'+
+          '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'+
+            '<span style="font-size:8.5px;font-weight:900;color:'+i.kindFg+';letter-spacing:1.1px;text-transform:uppercase;padding:3px 7px;border-radius:5px;background:'+i.kindBg+'">'+esc(i.kind)+'</span>'+
+            '<span style="font-size:15px;font-weight:900;letter-spacing:-.3px">'+esc(i.title)+'</span></div>'+
+          '<div style="font-size:11.5px;font-weight:700;color:var(--tx3);margin-top:5px;font-variant-numeric:tabular-nums">'+esc(i.meta)+'</div>'+
+          (i.note?'<div style="font-size:12px;font-weight:600;color:var(--tx2);background:var(--surf2);border-radius:11px;padding:10px 12px;margin-top:10px;line-height:1.45">„'+esc(i.note)+'"</div>':'')+
+          impact+
+          '<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">'+i.actions.map(function(a){ return spBtn(a[0],a[1],a[2]); }).join('')+'</div>'+
+        '</div></div></div>';
+  }).join('');
+
+  var leer=items.length?'':'<div style="background:var(--surf);border:1px solid var(--line);border-radius:18px;padding:44px 20px;text-align:center">'+
+    '<div style="width:46px;height:46px;border-radius:14px;background:var(--oks);display:flex;align-items:center;justify-content:center;margin:0 auto">'+
+      '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--ok)" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg></div>'+
+    '<div style="font-size:15px;font-weight:900;margin-top:14px">Alles abgearbeitet</div>'+
+    '<div style="font-size:12.5px;font-weight:600;color:var(--tx2);margin-top:4px">Keine offenen Anträge, Tausche oder Bewerbungen.</div></div>';
+
+  return '<div style="max-width:900px">'+
+    '<div style="font-size:25px;font-weight:900;letter-spacing:-.7px">Freigaben</div>'+
+    '<div style="font-size:12.5px;font-weight:600;color:var(--tx2);margin-top:4px">'+esc(SP_INBOX_SUBS[tab])+'</div>'+
+    '<div style="display:flex;gap:3px;background:var(--surf);border:1px solid var(--line);border-radius:12px;padding:3px;margin-top:18px;width:fit-content">'+tabs+'</div>'+
+    '<div style="display:flex;flex-direction:column;gap:12px;margin-top:16px">'+karten+leer+'</div>'+
+  '</div>';
+}
+
+// ── Bewerbungen auf eine ausgeschriebene Schicht ────────────────────────────
+var SP_APPS=[
+  ['gu','Ich kann den Sonntag übernehmen, bin ausgeruht.',true,
+    [['Qualifikation','passt','var(--ok)'],['Monat','74 / 90 Std','var(--tx)'],['Ruhezeit','14,5 Std','var(--ok)'],['Zuletzt eingesprungen','vor 6 Wochen','var(--ok)']]],
+  ['hy','Kann ab 9 Uhr, würde die ganze Schicht machen.',false,
+    [['Qualifikation','passt','var(--ok)'],['Monat','18 / 43,5 Std','var(--tx)'],['Ruhezeit','frei','var(--ok)'],['Zuletzt eingesprungen','vor 2 Wochen','var(--wn)']]],
+  ['ka','Wenn nötig, kann ich.',false,
+    [['Qualifikation','passt','var(--ok)'],['Monat','41,5 / 43,5 Std','var(--dgt)'],['Minijob-Grenze','würde reißen','var(--dgt)'],['Zuletzt eingesprungen','letzte Woche','var(--dgt)']]]
+];
+
+function spApplicantsHTML(){
+  var karten=SP_APPS.map(function(a){
+    var p=SP_STAFF[a[0]], rec=a[2];
+    var facts=a[3].map(function(f){
+      return '<div style="padding:8px 11px;border-radius:10px;background:var(--surf2);border:1px solid var(--line)">'+
+        '<div style="font-size:8.5px;font-weight:900;color:var(--tx4);letter-spacing:1px;text-transform:uppercase">'+esc(f[0])+'</div>'+
+        '<div style="font-size:12px;font-weight:800;color:'+f[2]+';margin-top:3px;font-variant-numeric:tabular-nums">'+esc(f[1])+'</div></div>';
+    }).join('');
+    return '<div style="background:var(--surf);border:1px solid '+(rec?'var(--acb)':'var(--line)')+';border-radius:16px;padding:16px 17px">'+
+      '<div style="display:flex;align-items:flex-start;gap:14px">'+
+        '<div style="width:42px;height:42px;border-radius:50%;background:'+(rec?'var(--acs)':'var(--surf2)')+';color:'+(rec?'var(--ac)':'var(--tx2)')+';font-size:13px;font-weight:900;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+p.ini+'</div>'+
+        '<div style="flex:1;min-width:0">'+
+          '<div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">'+
+            '<span style="font-size:15.5px;font-weight:900;letter-spacing:-.3px">'+esc(p.name)+'</span>'+
+            '<span style="font-size:9px;font-weight:800;color:var(--tx3);letter-spacing:.8px;text-transform:uppercase;padding:2px 7px;border-radius:5px;background:var(--surf2)">'+esc(p.typeShort)+'</span>'+
+            (rec?'<span style="font-size:9px;font-weight:900;color:var(--ac);letter-spacing:.8px;text-transform:uppercase;padding:2px 7px;border-radius:5px;background:var(--acs)">Empfehlung</span>':'')+'</div>'+
+          '<div style="font-size:12px;font-weight:600;color:var(--tx2);background:var(--surf2);border-radius:11px;padding:10px 12px;margin-top:10px;line-height:1.45">„'+esc(a[1])+'"</div>'+
+          '<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">'+facts+'</div>'+
+        '</div>'+
+        '<div style="display:flex;flex-direction:column;gap:8px;flex-shrink:0;width:132px">'+
+          '<button data-spaccept="'+a[0]+'" class="tap" style="height:38px;border-radius:11px;border:none;background:'+(rec?'var(--ac)':'var(--surf2)')+';color:'+(rec?'var(--acfg)':'var(--tx)')+';font-family:inherit;font-size:12.5px;font-weight:900;cursor:pointer">Zusagen</button>'+
+          '<button data-spdecline="'+a[0]+'" class="tap" style="height:34px;border-radius:11px;border:1px solid var(--line2);background:transparent;color:var(--tx3);font-family:inherit;font-size:11.5px;font-weight:800;cursor:pointer">Absagen</button>'+
+        '</div></div></div>';
+  }).join('');
+
+  return '<div style="max-width:900px">'+
+    '<button data-spact="goinbox" style="border:none;background:none;color:var(--tx3);font-family:inherit;font-size:11.5px;font-weight:800;cursor:pointer;padding:0;display:flex;align-items:center;gap:6px">'+
+      '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"></path></svg>Zurück zu Freigaben</button>'+
+    '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:20px;margin-top:12px">'+
+      '<div><div style="display:flex;align-items:center;gap:9px">'+
+        '<span style="font-size:8.5px;font-weight:900;color:var(--wn);letter-spacing:1.2px;text-transform:uppercase;padding:3px 8px;border-radius:6px;background:var(--wns)">Ausgeschrieben</span>'+
+        '<span style="font-size:11px;font-weight:800;color:var(--tx3)">Frist läuft in 6 Std</span></div>'+
+        '<div style="font-size:25px;font-weight:900;letter-spacing:-.7px;margin-top:10px">So 11.10. · Trainingsfläche</div>'+
+        '<div style="font-size:12.5px;font-weight:700;color:var(--tx2);margin-top:3px;font-variant-numeric:tabular-nums">09:00–15:00 · 6 Std · Sonntagsdienst · 3 Bewerbungen</div></div>'+
+      '<div style="display:flex;gap:9px;flex-shrink:0">'+
+        '<button class="tap" style="height:40px;padding:0 14px;border-radius:12px;border:1px solid var(--line2);background:transparent;color:var(--tx2);font-family:inherit;font-size:12.5px;font-weight:700;cursor:pointer">Frist verlängern</button>'+
+        '<button class="tap" style="height:40px;padding:0 14px;border-radius:12px;border:1px solid var(--line2);background:var(--surf);color:var(--tx);font-family:inherit;font-size:12.5px;font-weight:700;cursor:pointer">Auf Sofort-Übernahme</button></div>'+
+    '</div>'+
+    '<div style="display:flex;flex-direction:column;gap:11px;margin-top:20px">'+karten+'</div>'+
+    '<div style="display:flex;align-items:center;gap:11px;background:var(--surf2);border-radius:14px;padding:13px 15px;margin-top:14px">'+
+      '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--tx3)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><circle cx="12" cy="12" r="9"></circle><path d="M12 16v-4M12 8h.01"></path></svg>'+
+      '<span style="font-size:11.5px;font-weight:700;color:var(--tx2);line-height:1.45;flex:1">Sagst du einer Person zu, bekommen die anderen automatisch eine freundliche Absage — du musst nichts einzeln tippen.</span></div>'+
+  '</div>';
+}
+
+// ── Verfügbarkeitsmatrix ────────────────────────────────────────────────────
+// Jede Zelle ist ein echtes Von-Bis-Fenster, als Balken im Tagesrahmen gezeigt.
+// Die Linie unten sagt, WOHER die Angabe kommt: selbst gemeldet oder von der
+// Leitung eingetragen. Das ist im Entwurf bewusst getrennt.
+function spSeedAvail(){
+  var r=function(a,b){ return [a,b]; }, X=null;
+  return {
+    ma:{d:[r(9.5,13),r(9.5,13),r(9.5,13),r(15,21.5),r(9.5,13),X,X], src:'self'},
+    ha:{d:[r(9.5,13),X,r(9.5,21.5),X,X,X,X], src:'self'},
+    pe:{d:[r(15,21.5),r(15,21.5),r(15,21.5),r(15,21.5),r(15,21.5),X,X], src:'self'},
+    gu:{d:[X,r(15,21.5),X,r(9.5,13),r(9.5,13),r(13,18),r(12,15)], src:'self', soft:[6]},
+    st:{d:[X,r(9.5,13),X,r(9.5,13),r(15,21.5),X,X], src:'self'},
+    ka:{d:[r(15,21.5),r(15,21.5),X,X,r(15,21.5),X,X], src:'self', soft:[4]},
+    hy:{d:[X,X,X,X,X,r(13,18),r(9,15)], src:'lead'},
+    to:{d:[r(9.5,15),r(9.5,15),r(9.5,15),r(9.5,15),r(9.5,15),r(13,16),r(9,12)], src:'self'}
+  };
+}
+function spAvail(){ if(!S.spAvail) S.spAvail=spSeedAvail(); return S.spAvail; }
+
+function spMatrixHTML(){
+  var avail=spAvail();
+  var heads=SP_DAYS.map(function(d,i){
+    return '<div style="text-align:center"><div style="font-size:11px;font-weight:900">'+d[0]+'</div>'+
+      '<div style="font-size:9px;font-weight:700;color:var(--tx4);margin-top:1px;font-variant-numeric:tabular-nums">'+(i===5?'13–18':i===6?'9–15':'9:30–21:30')+'</div></div>';
+  }).join('');
+
+  var rows=Object.keys(SP_STAFF).map(function(id){
+    var p=SP_STAFF[id], row=avail[id], soft=row.soft||[];
+    var fehlt=(id==='hy'||id==='st');
+    var cells=row.d.map(function(v,i){
+      var oh=spOpenHours(i), lo=oh[0], hi=oh[1];
+      var isSoft=soft.indexOf(i)>=0, has=!!v;
+      var left=has?((v[0]-lo)/(hi-lo)*100).toFixed(1)+'%':'0%';
+      var w=has?Math.max(9,(v[1]-v[0])/(hi-lo)*100).toFixed(1)+'%':'0%';
+      return '<button data-spcycle="'+id+':'+i+'" class="tap" style="position:relative;height:38px;border-radius:8px;border:1px solid '+(has?'var(--line)':'var(--line2)')+';background:'+(has?'var(--surf2)':'transparent')+';cursor:pointer;font-family:inherit;padding:0;overflow:hidden;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px">'+
+        (has?('<span style="position:absolute;left:0;right:0;top:9px;height:8px;background:var(--surf3);border-radius:4px;margin:0 5px"></span>'+
+          '<span style="position:absolute;left:calc('+left+' + 5px);width:'+w+';top:9px;height:8px;border-radius:4px;background:'+(isSoft?'var(--wn)':'var(--ac)')+'"></span>'):'')+
+        '<span style="position:relative;margin-top:13px;font-size:8.5px;font-weight:800;color:'+(has?'var(--tx2)':'var(--tx4)')+';font-variant-numeric:tabular-nums;white-space:nowrap">'+(has?(spT(v[0])+'–'+spT(v[1])):'–')+'</span>'+
+        '<span style="position:absolute;left:5px;right:5px;bottom:2px;height:1.5px;border-radius:1px;background:'+(row.src==='self'?'var(--ac)':'var(--vi)')+'"></span>'+
+      '</button>';
+    }).join('');
+    return '<div style="display:grid;grid-template-columns:186px repeat(7,1fr);gap:4px;align-items:center">'+
+      '<div style="display:flex;align-items:center;gap:9px;min-width:0">'+
+        '<div style="width:28px;height:28px;border-radius:50%;background:var(--surf2);color:var(--tx2);font-size:9.5px;font-weight:900;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+p.ini+'</div>'+
+        '<div style="min-width:0;flex:1">'+
+          '<div style="font-size:12px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(p.name)+'</div>'+
+          '<div style="display:flex;align-items:center;gap:5px"><span style="font-size:9px;font-weight:700;color:var(--tx3);white-space:nowrap">'+esc(p.typeShort)+'</span>'+
+          (fehlt?'<span style="font-size:8.5px;font-weight:900;color:var(--wn)">· fehlt</span>':'')+'</div>'+
+        '</div></div>'+cells+'</div>';
+  }).join('');
+
+  var legende=[['var(--ac)','verfügbar'],['var(--wn)','nur wenn nötig'],['var(--surf3)','kann nicht']].map(function(l){
+    return '<span style="display:inline-flex;align-items:center;gap:7px"><span style="width:22px;height:8px;border-radius:4px;background:'+l[0]+'"></span><span style="font-size:11px;font-weight:700;color:var(--tx2)">'+l[1]+'</span></span>';
+  }).join('');
+
+  return '<div>'+
+    '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:20px">'+
+      '<div><div style="font-size:25px;font-weight:900;letter-spacing:-.7px">Verfügbarkeiten</div>'+
+        '<div style="font-size:12.5px;font-weight:600;color:var(--tx2);margin-top:4px">Direkt bearbeitbar — du kannst auch für andere eintragen, etwa nach einem Anruf.</div></div>'+
+      '<div style="display:flex;align-items:center;gap:9px;flex-shrink:0">'+
+        '<div style="text-align:right"><div style="font-size:9px;font-weight:900;color:var(--tx4);letter-spacing:1.2px;text-transform:uppercase">Meldefrist November</div>'+
+          '<div style="font-size:13px;font-weight:900;color:var(--wn);margin-top:2px">Noch 4 Tage</div></div>'+
+        '<button data-spremind="1" class="tap" style="height:40px;padding:0 15px;border-radius:12px;border:none;background:var(--ac);color:var(--acfg);font-family:inherit;font-size:12.5px;font-weight:900;cursor:pointer">3 erinnern</button></div>'+
+    '</div>'+
+    '<div class="sc" style="background:var(--surf);border:1px solid var(--line);border-radius:18px;padding:16px;margin-top:18px;overflow-x:auto"><div style="min-width:840px">'+
+      '<div style="display:grid;grid-template-columns:186px repeat(7,1fr);gap:4px;margin-bottom:9px">'+
+        '<div style="font-size:9px;font-weight:900;color:var(--tx4);letter-spacing:1.2px;text-transform:uppercase;display:flex;align-items:flex-end">Mitarbeiter · Typ</div>'+heads+'</div>'+
+      '<div style="display:flex;flex-direction:column;gap:4px">'+rows+'</div>'+
+    '</div></div>'+
+    '<div style="display:flex;align-items:center;gap:18px;margin-top:14px;flex-wrap:wrap">'+legende+
+      '<div style="width:1px;height:18px;background:var(--line)"></div>'+
+      '<span style="display:inline-flex;align-items:center;gap:7px"><span style="width:14px;height:2px;border-radius:1px;background:var(--ac)"></span><span style="font-size:11px;font-weight:700;color:var(--tx2)">selbst gemeldet</span></span>'+
+      '<span style="display:inline-flex;align-items:center;gap:7px"><span style="width:14px;height:2px;border-radius:1px;background:var(--vi)"></span><span style="font-size:11px;font-weight:700;color:var(--tx2)">von Leitung eingetragen</span></span>'+
+    '</div>'+
+  '</div>';
+}
+
+// Zellen der Matrix durchschalten: ganzer Tag -> Vormittag -> Nachmittag ->
+// Abend -> kann nicht -> ganzer Tag. Wie im Entwurf echte Von-Bis-Fenster,
+// keine Ja/Nein-Kaestchen.
+function spPresets(day){
+  var oh=spOpenHours(day), lo=oh[0], hi=oh[1];
+  var mid=day===5?16:day===6?12:13;
+  var back=day<5?15:mid, eve=day<5?17.5:mid;
+  return [[lo,hi],[lo,mid],[back,hi],[eve,hi],null];
+}
+function spCycleCell(id,i){
+  var row=spAvail()[id]; if(!row) return;
+  var opts=spPresets(i), cur=row.d[i];
+  var at=-1;
+  for(var k=0;k<opts.length;k++){
+    var o=opts[k];
+    if(o===null&&cur===null){ at=k; break; }
+    if(o&&cur&&o[0]===cur[0]&&o[1]===cur[1]){ at=k; break; }
+  }
+  row.d[i]=opts[(at+1)%opts.length];
+  // Traegt die Leitung ein, wird die Quelle umgestellt - der Entwurf faerbt die
+  // Linie unter der Zelle danach.
+  row.src='lead';
+  render();
+}
+
+function spWireInbox(node){
+  node.querySelectorAll('[data-spinboxtab]').forEach(function(b){
+    b.onclick=function(){ S.spInboxTab=b.getAttribute('data-spinboxtab'); render(); };
+  });
+  node.querySelectorAll('[data-spcycle]').forEach(function(b){
+    b.onclick=function(){ var p=b.getAttribute('data-spcycle').split(':'); spCycleCell(p[0], parseInt(p[1],10)); };
+  });
+  node.querySelectorAll('[data-spaccept]').forEach(function(b){
+    b.onclick=function(){ var p=SP_STAFF[b.getAttribute('data-spaccept')];
+      S.spScreen='inbox'; spToast('Zusage an '+p.short+' · andere erhalten automatisch eine Absage'); };
+  });
+  node.querySelectorAll('[data-spdecline]').forEach(function(b){
+    b.onclick=function(){ spToast('Absage an '+SP_STAFF[b.getAttribute('data-spdecline')].short+' gesendet'); };
+  });
+  node.querySelectorAll('[data-spact]').forEach(function(b){
+    b.onclick=function(){
+      var a=b.getAttribute('data-spact');
+      if(a==='vacok'){ S.spVacDecided=true; spToast('Urlaub genehmigt · 7 Schichten betroffen'); return; }
+      if(a==='vacno'){ spToast('Antrag abgelehnt · Gudrun wird informiert'); return; }
+      if(a==='vacask'){ spToast('Nachricht an Gudrun'); return; }
+      if(a==='vacreplan'){ S.spScreen='result'; spToast('7 Schichten neu geplant · 2 bleiben offen'); return; }
+      if(a==='goapplicants'){ S.spScreen='applicants'; render(); return; }
+      if(a==='goinbox'){ S.spScreen='inbox'; render(); return; }
+      if(a==='manuell'){ spToast('Planungsboard geöffnet'); return; }
+      if(a==='swapok'){ spToast('Tausch freigegeben · Plan aktualisiert'); return; }
+      if(a==='swapno'){ spToast('Tausch abgelehnt'); return; }
+    };
+  });
+}
+
 // ── Schichtplan: Huelle aus dem Entwurf ─────────────────────────────────────
 // Symbole des Entwurfs. Gleiche Strichstaerke und Rundungen wie dort; die Farbe
 // kommt von aussen, damit aktiv/inaktiv nur eine Token-Frage ist.
@@ -6196,12 +6491,12 @@ function spToggleTheme(){ S.spTheme=spDark()?'light':'dark'; try{ localStorage.s
 var SP_PLAN=[
   {k:'setup',   l:'KI-Planung',      ic:'spark', bereit:true},
   {k:'result',  l:'Plan',            ic:'cal',   bereit:true},
-  {k:'inbox',   l:'Freigaben',       ic:'inbox', bereit:false},
+  {k:'inbox',   l:'Freigaben',       ic:'inbox', bereit:true},
   {k:'postings',l:'Ausschreibungen', ic:'bell',  bereit:false}
 ];
 var SP_TEAM=[
   {k:'team',   l:'Personen',        ic:'users', bereit:false},
-  {k:'matrix', l:'Verfügbarkeiten', ic:'grid',  bereit:false},
+  {k:'matrix', l:'Verfügbarkeiten', ic:'grid',  bereit:true},
   {k:'year',   l:'Jahreskalender',  ic:'year',  bereit:false}
 ];
 var SP_SYS=[{k:'settings', l:'Einstellungen', ic:'gear', bereit:false}];
@@ -6307,6 +6602,9 @@ function schichtNode(){
           ? (S.spScreen==='result' ? spResultHTML()
             : S.spScreen==='setup' ? spSetupHTML()
             : S.spScreen==='gen' ? spGenHTML()
+            : S.spScreen==='inbox' ? spInboxHTML()
+            : S.spScreen==='applicants' ? spApplicantsHTML()
+            : S.spScreen==='matrix' ? spMatrixHTML()
             : spTodoHTML(spTitel(S.spScreen)))
           : spTodoHTML('Mitarbeiter-Ansicht'))+
       '</div>'+
@@ -6314,7 +6612,7 @@ function schichtNode(){
   var hand='<div class="sp-hand" style="padding:20px 16px 44px">'+bestand+'</div>';
 
   node.innerHTML=desk+hand+shKiHTML()+shEditorHTML()+shChatHTML();
-  setTimeout(function(){ wireSchicht(node); wireSp(node); spWireResult(node); spWireSetup(node); },0);
+  setTimeout(function(){ wireSchicht(node); wireSp(node); spWireResult(node); spWireSetup(node); spWireInbox(node); },0);
   return node;
 }
 function spTitel(k){

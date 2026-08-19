@@ -103,5 +103,42 @@ const genBlock=(html.match(/var SP_GEN_LABELS=\[[^\]]*\];/)||[''])[0];
 ok('12c. Fuenf Schritte wie im Entwurf',
   genBlock.split("','").length===5, String(genBlock.split("','").length));
 
+// ── Freigaben, Bewerbungen, Verfuegbarkeitsmatrix ──
+ok('13. Freigaben sind uebernommen', /function spInboxHTML/.test(html));
+ok('13b. … mit den vier Reitern des Entwurfs',
+  /'urlaub','Urlaub'.*'stempel','Stempelzeiten'/s.test(html));
+// Die Folgenabschaetzung ist der Kern des Bildschirms: Sie zeigt VOR der
+// Entscheidung, was eine Genehmigung anrichtet.
+ok('13c. … und der Folgenabschaetzung vor der Entscheidung',
+  /Folgen der Genehmigung/.test(html) && /Resturlaub danach/.test(html));
+ok('13d. Nach der Entscheidung andere Handlungen',
+  /entschieden\s*\?/.test(html) && /vacreplan/.test(html));
+
+ok('14. Bewerbungen sind uebernommen', /function spApplicantsHTML/.test(html));
+ok('14b. … drei Bewerbungen mit Fakten',
+  (html.match(/var SP_APPS=\[[\s\S]*?\n\];/)||[''])[0].split("\n  ['").length===4);
+// Der Hinweis, dass die anderen automatisch eine Absage bekommen, gehoert dazu -
+// sonst tippt jemand drei Absagen von Hand.
+ok('14c. … und dem Hinweis auf die automatische Absage',
+  /andere.*automatisch eine.*Absage/s.test(html));
+
+ok('15. Die Verfuegbarkeitsmatrix ist uebernommen', /function spMatrixHTML/.test(html));
+// Echte Von-Bis-Fenster statt Ja/Nein - das ist der Unterschied zu einer
+// Kaestchenliste und der Grund, warum die Balken im Tagesrahmen liegen.
+const mx=html.slice(html.indexOf('function spMatrixHTML'), html.indexOf('function spPresets'));
+ok('15b. … als Balken im Tagesrahmen, nicht als Kaestchen',
+  /\(v\[0\]-lo\)\/\(hi-lo\)\*100/.test(mx), mx.slice(0,200));
+// Sehr kurze Fenster muessen sichtbar bleiben.
+ok('15c. … mit Mindestbreite fuer kurze Fenster', /Math\.max\(9,/.test(mx));
+// Die Quelle der Angabe ist im Entwurf farblich getrennt.
+ok('15d. … und getrennter Quelle selbst/Leitung',
+  /src==='self'\?'var\(--ac\)':'var\(--vi\)'/.test(mx));
+// Traegt die Leitung ein, muss die Quelle umspringen - sonst behauptet die
+// Anzeige weiter, die Person haette es selbst gemeldet.
+const cyc=html.slice(html.indexOf('function spCycleCell'), html.indexOf('function spWireInbox'));
+ok('15e. Eintragen durch die Leitung aendert die Quelle', /row\.src='lead'/.test(cyc), cyc.slice(-200));
+ok('15f. … und schaltet durch fuenf Zustaende',
+  /\(at\+1\)%opts\.length/.test(cyc));
+
 console.log(pass?'SP-SHELL PASS':'SP-SHELL FAIL');
 process.exit(pass?0:1);
