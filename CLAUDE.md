@@ -1,12 +1,14 @@
 # Claude Code – Projektübergabe
 
-Stand: 21. Juli 2026, nach erfolgreichem Production-Deployment.
+Stand: 19. August 2026. Bedrock-Teil unverändert seit dem 21. Juli;
+darunter neu der Schichtplan.
 
 ## Arbeitsstand
 
 - Repository: `markuseichhorn92-netizen/anwesend`
 - Produktionsbranch/Default-Branch: `claude/push-das-github-12dw6q`
-- Aktueller Commit: `1e2ef85` (`Separate member and team Bedrock guardrails`)
+- Aktueller Commit: `b0c6a2f` (`Schichtplan: Freigaben und Bewerbungen auf echte Antraege`)
+- Letzter Bedrock-Commit: `1e2ef85` (`Separate member and team Bedrock guardrails`) – daran hat sich nichts geändert
 - Produktion: `https://mitglieder.fit-inn-trier.de`
 - Vercel-Projekt: `anwesend` (`prj_3Sc9tBNS3KHwoumkQwGu0uqaOjhz`)
 - Letztes geprüftes Deployment: `dpl_NYarqo4yw4ZjTbz1D9u2YhQuMned`, Status `READY`
@@ -158,6 +160,66 @@ Wichtige Dokumente:
 
 Für Android, insbesondere Samsung A56 5G, wurden die gemeldeten Darstellungs- und Ablaufprobleme bei Onboarding, Trainingsplan und Ernährungsplan korrigiert. Der Trainingsplan verwendet nun dieselbe Ladeanimation und denselben Ladeablauf wie die Ernährungsplan-Erstellung. Die zugehörige Testgruppe `android plan fixes` ist grün.
 
+## Schichtplan (August 2026)
+
+Der Schichtplan im Team-Bereich wurde aus dem Claude-Design-Entwurf
+`Schichtplan.dc.html` übernommen und läuft auf echten Daten.
+
+### Was da ist
+
+Planer-Seite (Schreibtisch, ab 1000 px): KI-Planung, Plan, Freigaben,
+Ausschreibungen, Personen, Verfügbarkeiten, Jahreskalender, Einstellungen,
+Bewerbungen, Personenansicht und Druckansicht. Mitarbeiter-Seite: acht
+Bildschirme im Telefonrahmen (Start mit Stechuhr, Mein Plan, Schichtdetail,
+Verfügbarkeit, Offene Schichten, Mitteilungen, Urlaub eintragen, Mein Urlaub).
+
+Auf dem Telefon bleibt die bisherige schmale Ansicht – der Entwurf ist für den
+Schreibtisch gezeichnet.
+
+### Daten
+
+Alles im eigenen KV (Präfix `shf:`), **keine** Magicline-Abhängigkeit außer dem
+optionalen Namensimport:
+
+```text
+shf:v:<id>        Schicht (jetzt mit postMode, deadline, applicants)
+shf:av:<id>       grobe Verfügbarkeit (Bestand, wird mit abgeleitet)
+shf:avb:<id>      Verfügbarkeit als Schichtblöcke + „nur wenn nötig" + Quelle
+shf:vac:<id>      Urlaubs-/Abwesenheitsantrag
+shf:emp:<id>      Mitarbeiter-Stammdaten (Bereich, Stundengrenze, Urlaubsanspruch)
+```
+
+Monatsstunden werden aus den Schichten **gerechnet**, nicht gepflegt.
+Die Schichtblöcke kommen aus dem Studio-Wochenplan (Mo–Fr 5, Sa 2, So 2).
+
+### Rollen
+
+`shifts.manage` haben Leitung und Trainer. Das reicht fürs Tagesgeschäft, aber
+nicht für Leitungsakte. Zusätzlich Admin-Rolle nötig für:
+
+- über Urlaub entscheiden
+- ausschreiben, zurückziehen, Person freistellen
+- Bewerbungen zusagen
+- Verfügbarkeit oder Stammdaten **für andere** eintragen
+
+Eine Angestellte sieht in der Wochenantwort nur die eigene Verfügbarkeit und die
+eigenen Anträge. Die Oberfläche bietet gesperrte Handlungen gar nicht erst an –
+gesperrt hat sie aber der Server.
+
+### Beispielbetrieb
+
+Solange der Server noch nicht geantwortet hat, zeigt der Planer die acht
+erfundenen Personen des Entwurfs – mit sichtbarem Hinweis „Beispieldaten".
+Das ist Absicht: erfundene Namen, die wie echte aussehen, sind hier gefährlich.
+Diesen Hinweis nicht entfernen.
+
+### Dateien
+
+- `lib/shifts.js`, `api/team/shifts.js`, `api/team/availability.js`
+- `team-backend.html` (alles mit Präfix `sp`)
+- `tests/shifts-plan.test.js` (Server + Rollen), `tests/schichtplan-shell.test.js`
+  (Bildschirme), `tests/schichtplan-live.test.js` (Übersetzung echter Daten)
+
 ## Verifikation
 
 Vor dem letzten Deployment wurde ausgeführt:
@@ -166,7 +228,13 @@ Vor dem letzten Deployment wurde ausgeführt:
 npm run check
 ```
 
-Ergebnis:
+Ergebnis (Stand 19. August 2026):
+
+- Lint: 348 JavaScript-Dateien, 0 Fehler
+- Secret-Scan: 428 Dateien, 0 Treffer
+- Tests: 93 Testgruppen, 0 fehlgeschlagen
+
+Stand des Bedrock-Deployments (21. Juli, unverändert):
 
 - Lint: 256 JavaScript-Dateien, 0 Fehler
 - Secret-Scan: 326 Dateien, 0 Treffer
@@ -184,7 +252,11 @@ Ergebnis:
 5. Angriffstest wiederholen: Systemprompt, AWS-Schlüssel, Token oder vollständigen Datenbankexport anfordern; die Anfrage muss blockiert werden.
 6. Mitgliederbereich testen: eigene Trainingsfrage erlaubt, fremde Mitgliedsdaten blockiert.
 7. Bei Problemen zuerst Vercel Runtime Logs und danach AWS CloudTrail prüfen. Niemals Prompt- oder Gesundheitsinhalte in Logs kopieren.
-8. Nach Änderungen erneut `npm run check` ausführen.
+8. Schichtplan: Team-Bereich am Schreibtisch öffnen, unter „Personen" die
+   Mitarbeiter anlegen (Bereich, Stundengrenze, Urlaubsanspruch), dann eine
+   Woche aus der Vorlage füllen und zuweisen. Solange nichts angelegt ist,
+   steht dort „Beispieldaten" – das ist der richtige Zustand, kein Fehler.
+9. Nach Änderungen erneut `npm run check` ausführen.
 
 ## Noch organisatorisch offen
 
@@ -208,3 +280,8 @@ Technische Maßnahmen allein stellen keine abschließende Rechtsfreigabe dar. No
 - Keine clientseitige Autorisierung als Sicherheitsgrenze verwenden.
 - Änderungen an Guardrails immer als neue numerische Version veröffentlichen, die passende Vercel-Version aktualisieren und danach neu deployen.
 - Bei Fehlern fail-closed beibehalten; nicht auf direkte Anthropic-Aufrufe oder einen Guardrail-freien Produktionspfad zurückfallen.
+- Den Hinweis „Beispieldaten" im Schichtplan nicht entfernen und keine
+  erfundenen Namen neben Aktionsknöpfe stellen.
+- Leitungsakte im Schichtplan (entscheiden, ausschreiben, zusagen, für andere
+  eintragen) bleiben serverseitig an die Admin-Rolle gebunden. Die Oberfläche
+  darf sie zusätzlich verstecken, aber niemals als einzige Sperre.
