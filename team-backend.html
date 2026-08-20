@@ -218,6 +218,7 @@ var S={ token:null, role:null, meName:null, screen:'dash', convs:[], counts:{}, 
         churn:null, dues:null,
         // Nachrichten: Rundnachricht (Broadcast)
         bcSegment:'app', bcCount:null, bcCountLoading:false, bcTitle:'', bcBody:'', bcPush:true, bcEmail:false, bcWa:false, bcBusy:false, bcResult:null,
+        waDiag:null, waDiagLoaded:false, waDiagBusy:false, waDiagPhone:'', waDiagTest:null,
         // Nachrichten: Direktnachricht (Compose-Dialog)
         dmOpen:false, dmMemberId:null, dmMemberName:'', dmTitle:'', dmBody:'', dmPush:true, dmEmail:false, dmWa:false, dmBusy:false, dmResult:null,
         // Leads: Interessenten-Pipeline
@@ -3437,6 +3438,92 @@ async function doSendBroadcast(){
   }catch(e){ S.bcBusy=false; alert('Verbindung fehlgeschlagen.'); }
   render();
 }
+// ---------- Anmelde-Code per WhatsApp: warum kommt keiner an? ----------
+// Der Grund stand bisher nur in den Vercel-Logs. Wer die nicht liest, sieht beim
+// Mitglied nur "kein Code" und raet. Hier steht er im Klartext - inklusive
+// Probeversand an eine Nummer, die man selbst in der Hand hat.
+// Nur fuer die Leitung: einen Probeversand an fremde Nummern soll nicht jeder
+// ausloesen koennen. Der Server prueft das noch einmal (die Oberflaeche zaehlt nicht).
+function waDiagZeit(t){ try{ var d=new Date(t); return ('0'+d.getDate()).slice(-2)+'.'+('0'+(d.getMonth()+1)).slice(-2)+'. '+('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2); }catch(e){ return ''; } }
+function waDiagZeile(x){
+  var zu=(x.art==='zustellung');
+  var gut=zu?(x.status==='delivered'||x.status==='read'):(x.ok===true);
+  var farbe=gut?'#1d7a3e':'#b53a2c';
+  var was=zu?('zugestellt nach '+esc(String(x.sekunden))+' s'+(x.status?(' ('+esc(String(x.status))+')'):''))
+            :(x.ok?('angenommen in '+esc(String(x.ms))+' ms'):('abgelehnt'+(x.code?(' – Fehler '+esc(String(x.code))):'')));
+  return '<div style="display:flex;gap:10px;align-items:baseline;padding:7px 0;border-top:1px solid #f1f4f5">'+
+    '<div style="font-size:11.5px;color:#a9b1b6;font-weight:700;min-width:78px">'+esc(waDiagZeit(x.t))+'</div>'+
+    '<div style="font-size:11.5px;color:#8a929a;font-weight:800;min-width:62px">'+esc(x.via==='whatsapp'?'WhatsApp':'E-Mail')+'</div>'+
+    '<div style="flex:1;min-width:0;font-size:12.5px;font-weight:700;color:'+farbe+';line-height:1.5">'+was+
+      (x.grund?('<div style="font-size:11.5px;color:#5a636a;font-weight:600;margin-top:2px">'+esc(String(x.grund))+'</div>'):'')+
+    '</div></div>';
+}
+function waDiagCard(){
+  if(!isAdmin()) return '';
+  var d=S.waDiag, t=S.waDiagTest;
+  var kopf='<div style="font-size:16px;font-weight:900;letter-spacing:-.3px;margin-bottom:3px">Anmelde-Code per WhatsApp</div>'+
+    '<div style="font-size:12.5px;color:#8a929a;font-weight:600;margin-bottom:16px;line-height:1.5">Kommt bei einem Mitglied kein Code an, steht hier warum. Der Probeversand geht an eine Nummer deiner Wahl und meldet die Antwort von WhatsApp im Klartext zurück – er ist kein gültiger Anmelde-Code.</div>';
+
+  var stand='';
+  if(!S.waDiagLoaded){ stand='<div style="font-size:13px;color:#8a929a;font-weight:600">Wird geladen …</div>'; }
+  else if(!d){ stand='<div style="font-size:13px;color:#b53a2c;font-weight:700">Der Stand ließ sich nicht laden.</div>'; }
+  else {
+    var e=d.einrichtung||{};
+    var zeilen=[
+      ['Eingerichtet', e.bereit?'ja':'nein – die App bietet WhatsApp deshalb gar nicht erst an'],
+      ['Anbieter', e.anbieter==='meta'?'Meta (WhatsApp Cloud API)':(e.anbieter==='twilio'?'Twilio':'keiner')],
+    ];
+    if(e.name) zeilen.push(['Vorlage', e.name+' · Sprache '+(e.sprache||'de')]);
+    if(e.festgenagelt) zeilen.push(['Form','festgelegt auf '+(e.festgenagelt==='auth'?'Authentifizierung':'nur Text')]);
+    else if(e.form) zeilen.push(['Form', e.form==='auth'?'Authentifizierung (Code im Knopf)':'nur Text']);
+    stand='<div style="background:#fbfcfc;border:1.5px solid #eef2f3;border-radius:14px;padding:13px 15px">'+
+      zeilen.map(function(z){ return '<div style="display:flex;gap:10px;font-size:13px;line-height:1.6"><div style="min-width:104px;color:#8a929a;font-weight:700">'+esc(z[0])+'</div><div style="flex:1;min-width:0;font-weight:700;color:#15171B">'+esc(z[1])+'</div></div>'; }).join('')+
+    '</div>';
+    var l=(d.letzte||[]);
+    stand+=l.length
+      ? '<div style="margin-top:16px"><div style="font-size:12px;font-weight:800;color:#8a929a;text-transform:uppercase;letter-spacing:.4px;margin-bottom:2px">Letzte Versuche</div>'+l.map(waDiagZeile).join('')+'</div>'
+      : '<div style="font-size:12.5px;color:#a9b1b6;font-weight:600;margin-top:14px">Noch keine Versuche aufgezeichnet.</div>';
+  }
+
+  var erg='';
+  if(t){
+    var gut=!!t.zugestellt;
+    erg='<div style="margin-top:14px;background:'+(gut?'#e7f6ec':'#fbeae7')+';border-radius:14px;padding:14px 16px">'+
+      '<div style="font-size:13.5px;font-weight:900;color:'+(gut?'#1d7a3e':'#b53a2c')+'">'+esc(t.message||'')+'</div>'+
+      (t.fehler?('<div style="font-size:12.5px;color:#2a3338;font-weight:700;margin-top:6px;line-height:1.6">'+
+        (t.fehler.code?('Fehler '+esc(String(t.fehler.code))+': '):'')+esc(String(t.fehler.text||''))+'</div>'):'')+
+      (t.ms!=null?('<div style="font-size:11.5px;color:#5a636a;font-weight:600;margin-top:5px">Antwort nach '+esc(String(t.ms))+' ms</div>'):'')+
+    '</div>';
+  }
+
+  return '<div style="background:#fff;border-radius:20px;box-shadow:0 12px 32px rgba(4,33,40,.08);padding:22px 24px;margin-top:18px">'+
+    kopf+stand+
+    '<div style="height:1px;background:#eef2f3;margin:18px 0"></div>'+
+    '<label style="display:block;font-size:12px;font-weight:800;color:#8a929a;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">Probeversand an</label>'+
+    '<div style="display:flex;gap:10px;flex-wrap:wrap">'+
+      '<input id="wadiagphone" value="'+esc(S.waDiagPhone)+'" maxlength="24" placeholder="z. B. 0151 12345678" style="flex:1;min-width:180px;padding:12px 14px;border:1.5px solid #dce3e4;border-radius:12px;font-size:14.5px;background:#fbfcfc">'+
+      '<button data-wadiagtest="1"'+(S.waDiagBusy?' disabled':'')+' style="padding:12px 18px;border:none;border-radius:12px;background:'+TEAL+';color:#fff;font-size:14.5px;font-weight:800;cursor:pointer">'+(S.waDiagBusy?'Wird gesendet …':'Probe senden')+'</button>'+
+    '</div>'+erg+
+  '</div>';
+}
+async function loadWaDiag(){
+  if(!isAdmin()) return;
+  try{ var r=await tapi('/api/team/wa-diagnose'); S.waDiag=(r&&r.ok)?r:null; }
+  catch(e){ S.waDiag=null; }
+  S.waDiagLoaded=true; render();
+}
+async function doWaDiagTest(){
+  if(S.waDiagBusy) return;
+  var nr=String(S.waDiagPhone||'').trim();
+  if(!nr){ S.waDiagTest={zugestellt:false,message:'Bitte zuerst eine Handynummer eintragen.'}; render(); return; }
+  S.waDiagBusy=true; S.waDiagTest=null; render();
+  try{ var r=await tapi('/api/team/wa-diagnose',{method:'POST',body:{phone:nr}});
+    S.waDiagTest=(r&&r.ok)?r:{zugestellt:false,message:(r&&r.message)||'Der Probeversand hat nicht geklappt.'};
+  }catch(e){ S.waDiagTest={zugestellt:false,message:'Netzwerkfehler beim Probeversand.'}; }
+  S.waDiagBusy=false;
+  await loadWaDiag();
+}
+
 function msgNode(){
   var node=el('<div class="scrl" style="flex:1;min-height:0;overflow-y:auto;padding:24px 28px 44px"></div>');
   var segChips=BCSEG.map(function(s){ var a=S.bcSegment===s.k;
@@ -3469,6 +3556,7 @@ function msgNode(){
       '<button data-bcsend="1"'+(S.bcBusy?' disabled':'')+' style="margin-top:18px;width:100%;padding:14px;border:none;border-radius:13px;background:'+TEAL+';color:#fff;font-size:15px;font-weight:800;cursor:pointer">'+(S.bcBusy?'Wird gesendet …':'Rundnachricht senden')+'</button>'+
       resultPanel+
     '</div>'+
+    waDiagCard()+
     '<div style="font-size:11.5px;color:#a9b1b6;font-weight:600;line-height:1.6;margin-top:14px;padding:0 4px">Push nur an Mitglieder mit App + Einwilligung. E-Mail nur an Mitglieder mit hinterlegter Adresse. WhatsApp nur an Mitglieder mit hinterlegter Handynummer und nur, wenn eine genehmigte Vorlage eingerichtet ist (sonst still übersprungen). Ohne vollständiges Verzeichnis (Scope MEMBER_LIST_READ) erreichen wir nur uns bekannte Mitglieder; die Sende-Menge ist auf 500 Empfänger begrenzt.</div>'+
   '</div>';
   setTimeout(function(){
@@ -3479,8 +3567,11 @@ function msgNode(){
     var ce=node.querySelector('#bcemail'); if(ce) ce.onchange=function(){ S.bcEmail=ce.checked; };
     var cw=node.querySelector('#bcwa'); if(cw) cw.onchange=function(){ S.bcWa=cw.checked; };
     var sb=node.querySelector('[data-bcsend]'); if(sb) sb.onclick=doSendBroadcast;
+    var wp=node.querySelector('#wadiagphone'); if(wp) wp.oninput=function(){ S.waDiagPhone=wp.value; };
+    var wt=node.querySelector('[data-wadiagtest]'); if(wt) wt.onclick=doWaDiagTest;
     updateBroadcastCount();
     if(S.bcCount==null && !S.bcCountLoading) loadBroadcastCount();
+    if(!S.waDiagLoaded && isAdmin()) loadWaDiag();
   },0);
   return node;
 }
