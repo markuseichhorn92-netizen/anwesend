@@ -104,6 +104,28 @@ async function run() {
   ok('2. Beim naechsten Mal geht es direkt richtig raus',
     r && r.ok === true && aufrufe.length === 1, aufrufe.length + ' Aufrufe');
 
+  // ── 2b. … und zwar ueber den Prozess hinaus ──
+  // Jede frisch gestartete Funktion faengt sonst wieder bei Null an und bezahlt
+  // einen abgelehnten Aufruf - genau die Verzoegerung, um die es hier ging.
+  const kv = new Map();
+  inject('lib/store.js', { hasStore: true, redisPipeline: async (cmds) => cmds.map((c) => {
+    const op = String(c[0]).toUpperCase(), k = String(c[1]);
+    if (op === 'GET') return kv.has(k) ? kv.get(k) : null;
+    if (op === 'SET') { kv.set(k, c[2]); return 'OK'; }
+    return 0;
+  }) });
+  WA = ladeWA(BASIS);                      // "erster Start": lernt und merkt sich
+  regel = alsAuthVorlage;
+  aufrufe.length = 0;
+  await WA.sendLoginTemplate('+4915100000000', '999000');
+  ok('2b. Die erkannte Form wird abgelegt', kv.get('otptplform') === 'auth', JSON.stringify(Array.from(kv.entries())));
+  WA = ladeWA(BASIS);                      // "neuer Kaltstart": nimmt sie von dort
+  aufrufe.length = 0;
+  r = await WA.sendLoginTemplate('+4915100000000', '999111');
+  ok('2c. Ein Kaltstart bezahlt keinen Fehlversuch mehr',
+    r && r.ok === true && aufrufe.length === 1, aufrufe.length + ' Aufrufe');
+  delete require.cache[path.resolve(ROOT, 'lib/store.js')];
+
   // ── 3. Umgekehrt genauso: Utility-Vorlage ──
   WA = ladeWA(BASIS);
   regel = alsUtilityVorlage;
