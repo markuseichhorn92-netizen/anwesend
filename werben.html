@@ -66,9 +66,23 @@
   function greetWord(){ var h=berlinHour(); if(h<5)return 'Gute Nacht'; if(h<11)return 'Guten Morgen'; if(h<18)return 'Guten Tag'; return 'Guten Abend'; }
   var IC_SHIELD='<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>';
 
-  var TOKEN=sessionStorage.getItem('fi_member_token')||localStorage.getItem('fi_member_token')||null;
+  // Speicherzugriff kann WERFEN, nicht nur leer sein: privates Fenster, im Browser
+  // einer App (Instagram, Facebook) mit gesperrter Speicherung, strenge
+  // Cookie-Einstellungen. Ungekapselt stirbt hier das ganze Skript und die Seite
+  // bleibt weiss - ohne Anmeldung, ohne Fehlermeldung, ohne alles.
+  function stGet(k){
+    try{ return sessionStorage.getItem(k)||localStorage.getItem(k)||null; }catch(e){ return null; }
+  }
+  function stSet(k,v,dauerhaft){
+    try{ (dauerhaft?localStorage:sessionStorage).setItem(k,v); }catch(e){}
+  }
+  function stDel(k){
+    try{ sessionStorage.removeItem(k); }catch(e){}
+    try{ localStorage.removeItem(k); }catch(e){}
+  }
+  var TOKEN=stGet('fi_member_token');
   var PROFILE=null;
-  var S={screen:TOKEN?'load':'login', email:'', dob:'', remember:false, busy:false, err:'', copied:false, loginStep:'request', challenge:'', otp:''};
+  var S={screen:TOKEN?'load':'login', email:'', dob:'', remember:false, busy:false, err:'', copied:false, loginStep:'request', challenge:'', otp:'', channels:[], via:'', delivered:true};
 
   window.__set=function(f,v){ S[f]=v; if(f==='otp' && S.loginStep==='verify' && !S.busy && S.challenge && String(v).replace(/\D/g,'').length===6){ verifyCode(); } };
 
@@ -99,10 +113,24 @@
     var e = S.err ? '<div class="err">'+svg('<path d="M12 9v4M12 17h.01"></path><circle cx="12" cy="12" r="9"></circle>',{c:'#b53a2c',w:2,s:18})+'<span>'+esc(S.err)+'</span></div>' : '';
     return '<div style="padding:8px 4px 16px"><div class="h1w">Freunde werben &amp; Prämie sichern</div><div style="font-size:14px;color:#bfd7dc;margin-top:4px;font-weight:500;line-height:1.45">Empfiehl das Fit-Inn Trier weiter: Für jede Mitgliedschaft, die über dich zustande kommt, trainierst du <b style="color:#fff">4 Wochen beitragsfrei</b> – dein:e Freund:in startet mit <b style="color:#fff">2 Wochen gratis</b>.</div></div>'+
     rewardCards()+
-    (S.loginStep==='verify'
+    (S.loginStep==='channel'
+      ? '<div class="card" style="margin-top:14px">'+
+          '<div style="font-size:16px;font-weight:800;margin-bottom:4px">Wohin dürfen wir den Code schicken?</div>'+
+          '<div style="font-size:13px;color:#6b7780;margin-bottom:16px;line-height:1.45">Wähle den Weg, auf dem du den 6-stelligen Code bekommen möchtest.</div>'+
+          (S.channels||[]).map(function(c){
+            var wa=c.type==='whatsapp';
+            return '<button class="btn" data-chan="'+esc(c.type)+'" style="margin-bottom:10px;'+(wa?'background:#25D366;':'')+'" '+(S.busy?'disabled':'')+'>'+
+              (wa?'WhatsApp an ':'E-Mail an ')+esc(c.hint||'')+'</button>';
+          }).join('')+e+
+          '<div style="text-align:center;margin-top:14px"><button id="l_back" style="background:none;border:none;color:'+TEAL+';font-weight:700;font-size:13px;cursor:pointer">‹ Angaben ändern</button></div>'+
+        '</div>'
+      : S.loginStep==='verify'
       ? '<div class="card" style="margin-top:14px">'+
           '<div style="font-size:16px;font-weight:800;margin-bottom:4px">Code eingeben</div>'+
-          '<div style="font-size:13px;color:#6b7780;margin-bottom:16px;line-height:1.45">Wir haben dir einen 6-stelligen Code '+(S.email?('an <b style="color:#15171B">'+esc(S.email)+'</b>'):'an deine hinterlegte E-Mail-Adresse')+' geschickt – oder nutze den Anmelde-Link aus der E-Mail.</div>'+
+          '<div style="font-size:13px;color:#6b7780;margin-bottom:16px;line-height:1.45">'+
+            (S.delivered===false
+              ? 'Wir konnten den Code gerade nicht zustellen. Versuch es unten erneut oder wähle einen anderen Weg.'
+              : ('Wir haben dir einen 6-stelligen Code '+(S.via==='whatsapp'?'per <b style="color:#15171B">WhatsApp</b>':(S.email?('an <b style="color:#15171B">'+esc(S.email)+'</b>'):'an deine hinterlegte E-Mail-Adresse'))+' geschickt'+(S.via==='whatsapp'?'.':' – oder nutze den Anmelde-Link aus der E-Mail.')))+'</div>'+
           '<div><label class="lbl">Einmal-Code</label><input id="l_code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" class="inp" placeholder="• • • • • •" style="letter-spacing:8px;text-align:center;font-size:24px;font-weight:800" value="'+esc(S.otp)+'" oninput="window.__set(\'otp\',this.value)"></div>'+
           '<label style="display:flex;align-items:center;gap:10px;margin-top:16px;cursor:pointer"><input type="checkbox" '+(S.remember?'checked':'')+' style="width:18px;height:18px;accent-color:'+TEAL+'" onchange="window.__set(\'remember\',this.checked)"><span style="font-size:14px;color:#42454b;font-weight:600">Angemeldet bleiben</span></label>'+
           '<button class="btn" id="l_btn" style="margin-top:18px" '+(S.busy?'disabled':'')+'>'+(S.busy?'Prüfe …':'Anmelden')+'</button>'+e+
@@ -149,13 +177,44 @@
   function copyText(t){ if(navigator.clipboard&&navigator.clipboard.writeText) navigator.clipboard.writeText(t).catch(function(){}); }
   function refLink(){ var p=PROFILE||{}; var code=p.referralCode||''; return window.location.origin+'/einladung?ref='+encodeURIComponent(code)+(p.firstName?('&name='+encodeURIComponent(p.firstName)):''); }
 
+  // Die Anmeldung ist zweistufig: erst nachschauen, welche Wege es gibt
+  // (E-Mail, ggf. WhatsApp), dann ueber den gewaehlten Weg senden. Diese Seite
+  // hat frueher nur nach `challenge` gesucht - den gibt es im ersten Schritt gar
+  // nicht. Ergebnis: JEDER bekam „Es ist ein Fehler aufgetreten", auch wenn mit
+  // dem Konto alles stimmte.
   function reqCode(){
     var email=(S.email||'').trim(), dob=S.dob;
     if(!email||!dob){ setS({err:'Bitte E-Mail und Geburtsdatum ausfüllen.'}); return; }
     setS({busy:true,err:''});
     fetch('/api/member/login-request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:email,dob:dob})})
-      .then(function(r){return r.json().catch(function(){return {};});})
-      .then(function(j){ if(j&&j.challenge){ setS({busy:false,challenge:j.challenge,loginStep:'verify',otp:'',err:''}); } else { setS({busy:false,err:'Es ist ein Fehler aufgetreten. Bitte später erneut.'}); } })
+      .then(function(r){return r.json().then(function(j){return {s:r.status,j:j||{}};}).catch(function(){return {s:r.status,j:{}};});})
+      .then(function(x){ var j=x.j;
+        if(x.s===429||j.error==='rate_limited'){ setS({busy:false,err:'Zu viele Versuche – bitte ein paar Minuten warten und dann erneut probieren.'}); return; }
+        if(j.error==='no_store'){ setS({busy:false,err:'Die Anmeldung ist gerade nicht verfügbar. Bitte später erneut oder melde dich im Studio.'}); return; }
+        if(j.step==='needdob'){ setS({busy:false,err:'Bitte Geburtsdatum ausfüllen.'}); return; }
+        if(j.step==='notfound'){ setS({busy:false,err:'Wir konnten kein Konto mit dieser E-Mail und diesem Geburtsdatum finden. Bitte prüfe beide Angaben – oder melde dich beim Studio.'}); return; }
+        if(j.step==='number'){ setS({busy:false,loginStep:'number',num:'',err:'Zu dieser E-Mail gibt es mehrere Konten. Bitte gib zusätzlich deine Mitgliedsnummer an.'}); return; }
+        if(j.step==='channel'){ setS({busy:false,loginStep:'channel',channels:(j.channels||[]),err:''}); return; }
+        if(j.challenge){ setS({busy:false,challenge:j.challenge,loginStep:'verify',otp:'',via:(j.via||'email'),delivered:(j.delivered!==false),err:''}); return; }
+        setS({busy:false,err:'Es ist ein Fehler aufgetreten. Bitte später erneut.'});
+      })
+      .catch(function(){ setS({busy:false,err:'Es ist ein Fehler aufgetreten. Bitte später erneut.'}); });
+  }
+  // Zweiter Schritt: ueber den gewaehlten Weg wirklich senden.
+  function pickChannel(type){
+    var email=(S.email||'').trim(), dob=S.dob;
+    var deliver=(type==='whatsapp')?'whatsapp':'email';
+    if(!email||!dob){ setS({loginStep:'request',err:'Bitte E-Mail und Geburtsdatum ausfüllen.'}); return; }
+    setS({busy:true,err:'',via:deliver});
+    var body={email:email,dob:dob,deliver:deliver};
+    if((S.num||'').trim()) body.customerNumber=(S.num||'').trim();
+    fetch('/api/member/login-request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
+      .then(function(r){return r.json().then(function(j){return {s:r.status,j:j||{}};}).catch(function(){return {s:r.status,j:{}};});})
+      .then(function(x){ var j=x.j;
+        if(x.s===429||j.error==='rate_limited'){ setS({busy:false,err:'Zu viele Versuche – bitte ein paar Minuten warten und dann erneut probieren.'}); return; }
+        if(j.challenge){ setS({busy:false,challenge:j.challenge,loginStep:'verify',otp:'',via:(j.via||deliver),delivered:(j.delivered!==false),err:''}); return; }
+        setS({busy:false,err:'Es ist ein Fehler aufgetreten. Bitte später erneut.'});
+      })
       .catch(function(){ setS({busy:false,err:'Es ist ein Fehler aufgetreten. Bitte später erneut.'}); });
   }
   function verifyCode(){
@@ -165,7 +224,7 @@
     fetch('/api/member/login-verify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({challenge:S.challenge,code:code,remember:S.remember})})
       .then(function(r){return r.json().then(function(j){return {status:r.status,j:j};});})
       .then(function(o){
-        if(o.status===200 && o.j && o.j.token){ TOKEN=o.j.token; (S.remember?localStorage:sessionStorage).setItem('fi_member_token',TOKEN); S.busy=false; S.loginStep='request'; S.challenge=''; S.otp=''; S.screen='load'; render(); loadMe(); }
+        if(o.status===200 && o.j && o.j.token){ TOKEN=o.j.token; stSet('fi_member_token',TOKEN,S.remember); S.busy=false; S.loginStep='request'; S.challenge=''; S.otp=''; S.screen='load'; render(); loadMe(); }
         else { setS({busy:false,err:(o.j&&o.j.message)||'Code falsch. Bitte erneut versuchen.'}); }
       }).catch(function(){ setS({busy:false,err:'Es ist ein Fehler aufgetreten. Bitte später erneut.'}); });
   }
@@ -177,19 +236,20 @@
       .then(function(r){return r.json().then(function(j){return {status:r.status,j:j};});})
       .then(function(o){
         if(o.status===200 && o.j && o.j.needsCode){ setS({busy:false,challenge:o.j.challenge,loginStep:'verify',otp:'',email:'',err:''}); return; }
-        if(o.status===200 && o.j && o.j.token){ TOKEN=o.j.token; (S.remember?localStorage:sessionStorage).setItem('fi_member_token',TOKEN); S.busy=false; S.loginStep='request'; S.screen='load'; render(); loadMe(); }
+        if(o.status===200 && o.j && o.j.token){ TOKEN=o.j.token; stSet('fi_member_token',TOKEN,S.remember); S.busy=false; S.loginStep='request'; S.screen='load'; render(); loadMe(); }
         else { setS({busy:false,err:(o.j&&o.j.message)||'Daten nicht gefunden. Bitte Mitgliedsnummer und Geburtsdatum prüfen.'}); }
       }).catch(function(){ setS({busy:false,err:'Es ist ein Fehler aufgetreten. Bitte später erneut.'}); });
   }
   function loadMe(){
     api('/api/member/me').then(function(d){ PROFILE=d.profile||null; setS({screen:'referral'}); }).catch(function(){ /* 401 handled */ });
   }
-  function doLogout(){ TOKEN=null; sessionStorage.removeItem('fi_member_token'); localStorage.removeItem('fi_member_token'); PROFILE=null; setS({screen:'login',email:'',dob:'',otp:'',num:'',loginStep:'request',challenge:''}); }
+  function doLogout(){ TOKEN=null; stDel('fi_member_token'); PROFILE=null; setS({screen:'login',email:'',dob:'',otp:'',num:'',loginStep:'request',challenge:'',channels:[],via:'',delivered:true}); }
 
   document.addEventListener('click',function(e){
     var el=e.target;
-    if(el.closest('#l_btn')){ e.preventDefault(); if(S.loginStep==='verify') verifyCode(); else if(S.loginStep==='number') loginNumber(); else reqCode(); }
-    else if(el.closest('#l_resend')){ e.preventDefault(); reqCode(); }
+    if(el.closest('[data-chan]')){ e.preventDefault(); if(!S.busy) pickChannel(el.closest('[data-chan]').getAttribute('data-chan')); }
+    else if(el.closest('#l_btn')){ e.preventDefault(); if(S.loginStep==='verify') verifyCode(); else if(S.loginStep==='number') loginNumber(); else reqCode(); }
+    else if(el.closest('#l_resend')){ e.preventDefault(); pickChannel(S.via||'email'); }
     else if(el.closest('#l_back')){ e.preventDefault(); setS({loginStep:'request',otp:'',err:''}); }
     else if(el.closest('#l_nummode')){ e.preventDefault(); setS({loginStep:'number',err:''}); }
     else if(el.closest('#l_back2')){ e.preventDefault(); setS({loginStep:'request',err:''}); }
