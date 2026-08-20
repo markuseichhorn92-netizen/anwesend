@@ -134,8 +134,14 @@ module.exports = async function handler(req, res) {
   // Team-Nachricht anwenden. Best effort, blockiert die Antwort nicht.
   try {
     const Receipts = require('../lib/receipts');
+    const { noteDelivery } = require('../lib/loginCode');
     const sts = WA.parseStatuses(body);
-    for (const s of sts) { try { await Receipts.applyStatus(s.id, s.status); } catch (e) {} }
+    for (const s of sts) {
+      try { await Receipts.applyStatus(s.id, s.status); } catch (e) {}
+      // War es ein Login-Code? Dann festhalten, wie lange die Zustellung
+      // gedauert hat - das ist der Teil, den WhatsApp verantwortet.
+      try { await noteDelivery(s.id, s.status); } catch (e) {}
+    }
   } catch (e) {}
 
   res.statusCode = 200; return res.end(JSON.stringify({ ok: true, handled: handled, leads: leads }));
