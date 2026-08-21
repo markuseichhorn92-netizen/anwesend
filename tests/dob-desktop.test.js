@@ -88,11 +88,14 @@ const heuer = new Date().getFullYear();
     new Date(r + 'T12:00:00Z').getUTCDate() === 5 && new Date(r + 'T12:00:00Z').getUTCMonth() === 5);
 
   // ── 8. Das Feld selbst ──
-  // Auf dem Desktop darf der Sheet-Ausloeser NICHT mehr erscheinen, sonst waere
-  // das Rad weiter erreichbar und nichts gewonnen.
-  const feld = html.slice(html.indexOf('function dpField()'), html.indexOf('function dpConfig'));
+  // Zwei Wege, ein Wert: am Schreibtisch getippt, auf dem Telefon die Auswahl
+  // des Geraets. Der Rad-Ausloeser darf nirgends mehr auftauchen.
+  const feld = html.slice(html.indexOf('function dpField()'), html.indexOf('function dpDesktop()'));
   ok('8. Das Feld hat einen Desktop-Zweig', /dpDesktop\(\)/.test(feld));
-  const desktopZweig = feld.slice(feld.indexOf('if(dpDesktop())'), feld.indexOf('var cal='));
+  // Grenze der beiden Zweige: die schliessende Klammer des if auf ihrer Ebene.
+  // (Nicht die erste `}` im Text suchen - die steckt in einem regulaeren Ausdruck.)
+  const schnitt = feld.indexOf('\n    }');
+  const desktopZweig = feld.slice(feld.indexOf('if(dpDesktop())'), schnitt);
   ok('8b. … der ein Eingabefeld liefert', /<input id="li_dob"/.test(desktopZweig), desktopZweig.slice(0, 120));
   ok('8c. … und KEINEN Rad-Ausloeser', !/dpTrigger|dpOpen/.test(desktopZweig), desktopZweig.slice(0, 200));
   ok('8d. … mit dem gleichen Eingabestil wie die Nachbarfelder',
@@ -114,16 +117,31 @@ const heuer = new Date().getFullYear();
 
   // Die Weiche darf nicht am Betriebssystem haengen, sondern am Zeigegeraet:
   // ein iPad mit Tastatur ist Touch, ein Windows-Rechner mit Touchscreen nicht.
-  const weiche = html.slice(html.indexOf('function dpDesktop()'), html.indexOf('function dpUseWheel'));
+  const weiche = html.slice(html.indexOf('function dpDesktop()'), html.indexOf('function dpParseDE'));
   ok('9. Die Weiche fragt das Zeigegeraet ab',
     /hover:hover/.test(weiche) && /pointer:fine/.test(weiche), weiche.slice(0, 200));
   ok('9b. … und faellt bei Unklarheit auf Touch zurueck',
     /return false;\s*\}\s*catch/.test(weiche) || /catch\(e\)\{ return false; \}/.test(weiche), weiche);
 
-  // Das Rad bleibt fuer Touch-ohne-Android erhalten - nur dort war es je gut.
-  const rad = html.slice(html.indexOf('function dpUseWheel()'), html.indexOf('function dpParseDE'));
-  ok('10. Kein Rad auf dem Desktop', /if\(dpDesktop\(\)\) return false;/.test(rad), rad.slice(0, 220));
-  ok('10b. … und weiterhin keins auf Android', /Android/.test(rad));
+  // ── 10. Auf dem Telefon die Auswahl des Geraets ──
+  // Nachgebaute Datumsauswahlen laufen dem System immer hinterher: sie kennen
+  // die Wischgesten nicht, brechen mit jeder neuen Systemversion anders und
+  // muessen Barrierefreiheit einzeln nachruesten. Also gar nicht erst nachbauen.
+  const touchZweig = feld.slice(schnitt);
+  ok('10. Der Telefon-Zweig nutzt die Systemauswahl',
+    /type="date"/.test(touchZweig), touchZweig.slice(0, 220));
+  ok('10b. … mit Grenzen, die kein Geburtsdatum in der Zukunft zulassen',
+    /min="1900-01-01"/.test(touchZweig) && /max="'\+esc\(isoToday\(\)\)\+'"/.test(touchZweig), touchZweig.slice(0, 320));
+  ok('10c. … und schreibt den Wert in denselben Zustand',
+    /window\.__setDobISO/.test(touchZweig) && /window\.__setDobISO=function/.test(html), touchZweig.slice(0, 320));
+
+  // Das Rad ist raus - samt Zustand, Aktionen und CSS. Bliebe es als toter Code
+  // stehen, waere beim naechsten Anfassen unklar, welcher Weg denn nun gilt.
+  ok('11. Kein Rad mehr im Code',
+    !/wheelOverlay|dpUseWheel|dpMount|dpSettle|dpColHtml/.test(html));
+  ok('11b. … kein Ausloeser und kein Zustand dafuer',
+    !/dpTrigger|data-act="dpOpen"|dp:null/.test(html));
+  ok('11c. … und kein verwaistes CSS', !/\.dpSheet|\.dpItem|\.dpSelWrap/.test(html));
 
   console.log(pass ? 'DOB-DESKTOP PASS' : 'DOB-DESKTOP FAIL');
   process.exit(pass ? 0 : 1);

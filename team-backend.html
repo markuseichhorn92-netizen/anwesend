@@ -1488,9 +1488,38 @@ function dpParse(str){                     // TT.MM.JJJJ / TT.MM.JJ -> ISO yyyy-
   var dt=new Date(y, mo-1, d); if(dt.getFullYear()!==y||dt.getMonth()!==mo-1||dt.getDate()!==d) return '';
   return y+'-'+ci2(mo)+'-'+ci2(d);
 }
+// Auf dem Telefon gewinnt die Systemauswahl. Unser Popover ist für Maus und
+// Tastatur gebaut: 34-px-Pfeile trifft man mit dem Daumen schlecht, und das
+// Textfeld holt die Bildschirmtastatur über den Kalender. Die Auswahl des
+// Geräts kennt dagegen jede Nutzerin, sie ist barrierefrei und kennt die
+// Wischgesten. Gefragt wird das Zeigegerät, nicht das Betriebssystem: ein
+// Windows-Rechner mit Touchscreen hat eine Maus, ein iPad mit Tastatur nicht.
+function dpTouch(){
+  try{
+    if(!window.matchMedia) return false;
+    return !window.matchMedia('(hover:hover) and (pointer:fine)').matches;
+  }catch(e){ return false; }
+}
+// Ein Feld verdrahten – egal, welche der beiden Auswahlen dahintersteckt.
+// Bei der Systemauswahl kommt der Wert direkt aus dem Feld, bei unserer aus
+// dem Popover; nach aussen sieht beides gleich aus (onPick mit ISO-Datum).
+function wireDateField(elm, opts){
+  if(!elm) return;
+  opts=opts||{};
+  if(elm.tagName==='INPUT'){
+    if(opts.min) elm.min=opts.min; else elm.removeAttribute('min');
+    if(opts.max) elm.max=opts.max; else elm.removeAttribute('max');
+    elm.onchange=function(){ if(opts.onPick) opts.onPick(elm.value||''); };
+    return;
+  }
+  elm.onclick=function(){ openDatePicker(elm, opts); };
+}
 // Klickbares „Feld", das wie ein Input aussieht und beim Antippen das Popover öffnet.
 function dateFieldHTML(id, iso, ph, full){
   var txt=dpFmt(iso);
+  if(dpTouch()){
+    return '<input type="date" data-datefield="'+esc(id)+'" value="'+esc(iso||'')+'" aria-label="'+esc(ph||'Datum wählen')+'" style="'+(full?'width:100%;':'min-width:158px;')+'border:1.5px solid #d6dee0;border-radius:10px;padding:10px 12px;min-height:44px;font-size:16px;font-weight:700;color:#15171B;background:#fbfcfc;font-family:inherit;box-sizing:border-box">';
+  }
   return '<button type="button" data-datefield="'+esc(id)+'" style="display:flex;align-items:center;gap:9px;'+(full?'width:100%;':'min-width:158px;')+'border:1.5px solid #d6dee0;border-radius:10px;padding:10px 12px;font-size:13.5px;font-weight:700;color:'+(txt?'#15171B':'#9aa6aa')+';background:#fbfcfc;cursor:pointer;text-align:left">'+
     '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0a4958" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><rect x="3" y="4" width="18" height="18" rx="2.5"/><path d="M3 10h18M8 2v4M16 2v4"/></svg>'+
     '<span style="flex:1">'+(txt||esc(ph||'Datum wählen'))+'</span></button>';
@@ -3246,10 +3275,10 @@ function membersNode(){
       wrap.querySelectorAll('[data-amaction]').forEach(function(b){ b.onclick=function(){ var id=b.getAttribute('data-amid'); var med=null; (S.accessMedia||[]).forEach(function(x){ if(String(x.id)===String(id)) med=x; }); accessMediumAction(p.id, b.getAttribute('data-amaction'), med); }; });
       var ami=wrap.querySelector('[data-amissue]'); if(ami) ami.onclick=function(){ accessMediumAction(p.id, 'issue', null); };
       // Check-ins / Anwesenheitsbestätigung: Zeitraum über den Kalender-Popover wählen, PDF herunterladen oder mailen.
-      wrap.querySelectorAll('[data-datefield]').forEach(function(b){ b.onclick=function(){ var id=b.getAttribute('data-datefield');
-        openDatePicker(b, { value:(id==='cifrom'?S.ciFrom:S.ciTo), max:(id==='cifrom'?(S.ciTo||''):''), min:(id==='cito'?(S.ciFrom||''):''),
+      wrap.querySelectorAll('[data-datefield]').forEach(function(b){ var id=b.getAttribute('data-datefield');
+        wireDateField(b, { value:(id==='cifrom'?S.ciFrom:S.ciTo), max:(id==='cifrom'?(S.ciTo||''):''), min:(id==='cito'?(S.ciFrom||''):''),
           onPick:function(iso){ if(id==='cifrom') S.ciFrom=iso; else S.ciTo=iso; S.ciMsg=''; render(); } });
-      }; });
+      });
       wrap.querySelectorAll('[data-cipreset]').forEach(function(b){ b.onclick=function(){ ciPreset(b.getAttribute('data-cipreset')); }; });
       var cdl=wrap.querySelector('[data-cidownload]'); if(cdl) cdl.onclick=function(){ downloadCheckinPdf(p); };
       var cml=wrap.querySelector('[data-cimail]'); if(cml) cml.onclick=function(){ emailCheckinPdf(p); };
@@ -4905,7 +4934,7 @@ function todoNode(){
 function wireTodos(node){
   var ti=node.querySelector('#todotext'); if(ti) ti.oninput=function(){ S.todoText=ti.value; };
   var ta=node.querySelector('#todoassignee'); if(ta) ta.onchange=function(){ S.todoAssignee=ta.value; };
-  var td=node.querySelector('[data-datefield="tododue"]'); if(td) td.onclick=function(){ openDatePicker(td, { value:S.todoDue, onPick:function(iso){ S.todoDue=iso; render(); } }); };
+  wireDateField(node.querySelector('[data-datefield="tododue"]'), { value:S.todoDue, onPick:function(iso){ S.todoDue=iso; render(); } });
   var ab=node.querySelector('[data-tadd]'); if(ab) ab.onclick=todoAdd;
   node.querySelectorAll('[data-tfilter]').forEach(function(b){ b.onclick=function(){ setTodoFilter(b.getAttribute('data-tfilter')); }; });
   node.querySelectorAll('[data-ttoggle]').forEach(function(b){ b.onclick=function(){ todoToggle(b.getAttribute('data-ttoggle'), b.getAttribute('data-tdone')==='1'); }; });
@@ -9543,7 +9572,7 @@ function wireCx(scope, p){
   var card=scope.querySelector('[data-cxcard]'); if(card) card.onclick=function(e){ e.stopPropagation(); };
   var x=scope.querySelector('[data-cxx]'); if(x) x.onclick=function(){ closeCancel(p); };
   var cc=scope.querySelector('[data-cxcancel]'); if(cc) cc.onclick=function(){ closeCancel(p); };
-  var dt=scope.querySelector('[data-datefield="cxdate"]'); if(dt) dt.onclick=function(){ openDatePicker(dt, { value:S.cxDate, min:((p&&p.contract&&p.contract.nextCancellationDateISO)||''), onPick:function(iso){ S.cxDate=iso; render(); } }); };
+  wireDateField(scope.querySelector('[data-datefield="cxdate"]'), { value:S.cxDate, min:((p&&p.contract&&p.contract.nextCancellationDateISO)||''), onPick:function(iso){ S.cxDate=iso; render(); } });
   var rsel=scope.querySelector('#cxreason'); if(rsel) rsel.onchange=function(){ S.cxReason=rsel.value; };
   var sb=scope.querySelector('[data-cxsubmit]'); if(sb) sb.onclick=function(){ doCancelSubmit(p); };
 }
@@ -9676,7 +9705,7 @@ function wirePx(scope, p){
   var card=scope.querySelector('[data-pxcard]'); if(card) card.onclick=function(e){ e.stopPropagation(); };
   var x=scope.querySelector('[data-pxx]'); if(x) x.onclick=function(){ closePause(p); };
   var cc=scope.querySelector('[data-pxcancel]'); if(cc) cc.onclick=function(){ closePause(p); };
-  var dt=scope.querySelector('[data-datefield="pxstart"]'); if(dt) dt.onclick=function(){ openDatePicker(dt, { value:S.pxStart||'', min:((S.pxCfg&&S.pxCfg.firstPossibleStartDate)||''), onPick:function(iso){ S.pxStart=iso; render(); } }); };
+  wireDateField(scope.querySelector('[data-datefield="pxstart"]'), { value:S.pxStart||'', min:((S.pxCfg&&S.pxCfg.firstPossibleStartDate)||''), onPick:function(iso){ S.pxStart=iso; render(); } });
   var tm=scope.querySelector('#pxterm'); if(tm) tm.oninput=function(){ S.pxTerm=Math.max(1,parseInt(tm.value,10)||1); };
   if(tm) tm.onchange=function(){ S.pxTerm=Math.max(1,parseInt(tm.value,10)||1); render(); };
   var rsel=scope.querySelector('#pxreason'); if(rsel) rsel.onchange=function(){ S.pxReason=rsel.value; render(); };  // Grund-Wechsel -> Nachweis-Block aktualisieren

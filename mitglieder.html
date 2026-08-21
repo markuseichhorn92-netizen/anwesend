@@ -223,33 +223,6 @@
   /* Rad-Datumsauswahl (Geburtstag) – wie native iOS-Trommel, aber gebrandet & auf iOS+Android gleich */
   /* Ungueltige Eingabe: nur Rahmen + Hinweiszeile, kein roter Flaechenschock. */
   .inp.inpErr{border-color:#b53a2c}
-  .dpTrigger{width:100%;min-height:52px;display:flex;align-items:center;gap:10px;padding:13px 15px;border:1.5px solid var(--border);border-radius:13px;background:var(--surface);color:var(--text);font-size:16px;font-weight:600;cursor:pointer;text-align:left}
-  .dpTrigger .dpPh{color:var(--text-soft);font-weight:500}
-  .dpSheetWrap{position:fixed;inset:0;z-index:2147483000;display:flex;flex-direction:column;justify-content:flex-end}
-  .dpSheetWrap .dpScrim{position:absolute;inset:0;background:rgba(6,24,29,.55);backdrop-filter:blur(2px)}
-  .dpSheet{position:relative;background:var(--surface);border-radius:20px 20px 0 0;box-shadow:0 -18px 50px rgba(4,33,40,.32);padding-bottom:calc(10px + env(safe-area-inset-bottom,0px));animation:dpUp .22s cubic-bezier(.22,.61,.36,1)}
-  @keyframes dpUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
-  .dpHead{display:flex;align-items:center;justify-content:space-between;padding:14px 18px 8px}
-  .dpHead .dpTitle{font-size:15px;font-weight:800;color:var(--text)}
-  .dpHead button{background:none;border:none;font-size:16px;font-weight:700;cursor:pointer;padding:6px 2px}
-  .dpHead .dpCancel{color:var(--text-soft)}
-  .dpHead .dpDone{color:var(--teal-ink)}
-  .dpCols{position:relative;height:220px;display:flex;padding:0 12px;overflow:hidden}
-  .dpBand{position:absolute;left:12px;right:12px;top:50%;height:44px;transform:translateY(-50%);background:var(--surface-2);border-radius:12px;pointer-events:none}
-  .dpCol{flex:1;height:220px;overflow-y:scroll;scroll-snap-type:y mandatory;scrollbar-width:none;-ms-overflow-style:none;-webkit-overflow-scrolling:touch;padding:88px 0;text-align:center}
-  .dpCol::-webkit-scrollbar{width:0;height:0;display:none}
-  .dpCol.dpColD{flex:0 0 22%}
-  .dpCol.dpColY{flex:0 0 30%}
-  .dpItem{height:44px;line-height:44px;scroll-snap-align:center;font-size:20px;font-weight:600;color:var(--text-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 4px}
-  .dpItem.on{color:var(--text);font-weight:800}
-  /* Android-Variante der Geburtstags-Auswahl: klare native Dropdowns (Tag/Monat/Jahr)
-     statt der Scroll-Trommel – öffnet die native Material-Liste, hakt nie. */
-  .dpSelWrap{display:flex;gap:10px;padding:10px 16px 20px}
-  .dpSelBox{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px}
-  .dpSelBox.dpSelD{flex:0 0 24%}
-  .dpSelCap{font-size:11.5px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.4px;padding-left:2px}
-  .dpSel{width:100%;min-height:54px;border:1.5px solid var(--border);border-radius:13px;background:var(--surface-2);color:var(--text);font-size:17px;font-weight:700;padding:12px 12px;font-family:inherit;-webkit-appearance:menulist;appearance:menulist}
-  .dpSel:focus{outline:none;border-color:var(--teal-ink)}
   /* Schnellaktionen-Popup („+\"-Button in der Leiste, Kaiora-Anregung) */
   .qaScrim{position:fixed;inset:0;z-index:48;background:rgba(6,24,29,.52);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);animation:qaFade .2s ease}
   @keyframes qaFade{from{opacity:0}to{opacity:1}}
@@ -640,7 +613,7 @@
     aiQuery:'', aiPhase:'idle', aiAsked:'', aiAnswer:'', aiFeedback:null,
     finnOpen:false, finnTopic:'', finnMsgs:[], finnBusy:false, finnTip:'', finnTipLoaded:false,
     vaOpen:false, vaMsgs:[], vaBusy:false, vaInput:'', vaIntent:'',
-    qaOpen:false, dp:null,
+    qaOpen:false,
     findOpen:false, findQ:'',
     fbOpen:false, fbCat:'bug', fbText:'', fbBusy:false, fbSent:false, fbErr:'', fbCampaign:null,
     blogSel:null, blogPost:null, instaSel:null,
@@ -1164,12 +1137,11 @@
   // Native <input type=date> zeigt je nach Gerät ein anderes UI (iOS-Rad, Android-
   // Kalender). Für Geburtsdaten ist ein Jahres-Rad viel schneller. Diese Komponente
   // bildet das iOS-Trommel-Rad überall gleich & gebrandet nach – Wert bleibt ISO.
-  var DP_MONTHS=['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
   function dpDaysIn(y,m){ return new Date(y, m, 0).getDate(); }   // m: 1..12
-  function dpLabelDE(iso){ var m=String(iso||'').match(/^(\d{4})-(\d{2})-(\d{2})$/); if(!m) return ''; return String(+m[3])+'. '+DP_MONTHS[+m[2]-1]+' '+m[1]; }
-  // Feld = angetippter „Button", der das Rad öffnet. Nur Geburtstag (field='liDob').
+  // Zwei Wege, ein Wert (ISO): auf dem Telefon die Auswahl des Geräts,
+  // am Schreibtisch das getippte Feld.
   function dpField(){
-    var v=S.liDob||''; var lbl=dpLabelDE(v);
+    var v=S.liDob||'';
     // Desktop: einfach tippen. Dasselbe Eingabefeld wie E-Mail daneben, damit das
     // Formular eine Reihe bleibt und nicht ein Feld aus der Reihe tanzt.
     if(dpDesktop()){
@@ -1183,50 +1155,25 @@
         '<div id="li_dob_hint" style="font-size:12.5px;font-weight:600;color:var(--text-muted);margin-top:6px;padding-left:2px">TT.MM.JJJJ</div>'+
       '</div>';
     }
-    var cal=svg('<rect x="3" y="4" width="18" height="17" rx="2"></rect><path d="M3 9h18M8 2v4M16 2v4"></path>',{c:'var(--text-soft)',w:1.9,s:20});
+    // Telefon: die Auswahl des Geräts. Sie ist gelernt, barrierefrei, kennt die
+    // Wischgesten und fällt bei jedem Systemwechsel automatisch richtig aus –
+    // Nachbauen heisst nur, hinterherzulaufen. 16px verhindert das Hineinzoomen
+    // auf iOS beim Antippen.
     return '<div><label class="lbl">Geburtsdatum</label>'+
-      '<button type="button" class="dpTrigger" data-act="dpOpen" data-arg="liDob">'+
-        '<span style="flex:1">'+(lbl?esc(lbl):'<span class="dpPh">Datum wählen</span>')+'</span>'+cal+
-      '</button></div>';
+      '<input id="li_dob" type="date" class="inp" autocomplete="bday" '+
+        'min="1900-01-01" max="'+esc(isoToday())+'" value="'+esc(v)+'" '+
+        'oninput="window.__setDobISO(this.value)"></div>';
   }
-  // Bereich (min/max Jahr) je nach Feld. Für Geburtstag: 1920 … heute.
-  function dpConfig(field){
-    var ty=new Date().getFullYear();
-    if(field==='liDob') return { title:'Geburtstag', minY:1920, maxY:ty, maxISO:isoToday(), get:function(){ return S.liDob||''; }, set:function(iso){ S.liDob=iso; } };
-    return null;
-  }
-  // Öffnen: Startwerte aus aktuellem Wert oder sinnvoller Default (1990-06-15).
-  function openDp(field){
-    var cfg=dpConfig(field); if(!cfg) return;
-    var iso=cfg.get(); var mm=String(iso||'').match(/^(\d{4})-(\d{2})-(\d{2})$/);
-    var y=mm?+mm[1]:1990, m=mm?+mm[2]:6, d=mm?+mm[3]:15;
-    if(y<cfg.minY) y=cfg.minY; if(y>cfg.maxY) y=cfg.maxY;
-    S.dp={ field:field, title:cfg.title, minY:cfg.minY, maxY:cfg.maxY, y:y, m:m, d:d };
-    render();
-  }
-  var DP_IH=44;   // Item-Höhe (muss zur CSS .dpItem-Höhe passen)
-  function dpColHtml(kind,items,selIdx){
-    var lis=items.map(function(it,i){ return '<div class="dpItem'+(i===selIdx?' on':'')+'">'+esc(it)+'</div>'; }).join('');
-    return '<div class="dpCol dpCol'+kind+'" id="dpCol'+kind+'" data-dpcol="'+kind+'">'+lis+'</div>';
-  }
-  // Zeigegerät statt Betriebssystem fragen: Ein Trommel-Rad lebt vom Wischen mit
-  // dem Daumen. Mit Maus oder Trackpad ist es eine Zumutung – das Scrollrad springt
-  // in Sprüngen, Ziehen zielt daneben, und für einen Geburtstag scrollt man sich
-  // durch 100 Jahre. Wer eine Tastatur hat, tippt das Datum in einem Bruchteil der
-  // Zeit; dafür braucht es gar keine Auswahl-Fläche (siehe dpField).
+  // Zeigegerät statt Betriebssystem fragen: Wer eine Maus und eine Tastatur hat,
+  // tippt ein Datum in einem Bruchteil der Zeit, die jede Auswahl-Fläche kostet.
+  // Auf dem Telefon ist es umgekehrt – dort gewinnt die Auswahl des Geräts (siehe
+  // dpField). Das Betriebssystem sagt darüber nichts: ein Windows-Rechner mit
+  // Touchscreen hat eine Maus, ein iPad mit Tastatur nicht.
   function dpDesktop(){
     try{
       if(!window.matchMedia) return false;
       return window.matchMedia('(hover:hover) and (pointer:fine)').matches;
     }catch(e){ return false; }
-  }
-  // Rad nur da, wo es hingehört: Touch ohne Android. Auf Android ist die
-  // Trommel-Physik in WebViews hakelig -> native Dropdowns.
-  function dpUseWheel(){
-    try{
-      if(dpDesktop()) return false;
-      return !/Android/i.test(navigator.userAgent||'');
-    }catch(e){ return true; }
   }
 
   // ── Eingetipptes Datum ──
@@ -1267,82 +1214,17 @@
     if(h) h.textContent=falsch?'Dieses Datum gibt es nicht.':'TT.MM.JJJJ';
     if(h) h.style.color=falsch?'var(--err-ink,#b53a2c)':'var(--text-muted)';
   };
-  function dpSelects(dp){
-    var dim=dpDaysIn(dp.y,dp.m); var dCur=Math.min(dp.d,dim);
-    var dOpts=''; for(var i=1;i<=31;i++){ dOpts+='<option value="'+i+'"'+(i===dCur?' selected':'')+'>'+i+'.</option>'; }
-    var mOpts=''; for(var mi=1;mi<=12;mi++){ mOpts+='<option value="'+mi+'"'+(mi===dp.m?' selected':'')+'>'+DP_MONTHS[mi-1]+'</option>'; }
-    var yOpts=''; for(var yy=dp.maxY;yy>=dp.minY;yy--){ yOpts+='<option value="'+yy+'"'+(yy===dp.y?' selected':'')+'>'+yy+'</option>'; }
-    return '<div class="dpSelWrap">'+
-      '<label class="dpSelBox dpSelD"><span class="dpSelCap">Tag</span><select id="dpSelD" class="dpSel" aria-label="Tag">'+dOpts+'</select></label>'+
-      '<label class="dpSelBox"><span class="dpSelCap">Monat</span><select id="dpSelM" class="dpSel" aria-label="Monat">'+mOpts+'</select></label>'+
-      '<label class="dpSelBox"><span class="dpSelCap">Jahr</span><select id="dpSelY" class="dpSel" aria-label="Jahr">'+yOpts+'</select></label>'+
-    '</div>';
-  }
-  function wheelOverlay(){
-    var dp=S.dp; if(!dp) return '';
-    var body;
-    if(dpUseWheel()){
-      var days=[]; var dim=dpDaysIn(dp.y,dp.m); for(var i=1;i<=dim;i++) days.push(String(i)+'.');
-      var years=[]; for(var yy=dp.minY;yy<=dp.maxY;yy++) years.push(String(yy));
-      var dIdx=Math.min(dp.d,dim)-1, mIdx=dp.m-1, yIdx=dp.y-dp.minY;
-      body='<div class="dpCols"><div class="dpBand"></div>'+dpColHtml('D',days,dIdx)+dpColHtml('M',DP_MONTHS,mIdx)+dpColHtml('Y',years,yIdx)+'</div>';
-    } else {
-      body=dpSelects(dp);
-    }
-    return '<div class="dpSheetWrap" role="dialog" aria-label="'+esc(dp.title)+'">'+
-      '<div class="dpScrim" data-act="dpCancel"></div>'+
-      '<div class="dpSheet">'+
-        '<div class="dpHead"><button type="button" class="dpCancel" data-act="dpCancel">Abbrechen</button>'+
-          '<span class="dpTitle">'+esc(dp.title)+'</span>'+
-          '<button type="button" class="dpDone" data-act="dpDone">Fertig</button></div>'+
-        body+
-      '</div></div>';
-  }
-  // Nach dem Zeichnen: Spalten auf die gewählten Indizes scrollen + Rasten-Listener,
-  // die den aktuellen Wert (ohne Voll-Render) pflegen und die Tage-Spalte an den Monat anpassen.
-  function dpMount(){
-    var dp=S.dp; if(!dp) return;
-    var cD=$('dpColD'), cM=$('dpColM'), cY=$('dpColY'); if(!cD||!cM||!cY) return;
-    var dim=dpDaysIn(dp.y,dp.m);
-    var set=function(col,idx){ col.scrollTop=idx*DP_IH; };
-    set(cD, Math.min(dp.d,dim)-1); set(cM, dp.m-1); set(cY, dp.y-dp.minY);
-    dpPaintOn(cD); dpPaintOn(cM); dpPaintOn(cY);
-    // Elemente sind nach jedem Render frisch -> Listener jedes Mal neu anhängen (kein Doppel-Bind).
-    var idxOf=function(col){ return Math.max(0, Math.round(col.scrollTop/DP_IH)); };
-    var timers={};
-    var onScroll=function(kind,col){ dpPaintOn(col);
-      clearTimeout(timers[kind]);
-      timers[kind]=setTimeout(function(){ dpSettle(kind); }, 90);
-    };
-    cD.addEventListener('scroll',function(){ onScroll('D',cD); },{passive:true});
-    cM.addEventListener('scroll',function(){ onScroll('M',cM); },{passive:true});
-    cY.addEventListener('scroll',function(){ onScroll('Y',cY); },{passive:true});
-    dp._idxOf=idxOf;
-  }
-  // Zentriertes Item hervorheben (rein optisch, kein Render).
-  function dpPaintOn(col){
-    if(!col) return; var sel=Math.max(0,Math.round(col.scrollTop/DP_IH));
-    var items=col.children; for(var i=0;i<items.length;i++){ if(items[i].classList) items[i].classList.toggle('on', i===sel); }
-  }
-  // Ein Rad ist zur Ruhe gekommen: Wert in S.dp übernehmen; bei Monat/Jahr ggf. Tage-Spalte neu aufbauen.
-  function dpSettle(kind){
-    var dp=S.dp; if(!dp) return;
-    var cD=$('dpColD'), cM=$('dpColM'), cY=$('dpColY'); if(!cD||!cM||!cY) return;
-    var idxOf=dp._idxOf||function(col){ return Math.max(0,Math.round(col.scrollTop/DP_IH)); };
-    if(kind==='M') dp.m=idxOf(cM)+1;
-    if(kind==='Y') dp.y=dp.minY+idxOf(cY);
-    if(kind==='D') dp.d=idxOf(cD)+1;
-    if(kind==='M'||kind==='Y'){
-      var dim=dpDaysIn(dp.y,dp.m);
-      if(cD.children.length!==dim){
-        var frag=''; for(var i=1;i<=dim;i++) frag+='<div class="dpItem">'+i+'.</div>';
-        cD.innerHTML=frag;
-        if(dp.d>dim){ dp.d=dim; }
-        cD.scrollTop=(dp.d-1)*DP_IH; dpPaintOn(cD);
-      }
-    }
-  }
-  window.__dpNoop=function(){};
+  // Telefon: die Systemauswahl liefert das Datum schon in ISO-Form. Sie kann gar
+  // keinen 31. Februar liefern - geprueft wird trotzdem, weil der Wert direkt an
+  // Magicline geht und ein leeres Feld ehrlicher ist als ein halbes Datum
+  // (Safari meldet waehrend der Eingabe durchaus Zwischenstaende).
+  window.__setDobISO=function(v){
+    var m=String(v||'').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    var gut=!!m && (+m[1])>=1900 && (+m[1])<=new Date().getFullYear()
+      && (+m[2])>=1 && (+m[2])<=12 && (+m[3])>=1 && (+m[3])<=dpDaysIn(+m[1], +m[2]);
+    S.liDob=gut?v:'';
+    S.liDobText='';
+  };
 
   // ===== Schnellaktionen-Popup (Mitte der unteren Leiste = „+") =====
   // Slide-up-Sheet mit den wichtigsten Aktionen. Der Check-in wanderte von der Mitte
@@ -2132,7 +2014,7 @@
     if(ernPremium()||ernTrialing()) return false;           // nie Zahlende/Tester nerven
     if(!n.onboarded) return false;                          // erst wenn das Modul bekannt ist
     if(premNudgeSuppressed()) return false;                 // Frequenz-Cap
-    if(S.finnOpen||S.vaOpen||S.ernUpgrade||S.ernCapture||S.qaOpen||S.fbOpen||S.dp||S.ciPopup||S.findOpen) return false;
+    if(S.finnOpen||S.vaOpen||S.ernUpgrade||S.ernCapture||S.qaOpen||S.fbOpen||S.ciPopup||S.findOpen) return false;
     return true;
   }
   function premNudgeHome(){
@@ -11288,7 +11170,7 @@
         !S.ernShop&&!S.ernShopProd&&!S.ernShopItem&&!S.sos&&!S.buyGuide&&
         !S.ernFavMgr&&!S.ernMealMgr&&!S.ernSelfNew&&!S.ernEntryEdit&&!S.ernLesson&&!S.ernVert&&!S.ernCk&&!(S.ernKoch!=null);
       var onTagTab=(S.screen==='tag')&&!S.trainRun&&!S.trainDetail&&!S.trainGenOpen;
-      var miniBlock=S.finnOpen||S.qaOpen||S.ernChatOpen||S.ernUpgrade||S.dp||S.ciPopup||S.vaOpen||S.findOpen;
+      var miniBlock=S.finnOpen||S.qaOpen||S.ernChatOpen||S.ernUpgrade||S.ciPopup||S.vaOpen||S.findOpen;
       var showMini=(onErnTab||onTagTab)&&!miniBlock;
       fm.style.display=showMini?'flex':'none';
       if(showMini) fm.setAttribute('data-arg', S.screen==='ern'?'ernaehrung':'training');
@@ -11512,7 +11394,6 @@
     if(S.ciPopup) html+=ciPopupHtml();
     if(S.finnOpen) html+=finnOverlayHtml();
     if(S.vaOpen) html+=vaOverlayHtml();
-    if(S.dp) html+=wheelOverlay();
     if(S.qaOpen) html+=qaSheet();
     if(S.fbOpen) html+=fbSheet();
     if(S.findOpen) html+=finderSheet();
@@ -11563,7 +11444,6 @@
     var sc1=$('pf_scroll'); if(sc1){ sc1.scrollTop=(S.pfStick===false && keepScroll.pf_scroll!=null)?keepScroll.pf_scroll:sc1.scrollHeight; }
     var sc2=$('finn_scroll'); if(sc2){ sc2.scrollTop=(S.finnStick===false && keepScroll.finn_scroll!=null)?keepScroll.finn_scroll:sc2.scrollHeight; }
     renderChrome();
-    if(S.dp) dpMount();   // Rad-Datumsauswahl: Spalten positionieren + Rasten verdrahten
     // Live-Kamera im Erfassen-Sheet: auf dem Kamera-Tab automatisch starten/anheften, sonst freigeben.
     if(S.screen==='ern'&&S.ernCapture&&S.ernCapTab==='cam'){ if(!ernCamActive&&!S.ernCamErr&&!S.ernPhotoBusy){ try{ window.__ernStartCam&&window.__ernStartCam(); }catch(e){} } else { ernAttachCam(); } }
     else if(ernCamActive){ try{ window.__ernStopCam&&window.__ernStopCam(); }catch(e){} }
@@ -12055,27 +11935,6 @@
         .catch(function(){ setS({fbBusy:false, fbErr:'Netzwerkfehler – bitte später erneut.'}); });
     },
     qaGo:function(a){ qaGo(a); },
-    // Rad-Datumsauswahl (Geburtstag)
-    dpOpen:function(field){ openDp(field||'liDob'); },
-    dpCancel:function(){ setQuiet({dp:null}); },
-    dpDone:function(){
-      var dp=S.dp; if(!dp){ return; }
-      var y,m,d;
-      var sY=$('dpSelY'), sM=$('dpSelM'), sD=$('dpSelD');
-      if(sY&&sM&&sD){   // Android: Dropdown-Werte
-        y=+sY.value||dp.y; m=+sM.value||dp.m; d=+sD.value||dp.d;
-      } else {          // iOS/Desktop: Scroll-Rad
-        var cD=$('dpColD'), cM=$('dpColM'), cY=$('dpColY');
-        var idxOf=function(col){ return col?Math.max(0,Math.round(col.scrollTop/DP_IH)):0; };
-        y=cY?(dp.minY+idxOf(cY)):dp.y; m=cM?(idxOf(cM)+1):dp.m; d=cD?(idxOf(cD)+1):dp.d;
-      }
-      var dim=dpDaysIn(y,m); d=Math.min(d, dim);
-      var p=function(n){ return (n<10?'0':'')+n; };
-      var iso=y+'-'+p(m)+'-'+p(d);
-      var cfg=dpConfig(dp.field);
-      if(cfg){ if(cfg.maxISO && iso>cfg.maxISO) iso=cfg.maxISO; if(cfg.minISO && iso<cfg.minISO) iso=cfg.minISO; cfg.set(iso); }
-      setS({dp:null});
-    },
     appAdHide:function(){ try{ sessionStorage.setItem('fi_appad_hide','1'); }catch(e){} render(); },
     premNudgeDismiss:function(){ premNudgeMarkDismissed(); render(); },
     closeFinn:function(){ S.finnTopic=''; setS({finnOpen:false}); },
@@ -13502,7 +13361,7 @@
     function backTrig(){ return Math.min(window.innerWidth*0.28, 110); }
     function menuOpen(){ return document.body.classList.contains('menu-open'); }
     function overlayOpen(){
-      return !!(S.finnOpen||S.vaOpen||S.ciPopup||S.dp||S.qaOpen||S.fbOpen||S.ernUpgrade||S.ernCompare||S.ernCapture||S.ernConfirm||S.ernProd||S.ernShop||S.ernShopProd||S.sos||S.buyGuide||S.ernData||S.ernEdit||S.ernRecipeSel||S.ernSelfNew||S.ernFavMgr||S.ernMealMgr||S.ernEntryEdit||S.ernLesson||S.ernVert||S.ernCk||S.ernChatOpen||S.ernPlanQuiz||(S.ernKoch!=null)||S.welcomeGift||S.trainFinish||S.trainRun||S.trainDetail||S.trainGenOpen||S.morningBreathe||S.moGuide||S.moMetric||(S.screen==='morning'&&moRecSuggestOn())||(S.morningPhase&&S.morningPhase!=='idle')||(S.screen==='tag'&&woMeasuring())||S.woOpen||S.woResult||S.woDetail||S.socChat||S.socRoom||document.querySelector('.obOverlay'));
+      return !!(S.finnOpen||S.vaOpen||S.ciPopup||S.qaOpen||S.fbOpen||S.ernUpgrade||S.ernCompare||S.ernCapture||S.ernConfirm||S.ernProd||S.ernShop||S.ernShopProd||S.sos||S.buyGuide||S.ernData||S.ernEdit||S.ernRecipeSel||S.ernSelfNew||S.ernFavMgr||S.ernMealMgr||S.ernEntryEdit||S.ernLesson||S.ernVert||S.ernCk||S.ernChatOpen||S.ernPlanQuiz||(S.ernKoch!=null)||S.welcomeGift||S.trainFinish||S.trainRun||S.trainDetail||S.trainGenOpen||S.morningBreathe||S.moGuide||S.moMetric||(S.screen==='morning'&&moRecSuggestOn())||(S.morningPhase&&S.morningPhase!=='idle')||(S.screen==='tag'&&woMeasuring())||S.woOpen||S.woResult||S.woDetail||S.socChat||S.socRoom||document.querySelector('.obOverlay'));
     }
     function closeKnownOverlay(){
       if(S.screen==='tag' && woMeasuring()){ return true; }   // laufende Aufzeichnung: nicht per Zurück abbrechen (nur über die Buttons)
@@ -13522,7 +13381,6 @@
       for(var i=0;i<boolO.length;i++){ if(S[boolO[i]]){ S[boolO[i]]=false; render(); return true; } }
       if(S.ernProd){ S.ernProd=null; render(); return true; }
       if(S.ernRecipeSel){ S.ernRecipeSel=null; render(); return true; }
-      if(S.dp){ S.dp=null; render(); return true; }
       return false;   // sonst: Overlay hat eigenen Schließen-Button
     }
     function canBack(){ return menuOpen()||overlayOpen()||S.screen!=='home'; }
