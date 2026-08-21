@@ -5,6 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex,nofollow">
 <title>Fit-Inn Trier · Team-Backend</title>
+<!-- Auf den Startbildschirm legbar: eigenes Symbol, das direkt hier landet.
+     Damit ist der Team-Bereich aus JEDER App einen Druck auf die Home-Taste
+     entfernt – auch aus der Technogym-App, in die wir nichts einbauen können. -->
+<link rel="manifest" href="/assets/team.webmanifest">
+<link rel="apple-touch-icon" href="/assets/team-icon-180.png">
+<meta name="theme-color" content="#063540">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Fit-Inn Team">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <!-- Font-CSS nicht render-blockierend (display=swap: Text erscheint sofort mit System-Schrift). -->
@@ -2135,6 +2145,46 @@ function apptRefreshWeek(){
 }
 
 // ---------- render: login ----------
+// ── „Auf den Startbildschirm legen" ─────────────────────────────────────────
+// In die Technogym-App können wir nichts einbauen – die gehört Technogym.
+// Was denselben Zweck erfüllt: ein eigenes Symbol auf dem Startbildschirm.
+// Dann ist der Team-Bereich aus jeder App einen Druck auf die Home-Taste
+// entfernt, statt über eine getippte Adresse. Der Hinweis erscheint nur da,
+// wo er etwas bringt: auf dem Telefon, im Browser, und nur einmal.
+function alsAppInstalliert(){
+  try{
+    if(window.navigator&&window.navigator.standalone) return true;                 // iOS
+    if(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches) return true;
+  }catch(e){}
+  return false;
+}
+function inNativerHuelle(){ try{ return !!window.Capacitor; }catch(e){ return false; } }
+function stehtSchonAufStartbildschirm(){ return alsAppInstalliert()||inNativerHuelle(); }
+function homeTipWeg(){ try{ return localStorage.getItem('fi_team_hometip')==='weg'; }catch(e){ return false; } }
+function homeTipHTML(){
+  if(stehtSchonAufStartbildschirm()||homeTipWeg()) return '';
+  var telefon=false;
+  try{ telefon=!!(window.matchMedia&&window.matchMedia('(hover:none) and (pointer:coarse)').matches); }catch(e){}
+  if(!telefon) return '';
+  var ios=false; try{ ios=/iPad|iPhone|iPod/.test(navigator.userAgent||'')||((navigator.platform==='MacIntel')&&navigator.maxTouchPoints>1); }catch(e){}
+  var schritte=ios
+    ? 'Unten auf <b>Teilen</b> tippen → <b>Zum Home-Bildschirm</b>.'
+    : 'Im Browser-Menü (⋮) auf <b>App installieren</b> bzw. <b>Zum Startbildschirm zufügen</b> tippen.';
+  return '<div style="margin-top:18px;background:#e7f1f3;border-radius:14px;padding:13px 15px">'+
+    '<div style="display:flex;align-items:flex-start;gap:10px">'+
+      '<img src="/assets/team-icon-192.png" alt="" width="34" height="34" style="border-radius:9px;flex-shrink:0">'+
+      '<div style="flex:1;min-width:0">'+
+        '<div style="font-size:13.5px;font-weight:900;color:#0a4958">Team-Bereich aufs Handy legen</div>'+
+        '<div style="font-size:12.5px;font-weight:600;color:#42545a;line-height:1.55;margin-top:3px">Dann kommst du aus jeder App mit einem Druck hierher – auch aus der Technogym-App. '+schritte+'</div>'+
+      '</div>'+
+      '<button data-hometipoff="1" aria-label="Hinweis ausblenden" style="border:none;background:transparent;color:#7f9298;font-size:17px;font-weight:800;cursor:pointer;line-height:1;padding:0 2px">×</button>'+
+    '</div></div>';
+}
+function wireHomeTip(scope){
+  var b=scope.querySelector('[data-hometipoff]');
+  if(b) b.onclick=function(){ try{ localStorage.setItem('fi_team_hometip','weg'); }catch(e){} render(); };
+}
+
 function renderLogin(){
   root.innerHTML='';
   var mode=(S.loginMode==='trainer')?'trainer':'admin';
@@ -2174,8 +2224,16 @@ function renderLogin(){
     '<div style="font-size:24px;font-weight:900;letter-spacing:-.5px">Team-Backend</div>'+
     '<div style="font-size:13.5px;color:#6b7780;font-weight:500;margin-top:3px;margin-bottom:18px">'+(mode==='trainer'?'Melde dich mit deiner E-Mail an.':'Melde dich an, um Anfragen zu bearbeiten.')+'</div>'+
     '<div style="display:flex;gap:4px;background:#eef2f3;border-radius:12px;padding:4px;margin-bottom:20px">'+tabBtn('admin','Admin')+tabBtn('trainer','Trainer')+'</div>'+
-    body;
+    body+
+    homeTipHTML()+
+    // Zurück in den Mitgliederbereich. Wichtig in der App: wer über den
+    // versteckten Griff hier landet, hat sonst keinen Weg heraus – auf iOS
+    // gibt es weder Browserleiste noch Zurück-Taste. Im eigenen Team-Symbol
+    // auf dem Startbildschirm wäre der Weg sinnlos: dort will niemand in den
+    // Mitgliederbereich, und er würde aus der App herausführen.
+    (alsAppInstalliert()?'':'<a href="/mitglieder" style="display:block;margin-top:14px;text-align:center;font-size:13px;font-weight:700;color:#8a929a;text-decoration:none">← Zurück zum Mitgliederbereich</a>');
   wrap.appendChild(card); root.appendChild(wrap);
+  wireHomeTip(card);
 
   Array.prototype.forEach.call(card.querySelectorAll('[data-limode]'), function(b){
     b.onclick=function(){ var k=b.getAttribute('data-limode'); if(k===S.loginMode) return; S.loginMode=k; S.err=''; S.liErr=''; render(); };
