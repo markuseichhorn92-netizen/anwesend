@@ -580,7 +580,7 @@
     var b=DATA&&DATA.navBeta;                   // sonst die Beta-Freigabe vom Server
     return (b===1||b===2)?b:0;
   }
-  var DATA = { profile:null, contract:null, checkins:null, appts:null, plan:null, planAgg:null, planAggTom:null, inbox:null, prefs:null, membershipActive:true, navBeta:0, bookable:null, slots:null, account:null, blog:null, typical:null, hours:null, insta:null, live:null, pauseInfo:null, cancelReasons:null, documents:null, modules:null, commPrefs:null, nutri:null, nutriPlan:null, nutriSaved:null, nutriWeek:null, nutriFavs:null, nutriMeals:null, nutriLib:null, nutriCook:null, finnMem:null };
+  var DATA = { profile:null, contract:null, checkins:null, appts:null, plan:null, planAgg:null, planAggTom:null, inbox:null, prefs:null, membershipActive:true, navBeta:0, bookable:null, slots:null, account:null, blog:null, typical:null, hours:null, insta:null, live:null, pauseInfo:null, cancelReasons:null, documents:null, modules:null, commPrefs:null, nutri:null, nutriPlan:null, nutriSaved:null, nutriWeek:null, nutriFavs:null, nutriMeals:null, nutriLib:null, nutriCook:null, finnMem:null, shop:null };
   // Erlaubte Screens für ehemalige Mitglieder (alles andere wird gesperrt)
   var FORMER_OK = ['home','checkins','help','postfach','settings','profil','recht','impressum','datenschutz','agb'];
   function isFormer(){ return DATA.membershipActive===false; }
@@ -614,6 +614,7 @@
     finnOpen:false, finnTopic:'', finnMsgs:[], finnBusy:false, finnTip:'', finnTipLoaded:false,
     vaOpen:false, vaMsgs:[], vaBusy:false, vaInput:'', vaIntent:'',
     qaOpen:false,
+    shopCart:{}, shopProd:null, shopCartOpen:false, shopBusy:false, shopErr:'', shopDone:null, shopLoading:false,
     findOpen:false, findQ:'',
     fbOpen:false, fbCat:'bug', fbText:'', fbBusy:false, fbSent:false, fbErr:'', fbCampaign:null,
     blogSel:null, blogPost:null, instaSel:null,
@@ -1245,6 +1246,7 @@
     {label:'Beitragskonto',sub:'Rechnungen & Zahlungen',e:'💳',arg:'account',kw:'rechnung beitrag zahlung konto offen sepa lastschrift geld bezahlen mahnung',common:1},
     {label:'Vertrag & Kündigung',sub:'Tarif, Laufzeit, kündigen, pausieren',e:'📄',arg:'contract',kw:'vertrag tarif kuendigen kuendigung kündigen kündigung laufzeit verlaengern pause beitragspause ruhen ruhezeit',common:1},
     {label:'Freunde werben',sub:'4 Wochen gratis',e:'🎁',arg:'referral',kw:'werben freunde gutschein empfehlung einladen gratis praemie prämie code',common:1},
+    {label:'Shop',sub:'Eigenmarke aus deinem Studio',e:'🛒',arg:'shop',kw:'shop kaufen bestellen protein whey shaker creatin eiweiss supplement nahrungsergaenzung produkte',common:1},
     {label:'Mitgliedskarte',sub:'Dein Ausweis / QR',e:'🎟️',arg:'card',kw:'karte ausweis mitgliedsausweis qr code band scannen',common:1},
     {label:'Check-in-Verlauf',sub:'Deine Besuche',e:'✅',arg:'checkins',kw:'checkin check-in einchecken besuche verlauf wie oft anwesenheit',common:1},
     {label:'Training',sub:'Plan & Einheiten',e:'🏋️',arg:'tag',kw:'training plan uebung übung workout einheit split',common:1},
@@ -10538,6 +10540,180 @@
     return '<div style="display:flex;gap:8px;overflow-x:auto;padding-bottom:8px;margin-bottom:12px;-webkit-overflow-scrolling:touch">'+chips+'</div>'+custom;
   }
 
+  // ===== Studio-Shop =====
+  // Eigenmarken-Sortiment über die Chance2Brand-Schnittstelle. Ausbaustufe 1:
+  // in der App aussuchen, im Studio abholen und bezahlen. Das spart den
+  // Zahlungsanbieter und passt zu Leuten, die ohnehin dreimal die Woche da sind.
+  //
+  // Zwei Dinge sind hier Absicht:
+  //  - Der Warenkorb lebt nur im Zustand, nicht im Speicher. Ein halber Korb von
+  //    vorgestern, dessen Preise sich geändert haben, ist schlimmer als keiner.
+  //  - Gerechnet wird trotzdem serverseitig noch einmal: was hier steht, ist
+  //    Anzeige, nicht Grundlage.
+  function shopLoad(){
+    if(S.shopLoading) return;
+    S.shopLoading=true;
+    api('/api/member/shop').then(function(d){
+      DATA.shop=(d&&d.ok)?d:{ok:false,available:!!(d&&d.available)};
+      S.shopLoading=false; rIf(['shop']);
+    }).catch(function(){ DATA.shop={ok:false,available:true}; S.shopLoading=false; rIf(['shop']); });
+  }
+  function shopProds(){ var d=DATA.shop; return (d&&d.ok&&Array.isArray(d.produkte))?d.produkte:[]; }
+  function shopBySku(sku){ return shopProds().filter(function(p){ return p.sku===sku; })[0]||null; }
+  function shopMenge(sku){ return (S.shopCart&&S.shopCart[sku])||0; }
+  function shopAnzahl(){ var n=0; for(var k in (S.shopCart||{})) n+=S.shopCart[k]; return n; }
+  function shopSumme(){ var s=0; for(var k in (S.shopCart||{})){ var p=shopBySku(k); if(p&&p.preis!=null) s+=p.preis*S.shopCart[k]; } return Math.round(s*100)/100; }
+  function shopEuro(n){ return (n==null)?'–':((Math.round(n*100)/100).toFixed(2).replace('.',',')+' €'); }
+  // Ohne Produktbild kein leerer grauer Kasten: die Anfangsbuchstaben auf ruhiger
+  // Markenfläche lesen sich als Platzhalter und nicht als Ladefehler.
+  function shopBild(p, hoehe){
+    if(p.bild) return '<div style="height:'+hoehe+'px;border-radius:14px;background:var(--surface-2) center/cover no-repeat url('+JSON.stringify(p.bild)+')"></div>';
+    var kuerzel=String(p.titel||'?').replace(/[^A-Za-zÄÖÜäöü ]/g,'').trim().split(/\s+/).slice(0,2).map(function(w){ return w[0]||''; }).join('').toUpperCase();
+    return '<div style="height:'+hoehe+'px;border-radius:14px;background:linear-gradient(165deg,#0e6072,#063540);color:#fff;display:flex;align-items:center;justify-content:center;font-size:'+Math.round(hoehe/3.2)+'px;font-weight:900;letter-spacing:-.5px;opacity:.92">'+esc(kuerzel||'FT')+'</div>';
+  }
+  function shopBeispielBanner(){
+    var d=DATA.shop; if(!d||!d.beispiel) return '';
+    return '<div style="display:flex;gap:10px;align-items:flex-start;background:#fdf3e8;border-radius:14px;padding:12px 14px;margin-bottom:14px">'+
+      svg(IC.warn,{c:'#C77A2E',w:2,s:18})+
+      '<div style="flex:1;min-width:0;font-size:12.5px;font-weight:600;color:#7a5423;line-height:1.55">'+
+        '<b style="font-weight:900">Beispieldaten.</b> Sortiment und Preise sind erfunden, solange der Shop nicht mit dem Lieferanten verbunden ist. Bestellen ist deshalb noch nicht möglich.</div></div>';
+  }
+  function scrShop(){
+    var head=subHeader('Shop','Eigenmarke aus deinem Studio');
+    var d=DATA.shop;
+    if(d==null){ if(!S.shopLoading) shopLoad(); return head+skelBlock('rows',3); }
+    if(d.ok===false&&d.available===false) return head+'<div class="card" style="text-align:center"><div style="font-size:16px;font-weight:800">Shop noch nicht verfügbar</div><div style="font-size:13px;color:var(--text-muted);margin-top:6px;line-height:1.5">Melde dich gern im Studio – wir sagen Bescheid, sobald es losgeht.</div></div>';
+    if(d.ok===false) return head+'<div class="card" style="text-align:center"><div style="font-size:15px;font-weight:800">Der Shop lässt sich gerade nicht laden</div><div style="font-size:13px;color:var(--text-muted);margin:6px 0 14px;line-height:1.5">Bitte prüfe deine Verbindung.</div><button data-act="shopReload" style="padding:11px 20px;border:none;border-radius:12px;background:'+TEAL+';color:#fff;font-weight:800;font-size:14px;cursor:pointer">Erneut versuchen</button></div>';
+
+    var ps=shopProds();
+    if(!ps.length) return head+shopBeispielBanner()+'<div class="card" style="text-align:center"><div style="font-size:16px;font-weight:800">Noch nichts im Sortiment</div><div style="font-size:13px;color:var(--text-muted);margin-top:6px;line-height:1.5">Hier erscheinen bald Produkte aus dem Studio.</div></div>';
+
+    var kacheln=ps.map(function(p){
+      var m=shopMenge(p.sku);
+      var aus=!p.lieferbar;
+      return '<button data-act="shopOpen" data-arg="'+esc(p.sku)+'" style="position:relative;text-align:left;border:none;padding:0;background:var(--surface);border-radius:20px;box-shadow:0 12px 30px rgba(4,33,40,.09);overflow:hidden;cursor:pointer;font-family:inherit;'+(aus?'opacity:.62':'')+'">'+
+        '<div style="padding:12px 12px 0">'+shopBild(p,116)+'</div>'+
+        '<div style="padding:11px 14px 15px">'+
+          '<div style="font-size:14px;font-weight:800;color:var(--text);line-height:1.3;letter-spacing:-.2px">'+esc(p.titel)+'</div>'+
+          (p.gewicht?'<div style="font-size:11.5px;font-weight:600;color:var(--text-muted);margin-top:2px">'+esc(String(p.gewicht))+' '+esc(p.gewichtEinheit||'g')+'</div>':'')+
+          '<div style="display:flex;align-items:baseline;gap:7px;margin-top:9px">'+
+            '<span style="font-size:17px;font-weight:900;color:var(--text);letter-spacing:-.4px">'+shopEuro(p.preis)+'</span>'+
+            (p.uvp?'<span style="font-size:12px;font-weight:600;color:var(--text-soft);text-decoration:line-through">'+shopEuro(p.uvp)+'</span>':'')+
+          '</div>'+
+          (aus?'<div style="font-size:11.5px;font-weight:700;color:var(--text-muted);margin-top:6px">'+esc(p.baldDa?'Bald verfügbar':(p.lagerText||'Zurzeit nicht verfügbar'))+'</div>':'')+
+        '</div>'+
+        (m?'<span style="position:absolute;top:16px;right:16px;min-width:24px;height:24px;padding:0 7px;border-radius:12px;background:'+TEAL+';color:#fff;font-size:12px;font-weight:900;display:flex;align-items:center;justify-content:center">'+m+'</span>':'')+
+      '</button>';
+    }).join('');
+
+    var leiste=shopAnzahl()
+      ? '<div style="position:fixed;left:12px;right:12px;bottom:calc(90px + env(safe-area-inset-bottom,0px));z-index:46;max-width:456px;margin:0 auto">'+
+          '<button data-act="shopCartOpen" style="display:flex;align-items:center;gap:12px;width:100%;padding:15px 18px;border:none;border-radius:16px;background:'+TEAL+';color:#fff;cursor:pointer;font-family:inherit;box-shadow:0 14px 34px rgba(4,33,40,.3)">'+
+            '<span style="min-width:26px;height:26px;padding:0 8px;border-radius:13px;background:rgba(255,255,255,.2);font-size:13px;font-weight:900;display:flex;align-items:center;justify-content:center">'+shopAnzahl()+'</span>'+
+            '<span style="flex:1;text-align:left;font-size:15px;font-weight:800">Bestellung ansehen</span>'+
+            '<span style="font-size:16px;font-weight:900;letter-spacing:-.3px">'+shopEuro(shopSumme())+'</span>'+
+          '</button></div>'
+      : '';
+
+    // Unten Platz lassen: Bildschirmleiste (und ggf. die Bestellleiste) sitzen davor.
+    var fuss='<div style="font-size:11.5px;font-weight:600;color:var(--text-muted);line-height:1.6;margin:20px 4px 0;padding-bottom:'+(shopAnzahl()?'104px':'24px')+'">Du bestellst hier vor und holst im Studio ab – bezahlt wird an der Theke. Preise inkl. MwSt.</div>';
+    return head+shopBeispielBanner()+
+      '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px">'+kacheln+'</div>'+
+      fuss+leiste;
+  }
+  // Produktdetail als Blatt von unten – dieselbe Bewegung wie überall sonst.
+  function shopProdSheet(){
+    var p=shopBySku(S.shopProd); if(!p) return '';
+    var m=shopMenge(p.sku);
+    var merkmale=(p.merkmale||[]).map(function(x){ return '<span style="font-size:11.5px;font-weight:700;color:var(--teal-ink);background:rgba(14,96,114,.09);border-radius:8px;padding:4px 9px">'+esc(x)+'</span>'; }).join('');
+    var mengeReihe=p.lieferbar
+      ? '<div style="display:flex;align-items:center;gap:12px;margin-top:18px">'+
+          (m?'<div style="display:flex;align-items:center;gap:2px;background:var(--surface-2);border-radius:14px;padding:4px">'+
+              '<button data-act="shopSub" data-arg="'+esc(p.sku)+'" aria-label="Weniger" style="width:42px;height:42px;border:none;border-radius:11px;background:transparent;color:var(--text);font-size:20px;font-weight:800;cursor:pointer;font-family:inherit">−</button>'+
+              '<span style="min-width:34px;text-align:center;font-size:16px;font-weight:900;color:var(--text)">'+m+'</span>'+
+              '<button data-act="shopAdd" data-arg="'+esc(p.sku)+'" aria-label="Mehr" style="width:42px;height:42px;border:none;border-radius:11px;background:transparent;color:var(--text);font-size:20px;font-weight:800;cursor:pointer;font-family:inherit">+</button>'+
+            '</div>':'')+
+          (m?'<button data-act="shopCartOpen" style="flex:1;padding:14px;border:none;border-radius:14px;background:'+TEAL+';color:#fff;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit">Weiter</button>'
+             :'<button data-act="shopAdd" data-arg="'+esc(p.sku)+'" style="flex:1;padding:15px;border:none;border-radius:14px;background:'+TEAL+';color:#fff;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit">Zur Bestellung hinzufügen</button>')+
+        '</div>'
+      : '<div style="margin-top:18px;background:var(--surface-2);border-radius:14px;padding:13px 15px;font-size:13px;font-weight:700;color:var(--text-muted)">'+esc(p.baldDa?'Kommt bald ins Sortiment.':(p.lagerText||'Zurzeit nicht verfügbar.'))+'</div>';
+
+    return '<div class="ernCapScrim" data-act="shopClose"></div>'+
+      '<div class="ernCapSheet" role="dialog" aria-label="'+esc(p.titel)+'" style="overflow-y:auto">'+
+        '<div class="ernCapGrip"></div>'+
+        '<div style="padding:2px 20px 22px">'+
+          shopBild(p,190)+
+          '<div style="font-size:21px;font-weight:900;color:var(--text);letter-spacing:-.5px;margin-top:16px;line-height:1.2">'+esc(p.titel)+'</div>'+
+          '<div style="display:flex;align-items:baseline;gap:8px;margin-top:7px">'+
+            '<span style="font-size:22px;font-weight:900;color:var(--text);letter-spacing:-.5px">'+shopEuro(p.preis)+'</span>'+
+            (p.uvp?'<span style="font-size:13px;font-weight:600;color:var(--text-soft);text-decoration:line-through">'+shopEuro(p.uvp)+'</span>':'')+
+            (p.gewicht?'<span style="font-size:12.5px;font-weight:600;color:var(--text-muted);margin-left:auto">'+esc(String(p.gewicht))+' '+esc(p.gewichtEinheit||'g')+'</span>':'')+
+          '</div>'+
+          (p.text?'<div style="font-size:14px;font-weight:600;color:var(--text-2);line-height:1.6;margin-top:12px">'+esc(p.text)+'</div>':'')+
+          (merkmale?'<div style="display:flex;flex-wrap:wrap;gap:7px;margin-top:14px">'+merkmale+'</div>':'')+
+          mengeReihe+
+        '</div></div>';
+  }
+  // Bestellung ansehen und abschicken.
+  function shopCartSheet(){
+    var zeilen=[];
+    for(var k in (S.shopCart||{})){ var p=shopBySku(k); if(p) zeilen.push({p:p,m:S.shopCart[k]}); }
+    var beispiel=!!(DATA.shop&&DATA.shop.beispiel);
+    var inhalt;
+    if(S.shopDone){
+      inhalt='<div style="text-align:center;padding:14px 0 6px">'+
+        '<div style="width:58px;height:58px;border-radius:50%;background:#E7F6EC;display:flex;align-items:center;justify-content:center;margin:0 auto 14px">'+svg('<path d="M20 6L9 17l-5-5"></path>',{c:'#1d7a3e',w:2.6,s:28})+'</div>'+
+        '<div style="font-size:19px;font-weight:900;color:var(--text);letter-spacing:-.4px">Bestellung ist da</div>'+
+        '<div style="font-size:13.5px;font-weight:600;color:var(--text-muted);line-height:1.6;margin-top:8px">'+esc(S.shopDone.message||'')+'</div>'+
+        (S.shopDone.ref?'<div style="font-size:12.5px;font-weight:700;color:var(--text-soft);margin-top:10px">Vorgang '+esc(S.shopDone.ref)+'</div>':'')+
+        '<button data-act="shopClose" style="margin-top:20px;width:100%;padding:14px;border:none;border-radius:14px;background:'+TEAL+';color:#fff;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit">Fertig</button></div>';
+    } else if(!zeilen.length){
+      inhalt='<div style="text-align:center;padding:22px 0"><div style="font-size:15px;font-weight:800;color:var(--text)">Noch nichts ausgewählt</div><div style="font-size:13px;font-weight:600;color:var(--text-muted);margin-top:6px">Tipp auf ein Produkt, um es hinzuzufügen.</div></div>';
+    } else {
+      var liste=zeilen.map(function(z){
+        return '<div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-top:1px solid var(--surface-2)">'+
+          '<div style="width:52px;flex-shrink:0">'+shopBild(z.p,52)+'</div>'+
+          '<div style="flex:1;min-width:0">'+
+            '<div style="font-size:14px;font-weight:800;color:var(--text);line-height:1.3">'+esc(z.p.titel)+'</div>'+
+            '<div style="font-size:12.5px;font-weight:600;color:var(--text-muted);margin-top:2px">'+shopEuro(z.p.preis)+' je Stück</div>'+
+          '</div>'+
+          '<div style="display:flex;align-items:center;gap:1px;background:var(--surface-2);border-radius:12px;padding:3px;flex-shrink:0">'+
+            '<button data-act="shopSub" data-arg="'+esc(z.p.sku)+'" aria-label="Weniger" style="width:36px;height:36px;border:none;border-radius:9px;background:transparent;color:var(--text);font-size:18px;font-weight:800;cursor:pointer;font-family:inherit">−</button>'+
+            '<span style="min-width:26px;text-align:center;font-size:14px;font-weight:900;color:var(--text)">'+z.m+'</span>'+
+            '<button data-act="shopAdd" data-arg="'+esc(z.p.sku)+'" aria-label="Mehr" style="width:36px;height:36px;border:none;border-radius:9px;background:transparent;color:var(--text);font-size:18px;font-weight:800;cursor:pointer;font-family:inherit">+</button>'+
+          '</div></div>';
+      }).join('');
+      inhalt=liste+
+        '<div style="display:flex;align-items:baseline;justify-content:space-between;margin-top:16px;padding-top:14px;border-top:1px solid var(--surface-2)">'+
+          '<span style="font-size:14px;font-weight:700;color:var(--text-muted)">Summe</span>'+
+          '<span style="font-size:22px;font-weight:900;color:var(--text);letter-spacing:-.5px">'+shopEuro(shopSumme())+'</span>'+
+        '</div>'+
+        '<div style="font-size:12.5px;font-weight:600;color:var(--text-muted);line-height:1.6;margin-top:10px">Wir legen die Bestellung im Studio für dich bereit. Bezahlt wird bei der Abholung an der Theke.</div>'+
+        (S.shopErr?'<div class="err" style="margin-top:12px">'+svg(IC.warn,{c:'var(--err-fg)',w:2,s:17})+'<span>'+esc(S.shopErr)+'</span></div>':'')+
+        '<button data-act="shopOrder"'+((S.shopBusy||beispiel)?' disabled':'')+' style="margin-top:16px;width:100%;padding:16px;border:none;border-radius:14px;background:'+(beispiel?'#c6ced0':TEAL)+';color:#fff;font-size:15.5px;font-weight:800;cursor:'+(beispiel?'default':'pointer')+';font-family:inherit">'+
+          (beispiel?'Mit Beispieldaten nicht bestellbar':(S.shopBusy?'Wird gesendet …':'Verbindlich vorbestellen'))+'</button>';
+    }
+    return '<div class="ernCapScrim" data-act="shopClose"></div>'+
+      '<div class="ernCapSheet" role="dialog" aria-label="Bestellung" style="overflow-y:auto">'+
+        '<div class="ernCapGrip"></div>'+
+        '<div style="padding:2px 20px 22px">'+
+          (S.shopDone?'':'<div style="font-size:19px;font-weight:900;color:var(--text);letter-spacing:-.4px;margin-bottom:6px">Deine Bestellung</div>')+
+          inhalt+
+        '</div></div>';
+  }
+  function shopOrder(){
+    if(S.shopBusy) return;
+    var items=[]; for(var k in (S.shopCart||{})) items.push({sku:k,menge:S.shopCart[k]});
+    if(!items.length) return;
+    setS({shopBusy:true,shopErr:''});
+    api('/api/member/shop',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'order',items:items})})
+      .then(function(d){
+        if(d&&d.ok){ setS({shopBusy:false,shopDone:d,shopCart:{},shopErr:''}); loadInbox&&loadInbox(); }
+        else setS({shopBusy:false,shopErr:(d&&d.message)||'Das hat nicht geklappt. Bitte später erneut.'});
+      })
+      .catch(function(){ setS({shopBusy:false,shopErr:'Netzwerkfehler – bitte später erneut.'}); });
+  }
+
   function scrCheckins(){
     var all=DATA.checkins;
     var head=subHeader('Check-in-Verlauf','Deine Besuche & PDF');
@@ -10826,11 +11002,11 @@
 
   // ---- responsive chrome (Desktop-Sidebar + Topbar) ----
   var DASH_IC='<rect x="3" y="3" width="7" height="9" rx="1.5"></rect><rect x="14" y="3" width="7" height="5" rx="1.5"></rect><rect x="14" y="12" width="7" height="9" rx="1.5"></rect><rect x="3" y="16" width="7" height="5" rx="1.5"></rect>';
-  var NAVITEMS=[['home','Übersicht',DASH_IC],['card','Mitgliedskarte','<rect x="3" y="3" width="7" height="7" rx="1.4"></rect><rect x="14" y="3" width="7" height="7" rx="1.4"></rect><rect x="3" y="14" width="7" height="7" rx="1.4"></rect><path d="M14 14h3v3h-3z"></path><path d="M20 14v3M14 20h3M20 20v.01"></path>'],['fort','Fortschritt','<circle cx="12" cy="8" r="6"></circle><path d="M15.5 13.5L17 22l-5-3-5 3 1.5-8.5"></path>'],['ern','Ernährung','<path d="M11 21A7 7 0 0 1 4 14C4 8.5 8 4 13.5 4c2.7 0 4.6 1 6.5 1.8 0 8.7-4.3 15.2-9 15.2z"></path><path d="M11 21c0-5.5 3.3-10 7.5-12"></path>'],['insta','Instagram',IG_ICON],['data','Meine Daten',IC.user],['contract','Vertragsverwaltung',IC.doc],['account','Beitragskonto','<rect x="2" y="5" width="20" height="14" rx="2"></rect><path d="M2 9h20M6 15h5"></path>'],['appt','Termine',IC.cal],['referral','Freunde werben',IC.gift],['checkins','Check-ins',IC.list],['postfach','Postfach',IC.mail],['help','Hilfe',IC.help],['settings','Einstellungen',IC.cog]];
-  var TITLES={home:'Übersicht',data:'Meine Daten',contract:'Vertragsverwaltung',account:'Beitragskonto',appt:'Termine',checkin:'Check-in',referral:'Freunde werben',checkins:'Check-in-Verlauf',postfach:'Postfach',help:'Hilfe & Kontakt',settings:'Einstellungen',profil:'Profil',card:'Mitgliedskarte',fort:'Fortschritt',ern:'Ernährung',coach:'Coach',tag:'Training',figur:'Figur-Check',inbody:'InBody-Analyse',morning:'Vital-Check',abo:'Mein Abo',recht:'Widerruf & Recht',impressum:'Impressum',datenschutz:'Datenschutz',agb:'AGB',blog:'Blog',insta:'Instagram',social:'Trainingspartner',finnusage:'FINN-Nutzung'};
+  var NAVITEMS=[['home','Übersicht',DASH_IC],['card','Mitgliedskarte','<rect x="3" y="3" width="7" height="7" rx="1.4"></rect><rect x="14" y="3" width="7" height="7" rx="1.4"></rect><rect x="3" y="14" width="7" height="7" rx="1.4"></rect><path d="M14 14h3v3h-3z"></path><path d="M20 14v3M14 20h3M20 20v.01"></path>'],['fort','Fortschritt','<circle cx="12" cy="8" r="6"></circle><path d="M15.5 13.5L17 22l-5-3-5 3 1.5-8.5"></path>'],['ern','Ernährung','<path d="M11 21A7 7 0 0 1 4 14C4 8.5 8 4 13.5 4c2.7 0 4.6 1 6.5 1.8 0 8.7-4.3 15.2-9 15.2z"></path><path d="M11 21c0-5.5 3.3-10 7.5-12"></path>'],['insta','Instagram',IG_ICON],['data','Meine Daten',IC.user],['contract','Vertragsverwaltung',IC.doc],['account','Beitragskonto','<rect x="2" y="5" width="20" height="14" rx="2"></rect><path d="M2 9h20M6 15h5"></path>'],['appt','Termine',IC.cal],['referral','Freunde werben',IC.gift],['shop','Shop','<circle cx="9" cy="20" r="1.6"></circle><circle cx="18" cy="20" r="1.6"></circle><path d="M2 3h3l2.4 11.4a1.6 1.6 0 0 0 1.6 1.3h8.3a1.6 1.6 0 0 0 1.6-1.2L21 7H6"></path>'],['checkins','Check-ins',IC.list],['postfach','Postfach',IC.mail],['help','Hilfe',IC.help],['settings','Einstellungen',IC.cog]];
+  var TITLES={home:'Übersicht',data:'Meine Daten',contract:'Vertragsverwaltung',account:'Beitragskonto',appt:'Termine',checkin:'Check-in',referral:'Freunde werben',shop:'Shop',checkins:'Check-in-Verlauf',postfach:'Postfach',help:'Hilfe & Kontakt',settings:'Einstellungen',profil:'Profil',card:'Mitgliedskarte',fort:'Fortschritt',ern:'Ernährung',coach:'Coach',tag:'Training',figur:'Figur-Check',inbody:'InBody-Analyse',morning:'Vital-Check',abo:'Mein Abo',recht:'Widerruf & Recht',impressum:'Impressum',datenschutz:'Datenschutz',agb:'AGB',blog:'Blog',insta:'Instagram',social:'Trainingspartner',finnusage:'FINN-Nutzung'};
   // App-Leiste: Zurück-Ziel je Unterseite (Standard: Start). Aus dem Profil-Hub geöffnete
   // Seiten kehren zum Profil-Hub zurück; der Figur-Check lebt im Coach-Bereich.
-  var APPBAR_BACK={figur:'coach',inbody:'fort',morning:'coach',fort:'profil',data:'profil',contract:'profil',account:'profil',card:'profil',checkins:'profil',referral:'profil',help:'profil',settings:'profil',abo:'profil',recht:'profil',impressum:'profil',datenschutz:'profil',agb:'profil',postfach:'profil',finnusage:'profil',blog:'profil',social:'home',insta:'home'};
+  var APPBAR_BACK={figur:'coach',inbody:'fort',morning:'coach',fort:'profil',data:'profil',contract:'profil',account:'profil',card:'profil',checkins:'profil',shop:'home',referral:'profil',help:'profil',settings:'profil',abo:'profil',recht:'profil',impressum:'profil',datenschutz:'profil',agb:'profil',postfach:'profil',finnusage:'profil',blog:'profil',social:'home',insta:'home'};
   // Bottom-Nav-Wurzeln (kein Zurück-Pfeil). 4. Slot ist Ernährung (an) bzw. Termine (aus).
   var APPBAR_ROOTS=ERN_ON?{home:1,tag:1,ern:1,coach:1}:{home:1,tag:1,appt:1,coach:1};
   function initials(p){ p=p||{}; var a=(p.firstName||'').trim(),b=(p.lastName||'').trim(); return (((a?a[0]:'')+(b?b[0]:'')).toUpperCase())||'FT'; }
@@ -10844,7 +11020,7 @@
     var searchBar='<button data-act="findOpen" style="display:flex;align-items:center;gap:10px;width:100%;text-align:left;border:none;cursor:pointer;background:rgba(255,255,255,.1);border-radius:13px;padding:11px 13px;margin-bottom:10px;color:#cfe3e7;font-family:inherit">'+svg(IC.search,{c:'#cfe3e7',w:2,s:19})+'<span style="font-size:14px;font-weight:600">Funktion suchen …</span></button>';
     // Klar gruppierte Abschnitte statt flacher 14er-Liste – leichter zu scannen.
     var byKey={}; NAVITEMS.forEach(function(it){ byKey[it[0]]=it; });
-    var GROUPS=[['Aktivität',['home','fort','ern']],['Mein Studio',['card','appt','checkins']],['Vertrag & Konto',['contract','account','referral','data']],['Service',['postfach','help','settings']],['Mehr',['insta']]];
+    var GROUPS=[['Aktivität',['home','fort','ern']],['Mein Studio',['card','appt','shop','checkins']],['Vertrag & Konto',['contract','account','referral','data']],['Service',['postfach','help','settings']],['Mehr',['insta']]];
     var vis=function(k){ var it=byKey[k]; return !!(it && (ERN_ON||k!=='ern') && (!isFormer()||FORMER_OK.indexOf(k)>=0)); };
     var itemHtml=function(k){ var it=byKey[k]; var act=S.screen===k; var bdg=(k==='postfach'&&pfUnread()>0)?'<span style="background:#E08C53;color:#fff;font-size:11px;font-weight:800;border-radius:20px;min-width:20px;height:20px;padding:0 6px;display:flex;align-items:center;justify-content:center">'+pfUnread()+'</span>':''; return '<button class="sidebtn'+(act?' active':'')+'" data-act="nav" data-arg="'+k+'">'+svg(it[2],{c:act?'#fff':'#bcd7dc',w:1.9,s:20})+'<span style="flex:1">'+it[1]+'</span>'+bdg+'</button>'; };
     var body=GROUPS.map(function(g){ var ks=g[1].filter(vis); if(!ks.length) return ''; return '<div style="font-size:11px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:#7fa6ad;padding:14px 8px 6px">'+esc(g[0])+'</div>'+ks.map(itemHtml).join(''); }).join('');
@@ -11380,6 +11556,7 @@
       case 'checkin': html=scrCheckin(); break;
       case 'referral': html=scrReferral(); break;
       case 'account': html=scrAccount(); break;
+      case 'shop': html=scrShop(); break;
       case 'checkins': html=scrCheckins(); break;
       case 'help': html=scrHelp(); break;
       case 'settings': html=scrSettings(); break;
@@ -11417,6 +11594,8 @@
     if(S.screen==='ern'&&S.ernShopProd) html+=ernShopVerdictSheet();   // Produkt-Check: Ampel-Ergebnis
     if(S.screen==='ern'&&S.sos) html+=ernSosSheet();   // Heißhunger-SOS (Soforthilfe-Bottom-Sheet)
     if(S.screen==='ern'&&S.buyGuide) html+=ernBuyGuideSheet();   // „Clever einkaufen"-Guide
+    if(S.screen==='shop'&&S.shopProd) html+=shopProdSheet();      // Produktdetail
+    if(S.screen==='shop'&&S.shopCartOpen) html+=shopCartSheet();  // Bestellung ansehen/abschicken
     if(TOKEN && S.screen!=='login' && !isFormer() && !obDone()){ if(S.obServerChecked!==true) obServerCheck(); else { obPrefillOnce(); html+=obOverlayHtml(); } }
     if(TOKEN && S.screen!=='login' && !isFormer() && obDone() && S.welcomeGift) html+=welcomeGiftHtml();
     if(S.trainFinish) html+=trainFinishOverlay();
@@ -11935,6 +12114,14 @@
         .catch(function(){ setS({fbBusy:false, fbErr:'Netzwerkfehler – bitte später erneut.'}); });
     },
     qaGo:function(a){ qaGo(a); },
+    // Studio-Shop
+    shopReload:function(){ DATA.shop=null; S.shopLoading=false; render(); },
+    shopOpen:function(sku){ setS({shopProd:sku||null}); },
+    shopClose:function(){ setS({shopProd:null,shopCartOpen:false,shopDone:null,shopErr:''}); },
+    shopCartOpen:function(){ setS({shopProd:null,shopCartOpen:true,shopErr:''}); },
+    shopAdd:function(sku){ var c=Object.assign({},S.shopCart||{}); c[sku]=Math.min(20,(c[sku]||0)+1); setS({shopCart:c}); },
+    shopSub:function(sku){ var c=Object.assign({},S.shopCart||{}); c[sku]=(c[sku]||0)-1; if(c[sku]<1) delete c[sku]; setS({shopCart:c}); },
+    shopOrder:function(){ shopOrder(); },
     appAdHide:function(){ try{ sessionStorage.setItem('fi_appad_hide','1'); }catch(e){} render(); },
     premNudgeDismiss:function(){ premNudgeMarkDismissed(); render(); },
     closeFinn:function(){ S.finnTopic=''; setS({finnOpen:false}); },
