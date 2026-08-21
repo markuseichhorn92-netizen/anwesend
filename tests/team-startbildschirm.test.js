@@ -81,17 +81,22 @@ ok('3e. Das iOS-Symbol ist undurchsichtig (iOS legt sonst Schwarz dahinter)',
     if (vorab) await p.addInitScript(vorab);
     await p.goto(basis + '/team', { waitUntil: 'domcontentloaded' });
     await p.waitForTimeout(500);
-    const w = await p.evaluate(function () {
-      const t = document.body.innerText;
-      return {
-        hinweis: /aufs Handy legen/.test(t),
-        schritteIos: /Zum Home-Bildschirm/.test(t),
-        schritteAndroid: /App installieren/.test(t),
-        zurueck: !!Array.prototype.filter.call(document.querySelectorAll('a'), function (a) { return a.getAttribute('href') === '/mitglieder'; }).length,
-        zu: !!document.querySelector('[data-hometipoff]'),
-      };
-    });
-    return { p: p, c: c, w: w, fehler: fehler };
+    const lies = function () {
+      return p.evaluate(function () {
+        const t = document.body.innerText;
+        return {
+          hinweis: /aufs Handy legen/.test(t),
+          fenster: !!document.querySelector('[data-homesheet]'),
+          schritteIos: /Zum Home-Bildschirm/.test(t),
+          schritteAndroid: /App installieren/.test(t),
+          qr: !!document.querySelector('#teamqr'),
+          zurueck: !!Array.prototype.filter.call(document.querySelectorAll('a'), function (a) { return a.getAttribute('href') === '/mitglieder'; }).length,
+          zu: !!document.querySelector('[data-hometipoff]'),
+        };
+      });
+    };
+    const w = await lies();
+    return { p: p, c: c, w: w, lies: lies, fehler: fehler };
   };
 
   const IPHONE = { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true,
@@ -100,22 +105,40 @@ ok('3e. Das iOS-Symbol ist undurchsichtig (iOS legt sonst Schwarz dahinter)',
     userAgent: 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Mobile Safari/537.36' };
   const SCHREIBTISCH = { viewport: { width: 1280, height: 900 } };
 
-  // ── 3. Der Hinweis erscheint da, wo er etwas bringt ──
+  // ── 3. Der Hinweis ist ueberall zu finden ──
+  // Vorher stand er nur auf dem Telefon UND nur auf der Anmeldeseite. Wer am
+  // Schreibtisch sass oder angemeldet blieb, sah nichts und suchte vergeblich.
   let r = await oeffne(IPHONE);
-  ok('4. iPhone: der Weg auf den Startbildschirm wird gezeigt',
-    r.w.hinweis && r.w.schritteIos && !r.w.schritteAndroid, JSON.stringify(r.w));
+  ok('4. iPhone: der Hinweis ist da', r.w.hinweis === true, JSON.stringify(r.w));
   ok('4b. … ohne Skriptfehler', r.fehler.length === 0, r.fehler.join(' | '));
   // Wer ueber den versteckten Griff in der App landet, braucht einen Weg zurueck.
   ok('4c. … und es geht zurueck in den Mitgliederbereich', r.w.zurueck === true, JSON.stringify(r.w));
+  await r.p.click('[data-homeopen]');
+  await r.p.waitForTimeout(250);
+  let f = await r.lies();
+  ok('4d. „So geht\'s" zeigt die Schritte fuer genau dieses Geraet',
+    f.fenster && f.schritteIos && !f.schritteAndroid, JSON.stringify(f));
   await r.c.close();
 
   r = await oeffne(ANDROID);
+  await r.p.click('[data-homeopen]');
+  await r.p.waitForTimeout(250);
+  f = await r.lies();
   ok('5. Android: dieselbe Sache, andere Schritte',
-    r.w.hinweis && r.w.schritteAndroid && !r.w.schritteIos, JSON.stringify(r.w));
+    f.fenster && f.schritteAndroid && !f.schritteIos, JSON.stringify(f));
   await r.c.close();
 
+  // Am Schreibtisch nuetzt eine Tipp-Anleitung nichts - dort muss die Seite
+  // erst aufs Telefon. Deshalb ein QR-Code und beide Schrittfolgen.
   r = await oeffne(SCHREIBTISCH);
-  ok('6. Am Schreibtisch stoert der Hinweis nicht', r.w.hinweis === false, JSON.stringify(r.w));
+  ok('6. Am Schreibtisch wird der Hinweis auch gezeigt', r.w.hinweis === true, JSON.stringify(r.w));
+  await r.p.click('[data-homeopen]');
+  await r.p.waitForTimeout(600);
+  f = await r.lies();
+  ok('6b. … und das Fenster fuehrt ueber einen QR-Code aufs Telefon',
+    f.fenster && f.qr && f.schritteIos && f.schritteAndroid, JSON.stringify(f));
+  const qrGemalt = await r.p.evaluate(function () { const e = document.querySelector('#teamqr'); return !!(e && e.querySelector('svg')); });
+  ok('6c. … der auch wirklich gezeichnet wird', qrGemalt === true, String(qrGemalt));
   await r.c.close();
 
   // Liegt der Team-Bereich schon als Symbol auf dem Handy, ist der Hinweis
@@ -143,6 +166,39 @@ ok('3e. Das iOS-Symbol ist undurchsichtig (iOS legt sonst Schwarz dahinter)',
   const nachNeuladen = await r.p.evaluate(function () { return /aufs Handy legen/.test(document.body.innerText); });
   ok('9. Weggetippt ist weg', nachher === false, String(nachher));
   ok('9b. … auch nach dem Neuladen', nachNeuladen === false, String(nachNeuladen));
+  await r.c.close();
+
+  // ── 5. Und vor allem: auch im ANGEMELDETEN Zustand ──
+  // Genau daran ist es zuerst gescheitert. Der Hinweis stand nur auf der
+  // Anmeldeseite - wer die Sitzung offen hat (12 h), sieht die nie und findet
+  // die Funktion folglich nicht.
+  const angemeldet = function () {
+    try { localStorage.setItem('fi_team_token', 'test'); localStorage.setItem('fi_team_role', 'admin'); localStorage.setItem('fi_team_name', 'Test'); } catch (e) {}
+    window.fetch = function () { return Promise.resolve({ ok: true, status: 200, json: function () { return Promise.resolve({ ok: true }); } }); };
+  };
+  r = await oeffne(SCHREIBTISCH, angemeldet);
+  const inSeitenleiste = await r.p.evaluate(function () { return !!document.querySelector('[data-homeopen]'); });
+  ok('10. Angemeldet am Schreibtisch: der Weg steht in der Seitenleiste', inSeitenleiste === true, String(inSeitenleiste));
+  if (inSeitenleiste) {
+    await r.p.click('[data-homeopen]');
+    await r.p.waitForTimeout(500);
+    f = await r.lies();
+    ok('10b. … und oeffnet dieselbe Anleitung', f.fenster && f.qr, JSON.stringify(f));
+  } else { ok('10b. … und oeffnet dieselbe Anleitung', false, 'kein Einstieg vorhanden'); }
+  await r.c.close();
+
+  r = await oeffne(IPHONE, angemeldet);
+  const imMehr = await r.p.evaluate(function () {
+    S.navOpen = true; render();
+    return !!document.querySelector('[data-more="__home"]');
+  });
+  ok('11. Angemeldet am Telefon: der Weg steht unter „Mehr"', imMehr === true, String(imMehr));
+  if (imMehr) {
+    await r.p.click('[data-more="__home"]');
+    await r.p.waitForTimeout(400);
+    f = await r.lies();
+    ok('11b. … und oeffnet die Anleitung fuers Telefon', f.fenster && f.schritteIos, JSON.stringify(f));
+  } else { ok('11b. … und oeffnet die Anleitung fuers Telefon', false, 'kein Einstieg vorhanden'); }
   await r.c.close();
 
   await b.close();

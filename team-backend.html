@@ -2161,21 +2161,19 @@ function alsAppInstalliert(){
 function inNativerHuelle(){ try{ return !!window.Capacitor; }catch(e){ return false; } }
 function stehtSchonAufStartbildschirm(){ return alsAppInstalliert()||inNativerHuelle(); }
 function homeTipWeg(){ try{ return localStorage.getItem('fi_team_hometip')==='weg'; }catch(e){ return false; } }
+// Auf JEDEM Geraet zeigen, solange der Team-Bereich nicht schon als Symbol
+// vorliegt. Die geraetegerechten Schritte stehen im Fenster dahinter – vorher
+// standen sie hier fest eingebaut und damit nur auf dem Telefon; wer am
+// Schreibtisch sass, sah gar nichts und suchte vergeblich.
 function homeTipHTML(){
   if(stehtSchonAufStartbildschirm()||homeTipWeg()) return '';
-  var telefon=false;
-  try{ telefon=!!(window.matchMedia&&window.matchMedia('(hover:none) and (pointer:coarse)').matches); }catch(e){}
-  if(!telefon) return '';
-  var ios=false; try{ ios=/iPad|iPhone|iPod/.test(navigator.userAgent||'')||((navigator.platform==='MacIntel')&&navigator.maxTouchPoints>1); }catch(e){}
-  var schritte=ios
-    ? 'Unten auf <b>Teilen</b> tippen → <b>Zum Home-Bildschirm</b>.'
-    : 'Im Browser-Menü (⋮) auf <b>App installieren</b> bzw. <b>Zum Startbildschirm zufügen</b> tippen.';
   return '<div style="margin-top:18px;background:#e7f1f3;border-radius:14px;padding:13px 15px">'+
     '<div style="display:flex;align-items:flex-start;gap:10px">'+
       '<img src="/assets/team-icon-192.png" alt="" width="34" height="34" style="border-radius:9px;flex-shrink:0">'+
       '<div style="flex:1;min-width:0">'+
         '<div style="font-size:13.5px;font-weight:900;color:#0a4958">Team-Bereich aufs Handy legen</div>'+
-        '<div style="font-size:12.5px;font-weight:600;color:#42545a;line-height:1.55;margin-top:3px">Dann kommst du aus jeder App mit einem Druck hierher – auch aus der Technogym-App. '+schritte+'</div>'+
+        '<div style="font-size:12.5px;font-weight:600;color:#42545a;line-height:1.55;margin-top:3px">Dann kommst du aus jeder App mit einem Druck hierher – auch aus der Technogym-App.</div>'+
+        '<button data-homeopen="1" style="margin-top:9px;border:1.5px solid '+TEAL+';background:#fff;color:'+TEAL+';border-radius:10px;padding:7px 13px;font-family:inherit;font-size:12.5px;font-weight:800;cursor:pointer">So geht\'s</button>'+
       '</div>'+
       '<button data-hometipoff="1" aria-label="Hinweis ausblenden" style="border:none;background:transparent;color:#7f9298;font-size:17px;font-weight:800;cursor:pointer;line-height:1;padding:0 2px">×</button>'+
     '</div></div>';
@@ -2183,6 +2181,91 @@ function homeTipHTML(){
 function wireHomeTip(scope){
   var b=scope.querySelector('[data-hometipoff]');
   if(b) b.onclick=function(){ try{ localStorage.setItem('fi_team_hometip','weg'); }catch(e){} render(); };
+  var o=scope.querySelector('[data-homeopen]');
+  if(o) o.onclick=function(){ S.homeSheet=true; render(); };
+}
+
+// Die Anleitung als Fenster – erreichbar aus der Seitenleiste und aus „Mehr",
+// also AUCH im angemeldeten Zustand. Der Hinweis auf der Anmeldeseite allein
+// reicht nicht: wer die Sitzung offen hat, sieht die Anmeldeseite nie.
+// Am Schreibtisch nuetzen Tipp-Anleitungen nichts – dort steht ein QR-Code,
+// mit dem man diese Seite auf dem Handy oeffnet.
+function amTelefon(){
+  try{ return !!(window.matchMedia&&window.matchMedia('(hover:none) and (pointer:coarse)').matches); }catch(e){ return false; }
+}
+function istIOS(){
+  try{ return /iPad|iPhone|iPod/.test(navigator.userAgent||'')||((navigator.platform==='MacIntel')&&navigator.maxTouchPoints>1); }catch(e){ return false; }
+}
+function teamAdresse(){ try{ return location.origin+'/team'; }catch(e){ return 'https://mitglieder.fit-inn-trier.de/team'; } }
+var _qrLibTeam=null;
+function loadQrLibTeam(){
+  if(window.qrcode) return Promise.resolve();
+  if(_qrLibTeam) return _qrLibTeam;
+  _qrLibTeam=new Promise(function(ok,fail){
+    var s=document.createElement('script'); s.src='/assets/qrcode.min.js?v=1'; s.async=true;
+    s.onload=function(){ ok(); }; s.onerror=function(){ _qrLibTeam=null; fail(new Error('qr_load')); };
+    document.head.appendChild(s);
+  });
+  return _qrLibTeam;
+}
+function schritteHTML(fuer){
+  var ios=(fuer==='ios');
+  return '<div style="display:flex;gap:11px;align-items:flex-start;padding:11px 0">'+
+    '<div style="width:26px;height:26px;border-radius:8px;background:'+(ios?'#eef2f3':'#e7f1f3')+';color:'+TEAL+';font-size:12px;font-weight:900;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+(ios?'':'')+'</div>'+
+    '<div style="flex:1;min-width:0">'+
+      '<div style="font-size:13px;font-weight:900;color:#15171B">'+(ios?'iPhone / iPad':'Android')+'</div>'+
+      '<div style="font-size:12.5px;font-weight:600;color:#5a636a;line-height:1.6;margin-top:2px">'+
+        (ios?'Unten auf <b>Teilen</b> tippen → <b>Zum Home-Bildschirm</b> → <b>Hinzufügen</b>.'
+            :'Browser-Menü (⋮) öffnen → <b>App installieren</b> bzw. <b>Zum Startbildschirm zufügen</b>.')+
+      '</div>'+
+    '</div></div>';
+}
+function homeSheetHTML(){
+  var telefon=amTelefon();
+  var kern = telefon
+    ? (schritteHTML(istIOS()?'ios':'android')+
+       '<div style="font-size:12px;font-weight:600;color:#8a929a;line-height:1.55;margin-top:6px">Danach liegt der Team-Bereich als eigenes Symbol auf dem Startbildschirm – aus jeder App ein Druck auf die Home-Taste entfernt.</div>')
+    : ('<div style="display:flex;gap:16px;align-items:center;padding:4px 0 12px">'+
+        '<div id="teamqr" style="width:132px;height:132px;flex-shrink:0;background:#fff;border:1.5px solid #e2e8ea;border-radius:12px;padding:8px;display:flex;align-items:center;justify-content:center"></div>'+
+        '<div style="flex:1;min-width:0">'+
+          '<div style="font-size:13.5px;font-weight:900;color:#15171B">Mit dem Handy scannen</div>'+
+          '<div style="font-size:12.5px;font-weight:600;color:#5a636a;line-height:1.6;margin-top:3px">Der Code öffnet diese Seite auf dem Telefon. Dort dann die Schritte unten.</div>'+
+          '<div style="font-size:11.5px;font-weight:700;color:#8a929a;margin-top:8px;word-break:break-all">'+esc(teamAdresse())+'</div>'+
+        '</div>'+
+      '</div>'+
+      '<div style="border-top:1px solid #eef2f3">'+schritteHTML('ios')+'</div>'+
+      '<div style="border-top:1px solid #eef2f3">'+schritteHTML('android')+'</div>');
+
+  return '<div data-homesheet="1" style="position:fixed;inset:0;z-index:9998;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(6,24,29,.55)" role="dialog" aria-label="Team-Bereich aufs Handy legen">'+
+    '<div data-homestop="1" style="width:100%;max-width:430px;max-height:88dvh;overflow-y:auto;background:#fff;border-radius:20px;box-shadow:0 30px 70px rgba(0,0,0,.3);padding:22px 24px">'+
+      '<div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:14px">'+
+        '<img src="/assets/team-icon-192.png" alt="" width="46" height="46" style="border-radius:12px;flex-shrink:0">'+
+        '<div style="flex:1;min-width:0">'+
+          '<div style="font-size:17px;font-weight:900;letter-spacing:-.3px;color:#15171B">Team-Bereich aufs Handy legen</div>'+
+          '<div style="font-size:12.5px;font-weight:600;color:#8a929a;line-height:1.5;margin-top:3px">In die Technogym-App können wir nichts einbauen. Mit eigenem Symbol bist du von dort aus trotzdem mit einem Druck hier.</div>'+
+        '</div>'+
+        '<button data-homeclose="1" aria-label="Schließen" style="width:34px;height:34px;border:none;border-radius:11px;background:#f4f7f7;color:#5f6b70;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'+
+          '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button>'+
+      '</div>'+
+      kern+
+    '</div></div>';
+}
+function wireHomeSheet(node){
+  node.querySelectorAll('[data-homeclose]').forEach(function(b){ b.onclick=function(){ S.homeSheet=false; render(); }; });
+  node.onclick=function(e){ if(e.target===node){ S.homeSheet=false; render(); } };
+  var ziel=node.querySelector('#teamqr');
+  if(ziel){
+    loadQrLibTeam().then(function(){
+      var e=document.getElementById('teamqr'); if(!e) return;
+      try{
+        var qr=window.qrcode(0,'M'); qr.addData(teamAdresse()); qr.make();
+        e.innerHTML=qr.createSvgTag({cellSize:5, margin:0, scalable:true}).replace(/fill="black"/g,'fill="#063540"');
+        var s=e.querySelector('svg'); if(s){ s.setAttribute('width','100%'); s.setAttribute('height','100%'); }
+      }catch(err){ e.innerHTML='<span style="font-size:11px;color:#8a929a;font-weight:700;text-align:center">Adresse oben abtippen</span>'; }
+    }).catch(function(){
+      var e=document.getElementById('teamqr'); if(e) e.innerHTML='<span style="font-size:11px;color:#8a929a;font-weight:700;text-align:center">Adresse oben abtippen</span>';
+    });
+  }
 }
 
 function renderLogin(){
@@ -2234,6 +2317,7 @@ function renderLogin(){
     (alsAppInstalliert()?'':'<a href="/mitglieder" style="display:block;margin-top:14px;text-align:center;font-size:13px;font-weight:700;color:#8a929a;text-decoration:none">← Zurück zum Mitgliederbereich</a>');
   wrap.appendChild(card); root.appendChild(wrap);
   wireHomeTip(card);
+  if(S.homeSheet){ var hs=el(homeSheetHTML()); root.appendChild(hs); wireHomeSheet(hs); }
 
   Array.prototype.forEach.call(card.querySelectorAll('[data-limode]'), function(b){
     b.onclick=function(){ var k=b.getAttribute('data-limode'); if(k===S.loginMode) return; S.loginMode=k; S.err=''; S.liErr=''; render(); };
@@ -2306,7 +2390,11 @@ function moreSheet(openCount, apptCount){
     '</button>';
   }).join('');
 
-  var fuss = '<button data-more="__toapp" style="display:flex;align-items:center;gap:11px;width:100%;padding:13px 4px;border:none;background:none;'+
+  var fuss = (alsAppInstalliert()?'':'<button data-more="__home" style="display:flex;align-items:center;gap:11px;width:100%;padding:13px 4px;border:none;background:none;'+
+      'font-family:inherit;font-size:14px;font-weight:700;color:#42454b;cursor:pointer;text-align:left">'+
+      '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8a929a" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2.5" width="12" height="19" rx="2.5"/><path d="M11 18.5h2"/></svg>'+
+      '<span>Aufs Handy legen</span></button>')+
+    '<button data-more="__toapp" style="display:flex;align-items:center;gap:11px;width:100%;padding:13px 4px;border:none;background:none;'+
       'font-family:inherit;font-size:14px;font-weight:700;color:#42454b;cursor:pointer;text-align:left">'+
       '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8a929a" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>'+
       '<span>Zur Mitglieder-App</span></button>'+
@@ -2400,6 +2488,7 @@ function renderShell(content, title, sub){
       (canSee('community')?navItem('community','Community',IC.members):'')+
     '</nav>'+
     '<div style="border-top:1px solid rgba(255,255,255,.10);margin-top:10px;padding-top:10px">'+
+      (alsAppInstalliert()?'':'<button class="navbtn" data-homeopen="1" style="display:flex;align-items:center;gap:13px;padding:11px 13px;border:none;border-radius:11px;font-weight:600;font-size:13.5px;background:transparent;color:#9fc3ca;width:100%;text-align:left;margin-bottom:3px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2.5" width="12" height="19" rx="2.5"/><path d="M11 18.5h2"/></svg><span>Aufs Handy legen</span></button>')+
       '<button class="navbtn" data-toapp="1" style="display:flex;align-items:center;gap:13px;padding:11px 13px;border:none;border-radius:11px;font-weight:600;font-size:13.5px;background:transparent;color:#9fc3ca;width:100%;text-align:left;margin-bottom:3px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg><span>Zur Mitglieder-App</span></button>'+
       '<button class="navbtn" data-logout="1" style="display:flex;align-items:center;gap:13px;padding:11px 13px;border:none;border-radius:11px;font-weight:600;font-size:13.5px;background:transparent;color:#9fc3ca;width:100%;text-align:left">'+IC.logout+'<span>Abmelden</span></button>'+
     '</div>';
@@ -2415,11 +2504,13 @@ function renderShell(content, title, sub){
         if(k==='__close'){ S.navOpen=false; render(); return; }
         if(k==='__logout'){ S.navOpen=false; logout(); return; }
         if(k==='__toapp'){ S.navOpen=false; location.assign('/mitglieder'); return; }
+        if(k==='__home'){ S.navOpen=false; S.homeSheet=true; render(); return; }
         goScreen(k);          // setzt navOpen selbst zurueck
       };
     });
     row.appendChild(sheet);
   }
+  if(S.homeSheet){ var hSheet=el(homeSheetHTML()); row.appendChild(hSheet); wireHomeSheet(hSheet); }
 
   var main=el('<main style="flex:1;min-width:0;display:flex;flex-direction:column;height:100dvh"></main>');
   var head=el('<header class="hdr-mobile" style="display:flex;align-items:center;justify-content:space-between;padding:16px 26px;border-bottom:1px solid #dde4e6;background:#eef2f3;flex-shrink:0"></header>');
@@ -2466,6 +2557,7 @@ function renderShell(content, title, sub){
   side.querySelectorAll('[data-nav]').forEach(function(b){ b.onclick=function(){ goScreen(b.getAttribute('data-nav')); }; });
   side.querySelector('[data-logout]').onclick=logout;
   var toApp=side.querySelector('[data-toapp]'); if(toApp) toApp.onclick=function(){ location.assign('/mitglieder'); };
+  var hOpen=side.querySelector('[data-homeopen]'); if(hOpen) hOpen.onclick=function(){ S.homeSheet=true; render(); };
   var bg=head.querySelector('[data-burger]'); if(bg) bg.onclick=function(){ S.navOpen=true; render(); };
   head.querySelector('[data-refresh]').onclick=function(){ if(S.screen==='members') loadMembers(); else if(S.screen==='appts'){ loadInbox(); apptRefreshWeek(); } else if(S.screen==='inbox') loadInbox(); else if(S.screen==='help') loadArticles(); else if(S.screen==='stats') loadStats(); else if(S.screen==='msg') loadBroadcastCount(); else if(S.screen==='leads') loadLeads(); else if(S.screen==='tester') loadTesters(); else if(S.screen==='kassenbuch') loadKassenbuch(S.kbMonth); else if(S.screen==='feedback') loadFeedback(); else if(S.screen==='newmembers') loadNewMembers(); else if(S.screen==='todo') loadTodos(); else if(S.screen==='schicht'){ loadShifts(); if(S.shTab==='tausch') loadShSwaps(); } else render(); };
   var bell=head.querySelector('[data-bell]'); if(bell) bell.onclick=function(){ goScreen('inbox'); };
