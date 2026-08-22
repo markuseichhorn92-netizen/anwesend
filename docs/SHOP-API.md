@@ -135,6 +135,16 @@ POST /api/shop/partner
 jedem Statuswechsel (bezahlt → versandt → zugestellt). Der Eintrag wird
 aktualisiert, nicht verdoppelt (`"neu": false`).
 
+Bitte wirklich jeden Wechsel melden: die Bestellungen laufen auf Fit-Inn-Seite
+in eine Verwaltung im Team-Bereich (Liste, Filter, Detail) und in die
+Mitglieder-App. Bleibt eine Bestellung auf „bezahlt" stehen, obwohl sie längst
+draußen ist, ruft das Mitglied im Studio an.
+
+Das Team pflegt dort **Bearbeitungsstand, Sendungsnummer und eine interne
+Notiz**. Ein späterer `order`-Aufruf aus dem Shop überschreibt diese Handarbeit
+**nicht** – ihr besitzt Betrag und Positionen, das Studio den Rest. Ihr müsst
+dazu nichts beachten, es ist nur gut zu wissen.
+
 Eine `externalId`, die schon zu einem anderen Konto gehört, wird abgelehnt
 (`belongs_to_other`) – so lässt sich eine fremde Bestellung nicht umhängen.
 
@@ -244,4 +254,28 @@ curl -s -X POST \
   https://mitglieder.fit-inn-trier.de/api/shop/partner
 ```
 
-Welcher Stand gerade läuft: `GET /api/health` nennt den ausgerollten Commit.
+### Welcher Stand läuft gerade?
+
+```bash
+curl -s https://mitglieder.fit-inn-trier.de/api/health
+# {"ok":true,"version":"aacced6","deployment":"zTJazfJQVCSg","region":"fra1"}
+```
+
+`version` ist der Commit, `deployment` das konkrete Ausrollen. Der Unterschied
+ist wichtig: **Vercel übernimmt geänderte Umgebungsvariablen nur in ein NEUES
+Deployment.** Wer eine Variable setzt und denselben Commit neu ausrollt, sieht
+dieselbe `version`, aber eine neue `deployment` – erst daran erkennt man, dass
+die Änderung wirklich draußen ist.
+
+### Und wenn etwas nicht geht?
+
+| Beobachtung | Ursache |
+|---|---|
+| `503 not_configured` | auf Fit-Inn-Seite ist kein Schlüssel eingerichtet (oder die Variable steckt im falschen Vercel-Environment) |
+| `401` trotz gesetztem Schlüssel | die Schlüssel auf beiden Seiten sind nicht identisch |
+| `405` | es wurde `GET` statt `POST` geschickt |
+| Browser meldet CORS-Fehler | der Aufruf kam aus dem Browser statt aus dem Backend – das ist die Absicherung, kein Fehler |
+
+Stand 21.08.2026 ist die Schnittstelle eingerichtet und geprüft: ohne bzw. mit
+falschem Schlüssel kommt `401`, `GET` gibt `405`, und es werden keine
+`Access-Control-*`-Header ausgeliefert.
