@@ -614,7 +614,7 @@
     finnOpen:false, finnTopic:'', finnMsgs:[], finnBusy:false, finnTip:'', finnTipLoaded:false,
     vaOpen:false, vaMsgs:[], vaBusy:false, vaInput:'', vaIntent:'',
     qaOpen:false,
-    shopCart:{}, shopProd:null, shopCartOpen:false, shopBusy:false, shopErr:'', shopDone:null, shopLoading:false,
+    shopCart:{}, shopProd:null, shopCartOpen:false, shopCodeCopied:false, shopBusy:false, shopErr:'', shopDone:null, shopLoading:false,
     findOpen:false, findQ:'',
     fbOpen:false, fbCat:'bug', fbText:'', fbBusy:false, fbSent:false, fbErr:'', fbCampaign:null,
     blogSel:null, blogPost:null, instaSel:null,
@@ -10619,7 +10619,41 @@
     var fuss='<div style="font-size:11.5px;font-weight:600;color:var(--text-muted);line-height:1.6;margin:20px 4px 0;padding-bottom:'+(shopAnzahl()?'104px':'24px')+'">Du bestellst hier vor und holst im Studio ab – bezahlt wird an der Theke. Preise inkl. MwSt.</div>';
     return head+shopBeispielBanner()+
       '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px">'+kacheln+'</div>'+
-      fuss+leiste;
+      shopBestellungen()+shopCodeKarte()+fuss+leiste;
+  }
+  // Bestellungen aus dem Online-Shop, die über den Mitgliedscode verknüpft wurden.
+  var SHOP_ST={offen:['Offen','#8a929a','var(--surface-2)'],bezahlt:['Bezahlt','#1d7a3e','#E7F6EC'],versandt:['Versandt','#0e6072','rgba(14,96,114,.1)'],zugestellt:['Zugestellt','#1d7a3e','#E7F6EC'],storniert:['Storniert','#b53a2c','#FCEBEA'],erstattet:['Erstattet','#b53a2c','#FCEBEA']};
+  function shopBestellungen(){
+    var d=DATA.shop; var list=(d&&Array.isArray(d.bestellungen))?d.bestellungen:[];
+    if(!list.length) return '';
+    var zeilen=list.slice(0,8).map(function(b){
+      var st=SHOP_ST[b.status]||SHOP_ST.offen;
+      var datum=''; try{ datum=new Date(b.bestelltAm).toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric'}); }catch(e){}
+      var artikel=(b.posten||[]).map(function(p){ return p.menge+'× '+p.titel; }).join(', ');
+      return '<div style="padding:13px 0;border-top:1px solid var(--surface-2)">'+
+        '<div style="display:flex;align-items:baseline;gap:10px">'+
+          '<span style="font-size:14px;font-weight:800;color:var(--text)">Nr. '+esc(b.nummer)+'</span>'+
+          '<span style="font-size:11.5px;font-weight:800;color:'+st[1]+';background:'+st[2]+';border-radius:7px;padding:3px 8px">'+esc(st[0])+'</span>'+
+          '<span style="margin-left:auto;font-size:14px;font-weight:900;color:var(--text)">'+shopEuro(b.summe)+'</span>'+
+        '</div>'+
+        (artikel?'<div style="font-size:12.5px;font-weight:600;color:var(--text-muted);line-height:1.5;margin-top:4px">'+esc(artikel)+'</div>':'')+
+        '<div style="font-size:11.5px;font-weight:600;color:var(--text-soft);margin-top:3px">'+esc(datum)+(b.versand?(' · Sendung '+esc(b.versand)):'')+'</div>'+
+      '</div>';
+    }).join('');
+    return '<div style="margin-top:26px"><div style="font-size:12px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:var(--text-soft);margin:0 4px 10px">Deine Bestellungen</div>'+
+      '<div style="background:var(--surface);border-radius:20px;box-shadow:0 12px 30px rgba(4,33,40,.09);padding:6px 18px 14px">'+zeilen+'</div></div>';
+  }
+  // Der Mitgliedscode fürs Kassenfeld im Online-Shop. Zufällig, jederzeit
+  // vorzeigbar, und er verrät für sich genommen nichts über die Person.
+  function shopCodeKarte(){
+    var d=DATA.shop; var code=d&&d.code; if(!code) return '';
+    return '<div style="margin-top:26px"><div style="font-size:12px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:var(--text-soft);margin:0 4px 10px">Im Online-Shop</div>'+
+      '<div style="background:var(--surface);border-radius:20px;box-shadow:0 12px 30px rgba(4,33,40,.09);padding:18px 20px">'+
+        '<div style="font-size:13.5px;font-weight:600;color:var(--text-2);line-height:1.6">Gib diesen Code beim Bestellen im Online-Shop an. Dann erkennt der Shop dich als Mitglied, und die Bestellung erscheint hier in der App.</div>'+
+        '<button data-act="shopCopyCode" style="display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;margin-top:14px;padding:15px 17px;border:1.5px dashed var(--border);border-radius:14px;background:var(--surface-2);cursor:pointer;font-family:inherit">'+
+          '<span style="font-size:19px;font-weight:900;letter-spacing:2px;color:var(--text)">'+esc(code)+'</span>'+
+          '<span style="font-size:12.5px;font-weight:800;color:var(--teal-ink)">'+(S.shopCodeCopied?'Kopiert':'Kopieren')+'</span>'+
+        '</button></div></div>';
   }
   // Produktdetail als Blatt von unten – dieselbe Bewegung wie überall sonst.
   function shopProdSheet(){
@@ -12122,6 +12156,12 @@
     shopAdd:function(sku){ var c=Object.assign({},S.shopCart||{}); c[sku]=Math.min(20,(c[sku]||0)+1); setS({shopCart:c}); },
     shopSub:function(sku){ var c=Object.assign({},S.shopCart||{}); c[sku]=(c[sku]||0)-1; if(c[sku]<1) delete c[sku]; setS({shopCart:c}); },
     shopOrder:function(){ shopOrder(); },
+    shopCopyCode:function(){ var c=(DATA.shop&&DATA.shop.code)||''; if(!c) return;
+      var fertig=function(){ setS({shopCodeCopied:true}); setTimeout(function(){ S.shopCodeCopied=false; rIf(['shop']); },1800); };
+      try{ if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(c).then(fertig,function(){}); return; } }catch(e){}
+      // Ohne Zwischenablage (aeltere In-App-Browser) wenigstens markieren lassen.
+      try{ var t=document.createElement('textarea'); t.value=c; document.body.appendChild(t); t.select(); document.execCommand('copy'); document.body.removeChild(t); fertig(); }catch(e){}
+    },
     appAdHide:function(){ try{ sessionStorage.setItem('fi_appad_hide','1'); }catch(e){} render(); },
     premNudgeDismiss:function(){ premNudgeMarkDismissed(); render(); },
     closeFinn:function(){ S.finnTopic=''; setS({finnOpen:false}); },

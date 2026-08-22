@@ -229,6 +229,7 @@ var S={ token:null, role:null, meName:null, screen:'dash', convs:[], counts:{}, 
         // Nachrichten: Rundnachricht (Broadcast)
         bcSegment:'app', bcCount:null, bcCountLoading:false, bcTitle:'', bcBody:'', bcPush:true, bcEmail:false, bcWa:false, bcBusy:false, bcResult:null,
         waDiag:null, waDiagLoaded:false, waDiagBusy:false, waDiagPhone:'', waDiagTest:null,
+        soOrders:null, soLoading:false, soFilter:'alle', soQuery:'', soOpen:null, soBusy:false, soMsg:'',
         // Nachrichten: Direktnachricht (Compose-Dialog)
         dmOpen:false, dmMemberId:null, dmMemberName:'', dmTitle:'', dmBody:'', dmPush:true, dmEmail:false, dmWa:false, dmBusy:false, dmResult:null,
         // Leads: Interessenten-Pipeline
@@ -2370,6 +2371,7 @@ function moreSheet(openCount, apptCount){
     {k:'msg',         l:'Nachrichten',    ic:IC.msg},
     {k:'leads',       l:'Leads',          ic:IC.leads},
     {k:'wb',          l:'Rückholung',     ic:IC.wb},
+    {k:'shoporders',  l:'Bestellungen',   ic:IC.shop},
     {k:'kassenbuch',  l:'Kassenbuch',     ic:IC.kassenbuch},
     {k:'feedback',    l:'App-Feedback',   ic:IC.feedback},
     {k:'tester',      l:'App-Tester',     ic:IC.tester},
@@ -2428,6 +2430,7 @@ function navItem(key,label,icon,badge){
     (badge?'<span style="background:'+ORANGE+';color:#fff;font-size:11px;font-weight:800;border-radius:20px;min-width:21px;height:20px;padding:0 6px;display:flex;align-items:center;justify-content:center">'+badge+'</span>':'')+'</button>';
 }
 var IC={
+  shop:'<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="20" r="1.4"/><circle cx="18" cy="20" r="1.4"/><path d="M2 3h3l2.4 11.4a1.6 1.6 0 0 0 1.6 1.3h8.3a1.6 1.6 0 0 0 1.6-1.2L21 7H6"/></svg>',
   dash:'<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>',
   inbox:'<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z"/><path d="M4 6l8 6 8-6"/></svg>',
   members:'<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M16 19c0-2.7-2.7-4.5-6-4.5S4 16.3 4 19"/><circle cx="10" cy="8" r="3.2"/><path d="M20 19c0-2.2-1.4-3.8-3.4-4.3"/></svg>',
@@ -2485,6 +2488,7 @@ function renderShell(content, title, sub){
       (canSee('wb')?navItem('wb','Rückholung',IC.wb):'')+
       navItem('todo','Aufgaben',IC.todo)+
       navItem('schicht','Schichtplan',IC.shift)+
+      navItem('shoporders','Bestellungen',IC.shop)+
       (canSee('community')?navItem('community','Community',IC.members):'')+
     '</nav>'+
     '<div style="border-top:1px solid rgba(255,255,255,.10);margin-top:10px;padding-top:10px">'+
@@ -2511,6 +2515,7 @@ function renderShell(content, title, sub){
     row.appendChild(sheet);
   }
   if(S.homeSheet){ var hSheet=el(homeSheetHTML()); row.appendChild(hSheet); wireHomeSheet(hSheet); }
+  if(S.screen==='shoporders' && S.soOpen){ var soN=el(soDetailHTML()); if(soN){ row.appendChild(soN); wireSoDetail(soN); } }
 
   var main=el('<main style="flex:1;min-width:0;display:flex;flex-direction:column;height:100dvh"></main>');
   var head=el('<header class="hdr-mobile" style="display:flex;align-items:center;justify-content:space-between;padding:16px 26px;border-bottom:1px solid #dde4e6;background:#eef2f3;flex-shrink:0"></header>');
@@ -5031,6 +5036,164 @@ function todoRowHTML(t){
     right+
   '</div>';
 }
+// ---------- Bestellungen aus dem Online-Shop ----------
+// Der Shop meldet Bestellungen ueber /api/shop/partner; hier werden sie
+// bearbeitet. Arbeitsteilung: Betrag und Positionen gehoeren dem Shop,
+// Bearbeitungsstand, Sendungsnummer und Notiz dem Team.
+var SO_ST={
+  offen:{l:'Offen',c:'#8a929a',b:'#eef1f2'},
+  bezahlt:{l:'Bezahlt',c:'#1d7a3e',b:'#e7f6ec'},
+  versandt:{l:'Versandt',c:'#0a4958',b:'#e7f1f3'},
+  zugestellt:{l:'Zugestellt',c:'#1d7a3e',b:'#e7f6ec'},
+  storniert:{l:'Storniert',c:'#b53a2c',b:'#fbeae7'},
+  erstattet:{l:'Erstattet',c:'#b53a2c',b:'#fbeae7'}
+};
+var SO_ORDER=['offen','bezahlt','versandt','zugestellt','storniert','erstattet'];
+function soSt(k){ return SO_ST[k]||SO_ST.offen; }
+function soEuro(n){ return (n==null)?'–':((Math.round(n*100)/100).toFixed(2).replace('.',',')+' €'); }
+function soDatum(iso){ try{ return new Date(iso).toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric'}); }catch(e){ return ''; } }
+function soZeit(iso){ try{ return new Date(iso).toLocaleString('de-DE',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}); }catch(e){ return ''; } }
+async function loadShopOrders(){
+  if(S.soLoading) return;
+  S.soLoading=true; render();
+  try{ var r=await tapi('/api/team/shop-orders'); S.soOrders=(r&&r.ok)?(r.bestellungen||[]):[]; S.soZaehler=(r&&r.zaehler)||{}; }
+  catch(e){ if(S.soOrders==null) S.soOrders=[]; }
+  S.soLoading=false; render();
+}
+function soGefiltert(){
+  var list=S.soOrders||[];
+  if(S.soFilter!=='alle') list=list.filter(function(b){ return b.status===S.soFilter; });
+  var q=String(S.soQuery||'').trim().toLowerCase();
+  if(q) list=list.filter(function(b){
+    return String(b.nummer||'').toLowerCase().indexOf(q)>=0
+      || String(b.mitglied||'').toLowerCase().indexOf(q)>=0
+      || String(b.mitgliedsnummer||'').toLowerCase().indexOf(q)>=0
+      || (b.posten||[]).some(function(p){ return String(p.titel||'').toLowerCase().indexOf(q)>=0; });
+  });
+  return list;
+}
+function shopOrdersNode(){
+  var node=el('<div class="scrl" style="flex:1;min-height:0;overflow-y:auto;padding:24px 28px 44px"></div>');
+  if(S.soOrders==null){ if(!S.soLoading) setTimeout(loadShopOrders,0);
+    node.innerHTML='<div style="display:flex;align-items:center;justify-content:center;padding:70px"><span class="spin"></span></div>'; return node; }
+
+  var z=S.soZaehler||{};
+  var chips=[['alle','Alle',(S.soOrders||[]).length]].concat(SO_ORDER.map(function(k){ return [k,soSt(k).l,z[k]||0]; }))
+    .filter(function(c){ return c[0]==='alle'||c[2]>0; })
+    .map(function(c){ var a=S.soFilter===c[0];
+      return '<button data-sofilter="'+c[0]+'" style="border:1.5px solid '+(a?TEAL:'#dce3e4')+';background:'+(a?'#e7f1f3':'#fff')+';color:'+(a?TEAL:'#42454b')+';border-radius:11px;padding:8px 13px;font-size:13px;font-weight:800;cursor:pointer;font-family:inherit">'+esc(c[1])+' <span style="opacity:.6">'+c[2]+'</span></button>'; }).join('');
+
+  var list=soGefiltert();
+  var leer=!list.length;
+  var zeilen=list.map(function(b){
+    var st=soSt(b.status);
+    var artikel=(b.posten||[]).map(function(p){ return p.menge+'× '+p.titel; }).join(', ');
+    return '<button data-soopen="'+esc(b.extId)+'" style="display:block;width:100%;text-align:left;border:none;background:none;padding:14px 4px;border-top:1px solid #eef2f3;cursor:pointer;font-family:inherit">'+
+      '<div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">'+
+        '<span style="font-size:14.5px;font-weight:800;color:#15171B">Nr. '+esc(b.nummer||'')+'</span>'+
+        '<span style="font-size:11.5px;font-weight:800;color:'+st.c+';background:'+st.b+';border-radius:7px;padding:3px 8px">'+esc(st.l)+'</span>'+
+        (b.notiz?'<span style="font-size:11.5px;font-weight:800;color:#C77A2E;background:#fbf0e3;border-radius:7px;padding:3px 8px">Notiz</span>':'')+
+        '<span style="margin-left:auto;font-size:15px;font-weight:900;color:#15171B">'+soEuro(b.summe)+'</span>'+
+      '</div>'+
+      '<div style="font-size:13px;font-weight:700;color:#42454b;margin-top:4px">'+esc(b.mitglied||'Unbekanntes Mitglied')+(b.mitgliedsnummer?(' · '+esc(b.mitgliedsnummer)):'')+'</div>'+
+      (artikel?'<div style="font-size:12.5px;font-weight:600;color:#8a929a;line-height:1.5;margin-top:2px">'+esc(artikel)+'</div>':'')+
+      '<div style="font-size:11.5px;font-weight:600;color:#a9b1b6;margin-top:3px">'+esc(soDatum(b.bestelltAm))+(b.versand?(' · Sendung '+esc(b.versand)):'')+'</div>'+
+    '</button>';
+  }).join('');
+
+  node.innerHTML='<div style="max-width:860px">'+
+    '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px">'+
+      '<input id="soq" value="'+esc(S.soQuery)+'" placeholder="Bestellnummer, Mitglied oder Artikel …" style="flex:1;min-width:220px;padding:11px 14px;border:1.5px solid #dce3e4;border-radius:12px;font-size:14px;background:#fbfcfc;font-family:inherit">'+
+      '<button data-soreload="1" style="border:1.5px solid #dce3e4;background:#fff;border-radius:12px;padding:11px 15px;font-size:13px;font-weight:800;color:'+TEAL+';cursor:pointer;font-family:inherit">Aktualisieren</button>'+
+    '</div>'+
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px">'+chips+'</div>'+
+    '<div style="background:#fff;border-radius:20px;box-shadow:0 12px 32px rgba(4,33,40,.08);padding:8px 20px 16px;margin-top:14px">'+
+      (leer
+        ? '<div style="text-align:center;padding:38px 10px"><div style="font-size:15px;font-weight:800;color:#15171B">'+(S.soOrders.length?'Keine Bestellung passt zum Filter':'Noch keine Bestellungen')+'</div><div style="font-size:13px;font-weight:600;color:#8a929a;margin-top:6px;line-height:1.55">'+(S.soOrders.length?'Setz den Filter zurück oder such anders.':'Sobald der Online-Shop eine Bestellung meldet, steht sie hier.')+'</div></div>'
+        : zeilen)+
+    '</div>'+
+    (S.soMsg?'<div style="margin-top:12px;font-size:13px;font-weight:700;color:'+TEAL+'">'+esc(S.soMsg)+'</div>':'')+
+  '</div>';
+
+  setTimeout(function(){
+    node.querySelectorAll('[data-sofilter]').forEach(function(b){ b.onclick=function(){ S.soFilter=b.getAttribute('data-sofilter'); render(); }; });
+    node.querySelectorAll('[data-soopen]').forEach(function(b){ b.onclick=function(){ S.soOpen=b.getAttribute('data-soopen'); S.soMsg=''; render(); }; });
+    var rl=node.querySelector('[data-soreload]'); if(rl) rl.onclick=function(){ S.soOrders=null; loadShopOrders(); };
+    var q=node.querySelector('#soq'); if(q) q.oninput=function(){ S.soQuery=q.value; render(); setTimeout(function(){ var n=document.querySelector('#soq'); if(n){ n.focus(); try{ n.setSelectionRange(n.value.length,n.value.length); }catch(e){} } },0); };
+  },0);
+  return node;
+}
+// Detail als Fenster – Positionen, Verlauf, und was das Team pflegen darf.
+function soDetailHTML(){
+  var b=(S.soOrders||[]).filter(function(x){ return x.extId===S.soOpen; })[0];
+  if(!b) return '';
+  var st=soSt(b.status);
+  var posten=(b.posten||[]).map(function(p){
+    return '<div style="display:flex;align-items:baseline;gap:10px;padding:9px 0;border-top:1px solid #f1f4f5">'+
+      '<span style="font-size:13px;font-weight:800;color:#8a929a;min-width:34px">'+p.menge+'×</span>'+
+      '<span style="flex:1;min-width:0;font-size:13.5px;font-weight:700;color:#15171B">'+esc(p.titel)+'</span>'+
+      '<span style="font-size:13px;font-weight:700;color:#42454b">'+soEuro(p.einzel)+'</span></div>';
+  }).join('');
+  var verlauf=(b.verlauf||[]).slice(0,8).map(function(v){
+    return '<div style="display:flex;gap:9px;align-items:baseline;padding:5px 0"><span style="font-size:11.5px;font-weight:700;color:#a9b1b6;min-width:96px">'+esc(soZeit(v.am))+'</span>'+
+      '<span style="font-size:12.5px;font-weight:800;color:'+soSt(v.status).c+'">'+esc(soSt(v.status).l)+'</span>'+
+      '<span style="font-size:11.5px;font-weight:600;color:#8a929a">'+esc(v.von==='shop'?'aus dem Shop':v.von)+'</span></div>';
+  }).join('');
+  var knoepfe=SO_ORDER.map(function(k){ var a=b.status===k;
+    return '<button data-sostatus="'+k+'"'+(S.soBusy?' disabled':'')+' style="border:1.5px solid '+(a?soSt(k).c:'#dce3e4')+';background:'+(a?soSt(k).b:'#fff')+';color:'+(a?soSt(k).c:'#42454b')+';border-radius:10px;padding:8px 12px;font-size:12.5px;font-weight:800;cursor:pointer;font-family:inherit">'+esc(soSt(k).l)+'</button>'; }).join('');
+
+  return '<div data-sosheet="1" style="position:fixed;inset:0;z-index:9998;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(6,24,29,.55)" role="dialog" aria-label="Bestellung">'+
+    '<div style="width:100%;max-width:560px;max-height:88dvh;overflow-y:auto;background:#fff;border-radius:20px;box-shadow:0 30px 70px rgba(0,0,0,.3);padding:22px 24px">'+
+      '<div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:4px">'+
+        '<div style="flex:1;min-width:0">'+
+          '<div style="font-size:19px;font-weight:900;letter-spacing:-.4px;color:#15171B">Bestellung '+esc(b.nummer||'')+'</div>'+
+          '<div style="font-size:12.5px;font-weight:600;color:#8a929a;margin-top:2px">'+esc(b.mitglied||'Unbekanntes Mitglied')+(b.mitgliedsnummer?(' · '+esc(b.mitgliedsnummer)):'')+' · '+esc(soDatum(b.bestelltAm))+'</div>'+
+        '</div>'+
+        '<span style="font-size:11.5px;font-weight:800;color:'+st.c+';background:'+st.b+';border-radius:7px;padding:4px 9px;flex-shrink:0">'+esc(st.l)+'</span>'+
+        '<button data-soclose="1" aria-label="Schließen" style="width:32px;height:32px;border:none;border-radius:10px;background:#f4f7f7;color:#5f6b70;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'+
+          '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button>'+
+      '</div>'+
+      '<div style="margin-top:14px">'+posten+
+        '<div style="display:flex;align-items:baseline;justify-content:space-between;margin-top:10px;padding-top:11px;border-top:1.5px solid #eef2f3">'+
+          '<span style="font-size:13.5px;font-weight:700;color:#8a929a">Summe</span>'+
+          '<span style="font-size:19px;font-weight:900;color:#15171B">'+soEuro(b.summe)+' '+esc(b.waehrung||'EUR')+'</span></div></div>'+
+      (b.url?'<a href="'+esc(b.url)+'" target="_blank" rel="noopener" style="display:inline-block;margin-top:12px;font-size:12.5px;font-weight:800;color:'+TEAL+'">Im Shop öffnen ↗</a>':'')+
+      '<div style="height:1px;background:#eef2f3;margin:18px 0"></div>'+
+      '<div style="font-size:12px;font-weight:800;color:#8a929a;text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px">Bearbeitungsstand</div>'+
+      '<div style="display:flex;gap:7px;flex-wrap:wrap">'+knoepfe+'</div>'+
+      '<label style="display:block;font-size:12px;font-weight:800;color:#8a929a;text-transform:uppercase;letter-spacing:.4px;margin:16px 0 6px">Sendungsnummer</label>'+
+      '<input id="soversand" value="'+esc(b.versand||'')+'" maxlength="120" placeholder="z. B. 00340434…" style="width:100%;padding:11px 13px;border:1.5px solid #dce3e4;border-radius:11px;font-size:14px;background:#fbfcfc;font-family:inherit">'+
+      '<label style="display:block;font-size:12px;font-weight:800;color:#8a929a;text-transform:uppercase;letter-spacing:.4px;margin:14px 0 6px">Interne Notiz</label>'+
+      '<textarea id="sonotiz" rows="3" maxlength="600" placeholder="Nur fürs Team sichtbar …" style="width:100%;padding:11px 13px;border:1.5px solid #dce3e4;border-radius:11px;font-size:14px;background:#fbfcfc;resize:vertical;line-height:1.5;font-family:inherit">'+esc(b.notiz||'')+'</textarea>'+
+      '<button data-sosave="1"'+(S.soBusy?' disabled':'')+' style="margin-top:14px;width:100%;padding:13px;border:none;border-radius:12px;background:'+TEAL+';color:#fff;font-size:14.5px;font-weight:800;cursor:pointer;font-family:inherit">'+(S.soBusy?'Wird gespeichert …':'Speichern')+'</button>'+
+      (verlauf?'<div style="margin-top:18px"><div style="font-size:12px;font-weight:800;color:#8a929a;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px">Verlauf</div>'+verlauf+'</div>':'')+
+    '</div></div>';
+}
+function wireSoDetail(node){
+  node.querySelectorAll('[data-soclose]').forEach(function(b){ b.onclick=function(){ S.soOpen=null; render(); }; });
+  node.onclick=function(e){ if(e.target===node){ S.soOpen=null; render(); } };
+  node.querySelectorAll('[data-sostatus]').forEach(function(b){ b.onclick=function(){ soSpeichern(b.getAttribute('data-sostatus')); }; });
+  var sv=node.querySelector('[data-sosave]'); if(sv) sv.onclick=function(){ soSpeichern(null); };
+}
+async function soSpeichern(status){
+  if(S.soBusy||!S.soOpen) return;
+  var v=document.querySelector('#soversand'), n=document.querySelector('#sonotiz');
+  S.soBusy=true; render();
+  try{
+    var r=await tapi('/api/team/shop-orders',{method:'POST',body:{
+      action:'update', extId:S.soOpen,
+      status:status||undefined,
+      versand:v?v.value:undefined,
+      notiz:n?n.value:undefined
+    }});
+    if(r&&r.ok&&r.bestellung){
+      S.soOrders=(S.soOrders||[]).map(function(x){ return x.extId===r.bestellung.extId?r.bestellung:x; });
+      S.soMsg='Gespeichert.';
+    } else S.soMsg=(r&&r.message)||'Speichern hat nicht geklappt.';
+  }catch(e){ S.soMsg='Netzwerkfehler beim Speichern.'; }
+  S.soBusy=false; render();
+}
+
 function todoNode(){
   var node=el('<div class="scrl" style="flex:1;min-height:0;overflow-y:auto;padding:24px 28px 44px"></div>');
   if(S.todosLoading && !(S.todos&&S.todos.length)){
@@ -10323,8 +10486,8 @@ function wbNode(){
 function render(){
   if(!S.token){ renderLogin(); return; }
   if(!canSee(S.screen)) S.screen='dash';   // kein Admin-Bereich für Angestellte (Sicherheitsnetz)
-  var titles={dash:'Übersicht',inbox:'Posteingang',members:'Mitglieder',newmembers:'Neue Mitglieder',appts:'Termine',trial:'Probetraining',help:'Hilfe-Artikel',stats:'Statistiken',msg:'Nachrichten',leads:'Leads',tester:'App-Tester',kassenbuch:'Kassenbuch',feedback:'App-Feedback',todo:'Aufgaben',schicht:'Schichtplan',assist:'Assistent',wb:'Rückholung',community:'Community'};
-  var subs={dash:'Dein Studio auf einen Blick',inbox:'Alle Vorgänge & Anfragen',members:'Mitgliederverwaltung',newmembers:'Zuletzt beigetreten – automatisch aus Magicline',appts:'Anfragen & Buchungen',trial:'Schnell ein Probetraining buchen',help:'Wissensdatenbank verwalten',stats:'Auswertungen & Trends',msg:'Rundnachricht & Direktnachricht',leads:'Interessenten-Pipeline',tester:'Anmeldungen für den geschlossenen App-Test',kassenbuch:'Barkasse führen, prüfen & Monate abschließen',feedback:'Anonymes Kunden-Feedback aus der App',todo:'Interne Aufgaben fürs Team',schicht:'Dienstplan, Tausch & Verfügbarkeiten',assist:'Sag mir, was zu tun ist – ich bereite es vor, du bestätigst',wb:'Angebots-Rahmen für die KI-Rückholung',community:'Trainingspartner moderieren'};
+  var titles={dash:'Übersicht',inbox:'Posteingang',members:'Mitglieder',newmembers:'Neue Mitglieder',appts:'Termine',trial:'Probetraining',help:'Hilfe-Artikel',stats:'Statistiken',msg:'Nachrichten',leads:'Leads',tester:'App-Tester',kassenbuch:'Kassenbuch',feedback:'App-Feedback',todo:'Aufgaben',schicht:'Schichtplan',assist:'Assistent',wb:'Rückholung',community:'Community',shoporders:'Bestellungen'};
+  var subs={dash:'Dein Studio auf einen Blick',inbox:'Alle Vorgänge & Anfragen',members:'Mitgliederverwaltung',newmembers:'Zuletzt beigetreten – automatisch aus Magicline',appts:'Anfragen & Buchungen',trial:'Schnell ein Probetraining buchen',help:'Wissensdatenbank verwalten',stats:'Auswertungen & Trends',msg:'Rundnachricht & Direktnachricht',leads:'Interessenten-Pipeline',tester:'Anmeldungen für den geschlossenen App-Test',kassenbuch:'Barkasse führen, prüfen & Monate abschließen',feedback:'Anonymes Kunden-Feedback aus der App',todo:'Interne Aufgaben fürs Team',schicht:'Dienstplan, Tausch & Verfügbarkeiten',assist:'Sag mir, was zu tun ist – ich bereite es vor, du bestätigst',wb:'Angebots-Rahmen für die KI-Rückholung',community:'Trainingspartner moderieren',shoporders:'Bestellungen aus dem Online-Shop'};
   var content;
   if(S.screen==='inbox') content=inboxNode();
   else if(S.screen==='dash') content=dashNode();
@@ -10344,6 +10507,7 @@ function render(){
   else if(S.screen==='assist') content=assistNode();
   else if(S.screen==='wb') content=wbNode();
   else if(S.screen==='community') content=communityNode();
+  else if(S.screen==='shoporders') content=shopOrdersNode();
   else content=placeholderNode(titles[S.screen]||'');
   // Der Schichtplan bringt auf dem Schreibtisch seine eigene Kopfzeile mit; ohne
   // diese Marke staenden zwei uebereinander. Hier gesetzt UND geloescht, weil

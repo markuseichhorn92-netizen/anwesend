@@ -20,6 +20,7 @@
 
 const M = require('../../lib/members');
 const C2B = require('../../lib/c2b');
+const SL = require('../../lib/shopLink');
 const Inbox = require('../../lib/inbox');
 const { hasStore } = require('../../lib/store');
 
@@ -61,11 +62,19 @@ module.exports = async function handler(req, res) {
   if (req.method === 'GET') {
     let k = { ok: true, beispiel: true, produkte: [] };
     try { k = await C2B.katalog(); } catch (e) { k = { ok: true, beispiel: true, produkte: C2B.beispielKatalog() }; }
+    // Mitgliedscode und Bestellungen aus dem externen Shop. Der Code wird beim
+    // ersten Ansehen erzeugt - vorher braucht ihn niemand.
+    let code = null, bestellungen = [];
+    try { code = await SL.codeFor(id); } catch (e) { code = null; }
+    try { bestellungen = await SL.orders(id, 20); } catch (e) { bestellungen = []; }
+
     return j(res, 200, {
       ok: true, available: true,
       beispiel: !!k.beispiel,
       abholung: true,                                  // Ausbaustufe 1: im Studio zahlen
       produkte: (k.produkte || []).map(C2B.fuersMitglied),
+      code: code,
+      bestellungen: bestellungen,
     });
   }
 
