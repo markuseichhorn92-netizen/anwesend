@@ -835,6 +835,10 @@
   function nav(s){
     closeMenu();   // bei Navigation das Burger-Menü schließen
     if(isFormer() && FORMER_OK.indexOf(s)<0) s='home';   // Ehemalige: gesperrte Screens -> Übersicht
+    // Abgeschaltete Bereiche: die Sperre steht HIER und nicht nur an den Kacheln.
+    // So ist es egal, ob irgendwo noch ein Verweis uebersehen wurde.
+    if(!TRAIN_ON && s==='tag') s='home';
+    if(!VITAL_ON && s==='morning') s='home';
     // Vital-Check verlassen: laufende BLE-Messung + Timer sauber stoppen (kein Hintergrund-Stream/Save).
     if(S.screen==='morning' && s!=='morning'){ try{ moStopMeasure(); }catch(e){} S.morningPhase='idle'; S.morningLiveBpm=null; S.morningElapsed=0; }
     // Training verlassen: laufende Puls-Aufzeichnung sauber stoppen + Overlays schließen.
@@ -1267,7 +1271,7 @@
   ];
   function finderSheet(){
     var q=(S.findQ||'').trim().toLowerCase();
-    var avail=FIND_INDEX.filter(function(it){ return (ERN_ON||it.arg!=='ern') && (!isFormer()||FORMER_OK.indexOf(it.arg)>=0); });
+    var avail=FIND_INDEX.filter(function(it){ return (ERN_ON||it.arg!=='ern') && (TRAIN_ON||it.arg!=='tag') && (VITAL_ON||it.arg!=='morning') && (!isFormer()||FORMER_OK.indexOf(it.arg)>=0); });
     var res=q?avail.filter(function(it){ return (it.label+' '+it.kw).toLowerCase().indexOf(q)>=0; }):avail.filter(function(it){ return it.common; });
     var rows=res.length?res.map(function(it){
       return '<button data-act="findGo" data-arg="'+it.arg+'" style="width:100%;text-align:left;border:none;background:none;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:13px;padding:12px 8px;border-top:1px solid var(--border)">'+
@@ -1301,7 +1305,7 @@
     // FINN-Chat über den FINN-Button + Coach-Tab – hier bewusst keine Doppelung.
     var rows=
       (ERN_ON?qaRow('erfassen','<path d="M4 11h16v1a8 8 0 0 1-16 0z"></path><path d="M8.5 4c0 1-1 1.2-1 2.2s1 1.2 1 2.2M12 4c0 1-1 1.2-1 2.2s1 1.2 1 2.2M15.5 4c0 1-1 1.2-1 2.2s1 1.2 1 2.2"></path>','Essen erfassen','Foto, Sprache oder Suche'):'')+
-      qaRow('training','<path d="M4 8v8M8 5.5v13M16 5.5v13M20 8v8M8 12h8"></path>','Training starten','Einheit beginnen oder planen')+
+      (TRAIN_ON?qaRow('training','<path d="M4 8v8M8 5.5v13M16 5.5v13M20 8v8M8 12h8"></path>','Training starten','Einheit beginnen oder planen'):'')+
       qaRow('figur','<path d="M3 3v18h18"></path><path d="M7 14l4-4 3 3 5-6"></path>','Gewicht & Maße eintragen','Neuen Wert festhalten & Fortschritt sehen')+
       qaRow('checkin','<path d="M9 11l3 3L20 5"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>', ci?'Auschecken':'Check-in', ci?'Du bist gerade eingecheckt':'Im Studio einchecken', ci);
     return '<div class="qaScrim" data-act="qaClose"></div><div class="qaSheet" role="menu" aria-label="Schnell hinzufügen">'+head+banner+rows+'</div>';
@@ -2150,7 +2154,7 @@
     }
     return '<div class="obOverlay" style="position:fixed;inset:0;z-index:80;background:linear-gradient(170deg,#0e6072 0%,#0a4958 50%,#063540 100%);display:flex;flex-direction:column;padding:calc(40px + env(safe-area-inset-top,0px)) 24px calc(24px + env(safe-area-inset-bottom,0px));color:#fff;overflow-y:auto;max-width:480px;margin:0 auto">'+
       '<div style="display:flex;align-items:center;gap:12px;margin-bottom:24px;flex-shrink:0">'+(step>=1?'<button data-act="obBack" aria-label="Zurück" style="width:36px;height:36px;border-radius:11px;border:none;background:rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'+svg(IC.back,{c:'#fff',w:2.2,s:19})+'</button>':'')+'<div style="display:flex;gap:6px;flex:1">'+dots+'</div></div>'+inner+
-      '<button data-act="obNext" style="width:100%;margin-top:20px;border:none;border-radius:15px;background:#fff;color:#0a4958;font-weight:900;font-size:16px;padding:16px;cursor:pointer;flex-shrink:0">'+(step>=10?'Los geht\'s':'Weiter')+'</button>'+
+      '<button data-act="obNext" style="width:100%;margin-top:20px;border:none;border-radius:15px;background:#fff;color:#0a4958;font-weight:900;font-size:16px;padding:16px;cursor:pointer;flex-shrink:0">'+(step>=(VITAL_ON?10:9)?'Los geht\'s':'Weiter')+'</button>'+
     '</div>';
   }
   // Schlanker FINN-Anreißer für Unterseiten (Training/Fortschritt): Tipp des Tages
@@ -2256,6 +2260,7 @@
   // Training-Karte auf der Startseite: heutige Einheit an einem Ort.
   // Zentraler Einstieg in den Trainings-Bereich (scrMeinTag) – Status live aus DATA.training/trainSess.
   function homeMeinTagHero(){
+    if(!TRAIN_ON) return '';
     if(DATA.training==null) loadTraining();
     var d=DATA.training; var mp=d&&d.ok&&d.myPlan&&d.myPlan.plan;
     var status;
@@ -2284,19 +2289,22 @@
     var n=DATA.nutri; var kcalNow=(n&&n.today&&n.today.totals&&n.today.totals.kcal)||0; var kcalTgt=(n&&n.targets&&n.targets.kcal)||0;
     var sess=(DATA.trainSess&&DATA.trainSess.items)||{}; var trainedToday=Object.keys(sess).some(function(k){ return sess[k]&&sess[k].done; });
     var ci=Array.isArray(DATA.checkins)?DATA.checkins:[]; if(ci.some(function(x){ return x&&x.in&&String(x.in).slice(0,10)===isoToday(); })) trainedToday=true;
-    if(S.checkedInAt) return {ic:'🔥',t:'Viel Erfolg beim Training',s:'Du bist im Studio – zieh dein Ding durch. 💪',nav:'tag',label:'Zur Einheit'};
+    // Vorschlaege duerfen nur auf Bereiche zeigen, die es auch gibt - sonst
+    // fuehrt der Knopf ins Leere bzw. (dank der Sperre in nav) zurueck auf die Startseite.
+    var trainZiel=TRAIN_ON?'tag':'', trainLabel=TRAIN_ON?'Zum Training':'';
+    if(S.checkedInAt) return {ic:'🔥',t:'Viel Erfolg beim Training',s:'Du bist im Studio – zieh dein Ding durch. 💪',nav:trainZiel,label:TRAIN_ON?'Zur Einheit':''};
     if(h<5||h>=22) return {ic:'🌙',t:'Zeit zum Runterfahren',s:'Guter Schlaf ist deine beste Regeneration – morgen greifst du wieder an.',nav:''};
     if(h<11){
-      if(vitalAvail&&!measuredToday) return {ic:'❤️',t:'Starte mit deinem Vital-Check',s:'Miss deinen Puls – FINN steuert dein Training nach deiner Erholung.',nav:'morning',label:'Jetzt messen'};
-      return {ic:'🏋️',t:'Bereit für den Tag',s:trainedToday?'Stark – heute schon aktiv gewesen!':'Dein Trainingstag wartet – leg los, wenn du bereit bist.',nav:'tag',label:'Zum Training'};
+      if(VITAL_ON&&vitalAvail&&!measuredToday) return {ic:'❤️',t:'Starte mit deinem Vital-Check',s:'Miss deinen Puls – FINN steuert dein Training nach deiner Erholung.',nav:'morning',label:'Jetzt messen'};
+      return {ic:'🏋️',t:'Bereit für den Tag',s:trainedToday?'Stark – heute schon aktiv gewesen!':'Ein guter Tag, um im Studio vorbeizuschauen.',nav:trainZiel,label:trainLabel};
     }
     if(h<17){
       if(ERN_ON&&kcalTgt&&kcalNow<kcalTgt*0.5) return {ic:'🍽️',t:'Zeit für eine Mahlzeit?',s:'Halte dein Tagesziel im Blick – logge einfach, was du isst.',nav:'ern',label:'Essen erfassen'};
-      if(!trainedToday) return {ic:'🏋️',t:'Noch Zeit für dein Training',s:'Ein guter Moment, deine heutige Einheit anzugehen.',nav:'tag',label:'Zum Training'};
+      if(!trainedToday) return {ic:'🏋️',t:'Noch Zeit für dein Training',s:'Ein guter Moment, deine heutige Einheit anzugehen.',nav:trainZiel,label:trainLabel};
       return {ic:'💧',t:'Bleib auf Kurs',s:'Trink genug und halte dein Ziel – du machst das gut.',nav:'ern',label:'Ernährung'};
     }
     // Abend (17–21)
-    if(!trainedToday) return {ic:'🏋️',t:'Heute noch nicht trainiert?',s:'Auch eine kurze Einheit zählt – oder plane schon den morgigen Tag.',nav:'tag',label:'Zum Training'};
+    if(!trainedToday) return {ic:'🏋️',t:'Heute noch nicht trainiert?',s:'Auch eine kurze Einheit zählt.',nav:trainZiel,label:trainLabel};
     return {ic:'🌆',t:'Tag ausklingen lassen',s:'Starker Tag! Iss ausreichend Eiweiß und gönn dir Erholung für morgen.',nav:'ern',label:'Ernährung'};
   }
   function homeContextHero(){
@@ -3413,6 +3421,7 @@
   }
   // Coach-Übersicht-Hero: Vitalalter im Fokus + Bereitschafts-Status; Vitalpunkte sekundär.
   function coachVitalHero(){
+    if(!VITAL_ON) return '';
     var va=vitalAge(); var v=vitalsData();
     var ageBig=(va.age!=null)?va.age:((v.age!=null)?v.age:'–');
     var deltaTxt;
@@ -3567,14 +3576,22 @@
   var SOCIAL_LAUNCH=srvFlags().social===true;
   function socialTestOn(){ try{ return (srvFlags().demo===true && localStorage.getItem('fi_soc_test')==='1') || ernTestOn(); }catch(e){ return false; } }
   var SOCIAL_ON = SOCIAL_LAUNCH || socialTestOn();
+  // Feature-Schalter: Trainingsbereich und Vital-Check (Puls/HRV ueber den
+  // Brustgurt). Beide serverseitig AUS. Anders als beim Essen-Modul gibt es
+  // hier bewusst KEINEN Geraete-Testmodus: der Vital-Check erhebt
+  // Gesundheitsdaten, und die schaltet man nicht versehentlich per Tipp-Trick
+  // frei. Zurueck an geht ueber FEATURE_TRAINING=1 bzw. FEATURE_VITAL=1.
+  var TRAIN_ON = srvFlags().train === true;
+  var VITAL_ON = srvFlags().vital === true;
   // Frische Server-Flags übernehmen (von loadAppInfo aufgerufen): cachen +
   // laufende Sitzung aktualisieren, wenn sich die Sichtbarkeit geändert hat.
   function applySrvFlags(f){
     if(!f||typeof f!=='object') return;
-    try{ localStorage.setItem('fi_flags_srv',JSON.stringify({ern:f.ern!==false,social:f.social===true,demo:f.demo===true})); }catch(e){}
+    try{ localStorage.setItem('fi_flags_srv',JSON.stringify({ern:f.ern!==false,social:f.social===true,demo:f.demo===true,train:f.train===true,vital:f.vital===true})); }catch(e){}
     ERN_LAUNCH=(f.ern!==false); SOCIAL_LAUNCH=(f.social===true);
     var e2=ERN_LAUNCH||ernTestOn(), s2=SOCIAL_LAUNCH||socialTestOn();
-    if(e2!==ERN_ON||s2!==SOCIAL_ON){ ERN_ON=e2; SOCIAL_ON=s2; render(); }
+    var t2=(f.train===true), v2=(f.vital===true);
+    if(e2!==ERN_ON||s2!==SOCIAL_ON||t2!==TRAIN_ON||v2!==VITAL_ON){ ERN_ON=e2; SOCIAL_ON=s2; TRAIN_ON=t2; VITAL_ON=v2; render(); }
   }
   function ernSeedForm(){ var pr=(DATA.nutri&&DATA.nutri.profile)||{};
     S.ernGoal=pr.goal||'abnehmen'; S.ernSex=pr.sex||'w'; S.ernH=pr.height||170; S.ernW=pr.weight||70; S.ernAge=pr.age||30; S.ernAct=pr.activity||'moderat'; S.ernDiet=pr.diet||'omnivor'; }
@@ -6233,6 +6250,7 @@
   // Vital-Akku-Karte im Coach (Tab „Dein Tag"): Tagesenergie aus DATA.morning.battery.
   // Nur mit echten Messwerten; sonst Teaser zum Vital-Check (bei Premium+Einwilligung).
   function coachBatteryCard(){
+    if(!VITAL_ON) return '';
     var b=DATA.morning&&DATA.morning.battery;
     if(!b||!b.hasData){
       var mo=DATA.morning;
@@ -7440,11 +7458,13 @@
       headline:(r&&r.headline)||'', otNote:(ot&&ot.note)||'', date:(m&&m.date)||'' };
   }
   function meinTagReadyBanner(){
+    if(!VITAL_ON) return '';
     var v=vitalToday('training'); if(!v) return '';
     return '<div data-act="nav" data-arg="morning" style="display:flex;align-items:center;gap:11px;background:'+v.bg+';border-radius:15px;padding:12px 14px;margin-bottom:12px;cursor:pointer"><span style="font-size:20px">'+v.emo+'</span><div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:900;color:'+v.col+'">Vital-Check: '+esc(v.trainT)+'</div><div style="font-size:11.5px;font-weight:600;color:var(--text-2);margin-top:1px">'+esc(v.trainS)+'</div></div>'+svg('<path d="M9 18l6-6-6-6"></path>',{c:v.col,w:2.2,s:16})+'</div>';
   }
   // Vital-Signal-Banner für den Ernährungs-Screen (Fokus je nach Erholung).
   function ernVitalBanner(){
+    if(!VITAL_ON) return '';
     var v=vitalToday(); if(!v) return '';
     return '<div data-act="nav" data-arg="morning" style="display:flex;align-items:center;gap:11px;background:'+v.bg+';border-radius:16px;padding:13px 15px;margin-bottom:14px;cursor:pointer"><span style="font-size:20px">'+v.emo+'</span><div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:900;color:'+v.col+'">Vital-Check: '+esc(v.ernT)+'</div><div style="font-size:11.5px;font-weight:600;color:var(--text-2);line-height:1.4;margin-top:2px">'+esc(v.ernS)+'</div></div>'+svg('<path d="M9 18l6-6-6-6"></path>',{c:v.col,w:2.2,s:16})+'</div>';
   }
@@ -7805,7 +7825,7 @@
         var tfTodos=(Array.isArray(tf.todos)?tf.todos:[]).map(function(t,i){ return '<div style="display:flex;gap:11px;align-items:flex-start;padding:8px 0'+(i?';border-top:1px solid var(--border)':'')+'"><span style="flex-shrink:0;width:24px;height:24px;border-radius:50%;background:'+ERN_G+';color:#fff;font-size:12.5px;font-weight:900;display:flex;align-items:center;justify-content:center;line-height:1">'+(i+1)+'</span><span style="font-size:13.5px;font-weight:600;color:var(--text);line-height:1.5">'+esc(t)+'</span></div>'; }).join('');
         var tfSess=tf.sessionType?'<div style="display:inline-flex;align-items:center;gap:6px;margin-top:12px;background:rgba(14,96,114,.10);color:var(--ern-acc);border-radius:9px;padding:6px 11px;font-size:12.5px;font-weight:800">🎯 '+esc(tf.sessionType)+'</div>':'';
         var tfEx=(tf.exercise&&tf.exercise.name)?'<button data-act="coachTrainEx" data-arg="'+esc(tf.exercise.name)+'" style="width:100%;margin-top:12px;padding:12px;border:1.5px solid '+ERN_G+';border-radius:13px;background:rgba(14,96,114,.05);color:var(--teal-ink);font-weight:800;font-size:13.5px;cursor:pointer">🔎 Fokus-Übung ansehen: '+esc(tf.exercise.name)+'</button>':'';
-        var tfPlan='<button data-act="nav" data-arg="tag" style="width:100%;margin-top:10px;padding:13px;border:none;border-radius:13px;background:'+ERN_G+';color:#fff;font-weight:900;font-size:14px;cursor:pointer">Zum Trainingsplan →</button>';
+        var tfPlan=!TRAIN_ON?'':'<button data-act="nav" data-arg="tag" style="width:100%;margin-top:10px;padding:13px;border:none;border-radius:13px;background:'+ERN_G+';color:#fff;font-weight:900;font-size:14px;cursor:pointer">Zum Trainingsplan →</button>';
         inner='<div style="'+CARD+'">'+tfHead
           +(tf.headline?'<div style="font-size:15.5px;font-weight:900;color:var(--ern-acc);margin-top:6px;letter-spacing:-.2px">'+esc(tf.headline)+'</div>':'')
           +(tf.why?'<div style="font-size:14px;color:var(--text-2);font-weight:500;line-height:1.62;margin-top:8px">'+esc(tf.why)+'</div>':'')
@@ -9795,6 +9815,7 @@
   }
   // Kompakte Einstiegskarte (Coach-Lifestyle-Tab, Fortschritt).
   function morningEntryCard(){
+    if(!VITAL_ON) return '';
     var d=DATA.morning; var latest=(d&&d.ok&&d.latest)||null; var prem=!!(d&&d.ok&&d.premium);
     var CARD='background:var(--surface);border-radius:20px;box-shadow:0 14px 38px rgba(4,33,40,.10);padding:18px';
     var sub;
@@ -11042,7 +11063,7 @@
   // Seiten kehren zum Profil-Hub zurück; der Figur-Check lebt im Coach-Bereich.
   var APPBAR_BACK={figur:'coach',inbody:'fort',morning:'coach',fort:'profil',data:'profil',contract:'profil',account:'profil',card:'profil',checkins:'profil',shop:'home',referral:'profil',help:'profil',settings:'profil',abo:'profil',recht:'profil',impressum:'profil',datenschutz:'profil',agb:'profil',postfach:'profil',finnusage:'profil',blog:'profil',social:'home',insta:'home'};
   // Bottom-Nav-Wurzeln (kein Zurück-Pfeil). 4. Slot ist Ernährung (an) bzw. Termine (aus).
-  var APPBAR_ROOTS=ERN_ON?{home:1,tag:1,ern:1,coach:1}:{home:1,tag:1,appt:1,coach:1};
+  var APPBAR_ROOTS=ERN_ON?{home:1,tag:1,ern:1,coach:1,appt:1}:{home:1,tag:1,appt:1,coach:1,checkins:1};
   function initials(p){ p=p||{}; var a=(p.firstName||'').trim(),b=(p.lastName||'').trim(); return (((a?a[0]:'')+(b?b[0]:'')).toUpperCase())||'FT'; }
   // Profil-Kopf für Sidebar/Drawer – klickbar, führt in den Profil-Hub.
   function navProfile(){
@@ -11429,7 +11450,9 @@
         try{ document.body.classList.add('navxOn'); }catch(_e){}
         navxRender(bn, [
           {key:'home',  label:'Start',     icon:DASH_IC,  on:sc==='home'},
-          {key:'tag',   label:'Training',  icon:TRAIN_IC, on:sc==='tag'},
+          (TRAIN_ON ? {key:'tag',  label:'Training',  icon:TRAIN_IC, on:sc==='tag'}
+                    : (ERN_ON ? {key:'appt', label:'Termine',      icon:IC.cal,  on:sc==='appt'}
+                              : {key:'checkins', label:'Check-ins', icon:IC.list, on:sc==='checkins'})),
           (ERN_ON ? {key:'ern',  label:'Ernährung', short:'Essen', icon:FOOD_IC, on:sc==='ern'}
                   : {key:'appt', label:'Termine',   icon:IC.cal,   on:sc==='appt'}),
           {key:'coach', label:'Coach',     icon:FINN_IC,  on:sc==='coach'}
@@ -11439,7 +11462,11 @@
       }
       bn.classList.remove('navx'); bn.classList.remove('navx2'); bn.style.height=''; NX.sig=null;
       try{ document.body.classList.remove('navxOn'); }catch(_e){}
-      bn.innerHTML = ni('home','Start',DASH_IC,sc==='home') + ni('tag','Training',TRAIN_IC,sc==='tag') + qaCenter + fourth + coachBtn;
+      // Zweiter Platz: Training, solange es den Bereich gibt - sonst etwas, das
+      // nicht schon im vierten Platz steht.
+      var zweiter = TRAIN_ON ? ni('tag','Training',TRAIN_IC,sc==='tag')
+        : (ERN_ON ? ni('appt','Termine',IC.cal,sc==='appt') : ni('checkins','Check-ins',IC.list,sc==='checkins'));
+      bn.innerHTML = ni('home','Start',DASH_IC,sc==='home') + zweiter + qaCenter + fourth + coachBtn;
     }
   }
   var NARROW={contract:1,referral:1,appt:1,card:1,fort:1,ern:1,blog:1,profil:1,checkin:1,insta:1,social:1};
@@ -11451,7 +11478,7 @@
   // übersprungen. ──
   function tourSteps(){
     var key=S.tourKey||'app';
-    if(key==='tag') return [
+    if(key==='tag') return !TRAIN_ON?[]:[
       {sel:'#app [data-act="trainSeg"][data-arg="einheit"]', t:'Deine Einheit', d:'Hier startest du dein heutiges Training aus deinem aktiven Plan – Übung für Übung zum Abhaken.'},
       {sel:'#app [data-act="trainSeg"][data-arg="plaene"]', t:'Trainingspläne', d:'Fertige Pläne aus der Bibliothek oder ein persönlicher FINN-Plan – hier holst du dir dein Programm.'},
       {sel:'#app [data-act="trainSeg"][data-arg="uebungen"]', t:'Übungen nachschlagen', d:'Alle Übungen an unseren Geräten mit Anleitung – ideal direkt an der Maschine.'},
@@ -11467,18 +11494,22 @@
       {sel:'#app [data-act="openFinn"]', t:'Tipp des Tages', d:'FINNs täglicher Impuls für dich – ein Tipp auf die Karte öffnet direkt den Chat mit FINN.'},
       {sel:'#finnFab', t:'FINN überall', d:'Die Blase unten rechts: Frag FINN jederzeit etwas – egal, wo du gerade bist.'}
     ];
+    // Die Tour zeigt nur, was es auch gibt - ein Schritt auf eine abgeschaltete
+    // Kachel wuerde ins Leere zeigen und die Tour dort haengen lassen.
     return [
       {sel:'#app [data-act="nav"][data-arg="coach"]', t:'Dein Coach FINN', d:'FINN begrüßt dich hier jeden Tag mit einem persönlichen Tipp. Ein Tipp auf die Karte bringt dich zur Coach-Seite mit all deinen Erkenntnissen.'},
       {sel:'#homeVital', t:'Dein Vitalalter', d:'FINN schätzt aus deiner Aktivität & deinem Lebensstil dein „Vitalalter". Tippe die Karte für Fortschritt, Ränge – und die neue InBody-Körperanalyse: Bogen fotografieren, Werte im Verlauf, Ampel & Körpertyp.'},
       {sel:'#app [data-act="doCheckin"]', t:'Einchecken', d:'Im Studio angekommen? Hier checkst du mit einem Tipp ein und sammelst Vitalpunkte für jeden Besuch.'},
-      {sel:'.btmnav [data-act="nav"][data-arg="tag"]', t:'Training', d:'Deine Pläne und alle Geräte-Übungen mit Muskel-Diagramm, Beschreibung und Satz-Tracking (Gewicht, Wdh., Pausen). Beim Start läuft die Trainingszeit, am Ende gibt’s Vitalpunkte & FINNs Einschätzung.'},
+      (TRAIN_ON
+        ? {sel:'.btmnav [data-act="nav"][data-arg="tag"]', t:'Training', d:'Deine Pläne und alle Geräte-Übungen mit Muskel-Diagramm, Beschreibung und Satz-Tracking (Gewicht, Wdh., Pausen). Beim Start läuft die Trainingszeit, am Ende gibt’s Vitalpunkte & FINNs Einschätzung.'}
+        : null),
       (ERN_ON
         ? {sel:'.btmnav [data-act="nav"][data-arg="ern"]', t:'Ernährung', d:'Mahlzeiten tracken, Rezepte entdecken und dein Tagesziel im Blick behalten.'}
         : {sel:'.btmnav [data-act="nav"][data-arg="appt"]', t:'Termine', d:'Termine ansehen und direkt aus der App buchen.'}),
       {sel:'.btmnav [data-act="qaOpen"], .btmnav [data-act="qaClose"]', t:'Schnell hinzufügen', d:'Der Plus-Knopf passt sich an: Auf der Startseite öffnet er Schnellaktionen, im Training und bei der Ernährung genau das Passende.'},
       {sel:'.btmnav [data-act="nav"][data-arg="coach"]', t:'Coach in der Leiste', d:'FINNs Tipps und dein Wochen-Coaching – jederzeit hier unten. Neu: jede Woche behandelt EIN Thema für Ernährung UND passendes Training, abgestimmt auf dein Ziel.'},
       {sel:'[data-act="avatarTap"]', t:'Dein Profil', d:'Hinter deinen Initialen oben rechts steckt alles Persönliche: Profil, Vertrag, Beitragskonto, Postfach, Mitgliedskarte, Einstellungen und mehr.'}
-    ];
+    ].filter(Boolean);
   }
   function tourFlagName(key){ return key==='app'?'fi_tour_v1':('fi_tour_'+key+'_v1'); }
   function tourActive(){ return typeof S.tourStep==='number'; }
@@ -11563,6 +11594,8 @@
     if(!SOCIAL_ON && S.screen==='social') S.screen='home';
     // Ehemalige Mitglieder: gesperrte Screens immer auf die Übersicht (Rejoin) umleiten
     if(isFormer() && S.screen!=='login' && S.screen!=='alogin' && FORMER_OK.indexOf(S.screen)<0) S.screen='home';
+    if(!TRAIN_ON && S.screen==='tag') S.screen='home';
+    if(!VITAL_ON && S.screen==='morning') S.screen='home';
     var html;
     switch(S.screen){
       case 'login': html=scrLogin(); break;
@@ -12089,7 +12122,9 @@
     obMemToggle:function(){ setS({obMemConsent:!S.obMemConsent}); },
     // Zurück im Onboarding: einen Schritt zurück, Overlay nach oben scrollen.
     obBack:function(){ if((S.obStep||0)>0){ setS({obStep:S.obStep-1}); var o=document.querySelector('.obOverlay'); if(o) o.scrollTop=0; } },
-    obNext:function(){ if((S.obStep||0)>=10){
+    // Der letzte Schritt bewirbt den Vital-Check. Ohne ihn ist nach Schritt 9 Schluss -
+    // sonst steht dort eine Werbung fuer etwas, das die App gar nicht hat.
+    obNext:function(){ if((S.obStep||0)>=(VITAL_ON?10:9)){
         // Volles Profil zusammenstellen (Gesundheit nur bei Einwilligung).
         var prof={goal:S.obGoal,freq:S.obFreq,age:S.obAge,sex:S.obSex||'',heightCm:S.obHeightCm||null,weightKg:S.obWeightKg||null,targetWeight:S.obTargetWeight||null,trainTime:S.obTrainTime||'',exp:S.obExp,likes:(S.obLikes||[]),dislikes:(S.obDislikes||[]),diet:S.obDiet||'',allergies:(S.obAllergies||[]),onboarded:true,health:{consent:!!S.obHealthConsent,items:(S.obHealthConsent?(S.obHealth||[]):[]),note:(S.obHealthConsent?(S.obHealthNote||''):'')}};
         try{ localStorage.setItem('fi_ob_v2',JSON.stringify(Object.assign({memConsent:!!S.obMemConsent},prof))); }catch(e){}

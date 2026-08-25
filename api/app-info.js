@@ -12,6 +12,9 @@
  *   FEATURE_ERN     Ernährungs-Modul. GELAUNCHT: standardmäßig AN für alle;
  *                   FEATURE_ERN=0 ist der Notausschalter.
  *   FEATURE_SOCIAL  Community/Trainingspartner – opt-in (=1), Standard AUS.
+ *   FEATURE_TRAINING Trainingsbereich – opt-in (=1), Standard AUS.
+ *   FEATURE_VITAL   Vital-Check (Puls/HRV über den Brustgurt) – opt-in (=1),
+ *                   Standard AUS. Gesundheitsdaten: bewusst nur auf Ansage an.
  *   FEATURE_DEMO    Demo-/Testmodus: erlaubt die lokalen Test-Overrides
  *                   (fi_ern_test/fi_soc_test) im Client – opt-in, NUR Staging.
  */
@@ -24,6 +27,7 @@ module.exports = function handler(req, res) {
   return res.end(JSON.stringify({
     ios: clean(process.env.APP_STORE_URL_IOS),
     android: clean(process.env.APP_STORE_URL_ANDROID),
-    features: { ern: process.env.FEATURE_ERN !== '0', social: flag('FEATURE_SOCIAL'), demo: flag('FEATURE_DEMO') },
+    features: { ern: process.env.FEATURE_ERN !== '0', social: flag('FEATURE_SOCIAL'), demo: flag('FEATURE_DEMO'),
+      train: flag('FEATURE_TRAINING'), vital: flag('FEATURE_VITAL') },
   }));
 };
