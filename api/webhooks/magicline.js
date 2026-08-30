@@ -23,11 +23,32 @@
  * Magicline nicht unnötig retryt. Es wird NIE geworfen.
  */
 
+const crypto = require('node:crypto');
 const W = require('../../lib/welcome');
 const NM = require('../../lib/newMembers');
 const MlEvents = require('../../lib/mlEvents');
 
-const SECRET = process.env.MAGICLINE_WEBHOOK_KEY || process.env.MAGICLINE_WEBHOOK_SECRET || '';
+// Mehrere Schluessel, kommagetrennt. Grund: Vercel zeigt einen einmal
+// gespeicherten Wert nicht wieder an. Wer ihn nicht notiert hat, kommt sonst
+// nicht mehr an die bestehende Konfiguration heran - und ihn einfach zu
+// ersetzen wuerde alle bereits eingerichteten Webhooks stillegen
+// (Willkommensmail, neue Mitglieder, Check-in-Feed, Leads). Mit mehreren
+// Schluesseln laesst sich einer ergaenzen, ohne den anderen zu brechen.
+const SECRETS = String(process.env.MAGICLINE_WEBHOOK_KEY || process.env.MAGICLINE_WEBHOOK_SECRET || '')
+  .split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+const SECRET = SECRETS[0] || '';
+// Zeitkonstanter Vergleich: der Schluessel ist das einzige, was diesen Endpunkt
+// schuetzt, und er loest E-Mail-Versand aus.
+function keyOk(k) {
+  k = String(k || '');
+  if (!k) return false;
+  return SECRETS.some(function (s) {
+    try {
+      const a = Buffer.from(k), b = Buffer.from(s);
+      return a.length === b.length && crypto.timingSafeEqual(a, b);
+    } catch (e) { return false; }
+  });
+}
 const MAX_EVENTS = 50;   // Sicherheitskappe
 
 function readBody(req) {
@@ -181,7 +202,7 @@ async function handleWebhook(req, res, opts) {
   if (!SECRET) { res.statusCode = 503; return res.end(JSON.stringify({ ok: false, error: 'not_configured' })); }
   let key = opts.key || req.headers['x-api-key'] || req.headers['x-webhook-secret'] || req.headers['x-magicline-secret'] || (req.query && req.query.key) || '';
   if (!key) { try { key = new URL(req.url, 'http://x').searchParams.get('key') || ''; } catch (e) {} }
-  if (key !== SECRET) {
+  if (!keyOk(key)) {
     // Nicht-personenbezogener Zähler: „Traffic kommt an, wird aber wg. Auth abgelehnt"
     // vs. „gar kein Traffic". Nur bei tatsächlich falschem/fehlendem Key.
     try { await MlEvents.bumpStat('_AUTH_REJECTED'); } catch (e) {}
