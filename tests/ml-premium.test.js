@@ -89,11 +89,15 @@ async function run() {
     g === true && tA.premium === true && tA.viaModule === true && rawA.moduleContractId === 5555);
 
   // 5. reconcile: gekündigtes Modul (per ID verifiziert) -> until = Modul-Ende
-  moduleContract = { name: 'App Premium', price: { amount: 4.99, currency: 'EUR' }, startDate: '2026-01-01', endDate: '2026-08-31', cancelationDate: '2026-08-31', contractCancelationStatus: 'PENDING_VERIFICATION', contractCancelationCanBeWithdrawn: true, availableCancelationDates: ['2026-08-31'] };
+  // Das Ende MUSS relativ zu heute liegen: eine gekündigte Mitgliedschaft läuft
+  // bis zum Enddatum weiter – mit einem festen Datum prüft der Test irgendwann
+  // das Gegenteil von dem, was er soll (ab dem 01.09.2026 war er genau deshalb rot).
+  const ENDE = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
+  moduleContract = { name: 'App Premium', price: { amount: 4.99, currency: 'EUR' }, startDate: '2026-01-01', endDate: ENDE, cancelationDate: ENDE, contractCancelationStatus: 'PENDING_VERIFICATION', contractCancelationCanBeWithdrawn: true, availableCancelationDates: [ENDE] };
   await MlPremium.invalidate('A');
   const tB = await MlPremium.reconcile('A');
   ok('5. gekündigtes Modul: until = Modul-Ende, cancelAtPeriodEnd',
-    tB && tB.premium === true && tB.viaModule === true && tB.cancelAtPeriodEnd === true && tB.until === Date.parse('2026-08-31T23:59:59'));
+    tB && tB.premium === true && tB.viaModule === true && tB.cancelAtPeriodEnd === true && tB.until === Date.parse(ENDE + 'T23:59:59'));
 
   // 6. Modul weg (404) + alter Datensatz -> abräumen; frisch -> Schonfrist schützt
   await Ent.setEntitlement('C', { tier: 'premium', status: 'active', source: 'magicline', moduleContractId: 6001, updatedAt: Date.now() - 3600 * 1000 });

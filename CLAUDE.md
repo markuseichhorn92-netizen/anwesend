@@ -220,6 +220,33 @@ Diesen Hinweis nicht entfernen.
 - `tests/shifts-plan.test.js` (Server + Rollen), `tests/schichtplan-shell.test.js`
   (Bildschirme), `tests/schichtplan-live.test.js` (Übersetzung echter Daten)
 
+## Nutzung der Ernährungsprotokollierung (September 2026)
+
+Bis hierher zählte **nichts** mit, wie viele Menschen das Ernährungsmodul
+benutzen. Die Zahl wird deshalb aus dem Bestand **abgeleitet**, nicht mitgezählt:
+ein mitlaufender Zähler müsste an jeder Speicherstelle sitzen und driftet
+lautlos, sobald eine vergessen wird – und er beantwortet nur die Zukunft.
+
+- `lib/nutriUsage.js` – läuft über `nutri:p:*` und `nutri:d:<id>:<datum>`.
+- `api/nutri-usage-tick.js` – Cron-Endpunkt (`CRON_SECRET`), **fortsetzbar**:
+  reicht die Zeit nicht, kommt `fertig:false` und der nächste Aufruf macht
+  weiter. Bis dahin bleibt der letzte **fertige** Stand stehen.
+- `.github/workflows/nutri-usage.yml` – täglich ~03:40 UTC, ruft bis `fertig`.
+- Sichtbar: Team-Bereich → Statistiken (Karte „Ernährungsprotokollierung") und
+  anonym unter `/api/ops` als `ernaehrung`.
+- `tests/nutri-nutzung.test.js`
+
+Definitionen, die nicht aufgeweicht werden sollten:
+
+- „nutzt es" = mindestens **ein Lebensmitteleintrag** im Zeitraum. Ein
+  angetipptes Wasserglas zählt nicht, sonst schönt sich die Zahl selbst.
+- Ein abgebrochener Durchlauf wird als `vollstaendig:false` ausgewiesen und in
+  der Oberfläche als Untergrenze gekennzeichnet. Diesen Hinweis nicht entfernen.
+- Ernährung ist Gesundheitsdatum (Art. 9 DSGVO): Die Auswertung enthält
+  **keine Kennungen**. Mitglieds-IDs existieren nur im Zwischenstand des Laufs
+  und werden beim Abschluss verworfen. Es darf keine Liste „diese Personen
+  protokollieren" entstehen – auch nicht für das Team.
+
 ## Verifikation
 
 Vor dem letzten Deployment wurde ausgeführt:

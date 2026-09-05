@@ -51,6 +51,17 @@ module.exports = async function handler(req, res) {
   // ── App-Fehler & WhatsApp-KI-Nutzung (anonyme Zähler, 1/7/30 Tage) ──
   try { const Ops = require('../lib/opsStat'); out.counters = await Ops.read(); } catch (e) { out.counters = { error: true }; }
 
+  // ── Ernährungsprotokollierung: wie viele nutzen sie wirklich ──
+  // Nur Zahlen. Gerechnet wird im Cron (/api/nutri-usage-tick), hier steht das
+  // zuletzt fertig gewordene Ergebnis – ein Durchlauf wäre für diesen Aufruf zu teuer.
+  try {
+    const NU = require('../lib/nutriUsage');
+    const snap = await NU.lesen();
+    out.ernaehrung = snap
+      ? Object.assign({ hinweis: 'aktiv = mind. 1 Lebensmitteleintrag im Zeitraum; Wasser allein zählt nicht' }, snap)
+      : { keineAuswertung: true, hinweis: 'Noch kein Durchlauf – /api/nutri-usage-tick aufrufen' };
+  } catch (e) { out.ernaehrung = { error: true }; }
+
   // ── Wachstum: neue Mitglieder (aus CONTRACT_CREATED-Webhook) ──
   try {
     const NM = require('../lib/newMembers');

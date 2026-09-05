@@ -128,6 +128,11 @@ module.exports = async function handler(req, res) {
   let handled = { ai: 0, system: 0, team: 0, quote: 0 };
   try { handled = await Handled.totals(); } catch (e) {}
 
+  // Nutzung der Ernährungsprotokollierung – reine Zahlen, keine Namen, keine IDs.
+  // Gerechnet wird im Cron (/api/nutri-usage-tick); hier steht der letzte fertige Stand.
+  let nutrition = null;
+  try { nutrition = await require('../../lib/nutriUsage').lesen(); } catch (e) {}
+
   res.statusCode = 200;
-  return res.end(JSON.stringify({ ok: true, counts, vorgangBreakdown, topArticles, articlesPublished, articleViews, checkinDays, avgUtil, employeeStats, handled }));
+  return res.end(JSON.stringify({ ok: true, counts, vorgangBreakdown, topArticles, articlesPublished, articleViews, checkinDays, avgUtil, employeeStats, handled, nutrition }));
 };

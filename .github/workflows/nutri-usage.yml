@@ -1,0 +1,47 @@
+name: Nutzung Ernährungsprotokollierung
+
+# Rechnet einmal täglich aus, wie viele Menschen die Ernährungsprotokollierung
+# tatsächlich benutzen. Das Ergebnis sind ausschliesslich Zahlen; es landet in
+# den Team-Statistiken und im anonymen Überblick unter /api/ops.
+#
+# Warum mehrere Aufrufe: Die Zahl entsteht aus einem Durchlauf über den
+# Schlüsselraum. Passt der nicht in eine Funktionslaufzeit, antwortet der
+# Endpunkt mit "fertig": false und macht beim nächsten Aufruf an derselben
+# Stelle weiter. Bis der Durchgang durch ist, bleibt der letzte FERTIGE Stand
+# stehen – nie ein halber.
+#
+# Hinweise:
+#  - Geplante Workflows laufen nur auf dem Default-Branch des Repos.
+#  - Nach 60 Tagen ohne Repo-Aktivität deaktiviert GitHub den Zeitplan; dann im
+#    Tab "Actions" einmalig wieder aktivieren.
+#  - Schutz: Repo-Secret RECORD_SECRET anlegen UND in Vercel dieselbe
+#    Env-Variable setzen (der Endpunkt verlangt das Secret).
+
+on:
+  schedule:
+    - cron: '40 3 * * *'   # täglich ~03:40 UTC – ruhige Zeit, niemand wartet darauf
+  workflow_dispatch: {}
+
+concurrency:
+  group: nutri-usage
+  cancel-in-progress: false
+
+jobs:
+  usage:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Nutzung auswerten
+        env:
+          RECORD_SECRET: ${{ secrets.RECORD_SECRET }}
+        run: |
+          for i in 1 2 3 4 5 6 7 8; do
+            antwort=$(curl -fsS -m 90 "https://anwesend.vercel.app/api/nutri-usage-tick" \
+              ${RECORD_SECRET:+-H "Authorization: Bearer $RECORD_SECRET"}) || exit 1
+            # Absichtlich keine Ausgabe der Antwort: sie enthält zwar nur Zahlen,
+            # aber Build-Logs sind kein Ort für Auswertungen.
+            case "$antwort" in
+              *'"fertig":true'*) echo "Durchgang $i: fertig"; exit 0 ;;
+              *) echo "Durchgang $i: noch nicht fertig, weiter" ;;
+            esac
+          done
+          echo "Nach 8 Durchgängen noch nicht fertig – der nächste Lauf macht weiter."
