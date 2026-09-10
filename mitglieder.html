@@ -1846,7 +1846,7 @@
     // gecacht werden (fi_flags_srv, siehe applySrvFlags).
     fetch('/api/app-info').then(function(r){return r.ok?r.json():null;})
       .then(function(d){ if(!d) return;
-        applySrvFlags(d.features);
+        applySrvFlags(d.features, d.partner);
         if(isNativeApp()) return;   // Banner nur im Browser
         DATA.appInfo=d; if(d.ios||d.android) render(); }).catch(function(){});
   }
@@ -3559,6 +3559,10 @@
   // Feature-Schalter: Ernährungs-Modul in der App. Läuft eigenständig (eigene
   // Bedarfsrechnung + KI-Schätzung, kein Fremdanbieter). happyfigur ist bewusst
   // NICHT angebunden. Vor dem Start ist eine DSGVO-Einwilligung (Art. 9) Pflicht.
+  // Partner Upfit (Up Gesundheit GmbH) ist seit September 2026 als LINK-OUT
+  // dabei – siehe upfitCard(): eigenes Portal, eigenes Konto, keine Daten in
+  // beide Richtungen. Adresse kommt vom Server (partner.upfit), Notaus
+  // FEATURE_UPFIT=0.
   // Die Launch-Flags kommen SERVERSEITIG aus /api/app-info und werden lokal
   // gecacht (fi_flags_srv), damit der App-Start nicht aufs Netz warten muss.
   // Ernährung ist GELAUNCHT (standardmäßig AN für alle; Server-Notausschalter
@@ -3583,15 +3587,21 @@
   // frei. Zurueck an geht ueber FEATURE_TRAINING=1 bzw. FEATURE_VITAL=1.
   var TRAIN_ON = srvFlags().train === true;
   var VITAL_ON = srvFlags().vital === true;
+  // Partner Upfit: die Adresse kommt vom Server und wird nur als https-Link
+  // akzeptiert. Der Cache liegt im localStorage – ein manipulierter Wert dort
+  // dürfte nie zu einem javascript:-Link werden, darum die Prüfung auch hier.
+  function upfitUrl(){ try{ var u=srvFlags().upfit; return (typeof u==='string'&&/^https:\/\/[^\s"'<>]+$/.test(u))?u:null; }catch(e){ return null; } }
   // Frische Server-Flags übernehmen (von loadAppInfo aufgerufen): cachen +
   // laufende Sitzung aktualisieren, wenn sich die Sichtbarkeit geändert hat.
-  function applySrvFlags(f){
+  function applySrvFlags(f,p){
     if(!f||typeof f!=='object') return;
-    try{ localStorage.setItem('fi_flags_srv',JSON.stringify({ern:f.ern!==false,social:f.social===true,demo:f.demo===true,train:f.train===true,vital:f.vital===true})); }catch(e){}
+    var up=(p&&typeof p.upfit==='string'&&/^https:\/\//.test(p.upfit))?p.upfit:null;
+    var upVorher=upfitUrl();
+    try{ localStorage.setItem('fi_flags_srv',JSON.stringify({ern:f.ern!==false,social:f.social===true,demo:f.demo===true,train:f.train===true,vital:f.vital===true,upfit:up})); }catch(e){}
     ERN_LAUNCH=(f.ern!==false); SOCIAL_LAUNCH=(f.social===true);
     var e2=ERN_LAUNCH||ernTestOn(), s2=SOCIAL_LAUNCH||socialTestOn();
     var t2=(f.train===true), v2=(f.vital===true);
-    if(e2!==ERN_ON||s2!==SOCIAL_ON||t2!==TRAIN_ON||v2!==VITAL_ON){ ERN_ON=e2; SOCIAL_ON=s2; TRAIN_ON=t2; VITAL_ON=v2; render(); }
+    if(e2!==ERN_ON||s2!==SOCIAL_ON||t2!==TRAIN_ON||v2!==VITAL_ON||up!==upVorher){ ERN_ON=e2; SOCIAL_ON=s2; TRAIN_ON=t2; VITAL_ON=v2; render(); }
   }
   function ernSeedForm(){ var pr=(DATA.nutri&&DATA.nutri.profile)||{};
     S.ernGoal=pr.goal||'abnehmen'; S.ernSex=pr.sex||'w'; S.ernH=pr.height||170; S.ernW=pr.weight||70; S.ernAge=pr.age||30; S.ernAct=pr.activity||'moderat'; S.ernDiet=pr.diet||'omnivor'; }
@@ -5094,6 +5104,7 @@
         svg('<path d="M9 18l6-6-6-6"></path>',{c:'#c2d3d6',w:2,s:16})+'</button>'; };
       var gt='rgba(14,96,114,.10)';
       var pick='<div style="display:flex;flex-direction:column;gap:10px;padding-top:14px">'+
+        upfitCard('row')+
         mkPick('ernCapTab','cam',IC_CAM,'Teller scannen','Foto — FINN erkennt Zutaten &amp; Portion',gt)+
         mkPick('ernCapTab','voice',IC_FINN,'FINN beschreiben','Sag oder tippe – FINN schätzt deine Mahlzeit',gt)+
         mkPick('ernCapTab','barcode',IC_BAR,'Barcode scannen','Verpackung einscannen',gt)+
@@ -5192,7 +5203,9 @@
     var body='';
     if(step===0){
       var feats=[['📸','Foto scannen — Zutaten automatisch erkannt'],['🎙️','Sprich einfach, was du gegessen hast'],['💬','Frag FINN, plane Rezepte, bleib im Ziel']];
-      body='<div style="width:80px;height:80px;border-radius:24px;background:rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;font-size:40px;margin-bottom:22px">🥗</div><div style="font-size:29px;font-weight:900;letter-spacing:-.8px;line-height:1.1;color:#fff">Dein Ernährungs&shy;coach ist da</div><div style="font-size:15px;font-weight:600;color:#cfe8ec;line-height:1.55;margin-top:14px">Tracke Mahlzeiten per Foto, Sprache oder Text. FINN berechnet dein Ziel und begleitet dich Tag für Tag.</div><div style="display:flex;flex-direction:column;gap:12px;margin-top:26px">'+feats.map(function(f){ return '<div style="display:flex;align-items:center;gap:12px"><span style="width:40px;height:40px;border-radius:12px;background:rgba(255,255,255,.13);display:flex;align-items:center;justify-content:center;font-size:19px">'+f[0]+'</span><span style="font-size:14.5px;font-weight:700;color:#fff">'+f[1]+'</span></div>'; }).join('')+'</div>';
+      body='<div style="width:80px;height:80px;border-radius:24px;background:rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;font-size:40px;margin-bottom:22px">🥗</div><div style="font-size:29px;font-weight:900;letter-spacing:-.8px;line-height:1.1;color:#fff">Dein Ernährungs&shy;coach ist da</div><div style="font-size:15px;font-weight:600;color:#cfe8ec;line-height:1.55;margin-top:14px">Tracke Mahlzeiten per Foto, Sprache oder Text. FINN berechnet dein Ziel und begleitet dich Tag für Tag.</div><div style="display:flex;flex-direction:column;gap:12px;margin-top:26px">'+feats.map(function(f){ return '<div style="display:flex;align-items:center;gap:12px"><span style="width:40px;height:40px;border-radius:12px;background:rgba(255,255,255,.13);display:flex;align-items:center;justify-content:center;font-size:19px">'+f[0]+'</span><span style="font-size:14.5px;font-weight:700;color:#fff">'+f[1]+'</span></div>'; }).join('')+'</div>'+
+        // Partner-Weg VOR der Einwilligung: wer lieber bei Upfit protokolliert, muss uns dafür keine Gesundheitsdaten geben.
+        upfitCard('setup');
     } else if(step===1){
       var goals=[['abnehmen','🔥','Abnehmen','Leichtes Kaloriendefizit'],['definieren','✨','Definieren','Fett runter, Muskeln halten – viel Eiweiß'],['halten','⚖️','Gewicht halten','Ausgewogen &amp; stabil'],['aufbau','💪','Muskelaufbau','Mehr Eiweiß, leichter Überschuss'],['gesundheit','❤️','Gesundheit','Ausgewogen essen, rundum fit'],['longevity','🌱','Longevity','Lange gesund &amp; vital bleiben']];
       body='<div style="font-size:26px;font-weight:900;letter-spacing:-.6px;color:#fff">Was ist dein Ziel?</div><div style="font-size:14px;font-weight:600;color:#cfe8ec;margin-top:10px">FINN passt dein Kalorienziel an.</div><div style="display:flex;flex-direction:column;gap:11px;margin-top:24px">'+goals.map(function(g){ var sel=S.ernGoal===g[0]; return '<button data-act="ernGoal" data-arg="'+g[0]+'" style="display:flex;align-items:center;gap:14px;'+oc(sel)+';border-radius:16px;padding:16px;cursor:pointer;text-align:left"><span style="font-size:24px">'+g[1]+'</span><div><div style="font-size:16px;font-weight:800;color:#fff">'+g[2]+'</div><div style="font-size:12.5px;font-weight:600;color:#bfe0e6">'+g[3]+'</div></div></button>'; }).join('')+'</div>';
@@ -5537,7 +5550,7 @@
       meals+='<div style="'+CARD.replace('padding:18px','padding:15px 16px')+'"><div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px"><div style="display:flex;align-items:center;gap:9px;min-width:0"><span style="font-size:18px">'+ml[2]+'</span><span style="font-size:14.5px;font-weight:900;color:var(--text)">'+ml[1]+'</span>'+(mGrade?nutriChip(mGrade,20):'')+'</div><div style="display:flex;align-items:center;gap:8px;flex-shrink:0"><div style="text-align:right"><div style="font-size:13.5px;font-weight:900;color:var(--text)">'+ernNum(sum)+' kcal</div><div style="font-size:10px;font-weight:800;margin-top:1px"><span style="color:'+ERN_PROT+'">E '+ernNum(mp)+'</span> · <span style="color:'+ERN_CARB+'">K '+ernNum(mc)+'</span> · <span style="color:'+ERN_FAT+'">F '+ernNum(mf)+'</span></div></div><button data-act="ernMealSaveOpen" data-arg="'+ml[0]+'" aria-label="'+ml[1]+' als Mahlzeit speichern" title="Als Mahlzeit speichern" style="width:28px;height:28px;border-radius:9px;border:none;background:var(--surface-2);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:14px;padding:0">⭐</button></div></div>'+
         items.map(function(it){ return '<div style="display:flex;align-items:center;gap:8px;padding:10px 0;border-top:1px solid var(--border)"><button data-act="ernEntryOpen" data-arg="'+esc(it.id)+'" aria-label="'+esc(it.name)+' bearbeiten" style="flex:1;min-width:0;text-align:left;border:none;background:transparent;padding:0;cursor:pointer;font-family:inherit"><div style="font-size:13.5px;font-weight:700;color:var(--text)">'+esc(it.name)+(it.source==='openfoodfacts'?' <span style="font-size:9px;font-weight:800;color:var(--teal-ink);background:var(--surface-2);padding:1px 5px;border-radius:6px;vertical-align:middle">OFF</span>':'')+'</div><div style="font-size:11px;font-weight:600;color:var(--text-soft);margin-top:1px">'+(it.brand?esc(it.brand)+' · ':'')+(it.portion?esc(it.portion)+' · ':'')+'E '+(it.p||0)+' · K '+(it.c||0)+' · F '+(it.f||0)+'</div></button>'+(it.grade?nutriChip(it.grade,20,it.gradeCalc):'')+'<span style="font-size:13px;font-weight:800;color:var(--text-2)">'+ernNum(it.kcal||0)+'</span><button data-act="ernDelete" data-arg="'+esc(it.id)+'" aria-label="Entfernen" style="width:26px;height:26px;border-radius:8px;border:none;background:var(--surface-2);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'+svg('<path d="M18 6L6 18M6 6l12 12"></path>',{c:'var(--text-soft)',w:2.2,s:13})+'</button></div>'; }).join('')+'<button data-act="ernOpenCapture" data-arg="'+ml[1]+'" style="width:100%;margin:8px 0 10px;padding:10px;border:1.5px dashed #cfe0d6;background:var(--surface-2);color:var(--ern-acc);border-radius:12px;font-weight:800;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px">'+svg('<path d="M12 5v14M5 12h14"></path>',{c:'var(--ern-acc)',w:2.6,s:15})+'Zu '+ml[1]+' hinzufügen</button></div>';
     });
-    if(!meals){ meals='<div style="'+CARD+';text-align:center"><div style="font-size:30px">🍽️</div><div style="font-size:13.5px;font-weight:700;color:var(--text);margin-top:6px">Noch nichts protokolliert</div><div style="font-size:12.5px;font-weight:500;color:var(--text-soft);margin:2px 0 12px">Erfasse deine erste Mahlzeit per Foto, Sprache oder Suche.</div><button data-act="ernOpenCapture" data-arg="Mahlzeit" style="padding:12px 20px;border:none;border-radius:13px;background:'+ERN_G+';color:#fff;font-weight:900;font-size:14px;cursor:pointer">Essen erfassen</button></div>'; }
+    if(!meals){ meals='<div style="'+CARD+';text-align:center"><div style="font-size:30px">🍽️</div><div style="font-size:13.5px;font-weight:700;color:var(--text);margin-top:6px">Noch nichts protokolliert</div><div style="font-size:12.5px;font-weight:500;color:var(--text-soft);margin:2px 0 12px">Erfasse deine erste Mahlzeit per Foto, Sprache oder Suche.</div><button data-act="ernOpenCapture" data-arg="Mahlzeit" style="padding:12px 20px;border:none;border-radius:13px;background:'+ERN_G+';color:#fff;font-weight:900;font-size:14px;cursor:pointer">Essen erfassen</button>'+upfitCard('empty')+'</div>'; }
     var viewIsToday=td.isToday!==false&&(td.date||isoToday())===isoToday();
     var viewIsFuture=(td.date||isoToday())>isoToday();
     var dayGrade=ernGradeAgg(entries);
@@ -5596,7 +5609,8 @@
     if(!viewIsToday) return ernDayNav()+ring+msg+mealsBlock+water;
     // Heute: Kern zuerst (Ring, Mahlzeiten, Schnell-Add, Wasser, Geplantes), dann aktive
     // Modi (GLP-1-Checkliste, laufendes Fasten), Tools-Kacheln und „Mehr" ganz unten.
-    return ernDayNav()+ring+ernPhaseCard()+ernVitalBanner()+msg+mealsBlock+quickAdd+water+planned+glp1Card()+((f.active||S.ernFastOpen)?fasting:'')+toolsRow+more;
+    // Der Partner-Einstieg sitzt direkt unter dem Protokoll – dort, wo „protokollieren" stattfindet.
+    return ernDayNav()+ring+ernPhaseCard()+ernVitalBanner()+msg+mealsBlock+upfitCard('dash')+quickAdd+water+planned+glp1Card()+((f.active||S.ernFastOpen)?fasting:'')+toolsRow+more;
   }
   // ══════════════ „Gemeinsam kochen": Topf teilen + prozentualer Anteil ══════════════
   // Ein Mitglied kocht EINEN Topf und teilt ihn per Link/QR (offener Code). Jede:r stellt
@@ -5828,7 +5842,8 @@
     var infoSec='<div style="'+CARD+'"><div style="font-size:15px;font-weight:900;color:var(--text);display:flex;align-items:center;gap:8px">'+svg('<circle cx="12" cy="12" r="10"></circle><path d="M12 16v-4M12 8h.01"></path>',{c:'#0a4958',w:2,s:19})+'Was wir speichern</div>'+
       '<div style="font-size:12.5px;font-weight:500;color:var(--text-muted);line-height:1.6;margin-top:10px">Im Ernährungsmodul liegen: dein <b>Profil</b> (Ziel, Körperdaten, Aktivität, Ernährungsform), deine <b>protokollierten Mahlzeiten &amp; Wasser</b> pro Tag, deine <b>Favoriten</b>, <b>Wochenpläne</b>, <b>gespeicherte Rezepte</b> und dein <b>Fasten-Status</b>. Alles ist ausschließlich deinem Konto zugeordnet.</div>'+
       '<div style="font-size:12.5px;font-weight:500;color:var(--text-muted);line-height:1.6;margin-top:10px">Wenn du <b>Text, Sprache oder ein Foto</b> zur Schätzung eingibst, wird das zur <b>KI-Auswertung verarbeitet</b> (an unseren KI-Dienstleister übermittelt), um Lebensmittel und Nährwerte zu erkennen. Fotos werden dafür nur verarbeitet, nicht als Bild dauerhaft gespeichert – gespeichert wird nur, was du im Bestätigen-Schritt übernimmst. Der FINN-Chatverlauf bleibt nur lokal auf deinem Gerät.</div>'+
-      '<div style="font-size:11.5px;font-weight:600;color:var(--text-muted);line-height:1.5;margin-top:10px">Deine Daten werden nicht zu Werbezwecken geteilt; für KI-Funktionen setzen wir vertraglich gebundene Auftragsverarbeiter ein. Du kannst deine Daten jederzeit exportieren oder löschen. Mehr in der <a data-act="nav" data-arg="datenschutz" role="button" style="color:var(--teal-ink);text-decoration:underline">Datenschutzerklärung</a>.</div></div>';
+      '<div style="font-size:11.5px;font-weight:600;color:var(--text-muted);line-height:1.5;margin-top:10px">Deine Daten werden nicht zu Werbezwecken geteilt; für KI-Funktionen setzen wir vertraglich gebundene Auftragsverarbeiter ein. Du kannst deine Daten jederzeit exportieren oder löschen. Mehr in der <a data-act="nav" data-arg="datenschutz" role="button" style="color:var(--teal-ink);text-decoration:underline">Datenschutzerklärung</a>.</div>'+
+      (upfitUrl()?'<div style="font-size:12.5px;font-weight:500;color:var(--text-muted);line-height:1.6;margin-top:10px"><b>Partner Upfit:</b> Wenn du bei Upfit protokollierst, legst du dort ein eigenes Konto an. Verantwortlich für diese Daten ist die <b>Up Gesundheit GmbH</b> (Hamburg); es gilt deren Datenschutzerklärung. Diese App übermittelt <b>nichts</b> an Upfit – auch nicht deine E-Mail-Adresse – und erhält von dort nichts zurück.</div>':'')+'</div>';
     var exportSec='<div style="'+CARD+'"><div style="font-size:15px;font-weight:900;color:var(--text);display:flex;align-items:center;gap:8px">'+svg('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"></path>',{c:'#0a4958',w:2,s:19})+'Exportieren</div>'+
       '<div style="font-size:12.5px;font-weight:500;color:var(--text-muted);line-height:1.55;margin:8px 0 14px">Lade alle deine Ernährungsdaten (Profil, protokollierte Tage, Favoriten, Plan &amp; Rezepte) als JSON-Datei herunter – die Datei landet nur bei dir, der Export selbst wird an niemanden übermittelt.</div>'+
       '<button data-act="ernDataExport" '+(busy?'disabled ':'')+'style="width:100%;padding:14px;border:1.5px solid rgba(10,73,88,.25);border-radius:14px;background:var(--surface);color:var(--teal-ink);font-weight:800;font-size:14.5px;cursor:pointer;opacity:'+(busy?'.6':'1')+'">'+(busy?'Bitte warten …':'Als JSON-Datei exportieren')+'</button></div>';
@@ -5960,7 +5975,9 @@
     var b15=legalCard('Deine Rechte & Selbstbedienung', 'Du hast das Recht auf <b>Auskunft</b> (Art. 15), <b>Berichtigung</b> (Art. 16), <b>Löschung</b> (Art. 17), <b>Einschränkung</b> (Art. 18), <b>Datenübertragbarkeit</b> (Art. 20) und <b>Widerspruch</b> (Art. 21 DSGVO). Unter Einstellungen kannst du deine App-Daten direkt exportieren oder freiwillige App-Daten löschen. Erteilte Einwilligungen kannst du jederzeit mit Wirkung für die Zukunft widerrufen. Gesetzlich aufzubewahrende Vertragsdaten werden dadurch nicht vorzeitig gelöscht. Kontakt: '+M+'.');
     var b16=legalCard('Beschwerderecht', 'Du kannst dich bei einer Datenschutz-Aufsichtsbehörde beschweren, z. B. beim <b>Landesbeauftragten für den Datenschutz und die Informationsfreiheit Rheinland-Pfalz</b>, Hintere Bleiche 34, 55116 Mainz.');
     var b17=legalCard('Automatisierte Verarbeitung & KI-Sicherheit', 'FINN unterstützt dich mit Vorschlägen. Es erfolgen <b>keine ausschließlich automatisierten Entscheidungen mit rechtlicher oder ähnlich erheblicher Wirkung</b>. KI-Ausgaben können falsch sein. Bei Schmerzen, Erkrankungen, Schwangerschaft, Medikamenten oder anderen medizinischen Fragen wende dich an ärztliches Fachpersonal. Auffällige oder unsichere Anfragen werden begrenzt oder an das Team verwiesen.');
-    return legalWrap('Datenschutz','Datenschutzerklärung der App', b1+b2+b3+b4+b5+b6+b7+b8+b9+b10+b11+b12+b13+b14+b15+b16+b17);
+    // Partner Upfit nur nennen, wenn der Link tatsächlich angeboten wird.
+    var b18=upfitUrl()?legalCard('Partner Upfit (Ernährung)', 'In der Ernährung verweisen wir auf das Portal unseres Partners <b>Upfit</b> (Up Gesundheit GmbH, Hamburg). Der Verweis öffnet eine eigene Website in deinem Browser; ob du dort ein Konto anlegst, entscheidest du. <b>Diese App übermittelt keine Daten an Upfit</b> und erhält keine zurück. Für alles, was du bei Upfit eingibst, ist die Up Gesundheit GmbH allein verantwortlich – es gelten deren Datenschutzerklärung und Bedingungen.'):'';
+    return legalWrap('Datenschutz','Datenschutzerklärung der App', b1+b2+b3+b4+b5+b6+b7+b8+b9+b10+b11+b12+b13+b14+b15+b16+b17+b18);
   }
   function scrAGB(){
     var pc=ernPriceCopy();
@@ -6003,6 +6020,46 @@
   function ernModuleSeg(tab){
     var items=[['heute','Heute'],['plan','Plan'],['rezepte','Rezepte'],['verlauf','Verlauf']];
     return '<div style="display:flex;gap:4px;background:var(--surface-2);border-radius:14px;padding:4px;margin:0 2px 14px">'+items.map(function(it){ var sel=tab===it[0]; return '<button data-act="ernTab" data-arg="'+it[0]+'" style="flex:1;border:none;background:'+(sel?ERN_G:'transparent')+';color:'+(sel?'#fff':'var(--text-muted)')+';font-size:13.5px;font-weight:800;padding:11px;border-radius:11px;cursor:pointer">'+it[1]+'</button>'; }).join('')+'</div>';
+  }
+  // ── Partner Upfit: Ernährung protokollieren im Upfit-Portal von Fit-Inn ──
+  // Upfit ist ein eigenständiges Portal der Up Gesundheit GmbH. Es lässt sich
+  // nicht einbetten (X-Frame-Options: DENY) und hat keine Schnittstelle zu uns –
+  // also ein Link, der sich im Browser öffnet (in der nativen App: Systembrowser,
+  // wie Technogym und Instagram). Bewusst OHNE Daten in der Adresse: keine
+  // E-Mail, keine Kennung, kein Token. Was jemand bei Upfit einträgt, liegt bei
+  // Upfit; diese App erfährt davon nichts. Vier Stellen, eine Quelle:
+  //   dash  – Karte im „Heute"-Tab unter dem Tagesprotokoll
+  //   row   – Zeile im Erfassen-Sheet neben Foto/Sprache/Barcode
+  //   setup – Panel im Onboarding, BEVOR jemand uns Gesundheitsdaten anvertraut
+  //   empty – stiller Zweitweg im leeren Tagesprotokoll
+  var UPFIT_ICON='<path d="M4 11h16v1a8 8 0 0 1-16 0z"></path><path d="M8.5 4c0 1-1 1.2-1 2.2s1 1.2 1 2.2M12 4c0 1-1 1.2-1 2.2s1 1.2 1 2.2M15.5 4c0 1-1 1.2-1 2.2s1 1.2 1 2.2"></path>';
+  var UPFIT_EXT='<path d="M7 17L17 7M9 7h8v8"></path>';
+  function upfitCard(variant){
+    var u=upfitUrl(); if(!u) return '';
+    var href='href="'+esc(u)+'" target="_blank" rel="noopener"';
+    var tint='rgba(224,140,83,.14)', warm='#E08C53';
+    if(variant==='row'){
+      return '<a class="ernCapRow" data-upfit="row" '+href+' style="display:flex;align-items:center;gap:13px;width:100%;box-sizing:border-box;background:var(--surface);border-radius:16px;padding:14px 15px;text-decoration:none;box-shadow:0 4px 14px rgba(4,33,40,.06);transition:transform .08s ease">'+
+        '<span style="width:44px;height:44px;border-radius:13px;flex-shrink:0;background:'+tint+';display:flex;align-items:center;justify-content:center">'+svg(UPFIT_ICON,{c:warm,w:2,s:22})+'</span>'+
+        '<span style="flex:1;min-width:0"><span style="display:block;font-size:15.5px;font-weight:800;color:var(--text)">Mit Upfit protokollieren</span><span style="display:block;font-size:12.5px;font-weight:600;color:var(--text-soft);margin-top:1px">Partner-Portal: Tagebuch, Rezepte &amp; Einkaufsliste</span></span>'+
+        svg(UPFIT_EXT,{c:'#c2d3d6',w:2,s:16})+'</a>';
+    }
+    if(variant==='setup'){
+      return '<div data-upfit="setup" style="margin-top:22px;background:rgba(255,255,255,.10);border:1.5px solid rgba(255,255,255,.22);border-radius:16px;padding:15px 16px">'+
+        '<div style="font-size:11px;font-weight:800;color:#bfe0e6;text-transform:uppercase;letter-spacing:.4px">Partner</div>'+
+        '<div style="font-size:15px;font-weight:800;color:#fff;margin-top:3px">Lieber bei Upfit protokollieren?</div>'+
+        '<div style="font-size:12.5px;font-weight:600;color:#cfe8ec;line-height:1.5;margin-top:5px">Unser Partner Upfit bietet dir Tagebuch, Rezepte und Einkaufsliste – ohne dieses Onboarding. Deine Angaben liegen dann nur bei Upfit.</div>'+
+        '<a '+href+' style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:12px;padding:12px;border-radius:12px;border:1.5px solid rgba(255,255,255,.4);color:#fff;font-weight:800;font-size:14px;text-decoration:none">Upfit öffnen'+svg(UPFIT_EXT,{c:'#fff',w:2.2,s:16})+'</a></div>';
+    }
+    if(variant==='empty'){
+      return '<div data-upfit="empty" style="margin-top:12px"><a '+href+' style="font-size:12.5px;font-weight:800;color:var(--teal-ink);text-decoration:none">Oder mit Upfit protokollieren ↗</a></div>';
+    }
+    return '<div data-upfit="dash" style="background:var(--surface);border-radius:20px;box-shadow:0 12px 30px rgba(4,33,40,.09);padding:18px;margin-bottom:14px">'+
+      '<div style="display:flex;align-items:center;gap:13px"><span style="width:46px;height:46px;border-radius:14px;background:'+tint+';display:flex;align-items:center;justify-content:center;flex-shrink:0">'+svg(UPFIT_ICON,{c:warm,w:2,s:23})+'</span>'+
+      '<div style="flex:1;min-width:0"><div style="font-size:10.5px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.4px">Partner</div><div style="font-size:15.5px;font-weight:900;color:var(--text);margin-top:2px;letter-spacing:-.2px">Ernährung protokollieren mit Upfit</div></div></div>'+
+      '<div style="font-size:12.5px;font-weight:600;color:var(--text-muted);line-height:1.5;margin-top:12px">Tagebuch, Rezepte, Einkaufsliste und KI-Assistentin – im Upfit-Portal von Fit-Inn Trier. Einmal registrieren, dann direkt loslegen.</div>'+
+      '<a '+href+' style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:14px;padding:14px;border-radius:14px;background:'+ERN_G+';color:#fff;font-weight:900;font-size:14.5px;text-decoration:none">Upfit öffnen'+svg(UPFIT_EXT,{c:'#fff',w:2.2,s:17})+'</a>'+
+      '<div style="font-size:11.5px;font-weight:600;color:var(--text-muted);text-align:center;margin-top:9px">Öffnet sich im Browser · Fit-Inn übermittelt keine Daten an Upfit</div></div>';
   }
   // Coach-Tab: FINN-Ernährungschat als eigener Screen (wie im Mockup).
   function ernCoach(){

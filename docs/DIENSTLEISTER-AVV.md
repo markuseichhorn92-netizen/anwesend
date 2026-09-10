@@ -12,6 +12,7 @@ Keine Zeile gilt allein durch dieses Dokument als vertraglich abgeschlossen. Ver
 | Apple/Google Push | Pushzustellung | Push-Token, Nachricht-Metadaten | minimale Inhalte, keine Gesundheitsdaten im Pushtext, Anbieterbedingungen | Nutzung prüfen |
 | Resend/Twilio oder sonstige Kommunikationsanbieter | E-Mail/SMS, falls aktiv | Kontakt- und Zustelldaten | AVV, Region, Löschung, Transfer | nur bei Aktivierung aufnehmen |
 | Open Food Facts | Produktdatenabfrage | Barcode/Produktanfrage | keine Mitglieds-ID mitsenden; Datenschutzinformation | technisch prüfen |
+| Up Gesundheit GmbH (Upfit), Hamburg, HRB 197956 | Partnerportal Ernährung (`fit-inn-trier.upfit.io`); **kein** Auftragsverarbeiter – die App verlinkt nur, es fließen keine Daten in beide Richtungen | keine (Mitglied legt bei Upfit ein eigenes Konto an; Upfit ist dafür allein verantwortlich) | Partnervertrag: Rolle bestätigen (eigenständig Verantwortlicher), Nennung in der App-Datenschutzerklärung (erledigt, Karte „Partner Upfit"), keine Weitergabe von Mitgliederlisten an Upfit | Vertrag ablegen; Rolle bestätigen |
 
 ## Prüfrhythmus
 

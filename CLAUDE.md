@@ -247,6 +247,39 @@ Definitionen, die nicht aufgeweicht werden sollten:
   und werden beim Abschluss verworfen. Es darf keine Liste „diese Personen
   protokollieren" entstehen – auch nicht für das Team.
 
+## Partner Upfit – Ernährung protokollieren (September 2026)
+
+Fit-Inn hat eine Partnerschaft mit Upfit (Up Gesundheit GmbH, Hamburg). Das
+Partnerportal `https://fit-inn-trier.upfit.io/` ist ein White-Label-Portal mit
+eigenem Konto, eigener App, eigenen AGB.
+
+Was technisch geht und was nicht – geprüft, nicht vermutet:
+
+- Es sendet `X-Frame-Options: DENY` → **nicht einbettbar**, nur öffnen.
+- Es gibt keine öffentliche API und kein SSO → **kein Datenfluss** in beide
+  Richtungen. Die App verlinkt, mehr nicht.
+
+Deshalb ist der Einbau ein Link-out an vier Stellen (`upfitCard()` in
+`mitglieder.html`): Karte im „Heute"-Tab unter dem Protokoll, Zeile im
+Erfassen-Sheet, Panel im Onboarding **vor** der Einwilligung, stiller Zweitweg
+im leeren Tagesprotokoll. In der nativen App öffnet sich der Systembrowser
+(`allowNavigation` lässt nur `*.fit-inn-trier.de` im WebView).
+
+- Adresse kommt vom Server: `/api/app-info` → `partner.upfit`. `UPFIT_URL`
+  überschreibt, `FEATURE_UPFIT=0` schaltet ab – ohne Deployment.
+- Nur `https://` wird akzeptiert, server- und clientseitig (ein manipulierter
+  localStorage-Cache darf keinen `javascript:`-Link erzeugen).
+- **Nie etwas an die Adresse hängen** – keine E-Mail, keine Kennung, kein
+  Token. Das wäre eine Datenübermittlung an einen Dritten ohne Einwilligung.
+- Datenschutzerklärung (Karte „Partner Upfit") und „Meine Daten" nennen den
+  Verantwortlichen; `docs/DIENSTLEISTER-AVV.md` führt Upfit als Partner, **nicht**
+  als Auftragsverarbeiter. Die Rolle ist im Partnervertrag zu bestätigen.
+- Das eigene Ernährungsmodul bleibt vollständig bestehen – Upfit ist ein
+  zusätzlicher Weg, kein Ersatz. Ob das so bleibt, ist eine Entscheidung, die
+  jemand bewusst treffen sollte (Team-Coaching, Phasenpläne und
+  Stoffwechselanalyse hängen am eigenen Modul).
+- `tests/upfit-partner.test.js`
+
 ## Verifikation
 
 Vor dem letzten Deployment wurde ausgeführt:
