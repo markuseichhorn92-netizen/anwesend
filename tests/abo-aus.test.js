@@ -175,15 +175,18 @@ void sysWa;
   r = await oeffne({}, '/mitglieder.html?go=datenschutz');
   t = await text(r.p);
   ok('13. Die Datenschutzerklaerung nennt kein „Coach Premium & Zahlung" mehr', !/Coach Premium & Zahlung/.test(t));
+  // … weder in den gerenderten Footern noch in der statischen Fußzeile (#footWiderruf → recht).
   const footer = await r.p.evaluate(function () { return Array.prototype.some.call(document.querySelectorAll('[data-act="nav"][data-arg="recht"]'), function () { return true; }); });
-  ok('13b. … und es gibt keinen „Widerruf"-Link mehr', footer === false);
+  const footStatic = await r.p.evaluate(function () { const a = document.getElementById('footWiderruf'), s = document.getElementById('footWiderrufSep'); return { a: !!a && a.offsetParent !== null, s: !!s && s.offsetParent !== null }; });
+  ok('13b. … und es gibt keinen „Widerruf"-Link mehr (auch nicht in der statischen Fußzeile)', footer === false && !footStatic.a && !footStatic.s, JSON.stringify(footStatic));
   await r.c.close();
 
   // Rueckweg: mit abo:true ist alles wieder da (das alte Modell bleibt schaltbar).
   r = await oeffne({ abo: true }, '/mitglieder.html?go=datenschutz');
   t = await text(r.p);
   const footerAlt = await r.p.evaluate(function () { return !!document.querySelector('[data-act="nav"][data-arg="recht"]'); });
-  ok('14. Mit Schalter erscheinen Rechtstext und Widerruf wieder', /Coach Premium & Zahlung/.test(t) && footerAlt === true);
+  const footStaticAlt = await r.p.evaluate(function () { const a = document.getElementById('footWiderruf'); return !!a && a.offsetParent !== null; });
+  ok('14. Mit Schalter erscheinen Rechtstext und Widerruf wieder (auch in der statischen Fußzeile)', /Coach Premium & Zahlung/.test(t) && footerAlt === true && footStaticAlt === true);
   await r.c.close();
 
   await b.close();
