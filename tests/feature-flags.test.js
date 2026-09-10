@@ -24,18 +24,21 @@ function res0() { return { statusCode: 0, headers: {}, setHeader(k, v) { this.he
 async function run() {
   let pass = true; const ok = (l, c) => { if (!c) pass = false; console.log((c ? 'OK  ' : 'FAIL') + ' ' + l); };
 
-  // ── /api/app-info: Ernährung gelauncht (Standard AN, FEATURE_ERN=0 = Notaus);
-  //    Community + Demo bleiben opt-in (nur exakt "1") ──
+  // ── /api/app-info: das eigene Ernährungsmodul ist seit September 2026 opt-in
+  //    (Ernährung läuft beim Partner Upfit); Community + Demo ebenso (nur exakt "1") ──
   delete process.env.FEATURE_ERN; delete process.env.FEATURE_SOCIAL; delete process.env.FEATURE_DEMO;
   delete process.env.APP_STORE_URL_IOS; delete process.env.APP_STORE_URL_ANDROID;
   let r = res0(); fresh('api/app-info.js')({}, r);
   let j = JSON.parse(r.body);
-  ok('1. ohne Env: Ernährung AN, Social/Demo AUS', r.statusCode === 200
-    && j.features && j.features.ern === true && j.features.social === false && j.features.demo === false);
+  ok('1. ohne Env: eigenes Ernährungsmodul AUS, Social/Demo AUS', r.statusCode === 200
+    && j.features && j.features.ern === false && j.features.social === false && j.features.demo === false);
 
-  process.env.FEATURE_ERN = '0'; process.env.FEATURE_SOCIAL = 'true'; process.env.FEATURE_DEMO = '0';
+  process.env.FEATURE_ERN = '1'; process.env.FEATURE_SOCIAL = 'true'; process.env.FEATURE_DEMO = '0';
   r = res0(); fresh('api/app-info.js')({}, r); j = JSON.parse(r.body);
-  ok('2. FEATURE_ERN=0 = Notaus; Social/Demo zählen nur bei exakt "1"', j.features.ern === false && j.features.social === false && j.features.demo === false);
+  ok('2. FEATURE_ERN=1 holt das Modul zurück; Social/Demo zählen nur bei exakt "1"', j.features.ern === true && j.features.social === false && j.features.demo === false);
+  process.env.FEATURE_ERN = '0';
+  r = res0(); fresh('api/app-info.js')({}, r); j = JSON.parse(r.body);
+  ok('2b. FEATURE_ERN=0 bleibt aus', j.features.ern === false);
   delete process.env.FEATURE_ERN; delete process.env.FEATURE_SOCIAL; delete process.env.FEATURE_DEMO;
 
   process.env.APP_STORE_URL_IOS = 'http://unsicher.example/app';

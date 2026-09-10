@@ -259,14 +259,39 @@ Was technisch geht und was nicht – geprüft, nicht vermutet:
 - Es gibt keine öffentliche API und kein SSO → **kein Datenfluss** in beide
   Richtungen. Die App verlinkt, mehr nicht.
 
-Deshalb ist der Einbau ein Link-out an vier Stellen (`upfitCard()` in
-`mitglieder.html`): Karte im „Heute"-Tab unter dem Protokoll, Zeile im
-Erfassen-Sheet, Panel im Onboarding **vor** der Einwilligung, stiller Zweitweg
-im leeren Tagesprotokoll. In der nativen App öffnet sich der Systembrowser
-(`allowNavigation` lässt nur `*.fit-inn-trier.de` im WebView).
+**Stand seit dem 10. September 2026: Das eigene Ernährungsmodul ist AUS, der
+Tab „Ernährung" zeigt nur noch Upfit.** Entscheidung des Betreibers.
 
+- Schalter: `FEATURE_ERN` ist jetzt **opt-in** (`=1` holt das eigene Modul
+  zurück). Eine Quelle für Server und Client: `lib/features.js` (`ernOn()`,
+  `upfitUrl()`); der Client bekommt beides über `/api/app-info`.
+- Partner-Modus im Client (`!ERN_ON && upfitUrl()`): der Tab bleibt
+  (`ernTabOn()`), zeigt aber `scrErnPartner()` – Hero-Karte, „So geht's",
+  Datenhinweis. Kein Ring, kein Erfassen, kein Coach, kein Premium. Dazu eine
+  kompakte Karte auf der Startseite (`upfitCard('home')`) und im Plus-Menü der
+  Punkt „Ernährung protokollieren" → Upfit statt eigenes Erfassen.
+- Am selben Schalter hängen serverseitig: der Ernährungs-Impuls-Cron
+  (`lib/coachImpulse.js`), die Phasenwechsel-Meldungen (`api/nutri-phase-tick.js`)
+  und der WhatsApp-Agent (Foto → Tagebuch, Werkzeuge `log_food`/`add_water`/
+  `nutrition_today` werden dem Modell nicht mehr angeboten). Sonst schickt ein
+  Cron Pushes zu einem Bereich, den die App nicht mehr zeigt.
+- **Die gespeicherten Ernährungsdaten bleiben.** Export und Löschung sind über
+  den Partner-Screen → „Frühere Ernährungsdaten … exportieren oder löschen"
+  weiterhin erreichbar (`ernDataScreen`, ohne Premium-Karte). Das muss so
+  bleiben – Art. 15/17 DSGVO.
+- **In-App-Browser:** `upfitOpen()` nutzt in der nativen App `@capacitor/browser`
+  (SFSafariViewController / Chrome Custom Tabs) – bewusst kein eingebettetes
+  WebView, weil Google seinen Login dort sperrt und Upfit „Mit Google
+  registrieren" anbietet. Plugin steht in `nativeapp/package.json`; ein
+  `npm install && npx cap sync` und ein neuer Store-Build sind nötig. Ältere
+  Builds fallen auf den Systembrowser zurück, das Web auf einen neuen Tab. Der
+  `<a href>` bleibt immer darunter.
+- Mit `FEATURE_ERN=1` erscheinen die vier Link-out-Stellen im eigenen Modul
+  (`upfitCard()`: „Heute"-Karte, Erfassen-Zeile, Onboarding-Panel, leeres
+  Tagesprotokoll) – beides nebeneinander.
 - Adresse kommt vom Server: `/api/app-info` → `partner.upfit`. `UPFIT_URL`
-  überschreibt, `FEATURE_UPFIT=0` schaltet ab – ohne Deployment.
+  überschreibt, `FEATURE_UPFIT=0` schaltet ab – ohne Deployment. Ohne Partner
+  UND ohne Modul rückt „Termine" in die Leiste (wie vor dem Ernährungsmodul).
 - Nur `https://` wird akzeptiert, server- und clientseitig (ein manipulierter
   localStorage-Cache darf keinen `javascript:`-Link erzeugen).
 - **Nie etwas an die Adresse hängen** – keine E-Mail, keine Kennung, kein
@@ -274,11 +299,18 @@ im leeren Tagesprotokoll. In der nativen App öffnet sich der Systembrowser
 - Datenschutzerklärung (Karte „Partner Upfit") und „Meine Daten" nennen den
   Verantwortlichen; `docs/DIENSTLEISTER-AVV.md` führt Upfit als Partner, **nicht**
   als Auftragsverarbeiter. Die Rolle ist im Partnervertrag zu bestätigen.
-- Das eigene Ernährungsmodul bleibt vollständig bestehen – Upfit ist ein
-  zusätzlicher Weg, kein Ersatz. Ob das so bleibt, ist eine Entscheidung, die
-  jemand bewusst treffen sollte (Team-Coaching, Phasenpläne und
-  Stoffwechselanalyse hängen am eigenen Modul).
-- `tests/upfit-partner.test.js`
+- `tests/upfit-partner.test.js`, `tests/feature-flags.test.js`
+
+Offen und bewusst NICHT technisch gelöst:
+
+- **Coach Premium** (Magicline-Zusatzmodul, SEPA) war das Premium des
+  Ernährungsmoduls. Wer es gebucht hat, zahlt jetzt für etwas Unsichtbares.
+  In Magicline prüfen, wer das Modul hat, und mit den Betroffenen klären.
+- Das **Team-Backend** behält seine Ernährungswerkzeuge (Mitglieder-Ernährung,
+  Phasenpläne, Premium-Freischaltung) – sie zeigen Daten, die es weiterhin gibt,
+  aber das Mitglied sieht in der App nichts davon.
+- Hilfe-Artikel und FINN-Texte, die das eigene Tagebuch beschreiben, sind
+  Inhalte, keine Schalter – bei Gelegenheit durchsehen.
 
 ## Verifikation
 

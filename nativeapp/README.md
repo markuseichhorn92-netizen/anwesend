@@ -19,3 +19,14 @@ npx cap open ios       # bzw. open android
 
 👉 **Die vollständige Schritt-für-Schritt-Anleitung (inkl. Veröffentlichung im App Store
 und Play Store) steht in [`../docs/EIGENE-APP.md`](../docs/EIGENE-APP.md).**
+
+## In-App-Browser für Partner-Links (Upfit)
+
+Die App öffnet das Upfit-Portal über `@capacitor/browser` – SFSafariViewController
+auf iOS, Chrome Custom Tabs auf Android. Das Mitglied bleibt in der App, „Fertig"
+führt zurück. Bewusst **kein** eingebettetes WebView: Google sperrt seinen Login
+dort, und Upfit bietet „Mit Google registrieren".
+
+Nach dem Aktualisieren des Repos einmal `npm install && npx cap sync` – das Plugin
+steht in `package.json`, mehr Einrichtung braucht es nicht. Fehlt es in einem
+älteren Build, öffnet die Web-App stattdessen den Systembrowser.

@@ -838,6 +838,7 @@
     // Abgeschaltete Bereiche: die Sperre steht HIER und nicht nur an den Kacheln.
     // So ist es egal, ob irgendwo noch ein Verweis uebersehen wurde.
     if(!TRAIN_ON && s==='tag') s='home';
+    if(!ernTabOn() && s==='ern') s='home';
     if(!VITAL_ON && s==='morning') s='home';
     // Vital-Check verlassen: laufende BLE-Messung + Timer sauber stoppen (kein Hintergrund-Stream/Save).
     if(S.screen==='morning' && s!=='morning'){ try{ moStopMeasure(); }catch(e){} S.morningPhase='idle'; S.morningLiveBpm=null; S.morningElapsed=0; }
@@ -919,7 +920,7 @@
     var s=S.screen;
     if(s==='home'||s==='insta') maybeRefreshLive();
     if(s==='home'||s==='account') loadAccount();
-    if(s==='ern'||s==='coach'||s==='abo'||s==='recht'||s==='tag') loadNutri();
+    if(ERN_ON&&(s==='ern'||s==='coach'||s==='abo'||s==='recht'||s==='tag')) loadNutri();
     if(s==='tag'){ loadTraining(); loadTrainSession(); }
     if(ERN_ON&&(s==='home'||s==='fort')) loadNutri();
     if(SOCIAL_ON&&(s==='home'||s==='social'||s==='profil')) loadSocial();
@@ -1271,7 +1272,8 @@
   ];
   function finderSheet(){
     var q=(S.findQ||'').trim().toLowerCase();
-    var avail=FIND_INDEX.filter(function(it){ return (ERN_ON||it.arg!=='ern') && (TRAIN_ON||it.arg!=='tag') && (VITAL_ON||it.arg!=='morning') && (!isFormer()||FORMER_OK.indexOf(it.arg)>=0); });
+    var avail=FIND_INDEX.filter(function(it){ return (ernTabOn()||it.arg!=='ern') && (TRAIN_ON||it.arg!=='tag') && (VITAL_ON||it.arg!=='morning') && (!isFormer()||FORMER_OK.indexOf(it.arg)>=0); })
+      .map(function(it){ return (it.arg==='ern'&&!ERN_ON)?Object.assign({},it,{sub:'Bei unserem Partner Upfit',kw:'ernaehrung ernährung essen upfit tagebuch rezepte'}):it; });
     var res=q?avail.filter(function(it){ return (it.label+' '+it.kw).toLowerCase().indexOf(q)>=0; }):avail.filter(function(it){ return it.common; });
     var rows=res.length?res.map(function(it){
       return '<button data-act="findGo" data-arg="'+it.arg+'" style="width:100%;text-align:left;border:none;background:none;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:13px;padding:12px 8px;border-top:1px solid var(--border)">'+
@@ -1304,6 +1306,7 @@
     // „+" = etwas EINTRAGEN/TUN. Navigation (Vertrag, Freund werben) lebt im Menü/Profil-Hub,
     // FINN-Chat über den FINN-Button + Coach-Tab – hier bewusst keine Doppelung.
     var rows=
+      ((!ERN_ON&&upfitUrl())?qaRow('upfit',UPFIT_ICON,'Ernährung protokollieren','Bei unserem Partner Upfit'):'')+
       (ERN_ON?qaRow('erfassen','<path d="M4 11h16v1a8 8 0 0 1-16 0z"></path><path d="M8.5 4c0 1-1 1.2-1 2.2s1 1.2 1 2.2M12 4c0 1-1 1.2-1 2.2s1 1.2 1 2.2M15.5 4c0 1-1 1.2-1 2.2s1 1.2 1 2.2"></path>','Essen erfassen','Foto, Sprache oder Suche'):'')+
       (TRAIN_ON?qaRow('training','<path d="M4 8v8M8 5.5v13M16 5.5v13M20 8v8M8 12h8"></path>','Training starten','Einheit beginnen oder planen'):'')+
       qaRow('figur','<path d="M3 3v18h18"></path><path d="M7 14l4-4 3 3 5-6"></path>','Gewicht & Maße eintragen','Neuen Wert festhalten & Fortschritt sehen')+
@@ -1314,6 +1317,7 @@
   function qaGo(a){
     S.qaOpen=false;
     if(a==='chat'){ if(ACT&&ACT.openFinn) ACT.openFinn(); else setS({finnOpen:true}); return; }
+    if(a==='upfit'){ render(); upfitOpen(); return; }
     // Aktions-Ziele des „+"-Sheets: direkt ins Erfassen/Starten springen (nicht nur navigieren).
     if(a==='erfassen'){ nav('ern'); setTimeout(function(){ if(ERN_ON && DATA.nutri && DATA.nutri.onboarded && ACT && ACT.ernOpenCapture) ACT.ernOpenCapture(); },90); return; }
     if(a==='training'){ nav('tag'); setTimeout(function(){ if(ACT && ACT.trainAdd) ACT.trainAdd(); },90); return; }
@@ -2247,7 +2251,7 @@
   function homeTodayStrip(){
     // Der Trainingspartner-Einstieg lebt jetzt als eigene Karte (homeBuddyCard) darüber – hier keine Doppel-Kachel mehr.
     var tiles=[];
-    var ern=ERN_ON?homeErnBars():'';
+    var ern=ERN_ON?homeErnBars():upfitCard('home');   // ohne eigenes Modul: der Partner, kompakt
     if(!tiles.length) return ern;
     return ern+'<div style="display:flex;gap:12px;margin-bottom:16px">'+tiles.map(function(t){
       return '<button data-act="nav" data-arg="'+t.act+'" style="flex:1;min-width:0;text-align:left;border:none;cursor:pointer;font-family:inherit;background:var(--surface);border-radius:18px;box-shadow:0 10px 26px rgba(4,33,40,.08);padding:14px 15px;position:relative">'+
@@ -3559,10 +3563,12 @@
   // Feature-Schalter: Ernährungs-Modul in der App. Läuft eigenständig (eigene
   // Bedarfsrechnung + KI-Schätzung, kein Fremdanbieter). happyfigur ist bewusst
   // NICHT angebunden. Vor dem Start ist eine DSGVO-Einwilligung (Art. 9) Pflicht.
-  // Partner Upfit (Up Gesundheit GmbH) ist seit September 2026 als LINK-OUT
-  // dabei – siehe upfitCard(): eigenes Portal, eigenes Konto, keine Daten in
-  // beide Richtungen. Adresse kommt vom Server (partner.upfit), Notaus
-  // FEATURE_UPFIT=0.
+  // Seit September 2026 ist das EIGENE Modul standardmäßig AUS (FEATURE_ERN=1
+  // holt es zurück): Ernährung läuft beim Partner Upfit (Up Gesundheit GmbH).
+  // Der Tab „Ernährung" bleibt und zeigt dann NUR den Upfit-Einstieg
+  // (scrErnPartner) – eigenes Portal, eigenes Konto, keine Daten in beide
+  // Richtungen. Adresse kommt vom Server (partner.upfit), Notaus FEATURE_UPFIT=0.
+  // Gespeicherte Ernährungsdaten bleiben über „Meine Daten" exportier-/löschbar.
   // Die Launch-Flags kommen SERVERSEITIG aus /api/app-info und werden lokal
   // gecacht (fi_flags_srv), damit der App-Start nicht aufs Netz warten muss.
   // Ernährung ist GELAUNCHT (standardmäßig AN für alle; Server-Notausschalter
@@ -3591,6 +3597,28 @@
   // akzeptiert. Der Cache liegt im localStorage – ein manipulierter Wert dort
   // dürfte nie zu einem javascript:-Link werden, darum die Prüfung auch hier.
   function upfitUrl(){ try{ var u=srvFlags().upfit; return (typeof u==='string'&&/^https:\/\/[^\s"'<>]+$/.test(u))?u:null; }catch(e){ return null; } }
+  // Der Tab „Ernährung" existiert, solange es ETWAS dahinter gibt: das eigene
+  // Modul oder den Partner. Ohne beides rückt „Termine" nach (wie bisher).
+  function ernTabOn(){ return ERN_ON || !!upfitUrl(); }
+  // Upfit öffnen. In der nativen App im In-App-Browser (@capacitor/browser:
+  // SFSafariViewController auf iOS, Chrome Custom Tabs auf Android) – das
+  // Mitglied bleibt in der App, „Fertig" führt zurück. Bewusst KEIN eingebettetes
+  // WebView: Upfit bietet „Mit Google registrieren", und Google sperrt OAuth in
+  // eingebetteten WebViews. Im Web ein neuer Tab. Jeder Fehler fällt auf den
+  // normalen Link zurück – der <a href> bleibt immer darunter.
+  var upfitBrowser=null;
+  function upfitOpen(){
+    var u=upfitUrl(); if(!u) return;
+    try{
+      var C=window.Capacitor;
+      if(C&&C.isNativePlatform&&C.isNativePlatform()&&C.isPluginAvailable&&C.isPluginAvailable('Browser')){
+        if(!upfitBrowser){ upfitBrowser=(typeof C.registerPlugin==='function')?C.registerPlugin('Browser'):(C.Plugins&&C.Plugins.Browser); }
+        if(upfitBrowser&&typeof upfitBrowser.open==='function'){ upfitBrowser.open({url:u,toolbarColor:'#0a4958',presentationStyle:'fullscreen'}); return; }
+      }
+    }catch(e){}
+    try{ if(window.open(u,'_blank','noopener')) return; }catch(e){}
+    try{ location.href=u; }catch(e){}
+  }
   // Frische Server-Flags übernehmen (von loadAppInfo aufgerufen): cachen +
   // laufende Sitzung aktualisieren, wenn sich die Sichtbarkeit geändert hat.
   function applySrvFlags(f,p){
@@ -5836,7 +5864,8 @@
     // Abo-Bereich: Premium verwalten/kündigen (Zusatzmodul) oder holen.
     var pu=DATA.nutri&&DATA.nutri.premiumUntil; var pdays=pu?Math.max(0,Math.ceil((pu-Date.now())/86400000)):0;
     var dpc=ernPriceCopy();
-    var aboSec=ernPremium()
+    // Ohne eigenes Modul kein Premium-Angebot dafür – hier geht es dann nur noch um die Daten.
+    var aboSec=!ERN_ON?'':ernPremium()
       ? ernManageCard()
       : '<div style="'+CARD+'"><div style="font-size:15px;font-weight:900;color:var(--text)">Premium</div><div style="font-size:12.5px;font-weight:600;color:var(--text-muted);line-height:1.55;margin:8px 0 12px">KI-Funktionen (Foto-Analyse, FINN-Coach, Wochenpläne, KI-Rezepte) sind Premium. Basis bleibt gratis.</div><button data-act="ernUpgradeOpen" style="width:100%;padding:14px;border:none;border-radius:14px;background:'+ERN_G+';color:#fff;font-weight:900;font-size:14.5px;cursor:pointer">'+(dpc.trialText?(dpc.trialText+' testen'):'Premium holen')+'</button></div>';
     var infoSec='<div style="'+CARD+'"><div style="font-size:15px;font-weight:900;color:var(--text);display:flex;align-items:center;gap:8px">'+svg('<circle cx="12" cy="12" r="10"></circle><path d="M12 16v-4M12 8h.01"></path>',{c:'#0a4958',w:2,s:19})+'Was wir speichern</div>'+
@@ -6036,8 +6065,14 @@
   var UPFIT_EXT='<path d="M7 17L17 7M9 7h8v8"></path>';
   function upfitCard(variant){
     var u=upfitUrl(); if(!u) return '';
-    var href='href="'+esc(u)+'" target="_blank" rel="noopener"';
+    var href='href="'+esc(u)+'" target="_blank" rel="noopener" data-act="upfitOpen"';
     var tint='rgba(224,140,83,.14)', warm='#E08C53';
+    if(variant==='home'){
+      return '<a data-upfit="home" '+href+' style="display:flex;align-items:center;gap:13px;background:var(--surface);border-radius:18px;box-shadow:0 10px 26px rgba(4,33,40,.07);padding:15px 16px;margin-bottom:16px;text-decoration:none">'+
+        '<span style="width:44px;height:44px;border-radius:13px;background:'+tint+';display:flex;align-items:center;justify-content:center;flex-shrink:0">'+svg(UPFIT_ICON,{c:warm,w:2,s:22})+'</span>'+
+        '<span style="flex:1;min-width:0"><span style="display:block;font-size:10.5px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.4px">Ernährung · Partner</span><span style="display:block;font-size:15px;font-weight:900;color:var(--text);margin-top:2px">Tagebuch bei Upfit führen</span><span style="display:block;font-size:12px;font-weight:600;color:var(--text-muted);margin-top:2px">Rezepte, Einkaufsliste, KI-Assistentin</span></span>'+
+        svg(UPFIT_EXT,{c:'var(--text-soft)',w:2,s:17})+'</a>';
+    }
     if(variant==='row'){
       return '<a class="ernCapRow" data-upfit="row" '+href+' style="display:flex;align-items:center;gap:13px;width:100%;box-sizing:border-box;background:var(--surface);border-radius:16px;padding:14px 15px;text-decoration:none;box-shadow:0 4px 14px rgba(4,33,40,.06);transition:transform .08s ease">'+
         '<span style="width:44px;height:44px;border-radius:13px;flex-shrink:0;background:'+tint+';display:flex;align-items:center;justify-content:center">'+svg(UPFIT_ICON,{c:warm,w:2,s:22})+'</span>'+
@@ -6060,6 +6095,31 @@
       '<div style="font-size:12.5px;font-weight:600;color:var(--text-muted);line-height:1.5;margin-top:12px">Tagebuch, Rezepte, Einkaufsliste und KI-Assistentin – im Upfit-Portal von Fit-Inn Trier. Einmal registrieren, dann direkt loslegen.</div>'+
       '<a '+href+' style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:14px;padding:14px;border-radius:14px;background:'+ERN_G+';color:#fff;font-weight:900;font-size:14.5px;text-decoration:none">Upfit öffnen'+svg(UPFIT_EXT,{c:'#fff',w:2.2,s:17})+'</a>'+
       '<div style="font-size:11.5px;font-weight:600;color:var(--text-muted);text-align:center;margin-top:9px">Öffnet sich im Browser · Fit-Inn übermittelt keine Daten an Upfit</div></div>';
+  }
+  // Der Tab „Ernährung" ohne eigenes Modul: NUR der Partner. Kein Ring, kein
+  // Erfassen, kein Coach – nichts, was aussieht, als würde die App selbst
+  // protokollieren. Was bleibt, ist der Weg zu den alten Daten (Export/Löschung):
+  // die liegen weiter bei uns, und das Mitglied muss an sie herankommen.
+  function scrErnPartner(){
+    var u=upfitUrl(); if(!u) return '';
+    var href='href="'+esc(u)+'" target="_blank" rel="noopener" data-act="upfitOpen"';
+    var CARD='background:var(--surface);border-radius:20px;box-shadow:0 12px 30px rgba(4,33,40,.09);padding:20px;margin-bottom:14px';
+    var inApp=false; try{ inApp=!!(window.Capacitor&&window.Capacitor.isNativePlatform&&window.Capacitor.isNativePlatform()); }catch(e){}
+    var hero='<div data-upfit="hero" style="'+CARD+'">'+
+      '<div style="display:flex;align-items:center;gap:14px"><span style="width:52px;height:52px;border-radius:16px;background:rgba(224,140,83,.14);display:flex;align-items:center;justify-content:center;flex-shrink:0">'+svg(UPFIT_ICON,{c:'#E08C53',w:2,s:26})+'</span>'+
+      '<div style="flex:1;min-width:0"><div style="font-size:10.5px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.4px">Partner</div><div style="font-size:21px;font-weight:900;color:var(--text);letter-spacing:-.4px;line-height:1.15;margin-top:2px">Ernährung mit Upfit</div></div></div>'+
+      '<div style="font-size:14px;font-weight:500;color:var(--text-2);line-height:1.55;margin-top:14px">Tagebuch, Rezepte, Einkaufsliste und KI-Assistentin – im Upfit-Portal von Fit-Inn Trier. Einmal registrieren, dann direkt loslegen.</div>'+
+      '<a '+href+' style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:16px;padding:15px;border-radius:14px;background:'+ERN_G+';color:#fff;font-weight:900;font-size:15px;text-decoration:none">Upfit öffnen'+svg(UPFIT_EXT,{c:'#fff',w:2.2,s:17})+'</a>'+
+      '<div style="font-size:11.5px;font-weight:600;color:var(--text-muted);text-align:center;margin-top:10px">'+(inApp?'Öffnet sich in der App':'Öffnet sich im Browser')+' · Fit-Inn übermittelt keine Daten an Upfit</div></div>';
+    var step=function(n,t,s){ return '<div style="display:flex;gap:13px;align-items:flex-start;padding:11px 0;border-top:1px solid var(--border)"><span style="width:28px;height:28px;border-radius:9px;background:var(--surface-2);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:900;color:var(--ern-acc);flex-shrink:0">'+n+'</span><div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:800;color:var(--text)">'+t+'</div><div style="font-size:12.5px;font-weight:600;color:var(--text-muted);margin-top:2px;line-height:1.45">'+s+'</div></div></div>'; };
+    var steps='<div style="'+CARD+'"><div style="font-size:15px;font-weight:900;color:var(--text);margin-bottom:6px">So geht’s</div>'+
+      step(1,'Upfit öffnen','Über den Knopf oben – '+(inApp?'direkt in der App':'im Browser')+'.')+
+      step(2,'Kostenlos registrieren','Mit E-Mail, Apple oder Google. Dein Konto liegt bei Upfit.')+
+      step(3,'Loslegen','Mahlzeiten eintragen, Rezepte entdecken, Einkaufsliste führen.')+'</div>';
+    var daten='<div style="'+CARD+'"><div style="font-size:15px;font-weight:900;color:var(--text);display:flex;align-items:center;gap:8px">'+svg('<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>',{c:'#0a4958',w:2,s:18})+'Deine Daten</div>'+
+      '<div style="font-size:12.5px;font-weight:500;color:var(--text-muted);line-height:1.6;margin-top:8px">Was du bei Upfit einträgst, liegt bei Upfit (Up Gesundheit GmbH, Hamburg) – diese App sieht davon nichts und schickt nichts dorthin. Mehr in der <a data-act="nav" data-arg="datenschutz" role="button" style="color:var(--teal-ink);text-decoration:underline">Datenschutzerklärung</a>.</div>'+
+      '<button data-act="ernDataOpen" style="width:100%;margin-top:12px;padding:12px;border:1.5px solid var(--border);background:var(--surface);color:var(--text-muted);border-radius:12px;font-weight:700;font-size:12.5px;cursor:pointer">Frühere Ernährungsdaten aus dieser App exportieren oder löschen</button></div>';
+    return hero+steps+daten;
   }
   // Coach-Tab: FINN-Ernährungschat als eigener Screen (wie im Mockup).
   function ernCoach(){
@@ -7931,6 +7991,8 @@
   function ernSectionEmpty(emoji,title,sub){ return '<div style="background:var(--surface);border-radius:20px;box-shadow:0 12px 30px rgba(4,33,40,.09);padding:34px 22px;text-align:center"><div style="font-size:34px">'+emoji+'</div><div style="font-size:16px;font-weight:900;color:var(--text);margin-top:12px">'+esc(title)+'</div><div style="font-size:13px;color:var(--text-muted);font-weight:500;margin-top:6px;line-height:1.5">'+esc(sub)+'</div></div>'; }
   function scrErn(){
     var n=DATA.nutri, inner;
+    // Ohne eigenes Modul: nur der Partner (und der Weg zu den alten Daten).
+    if(!ERN_ON) return '<div class="ernwrap">'+(S.ernData?ernDataScreen():scrErnPartner())+'</div>';
     // Mockup-Palette liegt als .ernwrap-Klasse im Stylesheet – hell wie gehabt, im Dark Mode dunkel.
     if(n===null||n===false){ inner=skelBlock('wide'); }
     else if(!n.ok||n.available===false){ inner='<div style="background:var(--surface);border-radius:20px;box-shadow:0 12px 34px rgba(4,33,40,.10);padding:30px 22px;text-align:center"><div style="font-size:34px">🥗</div><div style="font-size:16px;font-weight:800;color:var(--text);margin-top:10px">Ernährung ist gerade nicht verfügbar</div><div style="font-size:13.5px;color:var(--text-muted);font-weight:500;margin-top:6px;line-height:1.5">Bitte später erneut versuchen.</div></div>'; }
@@ -9913,7 +9975,7 @@
     var coaching=card([
       ['fort','Fortschritt & Vitalität','Vitalalter, Rang & Punkte',AWARD,true],
       ['inbody','InBody-Analyse','Körperanalyse scannen & Verlauf','<path d="M3 12h4l3 8 4-16 3 8h4"></path>'],
-      ERN_ON?['ern','Ernährung','Tagesziel, Tracking & Rezepte','<path d="M11 21A7 7 0 0 1 4 14C4 8.5 8 4 13.5 4c2.7 0 4.6 1 6.5 1.8 0 8.7-4.3 15.2-9 15.2z"></path><path d="M11 21c0-5.5 3.3-10 7.5-12"></path>']:null,
+      ernTabOn()?['ern','Ernährung',ERN_ON?'Tagesziel, Tracking & Rezepte':'Bei unserem Partner Upfit','<path d="M11 21A7 7 0 0 1 4 14C4 8.5 8 4 13.5 4c2.7 0 4.6 1 6.5 1.8 0 8.7-4.3 15.2-9 15.2z"></path><path d="M11 21c0-5.5 3.3-10 7.5-12"></path>']:null,
       ERN_ON?['finnusage','FINN-Nutzung','KI-Kontingent & Verbrauch','<path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.5 8.6 8.6 0 0 1-4-1L3 20l1-5a8.4 8.4 0 0 1-1-4A8.5 8.5 0 0 1 11.5 3 8.5 8.5 0 0 1 21 11.5z"></path>']:null,
       SOCIAL_ON?['social','Trainingspartner','Verbinden, Chat & Challenges','<circle cx="9" cy="7" r="3"></circle><path d="M2.5 20c0-3.3 2.9-6 6.5-6s6.5 2.7 6.5 6"></path><circle cx="17.5" cy="8.5" r="2.4"></circle><path d="M16 14.2c2.6.4 4.5 2.5 4.5 5.3"></path>',(DATA.social&&DATA.social.requests&&DATA.social.requests.length>0)]:null
     ]);
@@ -11120,7 +11182,9 @@
   // Seiten kehren zum Profil-Hub zurück; der Figur-Check lebt im Coach-Bereich.
   var APPBAR_BACK={figur:'coach',inbody:'fort',morning:'coach',fort:'profil',data:'profil',contract:'profil',account:'profil',card:'profil',checkins:'profil',shop:'home',referral:'profil',help:'profil',settings:'profil',abo:'profil',recht:'profil',impressum:'profil',datenschutz:'profil',agb:'profil',postfach:'profil',finnusage:'profil',blog:'profil',social:'home',insta:'home'};
   // Bottom-Nav-Wurzeln (kein Zurück-Pfeil). 4. Slot ist Ernährung (an) bzw. Termine (aus).
-  var APPBAR_ROOTS=ERN_ON?{home:1,tag:1,ern:1,coach:1,appt:1}:{home:1,tag:1,appt:1,coach:1,checkins:1};
+  // Wurzel-Screens (ohne Zurück-Pfeil) – als Funktion, weil sich die Schalter
+  // nach dem Laden von /api/app-info noch ändern können.
+  function appbarRoots(){ return ernTabOn()?{home:1,tag:1,ern:1,coach:1,appt:1}:{home:1,tag:1,appt:1,coach:1,checkins:1}; }
   function initials(p){ p=p||{}; var a=(p.firstName||'').trim(),b=(p.lastName||'').trim(); return (((a?a[0]:'')+(b?b[0]:'')).toUpperCase())||'FT'; }
   // Profil-Kopf für Sidebar/Drawer – klickbar, führt in den Profil-Hub.
   function navProfile(){
@@ -11133,7 +11197,7 @@
     // Klar gruppierte Abschnitte statt flacher 14er-Liste – leichter zu scannen.
     var byKey={}; NAVITEMS.forEach(function(it){ byKey[it[0]]=it; });
     var GROUPS=[['Aktivität',['home','fort','ern']],['Mein Studio',['card','appt','shop','checkins']],['Vertrag & Konto',['contract','account','referral','data']],['Service',['postfach','help','settings']],['Mehr',['insta']]];
-    var vis=function(k){ var it=byKey[k]; return !!(it && (ERN_ON||k!=='ern') && (!isFormer()||FORMER_OK.indexOf(k)>=0)); };
+    var vis=function(k){ var it=byKey[k]; return !!(it && (ernTabOn()||k!=='ern') && (!isFormer()||FORMER_OK.indexOf(k)>=0)); };
     var itemHtml=function(k){ var it=byKey[k]; var act=S.screen===k; var bdg=(k==='postfach'&&pfUnread()>0)?'<span style="background:#E08C53;color:#fff;font-size:11px;font-weight:800;border-radius:20px;min-width:20px;height:20px;padding:0 6px;display:flex;align-items:center;justify-content:center">'+pfUnread()+'</span>':''; return '<button class="sidebtn'+(act?' active':'')+'" data-act="nav" data-arg="'+k+'">'+svg(it[2],{c:act?'#fff':'#bcd7dc',w:1.9,s:20})+'<span style="flex:1">'+it[1]+'</span>'+bdg+'</button>'; };
     var body=GROUPS.map(function(g){ var ks=g[1].filter(vis); if(!ks.length) return ''; return '<div style="font-size:11px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:#7fa6ad;padding:14px 8px 6px">'+esc(g[0])+'</div>'+ks.map(itemHtml).join(''); }).join('');
     return searchBar+'<nav style="display:flex;flex-direction:column;gap:3px">'+body+'</nav>';
@@ -11433,7 +11497,7 @@
         ab.innerHTML='<div class="ab-left"><div class="ab-date">'+esc(wd+', '+d.getDate()+'. '+mn)+'</div><div class="ab-greet">'+greetLine(nm)+'</div></div>'+abRight;
       } else {
         ab.classList.remove('ab-home');
-        var abIsRoot=!!APPBAR_ROOTS[abSc];
+        var abIsRoot=!!appbarRoots()[abSc];
         var abLeft=abIsRoot?'':'<button class="ab-btn" data-act="nav" data-arg="'+esc(APPBAR_BACK[abSc]||'home')+'" aria-label="Zurück">'+svg(IC.back,{c:'#fff',w:2.2,s:20})+'</button>';
         ab.innerHTML=abLeft+'<div class="ab-title">'+esc(TITLES[abSc]||'')+'</div>'+abRight;
       }
@@ -11448,7 +11512,7 @@
     }
     // Globaler FINN-FAB im Ernährungsmodul ausblenden – das Modul hat einen
     // eigenen, ernährungsspezifischen Coach-Tab.
-    var ff=$('finnFab'); if(ff) ff.style.display=(S.screen==='ern')?'none':'';
+    var ff=$('finnFab'); if(ff) ff.style.display=(S.screen==='ern'&&ERN_ON)?'none':'';
     // FINN-Mini-Blase: nur in Ernährung/Training auf den normalen Tabs sichtbar –
     // in Vollbild-Flows (Rezept-Detail, Erfassen, Tracker, Plan-Detail) und Overlays aus.
     var fm=$('finnMini');
@@ -11479,7 +11543,7 @@
         return '<button data-act="nav" data-arg="'+key+'" style="flex:1;background:none;border:none;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;padding:5px 0">'+svg(icon,{c:col,w:1.9,s:23})+'<span style="font-size:10.5px;font-weight:'+(active?'800':'600')+';color:'+col+'">'+label+'</span></button>'; };
       var FOOD_IC='<path d="M4 11h16v1a8 8 0 0 1-16 0z"></path><path d="M8.5 4c0 1-1 1.2-1 2.2s1 1.2 1 2.2M12 4c0 1-1 1.2-1 2.2s1 1.2 1 2.2M15.5 4c0 1-1 1.2-1 2.2s1 1.2 1 2.2"></path>';
       var TRAIN_IC='<path d="M4 8v8M8 5.5v13M16 5.5v13M20 8v8M8 12h8"></path>';
-      var onErn=(sc==='ern'); var ciIn=!!S.checkedInAt; var qaOpen=!!S.qaOpen;
+      var onErn=(sc==='ern')&&ERN_ON; var ciIn=!!S.checkedInAt; var qaOpen=!!S.qaOpen;   // Partner-Screen: „+" bleibt das normale Schnellmenü
       // „+" pro Bereich EINE feste, vorhersehbare Aktion: Ernährung → Erfassen;
       // Training → Einheit starten; sonst der Assistent-Hub (Öffnen = „×").
       var onTraining=(sc==='tag');
@@ -11499,7 +11563,7 @@
       var coachBtn=ni('coach','Coach',FINN_IC,sc==='coach');
       // Zwei eigene Bereiche: Training + Ernährung (Essen-Modul direkt).
       // Ohne Essen-Modul bleibt der 4. Slot „Termine".
-      var fourth = ERN_ON ? ni('ern','Ernährung',FOOD_IC,sc==='ern') : ni('appt','Termine',IC.cal,sc==='appt');
+      var fourth = ernTabOn() ? ni('ern','Ernährung',FOOD_IC,sc==='ern') : ni('appt','Termine',IC.cal,sc==='appt');
       // Testleiste (nur bei fi_navx=1 auf diesem Gerät): gleiche Bereiche, gleiche
       // Klickziele – nur eine andere Darstellung.
       var navxV=navxOn();
@@ -11508,9 +11572,9 @@
         navxRender(bn, [
           {key:'home',  label:'Start',     icon:DASH_IC,  on:sc==='home'},
           (TRAIN_ON ? {key:'tag',  label:'Training',  icon:TRAIN_IC, on:sc==='tag'}
-                    : (ERN_ON ? {key:'appt', label:'Termine',      icon:IC.cal,  on:sc==='appt'}
+                    : (ernTabOn() ? {key:'appt', label:'Termine',      icon:IC.cal,  on:sc==='appt'}
                               : {key:'checkins', label:'Check-ins', icon:IC.list, on:sc==='checkins'})),
-          (ERN_ON ? {key:'ern',  label:'Ernährung', short:'Essen', icon:FOOD_IC, on:sc==='ern'}
+          (ernTabOn() ? {key:'ern',  label:'Ernährung', short:'Essen', icon:FOOD_IC, on:sc==='ern'}
                   : {key:'appt', label:'Termine',   icon:IC.cal,   on:sc==='appt'}),
           {key:'coach', label:'Coach',     icon:FINN_IC,  on:sc==='coach'}
         ], { act:centerAct, label:centerLabel, short:(centerLabel==='Hinzufügen'?'Neu':''), close:showClose,
@@ -11522,7 +11586,7 @@
       // Zweiter Platz: Training, solange es den Bereich gibt - sonst etwas, das
       // nicht schon im vierten Platz steht.
       var zweiter = TRAIN_ON ? ni('tag','Training',TRAIN_IC,sc==='tag')
-        : (ERN_ON ? ni('appt','Termine',IC.cal,sc==='appt') : ni('checkins','Check-ins',IC.list,sc==='checkins'));
+        : (ernTabOn() ? ni('appt','Termine',IC.cal,sc==='appt') : ni('checkins','Check-ins',IC.list,sc==='checkins'));
       bn.innerHTML = ni('home','Start',DASH_IC,sc==='home') + zweiter + qaCenter + fourth + coachBtn;
     }
   }
@@ -11562,7 +11626,9 @@
         : null),
       (ERN_ON
         ? {sel:'.btmnav [data-act="nav"][data-arg="ern"]', t:'Ernährung', d:'Mahlzeiten tracken, Rezepte entdecken und dein Tagesziel im Blick behalten.'}
-        : {sel:'.btmnav [data-act="nav"][data-arg="appt"]', t:'Termine', d:'Termine ansehen und direkt aus der App buchen.'}),
+        : (upfitUrl()
+          ? {sel:'.btmnav [data-act="nav"][data-arg="ern"]', t:'Ernährung', d:'Dein Ernährungstagebuch führst du bei unserem Partner Upfit – hier geht es hin.'}
+          : {sel:'.btmnav [data-act="nav"][data-arg="appt"]', t:'Termine', d:'Termine ansehen und direkt aus der App buchen.'})),
       {sel:'.btmnav [data-act="qaOpen"], .btmnav [data-act="qaClose"]', t:'Schnell hinzufügen', d:'Der Plus-Knopf passt sich an: Auf der Startseite öffnet er Schnellaktionen, im Training und bei der Ernährung genau das Passende.'},
       {sel:'.btmnav [data-act="nav"][data-arg="coach"]', t:'Coach in der Leiste', d:'FINNs Tipps und dein Wochen-Coaching – jederzeit hier unten. Neu: jede Woche behandelt EIN Thema für Ernährung UND passendes Training, abgestimmt auf dein Ziel.'},
       {sel:'[data-act="avatarTap"]', t:'Dein Profil', d:'Hinter deinen Initialen oben rechts steckt alles Persönliche: Profil, Vertrag, Beitragskonto, Postfach, Mitgliedskarte, Einstellungen und mehr.'}
@@ -11646,7 +11712,7 @@
   }
   function render(){
     // Ernährungs-Modul ausgeblendet (Feature-Schalter ERN_ON): nie rendern, zur Übersicht
-    if(!ERN_ON && S.screen==='ern') S.screen='home';
+    if(!ernTabOn() && S.screen==='ern') S.screen='home';
     // Trainingspartner ausgeblendet (SOCIAL_ON): nie rendern, zur Übersicht
     if(!SOCIAL_ON && S.screen==='social') S.screen='home';
     // Ehemalige Mitglieder: gesperrte Screens immer auf die Übersicht (Rejoin) umleiten
@@ -12292,7 +12358,7 @@
     // Button unter einer FINN-Antwort: Chat schließen + Ziel-Seite in der App öffnen.
     finnGo:function(a){
       var allowed=['home','data','contract','account','appt','checkins','postfach','help','settings','card','fort','referral'];
-      if(ERN_ON) allowed.push('ern');
+      if(ernTabOn()) allowed.push('ern');
       if(allowed.indexOf(a)<0) return;
       setS({finnOpen:false}); nav(a);
     },
@@ -12658,7 +12724,8 @@
     ernCoachChatClose:function(){ setS({ernChatOpen:false}); },
     // ── Etappe 6: Datenschutz – Export / Tag löschen / alles löschen ──
     ernDataOpen:function(){ setS({ernData:true, ernMsg:'', ernErr:false}); },
-    ernDataClose:function(){ S.ernData=false; S.ernMsg=''; S.ernErr=false; loadNutri(); loadFavs(); },
+    ernDataClose:function(){ S.ernData=false; S.ernMsg=''; S.ernErr=false; if(ERN_ON){ loadNutri(); loadFavs(); } else render(); },
+    upfitOpen:function(){ upfitOpen(); },
     ernDataExport:function(){ if(S.ernDataBusy) return; S.ernDataBusy=true; S.ernMsg=''; S.ernErr=false; render();
       api('/api/member/nutrition',{method:'POST',body:JSON.stringify({action:'export'})})
       .then(function(d){ S.ernDataBusy=false;
@@ -13729,7 +13796,7 @@
         if(menuOpen()){ closeMenu(); return; }
         if(overlayOpen()){ if(!closeKnownOverlay()) closeAnyOverlay(); return; }   // Overlay immer schließen
         if(S.screen==='home') return;
-        var t=APPBAR_ROOTS[S.screen]?'home':(APPBAR_BACK[S.screen]||'home');
+        var t=appbarRoots()[S.screen]?'home':(APPBAR_BACK[S.screen]||'home');
         try{ navigator.vibrate&&navigator.vibrate(8); }catch(e){} nav(t);
       }catch(e){ /* Zurück darf NIE crashen -> im Zweifel nichts tun (App bleibt offen) */ }
     }

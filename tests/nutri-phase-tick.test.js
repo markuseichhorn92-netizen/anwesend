@@ -6,6 +6,7 @@ const path=require('path');
 const ROOT=path.resolve(__dirname,'..');
 const inject=(rel,ex)=>{const p=path.resolve(ROOT,rel);require.cache[p]={id:p,filename:p,loaded:true,exports:ex};};
 process.env.RECORD_SECRET='s3cr3t';
+process.env.FEATURE_ERN='1';   // der Phasen-Cron gehört zum eigenen Ernährungsmodul – ohne den Schalter tut er nichts (Prüfung 11)
 const P=require(path.resolve(ROOT,'lib/nutriPhases.js'));
 const TODAY=P.berlinToday(), ago=(n)=>P.addDays(TODAY,-n);
 const kv=new Map(), sets=new Map();
@@ -52,6 +53,13 @@ async function run(){
   r=await H.run();
   ok('9. Team-Hinweis kommt nur einmal',studio.length===1);
   ok('10. Mitglied bekam dafür keinen Push',!pushes.some(p=>p.id==='m4'));
+  // Seit September 2026 ist das eigene Modul standardmäßig aus: Dann darf der Cron
+  // auch bei einem fälligen Wechsel nichts verschicken – das Mitglied sähe die
+  // Zielwerte, um die es geht, nirgends.
+  delete process.env.FEATURE_ERN;
+  setM('m5',30,mkPlan(ago(45))); idx('m5');
+  r=await H.run();
+  ok('11. Ohne FEATURE_ERN=1 schweigt der Cron – auch bei einem fälligen Wechsel',r.reason==='ern_off'&&r.switched===0&&!pushes.some(p=>p.id==='m5'),JSON.stringify(r));
   console.log(pass?'NUTRI-PHASE-TICK PASS':'NUTRI-PHASE-TICK FAIL');process.exit(pass?0:1);
 }
 run().catch(e=>{console.error('FAIL',e);process.exit(1);});

@@ -31,6 +31,9 @@ function ymdDE(ymd) { const t = String(ymd || '').split('-'); return t.length ==
 async function run() {
   const out = { scanned: 0, switched: 0, notified: 0, expired: 0 };
   if (!hasStore) return out;
+  // Ohne sichtbares Ernährungsmodul keine Phasen-Meldungen – die Zielwerte, um
+  // die es geht, sieht das Mitglied dann nirgends.
+  if (!require('../lib/features').ernOn()) return Object.assign(out, { reason: 'ern_off' });
 
   let ids = [];
   try { const [r] = await redisPipeline([['SMEMBERS', PHIDX]]); ids = Array.isArray(r) ? r.slice(0, MAX_MEMBERS) : []; } catch (e) { return out; }
