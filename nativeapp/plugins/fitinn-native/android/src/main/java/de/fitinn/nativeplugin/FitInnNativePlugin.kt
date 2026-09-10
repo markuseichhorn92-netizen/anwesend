@@ -131,7 +131,7 @@ class FitInnNativePlugin : Plugin() {
     //   RestingHeartRate       getHealthMetrics()  Vital-Check
     //   HeartRateVariability   getHealthMetrics()  Vital-Check
     //   Weight / BodyFat       getHealthMetrics()  Figur-Check
-    //   Vo2Max                 getHealthMetrics()  Vitalalter
+    //   Vo2Max                 getHealthMetrics()  Vital-Check / Coach
     //   SleepSession           sleepLastNight()    Erholung
     //
     // KEINE Schreibrechte: saveHealthWorkout meldet auf Android bewusst

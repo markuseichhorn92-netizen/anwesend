@@ -59,7 +59,7 @@ async function run() {
   const ptNo = P.toPromptText(P.sanitize({ goal: 'Abnehmen', health: { consent: false, items: ['Diabetes'] } }));
   ok('4c. toPromptText verrät KEINE Gesundheit ohne Einwilligung', /Ziel/.test(ptNo) && !/Diabetes/.test(ptNo));
 
-  // 4d. Lebensstil (Vitalalter): nur mit Einwilligung übernehmen, im Prompt-Text erwähnt
+  // 4d. Lebensstil (Bestandsdaten für FINNs Kontext): nur mit Einwilligung übernehmen, im Prompt-Text erwähnt
   const lc = P.sanitize({ lifestyle: { consent: false, sleep: 'gut', smoking: 'ja' } });
   ok('4d. Lebensstil ohne Einwilligung leer', lc.lifestyle.consent === false && lc.lifestyle.sleep === '' && lc.lifestyle.smoking === '');
   const ly = P.sanitize({ goal: 'Abnehmen', lifestyle: { consent: true, sleep: 'gut', stress: 'hoch', smoking: 'ja', sitting: 'viel' } });

@@ -364,6 +364,27 @@ Modell wieder ein); ohne Variable gilt:
 weiter in der Vertragsverwaltung und kann kündigen – von selbst passiert das
 nicht. In Magicline prüfen, wer es hat, und die Buchungen beenden.
 
+## Vitalalter entfernt (10. September 2026)
+
+Das „Vitalalter" – eine Schätzung aus Besuchen, Einheiten, Körperwerten und
+einer Lebensstil-Selbstauskunft – ist **komplett** aus der App genommen, nicht
+ausgeblendet. Mit Training und Ernährung außerhalb der App stand die Rechnung
+nur noch auf Besuchen; eine Zahl, die wie ein Befund aussieht, darf nicht auf
+Fassade stehen.
+
+- Weg: `vitalAge()`, `homeVitalCard`, `vitalAgeCard`, `coachVitalHero`, das
+  Lebensstil-Formular (`vitalLifestyleForm`, `lsConsent`/`lsSet`), das
+  Aktivitäts-Alter in `vitalsData()`, der Tour-Schritt, die Erwähnungen in
+  Onboarding, InBody-Hinweis, Hub („Fortschritt · Rang, Punkte & Aktivität")
+  und Suche. Mit ihnen die ungenutzten Coach-Reiter (`coachTabBar`, `coachTab`).
+- Geblieben: Vitalpunkte, Rang, Streak, Wochenziel, Aktivitätsstatistik – alles
+  aus Check-ins, keine Schätzung.
+- Server: Die Lebensstil-Angaben (`lib/memberProfile.js`) bleiben gespeichert
+  und fließen nur noch in FINNs Kontext; der Einwilligungstext
+  (`lib/privacy.js`, `lifestyle_health`) verspricht kein Vitalalter mehr.
+  Export/Löschung über den Datenschutz-Self-Service wie bisher.
+- `tests/vitalalter-entfernt.test.js`, `tests/feature-flags.test.js` (9).
+
 ## Verifikation
 
 Vor dem letzten Deployment wurde ausgeführt:

@@ -6,7 +6,7 @@
  * InBody-Körperanalyse (InBody 270) als Erfolgskontrolle. Das Mitglied
  * fotografiert den Ergebnisbogen; die KI liest die Werte aus (scan), das
  * Mitglied prüft/korrigiert und speichert (save). Bewertung + Verlauf werden
- * serverseitig berechnet; die Daten fließen in FINN (coach.js) und ins Vitalalter.
+ * serverseitig berechnet; die Daten fließen in FINN (coach.js) ein.
  *
  *  GET                          -> { ok, available, list, latest, eval, trend, premium, quota }
  *  POST { action:'scan', photo, mediaType }  -> KI liest den Bogen aus (gated) -> { ok, parsed }

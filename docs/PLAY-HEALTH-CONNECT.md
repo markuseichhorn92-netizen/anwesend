@@ -49,7 +49,7 @@ der Fit-Inn-App selbst gestartet wurden (Smartwatch, Laufuhr, Fremd-App).
 | `READ_HEART_RATE_VARIABILITY` | `getHealthMetrics()` | Vital-Check / Erholungsampel |
 | `READ_WEIGHT` | `getHealthMetrics()` | Gewichtsverlauf im Figur-Check |
 | `READ_BODY_FAT` | `getHealthMetrics()` | Körperfettverlauf im Figur-Check |
-| `READ_VO2_MAX` | `getHealthMetrics()` | Ausdauer im Vitalalter |
+| `READ_VO2_MAX` | `getHealthMetrics()` | Ausdauer (Vital-Check, Coach) |
 | `READ_SLEEP` | `sleepLastNight()` | Schlafdauer und -phasen für die Erholung |
 
 Keine Hintergrundabfrage (`READ_HEALTH_DATA_IN_BACKGROUND` wird **nicht** angefragt),

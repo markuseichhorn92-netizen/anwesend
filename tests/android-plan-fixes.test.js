@@ -50,7 +50,8 @@ assert.ok(member.includes("min(env(safe-area-inset-top,0px), 60px)"), '60px-Deck
 // ── Gewicht-Eintrag auffindbar machen (Rueckmeldung: nicht gefunden) ───────────
 // Sichtbare Karte auf der Startseite + Eintrag im „+"-Schnellmenue, beide -> figur.
 assert.ok(member.includes('function homeFigurCard()'), 'Startseiten-Karte fuer Gewicht/Maße muss existieren');
-assert.ok(member.includes('homeVitalCard()+homeFigurCard()'), 'Gewicht-Karte muss in der Startseite eingehaengt sein');
+// (Seit dem 10. September 2026 ohne die Vitalalter-Karte davor – die ist komplett entfernt.)
+assert.ok(member.includes('morningHomeCard()+homeFigurCard()'), 'Gewicht-Karte muss in der Startseite eingehaengt sein');
 assert.ok(member.includes("qaRow('figur',"), 'Schnellmenue muss einen Gewicht-Eintrag haben');
 assert.ok(/var screens=\[[^\]]*'figur'[^\]]*\];/.test(member), "qaGo muss 'figur' als Ziel kennen");
 assert.ok(member.includes("rIf(['figur','home','fort','ern'])"), 'loadFigur muss Home/Fortschritt/Ernaehrung mit-rendern');
