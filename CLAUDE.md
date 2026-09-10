@@ -455,6 +455,16 @@ Schreibtisch) in drei Etappen umgesetzt. Leitlinie: `.claude/skills/fitinn-desig
 - Vertragsdaten waren nie ISO – der Server liefert sie deutsch (`fmtDE`);
   das ISO-Datum im Audit kam aus Testdaten.
 
+**Termine und Coach-Hub** (`tests/termine-coach.test.js`)
+- Termine: gebuchte Termine (`[data-appt="mine"]`) stehen ÜBER dem Abschnitt
+  „Termin buchen"; ohne Termine kommt der leere Hinweis darunter.
+  „Stornieren" sitzt als kleine Pille unter der Zeitzeile – rechts neben dem
+  Titel lief ein langes Wort („Einführungstraining") hinein.
+- Coach-Hub (`coachFinnHub`, `[data-coach="hub"]`): Avatar + Titel, eine
+  Aussage (`coachHolistic` bzw. die Analyse), „Mit FINN chatten", drei
+  Schnellfragen, „Tiefere Analyse holen" als Textlink. Die beiden Zusatzlabels
+  und das Roboter-Emoji sind weg.
+
 ## Verifikation
 
 Vor dem letzten Deployment wurde ausgeführt:

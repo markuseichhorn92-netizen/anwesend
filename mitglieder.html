@@ -3171,7 +3171,10 @@
           '<span style="width:24px;height:24px;border-radius:50%;border:2px solid '+(sel?TEAL:'var(--border)')+';display:flex;align-items:center;justify-content:center;flex-shrink:0">'+(sel?'<span style="width:12px;height:12px;border-radius:50%;background:'+TEALBG+'"></span>':'')+'</span>'+
           '<span style="flex:1;min-width:0"><span style="display:block;font-size:16px;font-weight:900;color:var(--text);letter-spacing:-.2px">'+esc(t.title)+'</span>'+(t.sub?'<span style="display:block;font-size:13px;color:var(--text-muted);font-weight:500;margin-top:2px">'+esc(t.sub)+'</span>':'')+'</span></button>';
       }).join('');
-    out+='<div style="'+CARD+';margin-bottom:16px"><div style="'+EY+';margin-bottom:14px">Terminart</div>'+typeRows+'</div>';
+    // Buchen als klar benannter Abschnitt – die Terminart-Karten allein sahen wie ein
+    // Formular ohne Überschrift aus.
+    out+='<div style="'+EY+';margin:4px 2px 12px">Termin buchen</div>'+
+      '<div style="'+CARD+';margin-bottom:16px"><div style="font-size:13px;font-weight:600;color:var(--text-muted);line-height:1.45;margin-bottom:14px">Wähle die Terminart, dann Tag und Uhrzeit.</div>'+typeRows+'</div>';
 
     // ── TAG WÄHLEN + Zeiten ──
     if(S.bookType && !loading){
@@ -3208,14 +3211,23 @@
     }
 
     // ── MEINE TERMINE ──
-    var list=DATA.appts;
+    // Gebuchte Termine stehen ÜBER dem Buchen-Abschnitt (wer die Seite öffnet, will meist
+    // nachsehen, wann es losgeht). Ohne Termine steht der leere Hinweis unter dem Buchen.
+    // „Stornieren" sitzt unter der Zeitzeile statt rechts neben dem Titel – ein langes Wort
+    // wie „Einführungstraining" lief sonst in den Knopf.
+    var list=DATA.appts, mine='';
     if(list && list.length){
-      out+='<div style="'+EY+';margin:24px 2px 12px">Meine Termine</div><div style="display:flex;flex-direction:column;gap:11px">'+list.map(function(a){ var dt=new Date(a.start); var MON=['JAN','FEB','MÄR','APR','MAI','JUN','JUL','AUG','SEP','OKT','NOV','DEZ']; var mon=isNaN(dt.getTime())?'':MON[dt.getMonth()]; var dn=isNaN(dt.getTime())?'':dt.getDate(); return '<div style="display:flex;align-items:center;gap:14px;background:var(--surface);border-radius:18px;box-shadow:0 12px 32px rgba(4,33,40,.08);padding:16px"><div style="width:52px;height:52px;border-radius:14px;background:var(--surface-2);display:flex;flex-direction:column;align-items:center;justify-content:center;flex-shrink:0"><span style="font-size:11px;font-weight:700;color:var(--text-soft);letter-spacing:.4px">'+esc(mon)+'</span><span style="font-size:20px;font-weight:900;color:var(--teal-ink);line-height:1">'+esc(dn)+'</span></div><div style="flex:1;min-width:0"><div style="font-size:16px;font-weight:900;letter-spacing:-.2px;color:var(--text)">'+esc(a.title)+'</div><div style="font-size:13px;color:var(--text-muted);font-weight:600;margin-top:2px">'+deDate(a.start)+' · '+deTime(a.start)+' Uhr</div></div>'+(a.id?'<button data-act="cancelAppt" data-arg="'+esc(a.id)+'" style="border:none;background:transparent;color:var(--err-fg);font-weight:800;font-size:13.5px;cursor:pointer;flex-shrink:0">Stornieren</button>':'')+'</div>'; }).join('')+'</div>';
+      mine='<div style="'+EY+';margin:4px 2px 12px">Meine Termine</div><div data-appt="mine" style="display:flex;flex-direction:column;gap:11px;margin-bottom:24px">'+list.map(function(a){ var dt=new Date(a.start); var MON=['JAN','FEB','MÄR','APR','MAI','JUN','JUL','AUG','SEP','OKT','NOV','DEZ']; var mon=isNaN(dt.getTime())?'':MON[dt.getMonth()]; var dn=isNaN(dt.getTime())?'':dt.getDate();
+        return '<div data-appt="row" style="display:flex;align-items:flex-start;gap:14px;background:var(--surface);border-radius:18px;box-shadow:0 12px 32px rgba(4,33,40,.08);padding:14px 16px">'+
+          '<div style="width:52px;height:52px;border-radius:14px;background:var(--surface-2);display:flex;flex-direction:column;align-items:center;justify-content:center;flex-shrink:0"><span style="font-size:11px;font-weight:700;color:var(--text-soft);letter-spacing:.4px">'+esc(mon)+'</span><span style="font-size:20px;font-weight:900;color:var(--teal-ink);line-height:1">'+esc(dn)+'</span></div>'+
+          '<div style="flex:1;min-width:0"><div data-appt="title" style="font-size:16px;font-weight:800;letter-spacing:-.2px;color:var(--text);line-height:1.3;overflow-wrap:anywhere">'+esc(a.title)+'</div>'+
+          '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:3px"><span style="font-size:13px;color:var(--text-muted);font-weight:600;white-space:nowrap">'+deDate(a.start)+' · '+deTime(a.start)+'</span>'+
+          (a.id?'<button data-act="cancelAppt" data-arg="'+esc(a.id)+'" aria-label="Termin stornieren" style="min-height:36px;padding:0 11px;border:none;border-radius:10px;background:var(--err-bg);color:var(--err-fg);font-weight:800;font-size:12.5px;cursor:pointer;flex-shrink:0;font-family:inherit">Stornieren</button>':'')+'</div></div></div>'; }).join('')+'</div>';
     } else if(list && !list.length && !S.apptMsg){
       out+='<div style="'+EY+';margin:24px 2px 12px">Meine Termine</div><div style="'+CARD+';text-align:center"><div style="font-size:15px;font-weight:800;color:var(--text)">Noch keine Termine</div><div style="font-size:13px;color:var(--text-muted);margin-top:4px;line-height:1.45">Buche dir oben deinen ersten Termin.</div></div>';
     }
 
-    return subHeader('Termine','Buchen & verwalten')+out;
+    return subHeader('Termine','Buchen & verwalten')+mine+out;
   }
 
   // ===== Beitragskonto (offene Beiträge & Rechnungen) =====
@@ -6549,23 +6561,26 @@
   }
   // FINN-first Coach-Hub: EINE dominante FINN-Karte – Tages-Blick (datenbasiert bzw. KI-Analyse),
   // direkter Chat-Einstieg und Schnellfragen. Ersetzt den früheren getrennten Tipp-Hero + Blick-Karte.
+  // Eine Aussage, ein Knopf, drei Schnellfragen. Die Analyse ist eine Nebensache am Rand –
+  // vorher konkurrierten sechs Elemente (zwei Labels, Text, Analyse-Knopf, Trennlinie, CTA).
   function coachFinnHub(){
-    var holo=(S.coachFinn&&S.coachFinn.text)?S.coachFinn.text:coachHolistic();
+    var hasAn=!!(S.coachFinn&&S.coachFinn.text);
+    var holo=hasAn?S.coachFinn.text:coachHolistic();
+    var spark=svg('<path d="M12 3l1.8 4.9L18.7 9.7l-4.9 1.8L12 16.4l-1.8-4.9L5.3 9.7l4.9-1.8L12 3z"></path>',{c:'#cfe8ec',w:1.9,s:14});
     var analyse=S.coachFinnBusy
-      ? '<div style="margin-top:13px;display:flex;align-items:center;gap:9px;font-size:12.5px;font-weight:800;color:#eafaf1">'+trainSpin(16)+' FINN analysiert …</div>'
-      : '<button data-act="coachFinn" style="margin-top:13px;border:1.5px solid rgba(255,255,255,.4);background:rgba(255,255,255,.12);color:#fff;border-radius:11px;font-size:12.5px;font-weight:800;padding:9px 14px;cursor:pointer">🤖 '+((S.coachFinn&&S.coachFinn.text)?'Neue FINN-Analyse':'Tiefere FINN-Analyse holen')+'</button>';
+      ? '<div style="display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:700;color:#cfe8ec">'+trainSpin(14)+' FINN analysiert …</div>'
+      : '<button data-act="coachFinn" style="display:inline-flex;align-items:center;gap:6px;min-height:36px;border:none;background:none;color:#cfe8ec;font-size:12.5px;font-weight:700;padding:0;cursor:pointer;font-family:inherit">'+spark+(hasAn?'Neue Analyse':'Tiefere Analyse holen')+'</button>';
     var chips=['Wie läuft es bei mir?','Welchen Termin sollte ich buchen?','Tipp für mein Ziel'].map(function(q){
-      return '<button data-act="finnQuick" data-arg="'+esc(q)+'" style="flex:0 0 auto;border:1.5px solid rgba(255,255,255,.35);background:rgba(255,255,255,.10);color:#fff;border-radius:20px;font-size:12.5px;font-weight:700;padding:8px 13px;cursor:pointer;white-space:nowrap">'+esc(q)+'</button>';
+      return '<button data-act="finnQuick" data-arg="'+esc(q)+'" style="flex:0 0 auto;min-height:38px;border:1.5px solid rgba(255,255,255,.32);background:rgba(255,255,255,.10);color:#fff;border-radius:20px;font-size:12.5px;font-weight:700;padding:0 13px;cursor:pointer;white-space:nowrap;font-family:inherit">'+esc(q)+'</button>';
     }).join('');
-    return '<div style="background:linear-gradient(150deg,#12879c,#0e6072 58%,#0a4958);border-radius:22px;padding:18px 20px 20px;color:#fff;box-shadow:0 16px 38px rgba(14,96,114,.30);margin-bottom:16px">'+
-      '<div style="display:flex;align-items:center;gap:12px"><div style="width:46px;height:46px;border-radius:50%;overflow:hidden;flex-shrink:0;background:#0a3d4a"><img src="/assets/brand/finn-mark.svg" alt="" style="width:100%;height:100%;display:block"></div>'+
-      '<div style="flex:1;min-width:0"><div style="font-size:16px;font-weight:900">Dein Coach FINN</div><div style="font-size:11.5px;font-weight:700;color:#bfe0e6">KI · rund um die Uhr für dich da</div></div></div>'+
-      '<div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#bfe0e6;margin-top:15px">FINN · Dein Blick für heute</div>'+
-      '<div style="font-size:15px;font-weight:700;line-height:1.5;margin-top:6px">'+esc(holo)+'</div>'+
-      (S.coachFinnMsg?'<div style="font-size:12px;font-weight:700;color:#ffd9cf;margin-top:8px">'+esc(S.coachFinnMsg)+'</div>':'')+analyse+
-      '<div style="height:1px;background:rgba(255,255,255,.16);margin:16px 0 13px"></div>'+
-      '<button data-act="openFinn" style="width:100%;display:flex;align-items:center;justify-content:center;gap:8px;border:none;border-radius:13px;background:#fff;color:#0A4958;font-weight:800;font-size:14.5px;padding:13px;cursor:pointer">'+svg('<path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.5 8.6 8.6 0 0 1-4-1L3 20l1-5a8.4 8.4 0 0 1-1-4A8.5 8.5 0 0 1 11.5 3 8.5 8.5 0 0 1 21 11.5z"></path>',{c:'#0A4958',w:2,s:18})+'Mit FINN chatten</button>'+
-      '<div style="display:flex;gap:8px;overflow-x:auto;margin-top:11px;-webkit-overflow-scrolling:touch;padding-bottom:2px">'+chips+'</div>'+
+    return '<div data-coach="hub" style="background:linear-gradient(150deg,#12879c,#0e6072 58%,#0a4958);border-radius:22px;padding:18px 20px;color:#fff;box-shadow:0 16px 38px rgba(14,96,114,.30);margin-bottom:16px">'+
+      '<div style="display:flex;align-items:center;gap:11px"><div style="width:40px;height:40px;border-radius:50%;overflow:hidden;flex-shrink:0;background:#0a3d4a"><img src="/assets/brand/finn-mark.svg" alt="" style="width:100%;height:100%;display:block"></div>'+
+      '<div style="flex:1;min-width:0;font-size:16px;font-weight:800;letter-spacing:-.2px">Dein Coach FINN</div></div>'+
+      '<div data-coach="blick" style="font-size:15.5px;font-weight:600;line-height:1.5;margin-top:14px">'+esc(holo)+'</div>'+
+      (S.coachFinnMsg?'<div style="font-size:12px;font-weight:700;color:#ffd9cf;margin-top:8px">'+esc(S.coachFinnMsg)+'</div>':'')+
+      '<button data-act="openFinn" style="width:100%;display:flex;align-items:center;justify-content:center;gap:8px;border:none;border-radius:13px;background:#fff;color:#0A4958;font-weight:800;font-size:14.5px;min-height:48px;padding:12px;margin-top:16px;cursor:pointer;font-family:inherit">'+svg('<path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.5 8.6 8.6 0 0 1-4-1L3 20l1-5a8.4 8.4 0 0 1-1-4A8.5 8.5 0 0 1 11.5 3 8.5 8.5 0 0 1 21 11.5z"></path>',{c:'#0A4958',w:2,s:18})+'Mit FINN chatten</button>'+
+      '<div style="display:flex;gap:8px;overflow-x:auto;margin:10px -20px 0;padding:0 20px 2px;-webkit-overflow-scrolling:touch;scrollbar-width:none">'+chips+'</div>'+
+      '<div style="margin-top:8px">'+analyse+'</div>'+
     '</div>';
   }
   // Einstieg in den Figur-Check (Maße & Fortschritt) aus dem Coach-Hub.
