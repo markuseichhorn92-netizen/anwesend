@@ -385,6 +385,39 @@ Fassade stehen.
   Export/Löschung über den Datenschutz-Self-Service wie bisher.
 - `tests/vitalalter-entfernt.test.js`, `tests/feature-flags.test.js` (9).
 
+## FINN-Chat umgebaut (10. September 2026)
+
+Der Chat mit FINN (`finnOverlayHtml`, `finnAsk`, Klassen `fc…` in
+`mitglieder.html`) ist neu gezeichnet und in der Bedienung nachgezogen.
+
+- **Ein Weg für alle Fragen:** `finnAsk(q, {resend})` – Tippen, Vorschlag,
+  Schnellfrage aus dem Coach-Hub und „Nochmal versuchen" laufen durch dieselbe
+  Funktion. Teil-Update statt Voll-Render, damit Tastatur und Fokus bleiben.
+- **Fehler sind Blasen mit Handlung:** kommt keine Antwort (500, Timeout 60 s,
+  offline), erscheint eine Fehlerblase mit „Nochmal versuchen" und „Ans Team".
+  Fehlerblasen gehören nicht zum Verlauf: sie werden weder gespeichert noch
+  als Historie an den Server geschickt, und die Frage wird beim Wiederholen
+  nicht gedoppelt. `rate_limited` ist bewusst KEINE Fehlerblase (Wiederholen
+  hilft da nicht).
+- **Verlauf überlebt ein Neuladen:** `sessionStorage` `fi_finn_chat`, max.
+  40 Nachrichten, 12 h. Bewusst nicht `localStorage` – im Chat können
+  Gesundheitsthemen stehen. Abmelden (`logout`, Face-ID-Fehlschlag) und
+  „Neues Gespräch" (Stift oben rechts) leeren ihn.
+- **Link-Knöpfe:** `finnGo` kennt jetzt alle Bereiche aus `SCREENS` in
+  `api/member/coach.js` (inbody/figur zeigten vorher einen toten Knopf).
+  `tests/finn-chat.test.js` vergleicht beide Listen – wer serverseitig einen
+  Bereich ergänzt, muss ihn im Client freigeben.
+- **Leerer Chat:** Begrüßung mit Vorname, ein Vorschlag je Zweck der App
+  (Vertrag, Termin, Coaching), Schnell-Links „Direkt erledigen"; beginnt oben
+  (`finnAtBottom()`), mit Nachrichten unten angedockt.
+- **Handy:** Eingabe 16 px (sonst zoomt iOS), Tippflächen ≥ 40 px, kein
+  Auto-Fokus auf Touch (die Tastatur würde die Begrüßung verdecken),
+  „Nach unten"-Pille beim Hochscrollen, Fußnote „FINN ist eine KI …" mit dem
+  Weg zum Team. Tastatur-Handling unverändert (`syncChatViewport`).
+- **Schreibtisch:** schwebende Karte rechts unten (420 px), hellerer Scrim,
+  Auto-Fokus, Escape schließt.
+- Die Bereichs-Tour startet nicht über einem offenen Chat.
+
 ## Verifikation
 
 Vor dem letzten Deployment wurde ausgeführt:

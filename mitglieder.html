@@ -427,15 +427,70 @@
   @media(max-width:999px){ .pfChatCard{position:fixed;inset:0;z-index:76;border-radius:0} }
   @media(min-width:1000px){ .pfChatCard{height:min(640px,calc(100dvh - 230px));min-height:380px;border-radius:18px;box-shadow:0 14px 38px rgba(4,33,40,.10)} }
   #pf_scroll{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;background:var(--bg);padding:14px 14px 10px;overscroll-behavior:contain}
-  #finn_scroll{overscroll-behavior:contain}
-  /* FINN-Panel. Mobil: Vollbild -> die Tastatur staucht nur den Verlauf, nichts springt.
-     Desktop: Sheet unten mittig. */
-  .finnPanel{width:100%;background:var(--bg);display:flex;flex-direction:column;overflow:hidden}
-  @media(max-width:999px){ .finnPanel{height:100%;align-self:stretch} }
-  @media(min-width:1000px){ .finnPanel{max-width:480px;margin:0 auto;height:min(720px,88dvh);align-self:flex-end;border-radius:24px 24px 0 0;box-shadow:0 -10px 50px rgba(0,0,0,.4)} }
+  /* ── FINN-Chat ──
+     Mobil: Vollbild – die Tastatur staucht nur den Verlauf, nichts springt (syncChatViewport).
+     Schreibtisch: schwebende Karte unten rechts, die Seite dahinter bleibt sichtbar. */
+  .finnPanel{width:100%;background:var(--bg);display:flex;flex-direction:column;overflow:hidden;position:relative}
+  @media(max-width:999px){ .finnPanel{height:100%;align-self:stretch;animation:fcUp .3s cubic-bezier(.22,1,.36,1)} }
+  @media(min-width:1000px){ .finnPanel{position:fixed;right:24px;bottom:24px;width:420px;max-width:calc(100vw - 48px);height:min(700px,calc(100dvh - 48px));border-radius:26px;box-shadow:0 30px 80px rgba(4,33,40,.35);animation:fcIn .3s cubic-bezier(.22,1,.36,1)} }
+  @media(min-width:1000px){ .fcOverlay{background:rgba(6,33,40,.22)} }   /* Karte statt Modal: Seite bleibt lesbar */
+  @keyframes fcUp{from{opacity:.5;transform:translateY(28px)}to{opacity:1;transform:none}}
+  @keyframes fcIn{from{opacity:0;transform:translateY(18px) scale(.98)}to{opacity:1;transform:none}}
+  .fcHead{display:flex;align-items:center;gap:11px;padding:calc(10px + env(safe-area-inset-top,0px)) 12px 10px 16px;background:linear-gradient(160deg,#0e6072,#063540);color:#fff;flex-shrink:0}
+  .fcHBtn{width:40px;height:40px;border-radius:12px;border:none;background:rgba(255,255,255,.13);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;padding:0;-webkit-tap-highlight-color:transparent}
+  .fcHBtn:active{background:rgba(255,255,255,.26)}
+  .fcBody{position:relative;flex:1;min-height:0;display:flex;flex-direction:column}
+  #finn_scroll{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;padding:14px 14px 12px;display:flex;flex-direction:column;gap:10px}
+  .fcMsg{display:flex;gap:8px;align-items:flex-start;max-width:88%;animation:fiUp .22s cubic-bezier(.22,1,.36,1)}
+  .fcMsg.me{align-self:flex-end;max-width:84%}
+  .fcAva{width:28px;height:28px;border-radius:50%;overflow:hidden;flex-shrink:0;background:#0a3d4a;margin-top:2px}
+  .fcAva img{width:100%;height:100%;display:block}
+  .fcB{min-width:0;padding:11px 14px;font-size:15px;line-height:1.5;color:var(--text);background:var(--surface);border-radius:18px 18px 18px 5px;box-shadow:0 2px 10px rgba(4,33,40,.06);overflow-wrap:anywhere}
+  .fcMsg.me .fcB{background:var(--teal);color:#fff;border-radius:18px 18px 5px 18px;box-shadow:none;white-space:pre-wrap}
+  /* „fail", nicht „err": die globale .err-Klasse (rote Hinweisfläche) darf hier nicht greifen. */
+  .fcMsg.fail{max-width:100%}
+  .fcMsg.fail .fcB{border:1.5px solid var(--err-bg)}
+  .fcErrLbl{display:flex;align-items:center;gap:6px;font-size:11.5px;font-weight:800;color:var(--err-fg);margin-bottom:5px}
+  .fcActs{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+  .fcAct{display:inline-flex;align-items:center;gap:6px;min-height:38px;border:none;border-radius:11px;background:var(--teal);color:#fff;font-size:13px;font-weight:800;padding:0 13px;cursor:pointer;font-family:inherit}
+  .fcAct.ghost{background:var(--surface-2);color:var(--teal-ink)}
+  .fcAct:active{transform:scale(.97)}
+  .fcDots{display:inline-flex;gap:4px;align-items:center;height:22px}
+  .fcDots i{width:7px;height:7px;border-radius:50%;background:var(--text-soft);animation:fcBounce 1.1s ease-in-out infinite}
+  .fcDots i:nth-child(2){animation-delay:.15s}.fcDots i:nth-child(3){animation-delay:.3s}
+  @keyframes fcBounce{0%,80%,100%{transform:translateY(0);opacity:.4}40%{transform:translateY(-5px);opacity:1}}
+  /* Leerer Chat: Begrüßung + Vorschläge (statt einer vorgetäuschten Nachricht) */
+  .fcHello{padding:12px 4px 4px;animation:fiUp .25s cubic-bezier(.22,1,.36,1)}
+  .fcHelloAva{width:56px;height:56px;border-radius:18px;background:linear-gradient(150deg,#12879c,#0a4958);display:flex;align-items:center;justify-content:center;box-shadow:0 10px 24px rgba(14,96,114,.25)}
+  .fcLbl{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--text-soft);margin:22px 0 8px}
+  .fcSugg{width:100%;display:flex;align-items:center;gap:11px;text-align:left;min-height:50px;padding:11px 14px;border:none;border-radius:16px;background:var(--surface);color:var(--text);font-size:14.5px;font-weight:700;line-height:1.35;cursor:pointer;font-family:inherit;box-shadow:0 2px 10px rgba(4,33,40,.06);transition:transform .12s}
+  .fcSugg:active{transform:scale(.985)}
+  .fcSugg svg{flex-shrink:0}
+  .fcSugg span{flex:1;min-width:0}
+  .fcChips{display:flex;gap:8px;overflow-x:auto;margin:0 -18px;padding:2px 18px 4px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+  .fcChips::-webkit-scrollbar{display:none}
+  .fcChip{flex:0 0 auto;min-height:40px;border:1.5px solid var(--border);background:var(--surface);color:var(--teal-ink);border-radius:20px;font-size:13px;font-weight:700;padding:0 14px;cursor:pointer;white-space:nowrap;font-family:inherit}
+  .fcChip:active{background:var(--surface-2)}
+  .fcMem{background:var(--surface);border-radius:16px;padding:14px 15px;margin-top:16px;box-shadow:0 2px 10px rgba(4,33,40,.06)}
+  /* Eingabe: 16px verhindert das iOS-Zoomen beim Fokus; Senden ≥ 44px Tippfläche */
+  .fcFoot{padding:8px 12px calc(10px + env(safe-area-inset-bottom,0px));border-top:1px solid var(--border);background:var(--surface);flex-shrink:0}
+  .fcRow{display:flex;gap:8px;align-items:flex-end}
+  #finn_q{flex:1;min-height:46px;max-height:120px;border:1.5px solid var(--border);border-radius:23px;padding:12px 16px;font-size:16px;line-height:1.35;resize:none;background:var(--bg);color:var(--text);outline:none;font-family:inherit;transition:height .12s ease,border-color .15s}
+  /* Fokus: Rahmen + weicher Schein statt des globalen 3px-Outlines (der matcht bei Textfeldern
+     immer, auch beim Tippen per Touch, und passt nicht zum runden Feld). Bleibt sichtbar. */
+  #finn_q:focus,#finn_q:focus-visible{outline:none!important;border-color:var(--teal-ink);box-shadow:0 0 0 3px rgba(18,135,156,.16)}
+  #finn_q::placeholder{color:var(--placeholder)}
+  .fcSend{width:46px;height:46px;border-radius:50%;border:none;background:var(--teal);color:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0;cursor:pointer;transition:opacity .15s,transform .15s;-webkit-tap-highlight-color:transparent}
+  .fcSend:disabled{opacity:.38;cursor:default}
+  .fcSend:not(:disabled):active{transform:scale(.92)}
+  .fcNote{display:flex;justify-content:center;align-items:center;gap:2px;margin-top:6px;font-size:11.5px;font-weight:600;color:var(--text-soft);text-align:center;flex-wrap:wrap}
+  .fcNote button{border:none;background:none;padding:6px 5px;color:var(--teal-ink);font-weight:800;font-size:11.5px;cursor:pointer;font-family:inherit}
+  /* „Nach unten"-Pille, wenn im Verlauf hochgescrollt wurde und Neues unten ankommt */
+  .fcDown{position:absolute;left:50%;bottom:12px;transform:translate(-50%,10px);width:40px;height:40px;border-radius:50%;border:none;background:var(--surface);color:var(--teal-ink);box-shadow:0 8px 22px rgba(4,33,40,.22);display:flex;align-items:center;justify-content:center;cursor:pointer;opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:2}
+  .fcDown.on{opacity:1;pointer-events:auto;transform:translate(-50%,0)}
   /* Hintergrund-Seite einfrieren, solange ein Vollbild-Chat offen ist (verhindert Springen) */
   body.chatLock{overflow:hidden}
-  #finn_q,#pf_reply{transition:height .12s ease}
+  #pf_reply{transition:height .12s ease}
   .finnDots{display:inline-block;animation:finnPulse 1.2s ease-in-out infinite}
   @keyframes finnPulse{0%,100%{opacity:.45}50%{opacity:1}}
   @keyframes ernspin{to{transform:rotate(360deg)}}
@@ -813,7 +868,9 @@
     // falls die native Hülle ihn geteilt hat – wird mit abgemeldet.
     try{ if(TOKEN){ var pt=null; try{ pt=localStorage.getItem('fi_push_token')||null; }catch(_e){}
       fetch('/api/member/logout',{method:'POST',keepalive:true,headers:{'Content-Type':'application/json','Authorization':'Bearer '+TOKEN},body:JSON.stringify(pt?{pushToken:pt}:{})}).catch(function(){}); } }catch(e){}
-    TOKEN=null; sessionStorage.removeItem('fi_member_token'); localStorage.removeItem('fi_member_token'); try{ localStorage.removeItem('fi_checkin'); }catch(e){} S.checkedInAt=null; S.ciPopup=null; DATA={profile:null,contract:null,checkins:null,appts:null}; S.screen='login'; S.loginStep='request'; S.challenge=''; S.otp=''; render(); }
+    TOKEN=null; sessionStorage.removeItem('fi_member_token'); localStorage.removeItem('fi_member_token'); try{ localStorage.removeItem('fi_checkin'); }catch(e){} S.checkedInAt=null; S.ciPopup=null; DATA={profile:null,contract:null,checkins:null,appts:null};
+    try{ finnReset(); }catch(e){} S.finnOpen=false;   // FINN-Verlauf gehört zur Sitzung – mit ihr weg
+    S.screen='login'; S.loginStep='request'; S.challenge=''; S.otp=''; render(); }
   function pad2(n){ return (n<10?'0':'')+n; }
   // Logo: normale Funktion (eingeloggt -> Startseite) + versteckter Team-Zugang
   // (5× schnell tippen -> Sicherheitsabfrage -> Team-Backend unter /team).
@@ -1574,7 +1631,9 @@
     var ob=obData(); var q=(ob&&ob.goal)?('?goal='+encodeURIComponent(ob.goal)):'';
     api('/api/member/coach'+q).then(function(d){ if(d&&d.message){ S.finnTip=d.message; if(S.screen==='home'||S.screen==='coach') render(); } }).catch(function(){});
   }
-  function finnScrollBottom(){ setTimeout(function(){ var e=$('finn_scroll'); if(e) e.scrollTop=e.scrollHeight; },30); }
+  // Leerer Chat (Begrüßung + Vorschläge) beginnt OBEN; sobald Nachrichten da sind, unten.
+  function finnAtBottom(){ return !!((S.finnMsgs&&S.finnMsgs.length)||S.finnBusy); }
+  function finnScrollBottom(){ setTimeout(function(){ var e=$('finn_scroll'); if(e) e.scrollTop=finnAtBottom()?e.scrollHeight:0; },30); }
   var FINN_AVA='<div style="width:30px;height:30px;border-radius:50%;overflow:hidden;flex-shrink:0"><img src="/assets/brand/finn-mark.svg" style="width:100%;height:100%;display:block"></div>';
 
   // ===== Vertrags-Assistent (KI-Chat für Pause & Kündigung) =====
@@ -1771,17 +1830,89 @@
     });
     return paras.join('<span style="display:block;height:9px"></span>');
   }
+  // ── FINN-Chat ──
+  // Der Verlauf lebt in S.finnMsgs und überlebt Schließen/Öffnen. Zusätzlich liegt er
+  // in sessionStorage (nur diese Sitzung, max. 12 h, ohne Fehlerblasen): ein Neuladen
+  // der Seite oder ein Wechsel aus der App und zurück nimmt dem Mitglied das Gespräch
+  // nicht weg. Abmelden und „Neues Gespräch" leeren ihn. Bewusst NICHT localStorage –
+  // im Chat können Gesundheitsthemen stehen, die nicht dauerhaft im Browser bleiben sollen.
+  var FINN_STORE='fi_finn_chat', FINN_KEEP=40, FINN_SUB='Dein Coach · rund um die Uhr';
+  function finnPersist(){
+    try{
+      var msgs=(S.finnMsgs||[]).filter(function(m){ return m&&!m.error; }).slice(-FINN_KEEP);
+      if(!msgs.length){ sessionStorage.removeItem(FINN_STORE); return; }
+      sessionStorage.setItem(FINN_STORE, JSON.stringify({t:Date.now(),topic:S.finnTopic||'',msgs:msgs.map(function(m){ return {role:m.role,text:m.text,link:m.link||null}; })}));
+    }catch(e){}
+  }
+  function finnRestore(){
+    try{
+      var raw=sessionStorage.getItem(FINN_STORE); if(!raw) return;
+      var o=JSON.parse(raw);
+      if(!o||!Array.isArray(o.msgs)||(Date.now()-(o.t||0))>12*3600e3){ sessionStorage.removeItem(FINN_STORE); return; }
+      S.finnMsgs=o.msgs.filter(function(m){ return m&&(m.role==='user'||m.role==='assistant')&&typeof m.text==='string'; })
+        .map(function(m){ return {role:m.role,text:m.text.slice(0,4000),link:(m.link&&typeof m.link.screen==='string')?{screen:m.link.screen.slice(0,24),label:String(m.link.label||'Öffnen').slice(0,60)}:null}; })
+        .slice(-FINN_KEEP);
+    }catch(e){}
+  }
+  function finnReset(){ S.finnMsgs=[]; S.finnBusy=false; S.finnTopic=''; try{ sessionStorage.removeItem(FINN_STORE); }catch(e){} }
+  // Senden-Knopf: aus, solange nichts getippt ist oder FINN noch antwortet.
+  function finnSendState(){ var b=$('finn_send'), t=$('finn_q'); if(!b) return; b.disabled=!!S.finnBusy||!(t&&t.value.trim()); }
+  // Kopfzeile ohne Voll-Render nachführen (Untertitel „schreibt …", Knopf „Neues Gespräch").
+  function finnHeadState(){ var s=$('finn_sub'); if(s) s.textContent=S.finnBusy?'schreibt …':FINN_SUB; var n=$('finn_new'); if(n) n.style.display=(S.finnMsgs||[]).length?'':'none'; }
   // Eine Chat-Blase (auch für Teil-Updates ohne Voll-Render genutzt).
   // m.link = { screen, label } -> Button, der den App-Bereich direkt öffnet.
+  // m.error -> Antwort kam nicht an: Blase mit „Nochmal versuchen" / „Ans Team".
   function finnBubbleHtml(m){
     if(m.role==='assistant'){
-      var btn=(m.link&&m.link.screen)?('<div style="margin-top:9px"><button data-act="finnGo" data-arg="'+esc(m.link.screen)+'" style="display:inline-flex;align-items:center;gap:7px;border:none;border-radius:11px;background:'+TEALBG+';color:#fff;font-size:13px;font-weight:800;padding:9px 14px;cursor:pointer;box-shadow:0 4px 12px rgba(10,73,88,.25)">'+esc(m.link.label||'Öffnen')+svg('<path d="M9 18l6-6-6-6"></path>',{c:'#fff',w:2.2,s:14})+'</button></div>'):'';
-      return '<div style="display:flex;gap:9px;align-items:flex-start;max-width:90%">'+FINN_AVA+'<div style="background:var(--surface-2);border-radius:4px 16px 16px 16px;padding:11px 14px;font-size:14px;line-height:1.55;color:var(--text)">'+linkifyHtml(finnFmt(m.text))+btn+'</div></div>';
+      var acts='';
+      if(m.error){
+        acts='<div class="fcActs"><button class="fcAct" data-act="finnRetry">'+svg('<path d="M3 12a9 9 0 1 0 2.6-6.4L3 8"></path><path d="M3 3v5h5"></path>',{c:'#fff',w:2.2,s:14})+'Nochmal versuchen</button><button class="fcAct ghost" data-act="finnToTeam">Ans Team</button></div>';
+      } else if(m.link&&m.link.screen){
+        acts='<div class="fcActs"><button class="fcAct" data-act="finnGo" data-arg="'+esc(m.link.screen)+'">'+esc(m.link.label||'Öffnen')+svg('<path d="M9 18l6-6-6-6"></path>',{c:'#fff',w:2.2,s:14})+'</button></div>';
+      }
+      var lbl=m.error?'<div class="fcErrLbl">'+svg(IC.warn,{c:'var(--err-fg)',w:2,s:13})+'Nicht angekommen</div>':'';
+      return '<div class="fcMsg'+(m.error?' fail':'')+'"><div class="fcAva"><img src="/assets/brand/finn-mark.svg" alt=""></div><div class="fcB">'+lbl+linkifyHtml(finnFmt(m.text))+acts+'</div></div>';
     }
-    return '<div style="display:flex;justify-content:flex-end"><div style="background:'+TEALBG+';color:#fff;border-radius:16px 4px 16px 16px;padding:10px 13px;font-size:14px;line-height:1.5;max-width:90%;white-space:pre-wrap">'+linkifyMsg(m.text,true)+'</div></div>';
+    return '<div class="fcMsg me"><div class="fcB">'+linkifyMsg(m.text,true)+'</div></div>';
   }
   function finnThinkingHtml(){
-    return '<div id="finn_think" style="display:flex;gap:9px;align-items:center">'+FINN_AVA+'<div style="background:var(--surface-2);border-radius:14px;padding:11px 14px;font-size:13px;color:var(--text-soft);font-weight:600"><span class="finnDots">FINN denkt nach …</span></div></div>';
+    return '<div id="finn_think" class="fcMsg" aria-label="FINN schreibt"><div class="fcAva"><img src="/assets/brand/finn-mark.svg" alt=""></div><div class="fcB"><span class="fcDots"><i></i><i></i><i></i></span></div></div>';
+  }
+  // Frage an FINN – EIN Weg für Tippen, Vorschlag, Schnellfrage und „Nochmal versuchen".
+  // Teil-Update statt Voll-Render: Tastatur & Fokus bleiben erhalten. opts.resend wiederholt
+  // die letzte Frage, ohne sie erneut in den Verlauf zu schreiben.
+  function finnAsk(q, opts){
+    opts=opts||{};
+    if(S.finnBusy) return;
+    q=String(q||'').trim(); if(!q) return;
+    S.finnMsgs=(S.finnMsgs||[]).filter(function(m){ return !m.error; });   // Fehlerblasen gehören nicht in den Verlauf
+    if(!opts.resend) S.finnMsgs.push({role:'user',text:q});
+    S.finnBusy=true; S.finnStick=true; finnPersist();
+    var sc=$('finn_scroll'), t=$('finn_q');
+    if(sc){
+      var hello=$('finn_hello'); if(hello) hello.remove();
+      var errs=sc.querySelectorAll('.fcMsg.fail'); for(var i=0;i<errs.length;i++) errs[i].remove();
+      sc.insertAdjacentHTML('beforeend', (opts.resend?'':finnBubbleHtml({role:'user',text:q}))+finnThinkingHtml());
+      if(t&&!opts.resend){ t.value=''; t.style.height=''; t.focus(); }
+      finnSendState(); finnHeadState(); finnScrollBottom();
+    } else { if(t) t.value=''; render(); finnScrollBottom(); }
+    function receive(text,link,isErr){
+      if(!TOKEN) return;   // Sitzung ist inzwischen weg (401 -> logout)
+      S.finnBusy=false; var msg={role:'assistant',text:text,link:link||null}; if(isErr) msg.error=true; S.finnMsgs.push(msg); finnPersist();
+      var th=$('finn_think'), sc2=$('finn_scroll');
+      if(sc2){ if(th) th.remove(); sc2.insertAdjacentHTML('beforeend', finnBubbleHtml(msg)); finnSendState(); finnHeadState(); finnScrollBottom(); }
+      else if(S.finnOpen){ render(); finnScrollBottom(); }
+    }
+    if(navigator.onLine===false){ receive('Du bist gerade offline. Sobald du wieder Netz hast, versuch es nochmal.',null,true); return; }
+    var hist=S.finnMsgs.slice(0,-1).map(function(m){ return {role:m.role,text:m.text}; });
+    api('/api/member/coach',{method:'POST',timeoutMs:60000,body:JSON.stringify({question:q,history:hist,topic:S.finnTopic||''})}).then(function(d){
+      if(d&&d.ok&&d.answer) receive(d.answer, d.link);
+      else if(d&&d.error==='rate_limited') receive(d.message||'Kurz durchatmen – versuch es gleich nochmal.');
+      else receive((d&&d.message)||'Da komme ich gerade nicht weiter.',null,true);
+    }).catch(function(e){
+      if(!TOKEN) return;
+      receive((e&&e.name==='AbortError')?'Das dauert gerade zu lange. Versuch es gleich nochmal.':'Keine Verbindung. Prüf dein Netz und versuch es nochmal.',null,true);
+    });
   }
   // Schlanke „Frag FINN"-Zeile für Ernährung/Training – öffnet den FINN-Chat mit Themen-Kontext.
   function finnAskRow(topic){
@@ -1791,45 +1922,59 @@
       '<span style="flex:1;min-width:0"><span style="display:block;font-size:13.5px;font-weight:900">'+label+'</span><span style="display:block;font-size:11.5px;font-weight:600;color:#cfe8ec;margin-top:1px">Frag einfach – FINN antwortet sofort.</span></span>'+
       svg('<path d="M9 6l6 6-6 6"></path>',{c:'rgba(255,255,255,.85)',w:2.2,s:16})+'</button>';
   }
+  // Leerer Chat: Begrüßung, drei Vorschläge (je Zweck der App einer) und – nur im
+  // allgemeinen FINN – die Schnell-Links in die Self-Service-Bereiche. Verschwindet
+  // mit der ersten Nachricht (finnAsk entfernt #finn_hello ohne Voll-Render).
+  function finnHelloHtml(){
+    var topic=S.finnTopic||'';
+    var nm=(DATA.profile&&DATA.profile.firstName)||'';
+    var spark='<path d="M12 3l1.8 4.9L18.7 9.7l-4.9 1.8L12 16.4l-1.8-4.9L5.3 9.7l4.9-1.8L12 3z"></path>';
+    var sugg=(topic==='ernaehrung')?[[spark,'Wie viel Eiweiß brauche ich?'],[spark,'Passt das zu meinem Ziel?'],[spark,'Esse ich heute genug?']]
+      :(topic==='training')?[[spark,'Wie oft diese Übung?'],[spark,'Wie ist die richtige Technik?'],[spark,'Was tun bei Muskelkater?']]
+      :[[IC.doc,'Wie lange läuft mein Vertrag noch?'],[IC.cal,'Welchen Termin sollte ich buchen?'],[spark,'Wie läuft es bei mir gerade?']];
+    var txt=(topic==='ernaehrung')?'Frag mich alles rund um deine Ernährung – Kalorien, Eiweiß, Rezepte, dein Tagesziel. Ich kenne deine Werte.'
+      :(topic==='training')?'Frag mich alles rund um dein Training – Übungen an unseren Geräten, wie oft, richtige Technik.'
+      :'Ich bin FINN, dein Coach im Fit-Inn. Frag mich zu deinem Vertrag, zu Terminen oder zu deinem Training – ich antworte sofort und bringe dich direkt hin.';
+    // Einmalige Einwilligungs-Frage zu Beginn: Darf FINN sich Dinge merken? (nur bis das Mitglied entschieden hat)
+    var memAsk=(DATA.finnMem && !DATA.finnMem.decided)?'<div class="fcMem"><div style="font-size:14px;font-weight:900;color:var(--text)">Darf ich mir Dinge über dich merken?</div><div style="font-size:13px;font-weight:500;color:var(--text-muted);line-height:1.5;margin-top:5px">Dann berücksichtige ich dein Ziel, deine Vorlieben und Einschränkungen über Gespräche hinweg – nur für dich, jederzeit in den Einstellungen löschbar. Keine sensiblen Gesundheitsdiagnosen.</div><div style="display:flex;gap:8px;margin-top:12px">'+
+      '<button data-act="finnMemDecide" data-arg="yes"'+(S.finnMemBusy?' disabled':'')+' style="flex:1;min-height:42px;border:none;border-radius:11px;background:'+TEALBG+';color:#fff;font-weight:800;font-size:13px;padding:10px;cursor:pointer;font-family:inherit">Ja, gern merken</button>'+
+      '<button data-act="finnMemDecide" data-arg="no"'+(S.finnMemBusy?' disabled':'')+' style="flex:1;min-height:42px;border:1.5px solid var(--border);border-radius:11px;background:var(--surface);color:var(--text-muted);font-weight:800;font-size:13px;padding:10px;cursor:pointer;font-family:inherit">Nein danke</button>'+
+      '</div></div>':'';
+    var quick=topic?'':'<div class="fcLbl">Direkt erledigen</div><div class="fcChips">'+[['appt','Termin buchen'],['contract','Vertrag'],['account','Beitrag'],['data','Meine Daten'],['referral','Freund werben']].map(function(q){ return '<button class="fcChip" data-act="finnGo" data-arg="'+q[0]+'">'+esc(q[1])+'</button>'; }).join('')+'</div>';
+    return '<div id="finn_hello" class="fcHello">'+
+      '<div class="fcHelloAva"><img src="/assets/brand/finn-mark.svg" alt="" style="width:34px;height:34px"></div>'+
+      '<div style="font-size:22px;font-weight:900;letter-spacing:-.4px;color:var(--text);margin-top:14px">Hi'+(nm?' '+esc(nm):'')+' 👋</div>'+
+      '<div style="font-size:14.5px;font-weight:500;color:var(--text-muted);line-height:1.5;margin-top:6px">'+esc(txt)+'</div>'+
+      memAsk+
+      '<div class="fcLbl">Frag zum Beispiel</div><div style="display:flex;flex-direction:column;gap:8px">'+sugg.map(function(s){ return '<button class="fcSugg" data-act="finnSuggest" data-arg="'+esc(s[1])+'">'+svg(s[0],{c:'var(--teal-ink)',w:1.9,s:19})+'<span>'+esc(s[1])+'</span>'+svg('<path d="M9 6l6 6-6 6"></path>',{c:'var(--text-soft)',w:2.2,s:15})+'</button>'; }).join('')+'</div>'+
+      quick+
+    '</div>';
+  }
   function finnOverlayHtml(){
     var msgs=S.finnMsgs||[];
     var bubbles=msgs.map(finnBubbleHtml).join('');
     var thinking=S.finnBusy?finnThinkingHtml():'';
-    var topic=S.finnTopic||'';
-    var sugg=(topic==='ernaehrung')?['Wie viel Eiweiß brauche ich?','Passt das zu meinem Ziel?','Iss ich heute genug?']
-      :(topic==='training')?['Wie oft diese Übung?','Wie ist die richtige Technik?','Was tun bei Muskelkater?']
-      :['Wie oft sollte ich trainieren?','Wann ist es am leersten?','Wie buche ich einen Termin?'];
-    var helloTxt=(topic==='ernaehrung')?'Hi! 👋 Ich bin FINN, dein Fit-Inn Coach. Frag mich alles rund um deine Ernährung – Kalorien, Eiweiß, Rezepte, dein Tagesziel. Ich kenne deine Werte und helfe dir konkret weiter.'
-      :(topic==='training')?'Hi! 👋 Ich bin FINN, dein Fit-Inn Coach. Frag mich alles rund um dein Training – Übungen an unseren Geräten, wie oft, richtige Technik, dein Plan. Ich helfe dir konkret weiter.'
-      :'Hi! 👋 Ich bin FINN, dein Fit-Inn Coach – deine erste Anlaufstelle. Sag mir einfach, was du brauchst: Termin, Adresse ändern, Beitrag, Vertrag, Öffnungszeiten … Ich bringe dich direkt hin oder beantworte deine Frage. Komme ich nicht weiter, hole ich dir einen Mitarbeiter dazu.';
-    // Einmalige Einwilligungs-Frage zu Beginn: Darf FINN sich Dinge merken? (nur bis das Mitglied entschieden hat)
-    var memAsk=(DATA.finnMem && !DATA.finnMem.decided)?'<div style="background:var(--surface-2);border:1.5px solid var(--border);border-radius:16px;padding:14px 15px;margin:2px 4px 4px"><div style="font-size:13.5px;font-weight:900;color:var(--text)">Darf ich mir Dinge über dich merken?</div><div style="font-size:12.5px;font-weight:500;color:var(--text-2);line-height:1.5;margin-top:5px">Dann berücksichtige ich dein Ziel, deine Vorlieben und Einschränkungen über Gespräche hinweg – nur für dich, jederzeit in den Einstellungen löschbar. Keine sensiblen Gesundheitsdiagnosen.</div><div style="display:flex;gap:8px;margin-top:12px">'+
-      '<button data-act="finnMemDecide" data-arg="yes"'+(S.finnMemBusy?' disabled':'')+' style="flex:1;border:none;border-radius:11px;background:'+TEALBG+';color:#fff;font-weight:800;font-size:13px;padding:11px;cursor:pointer">Ja, gern merken</button>'+
-      '<button data-act="finnMemDecide" data-arg="no"'+(S.finnMemBusy?' disabled':'')+' style="flex:1;border:1.5px solid var(--border);border-radius:11px;background:var(--surface);color:var(--text-muted);font-weight:800;font-size:13px;padding:11px;cursor:pointer">Nein danke</button>'+
-      '</div></div>':'';
-    return '<div class="ciOverlay" data-act="closeFinn" style="align-items:stretch;justify-content:center;padding:0">'+
-      '<div class="finnPanel" data-act="noop">'+
-        '<div style="display:flex;align-items:center;gap:12px;padding:calc(14px + env(safe-area-inset-top,0px)) 18px 14px;background:linear-gradient(160deg,#0e6072,#063540);color:#fff">'+
-          '<div style="width:40px;height:40px;border-radius:50%;overflow:hidden;flex-shrink:0;background:#0a3d4a"><img src="/assets/brand/finn-mark.svg" style="width:100%;height:100%;display:block"></div>'+
-          '<div style="flex:1;min-width:0"><div style="font-size:16px;font-weight:900">FINN</div><div style="font-size:12px;color:#aed0d6;font-weight:600">KI · erste Anlaufstelle · rund um die Uhr</div></div>'+
-          '<button data-act="closeFinn" aria-label="Schließen" style="width:36px;height:36px;border-radius:11px;border:none;background:rgba(255,255,255,.14);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer">'+svg('<path d="M18 6L6 18M6 6l12 12"></path>',{c:'#fff',w:2.2,s:18})+'</button>'+
+    return '<div class="ciOverlay fcOverlay" data-act="closeFinn" style="align-items:stretch;justify-content:center;padding:0">'+
+      '<div class="finnPanel" data-act="noop" role="dialog" aria-modal="true" aria-label="Chat mit FINN">'+
+        '<div class="fcHead">'+
+          '<div class="fcAva" style="width:38px;height:38px;margin:0"><img src="/assets/brand/finn-mark.svg" alt=""></div>'+
+          '<div style="flex:1;min-width:0"><div style="font-size:16px;font-weight:900;letter-spacing:-.2px;line-height:1.15">FINN</div><div id="finn_sub" style="font-size:12px;color:#aed0d6;font-weight:600;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+(S.finnBusy?'schreibt …':FINN_SUB)+'</div></div>'+
+          '<button id="finn_new" class="fcHBtn" data-act="finnNew" aria-label="Neues Gespräch" title="Neues Gespräch"'+(msgs.length?'':' style="display:none"')+'>'+svg('<path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path>',{c:'#fff',w:2,s:18})+'</button>'+
+          '<button class="fcHBtn" data-act="closeFinn" aria-label="Schließen">'+svg('<path d="M18 6L6 18M6 6l12 12"></path>',{c:'#fff',w:2.2,s:18})+'</button>'+
         '</div>'+
-        '<div id="finn_scroll" style="flex:1;overflow-y:auto;padding:16px 16px 8px;display:flex;flex-direction:column;gap:12px">'+
-          (msgs.length?'':'<div id="finn_hello" style="display:flex;gap:9px;align-items:flex-start;padding:6px 4px 4px">'+FINN_AVA+'<div style="background:var(--surface-2);border-radius:4px 16px 16px 16px;padding:12px 15px;font-size:14px;line-height:1.55;color:var(--text)">'+esc(helloTxt)+'</div></div>'+memAsk)+
-          bubbles+thinking+
+        '<div class="fcBody">'+
+          '<div id="finn_scroll" role="log" aria-live="polite">'+(msgs.length?'':finnHelloHtml())+bubbles+thinking+'</div>'+
+          '<button id="finn_down" class="fcDown" data-act="finnDown" aria-label="Zur neuesten Nachricht">'+svg('<path d="M12 5v14M5 12l7 7 7-7"></path>',{c:'var(--teal-ink)',w:2.2,s:18})+'</button>'+
         '</div>'+
-        // Direkt erledigen: Schnell-Links in alle Self-Service-Bereiche (ein Tipp bringt dich hin).
-        // Nur im allgemeinen FINN (ohne Themen-Kontext) – in Ernährung/Training lenken Self-Service-Links ab.
-        ((msgs.length||topic)?'':'<div style="display:flex;gap:8px;overflow-x:auto;padding:0 16px 8px">'+[['appt','Termin buchen'],['data','Adresse & Daten'],['account','Beitrag'],['contract','Vertrag & Kündigung'],['referral','Freund werben']].map(function(q){return '<button data-act="finnGo" data-arg="'+q[0]+'" style="flex:0 0 auto;border:none;background:linear-gradient(150deg,#0e6072,#063540);color:#fff;border-radius:20px;font-size:12.5px;font-weight:800;padding:9px 14px;cursor:pointer;white-space:nowrap">'+esc(q[1])+'</button>';}).join('')+'</div>')+
-        (msgs.length?'':'<div id="finn_chips" style="display:flex;gap:8px;overflow-x:auto;padding:0 16px 10px">'+sugg.map(function(s){return '<button data-act="finnSuggest" data-arg="'+esc(s)+'" style="flex:0 0 auto;border:1.5px solid var(--border);background:var(--surface);color:var(--teal-ink);border-radius:20px;font-size:12.5px;font-weight:700;padding:8px 13px;cursor:pointer;white-space:nowrap">'+esc(s)+'</button>';}).join('')+'</div>')+
-        '<div style="padding:0 16px 8px"><button data-act="finnToTeam" style="width:100%;display:flex;align-items:center;justify-content:center;gap:8px;border:none;border-radius:11px;background:var(--surface-2);color:var(--teal-ink);font-weight:800;font-size:13px;padding:11px;cursor:pointer">'+svg('<path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8z"></path><path d="M4 21c0-3.3 3.6-6 8-6s8 2.7 8 6"></path>',{c:'var(--teal-ink)',w:1.9,s:16})+'Hat das nicht geholfen? An Mitarbeiter übergeben</button></div>'+
-        '<div style="display:flex;gap:9px;align-items:flex-end;padding:10px 14px calc(12px + env(safe-area-inset-bottom,0px));border-top:1px solid var(--border);background:var(--surface)">'+
-          '<textarea id="finn_q" rows="1" enterkeyhint="send" placeholder="Frag den Assistenten …" style="flex:1;border:1.5px solid var(--border);border-radius:18px;padding:11px 14px;font-size:15px;resize:none;max-height:120px;background:var(--surface);color:var(--text);outline:none"></textarea>'+
-          '<button id="finn_send" data-act="finnSend" '+(S.finnBusy?'disabled ':'')+'style="width:46px;height:46px;border-radius:50%;border:none;background:'+TEALBG+';color:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0;cursor:pointer;opacity:'+(S.finnBusy?'.55':'1')+'">'+svg('<path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"></path>',{c:'#fff',w:2,s:20})+'</button>'+
+        '<div class="fcFoot"><div class="fcRow">'+
+          '<textarea id="finn_q" rows="1" enterkeyhint="send" autocapitalize="sentences" autocomplete="off" placeholder="Schreib FINN …" aria-label="Nachricht an FINN"></textarea>'+
+          '<button id="finn_send" class="fcSend" data-act="finnSend" aria-label="Senden" disabled>'+svg('<path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"></path>',{c:'#fff',w:2,s:20})+'</button>'+
         '</div>'+
+        '<div class="fcNote">FINN ist eine KI und kann sich irren ·<button data-act="finnToTeam">Lieber ans Team?</button></div></div>'+
       '</div>'+
     '</div>';
   }
+  if(TOKEN) finnRestore();
   // ── App-Download-Banner (nur im Browser, nie in der installierten App) ──
   // Store-Links kommen aus /api/app-info (Vercel-Env). iOS zeigt das Banner,
   // sobald APP_STORE_URL_IOS gesetzt ist; Android automatisch, sobald
@@ -11558,7 +11703,9 @@
   // Nur wenn gerade keine Tour läuft und das erste Ziel wirklich im DOM steht
   // (Ernährung z. B. erst nach abgeschlossenem Modul-Setup, nicht im Setup-Screen).
   function maybeStartSectionTour(){
-    if(tourActive() || !TOKEN || S.screen==='login' || !obDone() || isFormer()) return;
+    // Nicht über einem offenen FINN-Chat starten: die Ziele liegen dahinter (die Tour kommt
+    // beim nächsten Zeichnen ohne Chat).
+    if(tourActive() || !TOKEN || S.screen==='login' || !obDone() || isFormer() || S.finnOpen) return;
     var key=S.screen; if(key!=='tag'&&key!=='ern'&&key!=='coach') return;
     var seen='1'; try{ seen=localStorage.getItem(tourFlagName(key)); }catch(e){}
     if(seen) return;
@@ -11725,7 +11872,7 @@
     // Chat-Verläufe: unten angedockt bleiben (neueste Nachricht), außer der Nutzer hat
     // bewusst hochgescrollt (Stick-Flags pflegt der Scroll-Listener).
     var sc1=$('pf_scroll'); if(sc1){ sc1.scrollTop=(S.pfStick===false && keepScroll.pf_scroll!=null)?keepScroll.pf_scroll:sc1.scrollHeight; }
-    var sc2=$('finn_scroll'); if(sc2){ sc2.scrollTop=(S.finnStick===false && keepScroll.finn_scroll!=null)?keepScroll.finn_scroll:sc2.scrollHeight; }
+    var sc2=$('finn_scroll'); if(sc2){ sc2.scrollTop=!finnAtBottom()?0:((S.finnStick===false && keepScroll.finn_scroll!=null)?keepScroll.finn_scroll:sc2.scrollHeight); finnSendState(); }
     renderChrome();
     // Live-Kamera im Erfassen-Sheet: auf dem Kamera-Tab automatisch starten/anheften, sonst freigeben.
     if(S.screen==='ern'&&S.ernCapture&&S.ernCapTab==='cam'){ if(!ernCamActive&&!S.ernCamErr&&!S.ernPhotoBusy){ try{ window.__ernStartCam&&window.__ernStartCam(); }catch(e){} } else { ernAttachCam(); } }
@@ -12127,9 +12274,11 @@
         else { try{ alert('Ernährungs-Modul: Testmodus AUS.'); }catch(e){} if(S.screen==='ern'||S.screen==='social'){ nav('home'); } else { render(); } }
       }
     },
-    openFinn:function(topic){ S.finnTopic=(topic==='ernaehrung'||topic==='training')?topic:''; if(DATA.finnMem==null) loadFinnMem(); setS({finnOpen:true}); setTimeout(function(){ var t=$('finn_q'); if(t) t.focus(); finnScrollBottom(); },60); },
+    // Auf Touch-Geräten KEIN automatischer Fokus: die Tastatur würde sofort die
+    // Begrüßung und die Vorschläge verdecken. Am Schreibtisch darf der Cursor blinken.
+    openFinn:function(topic){ S.finnTopic=(topic==='ernaehrung'||topic==='training')?topic:''; if(DATA.finnMem==null) loadFinnMem(); S.finnStick=true; setS({finnOpen:true}); setTimeout(function(){ var t=$('finn_q'); if(t&&!upfitTouch()) t.focus(); finnScrollBottom(); },60); },
     // Schnellfrage aus dem Coach-Hub: FINN-Chat öffnen und die Frage direkt senden.
-    finnQuick:function(q){ S.finnTopic=''; setS({finnOpen:true}); setTimeout(function(){ var t=$('finn_q'); if(t){ t.value=q||''; } ACT.finnSend(); },140); },
+    finnQuick:function(q){ S.finnTopic=''; if(DATA.finnMem==null) loadFinnMem(); S.finnStick=true; setS({finnOpen:true}); setTimeout(function(){ finnAsk(q); },140); },
     finnRefresh:function(){ S.finnTip=''; S.finnTipLoaded=false; loadFinnTip(); render(); },
     ciToggle:function(){ if(S.screen!=='home') nav('home'); if(S.checkedInAt){ if(ACT.doCheckout) ACT.doCheckout(); } else { if(ACT.doCheckin) ACT.doCheckin(); } },
     obGoal:function(a){ setS({obGoal:a}); },
@@ -12241,33 +12390,17 @@
     vaSend:function(){ window.__vaSend&&window.__vaSend(); },
     vaChip:function(a){ if(a==='↻ Nochmal versuchen'){ vaRetry(); return; } if(a==='Mit Team sprechen'||a==='Team schreiben'){ vaExecute({type:'contact_team'}); return; } if(a==='Zum Pause-Formular'||a==='Zum Kündigungs-Formular'){ vaToClassic(); return; } vaSendText(a); },
     vaAct:function(a){ var m=S.vaMsgs[parseInt(a,10)]; if(m&&m.action) vaExecute(m.action); },
-    finnSuggest:function(a){ var t=$('finn_q'); if(t) t.value=a; ACT.finnSend(); },
-    finnSend:function(){ if(S.finnBusy) return; var t=$('finn_q'); var q=t?(t.value||'').trim():''; if(!q) return;
-      S.finnMsgs.push({role:'user',text:q}); S.finnBusy=true; S.finnStick=true;
-      var sc=$('finn_scroll'), sb=$('finn_send');
-      if(sc){
-        // Teil-Update statt Voll-Render: Tastatur & Fokus bleiben erhalten.
-        var hello=$('finn_hello'); if(hello) hello.remove();
-        var chips=$('finn_chips'); if(chips) chips.remove();
-        sc.insertAdjacentHTML('beforeend', finnBubbleHtml({role:'user',text:q})+finnThinkingHtml());
-        if(t){ t.value=''; t.style.height='auto'; t.focus(); }
-        if(sb){ sb.disabled=true; sb.style.opacity='.55'; }
-        finnScrollBottom();
-      } else { if(t) t.value=''; render(); finnScrollBottom(); }
-      function receive(text,link){
-        S.finnBusy=false; var msg={role:'assistant',text:text,link:link||null}; S.finnMsgs.push(msg);
-        var th=$('finn_think'), sc2=$('finn_scroll'), sb2=$('finn_send');
-        if(sc2){ if(th) th.remove(); sc2.insertAdjacentHTML('beforeend', finnBubbleHtml(msg)); if(sb2){ sb2.disabled=false; sb2.style.opacity='1'; } finnScrollBottom(); }
-        else if(S.finnOpen){ render(); finnScrollBottom(); }
-      }
-      var hist=S.finnMsgs.slice(0,-1).map(function(m){ return {role:m.role,text:m.text}; });
-      api('/api/member/coach',{method:'POST',body:JSON.stringify({question:q,history:hist,topic:S.finnTopic||''})}).then(function(d){
-        if(d&&d.ok&&d.answer) receive(d.answer, d.link);
-        else receive((d&&d.message)||'Da komme ich gerade nicht weiter. Magst du es unserem Team schreiben?');
-      }).catch(function(){ receive('Verbindung gerade nicht möglich. Versuch es gleich nochmal.'); }); },
+    finnSuggest:function(a){ finnAsk(a); },
+    finnSend:function(){ var t=$('finn_q'); finnAsk(t?t.value:''); },
+    // „Nochmal versuchen" unter einer Fehlerblase: dieselbe Frage erneut, ohne sie zu doppeln.
+    finnRetry:function(){ var last=''; for(var i=S.finnMsgs.length-1;i>=0;i--){ if(S.finnMsgs[i].role==='user'){ last=S.finnMsgs[i].text; break; } } if(last) finnAsk(last,{resend:true}); },
+    finnNew:function(){ if(S.finnBusy) return; finnReset(); S.finnStick=true; render(); },
+    finnDown:function(){ S.finnStick=true; var e=$('finn_scroll'); if(e){ try{ e.scrollTo({top:e.scrollHeight,behavior:'smooth'}); }catch(_){ e.scrollTop=e.scrollHeight; } } var d=$('finn_down'); if(d) d.classList.remove('on'); },
     // Button unter einer FINN-Antwort: Chat schließen + Ziel-Seite in der App öffnen.
+    // Die Liste muss zu SCREENS in api/member/coach.js passen – sonst zeigt FINN einen
+    // Knopf, der nichts tut.
     finnGo:function(a){
-      var allowed=['home','data','contract','account','appt','checkins','postfach','help','settings','card','fort','referral'];
+      var allowed=['home','data','contract','account','appt','checkins','postfach','help','settings','card','fort','referral','inbody','figur'];
       if(ernTabOn()) allowed.push('ern');
       if(allowed.indexOf(a)<0) return;
       setS({finnOpen:false}); nav(a);
@@ -13007,7 +13140,7 @@
         try{ localStorage.setItem('fi_member_token',TOKEN); localStorage.setItem('fi_remember','1'); }catch(e){}
         return loadMe().then(function(){ loadAppts(); loadPlan(); loadPlanAgg(); loadInbox(); loadPrefs(); if(DATA.checkins===null) loadCheckins(); S.busy=false; nav(magicGo()); if(NFC){ NFC=null; nfcArrive(); } });
       }).catch(function(){
-        TOKEN=null; try{ localStorage.removeItem('fi_member_token'); sessionStorage.removeItem('fi_member_token'); }catch(e){}
+        TOKEN=null; try{ localStorage.removeItem('fi_member_token'); sessionStorage.removeItem('fi_member_token'); }catch(e){} try{ finnReset(); }catch(e){}
         if(window.FitInnNative && FitInnNative.onLogout) FitInnNative.onLogout();
         setS({busy:false,loginErr:'Anmeldung per Face ID nicht möglich. Bitte mit Code anmelden.'});
       });
@@ -13621,7 +13754,7 @@
   function autoGrow(t){ t.style.height='auto'; t.style.height=Math.min(t.scrollHeight,120)+'px'; }
   document.addEventListener('input',function(e){
     var t=e.target; if(!t||!t.id) return;
-    if(t.id==='finn_q'){ autoGrow(t); }
+    if(t.id==='finn_q'){ autoGrow(t); finnSendState(); }
     if(t.id==='pf_reply'){ S.pfDraft=t.value; autoGrow(t); }
     if(t.id==='ern_log'||t.id==='ern_ask'){ autoGrow(t); }
     if(t.id==='soc_msg'||t.id==='soc_rmsg'){ autoGrow(t); }
@@ -13645,8 +13778,10 @@
     var t=e.target; if(!t||!t.id) return;
     var nearBottom=(t.scrollHeight-t.scrollTop-t.clientHeight)<80;
     if(t.id==='pf_scroll') S.pfStick=nearBottom;
-    if(t.id==='finn_scroll') S.finnStick=nearBottom;
+    if(t.id==='finn_scroll'){ S.finnStick=nearBottom; var d=$('finn_down'); if(d) d.classList.toggle('on', !nearBottom && (t.scrollHeight-t.clientHeight)>160); }
   },true);
+  // Escape schließt den FINN-Chat (Schreibtisch; auf dem Handy übernimmt das der System-Zurück).
+  document.addEventListener('keydown',function(e){ if(e.key==='Escape'&&S.finnOpen&&ACT&&ACT.closeFinn){ e.preventDefault(); ACT.closeFinn(); } });
   // ── Wischgesten: Zurück (vom linken Rand → rechts) + Pull-to-Refresh (oben → unten) ──
   // Nutzt die vorhandene Zurück-Hierarchie (APPBAR_ROOTS/APPBAR_BACK); Refresh leert die
   // Caches des aktuellen Screens und lässt die Loader frisch ziehen. Nur eingeloggt (app-in).
@@ -13859,7 +13994,7 @@
     });
     // iOS' automatisches Hochschieben der Seite rückgängig machen.
     if(vv&&top>0){ try{ window.scrollTo(0,0); }catch(e){} }
-    var sc=$('finn_scroll'); if(sc&&S.finnStick!==false) sc.scrollTop=sc.scrollHeight;
+    var sc=$('finn_scroll'); if(sc&&S.finnStick!==false&&finnAtBottom()) sc.scrollTop=sc.scrollHeight;
     var sc2=$('pf_scroll'); if(sc2&&S.pfStick!==false) sc2.scrollTop=sc2.scrollHeight;
   }
   if(window.visualViewport){
