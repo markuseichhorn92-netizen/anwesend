@@ -418,6 +418,43 @@ Der Chat mit FINN (`finnOverlayHtml`, `finnAsk`, Klassen `fc…` in
   Auto-Fokus, Escape schließt.
 - Die Bereichs-Tour startet nicht über einem offenen Chat.
 
+## Design-Durchgang Mitglieder-App (10. September 2026)
+
+Nach einem Screenshot-Audit aller Hauptbildschirme (Handy 390/375 px, dunkel,
+Schreibtisch) in drei Etappen umgesetzt. Leitlinie: `.claude/skills/fitinn-design`.
+
+**Startseite** (`tests/startseite.test.js`)
+- App-Leiste zeigt nur das Datum („Donnerstag, 10.9."); die Begrüßung steht
+  einmal im Hero. Der Hero (`homeContextHero`) ist ein `<div>`, keine Karte
+  aus einem einzigen `<button>` mehr (verschachtelte Knöpfe sind ungültig).
+- Hero trägt „Einchecken" (`data-hero="checkin"`, grün bei `S.atStudio`) und
+  den nächsten Termin (`heroApptRow`). `checkinBtn()` zeigt nur noch die
+  Timer-Karte, wenn eingecheckt.
+- Standort-Frage als schmale Zeile `geoAskRow()` unter dem Hero.
+- FINN-Tipp des Tages nur auf der Startseite (`homeCoachHero`, ohne Pillen);
+  `coachTipStrip()` bleibt nur im Trainingsmodul.
+
+**Konsistenz** (`tests/konsistenz.test.js`)
+- Keine zweite Kopfzeile unter der App-Leiste: Mitgliedskarte und Blog-Liste
+  nutzen `subHeader()`. `backHd()` bleibt nur für Unteransichten (Blog-/
+  Instagram-Beitrag), deren Zurück auf die Liste führt.
+- Suche (`finderSheet`) mit Linien-Icons (`FIND_IC`), nicht mehr Emoji.
+- Rechtsfußzeile (`.legalfoot`) auf dem Handy nur auf Profil, Hilfe und
+  Einstellungen (`body.legalOn`, gesetzt in `renderChrome`).
+- **reCAPTCHA wird nicht mehr global geladen**, sondern per `rcEnsure()` auf dem
+  Vertrags-Screen und im Vertrags-Assistenten (die einzigen Nutzer:
+  Kündigung/Widerruf). `rcToken()` wartet darauf. Der Google-Hinweis
+  (`rcNoteHtml()`) steht genau dort – Google verlangt ihn, wo das Badge
+  ausgeblendet ist und reCAPTCHA läuft. Nicht wieder in den `<head>` holen.
+- Leistentitel „Vertrag" statt „Vertragsverwaltung" (wurde abgeschnitten).
+- Typografie: regelbasierter Pass über die Inline-Stile (Script lag im
+  Scratchpad, nicht im Repo): Uppercase-Labels 900→800, Sekundärtext ≤ 13,5 px
+  800/900→700, sonstige 900 unter 16 px→800. Inline-900 von 716 auf 313
+  Stellen; der Test deckelt bei 400. Neue Flächen: 900 nur für Titel ≥ 16 px
+  und Zahlen.
+- Vertragsdaten waren nie ISO – der Server liefert sie deutsch (`fmtDE`);
+  das ISO-Datum im Audit kam aus Testdaten.
+
 ## Verifikation
 
 Vor dem letzten Deployment wurde ausgeführt:
