@@ -119,10 +119,12 @@ delete process.env.FEATURE_ERN;
   const basis = 'http://127.0.0.1:' + server.address().port;
 
   const b = await chromium.launch({ executablePath: bin });
-  // opts: { upfit, ern, nativ, fensterStub }
+  // opts: { upfit, ern, nativ, fensterStub, schreibtisch }
   const oeffne = async function (opts) {
     opts = opts || {};
-    const c = await b.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+    const c = await b.newContext(opts.schreibtisch
+      ? { viewport: { width: 1280, height: 900 }, hasTouch: false, isMobile: false }
+      : { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
     const p = await c.newPage();
     const fehler = [];
     p.on('pageerror', function (e) { fehler.push(String(e.message)); });
@@ -252,12 +254,35 @@ delete process.env.FEATURE_ERN;
   ok('10e. … ohne Skriptfehler', r.fehler.length === 0, r.fehler.join(' | '));
   await r.c.close();
 
-  // Ohne Huelle: ein neues Fenster, mit derselben Adresse.
+  // Ohne Huelle, am Handy: im SELBEN Tab. Ein neuer Tab hat auf dem Telefon keinen
+  // sichtbaren Rueckweg; die Zurueck-Taste dagegen bringt in die App - und zwar
+  // dorthin, wo das Mitglied war. Upfit wird hier nachgestellt (kein Netz noetig).
   r = await oeffne({ upfit: UPFIT, ern: false, fensterStub: true });
+  await r.p.route((url) => String(url.href).indexOf('https://fit-inn-trier.upfit.io') === 0,
+    (route) => route.fulfill({ status: 200, contentType: 'text/html', body: '<title>Upfit</title><p>Upfit-Portal (nachgestellt)</p>' }));
   await zuErn(r.p);
+  t = await text(r.p);
+  ok('11. Am Handy sagt der Hinweis, wie es zurueckgeht', /„Zurück" bringt dich in die App/.test(t) && /Zurück-Taste bringt dich hierher zurück/.test(t));
+  await klick(r.p, '[data-upfit="hero"] a', 900);
+  ok('11b. Am Handy oeffnet Upfit im selben Tab - kein neues Fenster', r.p.url() === UPFIT, r.p.url());
+  const keinFenster = await r.p.evaluate(function () { return window.__geoeffnet || null; }).catch(function () { return null; });
+  ok('11c. … und window.open wurde dafuer nicht bemueht', keinFenster === null, JSON.stringify(keinFenster));
+  await r.p.goBack({ waitUntil: 'domcontentloaded' });
+  await r.p.waitForTimeout(1600);
+  l = await links(r.p);
+  ok('11d. „Zurueck" landet wieder auf dem Ernaehrungs-Tab', r.p.url().indexOf(basis) === 0 && l.some((x) => x.wo === 'hero'), r.p.url() + ' ' + JSON.stringify(l));
+  const marker = await r.p.evaluate(function () { try { return sessionStorage.getItem('fi_upfit_back'); } catch (e) { return 'fehler'; } });
+  ok('11e. … und der Merker ist danach verbraucht', marker === null, String(marker));
+  await r.c.close();
+
+  // Am Schreibtisch dagegen ein neuer Tab - dort ist das der gewohnte Weg, die App bleibt offen.
+  r = await oeffne({ upfit: UPFIT, ern: false, fensterStub: true, schreibtisch: true });
+  await zuErn(r.p);
+  t = await text(r.p);
+  ok('12. Am Schreibtisch sagt der Hinweis „neuer Tab"', /Öffnet sich in einem neuen Tab/.test(t));
   await klick(r.p, '[data-upfit="hero"] a', 400);
   const web = await r.p.evaluate(function () { return window.__geoeffnet || null; });
-  ok('11. Im Web oeffnet sich ein neues Fenster mit genau der Adresse', !!web && web.fenster === true && web.url === UPFIT && web.target === '_blank', JSON.stringify(web));
+  ok('12b. … und genau das passiert, mit genau der Adresse', !!web && web.fenster === true && web.url === UPFIT && web.target === '_blank' && r.p.url().indexOf(basis) === 0, JSON.stringify(web));
   await r.c.close();
 
   // ── D. Abgeschaltet: nirgends eine Spur ──
@@ -266,20 +291,20 @@ delete process.env.FEATURE_ERN;
     return { tab: !!document.querySelector('.btmnav [data-act="nav"][data-arg="ern"]'), termine: !!document.querySelector('.btmnav [data-act="nav"][data-arg="appt"]'), upfit: document.querySelectorAll('[data-upfit]').length };
   });
   t = await text(r.p);
-  ok('12. Ohne Partner UND ohne Modul rueckt „Termine" in die Leiste', ohne.tab === false && ohne.termine === true && ohne.upfit === 0, JSON.stringify(ohne));
-  ok('12b. … und Upfit steht nirgends im sichtbaren Text', !/Upfit/.test(t));
+  ok('13. Ohne Partner UND ohne Modul rueckt „Termine" in die Leiste', ohne.tab === false && ohne.termine === true && ohne.upfit === 0, JSON.stringify(ohne));
+  ok('13b. … und Upfit steht nirgends im sichtbaren Text', !/Upfit/.test(t));
   await r.c.close();
 
   r = await oeffne({ upfit: null, ern: true });
   await zuErn(r.p);
   await klick(r.p, '[data-act="ernOpenCapture"]', 400);
-  ok('12c. Ohne Partneradresse erscheint Upfit auch im eigenen Modul nirgends', (await links(r.p)).length === 0);
+  ok('13c. Ohne Partneradresse erscheint Upfit auch im eigenen Modul nirgends', (await links(r.p)).length === 0);
   await r.c.close();
 
   // ── E. Ein manipulierter Cache darf keinen javascript:-Link erzeugen ──
   r = await oeffne({ upfit: 'javascript:alert(1)', ern: false });
   const js = await r.p.evaluate(function () { return { tab: !!document.querySelector('.btmnav [data-act="nav"][data-arg="ern"]'), links: document.querySelectorAll('[data-upfit]').length }; });
-  ok('13. Ein javascript:-Wert im Cache wird weder Link noch Tab', js.tab === false && js.links === 0, JSON.stringify(js));
+  ok('14. Ein javascript:-Wert im Cache wird weder Link noch Tab', js.tab === false && js.links === 0, JSON.stringify(js));
   await r.c.close();
 
   await b.close();

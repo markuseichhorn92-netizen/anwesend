@@ -3607,6 +3607,8 @@
   // eingebetteten WebViews. Im Web ein neuer Tab. Jeder Fehler fällt auf den
   // normalen Link zurück – der <a href> bleibt immer darunter.
   var upfitBrowser=null;
+  function upfitInApp(){ try{ return !!(window.Capacitor&&window.Capacitor.isNativePlatform&&window.Capacitor.isNativePlatform()); }catch(e){ return false; } }
+  function upfitTouch(){ try{ return !(window.matchMedia&&matchMedia('(hover:hover) and (pointer:fine)').matches); }catch(e){ return true; } }
   function upfitOpen(){
     var u=upfitUrl(); if(!u) return;
     try{
@@ -3616,8 +3618,24 @@
         if(upfitBrowser&&typeof upfitBrowser.open==='function'){ upfitBrowser.open({url:u,toolbarColor:'#0a4958',presentationStyle:'fullscreen'}); return; }
       }
     }catch(e){}
+    // Handy-Browser: im SELBEN Tab. Ein neuer Tab hat auf dem Telefon keinen
+    // sichtbaren Rückweg – die Zurück-Taste dagegen bringt in die App, und als
+    // Home-Bildschirm-App zeigen iOS und Android dafür von selbst „Fertig"/„✕".
+    // Vorher merken, wo das Mitglied war: magicGo() liest das beim Zurückkommen.
+    if(upfitTouch()){
+      try{ sessionStorage.setItem('fi_upfit_back', S.screen==='ern'?'ern':'home'); }catch(e){}
+      try{ location.assign(u); return; }catch(e){}
+    }
+    // Schreibtisch: ein neuer Tab ist dort der gewohnte Weg, die App bleibt offen.
     try{ if(window.open(u,'_blank','noopener')) return; }catch(e){}
     try{ location.href=u; }catch(e){}
+  }
+  // Wie öffnet sich Upfit auf DIESEM Gerät – und wie kommt man zurück? Der Satz
+  // steht unter jedem Upfit-Knopf, damit die Frage gar nicht erst aufkommt.
+  function upfitOpenHint(){
+    if(upfitInApp()) return 'Öffnet sich in der App · „Fertig" bringt dich zurück';
+    if(upfitTouch()) return 'Öffnet sich im Browser · „Zurück" bringt dich in die App';
+    return 'Öffnet sich in einem neuen Tab';
   }
   // Frische Server-Flags übernehmen (von loadAppInfo aufgerufen): cachen +
   // laufende Sitzung aktualisieren, wenn sich die Sichtbarkeit geändert hat.
@@ -6094,7 +6112,7 @@
       '<div style="flex:1;min-width:0"><div style="font-size:10.5px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.4px">Partner</div><div style="font-size:15.5px;font-weight:900;color:var(--text);margin-top:2px;letter-spacing:-.2px">Ernährung protokollieren mit Upfit</div></div></div>'+
       '<div style="font-size:12.5px;font-weight:600;color:var(--text-muted);line-height:1.5;margin-top:12px">Tagebuch, Rezepte, Einkaufsliste und KI-Assistentin – im Upfit-Portal von Fit-Inn Trier. Einmal registrieren, dann direkt loslegen.</div>'+
       '<a '+href+' style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:14px;padding:14px;border-radius:14px;background:'+ERN_G+';color:#fff;font-weight:900;font-size:14.5px;text-decoration:none">Upfit öffnen'+svg(UPFIT_EXT,{c:'#fff',w:2.2,s:17})+'</a>'+
-      '<div style="font-size:11.5px;font-weight:600;color:var(--text-muted);text-align:center;margin-top:9px">Öffnet sich im Browser · Fit-Inn übermittelt keine Daten an Upfit</div></div>';
+      '<div style="font-size:11.5px;font-weight:600;color:var(--text-muted);text-align:center;margin-top:9px;line-height:1.5">'+upfitOpenHint()+'<br>Fit-Inn übermittelt keine Daten an Upfit</div></div>';
   }
   // Der Tab „Ernährung" ohne eigenes Modul: NUR der Partner. Kein Ring, kein
   // Erfassen, kein Coach – nichts, was aussieht, als würde die App selbst
@@ -6104,16 +6122,16 @@
     var u=upfitUrl(); if(!u) return '';
     var href='href="'+esc(u)+'" target="_blank" rel="noopener" data-act="upfitOpen"';
     var CARD='background:var(--surface);border-radius:20px;box-shadow:0 12px 30px rgba(4,33,40,.09);padding:20px;margin-bottom:14px';
-    var inApp=false; try{ inApp=!!(window.Capacitor&&window.Capacitor.isNativePlatform&&window.Capacitor.isNativePlatform()); }catch(e){}
+    var inApp=upfitInApp(), touch=upfitTouch();
     var hero='<div data-upfit="hero" style="'+CARD+'">'+
       '<div style="display:flex;align-items:center;gap:14px"><span style="width:52px;height:52px;border-radius:16px;background:rgba(224,140,83,.14);display:flex;align-items:center;justify-content:center;flex-shrink:0">'+svg(UPFIT_ICON,{c:'#E08C53',w:2,s:26})+'</span>'+
       '<div style="flex:1;min-width:0"><div style="font-size:10.5px;font-weight:800;color:var(--text-soft);text-transform:uppercase;letter-spacing:.4px">Partner</div><div style="font-size:21px;font-weight:900;color:var(--text);letter-spacing:-.4px;line-height:1.15;margin-top:2px">Ernährung mit Upfit</div></div></div>'+
       '<div style="font-size:14px;font-weight:500;color:var(--text-2);line-height:1.55;margin-top:14px">Tagebuch, Rezepte, Einkaufsliste und KI-Assistentin – im Upfit-Portal von Fit-Inn Trier. Einmal registrieren, dann direkt loslegen.</div>'+
       '<a '+href+' style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:16px;padding:15px;border-radius:14px;background:'+ERN_G+';color:#fff;font-weight:900;font-size:15px;text-decoration:none">Upfit öffnen'+svg(UPFIT_EXT,{c:'#fff',w:2.2,s:17})+'</a>'+
-      '<div style="font-size:11.5px;font-weight:600;color:var(--text-muted);text-align:center;margin-top:10px">'+(inApp?'Öffnet sich in der App':'Öffnet sich im Browser')+' · Fit-Inn übermittelt keine Daten an Upfit</div></div>';
+      '<div style="font-size:11.5px;font-weight:600;color:var(--text-muted);text-align:center;margin-top:10px;line-height:1.5">'+upfitOpenHint()+'<br>Fit-Inn übermittelt keine Daten an Upfit</div></div>';
     var step=function(n,t,s){ return '<div style="display:flex;gap:13px;align-items:flex-start;padding:11px 0;border-top:1px solid var(--border)"><span style="width:28px;height:28px;border-radius:9px;background:var(--surface-2);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:900;color:var(--ern-acc);flex-shrink:0">'+n+'</span><div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:800;color:var(--text)">'+t+'</div><div style="font-size:12.5px;font-weight:600;color:var(--text-muted);margin-top:2px;line-height:1.45">'+s+'</div></div></div>'; };
     var steps='<div style="'+CARD+'"><div style="font-size:15px;font-weight:900;color:var(--text);margin-bottom:6px">So geht’s</div>'+
-      step(1,'Upfit öffnen','Über den Knopf oben – '+(inApp?'direkt in der App':'im Browser')+'.')+
+      step(1,'Upfit öffnen','Über den Knopf oben – '+(inApp?'direkt in der App. „Fertig" oben bringt dich hierher zurück.':(touch?'im Browser. Die Zurück-Taste bringt dich hierher zurück.':'in einem neuen Tab; dieser hier bleibt offen.')))+
       step(2,'Kostenlos registrieren','Mit E-Mail, Apple oder Google. Dein Konto liegt bei Upfit.')+
       step(3,'Loslegen','Mahlzeiten eintragen, Rezepte entdecken, Einkaufsliste führen.')+'</div>';
     var daten='<div style="'+CARD+'"><div style="font-size:15px;font-weight:900;color:var(--text);display:flex;align-items:center;gap:8px">'+svg('<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>',{c:'#0a4958',w:2,s:18})+'Deine Daten</div>'+
@@ -14011,7 +14029,12 @@
   // Teilbare Pfad-Deep-Links: mitglieder.fit-inn-trier.de/vertrag, /termine, /trainingspartner …
   // (Der Server liefert für jeden Pfad die Mitglieder-Seite; hier wird der Pfad auf den Screen gemappt.)
   var PATHGO={ 'vertrag':'contract','meine-daten':'data','beitragskonto':'account','termine':'appt','check-in':'checkin','besuche':'checkins','freunde':'referral','freunde-werben':'referral','postfach':'postfach','hilfe':'help','einstellungen':'settings','profil':'profil','mitgliedskarte':'card','fortschritt':'fort','ernaehrung':'ern','coach':'coach','mein-tag':'tag','mein-abo':'abo','widerruf':'recht','impressum':'impressum','datenschutz':'datenschutz','agb':'agb','blog':'blog','trainingspartner':'social' };
-  function magicGo(){ try{ var sp=new URL(window.location.href).searchParams; var e=sp.get('ern'); if(e==='coach') return 'coach'; if(e) return 'ern'; var k=sp.get('kochen'); if(k){ try{ window.__potJoin=String(k).toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,6); }catch(_e){} return 'ern'; } var b=sp.get('buddy'); if(b&&SOCIAL_ON){ try{ window.__socBuddy=String(b).toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,6); }catch(_e){} return 'social'; } var g=sp.get('go'); if(g&&TITLES[g]){ if(g==='social'&&SOCIAL_ON){ try{ var c=sp.get('chat'); var r=sp.get('room'); if(c) window.__socOpenChat=String(c); else if(r) window.__socOpenRoom=String(r); }catch(_e){} } return g; }
+  function magicGo(){ try{
+    // Zurück von Upfit (Handy-Browser, selber Tab): dort weitermachen, wo das
+    // Mitglied war – upfitOpen() hat es sich gemerkt. Einmal lesen, dann löschen.
+    var back=null; try{ back=sessionStorage.getItem('fi_upfit_back'); if(back) sessionStorage.removeItem('fi_upfit_back'); }catch(_e){}
+    if(back==='ern'&&ernTabOn()) return 'ern';
+    var sp=new URL(window.location.href).searchParams; var e=sp.get('ern'); if(e==='coach') return 'coach'; if(e) return 'ern'; var k=sp.get('kochen'); if(k){ try{ window.__potJoin=String(k).toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,6); }catch(_e){} return 'ern'; } var b=sp.get('buddy'); if(b&&SOCIAL_ON){ try{ window.__socBuddy=String(b).toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,6); }catch(_e){} return 'social'; } var g=sp.get('go'); if(g&&TITLES[g]){ if(g==='social'&&SOCIAL_ON){ try{ var c=sp.get('chat'); var r=sp.get('room'); if(c) window.__socOpenChat=String(c); else if(r) window.__socOpenRoom=String(r); }catch(_e){} } return g; }
     // Kein Query-Ziel? Dann den Pfad-Slug auswerten (z. B. „/vertrag").
     var seg=(window.location.pathname||'').replace(/^\/+|\/+$/g,'').toLowerCase(); if(seg==='mitglieder') seg=''; if(seg && PATHGO[seg] && TITLES[PATHGO[seg]]) return PATHGO[seg];
   }catch(e){} return 'home'; }

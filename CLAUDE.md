@@ -279,13 +279,23 @@ Tab „Ernährung" zeigt nur noch Upfit.** Entscheidung des Betreibers.
   den Partner-Screen → „Frühere Ernährungsdaten … exportieren oder löschen"
   weiterhin erreichbar (`ernDataScreen`, ohne Premium-Karte). Das muss so
   bleiben – Art. 15/17 DSGVO.
-- **In-App-Browser:** `upfitOpen()` nutzt in der nativen App `@capacitor/browser`
-  (SFSafariViewController / Chrome Custom Tabs) – bewusst kein eingebettetes
-  WebView, weil Google seinen Login dort sperrt und Upfit „Mit Google
-  registrieren" anbietet. Plugin steht in `nativeapp/package.json`; ein
-  `npm install && npx cap sync` und ein neuer Store-Build sind nötig. Ältere
-  Builds fallen auf den Systembrowser zurück, das Web auf einen neuen Tab. Der
-  `<a href>` bleibt immer darunter.
+- **Öffnen und Zurück** (`upfitOpen()`, drei Wege, je Gerät):
+  - Native App: `@capacitor/browser` (SFSafariViewController / Chrome Custom
+    Tabs) – „Fertig"/„✕" oben ist der Rückweg. Bewusst kein eingebettetes
+    WebView, weil Google seinen Login dort sperrt und Upfit „Mit Google
+    registrieren" anbietet. Plugin steht in `nativeapp/package.json`; ein
+    `npm install && npx cap sync` und ein neuer Store-Build sind nötig. Ältere
+    Builds fallen auf den nächsten Weg zurück.
+  - Handy-Browser (Touch, kein `hover:hover`): **im selben Tab**
+    (`location.assign`). Ein neuer Tab hätte auf dem Telefon keinen sichtbaren
+    Rückweg; die Zurück-Taste dagegen bringt in die App, und als
+    Home-Bildschirm-App zeigen iOS und Android von selbst „Fertig"/„✕". Vorher
+    merkt sich `upfitOpen()` den Screen in `sessionStorage` (`fi_upfit_back`);
+    `magicGo()` liest den Merker beim Start einmal und löscht ihn – so landet
+    das Mitglied wieder auf „Ernährung", nicht auf der Startseite.
+  - Schreibtisch: neuer Tab (`window.open`, `noopener`), die App bleibt offen.
+  - `upfitOpenHint()` schreibt den passenden Satz unter jeden Upfit-Knopf.
+    Der `<a href target="_blank">` bleibt immer darunter (Fallback ohne JS).
 - Mit `FEATURE_ERN=1` erscheinen die vier Link-out-Stellen im eigenen Modul
   (`upfitCard()`: „Heute"-Karte, Erfassen-Zeile, Onboarding-Panel, leeres
   Tagesprotokoll) – beides nebeneinander.
