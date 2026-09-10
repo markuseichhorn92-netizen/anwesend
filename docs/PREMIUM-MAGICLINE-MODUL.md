@@ -1,5 +1,11 @@
 # Coach Premium über ein Magicline-Zusatzmodul (SEPA)
 
+> **Stand 10. September 2026: Das Abo-Modell ist abgeschaltet** (`FEATURE_ABO`
+> nicht gesetzt). FINN und alle Coaching-Funktionen sind inklusive; das Modul wird
+> in der App nicht mehr angeboten. Bestehende Buchungen bleiben in der
+> Vertragsverwaltung sichtbar und **kündbar** – und sollten in Magicline geprüft
+> werden, damit niemand für etwas zahlt, das es gratis gibt.
+
 **Coach Premium** wird als **Magicline-Zusatzmodul** („App Premium") verkauft – das ist
 der **einzige** Weg, Premium zu erwerben. Die Abrechnung läuft über den bestehenden
 **Mitgliedsvertrag per SEPA-Lastschrift** – kein separater Zahlungsdienstleister, keine

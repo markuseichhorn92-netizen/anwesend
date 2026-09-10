@@ -48,7 +48,9 @@ module.exports = async function handler(req, res) {
     const id = url.searchParams.get('id');
     if (!id) { res.statusCode = 400; return res.end(JSON.stringify({ ok: false, error: 'missing_id' })); }
     const ent = await Ent.getEntitlement(id);
-    res.statusCode = 200; return res.end(JSON.stringify(Object.assign({ id: String(id) }, tierPayload(ent))));
+    // aboOff: das Team sieht, dass es nichts freizuschalten gibt – und ob dieses
+    // Mitglied das Zusatzmodul noch gebucht hat (dann in Magicline kündigen).
+    res.statusCode = 200; return res.end(JSON.stringify(Object.assign({ id: String(id), aboOff: !require('../../lib/features').aboOn() }, tierPayload(ent))));
   }
 
   if (req.method !== 'POST') { res.statusCode = 405; return res.end(JSON.stringify({ ok: false, error: 'method_not_allowed' })); }

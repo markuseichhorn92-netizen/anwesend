@@ -86,6 +86,7 @@ const SCREENS = {
   appt: 'Termine', checkins: 'Check-in-Verlauf', fort: 'Fortschritt',
   card: 'Mitgliedskarte', referral: 'Freunde werben', postfach: 'Postfach',
   help: 'Hilfe & Kontakt', settings: 'Einstellungen', home: 'Übersicht',
+  inbody: 'InBody-Analyse', figur: 'Figur-Check', ern: 'Ernährung (Upfit)',
 };
 function extractLink(answer) {
   let link = null;
@@ -132,9 +133,11 @@ module.exports = async function handler(req, res) {
   if (!m) { res.statusCode = 404; return res.end(JSON.stringify({ ok: false, error: 'not_found' })); }
 
   // ── Tagesimpuls für die Übersicht ──
+  // Derselbe Live-Block wie im Chat (Vertrag, Termine, Besuche, Beitragskonto):
+  // so kann der Impuls auf den nächsten Termin oder die Besuchspause eingehen.
   if (req.method === 'GET') {
-    let ct = null; try { ct = await M.getContract(sess.id); } catch (e) {}
-    const statsLine = 'Tarif ' + ((ct && ct.rateName) || 'aktiv') + (ct && ct.active === false ? ' (ehemalig)' : ' (aktiv)');
+    let det = { text: '' }; try { det = await memberDetails(sess.id); } catch (e) {}
+    const statsLine = det.text || 'aktives Mitglied';
     let goal = ''; try { goal = new URL(req.url, 'http://x').searchParams.get('goal') || ''; } catch (e) {}
     if (AI.hasAI && (await M.rateLimit('coach-tip:' + sess.id, 30, 3600))) {
       const r = await AI.coachTip(statsLine, goal);
@@ -246,3 +249,6 @@ module.exports = async function handler(req, res) {
 
   res.statusCode = 405; return res.end(JSON.stringify({ ok: false, error: 'method_not_allowed' }));
 };
+// Derselbe Live-Block für die Coach-Erkenntnis (api/member/coach-insights) –
+// eine Quelle, damit Chat und Analyse dasselbe über das Mitglied wissen.
+module.exports.memberDetails = memberDetails;

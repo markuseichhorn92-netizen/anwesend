@@ -32,6 +32,7 @@ async function run() {
   let j = JSON.parse(r.body);
   ok('1. ohne Env: eigenes Ernährungsmodul AUS, Social/Demo AUS', r.statusCode === 200
     && j.features && j.features.ern === false && j.features.social === false && j.features.demo === false);
+  ok('1b. … und das Abo-Modell ist AUS (FINN für alle inklusive)', j.features.abo === false);
 
   process.env.FEATURE_ERN = '1'; process.env.FEATURE_SOCIAL = 'true'; process.env.FEATURE_DEMO = '0';
   r = res0(); fresh('api/app-info.js')({}, r); j = JSON.parse(r.body);

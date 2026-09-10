@@ -38,7 +38,7 @@ module.exports = function handler(req, res) {
     ios: clean(process.env.APP_STORE_URL_IOS),
     android: clean(process.env.APP_STORE_URL_ANDROID),
     features: { ern: Features.ernOn(), social: flag('FEATURE_SOCIAL'), demo: flag('FEATURE_DEMO'),
-      train: flag('FEATURE_TRAINING'), vital: flag('FEATURE_VITAL') },
+      train: Features.trainOn(), vital: flag('FEATURE_VITAL'), abo: Features.aboOn() },
     partner: { upfit: Features.upfitUrl() },
   }));
 };

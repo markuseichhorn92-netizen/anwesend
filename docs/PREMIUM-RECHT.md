@@ -1,5 +1,11 @@
 # Ernährungs-Premium — Rechtstexte (ENTWURF zur anwaltlichen Prüfung)
 
+> **Stand 10. September 2026: Das Abo-Modell ist abgeschaltet** (`FEATURE_ABO`
+> nicht gesetzt). FINN und alle Coaching-Funktionen sind für jedes Mitglied
+> inklusive; in der App gibt es weder Premium-Kauf noch Widerrufs-Screen noch den
+> Rechtstext „Coach Premium & Zahlung". Dieses Dokument bleibt als Vorlage für den
+> Fall, dass das Modell wieder eingeschaltet wird.
+
 > **Wichtig:** Dieses Dokument ist ein **Entwurf/Vorlage** für die Erweiterung eurer
 > Website-AGB und -Datenschutzerklärung um das **Premium-Angebot** (Ernährungs-
 > Premium, Abrechnung als **Magicline-Zusatzmodul per SEPA-Lastschrift über den

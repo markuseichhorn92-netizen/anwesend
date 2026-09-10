@@ -1,4 +1,5 @@
 'use strict';
+process.env.FEATURE_ABO = '1';   // Dieser Test prueft das seit 10.9.2026 abgeschaltete Abo-Modell - ohne Schalter waere alles inklusive.
 // publicTier(): adaptive Upgrade-Copy-Felder everPremium / trialEligible.
 //   1. kein Entitlement (nie getestet) -> trialEligible:true, everPremium:false
 //   2. laufender Trial                  -> premium:true, trialing:true, everPremium:true, trialEligible:false

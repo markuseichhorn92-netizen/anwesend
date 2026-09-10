@@ -313,14 +313,56 @@ Tab „Ernährung" zeigt nur noch Upfit.** Entscheidung des Betreibers.
 
 Offen und bewusst NICHT technisch gelöst:
 
-- **Coach Premium** (Magicline-Zusatzmodul, SEPA) war das Premium des
-  Ernährungsmoduls. Wer es gebucht hat, zahlt jetzt für etwas Unsichtbares.
-  In Magicline prüfen, wer das Modul hat, und mit den Betroffenen klären.
 - Das **Team-Backend** behält seine Ernährungswerkzeuge (Mitglieder-Ernährung,
-  Phasenpläne, Premium-Freischaltung) – sie zeigen Daten, die es weiterhin gibt,
-  aber das Mitglied sieht in der App nichts davon.
-- Hilfe-Artikel und FINN-Texte, die das eigene Tagebuch beschreiben, sind
-  Inhalte, keine Schalter – bei Gelegenheit durchsehen.
+  Phasenpläne) – sie zeigen Daten, die es weiterhin gibt, aber das Mitglied
+  sieht in der App nichts davon.
+- Hilfe-Artikel, die das eigene Tagebuch beschreiben, sind Inhalte, keine
+  Schalter – bei Gelegenheit durchsehen.
+
+## Abo-Modell aus, Coach für alle (10. September 2026)
+
+Entscheidung des Betreibers: Die App ist Mitgliederverwaltung, Terminbuchung
+und Coaching – ohne Abo. `FEATURE_ABO` ist **opt-in** (`=1` schaltet das alte
+Modell wieder ein); ohne Variable gilt:
+
+- `lib/entitlements.js`: `isPremium()` ist `true`, `publicTier()` liefert
+  `status:'inklusive'`. Das ist der eine Hebel – alle zwölf Endpunkte mit
+  Premium-Sperre (InBody, Figur-Check, Vital, Training, Ernährung, …) hängen
+  daran, keiner musste angefasst werden. `nutriquota` deckelt nichts mehr.
+- `lib/mlPremium.reconcile()` tut nichts; `api/member/modules.js` bietet das
+  Premium-Modul nicht mehr an (`premiumOffers` leer, `book` → `abo_off`). Eine
+  **bestehende Buchung bleibt sichtbar und kündbar** – das Mitglied zahlt sonst
+  für etwas, das es gratis gibt. Die Team-Karte „Ernährungs-Premium" sagt nur
+  noch, ob ein Mitglied das Modul noch gebucht hat (→ in Magicline kündigen).
+- Client: `ABO_ON`. Screens „Mein Abo", „Widerruf & Rechtliches",
+  „FINN-Nutzung" sind gesperrt (nav + Router), aus der Suche und den Footern
+  genommen; der Rechtstext „Coach Premium & Zahlung" entfällt.
+- `api/member/coach-insights.js` ist **ohne** Kontingent – der Coach ist frei,
+  unabhängig vom Schalter.
+
+**Der Coach ist auf die drei Zwecke umgebaut:**
+
+- FINNs Persona (`lib/ai.js`, `coachSystemParts`): drei Aufgaben –
+  Mitgliedschaft, Termine, Coaching. Ernährung → Partner Upfit, Training →
+  Technogym-App, „kein Abo, kein Premium". Die Sätze hängen an denselben
+  Schaltern (`FEATURE_ERN`, `FEATURE_TRAINING`, `FEATURE_ABO`) wie die App –
+  schaltet jemand ein Modul zurück, redet FINN wieder darüber. Neue
+  Link-Ziele: `inbody`, `figur`, `ern` (Upfit-Screen).
+- Tagesimpuls (`coachTip`) und Analyse (`coachInsight`) sprechen über Besuche,
+  Termine, Ziel und Körperwerte – der Live-Block (Vertrag, Termine, Besuche)
+  kommt vom Server (`coach.js` exportiert `memberDetails`), vom Client nur
+  Ziel, Wunsch-Trainingstage und die zuletzt gemessenen Werte.
+- Coach-Tab (`scrCoach`): eine Seite statt fünf Reiter – FINN-Hub, „Deine
+  Woche" (Besuche, Rhythmus, nächster Termin), „Nächste Schritte"
+  (Stoffwechselanalyse, Einführungstraining/Trainingsplanung, Figur-Check,
+  InBody), „Partner" (Technogym, Upfit).
+- WhatsApp-Agent: `log_workout` nur mit Training, `log_weight_checkin` nur mit
+  Ernährung; die Begrüßung nennt Vertrag, Termine, Coaching.
+- `tests/abo-aus.test.js`, `tests/feature-flags.test.js`
+
+**Coach Premium in Magicline:** Wer das Zusatzmodul gebucht hat, sieht es
+weiter in der Vertragsverwaltung und kann kündigen – von selbst passiert das
+nicht. In Magicline prüfen, wer es hat, und die Buchungen beenden.
 
 ## Verifikation
 

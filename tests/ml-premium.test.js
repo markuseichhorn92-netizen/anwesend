@@ -1,4 +1,5 @@
 'use strict';
+process.env.FEATURE_ABO = '1';   // Dieser Test prueft das seit 10.9.2026 abgeschaltete Abo-Modell - ohne Schalter waere alles inklusive.
 // Premium übers Magicline-Zusatzmodul (SEPA, Teil der Mitgliedschaft) – der einzige
 // Premium-Kaufweg der App. Spiegelt die ECHTE Open-API-Realität: es gibt KEINEN Endpunkt,
 // der gebuchte Module auflistet – nur Buchen (liefert die Vertrags-ID), Lesen per ID und

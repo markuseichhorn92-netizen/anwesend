@@ -30,8 +30,12 @@ ok('1c. … und zusaetzlich im Bildschirm-Verteiler',
 ok('2. Beide haengen am Server-Schalter, nicht an einem Geraete-Trick',
   /var TRAIN_ON = srvFlags\(\)\.train === true;/.test(html) && /var VITAL_ON = srvFlags\(\)\.vital === true;/.test(html));
 const appInfo = fs.readFileSync(path.join(ROOT, 'api/app-info.js'), 'utf8');
+// Der Trainings-Schalter wohnt seit September 2026 in lib/features.js (eine Quelle
+// für Server und Client) – opt-in bleibt er: nur exakt "1" schaltet ein.
+const featuresLib = fs.readFileSync(path.join(ROOT, 'lib/features.js'), 'utf8');
 ok('2b. Der Server liefert die Schalter aus',
-  /train: flag\('FEATURE_TRAINING'\)/.test(appInfo) && /vital: flag\('FEATURE_VITAL'\)/.test(appInfo));
+  /train: Features\.trainOn\(\)/.test(appInfo) && /vital: flag\('FEATURE_VITAL'\)/.test(appInfo)
+  && /function trainOn\(\) \{ return process\.env\.FEATURE_TRAINING === '1'; \}/.test(featuresLib));
 ok('2c. … und beide sind ohne Zutun AUS (opt-in)',
   /const flag = \(name\) => process\.env\[name\] === '1';/.test(appInfo));
 

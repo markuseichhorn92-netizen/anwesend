@@ -84,10 +84,14 @@ module.exports = async function handler(req, res) {
     // Ernährungs-Premium (Zusatzmodul, SEPA) für die Vertragsverwaltung. Die Karte
     // erscheint, sobald das Modul TATSÄCHLICH gebucht ist (per gemerkter Vertrags-ID
     // verifiziert), damit es sichtbar & kündbar bleibt.
+    // Ohne Abo-Modell: eine BESTEHENDE Buchung bleibt sichtbar und kündbar (das
+    // Mitglied zahlt sonst für etwas, das es längst gratis gibt) – aber es wird
+    // nichts mehr angeboten und nichts mehr abgeglichen.
+    const aboOn = require('../../lib/features').aboOn();
     let premium = null;
     if (Mod.premiumConfigured()) {
       try {
-        await MlPremium.reconcile(sess.id);   // Premium-Status frisch halten
+        if (aboOn) await MlPremium.reconcile(sess.id);   // Premium-Status frisch halten
         const st = await MlPremium.moduleStatus(sess.id);   // Modul gebucht? (id-basiert)
         if (st && st.booked) {
           const nowMs = Date.now();
@@ -105,7 +109,7 @@ module.exports = async function handler(req, res) {
     const notPrem = (list, key) => (list || []).filter((x) => !Mod.isPremiumModule(x && x[key]));
     // Alle buchbaren Premium-Varianten (Monat / Jahr / Vital-Starter) – der Kauf-Screen
     // kann daraus die Auswahlkarten bauen. premiumOffer bleibt für Abwärtskompatibilität.
-    const premiumOffers = available ? ((r.bookable || []).filter((x) => Mod.isPremiumModule(x && x.id))) : [];
+    const premiumOffers = (available && aboOn) ? ((r.bookable || []).filter((x) => Mod.isPremiumModule(x && x.id))) : [];
     const premiumOffer = premiumOffers[0] || null;
     res.statusCode = 200;
     return res.end(JSON.stringify({
@@ -124,6 +128,12 @@ module.exports = async function handler(req, res) {
   // genau einmal lesen und dann verzweigen.
   if (req.method === 'POST') {
     const body = await M.readBody(req);
+
+    // Ohne Abo-Modell wird das Premium-Modul nicht mehr verkauft – auch nicht über
+    // einen direkt gebauten Request. Kündigen bleibt möglich.
+    if (body.action === 'book' && !require('../../lib/features').aboOn() && Mod.isPremiumModule(body.moduleId)) {
+      res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'abo_off', message: 'Coach Premium gibt es nicht mehr – FINN und alle Coaching-Funktionen sind für dich inklusive.' }));
+    }
 
     // ── Premium-Zusatzmodul kündigen (Ernährungs-Premium über die Mitgliedschaft) ──
     // Die Modul-Vertrags-ID kommt AUS DEM ENTITLEMENT (server-autoritativ), nicht vom

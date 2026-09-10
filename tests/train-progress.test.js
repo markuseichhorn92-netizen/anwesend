@@ -1,4 +1,5 @@
 'use strict';
+process.env.FEATURE_ABO = '1';   // Dieser Test prueft das seit 10.9.2026 abgeschaltete Abo-Modell - ohne Schalter waere alles inklusive.
 // FINN-Auto-Progression (Coach Premium): api/member/training.js action 'progress'.
 //   1. ohne aktiven Plan            -> no_plan
 //   2. mit Plan aber ohne Verlauf   -> no_history

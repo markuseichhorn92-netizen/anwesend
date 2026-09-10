@@ -839,6 +839,7 @@
     // So ist es egal, ob irgendwo noch ein Verweis uebersehen wurde.
     if(!TRAIN_ON && s==='tag') s='home';
     if(!ernTabOn() && s==='ern') s='home';
+    if(!ABO_ON && (s==='abo'||s==='recht'||s==='finnusage')) s='home';   // kein Abo-Modell: die Screens gibt es nicht
     if(!VITAL_ON && s==='morning') s='home';
     // Vital-Check verlassen: laufende BLE-Messung + Timer sauber stoppen (kein Hintergrund-Stream/Save).
     if(S.screen==='morning' && s!=='morning'){ try{ moStopMeasure(); }catch(e){} S.morningPhase='idle'; S.morningLiveBpm=null; S.morningElapsed=0; }
@@ -1272,7 +1273,7 @@
   ];
   function finderSheet(){
     var q=(S.findQ||'').trim().toLowerCase();
-    var avail=FIND_INDEX.filter(function(it){ return (ernTabOn()||it.arg!=='ern') && (TRAIN_ON||it.arg!=='tag') && (VITAL_ON||it.arg!=='morning') && (!isFormer()||FORMER_OK.indexOf(it.arg)>=0); })
+    var avail=FIND_INDEX.filter(function(it){ return (ernTabOn()||it.arg!=='ern') && (TRAIN_ON||it.arg!=='tag') && (VITAL_ON||it.arg!=='morning') && (ABO_ON||(it.arg!=='abo'&&it.arg!=='finnusage'&&it.arg!=='recht')) && (!isFormer()||FORMER_OK.indexOf(it.arg)>=0); })
       .map(function(it){ return (it.arg==='ern'&&!ERN_ON)?Object.assign({},it,{sub:'Bei unserem Partner Upfit',kw:'ernaehrung ernährung essen upfit tagebuch rezepte'}):it; });
     var res=q?avail.filter(function(it){ return (it.label+' '+it.kw).toLowerCase().indexOf(q)>=0; }):avail.filter(function(it){ return it.common; });
     var rows=res.length?res.map(function(it){
@@ -1353,7 +1354,7 @@
     var e = S.loginErr ? '<div class="err" style="margin-top:14px">'+svg(IC.warn,{c:'var(--err-fg)',w:2,s:17})+'<span>'+esc(S.loginErr)+'</span></div>' : '';
     var remember='<label data-act="toggleRemember" style="display:flex;align-items:center;gap:10px;margin-top:18px;cursor:pointer"><input type="checkbox" '+(S.remember?'checked':'')+' tabindex="-1" style="width:18px;height:18px;accent-color:'+TEAL+';pointer-events:none"><span style="font-size:14px;color:var(--text-2);font-weight:600">Angemeldet bleiben</span></label>';
     var legal='<div style="display:flex;flex-wrap:wrap;gap:4px 12px;justify-content:center;margin-top:24px;padding-top:20px;border-top:1px solid #dde4e6">'+
-      [['Impressum','impressum'],['Datenschutz','datenschutz'],['AGB','agb'],['Widerruf','recht']].map(function(l){return '<button data-act="nav" data-arg="'+l[1]+'" style="background:none;border:none;color:var(--text-soft);font-size:12px;font-weight:600;cursor:pointer;padding:0">'+l[0]+'</button>';}).join('')+'</div>';
+      [['Impressum','impressum'],['Datenschutz','datenschutz'],['AGB','agb']].concat(ABO_ON?[['Widerruf','recht']]:[]).map(function(l){return '<button data-act="nav" data-arg="'+l[1]+'" style="background:none;border:none;color:var(--text-soft);font-size:12px;font-weight:600;cursor:pointer;padding:0">'+l[0]+'</button>';}).join('')+'</div>';
 
     var inner;
     if(S.loginStep==='number'){
@@ -1437,7 +1438,7 @@
   // dann automatischer Login + Sprung zur Aktion. Nutzt die Login-Optik.
   function scrActionLogin(){
     var legal='<div style="display:flex;flex-wrap:wrap;gap:4px 12px;justify-content:center;margin-top:24px;padding-top:20px;border-top:1px solid #dde4e6">'+
-      [['Impressum','impressum'],['Datenschutz','datenschutz'],['AGB','agb'],['Widerruf','recht']].map(function(l){return '<button data-act="nav" data-arg="'+l[1]+'" style="background:none;border:none;color:var(--text-soft);font-size:12px;font-weight:600;cursor:pointer;padding:0">'+l[0]+'</button>';}).join('')+'</div>';
+      [['Impressum','impressum'],['Datenschutz','datenschutz'],['AGB','agb']].concat(ABO_ON?[['Widerruf','recht']]:[]).map(function(l){return '<button data-act="nav" data-arg="'+l[1]+'" style="background:none;border:none;color:var(--text-soft);font-size:12px;font-weight:600;cursor:pointer;padding:0">'+l[0]+'</button>';}).join('')+'</div>';
     var brand='<div class="loginBrand">'+
       '<div><img src="/assets/fitinn-logo-white.png" alt="Fit-Inn Trier" style="height:30px;width:auto;display:block"></div>'+
       '<div style="margin-top:22px">'+
@@ -3593,6 +3594,10 @@
   // frei. Zurueck an geht ueber FEATURE_TRAINING=1 bzw. FEATURE_VITAL=1.
   var TRAIN_ON = srvFlags().train === true;
   var VITAL_ON = srvFlags().vital === true;
+  // Abo-Modell (Coach Premium, Kontingente). Seit dem 10. September 2026 AUS:
+  // FINN und alle Coaching-Funktionen sind inklusive. Die Abo-Screens (Mein Abo,
+  // Widerruf, FINN-Nutzung) und der Premium-Rechtstext erscheinen nur mit Schalter.
+  var ABO_ON = srvFlags().abo === true;
   // Partner Upfit: die Adresse kommt vom Server und wird nur als https-Link
   // akzeptiert. Der Cache liegt im localStorage – ein manipulierter Wert dort
   // dürfte nie zu einem javascript:-Link werden, darum die Prüfung auch hier.
@@ -3643,11 +3648,11 @@
     if(!f||typeof f!=='object') return;
     var up=(p&&typeof p.upfit==='string'&&/^https:\/\//.test(p.upfit))?p.upfit:null;
     var upVorher=upfitUrl();
-    try{ localStorage.setItem('fi_flags_srv',JSON.stringify({ern:f.ern!==false,social:f.social===true,demo:f.demo===true,train:f.train===true,vital:f.vital===true,upfit:up})); }catch(e){}
+    try{ localStorage.setItem('fi_flags_srv',JSON.stringify({ern:f.ern!==false,social:f.social===true,demo:f.demo===true,train:f.train===true,vital:f.vital===true,abo:f.abo===true,upfit:up})); }catch(e){}
     ERN_LAUNCH=(f.ern!==false); SOCIAL_LAUNCH=(f.social===true);
     var e2=ERN_LAUNCH||ernTestOn(), s2=SOCIAL_LAUNCH||socialTestOn();
-    var t2=(f.train===true), v2=(f.vital===true);
-    if(e2!==ERN_ON||s2!==SOCIAL_ON||t2!==TRAIN_ON||v2!==VITAL_ON||up!==upVorher){ ERN_ON=e2; SOCIAL_ON=s2; TRAIN_ON=t2; VITAL_ON=v2; render(); }
+    var t2=(f.train===true), v2=(f.vital===true), a2=(f.abo===true);
+    if(e2!==ERN_ON||s2!==SOCIAL_ON||t2!==TRAIN_ON||v2!==VITAL_ON||a2!==ABO_ON||up!==upVorher){ ERN_ON=e2; SOCIAL_ON=s2; TRAIN_ON=t2; VITAL_ON=v2; ABO_ON=a2; render(); }
   }
   function ernSeedForm(){ var pr=(DATA.nutri&&DATA.nutri.profile)||{};
     S.ernGoal=pr.goal||'abnehmen'; S.ernSex=pr.sex||'w'; S.ernH=pr.height||170; S.ernW=pr.weight||70; S.ernAge=pr.age||30; S.ernAct=pr.activity||'moderat'; S.ernDiet=pr.diet||'omnivor'; }
@@ -5980,7 +5985,7 @@
   // Kamera, KI-Coach FINN, Community, Push, Coach Premium via Magicline-Zusatzmodul).
   // Firmendaten aus LEGAL. Hinweis: rechtlich geprüfte Endfassung vom Anwalt bestätigen lassen.
   function legalCard(t,b){ return '<div style="background:var(--surface);border-radius:18px;box-shadow:0 8px 24px rgba(4,33,40,.08);padding:17px 18px;margin-bottom:14px"><div style="font-size:15px;font-weight:900;color:var(--text);margin-bottom:9px">'+esc(t)+'</div><div style="font-size:12.8px;font-weight:500;color:var(--text-muted);line-height:1.65">'+b+'</div></div>'; }
-  function legalCross(){ var items=[['Impressum','impressum'],['Datenschutz','datenschutz'],['AGB','agb'],['Widerruf','recht']]; return '<div style="display:flex;flex-wrap:wrap;gap:6px 14px;justify-content:center;margin-top:8px;padding-top:6px">'+items.map(function(l){ return '<button data-act="nav" data-arg="'+l[1]+'" style="background:none;border:none;color:var(--text-soft);font-size:12px;font-weight:700;cursor:pointer;padding:2px">'+esc(l[0])+'</button>'; }).join('')+'</div>'; }
+  function legalCross(){ var items=[['Impressum','impressum'],['Datenschutz','datenschutz'],['AGB','agb']].concat(ABO_ON?[['Widerruf','recht']]:[]); return '<div style="display:flex;flex-wrap:wrap;gap:6px 14px;justify-content:center;margin-top:8px;padding-top:6px">'+items.map(function(l){ return '<button data-act="nav" data-arg="'+l[1]+'" style="background:none;border:none;color:var(--text-soft);font-size:12px;font-weight:700;cursor:pointer;padding:2px">'+esc(l[0])+'</button>'; }).join('')+'</div>'; }
   function legalWrap(title,sub,inner){
     var back='<button data-act="rechtBack" aria-label="Zurück" style="width:38px;height:38px;border-radius:12px;border:none;background:var(--surface);box-shadow:0 4px 12px rgba(4,33,40,.08);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'+svg(IC.back,{c:'#0a4958',w:2.2,s:19})+'</button>';
     var head='<div style="display:flex;align-items:center;gap:12px;padding:2px 2px 14px">'+back+'<div style="flex:1"><div style="font-size:20px;font-weight:900;color:var(--text);letter-spacing:-.4px">'+esc(title)+'</div>'+(sub?'<div style="font-size:12px;font-weight:700;color:var(--text-soft)">'+esc(sub)+'</div>':'')+'</div></div>';
@@ -6015,7 +6020,7 @@
     var b8=legalCard('KI-Coach FINN', 'FINN ist ein <b>KI-System</b>. Für Chat, Trainings-/Ernährungsvorschläge sowie Foto- und Textauswertung nutzen wir <b>Amazon Web Services EMEA SARL (AWS), Dienst Amazon Bedrock</b>. Eingesetzt wird ein Anthropic-Claude-Modell über ein <b>EU-Inferenzprofil</b>. Verarbeitung kann innerhalb unterstützter AWS-Regionen der EU stattfinden und ist nicht auf Frankfurt allein beschränkt. Wir übermitteln nur für die konkrete Anfrage erforderliche Angaben. Bedrock ist auf <b>keine dauerhafte Aufbewahrung</b> konfiguriert; Inhalte werden nicht für Modelltraining freigegeben. Bei Gesundheitsbezug erfolgt die Verarbeitung nur nach ausdrücklicher Einwilligung (Art. 9 Abs. 2 lit. a DSGVO). FINN erstellt keine Diagnose und trifft keine rechtlich verbindlichen Entscheidungen.');
     var b9=legalCard('Trainingspartner & Community', 'Die Community-Funktionen (Trainingspartner, Chat, Challenges) sind <b>optional</b> und starten erst nach deiner Zustimmung. Andere Mitglieder sehen nur, was du teilst (z. B. Vorname, Präsenz, geteilte Aktivitäten). Du kannst Verbindungen jederzeit trennen und Inhalte melden oder blockieren. Rechtsgrundlage: Art. 6 Abs. 1 lit. a DSGVO.');
     var b10=legalCard('Push-Benachrichtigungen', 'Für Mitteilungen (z. B. Erinnerungen, Nachrichten) nutzen wir <b>Firebase Cloud Messaging (Google)</b> auf Android und den <b>Apple Push Notification service</b> auf iOS; dafür wird ein Geräte-Token verarbeitet. Du kannst Push in den Geräteeinstellungen jederzeit deaktivieren. Rechtsgrundlage: Art. 6 Abs. 1 lit. a/f DSGVO.');
-    var b11=legalCard('Coach Premium & Zahlung', 'Coach Premium buchst du als <b>Zusatzmodul zu deinem Mitgliedsvertrag</b>; die Abrechnung erfolgt per <b>SEPA-Lastschrift</b> über Magicline zusammen mit deinem Beitrag. Es werden <b>keine Kreditkartendaten in der App</b> erhoben. Rechtsgrundlage: Art. 6 Abs. 1 lit. b DSGVO.');
+    var b11=!ABO_ON?'':legalCard('Coach Premium & Zahlung', 'Coach Premium buchst du als <b>Zusatzmodul zu deinem Mitgliedsvertrag</b>; die Abrechnung erfolgt per <b>SEPA-Lastschrift</b> über Magicline zusammen mit deinem Beitrag. Es werden <b>keine Kreditkartendaten in der App</b> erhoben. Rechtsgrundlage: Art. 6 Abs. 1 lit. b DSGVO.');
     var b12=legalCard('Hosting, Speicherung & Protokolle', 'Die App und ihre Serverfunktionen werden bei <b>Vercel Inc.</b> mit bevorzugter Funktionsregion Frankfurt betrieben. App-Daten werden in einem zugriffsgeschützten <b>Upstash Redis/Vercel-KV</b>-Speicher verarbeitet. Technische Sicherheits- und Fehlerprotokolle enthalten möglichst keine Inhalts- oder Gesundheitsdaten und werden nur für Betrieb, Missbrauchsschutz und Fehleranalyse verwendet (Art. 6 Abs. 1 lit. f DSGVO).');
     var b13=legalCard('Empfänger & Drittländer', 'Empfänger bzw. Auftragsverarbeiter sind – je nach genutzter Funktion – <b>Sport Alliance/EGYM (Magicline), Vercel, Upstash, Amazon Web Services, Google, Apple sowie unsere E-Mail- und Kommunikationsdienstleister</b>. Anthropic stellt das Modell innerhalb von Amazon Bedrock bereit; bei der gewählten Bedrock-Konfiguration werden Anfrageinhalte nicht direkt für Anthropic freigegeben. Soweit ein Anbieter Daten außerhalb des EWR verarbeitet, nutzen wir einen Angemessenheitsbeschluss, insbesondere das EU-US Data Privacy Framework, oder EU-Standardvertragsklauseln einschließlich Transferprüfung. Keine Weitergabe für fremde Werbung oder Modelltraining.');
     var b14=legalCard('Speicherdauer', 'KI-Anfragen und Antworten werden von Bedrock in der gewählten Einstellung nicht dauerhaft gespeichert. Vital-, Trainings-, InBody- und vergleichbare Verlaufsdaten sind technisch auf höchstens etwa <b>13 Monate</b> bzw. eine funktionsbezogene Höchstzahl von Einträgen begrenzt und werden bei weiterer Nutzung gleitend erneuert. Ernährungs- und Profildaten bestehen bis zur Löschung, zum Widerruf oder dem Ende des erforderlichen Zwecks. Push-Tokens werden bei Abmeldung, Kontowechsel oder Ungültigkeit entfernt. Ein minimales Einwilligungs- und Widerrufsprotokoll wird zum Rechtsnachweis höchstens sechs Jahre gespeichert. Vertrags-, Beitrags- und Buchungsunterlagen bleiben nur entsprechend gesetzlicher Aufbewahrungspflichten gespeichert.');
@@ -6417,29 +6422,92 @@
       +spark
       +'</button>';
   }
+  // ── Coach-Tab. Seit September 2026 hat die App drei Zwecke – Mitgliedschaft,
+  // Termine, Coaching – und genau dafür ist FINN da. Kein Trainingsplan, kein
+  // Ernährungstagebuch, kein Premium: eine Seite, keine Themen-Reiter.
+  //   1. FINN-Hub: Blick für heute (aus Besuchen und Terminen), Analyse, Chat
+  //   2. Deine Woche: Besuche, Rhythmus, nächster Termin, letzter Besuch
+  //   3. Nächste Schritte: die Termine, die Coaching im Studio ausmachen
+  //   4. Partner: Training (Technogym) und Ernährung (Upfit) – ein Verweis, mehr nicht
   function scrCoach(){
     var wrap=function(inner){ return '<div class="ernwrap" style="padding-bottom:40px">'+inner+'</div>'; };
-    // Unteransichten (Lektion / Vertiefung / Check-in / Upgrade / Nutrition-Chat) – bestehende Renderer.
-    // Coach-Premium-Kauf ist jetzt ein Popup (render() blendet es global über dem Screen ein) – kein Vollbild mehr.
-    if(S.ernLesson||S.ernVert) return wrap(ernLesson());
-    if(S.ernCk) return wrap(ernCheckinScreen());
-    if(ERN_ON && DATA.nutri==null) loadNutri();   // Ernährungs-Erkenntnisse im Coach mit Live-Daten füttern
-    if(DATA.training==null) loadTraining();
+    // Unteransichten des alten Ernährungs-Coachings nur, solange das eigene Modul an ist.
+    if(ERN_ON&&(S.ernLesson||S.ernVert)) return wrap(ernLesson());
+    if(ERN_ON&&S.ernCk) return wrap(ernCheckinScreen());
+    if(DATA.checkins==null) loadCheckins();
+    if(DATA.appts==null) loadAppts();
+    if(DATA.inbody==null) loadInbody();
+    if(DATA.figur==null) loadFigur();
     var nm=(DATA.profile&&DATA.profile.firstName)||'';
-    // Titel „Coach" trägt jetzt die App-Leiste – hier nur noch die helle Begrüßung.
+    // Titel „Coach" trägt die App-Leiste – hier nur die helle Begrüßung.
     var header='<div style="margin:2px 2px 14px"><div style="font-size:19px;font-weight:900;color:var(--text);letter-spacing:-.3px">'+(nm?('Hey '+esc(nm)+' 👋'):'Willkommen zurück')+'</div>'+
-      '<div style="font-size:13px;font-weight:600;color:var(--text-muted);margin-top:2px">Deine Erkenntnisse aus Training &amp; Ernährung</div></div>';
-    if(S.ernChatOpen) return wrap(header+ernCoach());
-    // 5 Themen-Tabs entlasten die Coach-Seite: Übersicht · Lernen · Ernährung · Training · Lifestyle.
-    var tab=S.coachTab||'uebersicht';
-    var themeCta=function(label,screen,ic){ return '<button data-act="nav" data-arg="'+screen+'" style="width:100%;text-align:left;border:none;cursor:pointer;font-family:inherit;background:linear-gradient(150deg,'+ERN_G2+','+ERN_GD+');border-radius:18px;padding:16px 18px;color:#fff;box-shadow:0 12px 30px rgba(14,96,114,.2);margin-bottom:14px;display:flex;align-items:center;gap:12px"><span style="font-size:24px">'+ic+'</span><span style="flex:1;font-size:15px;font-weight:900">'+esc(label)+'</span>'+svg('<path d="M9 6l6 6-6 6"></path>',{c:'rgba(255,255,255,.8)',w:2.4,s:18})+'</button>'; };
-    var body;
-    if(tab==='lernen'){ body=ernCoachHome(); }                                       // Wochen-Lern-Einheiten
-    else if(tab==='ern'){ body=coachInsights('ern')+themeCta('Zum Essen-Tagebuch','ern','🥗'); }
-    else if(tab==='training'){ body=coachInsights('training')+themeCta('Zum Trainingsplan','tag','🏋️'); }
-    else if(tab==='lifestyle'){ if(DATA.mprofile==null) loadMemberProfile(); if(DATA.morning==null) loadMorning(); body=vitalCard()+morningEntryCard()+vitalLifestyleForm()+progressPickCard(); }
-    else { if(DATA.checkins==null) loadCheckins(); if(DATA.mprofile==null) loadMemberProfile(); if(DATA.morning==null) loadMorning(); if(DATA.trainSess==null) loadTrainSession(); if(woHealthCap()&&woHealthConnected()&&DATA.healthMetrics==null){ DATA.healthMetrics=false; woHealthFetchMetrics(); } var ovr=woVitalRings(); body=coachBatteryCard()+(ovr?('<div style="margin-bottom:16px">'+ovr+'</div>'):'')+coachDailyBriefing()+coachFinnHub()+coachVitalHero()+ernPremiumCard(); }  // Dein Tag: Oura-Ringe + tagesrelevante Themen, dann FINN + Vitalalter
-    return wrap(header+coachTabBar(tab)+body);
+      '<div style="font-size:13px;font-weight:600;color:var(--text-muted);margin-top:2px">Dein Coach für Mitgliedschaft, Termine &amp; Ziele</div></div>';
+    if(ERN_ON&&S.ernChatOpen) return wrap(header+ernCoach());
+    return wrap(header+coachFinnHub()+coachWeekCard()+coachNextSteps()+coachPartnerCard());
+  }
+  // Besuche der letzten 7 Tage (Check-ins) – die eine Zahl, an der Coaching hier hängt.
+  function coachVisits7(){ var n=0; try{ var cutoff=Date.now()-7*864e5; (DATA.checkins||[]).forEach(function(x){ if(x&&x.in&&Date.parse(x.in)>=cutoff) n++; }); }catch(e){} return n; }
+  // Letzter Besuch als Zeitstempel (0 = keiner).
+  function coachLastVisit(){ var last=0; try{ (DATA.checkins||[]).forEach(function(x){ var t=(x&&x.in)?(Date.parse(x.in)||0):0; if(t>last) last=t; }); }catch(e){} return last; }
+  // Nächster gebuchter Termin aus DATA.appts – tolerant gegenüber Feldnamen, nie werfend.
+  function coachNextAppt(){
+    var list=Array.isArray(DATA.appts)?DATA.appts:[]; var now=Date.now(); var best=null;
+    list.forEach(function(a){
+      if(!a) return; var st=a.startDateTime||a.start||a.startsAt||a.datetime||a.date; var t=Date.parse(st||''); if(!t||t<now) return;
+      if(a.cancelled===true||/CANCEL/i.test(String(a.status||a.bookingStatus||''))) return;
+      if(!best||t<best.t) best={t:t,title:String(a.title||a.name||a.type||'Termin')};
+    });
+    if(!best) return null;
+    var d=new Date(best.t);
+    return {t:best.t,title:best.title,when:['So','Mo','Di','Mi','Do','Fr','Sa'][d.getDay()]+', '+d.getDate()+'.'+(d.getMonth()+1)+'. · '+pad2(d.getHours())+':'+pad2(d.getMinutes())+' Uhr'};
+  }
+  // „Dein Blick für heute" – datenbasiert, sofort, ohne KI: Termin, Wochenziel, Pause.
+  function coachHolistic(){
+    try{ var v=(typeof vitalToday==='function')?vitalToday():null; if(v && v.coach && (v.level==='rot'||v.level==='gruen'||v.alert)) return v.coach; }catch(e){}
+    var visits=coachVisits7(); var ob=obData()||{}; var goal=parseInt(ob.freq,10)||3;
+    var next=coachNextAppt(); var last=coachLastVisit(); var daysSince=last?Math.floor((Date.now()-last)/864e5):null;
+    if(next) return 'Dein nächster Termin steht: '+next.title+' am '+next.when+'. Bis dahin dranbleiben – jeder Besuch zählt.';
+    if(visits>=goal) return 'Diese Woche schon '+visits+'× im Studio – Wochenziel erreicht. Halte das Tempo, Konstanz schlägt alles.';
+    if(daysSince!=null&&daysSince>=14) return 'Dein letzter Besuch ist '+daysSince+' Tage her. Der erste Schritt zurück ist der schwerste – plan dir heute einen kurzen Besuch ein.';
+    if(visits>0) return 'Diese Woche '+visits+'× da – noch '+(goal-visits)+'× bis zu deinem Wochenziel. Du bist auf Kurs.';
+    return 'Diese Woche noch nicht im Studio gewesen. Ein kurzer Besuch heute bringt dich zurück in den Rhythmus.';
+  }
+  // Deine Woche: nur Zahlen, die die App wirklich hat – Check-ins und Termine.
+  function coachWeekCard(){
+    var CARD='background:var(--surface);border-radius:20px;box-shadow:0 12px 30px rgba(4,33,40,.09);padding:16px 18px;margin-bottom:14px';
+    var v=vitalsData(); var ob=obData()||{}; var goal=parseInt(ob.freq,10)||v.goal||3;
+    var visits=coachVisits7(); var next=coachNextAppt(); var last=coachLastVisit();
+    var lastTxt='noch kein Besuch'; if(last){ var d=new Date(last); var days=Math.floor((Date.now()-last)/864e5); lastTxt=(days===0?'heute':(days===1?'gestern':('vor '+days+' Tagen')))+' · '+d.getDate()+'.'+(d.getMonth()+1)+'.'; }
+    var rows=[
+      {ic:'📅',t:'Diese Woche '+visits+'× im Studio', s: visits>=goal?('Wochenziel erreicht ('+goal+'×) – stark dabei! 💪'):('Noch '+Math.max(0,goal-visits)+'× bis zu deinem Wochenziel ('+goal+'×).')},
+      {ic:'🔥',t:(v.streak||0)+(v.streak===1?' Woche':' Wochen')+' in Folge', s:(v.streak||0)>=3?'Das ist Rhythmus. Weiter so.':'Jede Woche mindestens ein Besuch – so entsteht Rhythmus.'},
+      {ic:'🗓️',t: next?('Nächster Termin: '+next.title):'Kein Termin gebucht', s: next?next.when:'Stoffwechselanalyse, Einführungstraining oder Trainingsplanung – buch dir einen.'},
+      {ic:'⏱️',t:'Letzter Besuch', s:lastTxt},
+    ];
+    var html=rows.map(function(b){ return '<div style="display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-top:1px solid var(--border)"><span style="flex-shrink:0;font-size:15px;margin-top:1px">'+b.ic+'</span><div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:800;color:var(--text)">'+esc(b.t)+'</div><div style="font-size:12px;font-weight:500;color:var(--text-2);line-height:1.45;margin-top:1px">'+esc(b.s)+'</div></div></div>'; }).join('');
+    return '<div data-coach="woche" style="'+CARD+'"><div style="font-size:11px;font-weight:900;color:var(--text-soft);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Deine Woche</div>'+html+'</div>';
+  }
+  // Nächste Schritte: die Termine und Messungen, aus denen Coaching im Studio besteht.
+  function coachNextSteps(){
+    var CARD='background:var(--surface);border-radius:20px;box-shadow:0 12px 30px rgba(4,33,40,.09);padding:16px 18px;margin-bottom:14px';
+    var row=function(arg,ic,t,s){ return '<button data-act="nav" data-arg="'+arg+'" style="display:flex;align-items:center;gap:12px;width:100%;text-align:left;border:none;background:transparent;padding:11px 0;border-top:1px solid var(--border);cursor:pointer;font-family:inherit"><span style="width:38px;height:38px;border-radius:12px;background:var(--surface-2);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">'+ic+'</span><span style="flex:1;min-width:0"><span style="display:block;font-size:14px;font-weight:800;color:var(--text)">'+t+'</span><span style="display:block;font-size:12px;font-weight:600;color:var(--text-muted);margin-top:1px;line-height:1.4">'+s+'</span></span>'+svg('<path d="M9 6l6 6-6 6"></path>',{c:'var(--text-soft)',w:2.2,s:16})+'</button>'; };
+    return '<div data-coach="schritte" style="'+CARD+'"><div style="font-size:11px;font-weight:900;color:var(--text-soft);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Nächste Schritte</div>'+
+      row('appt','🧬','Stoffwechselanalyse buchen','Wissen, wo du stehst – die Basis für jedes Ziel.')+
+      row('appt','🏋️','Einführungstraining &amp; Trainingsplanung','Mit einem Trainer an den Geräten – dein Plan landet in der Technogym-App.')+
+      row('figur','📏','Figur-Check','Gewicht &amp; Maße festhalten, Fortschritt sehen.')+
+      row('inbody','⚖️','InBody-Analyse','Körperanalyse scannen &amp; Verlauf.')+
+    '</div>';
+  }
+  // Partner: Training (Technogym-App) und Ernährung (Upfit). Nur Verweise – die
+  // App führt weder Pläne noch Tagebuch. Erscheint nur, was wirklich ausgelagert ist.
+  function coachPartnerCard(){
+    var CARD='background:var(--surface);border-radius:20px;box-shadow:0 12px 30px rgba(4,33,40,.09);padding:16px 18px;margin-bottom:14px';
+    var ext=function(href,extra,ic,t,s){ return '<a href="'+href+'" target="_blank" rel="noopener"'+extra+' style="display:flex;align-items:center;gap:12px;padding:11px 0;border-top:1px solid var(--border);text-decoration:none"><span style="width:38px;height:38px;border-radius:12px;background:rgba(224,140,83,.14);display:flex;align-items:center;justify-content:center;flex-shrink:0">'+ic+'</span><span style="flex:1;min-width:0"><span style="display:block;font-size:14px;font-weight:800;color:var(--text)">'+t+'</span><span style="display:block;font-size:12px;font-weight:600;color:var(--text-muted);margin-top:1px">'+s+'</span></span>'+svg(UPFIT_EXT,{c:'var(--text-soft)',w:2,s:16})+'</a>'; };
+    var rows='';
+    if(!TRAIN_ON) rows+=ext(TG_APP_URL,' data-partner="technogym"',svg('<path d="M4 8v8M8 5.5v13M16 5.5v13M20 8v8M8 12h8"></path>',{c:'#E08C53',w:2,s:20}),'Training in der Technogym-App','Pläne, Geräte, Aufzeichnung – alles dort.');
+    if(!ERN_ON&&upfitUrl()) rows+=ext(esc(upfitUrl()),' data-act="upfitOpen" data-upfit="coach"',svg(UPFIT_ICON,{c:'#E08C53',w:2,s:20}),'Ernährung bei Upfit','Tagebuch, Rezepte, Einkaufsliste.');
+    if(!rows) return '';
+    return '<div data-coach="partner" style="'+CARD+'"><div style="font-size:11px;font-weight:900;color:var(--text-soft);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Partner</div>'+rows+'</div>';
   }
   // Coach-Themen-Tabs (horizontal scrollbare Pills).
   function coachTabBar(tab){
@@ -6453,7 +6521,7 @@
     var analyse=S.coachFinnBusy
       ? '<div style="margin-top:13px;display:flex;align-items:center;gap:9px;font-size:12.5px;font-weight:800;color:#eafaf1">'+trainSpin(16)+' FINN analysiert …</div>'
       : '<button data-act="coachFinn" style="margin-top:13px;border:1.5px solid rgba(255,255,255,.4);background:rgba(255,255,255,.12);color:#fff;border-radius:11px;font-size:12.5px;font-weight:800;padding:9px 14px;cursor:pointer">🤖 '+((S.coachFinn&&S.coachFinn.text)?'Neue FINN-Analyse':'Tiefere FINN-Analyse holen')+'</button>';
-    var chips=['Wie läuft es bei mir?','Was soll ich heute tun?','Tipp für mein Ziel'].map(function(q){
+    var chips=['Wie läuft es bei mir?','Welchen Termin sollte ich buchen?','Tipp für mein Ziel'].map(function(q){
       return '<button data-act="finnQuick" data-arg="'+esc(q)+'" style="flex:0 0 auto;border:1.5px solid rgba(255,255,255,.35);background:rgba(255,255,255,.10);color:#fff;border-radius:20px;font-size:12.5px;font-weight:700;padding:8px 13px;cursor:pointer;white-space:nowrap">'+esc(q)+'</button>';
     }).join('');
     return '<div style="background:linear-gradient(150deg,#12879c,#0e6072 58%,#0a4958);border-radius:22px;padding:18px 20px 20px;color:#fff;box-shadow:0 16px 38px rgba(14,96,114,.30);margin-bottom:16px">'+
@@ -6475,25 +6543,10 @@
       '<div style="font-size:12.5px;font-weight:600;color:var(--text-muted);line-height:1.45;margin-top:2px">Maße &amp; Umfänge festhalten – sieh deinen Fortschritt in Kurven &amp; Vorher-Nachher.</div></div>'+
       svg('<path d="M9 6l6 6-6 6"></path>',{c:'var(--text-soft)',w:2.2,s:18})+'</button>';
   }
-  // Reine Coaching-Erkenntnisse: ganzheitlicher Blick + Abschnitt Training + Abschnitt Ernährung.
-  // Datenbasiert (sofort, datensparsam) – die FINN-Analyse (KI) ergänzt den ganzheitlichen Blick auf Tipp.
-  function coachHolistic(){
-    // Vital-Check steuert den Tages-Blick: Übertraining/Rot/Gelb/Grün haben Vorrang vor allem anderen.
-    // Gemeinsame Quelle vitalToday(), damit Coach, Training und Ernährung dasselbe Signal zeigen.
-    var v=vitalToday();
-    if(v && v.coach && (v.level==='rot'||v.level==='gruen'||v.alert)) return v.coach;
-    var d=DATA.training||{}, mp=d.myPlan&&d.myPlan.plan, n=DATA.nutri;
-    var visits=0; try{ var cutoff=Date.now()-7*864e5; (DATA.checkins||[]).forEach(function(x){ if(x&&x.in&&Date.parse(x.in)>=cutoff) visits++; }); }catch(e){}
-    var goal=(mp&&mp.daysPerWeek)||3;
-    var sess=(DATA.trainSess&&DATA.trainSess.items)||{}; var didToday=Object.keys(sess).some(function(k){ return sess[k]&&sess[k].done; });
-    var lowProt=false; if(ERN_ON&&n&&n.ok&&n.onboarded){ var t=n.targets||{}, tot=(n.today&&n.today.totals)||{p:0}; lowProt=!!(t.protein&&(tot.p||0)<t.protein*0.6); }
-    if(mp && lowProt) return 'Du trainierst fleißig – aber dein Eiweiß liegt heute unter dem Ziel. Nach dem Training zählt Protein: plane eine eiweißreiche Mahlzeit ein.';
-    if(mp && visits>=goal && didToday) return 'Training läuft rund: Plan aktiv, Wochenziel erreicht, heute schon bewegt. Halte das Tempo – Konstanz schlägt alles.';
-    if(mp && visits<goal) return 'Dein Plan steht – jetzt fehlt die Regelmäßigkeit. Blocke dir 2–3 feste Trainingstage, dann kommt der Fortschritt von allein.';
-    if(!mp) return 'Der schnellste Hebel: hol dir einen Trainingsplan im Bereich Training. Mit Struktur wird aus Training echter Fortschritt.';
-    return 'Solide Basis! Kombiniere dein Training mit genug Eiweiß und Schlaf – so wird aus Aufwand Ergebnis.';
-  }
-  // only: 'training' -> nur Trainings-Abschnitt · 'ern' -> nur Ernährungs-Abschnitt · sonst beides (Coach-Tabs).
+  // (Der frühere ganzheitliche Blick aus Trainingsplan + Ernährung ist durch coachHolistic()
+  //  oben ersetzt – Besuche, Termine, Ziel. Die alte Funktion durfte nicht stehen bleiben:
+  //  eine zweite Deklaration desselben Namens überschreibt die erste.)
+  // only: 'training' -> nur Trainings-Abschnitt · 'ern' -> nur Ernährungs-Abschnitt · sonst beides (nur mit eigenen Modulen).
   function coachInsights(only){
     var d=DATA.training||{}, mp=d.myPlan&&d.myPlan.plan, n=DATA.nutri;
     var visits=0; try{ var cutoff=Date.now()-7*864e5; (DATA.checkins||[]).forEach(function(x){ if(x&&x.in&&Date.parse(x.in)>=cutoff) visits++; }); }catch(e){}
@@ -11731,6 +11784,7 @@
   function render(){
     // Ernährungs-Modul ausgeblendet (Feature-Schalter ERN_ON): nie rendern, zur Übersicht
     if(!ernTabOn() && S.screen==='ern') S.screen='home';
+    if(!ABO_ON && (S.screen==='abo'||S.screen==='recht'||S.screen==='finnusage')) S.screen='home';
     // Trainingspartner ausgeblendet (SOCIAL_ON): nie rendern, zur Übersicht
     if(!SOCIAL_ON && S.screen==='social') S.screen='home';
     // Ehemalige Mitglieder: gesperrte Screens immer auf die Übersicht (Rejoin) umleiten
@@ -12069,14 +12123,14 @@
     // Coach: FINN-Analyse (KI) – verbindet Training + Ernährung zu einer Erkenntnis (quota-gated).
     coachProgToggle:function(){ S.coachProgOpen=!S.coachProgOpen; setS({}); },
     coachTab:function(a){ if(['uebersicht','lernen','ern','training','lifestyle'].indexOf(a)<0) return; S.coachTab=a; if(a==='lifestyle'&&DATA.mprofile==null) loadMemberProfile(); setS({}); },
+    // FINN-Analyse im Coach-Tab: Ziel, Wunsch-Trainingstage und die zuletzt gemessenen
+    // Körperwerte gehen mit – Vertrag, Termine und Besuche baut der Server selbst.
     coachFinn:function(){
       if(S.coachFinnBusy) return; S.coachFinnBusy=true; S.coachFinnMsg=''; render();
-      var d=DATA.training||{}, mp=d.myPlan&&d.myPlan.plan, n=DATA.nutri;
-      var visits=0; try{ var cutoff=Date.now()-7*864e5; (DATA.checkins||[]).forEach(function(x){ if(x&&x.in&&Date.parse(x.in)>=cutoff) visits++; }); }catch(e){}
-      var sess=(DATA.trainSess&&DATA.trainSess.items)||{}; var didToday=Object.keys(sess).some(function(k){ return sess[k]&&sess[k].done; });
-      var ctx={ plan: mp?{title:mp.title, level:mp.level, daysPerWeek:mp.daysPerWeek, aiAssist:!!mp.aiAssist}:null, visits7:visits, didToday:didToday };
-      if(ERN_ON && n && n.ok && n.onboarded){ var t=n.targets||{}, tot=(n.today&&n.today.totals)||{}; ctx.nutrition={ streak:n.streak||0, goal:(n.profile&&n.profile.goal)||'', kcal:Math.round(tot.kcal||0), kcalTarget:Math.round(t.kcal||0), protein:Math.round(tot.p||0), proteinTarget:Math.round(t.protein||0) }; }
-      api('/api/member/coach-insights',{method:'POST',body:JSON.stringify({ctx:ctx})}).then(function(r){ S.coachFinnBusy=false; if(r&&r.ok&&r.text){ S.coachFinn={text:r.text}; S.coachFinnMsg=''; if(r.quota&&DATA.training) DATA.training.quota=r.quota; } else if(r&&r.error==='premium_required'){ S.coachFinnMsg=(r&&r.message)||'Dein Gratis-Kontingent ist diesen Monat aufgebraucht.'; } else { S.coachFinnMsg=(r&&r.message)||'FINN ist gerade nicht erreichbar – gleich nochmal versuchen.'; } render(); }).catch(function(){ S.coachFinnBusy=false; S.coachFinnMsg='Verbindung gerade nicht möglich.'; render(); });
+      var ob=obData()||{}; var ctx={ goal:String(ob.goal||''), freq:parseInt(ob.freq,10)||0 };
+      try{ var fm=(DATA.figur&&DATA.figur.ok&&Array.isArray(DATA.figur.metrics))?DATA.figur.metrics:[]; var fw=null,fwa=null,fd=null; fm.forEach(function(m){ if(!m) return; if(m.key==='weight') fw=m.latest; if(m.key==='waist') fwa=m.latest; if(m.latestDate&&(!fd||m.latestDate>fd)) fd=m.latestDate; }); if(fw||fwa) ctx.figur={ date:fd||null, weight:fw, waist:fwa }; }catch(e){}
+      try{ var ib=DATA.inbody&&DATA.inbody.ok&&DATA.inbody.latest; if(ib) ctx.inbody={ date:ib.date||ib.measuredAt||null, weight:ib.weightKg||ib.weight, muscle:ib.smmKg||ib.smm, fat:ib.pbf }; }catch(e){}
+      api('/api/member/coach-insights',{method:'POST',body:JSON.stringify({ctx:ctx})}).then(function(r){ S.coachFinnBusy=false; if(r&&r.ok&&r.text){ S.coachFinn={text:r.text}; S.coachFinnMsg=''; } else { S.coachFinnMsg=(r&&r.message)||'FINN ist gerade nicht erreichbar.'; } render(); }).catch(function(){ S.coachFinnBusy=false; S.coachFinnMsg='FINN ist gerade nicht erreichbar.'; render(); });
     },
     trainOpen:function(a){ S.trainDetail=a; S.trainDetailFull=null; S.trainMsg=''; setS({});
       // Bibliotheks-Kacheln kommen schlank (ohne Tage) – volles Detail nachladen (außer aktiver Plan hat sie schon).
