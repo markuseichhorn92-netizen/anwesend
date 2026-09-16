@@ -27,6 +27,10 @@ const crypto = require('node:crypto');
 const W = require('../../lib/welcome');
 const NM = require('../../lib/newMembers');
 const MlEvents = require('../../lib/mlEvents');
+// FINN Event Bus: Idempotenz (Replay-Schutz je Event) + Automationen – liegt UM die
+// bestehende Verarbeitung, ersetzt sie nicht. Ohne KV: kein Dedup, alles wie bisher.
+const FinnEvents = require('../../lib/finn/events');
+try { require('../../lib/finn/automations').register(); } catch (e) {}
 
 // Mehrere Schluessel, kommagetrennt. Grund: Vercel zeigt einen einmal
 // gespeicherten Wert nicht wieder an. Wer ihn nicht notiert hat, kommt sonst
@@ -215,8 +219,15 @@ async function handleWebhook(req, res, opts) {
       let stats = {}; try { stats = await MlEvents.readStats(); } catch (e) {}
       let appts = 0; try { const now = new Date(); const from = new Date(now.getTime() - 15 * 86400000).toISOString(); const to = new Date(now.getTime() + 15 * 86400000).toISOString(); appts = (await MlEvents.listAppointments(from, to)).length; } catch (e) {}
       let checkins = 0, present = 0; try { checkins = (await MlEvents.recentCheckins(120)).length; } catch (e) {} try { present = await MlEvents.presentCount(); } catch (e) {}
+      // FINN-Block (zusätzlich, bestehende Felder bleiben): Event-Dedup, Fehler, Duplikate, Scopes.
+      let finn = null;
+      try {
+        const Cap = require('../../lib/finn/capabilities'); const ML = require('../../lib/finn/magicline');
+        const caps = await Cap.status();
+        finn = { events: await FinnEvents.stats(10), capabilities: { ok: caps.filter((c) => c.light === 'green').map((c) => c.scope), forbidden: caps.filter((c) => c.light === 'red').map((c) => c.scope), unknown: caps.filter((c) => c.light === 'yellow').length }, mockRequestedInProd: ML.mockRequestedInProd() };
+      } catch (e) { finn = { error: 'unavailable' }; }
       res.statusCode = 200;
-      return res.end(JSON.stringify({ ok: true, health: true, feedReady: !!MlEvents.hasStore, stats: stats, feed: { apptsAround30d: appts, checkinsStored: checkins, presentToday: present } }));
+      return res.end(JSON.stringify({ ok: true, health: true, feedReady: !!MlEvents.hasStore, stats: stats, feed: { apptsAround30d: appts, checkinsStored: checkins, presentToday: present }, finn: finn }));
     }
     res.statusCode = 405; return res.end(JSON.stringify({ ok: false, error: 'method_not_allowed' }));
   }
@@ -230,6 +241,16 @@ async function handleWebhook(req, res, opts) {
     const type = typeOf(e);
     let action = 'ignored';
     try { await MlEvents.bumpStat(type || 'UNKNOWN'); } catch (e0) {}
+    // Replay-Schutz: dasselbe Event (Id bzw. Typ+Entität+Zeitstempel) läuft nur einmal
+    // durch die Verarbeitung – schützt vor doppelten Mails und doppelten Feed-Einträgen.
+    let rec = null;
+    try { rec = await FinnEvents.ingest(e, type); } catch (e1) { rec = null; }
+    if (rec && rec.dup) {
+      action = 'duplicate';
+      try { await FinnEvents.finish(rec, action); } catch (e1) {}
+      summary.push({ type: type || null, action: action });
+      continue;
+    }
     try {
       // NUR echter Vertragsabschluss -> Willkommens-/Zugangs-Mail (mit Dedup) + „Neue Mitglieder".
       if (type === 'CONTRACT_CREATED') {
@@ -267,6 +288,11 @@ async function handleWebhook(req, res, opts) {
       else if (type === 'CONTRACT_CANCELLED') { const cid = customerIdOf(e); if (cid) { await onContractEnd(cid, 'cancelled'); action = 'cancel_alerted'; } }
       else if (type === 'CONTRACT_REVERSED') { const cid = customerIdOf(e); if (cid) { await onContractEnd(cid, 'reversed'); action = 'reversed_alerted'; } }
     } catch (e2) { action = 'error'; }
+    // Protokoll + Automationen (Timeline, Retention-Signale). Fehler dort ändern nichts am Ergebnis.
+    if (rec) {
+      try { await FinnEvents.finish(rec, action); } catch (e3) {}
+      if (!rec.corrupt && action !== 'error') { try { await FinnEvents.emit(rec, e); } catch (e4) {} }
+    }
     summary.push({ type: type || null, action: action });
   }
 
