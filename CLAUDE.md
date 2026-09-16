@@ -465,6 +465,62 @@ Schreibtisch) in drei Etappen umgesetzt. Leitlinie: `.claude/skills/fitinn-desig
   Schnellfragen, „Tiefere Analyse holen" als Textlink. Die beiden Zusatzlabels
   und das Roboter-Emoji sind weg.
 
+## FINN Multi-Agent-Plattform (16. September 2026)
+
+FINN ist jetzt eine Schicht **über** der bestehenden Magicline-Integration
+(`lib/finn/`, Doku unter `docs/finn/`: architecture, magicline, webhooks, agents,
+tools, security, testing). Nichts Bestehendes wurde ersetzt: kein Magicline-Aufruf,
+kein Webhook, keine Auth. **Alles ist opt-in** – ohne `FINN_AGENTS=1` läuft der
+bisherige Coach-/WhatsApp-Weg unverändert.
+
+- **Tool-Layer** `lib/finn/magicline.js`: die einzige Stelle, über die Agenten
+  Magicline erreichen; ruft die bestehenden Wrapper (`lib/members`, `lib/ml*`,
+  `lib/bookable`) und normalisiert auf `{ok, forbidden, status, data, error, via, scope}`.
+  Keine erfundenen Endpunkte. `MAGICLINE_MODE=mock` (nur außerhalb der Produktion)
+  nutzt `lib/finn/mock.js`.
+- **Capabilities** `lib/finn/capabilities.js`: 403 je Scope gemerkt (6 h), Werkzeug
+  danach nicht mehr angeboten. `MEMBER_LIST_READ` wird nie angenommen (nur mit
+  `ML_SCOPES`-Deklaration und ohne 403). `lib/finn/directory.js` bereitet den
+  `MemberDirectoryProvider` vor; der Listen-Endpunkt ist bewusst nicht implementiert.
+- **Werkzeuge** `lib/finn/tools.js` (34): Risiko LOW/MEDIUM/HIGH, Scopes, Aktoren,
+  Per-Agent-Permissions, Schema-Prüfung, Rate-Limit, Audit. Im Mitglieder-Kanal ist
+  der Ziel-Kunde immer die Session – `customerId` vom Modell wird verworfen.
+- **Bestätigung** `lib/finn/confirm.js`: MEDIUM/HIGH laufen nie ohne ausdrückliche
+  Bestätigung; Vorschlag an Aktor/Kanal/Werkzeug/Argument-Hash gebunden, 10 min,
+  einmal einlösbar; HIGH mit Ergebnisprüfung (Zustand nachlesen). Ohne KV in
+  Produktion: kein Vorschlag (fail-closed).
+- **Agenten** `lib/finn/agents.js` (13) + `router.js` (regelbasiert; Beschwerde,
+  Recht, Inkasso, Notfall, „Mensch sprechen" → Übergabe ohne Modell) + `runtime.js`
+  (Tool-Schleife über `lib/ai.messagesRaw`, Guardrail je Kanal) + `orchestrator.js`
+  (Rate-Limit, `aiSecurity.assessText` vor jedem Modellaufruf, Ja/Nein löst offene
+  Bestätigung ein). Den Bestätigungstext formuliert die Runtime, nicht das Modell.
+- **Event Bus** `lib/finn/events.js` um `api/webhooks/magicline.js`: Replay-Schutz je
+  Event (Id, sonst Typ+Entität+Zeitstempel; ohne Zeitmerkmal kein Dedup), Duplikate
+  überspringen die Bestandsverarbeitung (keine doppelten Mails). `?health=1` bleibt
+  und bekommt einen `finn`-Block. Automationen (`automations.js`): Timeline,
+  Retention-Signale, optional Postfach-Vorgang (`FINN_AUTOMATIONS`).
+- **Kanäle** `lib/finn/channels.js`: Web/App (`api/member/finn.js`; `api/member/coach.js`
+  mit `FINN_AGENTS=1`), WhatsApp (Buttons „Ja, bestätigen"/„Abbrechen" im bestehenden
+  Vorgang), E-Mail-Entwurf als Team-Notiz (`FINN_EMAIL_DRAFT=1`, nur lesend), Website
+  (`api/finn/public.js`, `FINN_PUBLIC=1`, ohne Mitgliedsdaten), Team (`api/team/finn.js`).
+- **Oberfläche**: Vorschlagskarten im FINN-Chat (`.fcCf`, `finnDecide`); Team-Backend
+  Seite „FINN & Magicline" (Admin: Scope-Ampel, Webhooks, Event-Bus, Prüfpfad,
+  Agenten) und „FINN-Verlauf" im Mitgliedsprofil.
+- **Audit/Timeline/Metriken**: `finnaud:*` ohne Freitext, `finntl:<cid>`, Zähler
+  `finn.*` über `lib/opsStat`. Keine Prompt-, Antwort- oder Gesundheitsinhalte in Logs.
+- `lib/aiSecurity.js`: Fremddaten-Regel erkennt jetzt auch „Mitgliedern"/„Kundinnen".
+- Tests: `tests/finn-tools`, `finn-orchestrator`, `finn-webhooks`, `finn-api`, `finn-ui`.
+
+Leitplanken dazu (zusätzlich zu den allgemeinen unten):
+
+- Agenten dürfen Magicline nur über `lib/finn/magicline.js` erreichen – keine
+  eigenen `fetch`-Aufrufe, keine neuen Endpunkte ohne Beleg in der API-Doku.
+- Kein Werkzeug mit Risiko MEDIUM/HIGH darf ohne `confirmed:true` aus der
+  Confirmation Engine laufen; `not_allowed` niemals als 403 melden (sonst gilt es
+  als fehlender Scope).
+- `MEMBER_LIST_READ` bleibt „nie angenommen", bis der Scope vorliegt.
+- Bestandsverarbeitung im Webhook nicht in den Bus verschieben – der Bus wrappt sie.
+
 ## Verifikation
 
 Vor dem letzten Deployment wurde ausgeführt:
