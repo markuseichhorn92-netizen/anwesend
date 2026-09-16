@@ -83,6 +83,7 @@ const trainer = { user: 'Anna', role: 'trainer', employeeId: 'e1' };
     assist: ['assistant.js'], wb: ['winback.js', 'churn.js', 'retention.js'],
     community: ['social-mod.js'], tester: ['testers.js'],
     kassenbuch: ['kassenbuch.js'], feedback: ['feedback.js'],
+    finn: ['finn.js'],
   };
   const nurVersteckt = [];
   adminScreens.forEach(function (sc) {

@@ -427,7 +427,7 @@ function logout(){ try{ if(window.FitInnNative&&FitInnNative.onTeamLogout) FitIn
 // Angestellte (Trainer-Login) sehen nur das Tagesgeschäft. Diese Bereiche
 // bleiben dem Admin (Passwort-Login) vorbehalten. Die eigentliche Sperre
 // sitzt serverseitig – das hier steuert nur, was in der Oberfläche erscheint.
-var ADMIN_ONLY_SCREENS={ stats:1, msg:1, leads:1, assist:1, wb:1, community:1, tester:1, kassenbuch:1, feedback:1 };
+var ADMIN_ONLY_SCREENS={ stats:1, msg:1, leads:1, assist:1, wb:1, community:1, tester:1, kassenbuch:1, feedback:1, finn:1 };
 function isAdmin(){ return S.role==='admin'; }
 function canSee(k){ return !ADMIN_ONLY_SCREENS[k] || isAdmin(); }
 function meInitials(){ var n=String(S.meName||'').trim(); if(!n) return 'FI'; var p=n.split(/\s+/).filter(Boolean); var i=((p[0]&&p[0][0])||'')+((p[1]&&p[1][0])||''); return (i||n.slice(0,2)||'FI').toUpperCase(); }
@@ -628,7 +628,7 @@ async function openProfile(id){
   S.profileLoading=true; S.profile=null; syncUrl(true); render();   // URL -> /team/mitglieder/<id>
   try{ var r=await tapi('/api/team/members?id='+encodeURIComponent(id)); if(r.ok) S.profile=r.profile; }
   catch(e){} S.profileLoading=false; render();
-  if(S.profile){ loadProfileTags(id); loadProfileDocs(id); loadAccessMedia(id); loadMemberCheckins(id); loadMemberCoaching(id); loadMemberVital(id); loadMemberPreview(id); loadMemberMessages(id); loadMemberNutrition(id); loadMemberTraining(id); if(isAdmin()&&!S.rhOffersLoaded) loadRetentionOffers(); }
+  if(S.profile){ loadMemberFinn(id); loadProfileTags(id); loadProfileDocs(id); loadAccessMedia(id); loadMemberCheckins(id); loadMemberCoaching(id); loadMemberVital(id); loadMemberPreview(id); loadMemberMessages(id); loadMemberNutrition(id); loadMemberTraining(id); if(isAdmin()&&!S.rhOffersLoaded) loadRetentionOffers(); }
 }
 // ---------- Mitglieder-Tags ----------
 // Tags des offenen Profils laden (GET ?memberId). Ohne Store -> leere Liste, kein Fehler.
@@ -2376,6 +2376,7 @@ function moreSheet(openCount, apptCount){
     {k:'schicht',     l:'Schichtplan',    ic:IC.shift},
     {k:'help',        l:'Hilfe-Artikel',  ic:IC.help},
     {k:'stats',       l:'Statistiken',    ic:IC.stats},
+    {k:'finn',        l:'FINN & Magicline',ic:IC.assist},
     {k:'msg',         l:'Nachrichten',    ic:IC.msg},
     {k:'leads',       l:'Leads',          ic:IC.leads},
     {k:'wb',          l:'Rückholung',     ic:IC.wb},
@@ -2488,6 +2489,7 @@ function renderShell(content, title, sub){
       navItem('trial','Probetraining',IC.appts)+
       navItem('help','Hilfe-Artikel',IC.help)+
       (canSee('stats')?navItem('stats','Statistiken',IC.stats):'')+
+      (canSee('finn')?navItem('finn','FINN & Magicline',IC.assist):'')+
       (canSee('msg')?navItem('msg','Nachrichten',IC.msg):'')+
       (canSee('leads')?navItem('leads','Leads',IC.leads):'')+
       (canSee('tester')?navItem('tester','App-Tester',IC.tester):'')+
@@ -2572,7 +2574,7 @@ function renderShell(content, title, sub){
   var toApp=side.querySelector('[data-toapp]'); if(toApp) toApp.onclick=function(){ location.assign('/mitglieder'); };
   var hOpen=side.querySelector('[data-homeopen]'); if(hOpen) hOpen.onclick=function(){ S.homeSheet=true; render(); };
   var bg=head.querySelector('[data-burger]'); if(bg) bg.onclick=function(){ S.navOpen=true; render(); };
-  head.querySelector('[data-refresh]').onclick=function(){ if(S.screen==='members') loadMembers(); else if(S.screen==='appts'){ loadInbox(); apptRefreshWeek(); } else if(S.screen==='inbox') loadInbox(); else if(S.screen==='help') loadArticles(); else if(S.screen==='stats') loadStats(); else if(S.screen==='msg') loadBroadcastCount(); else if(S.screen==='leads') loadLeads(); else if(S.screen==='tester') loadTesters(); else if(S.screen==='kassenbuch') loadKassenbuch(S.kbMonth); else if(S.screen==='feedback') loadFeedback(); else if(S.screen==='newmembers') loadNewMembers(); else if(S.screen==='todo') loadTodos(); else if(S.screen==='schicht'){ loadShifts(); if(S.shTab==='tausch') loadShSwaps(); } else render(); };
+  head.querySelector('[data-refresh]').onclick=function(){ if(S.screen==='members') loadMembers(); else if(S.screen==='appts'){ loadInbox(); apptRefreshWeek(); } else if(S.screen==='inbox') loadInbox(); else if(S.screen==='help') loadArticles(); else if(S.screen==='stats') loadStats(); else if(S.screen==='finn') loadFinn(); else if(S.screen==='msg') loadBroadcastCount(); else if(S.screen==='leads') loadLeads(); else if(S.screen==='tester') loadTesters(); else if(S.screen==='kassenbuch') loadKassenbuch(S.kbMonth); else if(S.screen==='feedback') loadFeedback(); else if(S.screen==='newmembers') loadNewMembers(); else if(S.screen==='todo') loadTodos(); else if(S.screen==='schicht'){ loadShifts(); if(S.shTab==='tausch') loadShSwaps(); } else render(); };
   var bell=head.querySelector('[data-bell]'); if(bell) bell.onclick=function(){ goScreen('inbox'); };
   // Haupt-Inhalt-Scroll über Voll-Renders hinweg erhalten (sonst springt z. B. das
   // Mitgliedsprofil bei jeder Aktion/jedem Loader nach oben).
@@ -3376,7 +3378,7 @@ function membersNode(){
     } else if(curTab==='docs'){
       tabHtml=membershipBlock(p)+docsCard(p)+accessMediumCard(p);
     } else if(curTab==='komm'){
-      tabHtml=messagesBlock(p)+memberOffersCard(p)+
+      tabHtml=messagesBlock(p)+memberOffersCard(p)+finnVerlaufCard(p)+
         '<div style="margin-top:16px;background:#fff;border-radius:20px;box-shadow:0 14px 38px rgba(4,33,40,.09);padding:20px 24px"><div style="font-size:15px;font-weight:900;letter-spacing:-.2px;margin-bottom:4px;color:#15171B">Vorgangs-Historie</div>'+histRows+'</div>';
     } else {
       tabHtml=tagsRowHTML()+handledLineHTML(p)+
@@ -10508,11 +10510,86 @@ function wbNode(){
   },0);
   return node;
 }
+// ---------- FINN & Magicline (Admin) ----------
+// Integrationsstatus: Scopes (grün = gesehen, gelb = unbekannt, rot = 403 gemerkt),
+// Webhook-Zähler, Event-Bus (Duplikate/Fehler), Audit der Agenten, Metriken.
+// Alles nicht personenbezogen; das Audit kennt nur Kennungen, keinen Freitext.
+S.finnView=S.finnView||'status';
+async function loadFinn(view){
+  view=view||S.finnView||'status'; S.finnView=view; S.finnLoading=true; render();
+  try{
+    var r=await tapi('/api/team/finn?view='+encodeURIComponent(view)+'&n=100');
+    S.finnData=S.finnData||{};
+    if(r&&r.ok){ S.finnData[view]=r; S.finnErr=false; } else S.finnErr=true;
+  }catch(e){ S.finnErr=true; }
+  S.finnLoading=false; render();
+}
+async function loadMemberFinn(id){
+  S.memberFinn=null;
+  try{ var r=await tapi('/api/team/finn?view=timeline&customerId='+encodeURIComponent(id)+'&n=40'); if(r&&r.ok&&S.profile&&String(S.profile.id)===String(id)){ S.memberFinn=r; render(); } }catch(e){}
+}
+function finnLight(l){ var c=l==='green'?'#1d7a3e':(l==='red'?'#b53a2c':'#b5631f'); var bg=l==='green'?'#E7F6EC':(l==='red'?'#FCEBEA':'#FBF1E6'); return '<span data-light="'+esc(l)+'" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:'+c+';box-shadow:0 0 0 3px '+bg+'"></span>'; }
+function finnCard(title,sub,body){ return '<div style="background:#fff;border-radius:18px;box-shadow:0 12px 32px rgba(4,33,40,.08);padding:18px"><div style="font-size:14px;font-weight:900;color:#15171B;margin-bottom:'+(sub?'2px':'12px')+'">'+esc(title)+'</div>'+(sub?'<div style="font-size:11.5px;color:#8a929a;font-weight:600;margin-bottom:12px">'+esc(sub)+'</div>':'')+body+'</div>'; }
+function finnTile(label,val,col){ return '<div style="flex:1;min-width:110px;background:#f4f7f7;border-radius:13px;padding:12px;text-align:center"><div style="font-size:22px;font-weight:900;color:'+(col||TEAL)+'">'+esc(String(val))+'</div><div style="font-size:11px;color:#8a929a;font-weight:700;margin-top:2px">'+esc(label)+'</div></div>'; }
+function finnNode(){
+  var node=el('<div class="scrl" style="flex:1;min-height:0;overflow-y:auto;padding:18px 18px 28px"></div>');
+  var d=(S.finnData||{})[S.finnView];
+  var tabs=[['status','Status'],['events','Webhook-Events'],['audit','Prüfpfad'],['agents','Agenten & Werkzeuge']];
+  var tabBar='<div style="display:flex;gap:4px;background:#e6ecee;border-radius:14px;padding:4px;margin-bottom:18px;max-width:640px">'+tabs.map(function(t){ var on=S.finnView===t[0]; return '<button data-finnview="'+t[0]+'" style="flex:1;white-space:nowrap;border:none;border-radius:11px;background:'+(on?'#fff':'transparent')+';color:'+(on?TEAL:'#6b7780')+';font-size:13px;font-weight:800;padding:10px 12px;cursor:pointer;box-shadow:'+(on?'0 4px 14px rgba(4,33,40,.10)':'none')+'">'+esc(t[1])+'</button>'; }).join('')+'</div>';
+  var body='';
+  if(S.finnLoading&&!d) body='<div style="padding:60px;text-align:center"><span class="spin"></span></div>';
+  else if(!d) body='<div style="padding:40px 22px;text-align:center;font-size:14px;color:#42454b;font-weight:700">Konnte nicht geladen werden. <button data-finnretry="1" style="border:1.5px solid #d6dee0;background:#fff;border-radius:11px;font-size:13px;font-weight:800;padding:8px 14px;color:'+TEAL+';cursor:pointer;margin-left:8px">Erneut laden</button></div>';
+  else if(S.finnView==='status'){
+    var m=d.mode||{}, ev=d.events||{}, au=d.audit||{}, wh=d.webhook||{}, mx=d.metrics||{};
+    var modeRows=[['Agenten (FINN_AGENTS)',m.agents?'aktiv':'aus – bisheriger Coach-Weg'],['Magicline',m.magicline==='mock'?'MOCK (keine echten Daten)':'live'],['KI-Anbieter',m.ai?'verfügbar':'nicht konfiguriert'],['Speicher (KV)',m.kv],['Automationen',m.automations||'—'],['Website-Chat',m.publicChat?'an':'aus'],['E-Mail-Entwürfe',m.emailDraft?'an':'aus']];
+    if(m.mockRequestedInProd) modeRows.push(['Warnung','MAGICLINE_MODE=mock ist in Produktion gesetzt und wird ignoriert']);
+    var modeHtml=modeRows.map(function(r){ return pRow(r[0],r[1]); }).join('');
+    var caps=(d.capabilities||[]);
+    var capRows=caps.map(function(c){ return '<div style="display:flex;align-items:center;gap:12px;padding:9px 0;border-top:1px solid #f0f3f4"><span style="flex-shrink:0">'+finnLight(c.light)+'</span><div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:800;color:#15171B;font-family:ui-monospace,monospace;word-break:break-all;line-height:1.3">'+esc(c.scope)+'</div><div style="font-size:11.5px;color:#6b7780;font-weight:600">'+esc(c.purpose)+(c.neverAssume?' · wird nie angenommen':'')+'</div></div><span style="font-size:11px;font-weight:800;color:'+(c.light==='green'?'#1d7a3e':(c.light==='red'?'#b53a2c':'#b5631f'))+';flex-shrink:0">'+esc(c.state==='ok'?'gesehen':(c.state==='forbidden'?'403 gemerkt':(c.declared?'erwartet':'unbekannt')))+(c.at?' · '+esc(rel(c.at)):'')+'</span></div>'; }).join('');
+    var whTypes=(wh.types||[]); var whRows=whTypes.length?whTypes.map(function(t){ return pRow(t.type||t.t||String(t), deNum(t.count||t.n||0)); }).join(''):'<div style="font-size:12.5px;color:#a3abb0;font-weight:600">Noch keine Webhooks empfangen.</div>';
+    var evLast=(ev.last||[]).slice(0,8).map(function(e){ return '<div style="display:flex;gap:10px;align-items:center;padding:7px 0;border-top:1px solid #f0f3f4;font-size:12px"><span style="font-weight:800;color:'+(e.klass==='duplicate'?'#b5631f':(e.klass==='error'?'#b53a2c':'#0a4958'))+';width:80px;flex-shrink:0">'+esc(e.klass)+'</span><span style="flex:1;font-family:ui-monospace,monospace;color:#15171B;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(e.type||'—')+' → '+esc(e.action||'')+'</span><span style="color:#8a929a;font-weight:600;flex-shrink:0">'+esc(rel(e.at))+'</span></div>'; }).join('');
+    body='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:18px;align-items:start">'
+      +finnCard('Betriebsmodus','Schalter aus der Umgebung – ohne Deployment änderbar',modeHtml)
+      +finnCard('Magicline-Scopes','Grün = erfolgreich genutzt · Gelb = noch nie probiert · Rot = Magicline hat 403 geantwortet (6 h gemerkt)','<div>'+capRows+'</div>')
+      +finnCard('Webhooks','Empfangene Ereignisse je Typ'+(wh.lastType?(' · zuletzt '+wh.lastType+' '+rel(wh.lastAt)):''),whRows)
+      +finnCard('Event-Bus','Replay-Schutz: dasselbe Ereignis läuft nur einmal','<div style="display:flex;gap:9px;flex-wrap:wrap;margin-bottom:12px">'+finnTile('verarbeitet',ev.handled||0)+finnTile('Duplikate',ev.duplicate||0,'#b5631f')+finnTile('unbekannt',ev.unknown||0,'#6b7780')+finnTile('Fehler',(ev.error||0)+(ev.automation_error||0),'#b53a2c')+'</div>'+(evLast||'<div style="font-size:12.5px;color:#a3abb0;font-weight:600">Noch keine Ereignisse.</div>'))
+      +finnCard('Agenten-Aktionen','Prüfpfad der letzten Wochen','<div style="display:flex;gap:9px;flex-wrap:wrap">'+finnTile('Gespräche',mx['finn.turn']||0)+finnTile('vorgeschlagen',au.proposed||0,'#b5631f')+finnTile('bestätigt',au.confirmed||0,'#1d7a3e')+finnTile('abgelehnt',au.declined||0,'#6b7780')+finnTile('Übergaben',au.handoff||0,ORANGE)+finnTile('blockiert',mx['finn.blocked']||0,'#b53a2c')+finnTile('kein Recht',au.forbidden||0,'#b53a2c')+'</div>')
+      +'</div>';
+  } else if(S.finnView==='events'){
+    var items=d.items||[];
+    body=finnCard('Webhook-Events','Neueste zuerst · keine Personendaten, nur Typ, Aktion und Zeit', items.length?items.map(function(e){ return '<div style="display:flex;gap:12px;align-items:center;padding:8px 0;border-top:1px solid #f0f3f4;font-size:12.5px"><span style="width:90px;flex-shrink:0;font-weight:800;color:'+(e.klass==='duplicate'?'#b5631f':(e.klass==='error'?'#b53a2c':(e.klass==='unknown'?'#6b7780':'#1d7a3e')))+'">'+esc(e.klass)+'</span><span style="flex:1;font-family:ui-monospace,monospace;color:#15171B">'+esc(e.type||'—')+'</span><span style="width:140px;color:#42454b;font-weight:700">'+esc(e.action||'')+'</span><span style="width:60px;color:#8a929a;font-weight:600">'+esc(e.dedup||'')+'</span><span style="width:90px;text-align:right;color:#8a929a;font-weight:600">'+esc(rel(e.at))+'</span></div>'; }).join(''):'<div style="font-size:12.5px;color:#a3abb0;font-weight:600">Noch keine Ereignisse.</div>');
+  } else if(S.finnView==='audit'){
+    var au2=d.items||[];
+    body=finnCard('Prüfpfad der Agenten','Jede Werkzeug-Ausführung, Bestätigung und Übergabe – ohne Nachrichteninhalte', au2.length?au2.map(function(a){ var col=a.status==='ok'||a.status==='confirmed'?'#1d7a3e':(a.status==='forbidden'||a.status==='rejected'||a.status==='failed'?'#b53a2c':(a.status==='proposed'?'#b5631f':'#6b7780')); return '<div style="display:flex;gap:12px;align-items:center;padding:8px 0;border-top:1px solid #f0f3f4;font-size:12.5px;flex-wrap:wrap"><span style="width:90px;flex-shrink:0;font-weight:800;color:'+col+'">'+esc(a.status||'')+'</span><span style="flex:1;min-width:160px;font-family:ui-monospace,monospace;color:#15171B">'+esc(a.tool||a.kind||'—')+'</span><span style="width:70px;font-weight:800;color:'+(a.risk==='HIGH'?'#b53a2c':(a.risk==='MEDIUM'?'#b5631f':'#8a929a'))+'">'+esc(a.risk||'')+'</span><span style="width:90px;color:#42454b;font-weight:700">'+esc(a.agent||'')+'</span><span style="width:80px;color:#6b7780;font-weight:600">'+esc(a.channel||'')+'</span><span style="width:110px;color:#6b7780;font-weight:600">'+esc(a.customerId?('Kunde '+a.customerId):(a.actorKind||''))+'</span>'+(a.code?'<span style="color:#b53a2c;font-weight:700">'+esc(a.code)+'</span>':'')+'<span style="margin-left:auto;color:#8a929a;font-weight:600">'+esc(rel(a.at))+'</span></div>'; }).join(''):'<div style="font-size:12.5px;color:#a3abb0;font-weight:600">Noch keine Einträge.</div>');
+  } else if(S.finnView==='agents'){
+    var ag=d.agents||[], tl=d.tools||[];
+    body='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:18px;align-items:start">'
+      +finnCard('Agenten','Wer darf was – jeder Agent sieht nur seine Werkzeuge', ag.map(function(a){ return '<div style="padding:10px 0;border-top:1px solid #f0f3f4"><div style="font-size:13px;font-weight:800;color:#15171B">'+esc(a.name)+' <span style="font-size:11px;color:#8a929a;font-weight:700">('+esc(a.key)+' · '+esc(a.actors.join(', '))+')</span></div><div style="font-size:12px;color:#6b7780;font-weight:600;margin:2px 0 6px">'+esc(a.purpose)+'</div><div style="display:flex;flex-wrap:wrap;gap:5px">'+a.tools.map(function(t){ return '<span style="font-size:10.5px;font-weight:800;color:#0a4958;background:#eef2f3;border-radius:7px;padding:3px 7px;font-family:ui-monospace,monospace">'+esc(t)+'</span>'; }).join('')+'</div></div>'; }).join(''))
+      +finnCard('Werkzeuge','LOW läuft sofort · MEDIUM/HIGH nur nach ausdrücklicher Bestätigung · HIGH mit Nachprüfung', tl.map(function(t){ return '<div style="display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-top:1px solid #f0f3f4"><span style="width:62px;flex-shrink:0;font-size:11px;font-weight:800;color:'+(t.risk==='HIGH'?'#b53a2c':(t.risk==='MEDIUM'?'#b5631f':'#1d7a3e'))+'">'+esc(t.risk)+'</span><div style="flex:1;min-width:0"><div style="font-size:12.5px;font-weight:800;color:#15171B;font-family:ui-monospace,monospace">'+esc(t.name)+'</div><div style="font-size:11.5px;color:#6b7780;font-weight:600">'+esc(t.description)+'</div>'+(t.scopes.length?'<div style="font-size:10.5px;color:#8a929a;font-weight:700;margin-top:3px">'+esc(t.scopes.join(', '))+'</div>':'')+'</div></div>'; }).join(''))
+      +'</div>';
+  }
+  node.innerHTML='<div style="max-width:1180px">'+tabBar+body+'</div>';
+  setTimeout(function(){
+    node.querySelectorAll('[data-finnview]').forEach(function(b){ b.onclick=function(){ var v=b.getAttribute('data-finnview'); if((S.finnData||{})[v]){ S.finnView=v; render(); } else loadFinn(v); }; });
+    var r=node.querySelector('[data-finnretry]'); if(r) r.onclick=function(){ loadFinn(S.finnView); };
+  },0);
+  return node;
+}
+// FINN-Verlauf im Mitgliedsprofil (Reiter „Nachrichten & Vorgänge"): was FINN und
+// die Webhooks für diese Person getan haben – Ereignisse, keine Chat-Inhalte.
+function finnVerlaufCard(p){
+  var d=S.memberFinn; if(!d) return '';
+  var items=d.items||[], sig=d.signals||[];
+  if(!items.length&&!sig.length) return '';
+  var sigHtml=sig.length?'<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">'+sig.map(function(s){ var l=s.kind==='payment'?'Zahlungsproblem':(s.kind==='cancel'?'Kündigung':(s.kind==='reversed'?'Widerruf':s.kind)); return '<span style="font-size:11px;font-weight:800;color:#b53a2c;background:#FCEBEA;border-radius:8px;padding:4px 9px">'+esc(l)+' · '+esc(rel(s.at))+'</span>'; }).join('')+'</div>':'';
+  var rows=items.slice(0,25).map(function(e){ var col=e.kind==='handoff'?ORANGE:(e.kind==='action_failed'?'#b53a2c':(e.source==='webhook'?'#6b7780':TEAL)); return '<div style="display:flex;gap:12px;align-items:flex-start;padding:9px 0;border-top:1px solid #f0f3f4"><span style="margin-top:5px;width:8px;height:8px;border-radius:50%;background:'+col+';flex-shrink:0"></span><div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:700;color:#15171B">'+esc(e.title)+'</div>'+(e.detail?'<div style="font-size:11.5px;color:#6b7780;font-weight:600">'+esc(e.detail)+'</div>':'')+'</div><span style="font-size:11.5px;color:#8a929a;font-weight:600;flex-shrink:0">'+esc((e.agent?e.agent+' · ':'')+rel(e.at))+'</span></div>'; }).join('');
+  return '<div style="margin-top:16px;background:#fff;border-radius:20px;box-shadow:0 14px 38px rgba(4,33,40,.09);padding:20px 24px"><div style="font-size:15px;font-weight:900;letter-spacing:-.2px;margin-bottom:4px;color:#15171B">FINN-Verlauf</div><div style="font-size:12px;color:#8a929a;font-weight:600;margin-bottom:12px">Aktionen der Agenten und Ereignisse aus Magicline – ohne Chat-Inhalte</div>'+sigHtml+rows+'</div>';
+}
 function render(){
   if(!S.token){ renderLogin(); return; }
   if(!canSee(S.screen)) S.screen='dash';   // kein Admin-Bereich für Angestellte (Sicherheitsnetz)
-  var titles={dash:'Übersicht',inbox:'Posteingang',members:'Mitglieder',newmembers:'Neue Mitglieder',appts:'Termine',trial:'Probetraining',help:'Hilfe-Artikel',stats:'Statistiken',msg:'Nachrichten',leads:'Leads',tester:'App-Tester',kassenbuch:'Kassenbuch',feedback:'App-Feedback',todo:'Aufgaben',schicht:'Schichtplan',assist:'Assistent',wb:'Rückholung',community:'Community',shoporders:'Bestellungen'};
-  var subs={dash:'Dein Studio auf einen Blick',inbox:'Alle Vorgänge & Anfragen',members:'Mitgliederverwaltung',newmembers:'Zuletzt beigetreten – automatisch aus Magicline',appts:'Anfragen & Buchungen',trial:'Schnell ein Probetraining buchen',help:'Wissensdatenbank verwalten',stats:'Auswertungen & Trends',msg:'Rundnachricht & Direktnachricht',leads:'Interessenten-Pipeline',tester:'Anmeldungen für den geschlossenen App-Test',kassenbuch:'Barkasse führen, prüfen & Monate abschließen',feedback:'Anonymes Kunden-Feedback aus der App',todo:'Interne Aufgaben fürs Team',schicht:'Dienstplan, Tausch & Verfügbarkeiten',assist:'Sag mir, was zu tun ist – ich bereite es vor, du bestätigst',wb:'Angebots-Rahmen für die KI-Rückholung',community:'Trainingspartner moderieren',shoporders:'Bestellungen aus dem Online-Shop'};
+  var titles={dash:'Übersicht',inbox:'Posteingang',members:'Mitglieder',newmembers:'Neue Mitglieder',appts:'Termine',trial:'Probetraining',help:'Hilfe-Artikel',stats:'Statistiken',msg:'Nachrichten',leads:'Leads',tester:'App-Tester',kassenbuch:'Kassenbuch',feedback:'App-Feedback',todo:'Aufgaben',schicht:'Schichtplan',assist:'Assistent',wb:'Rückholung',community:'Community',shoporders:'Bestellungen',finn:'FINN & Magicline'};
+  var subs={dash:'Dein Studio auf einen Blick',inbox:'Alle Vorgänge & Anfragen',members:'Mitgliederverwaltung',newmembers:'Zuletzt beigetreten – automatisch aus Magicline',appts:'Anfragen & Buchungen',trial:'Schnell ein Probetraining buchen',help:'Wissensdatenbank verwalten',stats:'Auswertungen & Trends',msg:'Rundnachricht & Direktnachricht',leads:'Interessenten-Pipeline',tester:'Anmeldungen für den geschlossenen App-Test',kassenbuch:'Barkasse führen, prüfen & Monate abschließen',feedback:'Anonymes Kunden-Feedback aus der App',todo:'Interne Aufgaben fürs Team',schicht:'Dienstplan, Tausch & Verfügbarkeiten',assist:'Sag mir, was zu tun ist – ich bereite es vor, du bestätigst',wb:'Angebots-Rahmen für die KI-Rückholung',community:'Trainingspartner moderieren',shoporders:'Bestellungen aus dem Online-Shop',finn:'Agenten, Scopes, Webhooks und Prüfpfad'};
   var content;
   if(S.screen==='inbox') content=inboxNode();
   else if(S.screen==='dash') content=dashNode();
@@ -10533,6 +10610,7 @@ function render(){
   else if(S.screen==='wb') content=wbNode();
   else if(S.screen==='community') content=communityNode();
   else if(S.screen==='shoporders') content=shopOrdersNode();
+  else if(S.screen==='finn') content=finnNode();
   else content=placeholderNode(titles[S.screen]||'');
   // Der Schichtplan bringt auf dem Schreibtisch seine eigene Kopfzeile mit; ohne
   // diese Marke staenden zwei uebereinander. Hier gesetzt UND geloescht, weil
@@ -10545,7 +10623,7 @@ function render(){
 // Profil zu /team/mitglieder/<interne-id>. So sind Ansichten teilbar/bookmarkbar
 // und Reload/Zurück führen wieder dorthin. Greift nur, wenn die Seite wirklich
 // unter /team ausgeliefert wird (Guard) – beim direkten Öffnen der Datei bleibt die URL unberührt.
-var SCREEN2SLUG={ dash:'', inbox:'posteingang', members:'mitglieder', newmembers:'neue-mitglieder', appts:'termine', trial:'probetraining', help:'hilfe', stats:'statistiken', msg:'nachrichten', leads:'leads', tester:'tester', kassenbuch:'kassenbuch', feedback:'feedback', todo:'aufgaben', schicht:'schichtplan', assist:'assistent', wb:'rueckholung', community:'community' };
+var SCREEN2SLUG={ dash:'', inbox:'posteingang', members:'mitglieder', newmembers:'neue-mitglieder', appts:'termine', trial:'probetraining', help:'hilfe', stats:'statistiken', msg:'nachrichten', leads:'leads', tester:'tester', kassenbuch:'kassenbuch', feedback:'feedback', todo:'aufgaben', schicht:'schichtplan', assist:'assistent', wb:'rueckholung', community:'community', finn:'finn' };
 var SLUG2SCREEN={}; Object.keys(SCREEN2SLUG).forEach(function(k){ if(SCREEN2SLUG[k]) SLUG2SCREEN[SCREEN2SLUG[k]]=k; });
 var urlRestoring=false;   // true während Boot/Popstate/Login-Restore -> replaceState statt pushState
 function underTeam(){ try{ return /^\/team(\/|$)/.test(location.pathname||''); }catch(e){ return false; } }
@@ -10604,6 +10682,7 @@ function goScreen(k){
   if(k==='schicht'){ if(!S.shLoaded){ loadShifts(); return; } }
   if(k==='wb'){ if(!S.wbLoaded){ loadWb(); return; } }
   if(k==='community'){ if(!S.commLoaded){ loadCommunity(); return; } }
+  if(k==='finn'){ loadFinn(); return; }
   render();
 }
 

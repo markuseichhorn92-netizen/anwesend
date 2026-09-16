@@ -123,7 +123,11 @@ module.exports = async function handler(req, res) {
   if (STUDIO_ADDR && from.indexOf(STUDIO_ADDR) >= 0) isOwner = true;
   try {
     if (isOwner) await SR.applyOwnerReply(v.memberId, v.vorgangId, text);
-    else await SR.applyMemberReply(v.memberId, v.vorgangId, text);
+    else {
+      await SR.applyMemberReply(v.memberId, v.vorgangId, text);
+      // FINN_EMAIL_DRAFT=1: Antwortentwurf als Team-Notiz (nur lesende Werkzeuge, kein Versand).
+      try { await require('../lib/finn/channels').emailDraft(v.memberId, v.vorgangId, SR.extractLatestReply(text) || text); } catch (e) {}
+    }
   } catch (e) { /* nie hart scheitern */ }
   res.statusCode = 200; return res.end(JSON.stringify({ ok: true, direction: isOwner ? 'team' : 'member' }));
 };

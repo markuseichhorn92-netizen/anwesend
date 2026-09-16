@@ -166,10 +166,29 @@ module.exports = async function handler(req, res) {
       return res.end(JSON.stringify({ ok: true, on: mem.on, decided: !!mem.decided, items: mem.items.map((x) => x.t) }));
     }
 
+    // FINN-Agenten (FINN_AGENTS=1): Bestätigen/Ablehnen eines vorgeschlagenen Schritts sowie
+    // der Chat selbst laufen über den Orchestrator (lib/finn). Ohne Schalter bleibt alles wie bisher.
+    const Channels = require('../../lib/finn/channels');
+    if (Channels.agentsOn() && (action === 'confirm' || action === 'decline')) {
+      let r; try { r = await Channels.memberTurn(sess, m, body); } catch (e) { r = { ok: false, error: 'failed', answer: 'Da komme ich gerade nicht weiter. Magst du es unserem Team schreiben?' }; }
+      res.statusCode = 200; return res.end(JSON.stringify(r));
+    }
     if (!(await M.rateLimit('coach-chat:' + sess.id, 40, 3600))) {
       res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'rate_limited', message: 'Kurz durchatmen – das waren viele Fragen auf einmal. Versuch es gleich nochmal.' }));
     }
     const question = String(body.question || '').trim();
+    if (Channels.agentsOn() && question.length >= 2 && AI.hasAI) {
+      let det = { text: '' }; try { det = await memberDetails(sess.id); } catch (e) {}
+      let r;
+      try { r = await Channels.memberTurn(sess, m, { question: question, history: body.history, conversationId: body.conversationId, live: det.text }); }
+      catch (e) { r = null; }
+      if (r && (r.ok || r.blocked || r.error === 'rate_limited')) {
+        try { require('../../lib/handled').record('ai', sess.id, 'chat'); } catch (e) {}
+        res.statusCode = 200;
+        return res.end(JSON.stringify({ ok: true, answer: r.answer, link: r.link, confirm: r.confirm, handoff: r.handoff, agent: r.agent }));
+      }
+      // Agenten nicht verfügbar -> bisheriger Coach-Weg unten.
+    }
     if (question.length < 2) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'empty' })); }
     if (!AI.hasAI) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'no_ai', message: 'FINN ist gerade nicht verfügbar. Magst du es direkt unserem Team schreiben?' })); }
     // Live-Daten (Vertrag, Termine, Besuche, Beitragskonto) für konkrete Antworten.

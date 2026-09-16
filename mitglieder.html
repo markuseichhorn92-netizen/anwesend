@@ -455,6 +455,12 @@
   .fcActs{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
   .fcAct{display:inline-flex;align-items:center;gap:6px;min-height:38px;border:none;border-radius:11px;background:var(--teal);color:#fff;font-size:13px;font-weight:800;padding:0 13px;cursor:pointer;font-family:inherit}
   .fcAct.ghost{background:var(--surface-2);color:var(--teal-ink)}
+  .fcAct.warn{background:var(--err-fg)}
+  .fcCf .fcB{border:1.5px solid var(--border)}
+  .fcCf.high .fcB{border-color:var(--err-fg)}
+  .fcCfLbl{display:flex;align-items:center;gap:5px;font-size:11px;font-weight:800;color:var(--teal);margin-bottom:6px;text-transform:uppercase;letter-spacing:.4px}
+  .fcCfLbl.high{color:var(--err-fg)}
+  .fcCfState{display:inline-flex;align-items:center;min-height:38px;font-size:13px;font-weight:700;color:var(--text-muted)}
   .fcAct:active{transform:scale(.97)}
   .fcDots{display:inline-flex;gap:4px;align-items:center;height:22px}
   .fcDots i{width:7px;height:7px;border-radius:50%;background:var(--text-soft);animation:fcBounce 1.1s ease-in-out infinite}
@@ -1878,7 +1884,7 @@
     try{
       var msgs=(S.finnMsgs||[]).filter(function(m){ return m&&!m.error; }).slice(-FINN_KEEP);
       if(!msgs.length){ sessionStorage.removeItem(FINN_STORE); return; }
-      sessionStorage.setItem(FINN_STORE, JSON.stringify({t:Date.now(),topic:S.finnTopic||'',msgs:msgs.map(function(m){ return {role:m.role,text:m.text,link:m.link||null}; })}));
+      sessionStorage.setItem(FINN_STORE, JSON.stringify({t:Date.now(),topic:S.finnTopic||'',msgs:msgs.map(function(m){ return {role:m.role,text:m.text,link:m.link||null,confirm:(m.confirm&&m.confirm.used!=='pending')?m.confirm:(m.confirm?Object.assign({},m.confirm,{used:'no'}):null)}; })}));
     }catch(e){}
   }
   function finnRestore(){
@@ -1887,7 +1893,7 @@
       var o=JSON.parse(raw);
       if(!o||!Array.isArray(o.msgs)||(Date.now()-(o.t||0))>12*3600e3){ sessionStorage.removeItem(FINN_STORE); return; }
       S.finnMsgs=o.msgs.filter(function(m){ return m&&(m.role==='user'||m.role==='assistant')&&typeof m.text==='string'; })
-        .map(function(m){ return {role:m.role,text:m.text.slice(0,4000),link:(m.link&&typeof m.link.screen==='string')?{screen:m.link.screen.slice(0,24),label:String(m.link.label||'Öffnen').slice(0,60)}:null}; })
+        .map(function(m){ var o={role:m.role,text:m.text.slice(0,4000),link:(m.link&&typeof m.link.screen==='string')?{screen:m.link.screen.slice(0,24),label:String(m.link.label||'Öffnen').slice(0,60)}:null}; var c=finnCleanConfirm(m.confirm); if(c) o.confirm=c; return o; })
         .slice(-FINN_KEEP);
     }catch(e){}
   }
@@ -1904,6 +1910,14 @@
       var acts='';
       if(m.error){
         acts='<div class="fcActs"><button class="fcAct" data-act="finnRetry">'+svg('<path d="M3 12a9 9 0 1 0 2.6-6.4L3 8"></path><path d="M3 3v5h5"></path>',{c:'#fff',w:2.2,s:14})+'Nochmal versuchen</button><button class="fcAct ghost" data-act="finnToTeam">Ans Team</button></div>';
+      } else if(m.confirm&&m.confirm.id){
+        // Vorgeschlagener Schritt: FINN führt nichts aus, bevor hier bestätigt wurde.
+        var c=m.confirm, high=c.risk==='HIGH';
+        var badge='<div class="fcCfLbl'+(high?' high':'')+'">'+svg(high?IC.warn:'<path d="M20 6L9 17l-5-5"></path>',{c:high?'var(--err-fg)':'var(--teal)',w:2.2,s:13})+(high?'Wichtige Änderung – bitte prüfen':'Vorschlag')+'</div>';
+        if(c.used==='pending') acts='<div class="fcActs"><span class="fcCfState"><span class="fcDots"><i></i><i></i><i></i></span></span></div>';
+        else if(c.used) acts='<div class="fcActs"><span class="fcCfState">'+(c.used==='yes'?'Bestätigt':'Abgebrochen')+'</span></div>';
+        else acts='<div class="fcActs"><button class="fcAct'+(high?' warn':'')+'" data-act="finnConfirm" data-arg="'+esc(c.id)+'">'+svg('<path d="M20 6L9 17l-5-5"></path>',{c:'#fff',w:2.4,s:14})+(high?'Ja, verbindlich bestätigen':'Ja, so machen')+'</button><button class="fcAct ghost" data-act="finnDecline" data-arg="'+esc(c.id)+'">Abbrechen</button></div>';
+        return '<div class="fcMsg fcCf'+(high?' high':'')+'" data-cf="'+esc(c.id)+'"><div class="fcAva"><img src="/assets/brand/finn-mark.svg" alt=""></div><div class="fcB">'+badge+linkifyHtml(finnFmt(m.text))+acts+'</div></div>';
       } else if(m.link&&m.link.screen){
         acts='<div class="fcActs"><button class="fcAct" data-act="finnGo" data-arg="'+esc(m.link.screen)+'">'+esc(m.link.label||'Öffnen')+svg('<path d="M9 18l6-6-6-6"></path>',{c:'#fff',w:2.2,s:14})+'</button></div>';
       }
@@ -1933,22 +1947,49 @@
       if(t&&!opts.resend){ t.value=''; t.style.height=''; t.focus(); }
       finnSendState(); finnHeadState(); finnScrollBottom();
     } else { if(t) t.value=''; render(); finnScrollBottom(); }
-    function receive(text,link,isErr){
-      if(!TOKEN) return;   // Sitzung ist inzwischen weg (401 -> logout)
-      S.finnBusy=false; var msg={role:'assistant',text:text,link:link||null}; if(isErr) msg.error=true; S.finnMsgs.push(msg); finnPersist();
-      var th=$('finn_think'), sc2=$('finn_scroll');
-      if(sc2){ if(th) th.remove(); sc2.insertAdjacentHTML('beforeend', finnBubbleHtml(msg)); finnSendState(); finnHeadState(); finnScrollBottom(); }
-      else if(S.finnOpen){ render(); finnScrollBottom(); }
-    }
+    var receive=function(text,link,isErr,confirm){ finnReceive({role:'assistant',text:text,link:link||null,error:!!isErr,confirm:finnCleanConfirm(confirm)}); };
     if(navigator.onLine===false){ receive('Du bist gerade offline. Sobald du wieder Netz hast, versuch es nochmal.',null,true); return; }
     var hist=S.finnMsgs.slice(0,-1).map(function(m){ return {role:m.role,text:m.text}; });
     api('/api/member/coach',{method:'POST',timeoutMs:60000,body:JSON.stringify({question:q,history:hist,topic:S.finnTopic||''})}).then(function(d){
-      if(d&&d.ok&&d.answer) receive(d.answer, d.link);
+      if(d&&d.ok&&d.answer) receive(d.answer, d.link, false, d.confirm);
       else if(d&&d.error==='rate_limited') receive(d.message||'Kurz durchatmen – versuch es gleich nochmal.');
       else receive((d&&d.message)||'Da komme ich gerade nicht weiter.',null,true);
     }).catch(function(e){
       if(!TOKEN) return;
       receive((e&&e.name==='AbortError')?'Das dauert gerade zu lange. Versuch es gleich nochmal.':'Keine Verbindung. Prüf dein Netz und versuch es nochmal.',null,true);
+    });
+  }
+  // Antwortblase anhängen (Teil-Update) – ein Weg für Antworten, Fehler und Ergebnisse von Bestätigungen.
+  function finnReceive(msg){
+    if(!TOKEN) return;   // Sitzung ist inzwischen weg (401 -> logout)
+    S.finnBusy=false; if(!msg.error) delete msg.error; if(!msg.confirm) delete msg.confirm;
+    S.finnMsgs.push(msg); finnPersist();
+    var th=$('finn_think'), sc2=$('finn_scroll');
+    if(sc2){ if(th) th.remove(); sc2.insertAdjacentHTML('beforeend', finnBubbleHtml(msg)); finnSendState(); finnHeadState(); finnScrollBottom(); }
+    else if(S.finnOpen){ render(); finnScrollBottom(); }
+  }
+  // Nur die Felder eines Vorschlags übernehmen, die die Oberfläche braucht (id, Vorschau, Risiko, Zustand).
+  function finnCleanConfirm(c){
+    if(!c||typeof c.id!=='string'||!/^[A-Za-z0-9_-]{8,40}$/.test(c.id)) return null;
+    var out={id:c.id,preview:String(c.preview||'').slice(0,400),risk:(c.risk==='HIGH'?'HIGH':'MEDIUM')};
+    if(c.used==='yes'||c.used==='no') out.used=c.used;
+    return out;
+  }
+  // Vorschlag bestätigen/abbrechen: erst hier führt der Server die Aktion aus (Bestätigungs-Engine).
+  function finnDecide(id, yes){
+    if(S.finnBusy) return;
+    var msg=null; for(var i=S.finnMsgs.length-1;i>=0;i--){ var c=S.finnMsgs[i].confirm; if(c&&c.id===id){ msg=S.finnMsgs[i]; break; } }
+    if(!msg||msg.confirm.used) return;
+    msg.confirm.used='pending'; S.finnBusy=true; S.finnStick=true;
+    var sc=$('finn_scroll'); if(sc){ render(); sc=$('finn_scroll'); if(sc) sc.insertAdjacentHTML('beforeend', finnThinkingHtml()); finnSendState(); finnHeadState(); finnScrollBottom(); } else render();
+    // Zustand der Karte nachziehen (Teil-Update: nur diese Blase wird ersetzt).
+    var settle=function(used){ msg.confirm.used=used; finnPersist(); var card=document.querySelector('[data-cf="'+id.replace(/"/g,'')+'"]'); if(card) card.outerHTML=finnBubbleHtml(msg); };
+    api('/api/member/coach',{method:'POST',timeoutMs:60000,body:JSON.stringify({action:yes?'confirm':'decline',id:id})}).then(function(d){
+      settle(yes?'yes':'no');
+      finnReceive({role:'assistant',text:(d&&d.answer)||(yes?'Erledigt.':'Okay, ich habe nichts geändert.'),link:(d&&d.link)||null,error:!(d&&d.ok)});
+    }).catch(function(e){
+      settle(yes?'yes':'no');
+      finnReceive({role:'assistant',text:(e&&e.name==='AbortError')?'Das dauert gerade zu lange. Ob es geklappt hat, siehst du gleich im Bereich Vertrag oder Termine.':'Keine Verbindung. Prüf dein Netz und frag mich einfach noch einmal.',link:null,error:true});
     });
   }
   // Schlanke „Frag FINN"-Zeile für Ernährung/Training – öffnet den FINN-Chat mit Themen-Kontext.
@@ -12458,6 +12499,8 @@
     // „Nochmal versuchen" unter einer Fehlerblase: dieselbe Frage erneut, ohne sie zu doppeln.
     finnRetry:function(){ var last=''; for(var i=S.finnMsgs.length-1;i>=0;i--){ if(S.finnMsgs[i].role==='user'){ last=S.finnMsgs[i].text; break; } } if(last) finnAsk(last,{resend:true}); },
     finnNew:function(){ if(S.finnBusy) return; finnReset(); S.finnStick=true; render(); },
+    finnConfirm:function(a){ finnDecide(String(a||''), true); },
+    finnDecline:function(a){ finnDecide(String(a||''), false); },
     finnDown:function(){ S.finnStick=true; var e=$('finn_scroll'); if(e){ try{ e.scrollTo({top:e.scrollHeight,behavior:'smooth'}); }catch(_){ e.scrollTop=e.scrollHeight; } } var d=$('finn_down'); if(d) d.classList.remove('on'); },
     // Button unter einer FINN-Antwort: Chat schließen + Ziel-Seite in der App öffnen.
     // Die Liste muss zu SCREENS in api/member/coach.js passen – sonst zeigt FINN einen
