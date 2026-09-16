@@ -180,14 +180,17 @@ module.exports = async function handler(req, res) {
     if (Channels.agentsOn() && question.length >= 2 && AI.hasAI) {
       let det = { text: '' }; try { det = await memberDetails(sess.id); } catch (e) {}
       let r;
+      let fbErr = null;
       try { r = await Channels.memberTurn(sess, m, { question: question, history: body.history, conversationId: body.conversationId, live: det.text }); }
-      catch (e) { r = null; }
+      catch (e) { r = null; fbErr = String(e && e.name || 'throw'); }
       if (r && (r.ok || r.blocked || r.error === 'rate_limited')) {
         try { require('../../lib/handled').record('ai', sess.id, 'chat'); } catch (e) {}
         res.statusCode = 200;
         return res.end(JSON.stringify({ ok: true, answer: r.answer, link: r.link, confirm: r.confirm, handoff: r.handoff, agent: r.agent }));
       }
-      // Agenten nicht verfügbar -> bisheriger Coach-Weg unten.
+      // Agenten nicht verfügbar -> bisheriger Coach-Weg unten. Sichtbar machen (ohne Personenbezug),
+      // sonst sieht ein Rückfall im Log aus wie ein normaler Coach-Aufruf.
+      try { console.log('[finn]', JSON.stringify({ ch: 'web', path: 'fallback_coach', err: fbErr || (r && r.error) || 'unknown' })); } catch (e) {}
     }
     if (question.length < 2) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'empty' })); }
     if (!AI.hasAI) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'no_ai', message: 'FINN ist gerade nicht verfügbar. Magst du es direkt unserem Team schreiben?' })); }

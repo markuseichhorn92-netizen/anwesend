@@ -29,6 +29,10 @@ inject('lib/ai.js', {
 const T = (name, input, id) => ({ type: 'tool_use', id: id || ('tu_' + name + '_' + Math.random().toString(36).slice(2, 7)), name: name, input: input || {} });
 const X = (text) => ({ type: 'text', text: text });
 
+// Diagnosezeilen ([finn] …) mitschneiden: sie dürfen keinen Nachrichtentext enthalten.
+const diagLines = [];
+const origLog = console.log;
+console.log = function () { const a = Array.prototype.slice.call(arguments); if (a[0] === '[finn]') diagLines.push(String(a[1] || '')); return origLog.apply(console, a); };
 const Orc = require(path.join(ROOT, 'lib/finn/orchestrator.js'));
 const Router = require(path.join(ROOT, 'lib/finn/router.js'));
 const ML = require(path.join(ROOT, 'lib/finn/magicline.js'));
@@ -133,6 +137,12 @@ const member = () => ({ actor: { kind: 'member', id: '1001' }, channel: 'web', s
   script = [{ content: [T('get_contract', { customerId: '1001' })] }, { content: [X('Vertrag Flex 12, aktiv.')] }];
   const tm = await Orc.handle({ actor: { kind: 'team', id: 'admin' }, channel: 'team', securityScope: 'team', customerId: '1001' }, { message: 'Fasse den Vertrag von Kunde 1001 zusammen', conversationId: 'c8' });
   ok('10. Team-Scope an die KI, Vertrag gelesen', tm.ok && calls[0].scope === 'team' && /Flex 12/.test(tm.text) && !tm.link);
+
+  // ── 11. Diagnosezeilen: je Gespräch eine, ohne Nachrichtentext und ohne Kunden-Id ──
+  const secret = 'AWS-Schlüssel'; // kam in Test 2 als Nachricht vor
+  ok('11. [finn]-Zeilen vorhanden, mit Agent/Dauer/Werkzeugen, ohne Text und ohne Kunden-Id', diagLines.length >= 10 && diagLines.every((l) => l.indexOf(secret) < 0 && l.indexOf('Umzug') < 0 && l.indexOf('"1001"') < 0) && diagLines.some((l) => /"agent":"contract"/.test(l) && /"tools":\["get_contract"/.test(l) && /"ms":/.test(l)), diagLines.slice(0, 3).join(' | '));
+  const turnAudit = await Audit.list({ customerId: '1001' });
+  ok('11a. Reine Antworten stehen als „turn" im Prüfpfad', turnAudit.some((a) => a.tool === 'turn' && a.status === 'ok' && a.agent));
 
   Mock.reset();
   console.log(pass ? 'FINN-ORCHESTRATOR PASS' : 'FINN-ORCHESTRATOR FAIL');
