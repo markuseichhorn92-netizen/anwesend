@@ -252,3 +252,7 @@ module.exports = async function handler(req, res) {
 // Derselbe Live-Block für die Coach-Erkenntnis (api/member/coach-insights) –
 // eine Quelle, damit Chat und Analyse dasselbe über das Mitglied wissen.
 module.exports.memberDetails = memberDetails;
+// Für die FINN-Agenten (lib/finn/runtime.js): dieselbe Link-Whitelist und derselbe
+// Marker-Parser – eine Quelle für erlaubte App-Ziele.
+module.exports.extractLink = extractLink;
+module.exports.SCREENS = SCREENS;
