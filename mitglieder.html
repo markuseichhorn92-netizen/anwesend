@@ -890,7 +890,7 @@
     // falls die native Hülle ihn geteilt hat – wird mit abgemeldet.
     try{ if(TOKEN){ var pt=null; try{ pt=localStorage.getItem('fi_push_token')||null; }catch(_e){}
       fetch('/api/member/logout',{method:'POST',keepalive:true,headers:{'Content-Type':'application/json','Authorization':'Bearer '+TOKEN},body:JSON.stringify(pt?{pushToken:pt}:{})}).catch(function(){}); } }catch(e){}
-    TOKEN=null; sessionStorage.removeItem('fi_member_token'); localStorage.removeItem('fi_member_token'); try{ localStorage.removeItem('fi_checkin'); }catch(e){} S.checkedInAt=null; S.ciPopup=null; DATA={profile:null,contract:null,checkins:null,appts:null};
+    TOKEN=null; sessionStorage.removeItem('fi_member_token'); localStorage.removeItem('fi_member_token'); try{ localStorage.removeItem('fi_checkin'); }catch(e){} S.checkedInAt=null; S.ciPopup=null; DATA={profile:null,contract:null,checkins:null,appts:null,account:null};
     try{ finnReset(); }catch(e){} S.finnOpen=false;   // FINN-Verlauf gehört zur Sitzung – mit ihr weg
     S.screen='login'; S.loginStep='request'; S.challenge=''; S.otp=''; render(); }
   function pad2(n){ return (n<10?'0':'')+n; }
@@ -10201,7 +10201,8 @@
     var gradHd='';
     head+=gradHd+ernAboRow();
     var a=DATA.account;
-    if(a===null) return head+skelBlock('wide');
+    // Nach einem Abmelden/Neuanmelden fehlt der Schlüssel ganz (undefined) – dann ebenfalls laden.
+    if(a==null){ if(a===undefined){ DATA.account=null; loadAccount(); } return head+skelBlock('wide'); }
     if(!a.ok) return head+'<div style="background:var(--surface);border-radius:20px;box-shadow:0 12px 34px rgba(4,33,40,.10);padding:26px 22px;text-align:center"><div style="width:56px;height:56px;border-radius:50%;background:var(--surface-2);display:flex;align-items:center;justify-content:center;margin:0 auto 14px">'+svg(IC.warn,{c:'var(--text-soft)',w:2,s:26})+'</div><div style="font-size:16px;font-weight:800">Beitragskonto nicht verfügbar</div><div style="font-size:13.5px;color:var(--text-muted);margin:6px 0 14px;line-height:1.5">Bitte später erneut versuchen oder im Studio nachfragen.</div><button data-act="accountReload" style="padding:11px 20px;border:none;border-radius:12px;background:'+TEAL+';color:#fff;font-weight:800;font-size:14px;cursor:pointer">Erneut versuchen</button></div>';
     var cur=a.currency||'EUR', sym=(cur==='EUR'?'€':' '+cur);
     var money=function(v){ if(v==null) return '—'; return (Math.round(Math.abs(v)*100)/100).toFixed(2).replace('.',',')+' '+sym; };
