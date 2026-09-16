@@ -43,6 +43,7 @@ ok('1b. FINN-Verlauf im Profil (Reiter Nachrichten & Vorgänge)', /finnVerlaufCa
     }
     if (u === '/api/member/coach') return J({ ok: true, message: 'Tipp', ai: false });
     if (u === '/api/team/me') return J({ ok: true, role: srv.role || 'admin', name: 'Chef' });
+    if (u === '/api/team/finn' && req.method === 'POST') return readBody((b) => { srv.probes = (srv.probes || 0) + 1; srv.lastProbe = b; return J({ ok: true, customerScoped: !!b.customerId, checks: [{ scope: 'STUDIO_READ', fn: 'studio.hours', state: 'ok', status: 200 }, { scope: 'MEMBERSHIP_SELF_SERVICE_READ', fn: 'contract.cancelReasons', state: 'forbidden', status: 403 }] }); });
     if (u === '/api/team/finn') {
       const q = new URL(req.url, 'http://x').searchParams;
       if (q.get('view') === 'events') return J({ ok: true, items: [{ type: 'CUSTOMER_CHECKIN', action: 'checkin', klass: 'handled', at: Date.now(), dedup: 'id' }, { type: 'CUSTOMER_CHECKIN', action: 'duplicate', klass: 'duplicate', at: Date.now(), dedup: 'id' }] });
@@ -115,6 +116,13 @@ ok('1b. FINN-Verlauf im Profil (Reiter Nachrichten & Vorgänge)', /finnVerlaufCa
   let t = await teamPage('admin');
   const st = await t.pg.evaluate(function () { const txt = document.body.innerText; const lights = document.querySelectorAll('[data-light="green"]').length + document.querySelectorAll('[data-light="red"]').length + document.querySelectorAll('[data-light="yellow"]').length; return { title: /FINN & Magicline/.test(txt), scopes: /CUSTOMER_READ/.test(txt) && /APPOINTMENTS_WRITE/.test(txt) && /403 gemerkt/.test(txt) && /wird nie angenommen/.test(txt), mode: /MOCK|live/.test(txt), tabs: document.querySelectorAll('[data-finnview]').length, lights: lights, nav: !!document.querySelector('[data-nav="finn"]') }; });
   ok('3. Admin sieht Status: Titel, Scope-Ampel mit 403-Hinweis, vier Reiter, Nav-Eintrag', st.title && st.scopes && st.mode && st.tabs === 4 && st.lights >= 3 && st.nav, JSON.stringify(st));
+  // Scope-Probe: Kunden-Id eintippen, prüfen, Ergebniszeile erscheint, Status wird neu geladen
+  await t.pg.evaluate(function () { const i = document.querySelector('[data-finnprobe-cid]'); i.value = '12x34'; i.dispatchEvent(new Event('input', { bubbles: true })); document.querySelector('[data-finnprobe]').click(); }); await t.pg.waitForTimeout(900);
+  const pr = await t.pg.evaluate(function () { return { msg: document.body.innerText.match(/\d+ von \d+ Prüfungen[^\n]*/) ? RegExp.lastMatch : null }; });
+  ok('3p. Scope-Probe: nur Ziffern als Kunden-Id, Ergebniszeile mit „kein Recht"', srv.probes === 1 && srv.lastProbe && srv.lastProbe.action === 'probe' && srv.lastProbe.customerId === '1234' && pr.msg && /1 von 2/.test(pr.msg) && /kein Recht: MEMBERSHIP_SELF_SERVICE_READ/.test(pr.msg), JSON.stringify({ probes: srv.probes, last: srv.lastProbe, msg: pr.msg }));
+  // Reiterleiste scrollt waagerecht (kein abgeschnittener Reiter auf dem Handy)
+  const tb = await t.pg.evaluate(function () { const bar = document.querySelector('[data-finnview]').parentElement; return getComputedStyle(bar).overflowX; });
+  ok('3q. Reiterleiste ist waagerecht scrollbar', tb === 'auto', tb);
   await t.pg.evaluate(function () { document.querySelector('[data-finnview="events"]').click(); }); await t.pg.waitForTimeout(700);
   const ev = await t.pg.evaluate(function () { const txt = document.body.innerText; return /duplicate/.test(txt) && /CUSTOMER_CHECKIN/.test(txt); });
   ok('3a. Reiter Webhook-Events lädt und zeigt Duplikate', ev);

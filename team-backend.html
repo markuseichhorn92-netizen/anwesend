@@ -10535,7 +10535,8 @@ function finnNode(){
   var node=el('<div class="scrl" style="flex:1;min-height:0;overflow-y:auto;padding:18px 18px 28px"></div>');
   var d=(S.finnData||{})[S.finnView];
   var tabs=[['status','Status'],['events','Webhook-Events'],['audit','Prüfpfad'],['agents','Agenten & Werkzeuge']];
-  var tabBar='<div style="display:flex;gap:4px;background:#e6ecee;border-radius:14px;padding:4px;margin-bottom:18px;max-width:640px">'+tabs.map(function(t){ var on=S.finnView===t[0]; return '<button data-finnview="'+t[0]+'" style="flex:1;white-space:nowrap;border:none;border-radius:11px;background:'+(on?'#fff':'transparent')+';color:'+(on?TEAL:'#6b7780')+';font-size:13px;font-weight:800;padding:10px 12px;cursor:pointer;box-shadow:'+(on?'0 4px 14px rgba(4,33,40,.10)':'none')+'">'+esc(t[1])+'</button>'; }).join('')+'</div>';
+  // Auf dem Handy scrollt die Leiste waagerecht, statt den letzten Reiter abzuschneiden.
+  var tabBar='<div style="display:flex;gap:4px;background:#e6ecee;border-radius:14px;padding:4px;margin-bottom:18px;max-width:640px;overflow-x:auto;-webkit-overflow-scrolling:touch">'+tabs.map(function(t){ var on=S.finnView===t[0]; return '<button data-finnview="'+t[0]+'" style="flex:1 0 auto;white-space:nowrap;border:none;border-radius:11px;background:'+(on?'#fff':'transparent')+';color:'+(on?TEAL:'#6b7780')+';font-size:13px;font-weight:800;padding:10px 12px;cursor:pointer;box-shadow:'+(on?'0 4px 14px rgba(4,33,40,.10)':'none')+'">'+esc(t[1])+'</button>'; }).join('')+'</div>';
   var body='';
   if(S.finnLoading&&!d) body='<div style="padding:60px;text-align:center"><span class="spin"></span></div>';
   else if(!d) body='<div style="padding:40px 22px;text-align:center;font-size:14px;color:#42454b;font-weight:700">Konnte nicht geladen werden. <button data-finnretry="1" style="border:1.5px solid #d6dee0;background:#fff;border-radius:11px;font-size:13px;font-weight:800;padding:8px 14px;color:'+TEAL+';cursor:pointer;margin-left:8px">Erneut laden</button></div>';
@@ -10550,7 +10551,12 @@ function finnNode(){
     var evLast=(ev.last||[]).slice(0,8).map(function(e){ return '<div style="display:flex;gap:10px;align-items:center;padding:7px 0;border-top:1px solid #f0f3f4;font-size:12px"><span style="font-weight:800;color:'+(e.klass==='duplicate'?'#b5631f':(e.klass==='error'?'#b53a2c':'#0a4958'))+';width:80px;flex-shrink:0">'+esc(e.klass)+'</span><span style="flex:1;font-family:ui-monospace,monospace;color:#15171B;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(e.type||'—')+' → '+esc(e.action||'')+'</span><span style="color:#8a929a;font-weight:600;flex-shrink:0">'+esc(rel(e.at))+'</span></div>'; }).join('');
     body='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:18px;align-items:start">'
       +finnCard('Betriebsmodus','Schalter aus der Umgebung – ohne Deployment änderbar',modeHtml)
-      +finnCard('Magicline-Scopes','Grün = erfolgreich genutzt · Gelb = noch nie probiert · Rot = Magicline hat 403 geantwortet (6 h gemerkt)','<div>'+capRows+'</div>')
+      +finnCard('Magicline-Scopes','Grün = erfolgreich genutzt · Gelb = noch nie probiert · Rot = Magicline hat 403 geantwortet (6 h gemerkt)','<div>'+capRows+'</div>'
+        // Probe: nur lesende Aufrufe; mit Kunden-Id auch die kundenbezogenen Lese-Scopes (Daten werden nicht angezeigt).
+        +'<div style="margin-top:14px;padding-top:12px;border-top:1px solid #f0f3f4"><div style="font-size:11.5px;color:#8a929a;font-weight:600;margin-bottom:8px">Scopes jetzt prüfen – nur lesende Aufrufe, nichts wird verändert. Mit Kunden-Id auch die kundenbezogenen Lese-Scopes.</div>'
+        +'<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><input data-finnprobe-cid inputmode="numeric" placeholder="Kunden-Id (optional)" value="'+esc(S.finnProbeCid||'')+'" style="flex:1;min-width:150px;height:40px;border:1.5px solid #d6dee0;border-radius:11px;padding:0 12px;font-size:13.5px;font-family:inherit">'
+        +'<button data-finnprobe="1" '+(S.finnProbeBusy?'disabled':'')+' style="height:40px;border:none;border-radius:11px;background:'+TEAL+';color:#fff;font-size:13px;font-weight:800;padding:0 16px;cursor:pointer;opacity:'+(S.finnProbeBusy?'.6':'1')+'">'+(S.finnProbeBusy?'Prüft …':'Scopes prüfen')+'</button></div>'
+        +(S.finnProbeMsg?'<div style="margin-top:10px;font-size:12.5px;font-weight:700;color:'+(/kein Recht/.test(S.finnProbeMsg)?'#b53a2c':'#1d7a3e')+'">'+esc(S.finnProbeMsg)+'</div>':'')+'</div>')
       +finnCard('Webhooks','Empfangene Ereignisse je Typ'+(wh.lastType?(' · zuletzt '+wh.lastType+' '+rel(wh.lastAt)):''),whRows)
       +finnCard('Event-Bus','Replay-Schutz: dasselbe Ereignis läuft nur einmal','<div style="display:flex;gap:9px;flex-wrap:wrap;margin-bottom:12px">'+finnTile('verarbeitet',ev.handled||0)+finnTile('Duplikate',ev.duplicate||0,'#b5631f')+finnTile('unbekannt',ev.unknown||0,'#6b7780')+finnTile('Fehler',(ev.error||0)+(ev.automation_error||0),'#b53a2c')+'</div>'+(evLast||'<div style="font-size:12.5px;color:#a3abb0;font-weight:600">Noch keine Ereignisse.</div>'))
       +finnCard('Agenten-Aktionen','Prüfpfad der letzten Wochen','<div style="display:flex;gap:9px;flex-wrap:wrap">'+finnTile('Gespräche',mx['finn.turn']||0)+finnTile('vorgeschlagen',au.proposed||0,'#b5631f')+finnTile('bestätigt',au.confirmed||0,'#1d7a3e')+finnTile('abgelehnt',au.declined||0,'#6b7780')+finnTile('Übergaben',au.handoff||0,ORANGE)+finnTile('blockiert',mx['finn.blocked']||0,'#b53a2c')+finnTile('kein Recht',au.forbidden||0,'#b53a2c')+'</div>')
@@ -10572,8 +10578,24 @@ function finnNode(){
   setTimeout(function(){
     node.querySelectorAll('[data-finnview]').forEach(function(b){ b.onclick=function(){ var v=b.getAttribute('data-finnview'); if((S.finnData||{})[v]){ S.finnView=v; render(); } else loadFinn(v); }; });
     var r=node.querySelector('[data-finnretry]'); if(r) r.onclick=function(){ loadFinn(S.finnView); };
+    var pi=node.querySelector('[data-finnprobe-cid]'); if(pi) pi.oninput=function(){ S.finnProbeCid=pi.value.replace(/[^0-9]/g,'').slice(0,12); };
+    var pb=node.querySelector('[data-finnprobe]'); if(pb) pb.onclick=function(){ finnProbe(); };
   },0);
   return node;
+}
+// Scope-Probe: POST action=probe (nur lesend), danach Status neu laden – die Ampel zeigt das Ergebnis.
+async function finnProbe(){
+  if(S.finnProbeBusy) return;
+  S.finnProbeBusy=true; S.finnProbeMsg=''; render();
+  try{
+    var r=await tapi('/api/team/finn',{method:'POST',body:{action:'probe',customerId:S.finnProbeCid||undefined}});
+    if(r&&r.ok&&Array.isArray(r.checks)){
+      var n=r.checks.length, okN=r.checks.filter(function(c){return c.state==='ok';}).length, fb=r.checks.filter(function(c){return c.state==='forbidden';}).map(function(c){return c.scope;});
+      S.finnProbeMsg=okN+' von '+n+' Prüfungen erfolgreich'+(fb.length?(' · kein Recht: '+fb.join(', ')):'')+(r.customerScoped?'':' · ohne Kunden-Id nur studioweite Scopes');
+    } else S.finnProbeMsg='Prüfung nicht möglich.';
+  }catch(e){ S.finnProbeMsg='Prüfung nicht möglich.'; }
+  S.finnProbeBusy=false;
+  loadFinn('status');
 }
 // FINN-Verlauf im Mitgliedsprofil (Reiter „Nachrichten & Vorgänge"): was FINN und
 // die Webhooks für diese Person getan haben – Ereignisse, keine Chat-Inhalte.

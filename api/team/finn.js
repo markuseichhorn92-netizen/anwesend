@@ -9,6 +9,7 @@
  *   GET ?view=agents                 -> Agenten und ihre Werkzeuge (Dokumentation im Backend)
  *   POST { message, customerId?, history? | action:'confirm'|'decline', id }
  *                                    -> Team-Kanal des Orchestrators (Team-Guardrail)
+ *   POST { action:'probe', customerId? } -> Scope-Probe, nur lesende Aufrufe (lib/finn/probe.js)
  *
  * Rechte: status/events/audit/agents/POST nur Admin (admin.manage); timeline mit member.read.
  */
@@ -61,6 +62,10 @@ module.exports = async function handler(req, res) {
     if (!TA.isAdmin(sess)) return J({ ok: false, error: 'forbidden' }, 403);
     const M = require('../../lib/members');
     const body = await M.readBody(req);
+    if (String(body.action || '') === 'probe') {
+      try { return J(await require('../../lib/finn/probe').run({ customerId: body.customerId, actor: { kind: 'team', id: String(sess.user || sess.name || 'team') } })); }
+      catch (e) { return J({ ok: false, error: 'failed' }, 200); }
+    }
     try { return J(await require('../../lib/finn/channels').teamTurn(sess, body)); }
     catch (e) { return J({ ok: false, error: 'failed' }, 200); }
   }

@@ -142,9 +142,18 @@ async function call(handler, method, body, url, headers) { const res = res0(); B
   calls.length = 0; script = [{ content: [T('get_contract', { customerId: '1001' })] }, { content: [X('Vertrag Flex 12, gekündigt zum 31.01.2027.')] }];
   r = await call(teamFinn, 'POST', { message: 'Vertrag von Kunde 1001?', customerId: '1001' });
   ok('5g. Admin: Team-Kanal mit Team-Guardrail', r.json.ok && calls[0].scope === 'team' && /Flex 12/.test(r.json.answer));
+  r = await call(teamFinn, 'POST', { action: 'probe' });
+  ok('5i. Admin: Scope-Probe ohne Kunde prüft nur studioweite Scopes', r.json.ok && r.json.customerScoped === false && r.json.checks.length === 4 && r.json.checks.every((c) => c.state === 'ok') && !r.json.checks.some((c) => c.scope === 'CUSTOMER_READ'), JSON.stringify(r.json));
+  Mock.reset();
+  r = await call(teamFinn, 'POST', { action: 'probe', customerId: '1001' });
+  ok('5j. Admin: Scope-Probe mit Kunde – nur Zustände, keine Kundendaten', r.json.ok && r.json.customerScoped && r.json.checks.some((c) => c.scope === 'CUSTOMER_ACCOUNT_READ' && c.state === 'ok') && r.json.checks.some((c) => c.fn === 'modules.list') && !/Flex 12|Musterweg/.test(JSON.stringify(r.json)), JSON.stringify(r.json).slice(0, 300));
+  r = await call(teamFinn, 'POST', { action: 'probe', customerId: 'abc' });
+  ok('5k. Ungültige Kunden-Id -> studioweite Probe', r.json.ok && r.json.customerScoped === false);
   TEAMSESS = { role: 'trainer', user: 'anna' };
   r = await call(teamFinn, 'POST', { message: 'x' });
   ok('5h. Angestellte: Team-Kanal verboten', r.status === 403);
+  r = await call(teamFinn, 'POST', { action: 'probe' });
+  ok('5l. Angestellte: Probe verboten', r.status === 403);
 
   // ── 6. Website-Chat ──
   const pub = require(path.join(ROOT, 'api/finn/public.js'));
