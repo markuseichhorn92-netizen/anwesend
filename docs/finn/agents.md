@@ -45,6 +45,19 @@ laufen sofort; MEDIUM/HIGH erzeugen einen Vorschlag (`lib/finn/confirm.js`) und
 beenden den Lauf. Den Bestätigungstext formuliert die Runtime, nicht das Modell.
 App-Links nur über die Whitelist aus `api/member/coach.js` (`SCREENS`).
 
+## Antwortvorschläge (Quick Replies)
+
+Jede Antwort trägt `choices` (max. 4 × 40 Zeichen). Quelle in dieser Reihenfolge:
+
+1. Das Modell nennt sie selbst per Marker `[[antworten: A | B | C]]` (Rückfragen,
+   Terminarten, Uhrzeiten, Gründe). Der Marker wird entfernt; `choicesExplicit:true`.
+2. Sonst die Standardvorschläge des Agenten (`QUICK` in `lib/finn/agents.js`).
+3. Bei einem Bestätigungsvorschlag keine (die Karte hat ihre Knöpfe); nach einer
+   Übergabe „Postfach öffnen" (`screen`-Vorschlag, öffnet den Bereich statt zu senden).
+
+Web/App zeigt sie als Chips über der Eingabe (`#finn_quick`), WhatsApp macht aus
+explizit genannten Optionen Quick-Reply-Buttons (max. 3) mit nummeriertem Text.
+
 ## Persona und Antwortregeln
 
 Freundlich, klar, „du", kurz; keine erfundenen Daten, Preise oder Fristen; Live-Daten

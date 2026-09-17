@@ -186,7 +186,7 @@ module.exports = async function handler(req, res) {
       if (r && (r.ok || r.blocked || r.error === 'rate_limited')) {
         try { require('../../lib/handled').record('ai', sess.id, 'chat'); } catch (e) {}
         res.statusCode = 200;
-        return res.end(JSON.stringify({ ok: true, answer: r.answer, link: r.link, confirm: r.confirm, handoff: r.handoff, agent: r.agent }));
+        return res.end(JSON.stringify({ ok: true, answer: r.answer, link: r.link, confirm: r.confirm, handoff: r.handoff, agent: r.agent, choices: r.choices || [] }));
       }
       // Agenten nicht verfügbar -> bisheriger Coach-Weg unten. Sichtbar machen (ohne Personenbezug),
       // sonst sieht ein Rückfall im Log aus wie ein normaler Coach-Aufruf.

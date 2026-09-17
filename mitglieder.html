@@ -478,6 +478,14 @@
   .fcChips::-webkit-scrollbar{display:none}
   .fcChip{flex:0 0 auto;min-height:40px;border:1.5px solid var(--border);background:var(--surface);color:var(--teal-ink);border-radius:20px;font-size:13px;font-weight:700;padding:0 14px;cursor:pointer;white-space:nowrap;font-family:inherit}
   .fcChip:active{background:var(--surface-2)}
+  /* Antwortvorschläge über der Eingabe: passend zum Kontext, ein Tipp = eine Antwort */
+  .fcQuick{display:flex;gap:8px;overflow-x:auto;padding:2px 2px 9px;margin:0 -2px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+  .fcQuick::-webkit-scrollbar{display:none}
+  .fcQuick:empty{display:none}
+  /* Mehr Vorschläge rechts? Weicher Auslauf statt harter Kante (Klasse setzt finnQuickState). */
+  .fcQuick.more{-webkit-mask-image:linear-gradient(to right,#000 calc(100% - 36px),transparent);mask-image:linear-gradient(to right,#000 calc(100% - 36px),transparent)}
+  .fcQChip{flex:0 0 auto;min-height:38px;border:1.5px solid var(--teal-ink);background:var(--surface);color:var(--teal-ink);border-radius:19px;font-size:13.5px;font-weight:700;padding:0 14px;cursor:pointer;white-space:nowrap;font-family:inherit;animation:fiUp .2s cubic-bezier(.22,1,.36,1);-webkit-tap-highlight-color:transparent}
+  .fcQChip:active{background:var(--teal-ink);color:#fff}
   .fcMem{background:var(--surface);border-radius:16px;padding:14px 15px;margin-top:16px;box-shadow:0 2px 10px rgba(4,33,40,.06)}
   /* Eingabe: 16px verhindert das iOS-Zoomen beim Fokus; Senden ≥ 44px Tippfläche */
   .fcFoot{padding:8px 12px calc(10px + env(safe-area-inset-bottom,0px));border-top:1px solid var(--border);background:var(--surface);flex-shrink:0}
@@ -562,6 +570,8 @@
          renderChrome(). Ersetzt den früheren schwebenden #profChip. -->
     <header id="appbar"></header>
     <div class="body" id="app"><div class="bootsplash" aria-label="Wird geladen"><div class="ring"></div><div class="lbl">Dein Bereich wird geladen …</div><div class="skcard" style="height:128px"></div><div class="skcard" style="height:86px"></div><div class="skcard" style="height:86px"></div></div></div>
+    <!-- FINN-Chat lebt außerhalb von #app: render() zeichnet ihn nicht neu, Tastatur und Eingabe bleiben stabil. -->
+    <div id="finnhost"></div>
     <button class="finnFab" id="finnFab" data-act="openFinn" aria-label="FINN fragen"><img src="/assets/brand/finn-mark.svg" alt="FINN"></button>
     <button class="finnMini" id="finnMini" data-act="openFinn" aria-label="FINN fragen"><img src="/assets/brand/finn-mark.svg" alt="FINN"></button>
     <nav class="btmnav" id="btmnav"></nav>
@@ -1884,7 +1894,7 @@
     try{
       var msgs=(S.finnMsgs||[]).filter(function(m){ return m&&!m.error; }).slice(-FINN_KEEP);
       if(!msgs.length){ sessionStorage.removeItem(FINN_STORE); return; }
-      sessionStorage.setItem(FINN_STORE, JSON.stringify({t:Date.now(),topic:S.finnTopic||'',msgs:msgs.map(function(m){ return {role:m.role,text:m.text,link:m.link||null,confirm:(m.confirm&&m.confirm.used!=='pending')?m.confirm:(m.confirm?Object.assign({},m.confirm,{used:'no'}):null)}; })}));
+      sessionStorage.setItem(FINN_STORE, JSON.stringify({t:Date.now(),topic:S.finnTopic||'',msgs:msgs.map(function(m){ return {role:m.role,text:m.text,link:m.link||null,choices:m.choices||null,confirm:(m.confirm&&m.confirm.used!=='pending')?m.confirm:(m.confirm?Object.assign({},m.confirm,{used:'no'}):null)}; })}));
     }catch(e){}
   }
   function finnRestore(){
@@ -1893,7 +1903,7 @@
       var o=JSON.parse(raw);
       if(!o||!Array.isArray(o.msgs)||(Date.now()-(o.t||0))>12*3600e3){ sessionStorage.removeItem(FINN_STORE); return; }
       S.finnMsgs=o.msgs.filter(function(m){ return m&&(m.role==='user'||m.role==='assistant')&&typeof m.text==='string'; })
-        .map(function(m){ var o={role:m.role,text:m.text.slice(0,4000),link:(m.link&&typeof m.link.screen==='string')?{screen:m.link.screen.slice(0,24),label:String(m.link.label||'Öffnen').slice(0,60)}:null}; var c=finnCleanConfirm(m.confirm); if(c) o.confirm=c; return o; })
+        .map(function(m){ var o={role:m.role,text:m.text.slice(0,4000),link:(m.link&&typeof m.link.screen==='string')?{screen:m.link.screen.slice(0,24),label:String(m.link.label||'Öffnen').slice(0,60)}:null}; var c=finnCleanConfirm(m.confirm); if(c) o.confirm=c; var ch=finnCleanChoices(m.choices); if(ch.length) o.choices=ch; return o; })
         .slice(-FINN_KEEP);
     }catch(e){}
   }
@@ -1945,13 +1955,13 @@
       var errs=sc.querySelectorAll('.fcMsg.fail'); for(var i=0;i<errs.length;i++) errs[i].remove();
       sc.insertAdjacentHTML('beforeend', (opts.resend?'':finnBubbleHtml({role:'user',text:q}))+finnThinkingHtml());
       if(t&&!opts.resend){ t.value=''; t.style.height=''; t.focus(); }
-      finnSendState(); finnHeadState(); finnScrollBottom();
-    } else { if(t) t.value=''; render(); finnScrollBottom(); }
-    var receive=function(text,link,isErr,confirm){ finnReceive({role:'assistant',text:text,link:link||null,error:!!isErr,confirm:finnCleanConfirm(confirm)}); };
+      finnSendState(); finnHeadState(); finnQuickState(); finnScrollBottom();
+    } else { if(t) t.value=''; finnMount(); finnScrollBottom(); }
+    var receive=function(text,link,isErr,confirm,choices){ finnReceive({role:'assistant',text:text,link:link||null,error:!!isErr,confirm:finnCleanConfirm(confirm),choices:choices}); };
     if(navigator.onLine===false){ receive('Du bist gerade offline. Sobald du wieder Netz hast, versuch es nochmal.',null,true); return; }
     var hist=S.finnMsgs.slice(0,-1).map(function(m){ return {role:m.role,text:m.text}; });
     api('/api/member/coach',{method:'POST',timeoutMs:60000,body:JSON.stringify({question:q,history:hist,topic:S.finnTopic||''})}).then(function(d){
-      if(d&&d.ok&&d.answer) receive(d.answer, d.link, false, d.confirm);
+      if(d&&d.ok&&d.answer) receive(d.answer, d.link, false, d.confirm, d.choices);
       else if(d&&d.error==='rate_limited') receive(d.message||'Kurz durchatmen – versuch es gleich nochmal.');
       else receive((d&&d.message)||'Da komme ich gerade nicht weiter.',null,true);
     }).catch(function(e){
@@ -1963,10 +1973,11 @@
   function finnReceive(msg){
     if(!TOKEN) return;   // Sitzung ist inzwischen weg (401 -> logout)
     S.finnBusy=false; if(!msg.error) delete msg.error; if(!msg.confirm) delete msg.confirm;
+    msg.choices=finnCleanChoices(msg.choices); if(!msg.choices.length) delete msg.choices;
     S.finnMsgs.push(msg); finnPersist();
     var th=$('finn_think'), sc2=$('finn_scroll');
-    if(sc2){ if(th) th.remove(); sc2.insertAdjacentHTML('beforeend', finnBubbleHtml(msg)); finnSendState(); finnHeadState(); finnScrollBottom(); }
-    else if(S.finnOpen){ render(); finnScrollBottom(); }
+    if(sc2){ if(th) th.remove(); sc2.insertAdjacentHTML('beforeend', finnBubbleHtml(msg)); finnSendState(); finnHeadState(); finnQuickState(); finnScrollBottom(); }
+    else if(S.finnOpen){ finnMount(); finnScrollBottom(); }
   }
   // Nur die Felder eines Vorschlags übernehmen, die die Oberfläche braucht (id, Vorschau, Risiko, Zustand).
   function finnCleanConfirm(c){
@@ -1981,12 +1992,16 @@
     var msg=null; for(var i=S.finnMsgs.length-1;i>=0;i--){ var c=S.finnMsgs[i].confirm; if(c&&c.id===id){ msg=S.finnMsgs[i]; break; } }
     if(!msg||msg.confirm.used) return;
     msg.confirm.used='pending'; S.finnBusy=true; S.finnStick=true;
-    var sc=$('finn_scroll'); if(sc){ render(); sc=$('finn_scroll'); if(sc) sc.insertAdjacentHTML('beforeend', finnThinkingHtml()); finnSendState(); finnHeadState(); finnScrollBottom(); } else render();
+    // Nur die Karte und die Tipp-Blase anfassen – kein Voll-Render, nichts springt.
+    var cardEl=function(){ return document.querySelector('[data-cf="'+id.replace(/"/g,'')+'"]'); };
+    var c0=cardEl(); if(c0) c0.outerHTML=finnBubbleHtml(msg);
+    var sc=$('finn_scroll'); if(sc) sc.insertAdjacentHTML('beforeend', finnThinkingHtml());
+    finnSendState(); finnHeadState(); finnQuickState(); finnScrollBottom();
     // Zustand der Karte nachziehen (Teil-Update: nur diese Blase wird ersetzt).
-    var settle=function(used){ msg.confirm.used=used; finnPersist(); var card=document.querySelector('[data-cf="'+id.replace(/"/g,'')+'"]'); if(card) card.outerHTML=finnBubbleHtml(msg); };
+    var settle=function(used){ msg.confirm.used=used; finnPersist(); var card=cardEl(); if(card) card.outerHTML=finnBubbleHtml(msg); };
     api('/api/member/coach',{method:'POST',timeoutMs:60000,body:JSON.stringify({action:yes?'confirm':'decline',id:id})}).then(function(d){
       settle(yes?'yes':'no');
-      finnReceive({role:'assistant',text:(d&&d.answer)||(yes?'Erledigt.':'Okay, ich habe nichts geändert.'),link:(d&&d.link)||null,error:!(d&&d.ok)});
+      finnReceive({role:'assistant',text:(d&&d.answer)||(yes?'Erledigt.':'Okay, ich habe nichts geändert.'),link:(d&&d.link)||null,error:!(d&&d.ok),choices:d&&d.choices});
     }).catch(function(e){
       settle(yes?'yes':'no');
       finnReceive({role:'assistant',text:(e&&e.name==='AbortError')?'Das dauert gerade zu lange. Ob es geklappt hat, siehst du gleich im Bereich Vertrag oder Termine.':'Keine Verbindung. Prüf dein Netz und frag mich einfach noch einmal.',link:null,error:true});
@@ -2044,7 +2059,7 @@
           '<div id="finn_scroll" role="log" aria-live="polite">'+(msgs.length?'':finnHelloHtml())+bubbles+thinking+'</div>'+
           '<button id="finn_down" class="fcDown" data-act="finnDown" aria-label="Zur neuesten Nachricht">'+svg('<path d="M12 5v14M5 12l7 7 7-7"></path>',{c:'var(--teal-ink)',w:2.2,s:18})+'</button>'+
         '</div>'+
-        '<div class="fcFoot"><div class="fcRow">'+
+        '<div class="fcFoot"><div id="finn_quick" class="fcQuick" aria-label="Antwortvorschläge"></div><div class="fcRow">'+
           '<textarea id="finn_q" rows="1" enterkeyhint="send" autocapitalize="sentences" autocomplete="off" placeholder="Schreib FINN …" aria-label="Nachricht an FINN"></textarea>'+
           '<button id="finn_send" class="fcSend" data-act="finnSend" aria-label="Senden" disabled>'+svg('<path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"></path>',{c:'#fff',w:2,s:20})+'</button>'+
         '</div>'+
@@ -2052,6 +2067,55 @@
       '</div>'+
     '</div>';
   }
+  // ── Chat als beständiges Element ──
+  // Der Chat hängt in #finnhost (neben #app). render() baut ihn NICHT neu, sondern ruft
+  // finnMount(): anlegen beim Öffnen, entfernen beim Schließen, sonst nur die kleinen
+  // Teile nachführen. So überlebt getippter Text jedes Nachladen im Hintergrund, die
+  // Tastatur bleibt offen und die Einblend-Animation läuft nur einmal.
+  var finnHelloLast='';
+  function finnMount(){
+    var host=$('finnhost'); if(!host) return;
+    var ov=host.querySelector('.fcOverlay');
+    if(!S.finnOpen){ if(ov) host.innerHTML=''; finnHelloLast=''; return; }
+    if(!ov){ finnRebuild(); return; }
+    finnSyncDom();
+  }
+  function finnRebuild(){
+    var host=$('finnhost'); if(!host||!S.finnOpen) return;
+    host.innerHTML=finnOverlayHtml(); finnHelloLast=(S.finnMsgs||[]).length?'':finnHelloHtml();
+    var sc=$('finn_scroll'); if(sc) sc.scrollTop=finnAtBottom()?sc.scrollHeight:0;
+    finnSendState(); finnQuickState();
+  }
+  function finnSyncDom(){ finnHeadState(); finnSendState(); finnHelloRefresh(); finnQuickState(); }
+  // Begrüßung nur ersetzen, wenn sich ihr Inhalt geändert hat (Gedächtnis-Frage kommt
+  // verzögert vom Server) – sonst würde sie bei jedem Hintergrund-Render neu einblenden.
+  function finnHelloRefresh(){
+    var h=$('finn_hello'); if(!h) return;
+    if((S.finnMsgs||[]).length){ h.remove(); finnHelloLast=''; return; }
+    var html=finnHelloHtml(); if(html===finnHelloLast) return;
+    finnHelloLast=html; var tmp=document.createElement('div'); tmp.innerHTML=html; if(tmp.firstElementChild) h.replaceWith(tmp.firstElementChild);
+  }
+  // Antwortvorschläge: die der letzten FINN-Antwort – nicht während FINN schreibt und nicht,
+  // solange ein Vorschlag auf Bestätigung wartet (die Karte hat ihre eigenen Knöpfe).
+  function finnCleanChoices(list){
+    if(!Array.isArray(list)) return [];
+    var out=[]; list.slice(0,4).forEach(function(c){ if(!c||typeof c.label!=='string') return; var o={label:c.label.trim().slice(0,40)}; if(!o.label) return; if(typeof c.screen==='string'&&/^[a-z]+$/.test(c.screen)) o.screen=c.screen; out.push(o); });
+    return out;
+  }
+  function finnQuickChoices(){
+    if(S.finnBusy) return [];
+    var msgs=S.finnMsgs||[], last=msgs[msgs.length-1];
+    if(!last||last.role!=='assistant'||last.error) return [];
+    if(last.confirm&&!last.confirm.used) return [];
+    return Array.isArray(last.choices)?last.choices:[];
+  }
+  function finnQuickState(){
+    var q=$('finn_quick'); if(!q) return;
+    var ch=finnQuickChoices();
+    q.innerHTML=ch.map(function(c,i){ return '<button class="fcQChip" data-act="finnChoice" data-arg="'+i+'">'+esc(c.label)+'</button>'; }).join('');
+    q.scrollLeft=0; finnQuickFade(q);
+  }
+  function finnQuickFade(q){ q=q||$('finn_quick'); if(!q) return; q.classList.toggle('more', (q.scrollWidth-q.clientWidth-q.scrollLeft)>8); }
   if(TOKEN) finnRestore();
   // ── App-Download-Banner (nur im Browser, nie in der installierten App) ──
   // Store-Links kommen aus /api/app-info (Vercel-Env). iOS zeigt das Banner,
@@ -11925,7 +11989,7 @@
     var narrow = NARROW[S.screen];
     if(narrow) html='<div class="narrow">'+html+'</div>';
     if(S.ciPopup) html+=ciPopupHtml();
-    if(S.finnOpen) html+=finnOverlayHtml();
+    // FINN-Chat: NICHT hier – er lebt in #finnhost und wird unten per finnMount() nachgeführt.
     if(S.vaOpen) html+=vaOverlayHtml();
     if(S.qaOpen) html+=qaSheet();
     if(S.fbOpen) html+=fbSheet();
@@ -11959,9 +12023,9 @@
     // sonst verschwindet getippter Text und die Tastatur klappt zu, sobald im Hintergrund
     // Daten nachladen (das war der große Chat-Bug).
     var keep={};
-    ['find_q','finn_q','pf_reply','ern_log','ern_ask','ern_fridge','ern_prodq','ern_bc','ern_voiceq','ern_cf_swap','ern_cf_refine','soc_msg','soc_code','soc_name','soc_rmsg','soc_roomname','soc_report','fig_weight','fig_waist','fig_hips','fig_chest','fig_arm','fig_thigh','fig_bodyFat','fig_note'].forEach(function(id){ var e=$(id); if(e){ keep[id]={v:e.value,f:document.activeElement===e,ss:e.selectionStart,se:e.selectionEnd,h:e.style.height}; } });
+    ['find_q','pf_reply','ern_log','ern_ask','ern_fridge','ern_prodq','ern_bc','ern_voiceq','ern_cf_swap','ern_cf_refine','soc_msg','soc_code','soc_name','soc_rmsg','soc_roomname','soc_report','fig_weight','fig_waist','fig_hips','fig_chest','fig_arm','fig_thigh','fig_bodyFat','fig_note'].forEach(function(id){ var e=$(id); if(e){ keep[id]={v:e.value,f:document.activeElement===e,ss:e.selectionStart,se:e.selectionEnd,h:e.style.height}; } });
     var keepScroll={};
-    ['finn_scroll','pf_scroll'].forEach(function(id){ var e=$(id); if(e){ keepScroll[id]=e.scrollTop; } });
+    ['pf_scroll'].forEach(function(id){ var e=$(id); if(e){ keepScroll[id]=e.scrollTop; } });
     // Scroll-Position der AKTUELLEN Ansicht sichern. Auf Mobil ist der Scroller .maincol
     // (nicht das Fenster); dort setzt das Ersetzen von #app.innerHTML die Position auf 0.
     // Auf Desktop scrollt das Fenster. Bei fixiertem Body (Vollbild-Chat, nur Desktop-Fenster)
@@ -11977,7 +12041,7 @@
     // Chat-Verläufe: unten angedockt bleiben (neueste Nachricht), außer der Nutzer hat
     // bewusst hochgescrollt (Stick-Flags pflegt der Scroll-Listener).
     var sc1=$('pf_scroll'); if(sc1){ sc1.scrollTop=(S.pfStick===false && keepScroll.pf_scroll!=null)?keepScroll.pf_scroll:sc1.scrollHeight; }
-    var sc2=$('finn_scroll'); if(sc2){ sc2.scrollTop=!finnAtBottom()?0:((S.finnStick===false && keepScroll.finn_scroll!=null)?keepScroll.finn_scroll:sc2.scrollHeight); finnSendState(); }
+    finnMount();   // Chat anlegen/entfernen/nachführen – ohne ihn neu zu zeichnen
     renderChrome();
     // Live-Kamera im Erfassen-Sheet: auf dem Kamera-Tab automatisch starten/anheften, sonst freigeben.
     if(S.screen==='ern'&&S.ernCapture&&S.ernCapTab==='cam'){ if(!ernCamActive&&!S.ernCamErr&&!S.ernPhotoBusy){ try{ window.__ernStartCam&&window.__ernStartCam(); }catch(e){} } else { ernAttachCam(); } }
@@ -12499,9 +12563,11 @@
     finnSend:function(){ var t=$('finn_q'); finnAsk(t?t.value:''); },
     // „Nochmal versuchen" unter einer Fehlerblase: dieselbe Frage erneut, ohne sie zu doppeln.
     finnRetry:function(){ var last=''; for(var i=S.finnMsgs.length-1;i>=0;i--){ if(S.finnMsgs[i].role==='user'){ last=S.finnMsgs[i].text; break; } } if(last) finnAsk(last,{resend:true}); },
-    finnNew:function(){ if(S.finnBusy) return; finnReset(); S.finnStick=true; render(); },
+    finnNew:function(){ if(S.finnBusy) return; finnReset(); S.finnStick=true; finnRebuild(); },
     finnConfirm:function(a){ finnDecide(String(a||''), true); },
     finnDecline:function(a){ finnDecide(String(a||''), false); },
+    // Antwortvorschlag angetippt: Bereich öffnen oder den Text als Nachricht schicken.
+    finnChoice:function(a){ var c=finnQuickChoices()[parseInt(a,10)]; if(!c) return; if(c.screen){ ACT.finnGo(c.screen); return; } finnAsk(c.label); },
     finnDown:function(){ S.finnStick=true; var e=$('finn_scroll'); if(e){ try{ e.scrollTo({top:e.scrollHeight,behavior:'smooth'}); }catch(_){ e.scrollTop=e.scrollHeight; } } var d=$('finn_down'); if(d) d.classList.remove('on'); },
     // Button unter einer FINN-Antwort: Chat schließen + Ziel-Seite in der App öffnen.
     // Die Liste muss zu SCREENS in api/member/coach.js passen – sonst zeigt FINN einen
@@ -13886,6 +13952,7 @@
     var nearBottom=(t.scrollHeight-t.scrollTop-t.clientHeight)<80;
     if(t.id==='pf_scroll') S.pfStick=nearBottom;
     if(t.id==='finn_scroll'){ S.finnStick=nearBottom; var d=$('finn_down'); if(d) d.classList.toggle('on', !nearBottom && (t.scrollHeight-t.clientHeight)>160); }
+    if(t.id==='finn_quick') finnQuickFade(t);
   },true);
   // Escape schließt den FINN-Chat (Schreibtisch; auf dem Handy übernimmt das der System-Zurück).
   document.addEventListener('keydown',function(e){ if(e.key==='Escape'&&S.finnOpen&&ACT&&ACT.closeFinn){ e.preventDefault(); ACT.closeFinn(); } });

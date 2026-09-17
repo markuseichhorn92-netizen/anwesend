@@ -418,6 +418,23 @@ Der Chat mit FINN (`finnOverlayHtml`, `finnAsk`, Klassen `fc…` in
   Auto-Fokus, Escape schließt.
 - Die Bereichs-Tour startet nicht über einem offenen Chat.
 
+**Nachtrag 17. September 2026 – Chat als beständiges Element und Antwortvorschläge:**
+- Der Chat lebt jetzt in `#finnhost` neben `#app`. `render()` zeichnet ihn NICHT
+  mehr, sondern ruft `finnMount()`: anlegen beim Öffnen, entfernen beim Schließen,
+  sonst nur Kopfzeile, Senden-Knopf, Begrüßung und Vorschläge nachführen
+  (`finnSyncDom`). Grund: Jedes Nachladen im Hintergrund (Gedächtnis-Antwort,
+  Polling, App-Info) baute den Chat neu – getippter Text weg, Tastatur zu,
+  Einblend-Animation erneut. Bestätigen/Abbrechen (`finnDecide`) und „Neues
+  Gespräch" (`finnRebuild`) kommen ohne Voll-Render aus. Nichts im Chat darf
+  wieder über `render()` laufen.
+- Antwortvorschläge: der Server liefert `choices` (Marker `[[antworten: …]]`
+  des Modells, sonst Standard je Agent, siehe `docs/finn/agents.md`); die App
+  zeigt sie als Chips über der Eingabe (`#finn_quick`, `finnQuickState`), nicht
+  während FINN schreibt und nicht bei offener Bestätigung. Ein Tipp sendet den
+  Text (`finnChoice`), ein `screen`-Vorschlag öffnet den Bereich. Sie werden mit
+  dem Verlauf in `sessionStorage` gesichert.
+- `tests/finn-chat-fluid.test.js`.
+
 ## Design-Durchgang Mitglieder-App (10. September 2026)
 
 Nach einem Screenshot-Audit aller Hauptbildschirme (Handy 390/375 px, dunkel,
