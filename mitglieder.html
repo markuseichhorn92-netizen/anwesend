@@ -505,6 +505,11 @@
   .fcDown.on{opacity:1;pointer-events:auto;transform:translate(-50%,0)}
   /* Hintergrund-Seite einfrieren, solange ein Vollbild-Chat offen ist (verhindert Springen) */
   body.chatLock{overflow:hidden}
+  /* Magicline-Chatbot (Testbetrieb): das Widget setzt seine Lage per Inline-Stil (unten 20px,
+     rechts 20px). Auf dem Handy säße die Blase auf unserer Bottom-Nav – darum darüber heben.
+     Im Vollbild (offen) setzt das Widget top+height, dann greift bottom ohnehin nicht. */
+  @media(max-width:999px){ body.mlChatOn #ml-member-chatbot-widget-iframe{bottom:calc(84px + env(safe-area-inset-bottom,0px))!important;right:12px!important} }
+  body.app-guest #ml-member-chatbot-widget-iframe, body.mlChatHide #ml-member-chatbot-widget-iframe{display:none!important}
   #pf_reply{transition:height .12s ease}
   .finnDots{display:inline-block;animation:finnPulse 1.2s ease-in-out infinite}
   @keyframes finnPulse{0%,100%{opacity:.45}50%{opacity:1}}
@@ -2117,6 +2122,37 @@
   }
   function finnQuickFade(q){ q=q||$('finn_quick'); if(!q) return; q.classList.toggle('more', (q.scrollWidth-q.clientWidth-q.scrollLeft)>8); }
   if(TOKEN) finnRestore();
+  // ── Magicline-Mitglieder-Chatbot (Testbetrieb, ersetzt den FINN-Chat) ──
+  // Das Widget von Sport Alliance bringt sein eigenes iframe mit (Blase unten rechts,
+  // auf dem Handy im Vollbild). Wir laden nur das Skript – einmal, nach der Anmeldung –
+  // und leiten alle FINN-Einstiege (Coach-Hub, Startkarte, Postfach, Mini-Blase) dorthin:
+  // ein Klick auf die Blase IM iframe (gleiche Herkunft, daher erreichbar) öffnet den Chat.
+  // Keine Mitgliedsdaten werden übergeben; das Widget läuft als anonymer Web-Chat.
+  var ML_CHAT_IFRAME='ml-member-chatbot-widget-iframe', ML_CHAT_SCRIPT='ml-member-chatbot-widget-script';
+  function mlChatMount(){
+    if(!mlChatOn()||document.getElementById(ML_CHAT_SCRIPT)) return;
+    var s=document.createElement('script'); s.id=ML_CHAT_SCRIPT; s.src=mlChatUrl(); s.async=true;
+    document.body.appendChild(s);
+  }
+  function mlChatFrame(){ return document.getElementById(ML_CHAT_IFRAME); }
+  // Offen = das Widget hat das iframe auf Vollbild (Handy) bzw. Karte (Schreibtisch) gestellt.
+  function mlChatIsOpen(){ var f=mlChatFrame(); if(!f) return false; var w=f.style.width||''; return w==='100%'||w==='460px'; }
+  function mlChatLauncher(){
+    try{
+      var f=mlChatFrame(); var d=f&&(f.contentDocument||(f.contentWindow&&f.contentWindow.document)); if(!d) return null;
+      return d.querySelector('[data-role="chatbot-bubble"]')||d.querySelector('[data-role="chatbot-cta"] [role="button"]');
+    }catch(e){ return null; }
+  }
+  // Öffnen: Skript sicherstellen, dann auf die Blase warten (das Skript ist ~2 MB) und klicken.
+  function mlChatOpen(){
+    mlChatMount();
+    var tries=0;
+    (function go(){
+      if(mlChatIsOpen()) return;
+      var b=mlChatLauncher(); if(b){ try{ b.click(); }catch(e){} return; }
+      if(++tries<60) setTimeout(go,150);
+    })();
+  }
   // ── App-Download-Banner (nur im Browser, nie in der installierten App) ──
   // Store-Links kommen aus /api/app-info (Vercel-Env). iOS zeigt das Banner,
   // sobald APP_STORE_URL_IOS gesetzt ist; Android automatisch, sobald
@@ -3757,6 +3793,13 @@
   // akzeptiert. Der Cache liegt im localStorage – ein manipulierter Wert dort
   // dürfte nie zu einem javascript:-Link werden, darum die Prüfung auch hier.
   function upfitUrl(){ try{ var u=srvFlags().upfit; return (typeof u==='string'&&/^https:\/\/[^\s"'<>]+$/.test(u))?u:null; }catch(e){ return null; } }
+  // Magicline-Chatbot (Testbetrieb): ersetzt den FINN-Chat, solange der Server die
+  // Widget-Adresse liefert (FEATURE_ML_CHAT=0 schaltet zurück). Die Adresse ist ein
+  // SKRIPT, das in die App geladen wird – deshalb strikt auf das Magicline-Muster
+  // geprüft: ein manipulierter localStorage-Cache darf nie ein fremdes Skript laden.
+  var ML_CHAT_RE=/^https:\/\/[a-z0-9-]+\.web\.magicline\.com\/chatbot\/widget\/widget\.js\?uuid=[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+  function mlChatUrl(){ try{ var u=srvFlags().mlchat; return (typeof u==='string'&&ML_CHAT_RE.test(u))?u:null; }catch(e){ return null; } }
+  function mlChatOn(){ return !!TOKEN && !!mlChatUrl(); }
   // Der Tab „Ernährung" existiert, solange es ETWAS dahinter gibt: das eigene
   // Modul oder den Partner. Ohne beides rückt „Termine" nach (wie bisher).
   function ernTabOn(){ return ERN_ON || !!upfitUrl(); }
@@ -3802,12 +3845,13 @@
   function applySrvFlags(f,p){
     if(!f||typeof f!=='object') return;
     var up=(p&&typeof p.upfit==='string'&&/^https:\/\//.test(p.upfit))?p.upfit:null;
-    var upVorher=upfitUrl();
-    try{ localStorage.setItem('fi_flags_srv',JSON.stringify({ern:f.ern!==false,social:f.social===true,demo:f.demo===true,train:f.train===true,vital:f.vital===true,abo:f.abo===true,upfit:up})); }catch(e){}
+    var mc=(p&&typeof p.mlchat==='string'&&ML_CHAT_RE.test(p.mlchat))?p.mlchat:null;
+    var upVorher=upfitUrl(), mcVorher=mlChatUrl();
+    try{ localStorage.setItem('fi_flags_srv',JSON.stringify({ern:f.ern!==false,social:f.social===true,demo:f.demo===true,train:f.train===true,vital:f.vital===true,abo:f.abo===true,upfit:up,mlchat:mc})); }catch(e){}
     ERN_LAUNCH=(f.ern!==false); SOCIAL_LAUNCH=(f.social===true);
     var e2=ERN_LAUNCH||ernTestOn(), s2=SOCIAL_LAUNCH||socialTestOn();
     var t2=(f.train===true), v2=(f.vital===true), a2=(f.abo===true);
-    if(e2!==ERN_ON||s2!==SOCIAL_ON||t2!==TRAIN_ON||v2!==VITAL_ON||a2!==ABO_ON||up!==upVorher){ ERN_ON=e2; SOCIAL_ON=s2; TRAIN_ON=t2; VITAL_ON=v2; ABO_ON=a2; render(); }
+    if(e2!==ERN_ON||s2!==SOCIAL_ON||t2!==TRAIN_ON||v2!==VITAL_ON||a2!==ABO_ON||up!==upVorher||mc!==mcVorher){ ERN_ON=e2; SOCIAL_ON=s2; TRAIN_ON=t2; VITAL_ON=v2; ABO_ON=a2; render(); }
   }
   function ernSeedForm(){ var pr=(DATA.nutri&&DATA.nutri.profile)||{};
     S.ernGoal=pr.goal||'abnehmen'; S.ernSex=pr.sex||'w'; S.ernH=pr.height||170; S.ernW=pr.weight||70; S.ernAge=pr.age||30; S.ernAct=pr.activity||'moderat'; S.ernDiet=pr.diet||'omnivor'; }
@@ -11741,6 +11785,16 @@
     // Globaler FINN-FAB im Ernährungsmodul ausblenden – das Modul hat einen
     // eigenen, ernährungsspezifischen Coach-Tab.
     var ff=$('finnFab'); if(ff) ff.style.display=(S.screen==='ern'&&ERN_ON)?'none':'';
+    // Magicline-Chatbot: Skript nach der Anmeldung laden; die Blase des Widgets über
+    // der Bottom-Nav (CSS .mlChatOn) und unter unseren Overlays ausblenden (.mlChatHide),
+    // solange der Chat nicht selbst offen ist.
+    var mlOn=mlChatOn();
+    document.body.classList.toggle('mlChatOn', mlOn);
+    if(mlOn){
+      mlChatMount();
+      var mlBlock=!!(S.qaOpen||S.ernChatOpen||S.ernUpgrade||S.ciPopup||S.vaOpen||S.findOpen||S.fbOpen);
+      document.body.classList.toggle('mlChatHide', mlBlock && !mlChatIsOpen());
+    } else document.body.classList.remove('mlChatHide');
     // FINN-Mini-Blase: nur in Ernährung/Training auf den normalen Tabs sichtbar –
     // in Vollbild-Flows (Rezept-Detail, Erfassen, Tracker, Plan-Detail) und Overlays aus.
     var fm=$('finnMini');
@@ -11751,7 +11805,7 @@
         !S.ernFavMgr&&!S.ernMealMgr&&!S.ernSelfNew&&!S.ernEntryEdit&&!S.ernLesson&&!S.ernVert&&!S.ernCk&&!(S.ernKoch!=null);
       var onTagTab=(S.screen==='tag')&&!S.trainRun&&!S.trainDetail&&!S.trainGenOpen;
       var miniBlock=S.finnOpen||S.qaOpen||S.ernChatOpen||S.ernUpgrade||S.ciPopup||S.vaOpen||S.findOpen;
-      var showMini=(onErnTab||onTagTab)&&!miniBlock;
+      var showMini=(onErnTab||onTagTab)&&!miniBlock&&!mlOn;   // mit Magicline-Chat übernimmt dessen Blase
       fm.style.display=showMini?'flex':'none';
       if(showMini) fm.setAttribute('data-arg', S.screen==='ern'?'ernaehrung':'training');
     }
@@ -12445,9 +12499,9 @@
     },
     // Auf Touch-Geräten KEIN automatischer Fokus: die Tastatur würde sofort die
     // Begrüßung und die Vorschläge verdecken. Am Schreibtisch darf der Cursor blinken.
-    openFinn:function(topic){ S.finnTopic=(topic==='ernaehrung'||topic==='training')?topic:''; if(DATA.finnMem==null) loadFinnMem(); S.finnStick=true; setS({finnOpen:true}); setTimeout(function(){ var t=$('finn_q'); if(t&&!upfitTouch()) t.focus(); finnScrollBottom(); },60); },
+    openFinn:function(topic){ if(mlChatOn()){ mlChatOpen(); return; } S.finnTopic=(topic==='ernaehrung'||topic==='training')?topic:''; if(DATA.finnMem==null) loadFinnMem(); S.finnStick=true; setS({finnOpen:true}); setTimeout(function(){ var t=$('finn_q'); if(t&&!upfitTouch()) t.focus(); finnScrollBottom(); },60); },
     // Schnellfrage aus dem Coach-Hub: FINN-Chat öffnen und die Frage direkt senden.
-    finnQuick:function(q){ S.finnTopic=''; if(DATA.finnMem==null) loadFinnMem(); S.finnStick=true; setS({finnOpen:true}); setTimeout(function(){ finnAsk(q); },140); },
+    finnQuick:function(q){ if(mlChatOn()){ mlChatOpen(); return; } S.finnTopic=''; if(DATA.finnMem==null) loadFinnMem(); S.finnStick=true; setS({finnOpen:true}); setTimeout(function(){ finnAsk(q); },140); },
     finnRefresh:function(){ S.finnTip=''; S.finnTipLoaded=false; loadFinnTip(); render(); },
     ciToggle:function(){ if(S.screen!=='home') nav('home'); if(S.checkedInAt){ if(ACT.doCheckout) ACT.doCheckout(); } else { if(ACT.doCheckin) ACT.doCheckin(); } },
     obGoal:function(a){ setS({obGoal:a}); },

@@ -25,6 +25,10 @@
  *                   FEATURE_UPFIT=0 ist der Notausschalter (-> null, kein Link).
  *                   Es ist NUR eine Adresse: die App hängt nichts an (keine
  *                   E-Mail, keine Kennung) und bekommt von Upfit nichts zurück.
+ *   mlchat          Skript-Adresse des Magicline-Mitglieder-Chatbots (Testbetrieb,
+ *                   ersetzt den FINN-Chat). FEATURE_ML_CHAT=0 -> null -> FINN-Chat.
+ *                   Wird serverseitig aus ML_TENANT + ML_CHATBOT_UUID gebaut; der
+ *                   Client lädt nur Adressen, die exakt diesem Muster entsprechen.
  */
 const Features = require('../lib/features');
 
@@ -39,6 +43,6 @@ module.exports = function handler(req, res) {
     android: clean(process.env.APP_STORE_URL_ANDROID),
     features: { ern: Features.ernOn(), social: flag('FEATURE_SOCIAL'), demo: flag('FEATURE_DEMO'),
       train: Features.trainOn(), vital: flag('FEATURE_VITAL'), abo: Features.aboOn() },
-    partner: { upfit: Features.upfitUrl() },
+    partner: { upfit: Features.upfitUrl(), mlchat: Features.mlChatUrl() },
   }));
 };

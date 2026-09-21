@@ -482,6 +482,37 @@ Schreibtisch) in drei Etappen umgesetzt. Leitlinie: `.claude/skills/fitinn-desig
   Schnellfragen, „Tiefere Analyse holen" als Textlink. Die beiden Zusatzlabels
   und das Roboter-Emoji sind weg.
 
+## Magicline-Chatbot statt FINN-Chat (Testbetrieb, 21. September 2026)
+
+Entscheidung des Betreibers: Der Mitglieder-Chatbot von Magicline (Sport
+Alliance, Widget `…web.magicline.com/chatbot/widget/widget.js?uuid=…`) wird in
+der App **anstelle des FINN-Chats** getestet. **Ohne Variable AN**;
+`FEATURE_ML_CHAT=0` schaltet ohne Deployment auf den FINN-Chat zurück.
+
+- Server: `lib/features.js` `mlChatUrl()` baut die Skript-Adresse aus
+  `ML_TENANT` und `ML_CHATBOT_UUID` (Standard: feste Id der Fit-Inn-Konfiguration).
+  Eine Variable darf **nie** eine freie Adresse liefern – ein ungültiger Wert
+  fällt auf die feste Id zurück, ein ungültiger Tenant auf „aus".
+  `/api/app-info` → `partner.mlchat`.
+- Client (`mitglieder.html`): `mlChatUrl()` akzeptiert nur Adressen exakt nach
+  dem Magicline-Muster (`ML_CHAT_RE`) – der Wert liegt im `localStorage`-Cache,
+  und ein manipulierter Cache darf kein fremdes Skript laden. `mlChatOn()` gilt
+  nur angemeldet. `renderChrome` lädt das Skript einmal (`mlChatMount`), alle
+  FINN-Einstiege (`openFinn`, `finnQuick`) klicken die Blase im Widget-iframe
+  (`mlChatOpen`; gleiche Herkunft, `[data-role="chatbot-bubble"]`). Die Blase
+  wird auf dem Handy über die Bottom-Nav gehoben (CSS `.mlChatOn`), unter
+  unseren Overlays ausgeblendet (`.mlChatHide`) und für Gäste versteckt; die
+  FINN-Mini-Blase entfällt solange.
+- Das Widget läuft auf unserer Domain als **anonymer Web-Chat** (Kanal
+  `WEB_WIDGET`): es kennt das Mitglied nicht, wir übergeben keine Daten. Es
+  legt ein eigenes iframe an (Vollbild auf dem Handy, Karte am Schreibtisch),
+  lädt eine AWS-WAF-Challenge und Übersetzungen von `intl.sportalliance.com`;
+  die Report-Only-CSP in `vercel.json` kennt diese Hosts.
+- Der FINN-Chat samt Agenten bleibt vollständig erhalten und ist mit
+  `FEATURE_ML_CHAT=0` sofort wieder da.
+- `tests/ml-chat.test.js` (Server-Schalter, Skript erst nach Anmeldung,
+  Einstiege → Widget, Blase über der Nav, fremde Adresse wird verworfen).
+
 ## FINN Multi-Agent-Plattform (16. September 2026)
 
 FINN ist jetzt eine Schicht **über** der bestehenden Magicline-Integration
