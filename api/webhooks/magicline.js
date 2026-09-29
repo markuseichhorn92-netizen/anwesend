@@ -233,6 +233,8 @@ async function handleWebhook(req, res, opts) {
   }
   if (req.method !== 'POST') { res.statusCode = 405; return res.end(JSON.stringify({ ok: false, error: 'method_not_allowed' })); }
 
+  // FINN Journeys: Durchlauf aus dem Webhook-Verkehr anstoßen (wartet nicht, siehe lib/journeys/autotick).
+  try { require('../../lib/journeys/autotick').maybe('magicline'); } catch (e) {}
   const body = await readBody(req);
   const events = eventsFrom(body).slice(0, MAX_EVENTS);
   const summary = [];

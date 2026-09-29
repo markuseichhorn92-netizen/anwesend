@@ -596,7 +596,11 @@ Einladung an Bestandsnummern **erst nach Rechtsprüfung**.
   `lib/phone.js`, `lib/trialBooking.js`, `api/journeys-tick.js` (+ `.github/workflows/journeys.yml`),
   `api/team/journeys.js`, `api/member/whatsapp.js`; Einstellungen-Karte „WhatsApp von Fit-Inn".
 - **Tests:** `journeys-core`, `-inbound`, `-engine`, `-webhooks`, `-lead-agent`, `-onboarding`,
-  `-team-api`, `-studio-reply`, `-twilio-content`, `-twilio-link`; Redis-Nachbau `tests/_memredis.js`.
+  `-team-api`, `-studio-reply`, `-twilio-content`, `-twilio-link`, `-autotick`; Redis-Nachbau `tests/_memredis.js`.
+- **Takt:** GitHub-Zeitpläne laufen hier nur sporadisch. Der Durchlauf startet deshalb auch aus
+  dem App-Verkehr (`lib/journeys/autotick.js`: `api/member/checkins`, `api/member/account`,
+  Magicline-Webhook; höchstens alle 14 min, per `waitUntil`, Budget 20 s). Kein Vercel-Cron im
+  15-Minuten-Takt eintragen, solange der Tarif nicht geklärt ist (Hobby bricht das Deployment ab).
 
 Leitplanken dazu:
 
@@ -626,7 +630,7 @@ Leitplanken dazu:
   Vor dem Einreichen immer abgleichen (`twilioContent.link`: Name oder gleicher Text); der
   Abgleich legt nie etwas an. „Schon vorhanden" wird am Text-Fingerabdruck erkannt, nicht am Namen.
 
-Noch organisatorisch offen: Vorlagen sind in Twilio angelegt (29.09., per Claude in Chrome) – im Team-Backend „Mit Twilio abgleichen" und Metas Freigabe prüfen; GitHub-Secret `RECORD_SECRET` = Vercel `CRON_SECRET` (sonst 401 für alle Cron-Workflows); AVV Twilio/Meta;
+Noch organisatorisch offen: Vorlagen sind in Twilio angelegt (29.09., per Claude in Chrome) – im Team-Backend „Mit Twilio abgleichen" und Metas Freigabe prüfen; GitHub-Secret `RECORD_SECRET` wurde am 29.09. neu gesetzt und passt (vorher 401 für alle Cron-Workflows); alle 18 Vorlagen von Meta freigegeben; AVV Twilio/Meta;
 Einwilligungs- und Einladungstexte rechtlich prüfen; DSFA-Nachtrag freigeben; Magicline-
 Webhooks (`CUSTOMER_CHECKIN`, `APPOINTMENT_*`, `CONTRACT_CANCELLED`) an diese App bestätigen;
 wer ruft bei „Tag 28" an.

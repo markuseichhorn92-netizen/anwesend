@@ -12,7 +12,7 @@ Schalter bleibt das Verhalten der App wie vorher (Ausnahmen: siehe „Immer akti
 | Variable | Wirkung |
 |---|---|
 | `JOURNEYS=1` | Hauptschalter. Ohne ihn: nichts aufnehmen, nichts senden, Lead-KI aus. |
-| `JOURNEYS_MODE=auto` | Echt senden. **Standard ist der Probelauf**: Abläufe laufen durch, Nachrichten landen nur in `jr:dry` (Team-Backend „Probelauf"). |
+| `JOURNEYS_MODE=auto` | Echt senden. **Standard ist der Probelauf**: Abläufe laufen durch, Nachrichten landen nur in `jr:dry` (Team-Backend „Probelauf"). Groß-/Kleinschreibung, Leerzeichen und Anführungszeichen stören nicht; jeder andere Wert bleibt Probelauf und wird im Team-Backend rot gemeldet. |
 | `JOURNEYS_TEST_NUMBERS` | Kommagetrennt. Gesetzt = nur diese Nummern bekommen echte Nachrichten (Pilot). Testversand aus dem Team-Backend nur an diese. |
 | `JOURNEYS_TRACK=1` | Check-ins zählen und Index füllen, ohne `JOURNEYS=1` (Daten wachsen vor dem Start). |
 | `JOURNEY_<KEY>=0` | Journey hart aus: `LEAD`, `ONBOARDING`, `HABIT`, `COMEBACK`, `INVITE`. |
@@ -28,6 +28,16 @@ feste Begrüßung, Team übernimmt – keine KI, keine Buchung.
 | `JOURNEYS_JOIN_URL` | Link „Tarife/online starten" (Standard `…/mitglied-werden`). |
 
 Im Team-Backend: Journeys einzeln an/aus (Einladung standardmäßig **aus**), Content-SID je Vorlage.
+
+## Takt des Durchlaufs
+
+GitHub startet geplante Workflows in diesem Repository nur sporadisch (ein 15-Minuten-Zeitplan
+lief teils nur alle paar Stunden); ein Vercel-Cron im 15-Minuten-Takt braucht den Pro-Tarif.
+Deshalb stoßen die häufig aufgerufenen Endpunkte `api/member/checkins`, `api/member/account`
+und der Magicline-Webhook den Durchlauf an (`lib/journeys/autotick.js`): höchstens alle 14 min
+(KV „SET NX"), über Vercels `waitUntil` nach der Antwort, Budget 20 s (Endpunkte haben 60 s).
+Ohne `waitUntil` passiert nichts. Der GitHub-Workflow bleibt als zweiter Weg. Team-Backend
+„Betrieb" zeigt „Letzter Durchlauf" mit Quelle (App-Verkehr / GitHub-Workflow).
 
 ## Immer aktiv (unabhängig von `JOURNEYS`)
 
@@ -156,5 +166,6 @@ Zugangsdaten (`TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`) bleiben in Vercel.
 
 `journeys-core`, `journeys-inbound`, `journeys-engine`, `journeys-webhooks`,
 `journeys-lead-agent`, `journeys-onboarding`, `journeys-team-api`, `journeys-studio-reply`,
-`journeys-twilio-content` (Content API nachgebaut), `journeys-twilio-link` (Abgleich woanders angelegter Vorlagen).
+`journeys-twilio-content` (Content API nachgebaut), `journeys-twilio-link` (Abgleich woanders angelegter Vorlagen),
+`journeys-autotick` (Schalter-Erkennung, Takt aus App-Verkehr).
 Redis-Nachbau für Tests: `tests/_memredis.js`.

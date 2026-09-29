@@ -59,7 +59,8 @@ async function overview() {
   return {
     ok: true,
     mode: {
-      on: Config.on(), tracking: Config.tracking(), mode: Config.mode(),
+      on: Config.on(), tracking: Config.tracking(), mode: Config.mode(), modeState: Config.modeState(),
+      lastTick: await (async () => { try { const l = await require('../../lib/journeys/tick').lastRun(); return l ? { at: l.at, src: l.src, ok: l.ok, sent: l.sent } : null; } catch (e) { return null; } })(),
       testNumbers: Config.testNumbers().map((p) => Phone.masked(p)),
       provider: WA.hasTwilio ? 'twilio' : (WA.hasMeta ? 'meta' : null), ai: (function () { try { return !!require('../../lib/ai').hasAI; } catch (e) { return false; } })(),
       leadAi: process.env.JOURNEYS_LEAD_AI !== '0', leadAiScope: Config.leadAiScope(), invitePerDay: parseInt(process.env.JOURNEYS_INVITE_PER_DAY || '40', 10) || 40,

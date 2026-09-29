@@ -45,6 +45,8 @@ async function templates(req, res, what) {
         geprueft: s.checked || 0, geaendert: s.changed || 0, fehler: s.linkError, weiter: false };
     }
     r.vorlagen = TC.summary((await Config.load(true)).templates);
+    // Betrieb auf einen Blick (ohne Personenbezug): Modus, letzter Durchlauf.
+    try { const last = await require('../lib/journeys/tick').lastRun(); r.betrieb = { modus: Config.mode(), modusSchalter: Config.modeState(), letzterDurchlauf: last ? { vorMin: Math.round((Date.now() - last.at) / 60000), quelle: last.src, gesendet: last.sent } : null }; } catch (e) {}
     return J(r);
   } catch (e) {
     console.error('[journeys-tick] templates', String(e && e.name));
@@ -59,7 +61,7 @@ module.exports = async function handler(req, res) {
   let q = {}; try { q = Object.fromEntries(new URL(req.url, 'http://x').searchParams.entries()); } catch (e) {}
   if (q.templates) return templates(req, res, String(q.templates));
   try {
-    const r = await Journeys.tick({ budgetMs: 45000 });
+    const r = await Journeys.tick({ budgetMs: 45000, src: 'workflow' });
     res.statusCode = 200;
     return res.end(JSON.stringify({ ok: !!r.ok, fertig: !!r.fertig, off: !!r.off, locked: !!r.locked, due: r.due || 0, sent: r.sent || 0, evaluated: r.evaluated || 0, ms: r.ms || 0 }));
   } catch (e) {

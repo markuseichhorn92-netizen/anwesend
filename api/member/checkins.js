@@ -13,6 +13,8 @@ module.exports = async function handler(req, res) {
   res.setHeader('Cache-Control', 'private, no-store');
   const sess = await M.getSession(M.bearer(req));
   if (!sess) { res.statusCode = 401; return res.end(JSON.stringify({ error: 'unauthorized' })); }
+  // FINN Journeys: Durchlauf aus App-Verkehr anstoßen (wartet nicht, siehe lib/journeys/autotick).
+  try { require('../../lib/journeys/autotick').maybe('checkins'); } catch (e) {}
   try {
     // Volle Historie über M.checkinHistory: Magicline liefert ohne fromDate/toDate
     // nur EINEN Monat, deshalb läuft der Helfer in <=365-Tage-Fenstern rückwärts
