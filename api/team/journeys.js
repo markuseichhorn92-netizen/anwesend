@@ -62,7 +62,7 @@ async function overview() {
       on: Config.on(), tracking: Config.tracking(), mode: Config.mode(),
       testNumbers: Config.testNumbers().map((p) => Phone.masked(p)),
       provider: WA.hasTwilio ? 'twilio' : (WA.hasMeta ? 'meta' : null), ai: (function () { try { return !!require('../../lib/ai').hasAI; } catch (e) { return false; } })(),
-      leadAi: process.env.JOURNEYS_LEAD_AI !== '0', invitePerDay: parseInt(process.env.JOURNEYS_INVITE_PER_DAY || '40', 10) || 40,
+      leadAi: process.env.JOURNEYS_LEAD_AI !== '0', leadAiScope: Config.leadAiScope(), invitePerDay: parseInt(process.env.JOURNEYS_INVITE_PER_DAY || '40', 10) || 40,
     },
     journeys: journeys,
     templates: Templates.catalog(cfg.templates),

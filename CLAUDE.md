@@ -610,6 +610,8 @@ Leitplanken dazu:
   einer Löschung bestehen (Widerspruchsnachweis).
 - Keine Gesundheitsdaten in Vorlagen, Prompts, Kennzahlen oder Logs; die Probelauf-Liste
   zeigt den Vornamen nur als Platzhalter.
+- Lead-KI folgt dem Pilot (`config.aiAllowedFor`): mit Testnummern nur diese, ohne erst im
+  Echtbetrieb. `leadTurn` und `isLeadConversation` prüfen das – nie ohne diese Prüfung antworten.
 - Lead-Agent: `book_trial` bleibt MEDIUM (Bestätigung); die Rufnummer kommt aus dem Webhook,
   nie vom Modell; Buchungswerkzeuge nur im Kanal WhatsApp (`channels`). Zweckbindung
   (WhatsApp-Business-Regeln 2026) steht im System-Text – nicht zum allgemeinen Chatbot machen.

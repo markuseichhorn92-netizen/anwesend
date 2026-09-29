@@ -155,6 +155,32 @@ async function say(from, body, name) { const res = { statusCode: 0, setHeader() 
   ai.messagesRaw = orig;
   ok('8. Modellfehler: feste Begrüßung + Team informiert', sent.some((s) => s.to === '4915177770002' && /Vor- und Nachnamen/.test(s.text)) && teamPush.length > tp);
 
+  // 9. Pilot: Die KI antwortet nur, wo auch gesendet werden dürfte.
+  const Config = require(path.join(ROOT, 'lib/journeys/config.js'));
+  const pilot = async (from, label) => {
+    script = [[TX('Hi! Was ist dein Ziel?')]];
+    const c0 = calls.length, s0 = sent.length, l0 = legacy.length;
+    await say(from, 'Hallo, Probetraining?', label);
+    return { ai: calls.length > c0, greeting: sent.slice(s0).some((s) => s.to === from && /Vor- und Nachnamen/.test(s.text)), legacy: legacy.length > l0 };
+  };
+  delete process.env.JOURNEYS_MODE; process.env.JOURNEYS_TEST_NUMBERS = '+49 151 7777 0100';
+  let pr = await pilot('4915177770100', 'Tina Test');
+  ok('9. Probelauf + Testnummer: KI antwortet der Testnummer', pr.ai && !pr.greeting && Config.leadAiScope() === 'test', JSON.stringify(pr));
+  pr = await pilot('4915177770101', 'Fremd Person');
+  ok('9a. Probelauf, fremde Nummer: bisheriger Weg, keine KI', !pr.ai && pr.greeting && pr.legacy, JSON.stringify(pr));
+  ok('9b. … und kein Lead-Gespräch für die KI vorgemerkt', !(await require(path.join(ROOT, 'lib/journeys/leadchat.js')).isLeadConversation('4915177770101')));
+  process.env.JOURNEYS_MODE = 'auto';
+  pr = await pilot('4915177770102', 'Noch Fremd');
+  ok('9c. Echtbetrieb mit Testnummern: fremde Nummer weiter ohne KI', !pr.ai && pr.greeting, JSON.stringify(pr));
+  pr = await pilot('4915177770100', 'Tina Test');
+  ok('9d. … Testnummer mit KI', pr.ai);
+  delete process.env.JOURNEYS_TEST_NUMBERS; delete process.env.JOURNEYS_MODE;
+  pr = await pilot('4915177770103', 'Ohne Pilot');
+  ok('9e. Probelauf ohne Testnummern: KI für niemanden', !pr.ai && pr.greeting && Config.leadAiScope() === 'off', JSON.stringify(pr));
+  process.env.JOURNEYS_MODE = 'auto';
+  pr = await pilot('4915177770104', 'Alle Dürfen');
+  ok('9f. Echtbetrieb ohne Testnummern: KI für alle', pr.ai && Config.leadAiScope() === 'all', JSON.stringify(pr));
+
   console.log(pass ? 'JOURNEYS LEAD AGENT PASS' : 'JOURNEYS LEAD AGENT FAIL');
   process.exit(pass ? 0 : 1);
 })().catch((e) => { console.log('FAIL Ausnahme: ' + (e && e.stack || e)); process.exit(1); });

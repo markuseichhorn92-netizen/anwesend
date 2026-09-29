@@ -17,6 +17,11 @@ Schalter bleibt das Verhalten der App wie vorher (Ausnahmen: siehe „Immer akti
 | `JOURNEYS_TRACK=1` | Check-ins zählen und Index füllen, ohne `JOURNEYS=1` (Daten wachsen vor dem Start). |
 | `JOURNEY_<KEY>=0` | Journey hart aus: `LEAD`, `ONBOARDING`, `HABIT`, `COMEBACK`, `INVITE`. |
 | `JOURNEYS_LEAD_AI=0` | Lead-Agent aus (Leads laufen wieder über die feste Begrüßung + Team). |
+
+**Lead-KI im Pilot** (`config.aiAllowedFor`): Sind Testnummern gesetzt, antwortet die KI nur
+diesen – im Probelauf wie im Echtbetrieb. Ohne Testnummern antwortet sie erst im Echtbetrieb
+(`JOURNEYS_MODE=auto`), im Probelauf niemandem. Alle anderen bekommen den bisherigen Weg:
+feste Begrüßung, Team übernimmt – keine KI, keine Buchung.
 | `JOURNEYS_INVITE_PER_DAY` | Einladungen pro Tag (Standard 40). |
 | `WA_PUBLIC_NUMBER` | Nummer für wa.me-Links (sonst `TWILIO_WHATSAPP_FROM`). |
 | `JOURNEYS_HASH_KEY` | Schlüssel für die gehashte STOP-Sperrliste (Fallback: Webhook-/Cron-Secret). |
