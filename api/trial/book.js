@@ -3,7 +3,8 @@
 /**
  * POST /api/trial/book
  *   { firstname,lastname,email,phone,gender,dateOfBirth,
- *     street,houseNumber,zip,city, startDateTime, referralCode, marketing }
+ *     street,houseNumber,zip,city, startDateTime, referralCode, marketing,
+ *     waService?, waMarketing? }   (WhatsApp-Einwilligungen, siehe lib/journeys/consent)
  * Bucht ein Probetraining + legt den Lead in Magicline an (Connect API).
  * Bei vorhandenem referralCode wird der Lead dem werbenden Mitglied zugeordnet.
  */
@@ -116,6 +117,23 @@ module.exports = async function handler(req, res) {
         await Phone.rememberLead(b.phone, {
           customerId: Phone.customerIdFrom(r.json),
           customerNumber: Phone.customerNumberFrom(r.json),
+        });
+      } catch (e) { /* egal */ }
+      // Lead-Pipeline: direkt mit Quelle, Termin und Kunden-Id (vorher nur über den
+      // CUSTOMER_CREATED-Webhook – ohne Quelle, ohne Termin). Best effort.
+      let lead = null;
+      try {
+        const LF = require('../../lib/leadflow');
+        lead = await LF.recordLead({ phone: b.phone, name: (String(b.firstname || '') + ' ' + String(b.lastname || '')).trim(), email: b.email,
+          source: 'probetraining', customerId: Phone.customerIdFrom(r.json), trialAt: Date.parse(b.startDateTime) || null });
+      } catch (e) { lead = null; }
+      // WhatsApp-Einwilligungen aus dem Formular festhalten und – wenn FINN Journeys laufen –
+      // Erinnerungen vor dem Termin einplanen. Best effort, nie buchungsrelevant.
+      try {
+        await require('../../lib/journeys').onTrialBooked({
+          leadId: lead && lead.id, customerId: Phone.customerIdFrom(r.json), phone: b.phone, firstName: b.firstname,
+          trialAt: Date.parse(b.startDateTime), source: 'probetraining',
+          consent: { service: b.waService === true, marketing: b.waMarketing === true },
         });
       } catch (e) { /* egal */ }
       const token = await storeTrial(b);

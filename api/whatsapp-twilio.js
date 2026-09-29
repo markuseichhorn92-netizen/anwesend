@@ -20,6 +20,8 @@ const WA = require('../lib/whatsapp');
 const LF = require('../lib/leadflow');
 const AI = require('../lib/ai');
 const WAAssistant = require('../lib/waAssistant');
+// FINN Journeys: 24-h-Fenster, STOP/START, Opt-in-Codes – vor jedem anderen Routing.
+const Journeys = require('../lib/journeys');
 
 // WhatsApp-KI (siehe api/whatsapp-webhook.js): per Flag, standardmäßig AUS,
 // fail-closed. Gleiche zentrale Behandlung wie beim Meta-Webhook.
@@ -56,6 +58,9 @@ function createWaVorgang(memberId, fromPhone, name, snapshot) {
     type: 'whatsapp', channel: 'whatsapp', phone: fromPhone, member: snapshot || undefined,
     subject: 'WhatsApp' + (name ? (' · ' + name) : ''),
     systemText: 'WhatsApp-Konversation' + (name ? (' mit ' + name) : '') + ' gestartet.',
+    // Nur das Gerüst – die Nachricht selbst folgt über Inbox.reply und löst dort den
+    // Team-Push aus (wie beim Meta-Webhook). Sonst kam der Push doppelt.
+    notifyTeam: false,
   });
 }
 
@@ -76,7 +81,11 @@ module.exports = async function handler(req, res) {
   // Status-Callback (kein Body, aber MessageStatus/SmsStatus) -> Zustell-/Lesestatus setzen.
   const twStatus = params.MessageStatus || params.SmsStatus;
   if (twStatus && !params.Body) {
-    try { const Receipts = require('../lib/receipts'); await Receipts.applyStatus(params.MessageSid || params.SmsSid, twStatus); } catch (e) {}
+    const sid = params.MessageSid || params.SmsSid;
+    const code = params.ErrorCode ? String(params.ErrorCode).replace(/[^0-9]/g, '').slice(0, 8) : null;
+    try { const Receipts = require('../lib/receipts'); await Receipts.applyStatus(sid, twStatus, { code: code }); } catch (e) {}
+    // Journeys: Fenster zu (63016), Meta-Marketingdeckel (63049), ungültige Nummer -> Schritt neu planen.
+    try { await Journeys.onStatus(sid, twStatus, code); } catch (e) {}
     res.statusCode = 200; res.setHeader('Content-Type', 'text/xml');
     return res.end('<?xml version="1.0" encoding="UTF-8"?><Response></Response>');
   }
@@ -85,6 +94,9 @@ module.exports = async function handler(req, res) {
   let handled = 0, leads = 0;
   for (const msg of msgs) {
     try {
+      // Doppelte Zustellung desselben Webhooks (Retry des Anbieters) nur einmal verarbeiten.
+      // Eigener Schlüssel – die WhatsApp-KI führt ihre eigene Sperre (wa:seen:).
+      if (!(await Journeys.firstDelivery(msg.id))) continue;
       let memberId, snapshot, isLead = false;
       // 1) Gemerkte Zuordnung (Nummer -> Kunde) hat Vorrang -> kein neues Ticket bei bekannter Nummer.
       const linked = await LF.resolveKnownLead(msg.from);
@@ -109,6 +121,9 @@ module.exports = async function handler(req, res) {
       const firstContact = !open;
       const v = open || await createWaVorgang(memberId, msg.from, msg.name, snapshot);
       if (!v) continue;
+      // STOP/START/Opt-in-Code/Ja-Nein auf eine offene Frage: erledigt, ohne KI oder Team-Alarm.
+      const jr = await Journeys.onInbound({ provider: 'twilio', phone: msg.from, text: msg.text, msgId: msg.id, name: msg.name, memberId: memberId, vorgangId: v.id });
+      if (jr && jr.consumed) { handled++; WAAssistant.waLog('journeys', { provider: 'twilio', kind: jr.kind }); continue; }
       // Diagnose (ohne Personenbezug): Mitglied erkannt? WhatsApp-KI scharf? (Provider: twilio)
       WAAssistant.waLog('inbound', {
         provider: 'twilio', known: !isLead, via: isLead ? 'lead' : (linked && linked.id ? 'linked' : 'phone'),

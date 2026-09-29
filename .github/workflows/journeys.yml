@@ -1,0 +1,42 @@
+name: FINN Journeys
+
+# Durchlauf der WhatsApp-Journeys (Leads, Onboarding, Motivation, Comeback):
+# fällige Erinnerungen senden, Mitglieder täglich neu einstufen, Check-in-Historie
+# nachziehen. Ohne JOURNEYS=1 (bzw. JOURNEYS_TRACK=1) in Vercel tut der Endpunkt
+# nichts und antwortet sofort mit "fertig": true.
+#
+# Warum mehrere Aufrufe: Reicht die Funktionslaufzeit nicht, antwortet der
+# Endpunkt mit "fertig": false und macht beim nächsten Aufruf weiter.
+#
+# Hinweise:
+#  - Geplante Workflows laufen nur auf dem Default-Branch des Repos.
+#  - GitHub startet Zeitpläne mit Verzögerung (oft 5–15 Minuten). Für
+#    Probetraining-Erinnerungen reicht das; die 2-h-Erinnerung hat Spielraum.
+#  - Schutz: Repo-Secret RECORD_SECRET wie bei den übrigen Cron-Jobs.
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch: {}
+
+concurrency:
+  group: journeys
+  cancel-in-progress: false
+
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Journeys-Durchlauf
+        env:
+          RECORD_SECRET: ${{ secrets.RECORD_SECRET }}
+        run: |
+          for i in 1 2 3 4; do
+            antwort=$(curl -fsS -m 90 "https://anwesend.vercel.app/api/journeys-tick" \
+              ${RECORD_SECRET:+-H "Authorization: Bearer $RECORD_SECRET"}) || exit 1
+            case "$antwort" in
+              *'"fertig":true'*) echo "Durchgang $i: fertig"; exit 0 ;;
+              *) echo "Durchgang $i: weiter" ;;
+            esac
+          done
+          echo "Nach 4 Durchgängen noch nicht fertig – der nächste Lauf macht weiter."

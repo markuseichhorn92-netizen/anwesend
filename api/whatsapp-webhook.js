@@ -22,6 +22,8 @@ const WA = require('../lib/whatsapp');
 const LF = require('../lib/leadflow');
 const AI = require('../lib/ai');
 const WAAssistant = require('../lib/waAssistant');
+// FINN Journeys: 24-h-Fenster, STOP/START, Opt-in-Codes – vor jedem anderen Routing.
+const Journeys = require('../lib/journeys');
 
 // WhatsApp-KI (Auskunft zu Mitgliedsdaten) ist bewusst per Feature-Flag geschützt
 // und standardmäßig AUS – ohne Flag bleibt es beim bisherigen Team-Weg (fail-closed).
@@ -83,6 +85,9 @@ module.exports = async function handler(req, res) {
   let handled = 0, leads = 0;
   for (const msg of msgs) {
     try {
+      // Doppelte Zustellung desselben Webhooks (Retry des Anbieters) nur einmal verarbeiten.
+      // Eigener Schlüssel – die WhatsApp-KI führt ihre eigene Sperre (wa:seen:).
+      if (!(await Journeys.firstDelivery(msg.id))) continue;
       let memberId, snapshot, isLead = false;
       // 1) Manuell/automatisch gemerkte Zuordnung (Nummer -> Kunde) hat VORRANG.
       //    So öffnet eine bekannte Nummer kein neues Ticket mehr und landet beim
@@ -110,6 +115,9 @@ module.exports = async function handler(req, res) {
       const firstContact = !open;
       const v = open || await createWaVorgang(memberId, msg.from, msg.name, snapshot);
       if (!v) continue;
+      // STOP/START/Opt-in-Code/Ja-Nein auf eine offene Frage: erledigt, ohne KI oder Team-Alarm.
+      const jr = await Journeys.onInbound({ provider: 'meta', phone: msg.from, text: msg.text, msgId: msg.id, name: msg.name, memberId: memberId, vorgangId: v.id });
+      if (jr && jr.consumed) { handled++; WAAssistant.waLog('journeys', { provider: 'meta', kind: jr.kind }); continue; }
       // Diagnose (ohne Personenbezug): Mitglied erkannt? WhatsApp-KI scharf? (Provider: meta)
       WAAssistant.waLog('inbound', {
         provider: 'meta', known: !isLead, via: isLead ? 'lead' : (linked && linked.id ? 'linked' : 'phone'),
@@ -137,7 +145,9 @@ module.exports = async function handler(req, res) {
     const { noteDelivery } = require('../lib/loginCode');
     const sts = WA.parseStatuses(body);
     for (const s of sts) {
-      try { await Receipts.applyStatus(s.id, s.status); } catch (e) {}
+      try { await Receipts.applyStatus(s.id, s.status, { code: s.code || null }); } catch (e) {}
+      // Journeys: Fenster zu (131047), Marketingdeckel (131049), unzustellbar (131026).
+      try { await Journeys.onStatus(s.id, s.status, s.code || null); } catch (e) {}
       // War es ein Login-Code? Dann festhalten, wie lange die Zustellung
       // gedauert hat - das ist der Teil, den WhatsApp verantwortet.
       try { await noteDelivery(s.id, s.status); } catch (e) {}

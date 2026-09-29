@@ -323,6 +323,15 @@ module.exports = async function handler(req, res) {
     });
   } catch (e) { /* egal */ }
 
+  // Lead-Pipeline mit Quelle „telefon" und Termin (sonst nur über den Webhook, ohne Quelle).
+  // WhatsApp-Einwilligung gibt es am Telefon nicht – keine Journey-Nachrichten.
+  try {
+    const LF = require('../../lib/leadflow');
+    const lead = await LF.recordLead({ phone: phone, name: (firstname + ' ' + lastname).trim(), email: placeholder ? null : email,
+      source: 'telefon', customerId: P.customerIdFrom(r.json), trialAt: Date.parse(startEff) || null });
+    if (lead) await require('../../lib/journeys').onTrialBooked({ leadId: lead.id, customerId: P.customerIdFrom(r.json), phone: phone, firstName: firstname, trialAt: Date.parse(startEff), source: 'telefon' });
+  } catch (e) { /* egal */ }
+
   const hallo = firstWord(firstname);
   return P.json(res, 200, {
     ok: true,
