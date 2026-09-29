@@ -101,10 +101,32 @@ Liste mit Text, Kategorie und Variablen: Team-Backend → WhatsApp-Journeys → 
 (Quelle: `lib/journeys/templates.js`). UTILITY: `fi_trial_24h`, `fi_trial_2h`, `fi_onb_welcome`,
 `fi_onb_induction`. MARKETING: alle übrigen. Meta entscheidet die Kategorie endgültig.
 
+**Einreichen per Knopf** (`lib/journeys/twilioContent.js`, Admin): „Alle offenen einreichen"
+legt jede Vorlage über die Twilio Content API an (`POST /v1/Content`, Deutsch, Beispielwerte,
+Knöpfe als Quick-Reply) und reicht sie bei Meta ein (`…/ApprovalRequests/whatsapp`). Die
+Zugangsdaten (`TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`) bleiben in Vercel.
+
+- **Name** = Schlüssel + Fingerabdruck des Texts (+ `_rN` nach einer Ablehnung). Meta ändert
+  keine freigegebene Vorlage und vergibt keinen Namen zweimal – ein geänderter Text ist
+  deshalb eine neue Fassung („Text geändert – neu einreichen").
+- **Gesendet wird nur mit Status `approved`** (`templates.sidUsable`). In Prüfung, abgelehnt,
+  pausiert oder gesperrt → wie „keine Vorlage". Eine von Hand eingetragene SID ohne Status gilt
+  wie bisher.
+- **Abgleich:** beim Öffnen der Seite (höchstens alle 3 min), im Durchlauf (alle 20 min, nur
+  solange etwas in Prüfung ist) und per „Status abrufen". Metas Kategorie und Ablehnungsgrund
+  stehen an der Vorlage.
+- **Keine Doppelten:** vor dem Anlegen wird nach dem Namen gesucht; eine angelegte SID wird
+  sofort gespeichert, auch wenn das Einreichen danach scheitert.
+- **Metas Regeln vorab** (`templates.lint`): keine Variable am Anfang/Ende, keine nebeneinander,
+  fortlaufend, genug Text je Variable, kein Zeilenumbruch, ≤ 10 Emojis, Knöpfe ≤ 20 Zeichen
+  ohne Emoji, kein wa.me-Link. Ein Verstoß wird nicht eingereicht; der Test prüft alle Texte.
+- Der Tarif-Link im Angebot steht fest im Text (eine Adresse als Variable lehnt Meta oft ab).
+  Wer `JOURNEYS_JOIN_URL` ändert, muss `fi_trial_offer` neu einreichen.
+
 ## Inbetriebnahme (Reihenfolge)
 
 1. Rechtsprüfung: Einwilligungstexte (`lib/journeys/consent.TEXTS`, Formular, Mail, App), Einladungstext, Datenschutzerklärung; DSFA-Nachtrag freigeben; AVV Twilio/Meta.
-2. Twilio: Vorlagen anlegen und freigeben lassen, Content-SIDs im Team-Backend eintragen.
+2. Team-Backend → WhatsApp-Journeys → „Alle offenen einreichen"; Metas Entscheidung abwarten (meist Minuten, bis 48 h), Abgelehnte anpassen und neu einreichen.
 3. Vercel: `JOURNEYS=1`, `JOURNEYS_TEST_NUMBERS=<eigene Nummer>`, `WA_PUBLIC_NUMBER`; GitHub-Secret `RECORD_SECRET` ist für den Workflow schon da.
 4. Probelauf beobachten (Team-Backend „Probelauf"), dann `JOURNEYS_MODE=auto` mit Testnummern.
 5. Eigene Nummer als Lead durchspielen: Anfrage → Fragen → Termin → „Ja" → Erinnerungen → STOP.
@@ -114,5 +136,6 @@ Liste mit Text, Kategorie und Variablen: Team-Backend → WhatsApp-Journeys → 
 ## Tests
 
 `journeys-core`, `journeys-inbound`, `journeys-engine`, `journeys-webhooks`,
-`journeys-lead-agent`, `journeys-onboarding`, `journeys-team-api`, `journeys-studio-reply`.
+`journeys-lead-agent`, `journeys-onboarding`, `journeys-team-api`, `journeys-studio-reply`,
+`journeys-twilio-content` (Content API nachgebaut).
 Redis-Nachbau für Tests: `tests/_memredis.js`.

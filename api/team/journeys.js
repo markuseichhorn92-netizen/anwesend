@@ -10,6 +10,10 @@
  *   POST { action:'journey', key, on }            Journey ein-/ausschalten
  *   POST { action:'template', key, sid?, meta?, lang? }  Vorlage zuordnen (Twilio HX… / Meta-Name)
  *   POST { action:'test', tpl, phone }            Testversand – NUR an JOURNEYS_TEST_NUMBERS
+ *   POST { action:'twilio_submit', keys? }        Vorlagen bei Twilio anlegen + bei Meta einreichen
+ *                                                 (ohne keys: alle offenen; fortsetzbar über remaining)
+ *   POST { action:'twilio_resubmit', key }        abgelehnte/veraltete Fassung neu einreichen
+ *   POST { action:'twilio_sync' }                 Stand der Freigaben bei Twilio nachlesen
  *
  * Rechte: alles nur Admin (admin.manage), das Mitglieds-Profil mit member.read.
  * Antworten enthalten keine Nachrichten an echte Personen und keine Rufnummern
@@ -39,6 +43,9 @@ async function overview() {
   const Store = require('../../lib/journeys/store');
   const Sender = require('../../lib/journeys/sender');
   const Phone = require('../../lib/phone');
+  const TC = require('../../lib/journeys/twilioContent');
+  // Offene Freigaben beim Öffnen der Seite nachlesen (höchstens alle 3 Minuten).
+  try { await TC.syncIfDue(Date.now(), 5000, 3 * 60000); } catch (e) {}
   const cfg = await Config.load(true);
   const journeys = [];
   for (const d of Defs.list()) {
@@ -57,6 +64,7 @@ async function overview() {
     },
     journeys: journeys,
     templates: Templates.catalog(cfg.templates),
+    twilio: { configured: TC.configured(), open: TC.pending(cfg.templates).length },
     kpi: await KPI.read(month, Defs.list().map((d) => d.key)),
     dry: (await Sender.dryLog(40)).map((x) => ({ at: x.at, j: x.j, s: x.s, tpl: x.tpl || null, via: x.via || null, cat: x.cat || null, subj: x.subj || null, action: !!x.action, text: x.text || null })),
     counts: { due: await Store.dueCount(), index: await Store.indexSize(), members: await Store.memberCount() },
@@ -160,11 +168,56 @@ module.exports = async function handler(req, res) {
     if (!WA || !WA.hasWhatsApp) return J({ ok: false, error: 'no_whatsapp' }, 400);
     const open = await require('../../lib/journeys/window').isOpen(p);
     let r;
-    if (WA.hasTwilio && tc.sid) r = await WA.twilioSendTemplate(p, tc.sid, Templates.twilioVars(key, vars));
+    if (WA.hasTwilio && tc.sid && !Templates.sidUsable(tc) && !open) return J({ ok: false, error: 'not_approved', message: 'Die Vorlage ist noch nicht von Meta freigegeben (' + (tc.status || 'unbekannt') + ').' }, 400);
+    if (WA.hasTwilio && Templates.sidUsable(tc)) r = await WA.twilioSendTemplate(p, tc.sid, Templates.twilioVars(key, vars));
     else if (!WA.hasTwilio && WA.hasMeta && tc.meta) { const v = Templates.twilioVars(key, vars); r = await WA.sendTemplate(p, tc.meta, tc.lang || 'de', Object.keys(v).sort((x, y) => x - y).map((k) => v[k])); }
     else if (open) r = await WA.sendText(p, Templates.render(key, vars));
     else return J({ ok: false, error: 'no_template', message: 'Keine Vorlage zugeordnet und das 24-h-Fenster ist zu. Schreib der Nummer vorher kurz, oder ordne die Vorlage zu.' }, 400);
-    return J({ ok: !!(r && r.ok !== false), via: (tc.sid || tc.meta) ? 'template' : 'session', error: r && r.ok === false ? 'provider' : undefined });
+    return J({ ok: !!(r && r.ok !== false), via: (Templates.sidUsable(tc) || tc.meta) ? 'template' : 'session', error: r && r.ok === false ? 'provider' : undefined });
+  }
+  if (action === 'twilio_submit' || action === 'twilio_resubmit') {
+    // Vorlagen bei Twilio anlegen und bei Meta zur Prüfung einreichen. Die
+    // Zugangsdaten bleiben serverseitig; gesendet wird hier an niemanden.
+    const Templates = require('../../lib/journeys/templates');
+    const TC = require('../../lib/journeys/twilioContent');
+    if (!TC.configured()) return J({ ok: false, error: 'no_twilio', message: 'Twilio-Zugang fehlt in Vercel (TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN).' }, 400);
+    const cfg = await Config.load(true);
+    let keys;
+    if (action === 'twilio_resubmit') {
+      const key = String(b.key || '');
+      if (!Templates.get(key)) return J({ ok: false, error: 'bad_key' }, 400);
+      const cur = cfg.templates[key] || {};
+      if (!cur.auto || !cur.sid) return J({ ok: false, error: 'not_submitted', message: 'Diese Vorlage wurde noch nicht eingereicht.' }, 400);
+      const outdated = cur.hash !== Templates.hashOf(key);
+      if (!outdated && ['rejected', 'paused', 'disabled', 'deleted', 'unsubmitted'].indexOf(cur.status) < 0) return J({ ok: false, error: 'not_resubmittable', message: 'Neu einreichen geht nach einer Ablehnung oder wenn der Text geändert wurde.' }, 400);
+      // Abgelehnte Fassung entfernen, damit Meta die neue nicht als Doppel wertet.
+      if (cur.status === 'rejected') { try { await TC.remove(cur.sid); } catch (e) {} }
+      await Config.save({ templates: { [key]: Object.assign({}, cur, { rev: outdated ? (cur.rev || 0) : (cur.rev || 0) + 1, sid: null, status: null, name: null }) } }, who);
+      keys = [key];
+    } else {
+      const wanted = Array.isArray(b.keys) ? b.keys.map(String).filter((k) => Templates.get(k)) : null;
+      keys = wanted && wanted.length ? wanted : TC.pending(cfg.templates);
+    }
+    const deadline = Date.now() + 40000;
+    const results = [];
+    const remaining = keys.slice();
+    while (remaining.length && Date.now() < deadline) {
+      const key = remaining.shift();
+      const cur = (await Config.load(true)).templates[key] || {};
+      if (cur.meta || (cur.sid && !cur.auto)) { results.push({ key: key, ok: false, error: 'manual', message: 'Von Hand zugeordnet – nicht angefasst.' }); continue; }
+      const r = await TC.submit(key, cur);
+      if (r.entry) await Config.save({ templates: { [key]: r.entry } }, who);
+      results.push({ key: key, ok: !!r.ok, skipped: !!r.skipped, status: r.entry ? r.entry.status : null, error: r.error || null, message: r.message || null });
+    }
+    const failed = results.filter((x) => !x.ok && x.error !== 'manual');
+    return J({ ok: !failed.length, results: results, remaining: remaining, submitted: results.filter((x) => x.ok && !x.skipped).length,
+      message: failed.length ? (failed.length + ' Vorlage(n) nicht eingereicht: ' + failed.map((x) => x.key + ' – ' + (x.message || x.error)).join(' · ')).slice(0, 600) : undefined });
+  }
+  if (action === 'twilio_sync') {
+    const TC = require('../../lib/journeys/twilioContent');
+    if (!TC.configured()) return J({ ok: false, error: 'no_twilio', message: 'Twilio-Zugang fehlt in Vercel (TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN).' }, 400);
+    const r = await TC.sync({ budgetMs: 30000, who: who });
+    return J({ ok: !!r.ok, checked: r.checked || 0, changed: r.changed || 0 });
   }
   return J({ ok: false, error: 'bad_action' }, 400);
 };

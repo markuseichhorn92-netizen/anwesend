@@ -580,8 +580,9 @@ Einladung an Bestandsnummern **erst nach Rechtsprüfung**.
 - **Schalter:** `JOURNEYS=1` (Hauptschalter), `JOURNEYS_MODE=auto` (sonst Probelauf – nichts
   wird gesendet, Vorschau im Team-Backend), `JOURNEYS_TEST_NUMBERS` (Pilot), `JOURNEYS_TRACK=1`,
   `JOURNEY_<KEY>=0`, `JOURNEYS_LEAD_AI=0`, `JOURNEYS_INVITE_PER_DAY`, `WA_PUBLIC_NUMBER`.
-  Team-Backend „WhatsApp-Journeys": Journeys an/aus, Content-SIDs, Kennzahlen, Probelauf,
-  Testversand (nur an Testnummern). Einladung ist standardmäßig aus.
+  Team-Backend „WhatsApp-Journeys": Journeys an/aus, Vorlagen per Knopf bei Twilio anlegen
+  und bei Meta einreichen (`lib/journeys/twilioContent.js`, Stand wird abgeglichen), Kennzahlen,
+  Probelauf, Testversand (nur an Testnummern). Einladung ist standardmäßig aus.
 - **Immer aktiv** (auch ohne `JOURNEYS`): 24-h-Fenster je Nummer (Team-Antworten nehmen bei
   geschlossenem Fenster Vorlage bzw. Mail), STOP/START vor jeder KI, Doppelzustellung,
   Lead-Pipeline (eine Nummernform, Quelle, Termin, neue Stufen, Vertrag → „gewonnen"),
@@ -595,7 +596,7 @@ Einladung an Bestandsnummern **erst nach Rechtsprüfung**.
   `lib/phone.js`, `lib/trialBooking.js`, `api/journeys-tick.js` (+ `.github/workflows/journeys.yml`),
   `api/team/journeys.js`, `api/member/whatsapp.js`; Einstellungen-Karte „WhatsApp von Fit-Inn".
 - **Tests:** `journeys-core`, `-inbound`, `-engine`, `-webhooks`, `-lead-agent`, `-onboarding`,
-  `-team-api`, `-studio-reply`; Redis-Nachbau `tests/_memredis.js`.
+  `-team-api`, `-studio-reply`, `-twilio-content`; Redis-Nachbau `tests/_memredis.js`.
 
 Leitplanken dazu:
 
@@ -616,8 +617,12 @@ Leitplanken dazu:
   `MEMBER_LIST_READ` bleibt „nie angenommen".
 - Journey-Hooks nur in `lib/finn/automations.register()` anmelden (dort läuft `Events._reset()`).
 - Nichts an wa.me- oder Partner-Links hängen außer dem START-Code.
+- Vorlagen: gesendet wird eine eingereichte Vorlage nur mit Metas Status `approved`
+  (`templates.sidUsable`). Texte müssen `templates.lint` bestehen (Metas Regeln); ein
+  geänderter Text ist eine neue Fassung mit neuem Namen – nie eine freigegebene Vorlage
+  „umbiegen". Einreichen nur serverseitig über den Admin-Knopf, Twilio-Schlüssel bleiben in Vercel.
 
-Noch organisatorisch offen: Vorlagen in Twilio anlegen und freigeben lassen; AVV Twilio/Meta;
+Noch organisatorisch offen: Vorlagen im Team-Backend einreichen und Metas Freigabe abwarten; AVV Twilio/Meta;
 Einwilligungs- und Einladungstexte rechtlich prüfen; DSFA-Nachtrag freigeben; Magicline-
 Webhooks (`CUSTOMER_CHECKIN`, `APPOINTMENT_*`, `CONTRACT_CANCELLED`) an diese App bestätigen;
 wer ruft bei „Tag 28" an.
