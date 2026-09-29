@@ -14,15 +14,49 @@
  *
  * Schutz wie die übrigen Cron-Endpunkte: Secret als Authorization-Header,
  * fail-closed ohne Secret. Die Antwort enthält nur Zahlen.
+ *
+ * WhatsApp-Vorlagen (Workflow „FINN Journeys" → manuell starten → vorlagen):
+ *   POST ?templates=submit  offene Vorlagen bei Twilio anlegen + bei Meta einreichen
+ *   POST ?templates=sync    Stand der Freigaben nachlesen
+ * Antwort: je Vorlage Schlüssel, Status, Metas Grund – keine Personendaten,
+ * keine Zugangsdaten. „weiter:true" heißt: nochmal aufrufen (Zeit reichte nicht).
+ * Unabhängig von JOURNEYS=1 – eingereicht wird, bevor gesendet wird.
  */
 
 const { requireCronAuth } = require('../lib/cronAuth');
 const Journeys = require('../lib/journeys');
 
+async function templates(req, res, what) {
+  const J = (o, code) => { res.statusCode = code || 200; res.end(JSON.stringify(o)); };
+  if (req.method !== 'POST') return J({ ok: false, error: 'method_not_allowed' }, 405);
+  if (what !== 'submit' && what !== 'sync') return J({ ok: false, error: 'bad_action' }, 400);
+  const TC = require('../lib/journeys/twilioContent');
+  const Config = require('../lib/journeys/config');
+  if (!TC.configured()) return J({ ok: false, error: 'no_twilio', message: TC.NO_TWILIO, weiter: false }, 400);
+  try {
+    let r;
+    if (what === 'submit') {
+      r = await TC.submitMany({ budgetMs: 40000, who: 'workflow' });
+      r = { ok: r.ok, eingereicht: r.submitted, weiter: r.remaining.length > 0, offen: r.remaining, fehler: r.message,
+        ergebnis: r.results.map((x) => ({ key: x.key, ok: x.ok, status: x.status || undefined, fehler: x.ok ? undefined : (x.message || x.error) })) };
+    } else {
+      const s = await TC.sync({ budgetMs: 40000, who: 'workflow' });
+      r = { ok: !!s.ok, geprueft: s.checked || 0, geaendert: s.changed || 0, weiter: false };
+    }
+    r.vorlagen = TC.summary((await Config.load(true)).templates);
+    return J(r);
+  } catch (e) {
+    console.error('[journeys-tick] templates', String(e && e.name));
+    return J({ ok: false, error: 'templates_failed', weiter: false }, 502);
+  }
+}
+
 module.exports = async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json');
   res.setHeader('Cache-Control', 'no-store');
   if (!requireCronAuth(req, res)) return;
+  let q = {}; try { q = Object.fromEntries(new URL(req.url, 'http://x').searchParams.entries()); } catch (e) {}
+  if (q.templates) return templates(req, res, String(q.templates));
   try {
     const r = await Journeys.tick({ budgetMs: 45000 });
     res.statusCode = 200;

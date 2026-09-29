@@ -213,6 +213,34 @@ const tpl = async (k) => (await Config.load(true)).templates[k] || {};
   ok('13. nur offene geprüft', t1 && t1.checked === 2 && g1 - g0 === 2, JSON.stringify(t1));
   ok('13a. zweiter Aufruf gleich danach: nichts', (await TC.syncIfDue(Date.now())) === null);
 
+  // 14. Workflow-Einstieg: /api/journeys-tick?templates=submit|sync (Cron-Secret, nur POST)
+  process.env.CRON_SECRET = 'cron-test-secret';
+  const Tick = require(path.join(ROOT, 'api/journeys-tick.js'));
+  const tick = async (method, q, auth) => {
+    const res = res0();
+    const req = { method: method, url: '/api/journeys-tick?' + q, headers: auth ? { authorization: 'Bearer ' + auth } : {}, on() { return req; } };
+    await Tick(req, res);
+    return { status: res.statusCode, json: JSON.parse(res.body || '{}'), raw: res.body || '' };
+  };
+  let w = await tick('POST', 'templates=submit', null);
+  ok('14. ohne Secret: 401', w.status === 401);
+  w = await tick('GET', 'templates=submit', 'cron-test-secret');
+  ok('14a. GET wird abgelehnt', w.status === 405);
+  const b14 = creates();
+  w = await tick('POST', 'templates=submit', 'cron-test-secret');
+  // Offen sind fi_lead_followup (Anlegen scheiterte an 401) und fi_milestone (Text wieder
+  // wie vorher) – beide liegen bei Twilio schon vor und werden wiedergefunden.
+  ok('14b. einreichen: offene erledigt, nichts doppelt angelegt', w.status === 200 && w.raw.indexOf('{"ok":true') === 0 && w.json.eingereicht === 2 && w.json.weiter === false && creates() === b14 && w.json.ergebnis.map((x) => x.key).join() === 'fi_lead_followup,fi_milestone', w.raw.slice(0, 300));
+  ok('14c. Bericht: je Vorlage Status, ohne Zugangsdaten', w.json.vorlagen.length === n && w.json.vorlagen.find((v) => v.key === 'fi_lead_last').status === 'von_hand' && w.raw.indexOf(TOKEN) < 0 && w.raw.indexOf(AC) < 0);
+  w = await tick('POST', 'templates=submit', 'cron-test-secret');
+  ok('14d. zweiter Lauf: nichts mehr offen', w.json.ok && w.json.eingereicht === 0 && !w.json.ergebnis.length && creates() === b14);
+  w = await tick('POST', 'templates=sync', 'cron-test-secret');
+  ok('14e. Status abrufen über den Workflow', w.json.ok && w.json.geprueft >= n - 1 && w.json.weiter === false);
+  delete process.env.TWILIO_AUTH_TOKEN;
+  w = await tick('POST', 'templates=submit', 'cron-test-secret');
+  ok('14f. ohne Twilio-Zugang: klare Meldung, nicht „ok"', w.status === 400 && w.json.error === 'no_twilio' && w.raw.indexOf('{"ok":true') !== 0);
+  process.env.TWILIO_AUTH_TOKEN = TOKEN;
+
   console.log(pass ? 'JOURNEYS TWILIO CONTENT PASS' : 'JOURNEYS TWILIO CONTENT FAIL');
   process.exit(pass ? 0 : 1);
 })().catch((e) => { console.log('FAIL Ausnahme: ' + (e && e.stack || e)); process.exit(1); });

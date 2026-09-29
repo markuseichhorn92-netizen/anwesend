@@ -13,11 +13,20 @@ name: FINN Journeys
 #  - GitHub startet Zeitpläne mit Verzögerung (oft 5–15 Minuten). Für
 #    Probetraining-Erinnerungen reicht das; die 2-h-Erinnerung hat Spielraum.
 #  - Schutz: Repo-Secret RECORD_SECRET wie bei den übrigen Cron-Jobs.
+#  - Manuell mit „vorlagen": WhatsApp-Vorlagen bei Twilio einreichen bzw. den
+#    Stand der Freigaben abrufen (statt des Durchlaufs). Die Twilio-Schlüssel
+#    bleiben in Vercel; das Protokoll zeigt je Vorlage nur Status und Grund.
 
 on:
   schedule:
     - cron: '*/15 * * * *'
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      vorlagen:
+        description: 'WhatsApp-Vorlagen: einreichen oder Status abrufen (leer = normaler Durchlauf)'
+        type: choice
+        options: ['-', 'einreichen', 'status']
+        default: '-'
 
 concurrency:
   group: journeys
@@ -27,7 +36,25 @@ jobs:
   tick:
     runs-on: ubuntu-latest
     steps:
+      - name: WhatsApp-Vorlagen
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.vorlagen != '' && inputs.vorlagen != '-' }}
+        env:
+          RECORD_SECRET: ${{ secrets.RECORD_SECRET }}
+          AKTION: ${{ inputs.vorlagen == 'einreichen' && 'submit' || 'sync' }}
+        run: |
+          for i in 1 2 3 4 5; do
+            antwort=$(curl -sS -m 90 -X POST "https://anwesend.vercel.app/api/journeys-tick?templates=$AKTION" \
+              ${RECORD_SECRET:+-H "Authorization: Bearer $RECORD_SECRET"}) || exit 1
+            echo "$antwort" | jq . 2>/dev/null || echo "$antwort"
+            case "$antwort" in
+              *'"weiter":true'*) echo "Durchgang $i: weiter" ;;
+              *) break ;;
+            esac
+          done
+          case "$antwort" in '{"ok":true'*) exit 0 ;; *) exit 1 ;; esac
+
       - name: Journeys-Durchlauf
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.vorlagen != '' && inputs.vorlagen != '-') }}
         env:
           RECORD_SECRET: ${{ secrets.RECORD_SECRET }}
         run: |

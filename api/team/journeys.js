@@ -180,7 +180,7 @@ module.exports = async function handler(req, res) {
     // Zugangsdaten bleiben serverseitig; gesendet wird hier an niemanden.
     const Templates = require('../../lib/journeys/templates');
     const TC = require('../../lib/journeys/twilioContent');
-    if (!TC.configured()) return J({ ok: false, error: 'no_twilio', message: 'Twilio-Zugang fehlt in Vercel (TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN).' }, 400);
+    if (!TC.configured()) return J({ ok: false, error: 'no_twilio', message: TC.NO_TWILIO }, 400);
     const cfg = await Config.load(true);
     let keys;
     if (action === 'twilio_resubmit') {
@@ -198,24 +198,12 @@ module.exports = async function handler(req, res) {
       const wanted = Array.isArray(b.keys) ? b.keys.map(String).filter((k) => Templates.get(k)) : null;
       keys = wanted && wanted.length ? wanted : TC.pending(cfg.templates);
     }
-    const deadline = Date.now() + 40000;
-    const results = [];
-    const remaining = keys.slice();
-    while (remaining.length && Date.now() < deadline) {
-      const key = remaining.shift();
-      const cur = (await Config.load(true)).templates[key] || {};
-      if (cur.meta || (cur.sid && !cur.auto)) { results.push({ key: key, ok: false, error: 'manual', message: 'Von Hand zugeordnet – nicht angefasst.' }); continue; }
-      const r = await TC.submit(key, cur);
-      if (r.entry) await Config.save({ templates: { [key]: r.entry } }, who);
-      results.push({ key: key, ok: !!r.ok, skipped: !!r.skipped, status: r.entry ? r.entry.status : null, error: r.error || null, message: r.message || null });
-    }
-    const failed = results.filter((x) => !x.ok && x.error !== 'manual');
-    return J({ ok: !failed.length, results: results, remaining: remaining, submitted: results.filter((x) => x.ok && !x.skipped).length,
-      message: failed.length ? (failed.length + ' Vorlage(n) nicht eingereicht: ' + failed.map((x) => x.key + ' – ' + (x.message || x.error)).join(' · ')).slice(0, 600) : undefined });
+    if (!keys.length) return J({ ok: true, results: [], remaining: [], submitted: 0 });
+    return J(await TC.submitMany({ keys: keys, budgetMs: 40000, who: who }));
   }
   if (action === 'twilio_sync') {
     const TC = require('../../lib/journeys/twilioContent');
-    if (!TC.configured()) return J({ ok: false, error: 'no_twilio', message: 'Twilio-Zugang fehlt in Vercel (TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN).' }, 400);
+    if (!TC.configured()) return J({ ok: false, error: 'no_twilio', message: TC.NO_TWILIO }, 400);
     const r = await TC.sync({ budgetMs: 30000, who: who });
     return J({ ok: !!r.ok, checked: r.checked || 0, changed: r.changed || 0 });
   }

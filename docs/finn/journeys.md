@@ -120,6 +120,9 @@ Zugangsdaten (`TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`) bleiben in Vercel.
 - **Metas Regeln vorab** (`templates.lint`): keine Variable am Anfang/Ende, keine nebeneinander,
   fortlaufend, genug Text je Variable, kein Zeilenumbruch, ≤ 10 Emojis, Knöpfe ≤ 20 Zeichen
   ohne Emoji, kein wa.me-Link. Ein Verstoß wird nicht eingereicht; der Test prüft alle Texte.
+- **Ohne Team-Backend:** GitHub → Actions → „FINN Journeys" → „Run workflow" → `vorlagen`:
+  `einreichen` bzw. `status`. Ruft `POST /api/journeys-tick?templates=submit|sync` mit dem
+  Cron-Secret; das Protokoll zeigt je Vorlage Status und Metas Grund, keine Zugangsdaten.
 - Der Tarif-Link im Angebot steht fest im Text (eine Adresse als Variable lehnt Meta oft ab).
   Wer `JOURNEYS_JOIN_URL` ändert, muss `fi_trial_offer` neu einreichen.
 
