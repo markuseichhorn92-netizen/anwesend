@@ -5,7 +5,7 @@
 - Mitglied: nur aus der Bearer-Session (`lib/members.getSession`). Der Client kann
   keine `memberId` setzen; `customerId`-Argumente des Modells werden im
   Mitglieder-Kanal verworfen (`lib/finn/tools.js`).
-- WhatsApp: nur verifizierte Nummer (`lib/waAuth.js`, bestehend). Der Orchestrator
+- WhatsApp: nur eindeutig erkannte Nummer (`lib/waIdentity.js`; Gesundheitsdaten nur nach „Ja“, `lib/waHealth.js`). Der Orchestrator
   wird erst nach der Identitätsprüfung aufgerufen.
 - Team: Team-Session + Capabilities. `api/team/finn.js`: Status/Audit/Events/Agenten
   und der Team-Kanal nur mit `admin.manage` **und** Admin-Rolle; Timeline mit `member.read`.

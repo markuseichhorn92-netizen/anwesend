@@ -177,11 +177,13 @@ module.exports = async function handler(req, res) {
       res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'rate_limited', message: 'Kurz durchatmen – das waren viele Fragen auf einmal. Versuch es gleich nochmal.' }));
     }
     const question = String(body.question || '').trim();
-    if (Channels.agentsOn() && question.length >= 2 && AI.hasAI) {
+    // Nur einschränkend: WhatsApp ohne Gesundheits-Einwilligung (lib/waHealth) schickt noHealth.
+    const noHealth = body.noHealth === true;
+    if (Channels.agentsOn() && question && AI.hasAI) {
       let det = { text: '' }; try { det = await memberDetails(sess.id); } catch (e) {}
       let r;
       let fbErr = null;
-      try { r = await Channels.memberTurn(sess, m, { question: question, history: body.history, conversationId: body.conversationId, live: det.text }); }
+      try { r = await Channels.memberTurn(sess, m, { question: question, history: body.history, conversationId: body.conversationId, live: det.text, noHealth: noHealth }); }
       catch (e) { r = null; fbErr = String(e && e.name || 'throw'); }
       if (r && (r.ok || r.blocked || r.error === 'rate_limited')) {
         try { require('../../lib/handled').record('ai', sess.id, 'chat'); } catch (e) {}
@@ -208,17 +210,17 @@ module.exports = async function handler(req, res) {
     // FINN-Langzeitgedächtnis (nur bei Opt-in): gemerkte Fakten in den Kontext geben und
     // FINN erlauben, Neues via [[merke: …]] zu ergänzen (Anweisung nur, wenn aktiviert).
     let mem = { on: false, items: [] };
-    try { mem = await FinnMemory.get(sess.id); } catch (e) {}
+    if (!noHealth) { try { mem = await FinnMemory.get(sess.id); } catch (e) {} }
     const memoryText = FinnMemory.toPromptText(mem);
     // Onboarding-Profil (Ziel, Körperdaten, Rhythmus, Erfahrung, Vorlieben, Ernährung –
     // und, NUR bei Einwilligung, Gesundheit/Beschwerden): macht FINN persönlicher & sicherer.
     let profileText = '';
-    try { profileText = MemberProfile.toPromptText(await MemberProfile.get(sess.id)); } catch (e) {}
+    if (!noHealth) { try { profileText = MemberProfile.toPromptText(await MemberProfile.get(sess.id)); } catch (e) {} }
     // InBody-Körperanalyse (falls eingescannt): Werte + Trend als Kontext für fundierte Tipps.
     let inbodyText = '';
     let mprof = null;
     try { mprof = await MemberProfile.get(sess.id); } catch (e) {}
-    try { const IB = require('../../lib/inbody'); inbodyText = IB.toPromptText(await IB.list(sess.id), mprof && mprof.sex); } catch (e) {}
+    if (!noHealth) { try { const IB = require('../../lib/inbody'); inbodyText = IB.toPromptText(await IB.list(sess.id), mprof && mprof.sex); } catch (e) {} }
     // Vital-Check: FINN bekommt das ganze Bild – Ampel, Balance, HRV-Alter, Cardio-/Kraft-Empfehlung,
     // Trainings-Check-in, Übertrainings-Signal und erkannte Muster (nur bei Einwilligung).
     let morningText = '';
@@ -226,7 +228,7 @@ module.exports = async function handler(req, res) {
     let batteryText = '';
     try {
       const MO = require('../../lib/morning');
-      if (await MO.getConsent(sess.id)) {
+      if (!noHealth && await MO.getConsent(sess.id)) {
         const mlist = await MO.list(sess.id);
         let mRecovery = null; try { mRecovery = await MO.getRecovery(sess.id); } catch (e) {}
         morningText = MO.toPromptText(mlist, { trList: await MO.trList(sess.id), age: (mprof && mprof.age) || 0, recovery: mRecovery });

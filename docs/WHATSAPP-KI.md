@@ -1,30 +1,57 @@
-# WhatsApp-KI: verifizierte Mitglieder-Auskunft
+# WhatsApp-KI: Mitglieder-Auskunft (Erkennung an der Nummer)
 
 FINN beantwortet Fragen eines Mitglieds zu **seinen eigenen** Daten (Vertrag,
-Termine, Besuche, Beitragskonto, Training, Ernährung) direkt über WhatsApp –
-**erst nach einer 2-Faktor-Verifizierung**. Standardmäßig ist das Feature **aus**
-(fail-closed) und wird nur mit `WA_ASSISTANT=1` aktiv.
+Termine, Besuche, Beitragskonto) direkt über WhatsApp. Standardmäßig ist das Feature
+**aus** (fail-closed) und wird nur mit `WA_ASSISTANT=1` aktiv.
 
-## Ablauf
+## Ablauf (seit 29. September 2026)
 
-1. **1. Faktor – Besitz:** Der Webhook ordnet die eingehende WhatsApp-Nummer über
-   `M.findByPhone` einem Magicline-Mitglied zu. Kein Treffer → kein KI-Zugriff, es
-   bleibt beim bisherigen Lead-/Team-Weg.
-2. **2. Faktor – Wissen:** Bei Erstkontakt oder nach längerer Pause schickt FINN
-   einen **Bestätigungs-Link** (`/wa-verify.html?token=…`). Dort gibt das Mitglied
-   **Geburtsdatum + E-Mail** ein. Der Server prüft beides gegen Magicline
-   (`M.findByEmailDob`) **und** dass die Trefferperson genau das der Nummer
-   zugeordnete Mitglied ist (Token-Bindung). Zusätzlich ist eine **Einwilligung**
-   Pflicht (KI-Antworten inkl. Trainings-/Ernährungsdaten über WhatsApp).
-3. **Danach** antwortet FINN automatisch – über denselben Coach wie in der App
-   (`/api/member/coach`, mit einer nur intern genutzten, 120-Sekunden-Session).
-4. **Re-Verifizierung:** Die Freischaltung ist ein gleitendes Fenster
-   (`WA_VERIFY_TTL_DAYS`, Default 60). Bei Aktivität verlängert sie sich; nach
-   Ablauf (längere Pause) ist eine erneute Bestätigung nötig.
+Entscheidung des Betreibers: Die Mitglieder sollen sich nicht per Link bestätigen
+müssen. Die WhatsApp-Absendernummer ist geprüft (WhatsApp bestätigt sie bei der
+Anmeldung; Twilio/Meta signieren den Webhook) und reicht als Nachweis – **wenn sie
+eindeutig ist** (`lib/waIdentity.js`):
+
+1. **Gemerkte Verknüpfung** (START-Code aus der App, Team) hat Vorrang.
+2. **Magicline-Nummernsuche** (`M.findAllByPhone`, alle exakten Treffer):
+   genau **ein** Kunde mit **laufendem Vertrag** → erkannt, FINN antwortet sofort.
+3. **Mehrere Kunden** mit der Nummer (Familie) oder **kein laufender Vertrag** → FINN
+   fragt einmal nach dem **Geburtsdatum** (fester Text, kein Modell). Der Server prüft es
+   gegen die Kandidaten; genau ein Treffer → Wahl 60 Tage gemerkt (`wa:pick:<nummer>`),
+   solange die Nummer in Magicline noch an diesem Kunden hängt. Danach wird die
+   ursprüngliche Frage beantwortet. 3 Fehlversuche/Tag → Übergabe ans Team. Das
+   Geburtsdatum geht nie ans Modell und nicht in Logs; im Posteingang steht
+   „(Geburtsdatum angegeben)".
+4. **Kein Treffer** → Interessent (Lead-Weg).
+
+Der KI-Hinweis beim ersten Kontakt sagt: „Ich erkenne dich an deiner Handynummer aus
+deinem Mitgliedskonto."
+
+**Gesundheitsdaten** (Körperwerte/InBody, Lebensstil, Vital, FINN-Gedächtnis) nur nach
+einem ausdrücklichen **„Ja"** im Chat (`lib/waHealth.js`): Fragt jemand erkennbar nach
+eigenen Körper-/Gesundheitswerten, stellt FINN die feste Rückfrage (Text =
+`lib/privacy` `wa_ai_health`). „Ja" → Einwilligung (`wa:hc:<nummer>` + Nachweis im
+Datenschutz-Protokoll), dann Antwort mit Gesundheitskontext; „Nein" → Antwort ohne;
+„Gesundheitsdaten aus" → Widerruf. Ohne Einwilligung ruft der Assistent den Coach mit
+`noHealth:true` (lässt Profil-, InBody-, Morgen-, Vital-, Akku- und Gedächtnis-Kontext weg).
+
+**Grenzen:**
+- Nur WhatsApp. Die Telefon-Hotline (`lib/phoneAuth.js`) zählt eine Anruferkennung nicht
+  als Nachweis (fälschbar) und akzeptiert nur `wa:verify:` (früherer Link) oder den Code.
+  Die Nummern-Erkennung schreibt deshalb **nie** `wa:verify:`.
+- Heikle Themen (Kündigung, Geld, Beschwerde, …) gehen weiter ans Team; Aktionen mit
+  Risiko brauchen weiter die Bestätigung im Chat.
+- Restrisiko: neu vergebene Nummern, die in Magicline noch am alten Mitglied hängen –
+  begrenzt durch „laufender Vertrag" und durch Auskunft nur auf Nachfrage (DSFA-Nachtrag).
+
+**Früherer Weg (Link):** Wer seine Nummer schon über `/wa-verify.html` (Geburtsdatum +
+E-Mail) bestätigt hat, gilt weiter als verifiziert (`WA_VERIFY_TTL_DAYS`, Standard 60) –
+inklusive der dort erteilten Einwilligung für Trainings-/Ernährungsdaten. Neue Links
+verschickt die WhatsApp-KI nicht mehr; Seite und Endpunkt bleiben für bestehende
+Bestätigungen und die Hotline.
 
 ## App-Aktionen (nicht nur Antworten)
 
-Verifizierte Mitglieder können über WhatsApp echte App-Aktionen auslösen – FINN
+Erkannte Mitglieder können über WhatsApp echte App-Aktionen auslösen – FINN
 nutzt dieselben Endpunkte wie die App (`/api/member/nutrition`) mit einer intern
 gemünzten, kurzlebigen Mitglieds-Session (`lib/waAgent.js`). Phase 1:
 

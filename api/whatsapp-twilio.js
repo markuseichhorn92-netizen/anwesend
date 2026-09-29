@@ -5,7 +5,7 @@
  *   POST (application/x-www-form-urlencoded) -> eingehende Nachricht ins Postfach.
  *
  * Twilio ruft diese URL bei jeder eingehenden WhatsApp-Nachricht auf. Die Nummer
- * ordnet das Mitglied zu (M.findByPhone), die Nachricht hängt an einen WhatsApp-
+ * ordnet das Mitglied zu (lib/waIdentity), die Nachricht hängt an einen WhatsApp-
  * Vorgang (channel:'whatsapp'); Studio-Antworten gehen über lib/whatsapp.sendText
  * automatisch per Twilio zurück. Ohne Zuordnung -> Hinweis-Mail ans Studio.
  *
@@ -13,7 +13,7 @@
  * Antwortet mit leerem TwiML (keine automatische Antwort), Status 200.
  */
 
-const M = require('../lib/members');
+const WAIdentity = require('../lib/waIdentity');
 const Inbox = require('../lib/inbox');
 const SR = require('../lib/studioReply');
 const WA = require('../lib/whatsapp');
@@ -97,41 +97,42 @@ module.exports = async function handler(req, res) {
       // Doppelte Zustellung desselben Webhooks (Retry des Anbieters) nur einmal verarbeiten.
       // Eigener Schlüssel – die WhatsApp-KI führt ihre eigene Sperre (wa:seen:).
       if (!(await Journeys.firstDelivery(msg.id))) continue;
-      let memberId, snapshot, isLead = false;
-      // 1) Gemerkte Zuordnung (Nummer -> Kunde) hat Vorrang -> kein neues Ticket bei bekannter Nummer.
-      const linked = await LF.resolveKnownLead(msg.from);
-      if (linked && linked.id) {
-        memberId = String(linked.id);
-        snapshot = { name: linked.name || ('+' + msg.from), nr: linked.nr || null, initials: initialsOf(linked.name) || 'WA', phone: msg.from };
-      } else {
-        const member = await M.findByPhone(msg.from);
-        if (member && member.id != null) {
-          memberId = String(member.id);
-          const nm = ((member.firstName || '') + ' ' + (member.lastName || '')).trim();
-          snapshot = { name: nm || ('+' + msg.from), nr: member.customerNumber || null,
-            initials: initialsOf(nm) || initialsOf(msg.name) || 'WA', email: member.email || null, phone: msg.from };
-        } else {
-          // Neuer Interessent (Probetraining usw.): Pseudo-ID -> landet im Posteingang.
-          isLead = true; memberId = 'wa' + msg.from;
-          snapshot = { name: msg.name || ('+' + msg.from), nr: null, initials: initialsOf(msg.name) || 'WA', phone: msg.from, lead: true };
-          leads++;
-        }
-      }
+      // Wer schreibt? (lib/waIdentity) – gemerkte Verknüpfung, sonst Magicline-Nummernsuche:
+      // genau ein Kunde mit laufendem Vertrag → Mitglied; geteilte Nummer / kein laufender
+      // Vertrag → Geburtsdatum im Chat; kein Treffer → Interessent (Pseudo-Id im Posteingang).
+      const who = await WAIdentity.resolve(msg);
+      let memberId = who.memberId, snapshot = who.snapshot;
+      const isLead = !!who.isLead;
+      if (isLead) leads++;
       const open = await findOpenWaVorgang(memberId);
       const firstContact = !open;
-      const v = open || await createWaVorgang(memberId, msg.from, msg.name, snapshot);
+      let v = open || await createWaVorgang(memberId, msg.from, msg.name, snapshot);
       if (!v) continue;
       // STOP/START/Opt-in-Code/Ja-Nein auf eine offene Frage: erledigt, ohne KI oder Team-Alarm.
       const jr = await Journeys.onInbound({ provider: 'twilio', phone: msg.from, text: msg.text, msgId: msg.id, name: msg.name, memberId: memberId, vorgangId: v.id });
       if (jr && jr.consumed) { handled++; WAAssistant.waLog('journeys', { provider: 'twilio', kind: jr.kind }); continue; }
+      // Nummer mehreren Konten (bzw. keinem laufenden Vertrag) zugeordnet: erst per Geburtsdatum
+      // die richtige Person finden – ohne KI, ohne Lead-Weg. Danach die ursprüngliche Frage
+      // im Vorgang des gewählten Mitglieds beantworten.
+      let inMsg = msg;
+      const choosing = !!who.pick && !!(WA_ASSISTANT && AI.hasAI && WA.hasWhatsApp);   // KI aus → Team-Weg wie bisher
+      if (choosing) {
+        const pr = await WAIdentity.pickTurn({ msg: msg, memberId: memberId, vorgang: v, pick: who.pick });
+        if (!pr || !pr.picked) { handled++; continue; }
+        memberId = pr.picked; snapshot = pr.snapshot;
+        v = (await findOpenWaVorgang(memberId)) || await createWaVorgang(memberId, msg.from, msg.name, snapshot);
+        if (!v) continue;
+        if (!pr.replay) { handled++; continue; }
+        inMsg = Object.assign({}, msg, { text: pr.replay, id: msg.id ? (msg.id + ':replay') : '', image: null });
+      }
       // Diagnose (ohne Personenbezug): Mitglied erkannt? WhatsApp-KI scharf? (Provider: twilio)
       WAAssistant.waLog('inbound', {
-        provider: 'twilio', known: !isLead, via: isLead ? 'lead' : (linked && linked.id ? 'linked' : 'phone'),
+        provider: 'twilio', known: !isLead, via: who.via,
         gate: !!(WA_ASSISTANT && AI.hasAI && WA.hasWhatsApp), flag: WA_ASSISTANT, ai: !!AI.hasAI, wa: !!WA.hasWhatsApp,
       });
       // Interessent: FINN-Lead-Agent antwortet in Sekunden (FINN Journeys, nur mit JOURNEYS=1).
       // Auch wenn die Nummer schon einem Magicline-Lead zugeordnet ist. Ohne Schalter wie bisher.
-      if (isLead || (await Journeys.isLeadConversation(msg.from))) {
+      if (isLead || (!choosing && (await Journeys.isLeadConversation(msg.from)))) {
         const lr = await Journeys.leadTurn({ provider: 'twilio', memberId: memberId, vorgang: v, msg: msg, firstContact: firstContact, unknown: isLead });
         if (lr && lr.handled) { handled++; continue; }
       }
@@ -143,7 +144,7 @@ module.exports = async function handler(req, res) {
         // Bekanntes Mitglied: WhatsApp-KI protokolliert die Nachricht selbst (still) und
         // benachrichtigt das Team NUR bei Eskalation.
         handled++;
-        try { await WAAssistant.handleInbound({ req: req, memberId: memberId, msg: msg, vorgang: v }); } catch (e) { WAAssistant.waLog('error', { name: String(e && e.name) }); }
+        try { await WAAssistant.handleInbound({ req: req, memberId: memberId, msg: inMsg, vorgang: v }); } catch (e) { WAAssistant.waLog('error', { name: String(e && e.name) }); }
       } else {
         await SR.applyMemberReply(memberId, v.id, msg.text); handled++;
       }

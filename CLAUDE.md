@@ -569,6 +569,25 @@ Leitplanken dazu (zusätzlich zu den allgemeinen unten):
 - `MEMBER_LIST_READ` bleibt „nie angenommen", bis der Scope vorliegt.
 - Bestandsverarbeitung im Webhook nicht in den Bus verschieben – der Bus wrappt sie.
 
+## WhatsApp-KI erkennt Mitglieder an der Nummer (29. September 2026)
+
+Entscheidung des Betreibers: kein Bestätigungs-Link mehr. Doku: `docs/WHATSAPP-KI.md`.
+
+- `lib/waIdentity.js` (beide Webhooks): gemerkte Verknüpfung → sonst `M.findAllByPhone`:
+  genau ein Kunde mit laufendem Vertrag = erkannt; mehrere / kein laufender Vertrag =
+  Geburtsdatum im Chat (Server prüft, nie das Modell, nicht im Log); kein Treffer = Lead.
+- `lib/waHealth.js`: Gesundheitsdaten (Körperwerte, Lebensstil, Vital, Gedächtnis) nur nach
+  „Ja" im Chat (`wa_ai_health` in `lib/privacy`, Widerruf „Gesundheitsdaten aus"); sonst
+  Coach/FINN mit `noHealth`.
+- `tests/wa-identity.test.js`.
+
+Leitplanken:
+- **Nie `WAAuth.setVerified` für die Nummern-Erkennung** – die Telefon-Hotline liest
+  `wa:verify:` als zweiten Faktor, Anruferkennungen sind fälschbar.
+- Bei mehreren Treffern nie raten und keine Namen anderer Konten nennen.
+- Kurze Antworten („1", „j", „👍") sind Antworten, keine leeren Nachrichten; „1"–„9" auf eine
+  Rückfrage wird zur gewählten Option (`lib/finn/orchestrator` `pickChoice`).
+
 ## FINN Journeys – WhatsApp für Leads, Onboarding und Bindung (29. September 2026)
 
 Nach dem Vorbild von athleo, 360°CHAT und StudioPartner: feste Abläufe mit

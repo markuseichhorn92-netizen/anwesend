@@ -19,7 +19,9 @@ inject('lib/whatsapp.js', Object.assign({}, realWA, {
   verifyTwilioSignature: () => true,
 }));
 const leadCalls = [], memberReplies = [], consents = [];
-inject('lib/members.js', { findByPhone: async (p) => (String(p).endsWith('777') ? { id: 4711, firstName: 'Max', lastName: 'Muster', customerNumber: 'K1' } : null), rateLimit: async () => true });
+const MAX = { id: 4711, firstName: 'Max', lastName: 'Muster', customerNumber: 'K1' };
+inject('lib/members.js', { findByPhone: async (p) => (String(p).endsWith('777') ? MAX : null), findAllByPhone: async (p) => (String(p).endsWith('777') ? [MAX] : []),
+  getContract: async () => ({ active: true }), rateLimit: async () => true });
 inject('lib/studioReply.js', { applyMemberReply: async (m, v, t) => { memberReplies.push({ m, t }); } });
 inject('lib/leadflow.js', { resolveKnownLead: async () => null, linkPhone: async () => {}, onLeadMessage: async (o) => { leadCalls.push(o); return { created: false }; } });
 inject('lib/ai.js', { hasAI: false });

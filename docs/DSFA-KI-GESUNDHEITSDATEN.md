@@ -57,3 +57,20 @@ Vor Go-live sind AVV, Unterauftragnehmer, tatsächliche AWS-Inferenzroute, Aufbe
 Verantwortlicher / Datum / Unterschrift: ____________________  
 Datenschutzberatung / Datum / Stellungnahme: ____________________
 
+## Nachtrag 29. September 2026: WhatsApp erkennt Mitglieder an der Nummer
+
+Neu: Die WhatsApp-KI erkennt Mitglieder an der Absendernummer, ohne Bestätigungs-Link
+(Geburtsdatum + E-Mail). Details: `docs/WHATSAPP-KI.md`.
+
+- **Identität:** nur bei eindeutiger Zuordnung (genau ein Kunde mit laufendem Vertrag
+  bzw. eigene Verknüpfung); sonst Geburtsdatum im Chat, serverseitig geprüft.
+- **Gesundheitsdaten (Art. 9):** nur nach ausdrücklicher Einwilligung im Chat
+  (`wa_ai_health`, versioniert, Nachweis im Datenschutz-Protokoll, Widerruf im Chat).
+- **Telefon-Hotline unverändert streng** (Anruferkennung fälschbar).
+
+| Risiko | Ausgangsrisiko | Maßnahmen | Restrisiko |
+|---|---:|---|---:|
+| Auskunft an falsche Person (geteilte Nummer) | mittel | geteilte Nummer → Geburtsdatum, keine Namen anderer Konten, 3 Fehlversuche → Team | niedrig |
+| Neu vergebene Nummer hängt noch am alten Mitglied | mittel | nur laufende Verträge, Auskunft nur auf Nachfrage, Gesundheitsdaten nur nach „Ja", Heikles ans Team | niedrig–mittel; vom Verantwortlichen zu bewerten |
+| Fremdes Handy (Zugriff auf das Gerät) | niedrig–mittel | wie bei App/Mail: Besitz des Geräts; keine Bankdaten-/Kündigungsaktionen ohne Team | niedrig–mittel |
+
