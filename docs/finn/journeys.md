@@ -29,15 +29,29 @@ feste Begrüßung, Team übernimmt – keine KI, keine Buchung.
 
 Im Team-Backend: Journeys einzeln an/aus (Einladung standardmäßig **aus**), Content-SID je Vorlage.
 
-## Takt des Durchlaufs
+## Takt des Durchlaufs und Sofortversand
 
-GitHub startet geplante Workflows in diesem Repository nur sporadisch (ein 15-Minuten-Zeitplan
-lief teils nur alle paar Stunden); ein Vercel-Cron im 15-Minuten-Takt braucht den Pro-Tarif.
-Deshalb stoßen die häufig aufgerufenen Endpunkte `api/member/checkins`, `api/member/account`
-und der Magicline-Webhook den Durchlauf an (`lib/journeys/autotick.js`): höchstens alle 14 min
-(KV „SET NX"), über Vercels `waitUntil` nach der Antwort, Budget 20 s (Endpunkte haben 60 s).
-Ohne `waitUntil` passiert nichts. Der GitHub-Workflow bleibt als zweiter Weg. Team-Backend
-„Betrieb" zeigt „Letzter Durchlauf" mit Quelle (App-Verkehr / GitHub-Workflow).
+**Sofortversand** (`lib/journeys/live.js`): Die Hooks (Vertrag, Termin, Check-in, Storno,
+Probetraining, erster WhatsApp-Kontakt) speichern die Person, planen sie ein und – ist sie
+jetzt fällig – verarbeiten sie direkt über Vercels `waitUntil`; die Antwort an Magicline wartet
+nicht. Nach einer neuen Einwilligung (START-Code, START, „Ja") werden zurückgestellte Schritte
+sofort neu geprüft (die Willkommensnachricht kommt direkt nach dem Opt-in). Einige Schritte
+haben bewusst Abstand zum Ereignis (Willkommen 10 min nach Vertrag, erster Besuch +2 h,
+Erinnerungen 24 h/2 h vor dem Termin) – die holt der Durchlauf.
+
+**Durchlauf:** Vercel-Cron alle 5 Minuten (`GET /api/journeys-tick`, `Authorization: Bearer
+$CRON_SECRET`, setzt den Pro-Tarif voraus). `lib/cronAuth` akzeptiert `CRON_SECRET` und
+`RECORD_SECRET` gleichzeitig, die GitHub-Workflows (POST, `RECORD_SECRET`) laufen weiter.
+Rückfall ohne Cron: die häufig aufgerufenen Endpunkte `api/member/checkins`,
+`api/member/account` und der Magicline-Webhook stoßen den Durchlauf an
+(`lib/journeys/autotick.js`, höchstens alle 14 min, nur wenn der letzte Durchlauf älter als
+10 min ist). Team-Backend „Betrieb" zeigt „Letzter Durchlauf" mit Quelle.
+
+**Doppelversand** ist doppelt verhindert: Sperre je Person (`jr:lock:s:<subj>`, 60 s) um
+Profil-Nachladen und Schritte (`tick.processOne`, von Durchlauf und Sofortversand genutzt) und
+eine Einmal-Marke je Schritt (`jr:once:<subj>:<ablauf>:<schritt>:<laufbeginn>:<fälligkeit>`,
+SET NX, 120 Tage) – auch wenn ein Hook einen veralteten Zustand speichert. Nicht gesendet
+(Probelauf, verschoben, übersprungen) gibt die Marke frei; `engine.retry` ebenso.
 
 ## Immer aktiv (unabhängig von `JOURNEYS`)
 
@@ -168,5 +182,6 @@ Zugangsdaten (`TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`) bleiben in Vercel.
 `journeys-core`, `journeys-inbound`, `journeys-engine`, `journeys-webhooks`,
 `journeys-lead-agent`, `journeys-onboarding`, `journeys-team-api`, `journeys-studio-reply`,
 `journeys-twilio-content` (Content API nachgebaut), `journeys-twilio-link` (Abgleich woanders angelegter Vorlagen),
-`journeys-autotick` (Schalter-Erkennung, Takt aus App-Verkehr), `journeys-sendlog` (Versandprotokoll).
+`journeys-autotick` (Schalter-Erkennung, Takt aus App-Verkehr), `journeys-sendlog` (Versandprotokoll),
+`journeys-live` (Sofortversand, Sperre, Einmal-Marke, Cron per GET).
 Redis-Nachbau für Tests: `tests/_memredis.js`.

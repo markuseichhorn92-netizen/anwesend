@@ -596,13 +596,18 @@ Einladung an Bestandsnummern **erst nach Rechtsprüfung**.
   `lib/phone.js`, `lib/trialBooking.js`, `api/journeys-tick.js` (+ `.github/workflows/journeys.yml`),
   `api/team/journeys.js`, `api/member/whatsapp.js`; Einstellungen-Karte „WhatsApp von Fit-Inn".
 - **Tests:** `journeys-core`, `-inbound`, `-engine`, `-webhooks`, `-lead-agent`, `-onboarding`,
-  `-team-api`, `-studio-reply`, `-twilio-content`, `-twilio-link`, `-autotick`, `-sendlog`; Redis-Nachbau `tests/_memredis.js`.
+  `-team-api`, `-studio-reply`, `-twilio-content`, `-twilio-link`, `-autotick`, `-sendlog`, `-live`; Redis-Nachbau `tests/_memredis.js`.
 - **Versandprotokoll** (`lib/journeys/sendlog.js`, `jr:log`, Karte auf der Journeys-Seite, nur Admin):
   wer wann welche Nachricht bekam und ob sie ankam – ohne Text, Nummer maskiert, 90 Tage, 500 Einträge.
-- **Takt:** GitHub-Zeitpläne laufen hier nur sporadisch. Der Durchlauf startet deshalb auch aus
-  dem App-Verkehr (`lib/journeys/autotick.js`: `api/member/checkins`, `api/member/account`,
-  Magicline-Webhook; höchstens alle 14 min, per `waitUntil`, Budget 20 s). Kein Vercel-Cron im
-  15-Minuten-Takt eintragen, solange der Tarif nicht geklärt ist (Hobby bricht das Deployment ab).
+- **Takt:** Ereignisse (Vertrag, Termin, Check-in, Opt-in) stoßen den **Sofortversand** an
+  (`lib/journeys/live.js`, `waitUntil`); zeitgesteuerte Schritte holt der Durchlauf – geplant als
+  **Vercel-Cron alle 5 min** (`GET /api/journeys-tick`, `CRON_SECRET`; Pro-Tarif – den
+  `crons`-Eintrag erst setzen, wenn Pro aktiv ist, sonst bricht das Deployment ab). Rückfall:
+  App-Verkehr (`lib/journeys/autotick.js`, nur wenn der letzte Durchlauf > 10 min alt ist).
+  `lib/cronAuth` akzeptiert `CRON_SECRET` und `RECORD_SECRET` gleichzeitig.
+- **Doppelversand:** Sperre je Person (`tick.processOne`) + Einmal-Marke je Schritt
+  (`jr:once:…`, engine). Wer eine Person verarbeitet, geht über `processOne` – nie
+  `Engine.runSubject` direkt aus neuem Code.
 
 Leitplanken dazu:
 

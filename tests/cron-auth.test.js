@@ -48,6 +48,14 @@ async function run() {
   ok('7b. Alias mit extraEnvs -> true', requireCronAuth(req0({ authorization: 'Bearer wb' }), r, { extraEnvs: ['WINBACK_SECRET'] }) === true);
   delete process.env.WINBACK_SECRET;
 
+  // 7c) CRON_SECRET (Vercel-Cron) und RECORD_SECRET (GitHub-Workflows) gelten gleichzeitig
+  process.env.CRON_SECRET = 'c-neu'; process.env.RECORD_SECRET = 'r-alt';
+  r = res0(); const both1 = requireCronAuth(req0({ authorization: 'Bearer c-neu' }), r) === true;
+  r = res0(); const both2 = requireCronAuth(req0({ authorization: 'Bearer r-alt' }), r) === true;
+  r = res0(); const bad = requireCronAuth(req0({ authorization: 'Bearer c-neur-alt' }), r) === false && r.statusCode === 401;
+  ok('7c. beide Geheimnisse gültig, anderes → 401', both1 && both2 && bad);
+  delete process.env.CRON_SECRET; delete process.env.RECORD_SECRET;
+
   // 8) Tripwire: kein Cron-Endpoint akzeptiert mehr ?secret= / vertraut x-vercel-cron
   const files = ['api/nudge.js', 'api/plan-remind.js', 'api/social-remind.js', 'api/nutrition-impulse.js', 'api/record.js', 'api/winback-autopilot.js', 'api/seed.js', 'api/admin/off-warmup.js'];
   const offenders = files.filter((f) => {

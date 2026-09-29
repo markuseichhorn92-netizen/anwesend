@@ -60,6 +60,14 @@ const KV = require(path.join(ROOT, 'lib/finn/kv.js'));
   ok('4. nach Ablauf der Sperre: nächster Durchlauf', runs.length === 2 && runs[1].src === 'app:magicline');
   release(); await Promise.all(pending);
 
+  // 4b. Cron läuft (letzter Durchlauf < 10 min) → kein Anstoß aus dem App-Verkehr
+  await KV.del(Auto.KEY); Auto._reset();
+  await KV.set('jr:lasttick', { at: Date.now() - 3 * 60000, src: 'cron' }, 3600);
+  const n4 = runs.length;
+  Auto.maybe('checkins'); await new Promise((r) => setTimeout(r, 20));
+  ok('4b. frischer Cron-Durchlauf: App stößt nichts an', runs.length === n4);
+  await KV.del('jr:lasttick');
+
   // 5. Fehler im Durchlauf bleiben im Hintergrund
   delete require.cache[path.resolve(ROOT, 'lib/journeys/tick.js')];
   inject('lib/journeys/tick.js', { run: async () => { throw new Error('boom'); }, lastRun: async () => null });

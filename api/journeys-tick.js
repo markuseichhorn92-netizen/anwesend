@@ -8,8 +8,9 @@
  * bekannter Nummer täglich neu einstufen, Check-in-Historie nachziehen,
  * Einladung dosiert verschicken.
  *
- * Fortsetzbar: `fertig:false` heißt, der nächste Aufruf macht weiter. Der
- * Workflow .github/workflows/journeys.yml ruft alle 15 Minuten, bis `fertig`.
+ * Fortsetzbar: `fertig:false` heißt, der nächste Aufruf macht weiter. Takt:
+ * Vercel-Cron alle 5 Minuten (GET, `Authorization: Bearer $CRON_SECRET`); der
+ * Workflow .github/workflows/journeys.yml ruft per POST (manuell/Vorlagen-Auftrag).
  * Ohne JOURNEYS=1 bzw. JOURNEYS_TRACK=1 passiert nichts (fertig:true, off:true).
  *
  * Schutz wie die übrigen Cron-Endpunkte: Secret als Authorization-Header,
@@ -61,7 +62,7 @@ module.exports = async function handler(req, res) {
   let q = {}; try { q = Object.fromEntries(new URL(req.url, 'http://x').searchParams.entries()); } catch (e) {}
   if (q.templates) return templates(req, res, String(q.templates));
   try {
-    const r = await Journeys.tick({ budgetMs: 45000, src: 'workflow' });
+    const r = await Journeys.tick({ budgetMs: 45000, src: req.method === 'GET' ? 'cron' : 'workflow' });
     res.statusCode = 200;
     return res.end(JSON.stringify({ ok: !!r.ok, fertig: !!r.fertig, off: !!r.off, locked: !!r.locked, due: r.due || 0, sent: r.sent || 0, evaluated: r.evaluated || 0, ms: r.ms || 0 }));
   } catch (e) {
