@@ -91,6 +91,18 @@ const DAY = 86400000;
   const hv = await KV.hgetall('h'); ok('5d. hset/hincrby/hgetall', hv.a === '1' && hv.n === '5');
   await KV.hdel('h', ['a']); ok('5e. hdel', !('a' in (await KV.hgetall('h'))));
 
+  // 6. Push-Anstoß und WhatsApp stimmen sich ab (lib/nudge.js fragt recentlyContacted)
+  const J = require(path.join(ROOT, 'lib/journeys/index.js'));
+  process.env.JOURNEYS = '1';
+  await KV.set('jr:st:123', { subj: '123', sent: [{ at: Date.now() - 3 * DAY, cat: 'marketing', via: 'template' }], runs: {} });
+  await KV.set('jr:st:124', { subj: '124', sent: [{ at: Date.now() - 3 * DAY, cat: 'marketing', via: 'dry' }], runs: {} });
+  await KV.set('jr:st:125', { subj: '125', sent: [], runs: { comeback: { startedAt: Date.now() - DAY, done: {}, exit: null } } });
+  ok('6. vor 3 Tagen per WhatsApp motiviert -> kein Push', await J.recentlyContacted('123', 7));
+  ok('6a. nur Probelauf zählt nicht', !(await J.recentlyContacted('124', 7)));
+  ok('6b. laufendes Comeback -> kein Push', await J.recentlyContacted('125', 7));
+  delete process.env.JOURNEYS;
+  ok('6c. ohne JOURNEYS nie', !(await J.recentlyContacted('123', 7)));
+
   console.log(pass ? 'JOURNEYS CORE PASS' : 'JOURNEYS CORE FAIL');
   process.exit(pass ? 0 : 1);
 })().catch((e) => { console.log('FAIL Ausnahme: ' + (e && e.stack || e)); process.exit(1); });

@@ -943,7 +943,7 @@
     if(s==='help'){ S.helpSel=null; S.helpCat='all'; S.helpQ=''; S.helpShowAll=false; S.aiPhase='idle'; S.aiQuery=''; S.aiAsked=''; S.aiAnswer=''; S.aiFeedback=null; S.ctOpen=false; S.ctSent=false; S.ctMsg=''; S.ctErr=''; S.artFb=null; }
     if(s==='postfach'){ S.pfSel=null; S.pfThread=false; S.pfErr=''; S.pfDraft=''; S.pfSearch=''; S.pfLimit=12; loadInbox(); }
     if(s==='contract'){ S.cancelStep=0; S.pauseStep=0; S.pauseDone=false; S.offerDone=''; S.docMsg=''; S.docErr=false; S.modMsg=''; S.modErr=false; S.modBusyId=''; loadDocuments(); loadModules(); }
-    if(s==='settings'){ S.commMsg=''; S.commErr=false; loadCommPrefs(); }
+    if(s==='settings'){ S.commMsg=''; S.commErr=false; loadCommPrefs(); loadWaJr(true); }
     if(s==='checkins'||s==='fort') loadCheckins();   // immer frisch: Studio-Check-ins vom Band erscheinen sofort
     if(ERN_ON&&(s==='home'||s==='fort')) loadNutri();   // Ernährungs-Vitalpunkte für Startseite/Fortschritt frisch halten
     if(s==='figur'){ S.figurAdd=false; S.figurMsg=''; S.figurErr=false; S.figurBusy=false; S.figurReviewBusy=false; loadFigur(); }
@@ -1045,6 +1045,11 @@
   function loadCommPrefs(){ if(commPrefsBusy) return; if(DATA.commPrefs&&typeof DATA.commPrefs==='object') return; commPrefsBusy=true;
     api('/api/member/comm-prefs').then(function(d){ commPrefsBusy=false; DATA.commPrefs=(d&&d.ok&&d.available)?{available:true,prefs:(d.prefs||{})}:{available:false}; render(); })
       .catch(function(){ commPrefsBusy=false; DATA.commPrefs={available:false}; render(); }); }
+  // WhatsApp von Fit-Inn (FINN Journeys): Status laden. enabled:false -> Karte bleibt weg.
+  var waJrBusy=false;
+  function loadWaJr(force){ if(waJrBusy) return; if(!force&&DATA.waJr&&typeof DATA.waJr==='object') return; waJrBusy=true;
+    api('/api/member/whatsapp').then(function(d){ waJrBusy=false; DATA.waJr=(d&&d.ok)?d:{enabled:false}; render(); })
+      .catch(function(){ waJrBusy=false; DATA.waJr={enabled:false}; render(); }); }
   var docsBusy=false;
   function loadDocuments(){ if(docsBusy) return; if(DATA.documents&&typeof DATA.documents==='object') return; docsBusy=true;
     api('/api/member/documents').then(function(d){ docsBusy=false; DATA.documents=(d&&d.ok&&d.available)?{available:true,items:(d.items||[])}:{available:false}; render(); })
@@ -11438,9 +11443,30 @@
     }
     var memCard='<div class="card" style="border-radius:20px;box-shadow:0 12px 34px rgba(4,33,40,.10)">'+secHead(FINN_IC,'FINN-Gedächtnis','Dein Coach erinnert sich – über Gespräche hinweg.')+
       '<div style="display:flex;align-items:center;gap:14px;margin-top:18px"><div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:800;color:var(--text)">FINN darf sich Dinge merken</div><div style="font-size:13px;color:var(--text-muted);margin-top:2px;line-height:1.45">Ziel, Vorlieben &amp; Einschränkungen – nur für dich, jederzeit löschbar.</div></div>'+swt(!!(fm&&fm.on),'finnMemToggle','')+'</div>'+memBody+'</div>';
+    // WhatsApp von Fit-Inn: Terminerinnerungen + (freiwillig) Motivation & Tipps. Die Einwilligung
+    // gilt erst, wenn „START <CODE>" von der eigenen Nummer ankommt (Double-Opt-in).
+    if(DATA.waJr==null) loadWaJr();
+    var wj=DATA.waJr, waCard='';
+    var WA_IC='<path d="M3 21l1.6-4.8A8.5 8.5 0 1 1 8 19.6z"></path><path d="M9 9.5c0 3 2.5 5.5 5.5 5.5l1.5-1.5-2-1-1 1c-1-.4-2.1-1.5-2.5-2.5l1-1-1-2z"></path>';
+    if(wj&&wj.enabled){
+      var waNote='<div style="font-size:12.5px;color:var(--text-soft);margin-top:16px;line-height:1.5;border-top:1px solid var(--border);padding-top:13px">Motivation und Tipps richten sich nach der Anzahl deiner Check-ins. Freiwillig und jederzeit abbestellbar – auch mit der Nachricht „STOP".</div>';
+      if(wj.connected){
+        waCard='<div class="card" style="border-radius:20px;box-shadow:0 12px 34px rgba(4,33,40,.10)">'+secHead(WA_IC,'WhatsApp von Fit-Inn','Verbunden'+(wj.number?(' mit '+esc(wj.number)):'')+'.')+
+          '<div style="display:flex;align-items:center;gap:14px;margin-top:18px"><div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:800;color:var(--text)">Terminerinnerungen</div><div style="font-size:13px;color:var(--text-muted);margin-top:2px;line-height:1.45">Vor gebuchten Terminen, z. B. dem Einführungstraining.</div></div><span style="font-size:12.5px;font-weight:800;color:'+TEAL+'">an</span></div>'+
+          '<div style="display:flex;align-items:center;gap:14px;margin-top:16px"><div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:800;color:var(--text)">Motivation &amp; Tipps</div><div style="font-size:13px;color:var(--text-muted);margin-top:2px;line-height:1.45">Höchstens zwei Nachrichten pro Woche.</div></div>'+swt(!!wj.marketing,'waMkt','')+'</div>'+
+          '<button data-act="waDisconnect"'+(S.waBusy?' disabled':'')+' style="width:100%;margin-top:16px;padding:11px;border:1.5px solid var(--border);border-radius:12px;background:var(--surface);color:#c5654f;font-weight:800;font-size:13px;cursor:pointer">WhatsApp-Nachrichten abbestellen</button>'+waNote+'</div>';
+      } else {
+        waCard='<div class="card" style="border-radius:20px;box-shadow:0 12px 34px rgba(4,33,40,.10)">'+secHead(WA_IC,'WhatsApp von Fit-Inn','Erinnerungen und Motivation aufs Handy.')+
+          '<div style="font-size:13.5px;color:var(--text-muted);margin-top:14px;line-height:1.5">'+(wj.suppressed?'Du hast dich mit „STOP" abgemeldet. Mit dem Knopf unten meldest du dich wieder an.':'Wir erinnern dich per WhatsApp an deine Termine. Auf Wunsch bekommst du auch Motivation und Tipps passend zu deinem Training.')+'</div>'+
+          '<div style="display:flex;align-items:center;gap:14px;margin-top:16px"><div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:800;color:var(--text)">Auch Motivation &amp; Tipps</div><div style="font-size:13px;color:var(--text-muted);margin-top:2px;line-height:1.45">Höchstens zwei Nachrichten pro Woche.</div></div>'+swt(!!S.waMktPick,'waMktPick','')+'</div>'+
+          '<button data-act="waConnect"'+(S.waBusy?' disabled':'')+' style="width:100%;margin-top:16px;padding:13px;border:none;border-radius:13px;background:'+TEALBG+';color:#fff;font-weight:800;font-size:14.5px;cursor:pointer">'+(S.waBusy?'Einen Moment …':'Mit WhatsApp verbinden')+'</button>'+
+          (S.waCode?'<div style="font-size:13px;color:var(--text-muted);margin-top:12px;line-height:1.5">WhatsApp öffnet sich mit der Nachricht <b style="color:var(--text)">START '+esc(S.waCode)+'</b>. Einfach abschicken – fertig. Der Code gilt 30 Minuten.</div>':'')+
+          waNote+'</div>';
+      }
+    }
     var legalRow=function(label,arg){ return '<button data-act="nav" data-arg="'+arg+'" style="display:flex;align-items:center;gap:12px;width:100%;text-align:left;border:none;background:none;cursor:pointer;padding:13px 0;border-top:1px solid var(--border)"><span style="flex:1;font-size:14.5px;font-weight:700;color:var(--text)">'+label+'</span>'+svg('<path d="M9 18l6-6-6-6"></path>',{c:'var(--text-soft)',w:2,s:16})+'</button>'; };
     var rechtCard='<div class="card" style="border-radius:20px;box-shadow:0 12px 34px rgba(4,33,40,.10)">'+secHead(IC.doc,'Rechtliches','Impressum, Datenschutz, AGB &amp; Widerruf.')+'<div style="margin-top:6px">'+legalRow('Impressum','impressum')+legalRow('Datenschutz','datenschutz')+legalRow('AGB','agb')+legalRow('Widerruf &amp; Recht','recht')+'</div></div>';
-    return gradHd+appearance+'<div style="height:16px"></div>'+notif+(commCard?('<div style="height:16px"></div>'+commCard):'')+'<div style="height:16px"></div>'+pushCard+'<div style="height:16px"></div>'+goalsCard+'<div style="height:16px"></div>'+memCard+'<div style="height:16px"></div>'+rechtCard+'<div style="height:16px"></div>'+privacy;
+    return gradHd+appearance+'<div style="height:16px"></div>'+notif+(commCard?('<div style="height:16px"></div>'+commCard):'')+'<div style="height:16px"></div>'+pushCard+(waCard?('<div style="height:16px"></div>'+waCard):'')+'<div style="height:16px"></div>'+goalsCard+'<div style="height:16px"></div>'+memCard+'<div style="height:16px"></div>'+rechtCard+'<div style="height:16px"></div>'+privacy;
   }
 
   // ---- responsive chrome (Desktop-Sidebar + Topbar) ----
@@ -13306,6 +13332,19 @@
       var revert=function(){ DATA.prefs.reminders=prev; S.planRemind=prev; render(); };
       api('/api/member/prefs',{method:'POST',body:JSON.stringify({reminders:val})}).then(function(r){ if(r&&r.prefs){ DATA.prefs=r.prefs; render(); } else { revert(); } }).catch(revert);
     },
+    // WhatsApp von Fit-Inn (FINN Journeys)
+    waMktPick:function(){ S.waMktPick=!S.waMktPick; render(); },
+    waConnect:function(){ if(S.waBusy) return; S.waBusy=true; render();
+      api('/api/member/whatsapp',{method:'POST',body:JSON.stringify({action:'connect',marketing:!!S.waMktPick})}).then(function(d){ S.waBusy=false;
+        if(d&&d.ok&&d.link){ S.waCode=d.code; render();
+          var touch=(window.matchMedia&&!window.matchMedia('(hover: hover)').matches);
+          try{ if(touch) location.assign(d.link); else window.open(d.link,'_blank','noopener'); }catch(e){ location.assign(d.link); }
+        } else { alert('Das hat gerade nicht geklappt. Bitte später noch einmal versuchen.'); render(); }
+      }).catch(function(){ S.waBusy=false; render(); }); },
+    waMkt:function(){ if(S.waBusy||!DATA.waJr) return; var on=!DATA.waJr.marketing; S.waBusy=true; render();
+      api('/api/member/whatsapp',{method:'POST',body:JSON.stringify({action:'marketing',on:on})}).then(function(d){ S.waBusy=false; if(d&&d.ok) DATA.waJr=d; render(); }).catch(function(){ S.waBusy=false; render(); }); },
+    waDisconnect:function(){ if(S.waBusy) return; if(!confirm('WhatsApp-Nachrichten von Fit-Inn abbestellen? Terminerinnerungen und Tipps kommen dann nicht mehr.')) return; S.waBusy=true; render();
+      api('/api/member/whatsapp',{method:'POST',body:JSON.stringify({action:'disconnect'})}).then(function(d){ S.waBusy=false; if(d&&d.ok) DATA.waJr=d; render(); }).catch(function(){ S.waBusy=false; render(); }); },
     // FINN-Gedächtnis (Opt-in) verwalten: aktivieren/deaktivieren, einzeln vergessen, alles löschen.
     finnMemToggle:function(){ if(S.finnMemBusy) return; var cur=!!(DATA.finnMem&&DATA.finnMem.on); S.finnMemBusy=true; render();
       api('/api/member/coach',{method:'POST',body:JSON.stringify({action:'memory-optin',on:!cur})}).then(function(d){ S.finnMemBusy=false; finnMemApply(d); render(); }).catch(function(){ S.finnMemBusy=false; render(); }); },
