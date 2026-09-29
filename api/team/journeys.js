@@ -5,6 +5,8 @@
  *   GET                       -> Betriebsmodus, Journeys (an/aus), Vorlagen-Katalog mit
  *                                Zuordnung, Kennzahlen des Monats, Probelauf-Liste, Zähler
  *   GET ?view=kpi&month=YYYYMM
+ *   GET ?view=log&limit=&before=  -> Versandprotokoll: wer wann welche Nachricht, Zustellstand
+ *                                (ohne Text, Nummer maskiert)
  *   GET ?view=member&customerId=  -> Journey-Status einer Person (Stufe, Kennzahlen, Läufe,
  *                                Einwilligungen, letzte Sendungen – nur Metadaten)
  *   POST { action:'journey', key, on }            Journey ein-/ausschalten
@@ -69,6 +71,7 @@ async function overview() {
     templates: Templates.catalog(cfg.templates),
     twilio: { configured: TC.configured(), open: TC.pending(cfg.templates).length, lastSync: (parseInt((await require('../../lib/finn/kv').get('jr:tplsync')) || '0', 10) || null) },
     kpi: await KPI.read(month, Defs.list().map((d) => d.key)),
+    log: await require('../../lib/journeys/sendlog').view({ limit: 30 }),
     dry: (await Sender.dryLog(40)).map((x) => ({ at: x.at, j: x.j, s: x.s, tpl: x.tpl || null, via: x.via || null, cat: x.cat || null, subj: x.subj || null, action: !!x.action, text: x.text || null })),
     counts: { due: await Store.dueCount(), index: await Store.indexSize(), members: await Store.memberCount() },
     updatedAt: cfg.updatedAt, updatedBy: cfg.updatedBy,
@@ -125,6 +128,7 @@ module.exports = async function handler(req, res) {
   if (!TA.isAdmin(sess)) return J({ ok: false, error: 'forbidden' }, 403);
 
   if (req.method === 'GET') {
+    if (q.view === 'log') return J(await require('../../lib/journeys/sendlog').view({ limit: q.limit, before: q.before }));
     if (q.view === 'kpi') {
       const KPI = require('../../lib/journeys/kpi'), Defs = require('../../lib/journeys/defs');
       return J(Object.assign({ ok: true }, await KPI.read(q.month, Defs.list().map((d) => d.key))));
@@ -176,7 +180,14 @@ module.exports = async function handler(req, res) {
     else if (!WA.hasTwilio && WA.hasMeta && tc.meta) { const v = Templates.twilioVars(key, vars); r = await WA.sendTemplate(p, tc.meta, tc.lang || 'de', Object.keys(v).sort((x, y) => x - y).map((k) => v[k])); }
     else if (open) r = await WA.sendText(p, Templates.render(key, vars));
     else return J({ ok: false, error: 'no_template', message: 'Keine Vorlage zugeordnet und das 24-h-Fenster ist zu. Schreib der Nummer vorher kurz, oder ordne die Vorlage zu.' }, 400);
-    return J({ ok: !!(r && r.ok !== false), via: (Templates.sidUsable(tc) || tc.meta) ? 'template' : 'session', error: r && r.ok === false ? 'provider' : undefined });
+    const viaT = (Templates.sidUsable(tc) || tc.meta) ? 'template' : 'session';
+    // Versandprotokoll + Zustellstand (jr:out, als Test markiert: keine Kennzahlen, kein Wiederholen)
+    try {
+      const SL = require('../../lib/journeys/sendlog');
+      await SL.add({ kind: 'test', tpl: key, s: key, j: 'test', via: viaT, cat: t.consent, id: r && r.id ? r.id : null, phone: p, err: r && r.ok === false ? 'provider' + (r.status ? '_' + r.status : '') : undefined });
+      if (r && r.id) await require('../../lib/finn/kv').set('jr:out:' + r.id, { subj: null, j: 'test', s: key, via: viaT, p: p, at: Date.now(), t: 1 }, 7 * 86400);
+    } catch (e) {}
+    return J({ ok: !!(r && r.ok !== false), via: viaT, error: r && r.ok === false ? 'provider' : undefined });
   }
   if (action === 'twilio_submit' || action === 'twilio_resubmit') {
     // Vorlagen bei Twilio anlegen und bei Meta zur Prüfung einreichen. Die

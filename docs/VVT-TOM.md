@@ -20,6 +20,7 @@ Datenschutzkontakt: **ergänzen**
 | WhatsApp-Journeys: Motivation, Tipps, Angebote | Rufnummer, Vorname, Anzahl/Häufigkeit der Check-ins (Tage, Wochen), Wochenziel, Einstufung (z. B. „rutscht ab") | Mitgliederbindung, Werbung per Messenger (UWG § 7) | Art. 6 Abs. 1 a (Einwilligung `wa_marketing`, Double-Opt-in per START-Code bzw. „Ja, gern") | wie oben | Besuchstage 70 Tage, Wochenwerte 30 Wochen; Rest wie oben |
 | WhatsApp-Lead-Agent (Probetraining) | Rufnummer, Name, Geburtsdatum (Magicline-Pflicht), Ziel/Erfahrung/Tageszeit (feste Werte), Nachrichten | Anfrage beantworten, Probetraining buchen | Art. 6 Abs. 1 b (vorvertraglich); Erinnerungen/Tipps nach Einwilligung | Twilio, Meta, AWS Bedrock (EU, keine Aufbewahrung), Magicline, Vercel | Lead 1 Jahr; Gesprächsverlauf 12 h im KI-Gedächtnis; Vorgang nach Postfach-Frist |
 | STOP-Sperrliste | HMAC der Rufnummer, Zeitpunkt | Nachweis des Widerspruchs, Sperre künftiger Nachrichten | Art. 6 Abs. 1 c/f | Vercel, KV-Anbieter | 3 Jahre |
+| WhatsApp-Journeys: Versandprotokoll | Zeitpunkt, interne Personen-Id bzw. Lead-Id, Vorname (bei Anzeige), Ablauf/Schritt, Vorlage, Zustellstand, Rufnummer nur maskiert (letzte 2 Ziffern); **kein Nachrichtentext** | Kontrolle durch die Leitung, was versendet wurde und ob es ankam | Art. 6 Abs. 1 f | Vercel, KV-Anbieter | 90 Tage, höchstens 500 Einträge; entfällt bei Löschung der App-Daten |
 
 ## Technische und organisatorische Maßnahmen (Art. 32)
 

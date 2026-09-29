@@ -63,6 +63,7 @@ Ohne `waitUntil` passiert nichts. Der GitHub-Workflow bleibt als zweiter Weg. Te
 | `jr:due`, `jr:idx`, `jr:mem` | fällige Personen, eigener Kandidaten-Index (aus Webhooks, **kein** Mitgliederverzeichnis), Mitglieder mit Nummer |
 | `jr:win:<nummer>`, `jr:ask:<nummer>`, `jr:code:<CODE>` | 24-h-Fenster, offene Ja/Nein-Frage, Opt-in-Code |
 | `jr:out:<sid>`, `jr:last:<nummer>` | Zustellstatus/Fehlercode, Antwort-Zuordnung |
+| `jr:log` | Versandprotokoll (`lib/journeys/sendlog.js`): je echtem Versand, Fehler oder Testversand Zeit, Person, Ablauf/Schritt, Vorlage, Kanal, Nummer maskiert – **ohne Text**; höchstens 500 Einträge, 90 Tage; Team-Backend „Versandprotokoll" (nur Admin); Löschung der Person entfernt ihre Einträge |
 | `jr:kpi:<yyyymm>:<journey>:<metrik>` | Kennzahlen ohne Personenbezug |
 | `jr:cfg`, `jr:dry`, `jr:run*`, `jr:lock:*` | Einstellungen, Probelauf-Liste (Vorname als Platzhalter), Durchlauf-Cursor |
 
@@ -167,5 +168,5 @@ Zugangsdaten (`TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`) bleiben in Vercel.
 `journeys-core`, `journeys-inbound`, `journeys-engine`, `journeys-webhooks`,
 `journeys-lead-agent`, `journeys-onboarding`, `journeys-team-api`, `journeys-studio-reply`,
 `journeys-twilio-content` (Content API nachgebaut), `journeys-twilio-link` (Abgleich woanders angelegter Vorlagen),
-`journeys-autotick` (Schalter-Erkennung, Takt aus App-Verkehr).
+`journeys-autotick` (Schalter-Erkennung, Takt aus App-Verkehr), `journeys-sendlog` (Versandprotokoll).
 Redis-Nachbau für Tests: `tests/_memredis.js`.

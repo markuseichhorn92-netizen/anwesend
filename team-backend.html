@@ -10632,7 +10632,7 @@ function finnVerlaufCard(p){
 var JR_KPI=[['enrolled','aufgenommen'],['sent','gesendet'],['delivered','zugestellt'],['read','gelesen'],['replied','beantwortet'],['trial_booked','Probetrainings'],['trial_showed','erschienen'],['won','Verträge'],['reactivated','reaktiviert'],['optout','abgemeldet'],['dry','Probelauf'],['no_template','ohne Vorlage'],['failed','fehlgeschlagen']];
 async function loadJourneys(){
   S.jrLoading=true; render();
-  try{ var r=await tapi('/api/team/journeys'); if(r&&r.ok){ S.jrData=r; S.jrErr=false; } else S.jrErr=true; }
+  try{ var r=await tapi('/api/team/journeys'); if(r&&r.ok){ S.jrData=r; S.jrErr=false; S.jrLogExtra=[]; S.jrLogHasMore=!!(r.log&&r.log.more); } else S.jrErr=true; }
   catch(e){ S.jrErr=true; }
   S.jrLoading=false; render();
 }
@@ -10688,6 +10688,33 @@ async function jrSync(){
   }catch(e){ S.jrMsg='Verbindung fehlgeschlagen.'; }
   S.jrBusy=false;
   loadJourneys();
+}
+// Versandprotokoll: wer wann welche Journey-Nachricht bekommen hat (ohne Text).
+var JR_LOGST={ read:['gelesen','#1d7a3e','#E7F6EC'], delivered:['zugestellt','#1d7a3e','#E7F6EC'], sent:['gesendet','#6b7780','#eef1f2'], failed:['fehlgeschlagen','#b53a2c','#FCEBEA'] };
+var JR_JTITLE={ lead:'Leads & Probetraining', onboarding:'Onboarding', habit:'Motivation', comeback:'Comeback', invite:'Einladung', test:'Testversand' };
+function jrLogTime(ts){ try{ return new Date(Number(ts)).toLocaleString('de-DE',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}); }catch(e){ return ''; } }
+function jrLogRows(rows){
+  return rows.map(function(x){
+    var st=JR_LOGST[x.status]||JR_LOGST.sent;
+    var who=x.kind==='test'?'Testversand':(x.name||'ohne Namen');
+    var link='border:none;background:none;padding:0;font:inherit;font-size:13.5px;font-weight:800;color:'+TEAL+';cursor:pointer;text-align:left';
+    var whoHtml=(x.kind==='member'&&x.subj)?'<button data-jrprof="'+esc(x.subj)+'" style="'+link+'">'+esc(who)+'</button>':((x.kind==='lead'&&x.subj)?'<button data-jrlead="'+esc(x.subj)+'" style="'+link+'">'+esc(who)+'</button>':'<span style="font-size:13.5px;font-weight:800;color:#15171B">'+esc(who)+'</span>');
+    var kind=x.kind==='lead'?'Interessent':(x.kind==='member'?'Mitglied':'');
+    var step=(JR_JTITLE[x.j]||x.j||'')+((x.kind!=='test'&&x.s)?' · '+((typeof JR_STEP!=='undefined'&&JR_STEP[x.s])||x.s):(x.tpl?' · '+x.tpl:''));
+    return '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:10px 0;border-top:1px solid #f0f3f4">'+
+      '<span title="'+esc(rel(x.at))+'" style="font-size:12px;color:#6b7780;font-weight:700;min-width:96px;font-variant-numeric:tabular-nums">'+esc(jrLogTime(x.at))+'</span>'+
+      '<div style="flex:1;min-width:190px"><div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap">'+whoHtml+'<span style="font-size:11.5px;color:#6b7780;font-weight:600">'+esc([kind,x.pm].filter(Boolean).join(' · '))+'</span></div>'+
+      '<div style="font-size:12px;color:#42454b;font-weight:600;margin-top:2px">'+esc(step)+' · '+(x.via==='template'?'Vorlage':'Freitext')+'</div></div>'+
+      jrTag(st[0]+(x.code?' · '+x.code:''),st[1],st[2])+
+    '</div>';
+  }).join('');
+}
+async function jrLogMore(){
+  var d=S.jrData; if(!d||!d.log) return;
+  var all=(d.log.rows||[]).concat(S.jrLogExtra||[]); var last=all.length?all[all.length-1].at:null; if(!last) return;
+  S.jrLogBusy=true; render();
+  try{ var r=await tapi('/api/team/journeys?view=log&limit=50&before='+encodeURIComponent(last)); if(r&&r.ok){ S.jrLogExtra=(S.jrLogExtra||[]).concat(r.rows||[]); S.jrLogHasMore=!!r.more; } }catch(e){}
+  S.jrLogBusy=false; render();
 }
 var JR_TST={ approved:['freigegeben','#1d7a3e','#E7F6EC'], received:['in Prüfung bei Meta','#b5631f','#FBF1E6'], pending:['in Prüfung bei Meta','#b5631f','#FBF1E6'], created:['angelegt, nicht eingereicht','#b5631f','#FBF1E6'], rejected:['abgelehnt','#b53a2c','#FCEBEA'], paused:['pausiert','#b53a2c','#FCEBEA'], disabled:['gesperrt','#b53a2c','#FCEBEA'], deleted:['in Twilio gelöscht','#b53a2c','#FCEBEA'], unsubmitted:['nicht eingereicht','#6b7780','#eef1f2'] };
 function jrTag(label,fg,bg){ return '<span style="font-size:10.5px;font-weight:800;color:'+fg+';background:'+bg+';border-radius:7px;padding:2px 7px">'+esc(label)+'</span>'; }
@@ -10772,11 +10799,18 @@ function journeysNode(){
       finnCard('Kennzahlen '+jrMonth((d.kpi&&d.kpi.month)||''),'Alle Journeys zusammen · ohne Personenbezug',kpiTiles)+
       finnCard('Probelauf','Was gesendet würde – Vorname als Platzhalter',dryHtml)+
     '</div>'+
+    '<div style="margin-top:18px">'+finnCard('Versandprotokoll','Wer wann welche Nachricht bekommen hat · ohne Text (der steht im Gespräch) · 90 Tage',
+      (function(){ var rows=((d.log&&d.log.rows)||[]).concat(S.jrLogExtra||[]);
+        if(!rows.length) return '<div style="font-size:12.5px;color:#6b7780;font-weight:600;padding:6px 0">Noch nichts gesendet. Im Pilot bekommen nur Testnummern Nachrichten.</div>';
+        return jrLogRows(rows)+(S.jrLogHasMore?'<div style="margin-top:10px"><button data-jrlogmore="1" '+(S.jrLogBusy?'disabled':'')+' style="height:36px;border:1.5px solid #d6dee0;background:#fff;color:'+TEAL+';border-radius:10px;font-size:12.5px;font-weight:800;padding:0 14px;cursor:pointer">'+(S.jrLogBusy?'Lädt …':'Ältere laden')+'</button></div>':''); })())+'</div>'+
     '<div style="margin-top:18px">'+finnCard('Vorlagen für WhatsApp','Die App nutzt eine Vorlage erst, wenn Meta sie freigegeben hat. Ohne freigegebene Vorlage und bei geschlossenem 24-h-Fenster wird der Schritt übersprungen.',
       twBar+tpls)+'</div>'+
   '</div>';
   setTimeout(function(){
     node.querySelectorAll('[data-jrtoggle]').forEach(function(b){ b.onclick=function(){ jrPost({action:'journey',key:b.getAttribute('data-jrtoggle'),on:b.getAttribute('data-jron')==='1'},'Journey umgeschaltet.'); }; });
+    node.querySelectorAll('[data-jrprof]').forEach(function(b){ b.onclick=function(){ var id=b.getAttribute('data-jrprof'); if(id){ S.screen='members'; openProfile(id); } }; });
+    node.querySelectorAll('[data-jrlead]').forEach(function(b){ b.onclick=function(){ leadOpenConv(b.getAttribute('data-jrlead')); }; });
+    var lm=node.querySelector('[data-jrlogmore]'); if(lm) lm.onclick=jrLogMore;
     node.querySelectorAll('[data-jrsid]').forEach(function(i){ i.oninput=function(){ S.jrSid=S.jrSid||{}; S.jrSid[i.getAttribute('data-jrsid')]=i.value.trim(); }; });
     node.querySelectorAll('[data-jrsave]').forEach(function(b){ b.onclick=function(){ var key=b.getAttribute('data-jrsave'); var v=(S.jrSid&&S.jrSid[key]!=null)?S.jrSid[key]:((node.querySelector('[data-jrsid="'+key+'"]')||{}).value||''); jrPost({action:'template',key:key,sid:v||null},'Vorlage gespeichert.'); }; });
     var tp=node.querySelector('[data-jrtestphone]'); if(tp) tp.oninput=function(){ S.jrTestPhone=tp.value; };

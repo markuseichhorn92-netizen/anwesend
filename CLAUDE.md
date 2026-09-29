@@ -596,7 +596,9 @@ Einladung an Bestandsnummern **erst nach Rechtsprüfung**.
   `lib/phone.js`, `lib/trialBooking.js`, `api/journeys-tick.js` (+ `.github/workflows/journeys.yml`),
   `api/team/journeys.js`, `api/member/whatsapp.js`; Einstellungen-Karte „WhatsApp von Fit-Inn".
 - **Tests:** `journeys-core`, `-inbound`, `-engine`, `-webhooks`, `-lead-agent`, `-onboarding`,
-  `-team-api`, `-studio-reply`, `-twilio-content`, `-twilio-link`, `-autotick`; Redis-Nachbau `tests/_memredis.js`.
+  `-team-api`, `-studio-reply`, `-twilio-content`, `-twilio-link`, `-autotick`, `-sendlog`; Redis-Nachbau `tests/_memredis.js`.
+- **Versandprotokoll** (`lib/journeys/sendlog.js`, `jr:log`, Karte auf der Journeys-Seite, nur Admin):
+  wer wann welche Nachricht bekam und ob sie ankam – ohne Text, Nummer maskiert, 90 Tage, 500 Einträge.
 - **Takt:** GitHub-Zeitpläne laufen hier nur sporadisch. Der Durchlauf startet deshalb auch aus
   dem App-Verkehr (`lib/journeys/autotick.js`: `api/member/checkins`, `api/member/account`,
   Magicline-Webhook; höchstens alle 14 min, per `waitUntil`, Budget 20 s). Kein Vercel-Cron im
