@@ -56,7 +56,7 @@ global.fetch = async (url, init) => {
   if ((mm = /^\/v1\/Content\/(HX[0-9a-f]{32})$/.exec(u.pathname)) && m === 'DELETE') { TW.contents.delete(mm[1]); return jres(204, null); }
   if (u.pathname === '/v2/ContentAndApprovals' && m === 'GET') {
     const re = new RegExp(u.searchParams.get('ContentName') || '.*');
-    return jres(200, { contents: Array.from(TW.contents.values()).filter((c) => re.test(c.friendly_name)).map((c) => ({ sid: c.sid, friendly_name: c.friendly_name, approval_requests: c.approval ? Object.assign({ type: 'whatsapp' }, c.approval) : null })) });
+    return jres(200, { contents: Array.from(TW.contents.values()).filter((c) => re.test(c.friendly_name)).map((c) => ({ sid: c.sid, friendly_name: c.friendly_name, language: c.language, types: c.types, approval_requests: c.approval ? Object.assign({ type: 'whatsapp' }, c.approval) : null })) });
   }
   return jres(404, {});
 };
@@ -210,7 +210,7 @@ const tpl = async (k) => (await Config.load(true)).templates[k] || {};
   const g0 = TW.calls.filter((c) => /^GET \/v1\/Content\/HX[0-9a-f]+\/ApprovalRequests$/.test(c)).length;
   const t1 = await TC.syncIfDue(Date.now());
   const g1 = TW.calls.filter((c) => /^GET \/v1\/Content\/HX[0-9a-f]+\/ApprovalRequests$/.test(c)).length;
-  ok('13. nur offene geprüft', t1 && t1.checked === 2 && g1 - g0 === 2, JSON.stringify(t1));
+  ok('13. nur offene geprüft, fehlende Zuordnung nachgeholt (ohne Anlegen)', t1 && t1.checked === 2 && g1 - g0 === 2 && t1.linked.join() === 'fi_lead_followup' && !t1.bodyDiff.length && (await tpl('fi_lead_followup')).status === 'approved', JSON.stringify(t1));
   ok('13a. zweiter Aufruf gleich danach: nichts', (await TC.syncIfDue(Date.now())) === null);
 
   // 14. Workflow-Einstieg: /api/journeys-tick?templates=submit|sync (Cron-Secret, nur POST)
@@ -228,9 +228,9 @@ const tpl = async (k) => (await Config.load(true)).templates[k] || {};
   ok('14a. GET wird abgelehnt', w.status === 405);
   const b14 = creates();
   w = await tick('POST', 'templates=submit', 'cron-test-secret');
-  // Offen sind fi_lead_followup (Anlegen scheiterte an 401) und fi_milestone (Text wieder
-  // wie vorher) – beide liegen bei Twilio schon vor und werden wiedergefunden.
-  ok('14b. einreichen: offene erledigt, nichts doppelt angelegt', w.status === 200 && w.raw.indexOf('{"ok":true') === 0 && w.json.eingereicht === 2 && w.json.weiter === false && creates() === b14 && w.json.ergebnis.map((x) => x.key).join() === 'fi_lead_followup,fi_milestone', w.raw.slice(0, 300));
+  // Offen ist noch fi_milestone (Text wieder wie vorher) – die Fassung liegt bei Twilio
+  // schon vor und wird wiedergefunden. fi_lead_followup hat der Abgleich (13) verknüpft.
+  ok('14b. einreichen: offene erledigt, nichts doppelt angelegt', w.status === 200 && w.raw.indexOf('{"ok":true') === 0 && w.json.eingereicht === 1 && w.json.weiter === false && creates() === b14 && w.json.ergebnis.map((x) => x.key).join() === 'fi_milestone', w.raw.slice(0, 300));
   ok('14c. Bericht: je Vorlage Status, ohne Zugangsdaten', w.json.vorlagen.length === n && w.json.vorlagen.find((v) => v.key === 'fi_lead_last').status === 'von_hand' && w.raw.indexOf(TOKEN) < 0 && w.raw.indexOf(AC) < 0);
   w = await tick('POST', 'templates=submit', 'cron-test-secret');
   ok('14d. zweiter Lauf: nichts mehr offen', w.json.ok && w.json.eingereicht === 0 && !w.json.ergebnis.length && creates() === b14);

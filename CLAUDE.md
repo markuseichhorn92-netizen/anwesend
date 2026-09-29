@@ -596,7 +596,7 @@ Einladung an Bestandsnummern **erst nach Rechtsprüfung**.
   `lib/phone.js`, `lib/trialBooking.js`, `api/journeys-tick.js` (+ `.github/workflows/journeys.yml`),
   `api/team/journeys.js`, `api/member/whatsapp.js`; Einstellungen-Karte „WhatsApp von Fit-Inn".
 - **Tests:** `journeys-core`, `-inbound`, `-engine`, `-webhooks`, `-lead-agent`, `-onboarding`,
-  `-team-api`, `-studio-reply`, `-twilio-content`; Redis-Nachbau `tests/_memredis.js`.
+  `-team-api`, `-studio-reply`, `-twilio-content`, `-twilio-link`; Redis-Nachbau `tests/_memredis.js`.
 
 Leitplanken dazu:
 
@@ -621,8 +621,10 @@ Leitplanken dazu:
   (`templates.sidUsable`). Texte müssen `templates.lint` bestehen (Metas Regeln); ein
   geänderter Text ist eine neue Fassung mit neuem Namen – nie eine freigegebene Vorlage
   „umbiegen". Einreichen nur serverseitig über den Admin-Knopf, Twilio-Schlüssel bleiben in Vercel.
+  Vor dem Einreichen immer abgleichen (`twilioContent.link`: Name oder gleicher Text); der
+  Abgleich legt nie etwas an. „Schon vorhanden" wird am Text-Fingerabdruck erkannt, nicht am Namen.
 
-Noch organisatorisch offen: Vorlagen im Team-Backend einreichen und Metas Freigabe abwarten; AVV Twilio/Meta;
+Noch organisatorisch offen: Vorlagen sind in Twilio angelegt (29.09., per Claude in Chrome) – im Team-Backend „Mit Twilio abgleichen" und Metas Freigabe prüfen; GitHub-Secret `RECORD_SECRET` = Vercel `CRON_SECRET` (sonst 401 für alle Cron-Workflows); AVV Twilio/Meta;
 Einwilligungs- und Einladungstexte rechtlich prüfen; DSFA-Nachtrag freigeben; Magicline-
 Webhooks (`CUSTOMER_CHECKIN`, `APPOINTMENT_*`, `CONTRACT_CANCELLED`) an diese App bestätigen;
 wer ruft bei „Tag 28" an.

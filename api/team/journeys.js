@@ -13,7 +13,9 @@
  *   POST { action:'twilio_submit', keys? }        Vorlagen bei Twilio anlegen + bei Meta einreichen
  *                                                 (ohne keys: alle offenen; fortsetzbar über remaining)
  *   POST { action:'twilio_resubmit', key }        abgelehnte/veraltete Fassung neu einreichen
- *   POST { action:'twilio_sync' }                 Stand der Freigaben bei Twilio nachlesen
+ *   POST { action:'twilio_sync' }                 mit Twilio abgleichen: Vorlagen ohne SID über
+ *                                                 Name/Text zuordnen (legt nie etwas an) + Stand
+ *   POST { action:'twilio_link' }                 nur zuordnen, ohne Stand nachzulesen
  *
  * Rechte: alles nur Admin (admin.manage), das Mitglieds-Profil mit member.read.
  * Antworten enthalten keine Nachrichten an echte Personen und keine Rufnummern
@@ -64,7 +66,7 @@ async function overview() {
     },
     journeys: journeys,
     templates: Templates.catalog(cfg.templates),
-    twilio: { configured: TC.configured(), open: TC.pending(cfg.templates).length },
+    twilio: { configured: TC.configured(), open: TC.pending(cfg.templates).length, lastSync: (parseInt((await require('../../lib/finn/kv').get('jr:tplsync')) || '0', 10) || null) },
     kpi: await KPI.read(month, Defs.list().map((d) => d.key)),
     dry: (await Sender.dryLog(40)).map((x) => ({ at: x.at, j: x.j, s: x.s, tpl: x.tpl || null, via: x.via || null, cat: x.cat || null, subj: x.subj || null, action: !!x.action, text: x.text || null })),
     counts: { due: await Store.dueCount(), index: await Store.indexSize(), members: await Store.memberCount() },
@@ -189,10 +191,10 @@ module.exports = async function handler(req, res) {
       const cur = cfg.templates[key] || {};
       if (!cur.auto || !cur.sid) return J({ ok: false, error: 'not_submitted', message: 'Diese Vorlage wurde noch nicht eingereicht.' }, 400);
       const outdated = cur.hash !== Templates.hashOf(key);
-      if (!outdated && ['rejected', 'paused', 'disabled', 'deleted', 'unsubmitted'].indexOf(cur.status) < 0) return J({ ok: false, error: 'not_resubmittable', message: 'Neu einreichen geht nach einer Ablehnung oder wenn der Text geändert wurde.' }, 400);
+      if (!outdated && !cur.bodyDiff && ['rejected', 'paused', 'disabled', 'deleted', 'unsubmitted'].indexOf(cur.status) < 0) return J({ ok: false, error: 'not_resubmittable', message: 'Neu einreichen geht nach einer Ablehnung, bei abweichendem oder geändertem Text.' }, 400);
       // Abgelehnte Fassung entfernen, damit Meta die neue nicht als Doppel wertet.
       if (cur.status === 'rejected') { try { await TC.remove(cur.sid); } catch (e) {} }
-      await Config.save({ templates: { [key]: Object.assign({}, cur, { rev: outdated ? (cur.rev || 0) : (cur.rev || 0) + 1, sid: null, status: null, name: null }) } }, who);
+      await Config.save({ templates: { [key]: Object.assign({}, cur, { rev: outdated ? (cur.rev || 0) : (cur.rev || 0) + 1, sid: null, status: null, name: null, bodyDiff: undefined, linked: undefined }) } }, who);
       keys = [key];
     } else {
       const wanted = Array.isArray(b.keys) ? b.keys.map(String).filter((k) => Templates.get(k)) : null;
@@ -205,7 +207,13 @@ module.exports = async function handler(req, res) {
     const TC = require('../../lib/journeys/twilioContent');
     if (!TC.configured()) return J({ ok: false, error: 'no_twilio', message: TC.NO_TWILIO }, 400);
     const r = await TC.sync({ budgetMs: 30000, who: who });
-    return J({ ok: !!r.ok, checked: r.checked || 0, changed: r.changed || 0 });
+    return J({ ok: !!r.ok, checked: r.checked || 0, changed: r.changed || 0, linked: r.linked || [], missing: r.missing || [], bodyDiff: r.bodyDiff || [], approved: r.approved || 0, linkError: r.linkError });
+  }
+  if (action === 'twilio_link') {
+    const TC = require('../../lib/journeys/twilioContent');
+    if (!TC.configured()) return J({ ok: false, error: 'no_twilio', message: TC.NO_TWILIO }, 400);
+    const r = await TC.link({ who: who });
+    return J({ ok: !!r.ok, linked: r.linked, missing: r.missing, bodyDiff: r.bodyDiff, message: r.ok ? undefined : r.message }, r.ok ? 200 : 502);
   }
   return J({ ok: false, error: 'bad_action' }, 400);
 };

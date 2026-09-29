@@ -17,7 +17,7 @@
  *
  * WhatsApp-Vorlagen (Workflow „FINN Journeys" → manuell starten → vorlagen):
  *   POST ?templates=submit  offene Vorlagen bei Twilio anlegen + bei Meta einreichen
- *   POST ?templates=sync    Stand der Freigaben nachlesen
+ *   POST ?templates=sync    abgleichen: Vorlagen ohne SID zuordnen (nie anlegen) + Stand
  * Antwort: je Vorlage Schlüssel, Status, Metas Grund – keine Personendaten,
  * keine Zugangsdaten. „weiter:true" heißt: nochmal aufrufen (Zeit reichte nicht).
  * Unabhängig von JOURNEYS=1 – eingereicht wird, bevor gesendet wird.
@@ -41,7 +41,8 @@ async function templates(req, res, what) {
         ergebnis: r.results.map((x) => ({ key: x.key, ok: x.ok, status: x.status || undefined, fehler: x.ok ? undefined : (x.message || x.error) })) };
     } else {
       const s = await TC.sync({ budgetMs: 40000, who: 'workflow' });
-      r = { ok: !!s.ok, geprueft: s.checked || 0, geaendert: s.changed || 0, weiter: false };
+      r = { ok: !!s.ok, verknuepft: (s.linked || []).length, fehlt: s.missing || [], textAbweichung: s.bodyDiff || [], freigegeben: s.approved || 0,
+        geprueft: s.checked || 0, geaendert: s.changed || 0, fehler: s.linkError, weiter: false };
     }
     r.vorlagen = TC.summary((await Config.load(true)).templates);
     return J(r);

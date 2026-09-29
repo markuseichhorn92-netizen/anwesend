@@ -101,7 +101,15 @@ Liste mit Text, Kategorie und Variablen: Team-Backend → WhatsApp-Journeys → 
 (Quelle: `lib/journeys/templates.js`). UTILITY: `fi_trial_24h`, `fi_trial_2h`, `fi_onb_welcome`,
 `fi_onb_induction`. MARKETING: alle übrigen. Meta entscheidet die Kategorie endgültig.
 
-**Einreichen per Knopf** (`lib/journeys/twilioContent.js`, Admin): „Alle offenen einreichen"
+**Abgleichen zuerst:** Wurden Vorlagen woanders angelegt (Twilio-Konsole, Claude in Chrome),
+„Mit Twilio abgleichen" drücken. Der Abgleich (`twilioContent.link`) ordnet jede Vorlage ohne
+SID über den Namen oder den gleichen Text zu, holt Metas Status und legt **nie** etwas an.
+Er läuft auch beim Öffnen der Seite (alle 3 min) und im Durchlauf (alle 20 min), solange eine
+Vorlage ohne SID oder in Prüfung ist. Weicht der Text bei Twilio vom Code ab, steht
+„Text weicht bei Twilio ab" daran; „Neu einreichen" legt dann eine Fassung `_rN` an und lässt
+die alte stehen. „Fehlende einreichen" ist erst nach einem Abgleich möglich.
+
+**Einreichen per Knopf** (`lib/journeys/twilioContent.js`, Admin): „Fehlende einreichen"
 legt jede Vorlage über die Twilio Content API an (`POST /v1/Content`, Deutsch, Beispielwerte,
 Knöpfe als Quick-Reply) und reicht sie bei Meta ein (`…/ApprovalRequests/whatsapp`). Die
 Zugangsdaten (`TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`) bleiben in Vercel.
@@ -115,8 +123,9 @@ Zugangsdaten (`TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`) bleiben in Vercel.
 - **Abgleich:** beim Öffnen der Seite (höchstens alle 3 min), im Durchlauf (alle 20 min, nur
   solange etwas in Prüfung ist) und per „Status abrufen". Metas Kategorie und Ablehnungsgrund
   stehen an der Vorlage.
-- **Keine Doppelten:** vor dem Anlegen wird nach dem Namen gesucht; eine angelegte SID wird
-  sofort gespeichert, auch wenn das Einreichen danach scheitert.
+- **Keine Doppelten:** „schon vorhanden" erkennt die App am Text-Fingerabdruck, nicht am Namen;
+  vor dem Anlegen wird zusätzlich nach dem Namen gesucht; eine angelegte SID wird sofort
+  gespeichert, auch wenn das Einreichen danach scheitert.
 - **Metas Regeln vorab** (`templates.lint`): keine Variable am Anfang/Ende, keine nebeneinander,
   fortlaufend, genug Text je Variable, kein Zeilenumbruch, ≤ 10 Emojis, Knöpfe ≤ 20 Zeichen
   ohne Emoji, kein wa.me-Link. Ein Verstoß wird nicht eingereicht; der Test prüft alle Texte.
@@ -131,7 +140,7 @@ Zugangsdaten (`TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`) bleiben in Vercel.
 ## Inbetriebnahme (Reihenfolge)
 
 1. Rechtsprüfung: Einwilligungstexte (`lib/journeys/consent.TEXTS`, Formular, Mail, App), Einladungstext, Datenschutzerklärung; DSFA-Nachtrag freigeben; AVV Twilio/Meta.
-2. Team-Backend → WhatsApp-Journeys → „Alle offenen einreichen"; Metas Entscheidung abwarten (meist Minuten, bis 48 h), Abgelehnte anpassen und neu einreichen.
+2. Team-Backend → WhatsApp-Journeys → „Mit Twilio abgleichen", danach „Fehlende einreichen"; Metas Entscheidung abwarten (meist Minuten, bis 48 h), Abgelehnte anpassen und neu einreichen.
 3. Vercel: `JOURNEYS=1`, `JOURNEYS_TEST_NUMBERS=<eigene Nummer>`, `WA_PUBLIC_NUMBER`; GitHub-Secret `RECORD_SECRET` ist für den Workflow schon da.
 4. Probelauf beobachten (Team-Backend „Probelauf"), dann `JOURNEYS_MODE=auto` mit Testnummern.
 5. Eigene Nummer als Lead durchspielen: Anfrage → Fragen → Termin → „Ja" → Erinnerungen → STOP.
@@ -142,5 +151,5 @@ Zugangsdaten (`TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`) bleiben in Vercel.
 
 `journeys-core`, `journeys-inbound`, `journeys-engine`, `journeys-webhooks`,
 `journeys-lead-agent`, `journeys-onboarding`, `journeys-team-api`, `journeys-studio-reply`,
-`journeys-twilio-content` (Content API nachgebaut).
+`journeys-twilio-content` (Content API nachgebaut), `journeys-twilio-link` (Abgleich woanders angelegter Vorlagen).
 Redis-Nachbau für Tests: `tests/_memredis.js`.

@@ -10668,6 +10668,27 @@ async function jrTwilio(body){
   S.jrBusy=false;
   loadJourneys();
 }
+// Mit Twilio abgleichen: ordnet Vorlagen ohne SID über Name/Text zu und holt Metas
+// Stand. Legt nichts an – deshalb ohne Rückfrage.
+async function jrSync(){
+  if(S.jrBusy) return;
+  S.jrBusy=true; S.jrMsg='Gleiche mit Twilio ab …'; render();
+  try{
+    var r=await tapi('/api/team/journeys',{method:'POST',body:{action:'twilio_sync'}});
+    if(!r||r.ok===false){ S.jrMsg=(r&&(r.message||r.linkError))||'Abgleich hat nicht geklappt.'; }
+    else{
+      var parts=[];
+      if(r.linked&&r.linked.length) parts.push(r.linked.length+' neu verknüpft');
+      parts.push((r.approved||0)+' freigegeben');
+      if(r.bodyDiff&&r.bodyDiff.length) parts.push('Text weicht ab: '+r.bodyDiff.join(', '));
+      if(r.missing&&r.missing.length) parts.push('fehlt in Twilio: '+r.missing.join(', '));
+      if(r.linkError) parts.push(r.linkError);
+      S.jrMsg='Abgeglichen – '+parts.join(' · ');
+    }
+  }catch(e){ S.jrMsg='Verbindung fehlgeschlagen.'; }
+  S.jrBusy=false;
+  loadJourneys();
+}
 var JR_TST={ approved:['freigegeben','#1d7a3e','#E7F6EC'], received:['in Prüfung bei Meta','#b5631f','#FBF1E6'], pending:['in Prüfung bei Meta','#b5631f','#FBF1E6'], created:['angelegt, nicht eingereicht','#b5631f','#FBF1E6'], rejected:['abgelehnt','#b53a2c','#FCEBEA'], paused:['pausiert','#b53a2c','#FCEBEA'], disabled:['gesperrt','#b53a2c','#FCEBEA'], deleted:['in Twilio gelöscht','#b53a2c','#FCEBEA'], unsubmitted:['nicht eingereicht','#6b7780','#eef1f2'] };
 function jrTag(label,fg,bg){ return '<span style="font-size:10.5px;font-weight:800;color:'+fg+';background:'+bg+';border-radius:7px;padding:2px 7px">'+esc(label)+'</span>'; }
 function jrTplStatus(t){
@@ -10707,13 +10728,13 @@ function journeysNode(){
   var tpls=(d.templates||[]).map(function(t){
     var cat=t.category==='UTILITY'?'Service':'Marketing';
     var bad=t.problems&&t.problems.length;
-    var canSubmit=tw.configured&&!bad&&!t.meta&&!(t.sid&&!t.auto)&&(!t.status||t.status==='created');
-    var canResub=tw.configured&&!bad&&t.auto&&(t.outdated||['rejected','paused','disabled','deleted','unsubmitted'].indexOf(t.status)>=0);
+    var canSubmit=tw.configured&&!!tw.lastSync&&!bad&&!t.meta&&!(t.sid&&!t.auto)&&(!t.status||t.status==='created'||t.status==='unsubmitted');
+    var canResub=tw.configured&&!bad&&t.auto&&!!t.sid&&(t.outdated||t.bodyDiff||['rejected','paused','disabled','deleted'].indexOf(t.status)>=0);
     var btn='height:36px;border-radius:10px;font-size:12.5px;font-weight:800;padding:0 13px;cursor:pointer;';
     return '<div style="padding:12px 0;border-top:1px solid #f0f3f4">'+
       '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span style="font-size:12.5px;font-weight:800;color:#15171B;font-family:ui-monospace,monospace">'+esc(t.key)+'</span>'+
       jrTag(t.category+' · '+cat,t.category==='UTILITY'?'#0a4958':'#8a5a00',t.category==='UTILITY'?'#e7f1f3':'#fbf3de')+
-      jrTplStatus(t)+(t.outdated?jrTag('Text geändert – neu einreichen','#b5631f','#FBF1E6'):'')+'</div>'+
+      jrTplStatus(t)+(t.outdated?jrTag('Text geändert – neu einreichen','#b5631f','#FBF1E6'):'')+(t.bodyDiff?jrTag('Text weicht bei Twilio ab','#b5631f','#FBF1E6'):'')+'</div>'+
       (t.reason?'<div style="font-size:12px;color:#b53a2c;font-weight:700;margin-top:6px">Grund von Meta: '+esc(t.reason)+'</div>':'')+
       (t.metaCategory&&t.metaCategory!==t.category?'<div style="font-size:12px;color:#8a5a00;font-weight:700;margin-top:6px">Meta stuft sie als '+esc(t.metaCategory)+' ein – abgerechnet wird danach.</div>':'')+
       (bad?'<div style="font-size:12px;color:#b53a2c;font-weight:700;margin-top:6px">Wird nicht eingereicht: '+esc(t.problems.join(', '))+'</div>':'')+
@@ -10733,9 +10754,10 @@ function journeysNode(){
   (d.templates||[]).forEach(function(t){ if(t.ready) tcount.ok++; else if(t.status==='received'||t.status==='pending') tcount.wait++; else if(['rejected','paused','disabled','deleted'].indexOf(t.status)>=0) tcount.bad++; else tcount.open++; });
   var twBar='<div style="display:flex;gap:9px;flex-wrap:wrap;margin-bottom:12px">'+finnTile('freigegeben',deNum(tcount.ok),'#1d7a3e')+finnTile('in Prüfung',deNum(tcount.wait),'#b5631f')+finnTile('abgelehnt',deNum(tcount.bad),'#b53a2c')+finnTile('offen',deNum(tcount.open),'#6b7780')+'</div>'+
     (tw.configured
-      ?'<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">'+
-        '<button data-jrsubmitall="1" '+((S.jrBusy||!tw.open)?'disabled':'')+' style="height:40px;border:none;border-radius:11px;background:'+(tw.open?TEAL:'#b6bfc4')+';color:#fff;font-size:13px;font-weight:800;padding:0 16px;cursor:'+(tw.open?'pointer':'default')+'">'+(tw.open?('Alle offenen einreichen ('+tw.open+')'):'Alles eingereicht')+'</button>'+
-        '<button data-jrsync="1" '+(S.jrBusy?'disabled':'')+' style="height:40px;border:1.5px solid #d6dee0;background:#fff;color:'+TEAL+';border-radius:11px;font-size:13px;font-weight:800;padding:0 14px;cursor:pointer">Status abrufen</button></div>'
+      ?'<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:6px">'+
+        '<button data-jrsync="1" '+(S.jrBusy?'disabled':'')+' style="height:40px;border:none;border-radius:11px;background:'+TEAL+';color:#fff;font-size:13px;font-weight:800;padding:0 16px;cursor:pointer">Mit Twilio abgleichen</button>'+
+        (tw.open?'<button data-jrsubmitall="1" '+((S.jrBusy||!tw.lastSync)?'disabled':'')+' style="height:40px;border:1.5px solid #d6dee0;background:#fff;color:'+(tw.lastSync?TEAL:'#a3abb0')+';border-radius:11px;font-size:13px;font-weight:800;padding:0 14px;cursor:'+(tw.lastSync?'pointer':'default')+'">Fehlende einreichen ('+tw.open+')</button>':'')+'</div>'+
+        '<div style="font-size:12px;color:#6b7780;font-weight:600;margin-bottom:10px;line-height:1.45">Abgleichen ordnet in Twilio angelegte Vorlagen zu und holt Metas Status – es legt nichts an.'+(tw.open&&!tw.lastSync?' Einreichen geht erst nach dem ersten Abgleich, damit nichts doppelt entsteht.':'')+(tw.lastSync?' Zuletzt abgeglichen: '+esc(String(rel(tw.lastSync)).replace(/\.$/,''))+'.':'')+'</div>'
       :'<div style="font-size:12.5px;color:#b53a2c;font-weight:700;margin-bottom:10px">Twilio-Zugang fehlt in Vercel (TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN) – Einreichen geht erst danach.</div>')+
     '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:6px"><span style="font-size:12px;color:#6b7780;font-weight:700">Testnummer:</span><input data-jrtestphone placeholder="+49 151 …" value="'+esc(S.jrTestPhone||'')+'" style="height:36px;border:1.5px solid #d6dee0;border-radius:10px;padding:0 11px;font-size:13px;min-width:200px"><span style="font-size:11.5px;color:#6b7780;font-weight:600">muss in JOURNEYS_TEST_NUMBERS stehen</span></div>';
   var dry=(d.dry||[]);
@@ -10748,7 +10770,7 @@ function journeysNode(){
       finnCard('Kennzahlen '+jrMonth((d.kpi&&d.kpi.month)||''),'Alle Journeys zusammen · ohne Personenbezug',kpiTiles)+
       finnCard('Probelauf','Was gesendet würde – Vorname als Platzhalter',dryHtml)+
     '</div>'+
-    '<div style="margin-top:18px">'+finnCard('Vorlagen für WhatsApp','Ein Klick legt die Vorlagen bei Twilio an und reicht sie bei Meta zur Prüfung ein. Gesendet wird nur mit freigegebener Vorlage – ohne sie und bei geschlossenem 24-h-Fenster wird der Schritt übersprungen.',
+    '<div style="margin-top:18px">'+finnCard('Vorlagen für WhatsApp','Die App nutzt eine Vorlage erst, wenn Meta sie freigegeben hat. Ohne freigegebene Vorlage und bei geschlossenem 24-h-Fenster wird der Schritt übersprungen.',
       twBar+tpls)+'</div>'+
   '</div>';
   setTimeout(function(){
@@ -10757,8 +10779,8 @@ function journeysNode(){
     node.querySelectorAll('[data-jrsave]').forEach(function(b){ b.onclick=function(){ var key=b.getAttribute('data-jrsave'); var v=(S.jrSid&&S.jrSid[key]!=null)?S.jrSid[key]:((node.querySelector('[data-jrsid="'+key+'"]')||{}).value||''); jrPost({action:'template',key:key,sid:v||null},'Vorlage gespeichert.'); }; });
     var tp=node.querySelector('[data-jrtestphone]'); if(tp) tp.oninput=function(){ S.jrTestPhone=tp.value; };
     node.querySelectorAll('[data-jrtest]').forEach(function(b){ b.onclick=function(){ if(!S.jrTestPhone){ S.jrMsg='Bitte zuerst eine Testnummer eintragen.'; render(); return; } jrPost({action:'test',tpl:b.getAttribute('data-jrtest'),phone:S.jrTestPhone},'Test gesendet.'); }; });
-    var sa=node.querySelector('[data-jrsubmitall]'); if(sa) sa.onclick=function(){ var n=(S.jrData&&S.jrData.twilio&&S.jrData.twilio.open)||0; if(!n) return; if(!confirm(n+(n===1?' Vorlage':' Vorlagen')+' bei Twilio anlegen und bei Meta zur Prüfung einreichen? Eine freigegebene Vorlage lässt sich danach nicht mehr ändern, nur neu einreichen.')) return; jrTwilio({action:'twilio_submit'}); };
-    var sy=node.querySelector('[data-jrsync]'); if(sy) sy.onclick=function(){ jrPost({action:'twilio_sync'},'Stand von Twilio abgerufen.'); };
+    var sa=node.querySelector('[data-jrsubmitall]'); if(sa) sa.onclick=function(){ var tw0=(S.jrData&&S.jrData.twilio)||{}; var n=tw0.open||0; if(!n||!tw0.lastSync) return; if(!confirm(n+(n===1?' Vorlage fehlt':' Vorlagen fehlen')+' in Twilio. Jetzt anlegen und bei Meta zur Prüfung einreichen? Eine freigegebene Vorlage lässt sich danach nicht mehr ändern, nur neu einreichen.')) return; jrTwilio({action:'twilio_submit'}); };
+    var sy=node.querySelector('[data-jrsync]'); if(sy) sy.onclick=jrSync;
     node.querySelectorAll('[data-jrsubmit]').forEach(function(b){ b.onclick=function(){ jrTwilio({action:'twilio_submit',keys:[b.getAttribute('data-jrsubmit')]}); }; });
     node.querySelectorAll('[data-jrresub]').forEach(function(b){ b.onclick=function(){ if(!confirm('Neue Fassung einreichen? Eine abgelehnte Fassung wird dabei bei Twilio gelöscht.')) return; jrTwilio({action:'twilio_resubmit',key:b.getAttribute('data-jrresub')}); }; });
   },0);
