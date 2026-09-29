@@ -596,6 +596,13 @@ Leitplanken dazu:
   Vor dem Einreichen immer abgleichen (`twilioContent.link`: Name oder gleicher Text); der
   Abgleich legt nie etwas an. „Schon vorhanden" wird am Text-Fingerabdruck erkannt, nicht am Namen.
 
+**Stand 29.09.2026 abends – Bestandskunden gestoppt:** Auf Wunsch des Betreibers senden
+Journeys vorerst NICHTS automatisch an Bestandsmitglieder. In Vercel gesetzt:
+`JOURNEY_INVITE=0`, `JOURNEY_ONBOARDING=0`, `JOURNEY_HABIT=0`, `JOURNEY_COMEBACK=0` (überstimmen
+den Schalter im Team-Backend, dort „in Vercel abgeschaltet"). Nur „Leads & Probetraining" läuft.
+Wieder an: Variable löschen (oder auf 1) und neu deployen. Die Einladung war zuvor im Team-Backend
+eingeschaltet worden und ging am 29.09. an zwei Mitglieder.
+
 Noch organisatorisch offen: Vorlagen sind in Twilio angelegt (29.09., per Claude in Chrome) – im Team-Backend „Mit Twilio abgleichen" und Metas Freigabe prüfen; GitHub-Secret `RECORD_SECRET` wurde am 29.09. neu gesetzt und passt (vorher 401 für alle Cron-Workflows); alle 18 Vorlagen von Meta freigegeben; AVV Twilio/Meta;
 Einwilligungs- und Einladungstexte rechtlich prüfen; DSFA-Nachtrag freigeben; Magicline-
 Webhooks (`CUSTOMER_CHECKIN`, `APPOINTMENT_*`, `CONTRACT_CANCELLED`) an diese App bestätigen;
