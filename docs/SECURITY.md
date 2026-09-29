@@ -68,14 +68,10 @@ Fehlende Berechtigung ⇒ `403`.
 | documents.read | Dokumente/PDF-Bestätigungen ansehen | ✅ | ✅ |
 | documents.write | Dokumente hochladen/ans Mitglied senden | ✅ | ✅ |
 | checkin.manage | Check-in-Verlauf, Anwesenheitsbestätigungen | ✅ | ✅ |
-| training.manage | Trainingspläne des Mitglieds | ✅ | ✅ |
-| nutrition.manage | Ernährungsdaten/Coaching | ✅ | ✅ |
-| conversations.manage | Posteingang, Snippets, Smart-Reply | ✅ | ✅ |
+| conversations.manage | Posteingang, Snippets, Smart-Reply, Mitarbeiterliste | ✅ | ✅ |
 | appointments.manage | Termine ansehen/buchen/absagen | ✅ | ✅ |
-| shifts.manage | Schichtplan, Tausch, Team-Chat | ✅ | ✅ |
-| todos.manage | interne Aufgabenliste | ✅ | ✅ |
 | content.manage | Hilfe-Artikel pflegen | ✅ | ✅ |
-| **admin.manage** | Statistiken, Broadcast/Direktnachricht, Leads, KI-Assistent, Rückholung/Churn, Community-Moderation, Impersonation, Mahnliste, Premium-Gratis-Schaltung | ✅ | ❌ |
+| **admin.manage** | Statistiken (inkl. Altdaten-Löschung), Broadcast/Direktnachricht, Leads, Rückholung/Churn, Community-Moderation, Impersonation, Mahnliste | ✅ | ❌ |
 
 Alt-Sitzungen ohne Rolle (Passwort-Login) gelten als `admin` – das ist der
 Bestands-Inhaber-Login. Unbekannte Rollen erhalten **keine** Capabilities.

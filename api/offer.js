@@ -7,14 +7,14 @@
  *   POST { token, action:'accept'|'decline' }
  *        -> { ok, status }           Annahme/Ablehnung mit Zeitstempel + IP als Nachweis.
  *
- * Bei Annahme wird zusätzlich eine interne Aufgabe „Deal in Magicline umsetzen"
- * angelegt. Der rechtssichere Nachweis (Zeitpunkt, IP, User-Agent) liegt im
- * Angebots-Datensatz (lib/retention).
+ * Bei Annahme entsteht ein Vorgang im Posteingang (für das Mitglied eine kurze
+ * Bestätigung, fürs Team die interne Notiz „in Magicline umsetzen"). Der rechtssichere
+ * Nachweis (Zeitpunkt, IP, User-Agent) liegt im Angebots-Datensatz (lib/retention).
  */
 
 const M = require('../lib/members');
 const R = require('../lib/retention');
-const Todos = require('../lib/todos');
+const Inbox = require('../lib/inbox');
 
 const STUDIO = { name: 'Fit-Inn Trier', addr: 'Auf Hirtenberg 8, 54296 Trier', mail: 'info@fit-inn-trier.de', tel: '0651 308524' };
 
@@ -60,10 +60,15 @@ module.exports = async function handler(req, res) {
       return res.end(JSON.stringify({ ok: false, error: r.error || 'failed', status: (r.offer && r.offer.status) || null }));
     }
     const offer = r.offer;
-    // Bei Annahme: interne Aufgabe fürs Team – Deal in Magicline eintragen.
-    if (action === 'accept' && offer && !r.already) {
+    // Bei Annahme: Vorgang im Posteingang (Team-Push) – Deal in Magicline eintragen.
+    if (action === 'accept' && offer && !r.already && offer.memberId != null) {
       try {
-        await Todos.addTodo({ text: 'Rückhol-Deal in Magicline umsetzen: ' + (offer.memberName || ('Mitglied ' + offer.memberId)) + ' – ' + offer.summary + ' (angenommen ' + new Date(offer.acceptedAt).toLocaleString('de-DE', { timeZone: 'Europe/Berlin' }) + ')' });
+        const when = new Date(offer.acceptedAt || Date.now()).toLocaleString('de-DE', { timeZone: 'Europe/Berlin' });
+        const v = await Inbox.addVorgang(offer.memberId, {
+          type: 'angebot', subject: 'Rückhol-Angebot angenommen', priority: 'hoch', teamStatus: 'neu',
+          systemText: 'Du hast das Angebot „' + offer.summary + '" angenommen – danke! Wir setzen es um und melden uns, falls noch etwas fehlt.',
+        });
+        if (v) await Inbox.addNote(offer.memberId, v.id, { author: 'System', text: 'In Magicline umsetzen: ' + offer.summary + ' (angenommen ' + when + ').' });
       } catch (e) {}
     }
     res.statusCode = 200;

@@ -31,7 +31,7 @@ module.exports = async function handler(req, res) {
   res.setHeader('Cache-Control', 'private, no-store');
   const sess = await TA.requireTeam(req);
   if (!sess) { res.statusCode = 401; return res.end(JSON.stringify({ ok: false, error: 'unauthorized' })); }
-  if (!Cap.requireCap(sess, 'shifts.manage', res)) return;
+  if (!Cap.requireCap(sess, 'conversations.manage', res)) return;   // Zuständig-Auswahl (Posteingang, Leads)
   if (req.method !== 'GET') { res.statusCode = 405; return res.end(JSON.stringify({ ok: false, error: 'method_not_allowed' })); }
 
   const employees = [];

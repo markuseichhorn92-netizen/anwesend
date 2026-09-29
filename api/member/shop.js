@@ -66,7 +66,7 @@ module.exports = async function handler(req, res) {
     // ersten Ansehen erzeugt - vorher braucht ihn niemand.
     let code = null, bestellungen = [];
     try { code = await SL.codeFor(id); } catch (e) { code = null; }
-    try { bestellungen = await SL.orders(id, 20); } catch (e) { bestellungen = []; }
+    try { bestellungen = (await SL.orders(id, 20)).map(SL.oeffentlich); } catch (e) { bestellungen = []; }
 
     return j(res, 200, {
       ok: true, available: true,

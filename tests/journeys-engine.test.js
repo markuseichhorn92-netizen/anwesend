@@ -43,7 +43,7 @@ const KPI = require(path.join(ROOT, 'lib/journeys/kpi.js'));
 const Quiet = require(path.join(ROOT, 'lib/journeys/quiet.js'));
 const LF = require(path.join(ROOT, 'lib/leadflow.js'));
 const Inbox = require(path.join(ROOT, 'lib/inbox.js'));
-const Todos = require(path.join(ROOT, 'lib/todos.js'));
+const Defs = require(path.join(ROOT, 'lib/journeys/defs.js'));
 const MlEvents = require(path.join(ROOT, 'lib/mlEvents.js'));
 
 const HOUR = 3600000, DAY = 86400000, MIN = 60000;
@@ -244,9 +244,14 @@ function lastOut() { return out[out.length - 1]; }
   const t2 = await Tick.run({ now: TUE + 30 * DAY, budgetMs: 3000 });
   ok('G2. paralleler Durchlauf wird gesperrt', locked === true && t2.locked === true);
 
-  // ── H. Aufgaben fürs Team entstehen nur im echten Betrieb ──
-  const todos = await Todos.listTodos();
-  ok('H1. keine Team-Aufgaben aus Probeläufen', Array.isArray(todos));
+  // ── H. Hinweis fürs Team (Tag 28 „bitte anrufen") landet im Posteingang ──
+  const tst = Store.blank('7999'); tst.phone = '4915100007999'; tst.firstName = 'Tom'; await Store.save(tst);
+  const teamStep = Defs.get('comeback').steps.find((x) => x.id === 'team');
+  await teamStep.action(tst, {}, {});
+  const tl = await Inbox.list('7999');
+  const tv = (tl || []).find((x) => x.channel === 'whatsapp');
+  ok('H1. Tag 28: interne Notiz am WhatsApp-Vorgang, Team alarmiert', tv && (tv.notes || []).some((n) => n.author === 'FINN · Journey' && /anrufen/.test(n.text)) && tv.teamStatus === 'neu' && tv.teamUnread === true, JSON.stringify(tv && { notes: tv.notes, ts: tv.teamStatus }));
+  ok('H2. … ohne Nachricht an das Mitglied', tv && !(tv.messages || []).some((m) => m.from === 'team' && /anrufen/.test(m.text || '')));
 
   console.log(pass ? 'JOURNEYS ENGINE PASS' : 'JOURNEYS ENGINE FAIL');
   process.exit(pass ? 0 : 1);

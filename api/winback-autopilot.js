@@ -9,8 +9,8 @@
  * Sicherheits-Stufen (bewusst konservativ):
  *   1. Zugang nur mit Secret (CRON_SECRET/RECORD_SECRET/WINBACK_SECRET) als Authorization-Header.
  *   2. Läuft nur, wenn der Rahmen AKTIV und Auto-Pilot AN ist (lib/retention).
- *   3. STANDARD = sicherer Modus: die KI antwortet NICHT selbst, sondern legt
- *      dem Team eine Aufgabe „Rückhol-Antwort fällig" an (nichts geht ungeprüft
+ *   3. STANDARD = sicherer Modus: die KI antwortet NICHT selbst – die Antwort des
+ *      Mitglieds steht ohnehin als „neu" im Posteingang (nichts geht ungeprüft
  *      an Kunden). Erst wenn WINBACK_AUTOPILOT_LIVE=1 gesetzt ist, antwortet die
  *      KI eigenständig im Rahmen (und eskaliert bei Deal/Überschreitung ans Team).
  *
@@ -22,7 +22,6 @@
 
 const R = require('../lib/retention');
 const Inbox = require('../lib/inbox');
-const Todos = require('../lib/todos');
 const AI = require('../lib/ai');
 
 const MAX_PER_RUN = 8;
@@ -90,9 +89,9 @@ module.exports = async function handler(req, res) {
     if (!reply) continue;
 
     if (!live) {
-      // Sicherer Standard: Team-Aufgabe statt Kunden-Nachricht.
-      try { await Todos.addTodo({ text: 'Rückhol-Antwort fällig: ' + (o.memberName || ('Mitglied ' + o.memberId)) + ' hat auf das Angebot (' + o.summary + ') geantwortet – bitte im Posteingang antworten.' }); } catch (e) {}
-      handled.push({ member: o.memberName || o.memberId, mode: 'todo', reply: reply.text.slice(0, 120) });
+      // Sicherer Standard: keine Kunden-Nachricht. Die Antwort steht bereits als „neu"
+      // (mit Team-Push) im Posteingang – dort antwortet das Team.
+      handled.push({ member: o.memberName || o.memberId, mode: 'posteingang' });
       continue;
     }
     // Live: KI antwortet im Rahmen.
@@ -102,5 +101,5 @@ module.exports = async function handler(req, res) {
     catch (e) { handled.push({ member: o.memberName || o.memberId, mode: 'reply_failed' }); }
   }
 
-  return res.end(JSON.stringify({ ok: true, mode: live ? 'live' : 'safe(todo)', pending: pending.length, handled: handled.length, details: handled }));
+  return res.end(JSON.stringify({ ok: true, mode: live ? 'live' : 'safe(posteingang)', pending: pending.length, handled: handled.length, details: handled }));
 };

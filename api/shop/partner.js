@@ -127,7 +127,7 @@ module.exports = async function handler(req, res) {
     if (action === 'orders') {
       const id = await SL.memberByRef(body.ref);
       if (!id) return j(res, 200, { ok: false, error: 'unknown_ref' });
-      return j(res, 200, { ok: true, bestellungen: await SL.orders(id, body.limit) });
+      return j(res, 200, { ok: true, bestellungen: (await SL.orders(id, body.limit)).map(SL.oeffentlich) });
     }
 
     return j(res, 200, { ok: false, error: 'unknown_action' });

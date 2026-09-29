@@ -67,7 +67,7 @@ WhatsApp: `lib/waAssistant.handleInbound` ruft mit `FINN_AGENTS=1` zuerst
 E-Mail: eingehende Mitgliedsantworten erzeugen mit `FINN_EMAIL_DRAFT=1` einen
 **Entwurf** als Team-Notiz – kein automatischer Versand.
 Team: `api/team/finn.js` liefert Integrationsstatus, Event-Log, Audit, Timeline;
-der Team-Assistent (`api/team/assistant.js`) bleibt.
+der frühere Team-Assistent ist seit 29.09.2026 entfernt.
 
 ## Schalter
 

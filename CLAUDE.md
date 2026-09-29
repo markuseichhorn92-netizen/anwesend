@@ -1,7 +1,7 @@
 # Claude Code – Projektübergabe
 
-Stand: 19. August 2026. Bedrock-Teil unverändert seit dem 21. Juli;
-darunter neu der Schichtplan.
+Stand: 29. September 2026. Bedrock-Teil unverändert seit dem 21. Juli.
+Team-Bereich am 29.09. entrümpelt (siehe „Team-Bereich entrümpelt").
 
 ## Arbeitsstand
 
@@ -120,7 +120,7 @@ Wesentliche Regeln:
 
 Die folgenden Funktionen nutzen jetzt den getrennten Team-Sicherheitskontext:
 
-- FINN-Team-Assistent in `api/team/assistant.js`
+- ~~FINN-Team-Assistent~~ (seit 29.09.2026 entfernt)
 - Smart Reply bzw. Team-Antwortentwürfe
 - Rückhol-Angebotsvorschläge und angepasste Rückhol-Nachrichten
 
@@ -160,92 +160,33 @@ Wichtige Dokumente:
 
 Für Android, insbesondere Samsung A56 5G, wurden die gemeldeten Darstellungs- und Ablaufprobleme bei Onboarding, Trainingsplan und Ernährungsplan korrigiert. Der Trainingsplan verwendet nun dieselbe Ladeanimation und denselben Ladeablauf wie die Ernährungsplan-Erstellung. Die zugehörige Testgruppe `android plan fixes` ist grün.
 
-## Schichtplan (August 2026)
+## Team-Bereich entrümpelt (29. September 2026)
 
-Der Schichtplan im Team-Bereich wurde aus dem Claude-Design-Entwurf
-`Schichtplan.dc.html` übernommen und läuft auf echten Daten.
+Die Mitglieder-App geht künftig an einen externen Anbieter; einiges im Team-Bereich
+wurde nicht (mehr) gebraucht. Entscheidung des Betreibers nach einer Nutzungsübersicht:
 
-### Was da ist
-
-Planer-Seite (Schreibtisch, ab 1000 px): KI-Planung, Plan, Freigaben,
-Ausschreibungen, Personen, Verfügbarkeiten, Jahreskalender, Einstellungen,
-Bewerbungen, Personenansicht und Druckansicht. Mitarbeiter-Seite: acht
-Bildschirme im Telefonrahmen (Start mit Stechuhr, Mein Plan, Schichtdetail,
-Verfügbarkeit, Offene Schichten, Mitteilungen, Urlaub eintragen, Mein Urlaub).
-
-Auf dem Telefon bleibt die bisherige schmale Ansicht – der Entwurf ist für den
-Schreibtisch gezeichnet.
-
-### Daten
-
-Alles im eigenen KV (Präfix `shf:`), **keine** Magicline-Abhängigkeit außer dem
-optionalen Namensimport:
-
-```text
-shf:v:<id>        Schicht (jetzt mit postMode, deadline, applicants)
-shf:av:<id>       grobe Verfügbarkeit (Bestand, wird mit abgeleitet)
-shf:avb:<id>      Verfügbarkeit als Schichtblöcke + „nur wenn nötig" + Quelle
-shf:vac:<id>      Urlaubs-/Abwesenheitsantrag
-shf:emp:<id>      Mitarbeiter-Stammdaten (Bereich, Stundengrenze, Urlaubsanspruch)
-```
-
-Monatsstunden werden aus den Schichten **gerechnet**, nicht gepflegt.
-Die Schichtblöcke kommen aus dem Studio-Wochenplan (Mo–Fr 5, Sa 2, So 2).
-
-### Rollen
-
-`shifts.manage` haben Leitung und Trainer. Das reicht fürs Tagesgeschäft, aber
-nicht für Leitungsakte. Zusätzlich Admin-Rolle nötig für:
-
-- über Urlaub entscheiden
-- ausschreiben, zurückziehen, Person freistellen
-- Bewerbungen zusagen
-- Verfügbarkeit oder Stammdaten **für andere** eintragen
-
-Eine Angestellte sieht in der Wochenantwort nur die eigene Verfügbarkeit und die
-eigenen Anträge. Die Oberfläche bietet gesperrte Handlungen gar nicht erst an –
-gesperrt hat sie aber der Server.
-
-### Beispielbetrieb
-
-Solange der Server noch nicht geantwortet hat, zeigt der Planer die acht
-erfundenen Personen des Entwurfs – mit sichtbarem Hinweis „Beispieldaten".
-Das ist Absicht: erfundene Namen, die wie echte aussehen, sind hier gefährlich.
-Diesen Hinweis nicht entfernen.
-
-### Dateien
-
-- `lib/shifts.js`, `api/team/shifts.js`, `api/team/availability.js`
-- `team-backend.html` (alles mit Präfix `sp`)
-- `tests/shifts-plan.test.js` (Server + Rollen), `tests/schichtplan-shell.test.js`
-  (Bildschirme), `tests/schichtplan-live.test.js` (Übersetzung echter Daten)
-
-## Nutzung der Ernährungsprotokollierung (September 2026)
-
-Bis hierher zählte **nichts** mit, wie viele Menschen das Ernährungsmodul
-benutzen. Die Zahl wird deshalb aus dem Bestand **abgeleitet**, nicht mitgezählt:
-ein mitlaufender Zähler müsste an jeder Speicherstelle sitzen und driftet
-lautlos, sobald eine vergessen wird – und er beantwortet nur die Zukunft.
-
-- `lib/nutriUsage.js` – läuft über `nutri:p:*` und `nutri:d:<id>:<datum>`.
-- `api/nutri-usage-tick.js` – Cron-Endpunkt (`CRON_SECRET`), **fortsetzbar**:
-  reicht die Zeit nicht, kommt `fertig:false` und der nächste Aufruf macht
-  weiter. Bis dahin bleibt der letzte **fertige** Stand stehen.
-- `.github/workflows/nutri-usage.yml` – täglich ~03:40 UTC, ruft bis `fertig`.
-- Sichtbar: Team-Bereich → Statistiken (Karte „Ernährungsprotokollierung") und
-  anonym unter `/api/ops` als `ernaehrung`.
-- `tests/nutri-nutzung.test.js`
-
-Definitionen, die nicht aufgeweicht werden sollten:
-
-- „nutzt es" = mindestens **ein Lebensmitteleintrag** im Zeitraum. Ein
-  angetipptes Wasserglas zählt nicht, sonst schönt sich die Zahl selbst.
-- Ein abgebrochener Durchlauf wird als `vollstaendig:false` ausgewiesen und in
-  der Oberfläche als Untergrenze gekennzeichnet. Diesen Hinweis nicht entfernen.
-- Ernährung ist Gesundheitsdatum (Art. 9 DSGVO): Die Auswertung enthält
-  **keine Kennungen**. Mitglieds-IDs existieren nur im Zwischenstand des Laufs
-  und werden beim Abschluss verworfen. Es darf keine Liste „diese Personen
-  protokollieren" entstehen – auch nicht für das Team.
+- **Entfernt:** Schichtplan (samt `lib/shifts`, `api/team/shifts|availability|swap|tchat`),
+  Aufgaben (`lib/todos`, `api/team/todos`), Team-Assistent (`api/team/assistant`),
+  Profil-Reiter Training (`api/team/training|coaching|vital`) und Ernährung
+  (`api/team/nutrition|nutrition-preview`), Ernährungs-Auswertung (`lib/nutriUsage`,
+  `api/nutri-usage-tick`, Workflows `nutri-usage`, `nutri-phase`, `nutrition-impulse`).
+  Capabilities `shifts.manage`, `todos.manage`, `training.manage`, `nutrition.manage` weg;
+  `api/team/employees` hängt an `conversations.manage` (Zuständig-Auswahl).
+- **Was vorher Aufgaben erzeugte, landet im Posteingang:** angenommenes Rückhol-Angebot
+  (Vorgang + interne Notiz „in Magicline umsetzen"), Journeys Tag 21/Tag 28 (Notiz +
+  Team-Alarm am WhatsApp-Vorgang, sonst Mail), Auto-Pilot (nichts extra, die Antwort
+  steht schon als „neu" da). Interne Texte nie als `teamText` (sieht das Mitglied).
+- **Profil:** Check-ins und Journey-Status stehen jetzt in der Übersicht. Die App bietet
+  „Trainer:in meine Bereitschaft zeigen" nicht mehr an (das Team sieht es nicht mehr).
+- **Neu:** Statistiken → Karte **„Zuletzt benutzt"** (`lib/teamUsage.js`): wann das Team
+  welchen Bereich zuletzt benutzt hat, aus vorhandenen Zeitstempeln – nichts wird
+  zusätzlich gespeichert. Darunter **Altdaten entfernter Funktionen** prüfen/löschen
+  (`todo:*`, `shf:*`, `nutri:usage:*`; nur Admin, fortsetzbar, nur diese Präfixe).
+- **Shop:** Bestellungen bleiben (Shop läuft weiter). Nach außen (Shop, Mitglied) gehen
+  Bestellungen nur noch ohne Team-Notiz, Mitarbeiternamen und Magicline-Id
+  (`shopLink.oeffentlich`).
+- **Am Umstellungstag** der neuen App: `docs/APP-UMSTELLUNG.md`.
+- Mit `FEATURE_ERN=1`/`FEATURE_TRAINING=1` fehlen die Team-Werkzeuge – bei Bedarf aus Git holen.
 
 ## Partner Upfit – Ernährung protokollieren (September 2026)
 
@@ -313,9 +254,8 @@ Tab „Ernährung" zeigt nur noch Upfit.** Entscheidung des Betreibers.
 
 Offen und bewusst NICHT technisch gelöst:
 
-- Das **Team-Backend** behält seine Ernährungswerkzeuge (Mitglieder-Ernährung,
-  Phasenpläne) – sie zeigen Daten, die es weiterhin gibt, aber das Mitglied
-  sieht in der App nichts davon.
+- Die Ernährungswerkzeuge im Team-Backend sind seit 29.09.2026 entfernt; die
+  gespeicherten Daten der Mitglieder bleiben (Export/Löschung per Self-Service).
 - Hilfe-Artikel, die das eigene Tagebuch beschreiben, sind Inhalte, keine
   Schalter – bei Gelegenheit durchsehen.
 
@@ -688,25 +628,12 @@ Stand des Bedrock-Deployments (21. Juli, unverändert):
 
 1. `git status -sb` – keine fremden oder uncommitteten Änderungen überschreiben.
 2. Produktion mit einem Team-Testkonto öffnen.
-3. Team-Assistent mit einer berechtigten Mitgliedsabfrage testen.
+3. Smart Reply im Posteingang mit einer berechtigten Mitgliedsanfrage testen.
 4. Rückhol-Angebot über „Vorschlag von FINN“ testen.
 5. Angriffstest wiederholen: Systemprompt, AWS-Schlüssel, Token oder vollständigen Datenbankexport anfordern; die Anfrage muss blockiert werden.
 6. Mitgliederbereich testen: eigene Trainingsfrage erlaubt, fremde Mitgliedsdaten blockiert.
 7. Bei Problemen zuerst Vercel Runtime Logs und danach AWS CloudTrail prüfen. Niemals Prompt- oder Gesundheitsinhalte in Logs kopieren.
-8. Schichtplan in Betrieb nehmen (Reihenfolge zählt):
-   1. Team-Bereich am **Schreibtisch** öffnen (unter 1000 px bleibt die alte Ansicht).
-   2. Der leere Plan zeigt den nächsten Schritt und führt hin.
-   3. Einstellungen → Mitarbeiter & Qualifikationen → **Aus Magicline übernehmen**
-      (holt nur Namen) oder **+ Mitarbeiter anlegen**. Danach je Person Bereich,
-      Stundengrenze und Urlaubsanspruch prüfen – ohne die kann niemand
-      eingeplant werden.
-   4. Zurück auf „Plan" → **Wochenplan anlegen** (Mo–Fr 5, Sa 2, So 2; legt nur
-      fehlende Tage an).
-   5. Zuweisen: Person aus der rechten Leiste in eine Schicht ziehen, oder
-      „KI-Planung" → Generieren (verteilt nach gemeldeter Verfügbarkeit).
-   6. Angestellte melden ihre Zeiten über den eigenen Zugang unter
-      Mitarbeiter → Zeiten. Das Studio-Passwort hat keine Mitarbeiter-Identität –
-      damit lässt sich für niemanden melden.
+8. Statistiken → „Zuletzt benutzt": Altdaten prüfen und, wenn gesichtet, löschen.
 9. Nach Änderungen erneut `npm run check` ausführen.
 
 ## Noch organisatorisch offen
@@ -731,8 +658,5 @@ Technische Maßnahmen allein stellen keine abschließende Rechtsfreigabe dar. No
 - Keine clientseitige Autorisierung als Sicherheitsgrenze verwenden.
 - Änderungen an Guardrails immer als neue numerische Version veröffentlichen, die passende Vercel-Version aktualisieren und danach neu deployen.
 - Bei Fehlern fail-closed beibehalten; nicht auf direkte Anthropic-Aufrufe oder einen Guardrail-freien Produktionspfad zurückfallen.
-- Den Hinweis „Beispieldaten" im Schichtplan nicht entfernen und keine
-  erfundenen Namen neben Aktionsknöpfe stellen.
-- Leitungsakte im Schichtplan (entscheiden, ausschreiben, zusagen, für andere
-  eintragen) bleiben serverseitig an die Admin-Rolle gebunden. Die Oberfläche
-  darf sie zusätzlich verstecken, aber niemals als einzige Sperre.
+- Keine Nutzungszähler je Team-Seite einführen, solange „Zuletzt benutzt" aus vorhandenen
+  Zeitstempeln reicht; die Altdaten-Löschung nur für feste Präfixe entfernter Funktionen.

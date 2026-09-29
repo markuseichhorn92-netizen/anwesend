@@ -182,6 +182,14 @@ async function run() {
   const bloed = await SL.teamUpdate('shop-1001', { status: 'irgendwas' }, 'Kathrin');
   ok('16b. Ein erfundener Stand wird ignoriert', bloed.bestellung.status === 'erstattet', bloed.bestellung.status);
 
+  // ── 8. Nach außen ohne Team-Interna (Notiz, Namen, Magicline-Id) ──
+  const aussen = await ruf(H, { action: 'orders', ref: ref }, 'k_richtig');
+  const roh = JSON.stringify(aussen);
+  ok('17. Shop sieht keine Team-Notiz, keine Mitarbeiternamen, keine Magicline-Id',
+    roh.indexOf('holt selbst') < 0 && roh.indexOf('Kathrin') < 0 && roh.indexOf('"memberId"') < 0 && /"von":"studio"/.test(roh), roh.slice(0, 300));
+  const pub = SL.oeffentlich(await SL.orderByExt('shop-1001'));
+  ok('17b. oeffentlich(): Status, Summe, Versand bleiben', pub.status === 'erstattet' && pub.versand === '00340434' && pub.nummer === 'B-1001' && !('notiz' in pub));
+
   console.log(pass ? 'SHOP-PARTNER PASS' : 'SHOP-PARTNER FAIL');
   process.exit(pass ? 0 : 1);
 }

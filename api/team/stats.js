@@ -6,8 +6,11 @@
  *     ok, counts:{total,open,neu,done,unread},
  *     vorgangBreakdown:[{type,count}],          // aus dem Posteingang
  *     checkinDays:[{d,v}], avgUtil,             // typische Auslastung (anonyme Historie)
- *     topArticles:[{title,views,cat}], articlesPublished, articleViews
+ *     topArticles:[{title,views,cat}], articlesPublished, articleViews,
+ *     lastUsed:{ rows:[{key,label,at,n30,who,note}], ohne:[…] }   // lib/teamUsage
  *   }
+ *   POST { action:'altdaten', step:'count'|'delete', cursor? } -> Altdaten entfernter
+ *     Funktionen (Aufgaben, Schichtplan, Ernährungs-Auswertung) zählen bzw. löschen.
  * Bewusst keine erfundenen Kennzahlen (MRR/Kündigungsquote) – nur Werte, die wir
  * mit den vorhandenen Datenquellen wirklich haben.
  */
@@ -26,6 +29,15 @@ module.exports = async function handler(req, res) {
   if (!sess) { res.statusCode = 401; return res.end(JSON.stringify({ ok: false, error: 'unauthorized' })); }
   if (!Cap.requireCap(sess, 'admin.manage', res)) return;
   if (!TA.isAdmin(sess)) { res.statusCode = 403; return res.end(JSON.stringify({ ok: false, error: 'forbidden' })); }
+  // Altdaten entfernter Funktionen zählen/löschen (Karte „Zuletzt benutzt", nur Admin).
+  if (req.method === 'POST') {
+    let body = {}; try { body = await require('../../lib/members').readBody(req); } catch (e) {}
+    if (body.action !== 'altdaten' || (body.step !== 'count' && body.step !== 'delete')) { res.statusCode = 400; return res.end(JSON.stringify({ ok: false, error: 'bad_action' })); }
+    const r = await require('../../lib/teamUsage').altdaten({ step: body.step, cursor: body.cursor });
+    if (body.step === 'delete') console.log('[stats] altdaten', JSON.stringify({ by: String(sess.user || sess.name || 'admin').slice(0, 40), n: r.geloescht || 0, fertig: !!r.fertig }));
+    res.statusCode = r.ok ? 200 : 500;
+    return res.end(JSON.stringify(r));
+  }
   if (req.method !== 'GET') { res.statusCode = 405; return res.end(JSON.stringify({ ok: false, error: 'method_not_allowed' })); }
 
   let all = [];
@@ -128,11 +140,10 @@ module.exports = async function handler(req, res) {
   let handled = { ai: 0, system: 0, team: 0, quote: 0 };
   try { handled = await Handled.totals(); } catch (e) {}
 
-  // Nutzung der Ernährungsprotokollierung – reine Zahlen, keine Namen, keine IDs.
-  // Gerechnet wird im Cron (/api/nutri-usage-tick); hier steht der letzte fertige Stand.
-  let nutrition = null;
-  try { nutrition = await require('../../lib/nutriUsage').lesen(); } catch (e) {}
+  // Zuletzt benutzt: vorhandene Zeitstempel je Bereich (lib/teamUsage, nichts Neues gespeichert).
+  let lastUsed = null;
+  try { lastUsed = await require('../../lib/teamUsage').lastUsed({ cases: all, articles: arts }); } catch (e) {}
 
   res.statusCode = 200;
-  return res.end(JSON.stringify({ ok: true, counts, vorgangBreakdown, topArticles, articlesPublished, articleViews, checkinDays, avgUtil, employeeStats, handled, nutrition }));
+  return res.end(JSON.stringify({ ok: true, counts, vorgangBreakdown, topArticles, articlesPublished, articleViews, checkinDays, avgUtil, employeeStats, handled, lastUsed }));
 };

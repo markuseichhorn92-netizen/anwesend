@@ -33,7 +33,7 @@ Neu: Auswertung der Check-in-Häufigkeit je Mitglied (Einstufung „auf Kurs", �
 beantwortet Interessenten und bucht Probetrainings (Bestätigung durch die Person).
 
 - **Profiling (Art. 4 Nr. 4, Art. 22):** Die Einstufung löst nur Nachrichten bzw. eine
-  Team-Aufgabe aus – keine rechtlich oder ähnlich erheblich wirkende Entscheidung. Grundlage
+  Team-Hinweis im Posteingang aus – keine rechtlich oder ähnlich erheblich wirkende Entscheidung. Grundlage
   ist die Einwilligung `wa_marketing`, deren Text die Auswertung der Check-ins nennt.
 - **Keine Gesundheitsdaten:** Vorlagen und Prompts enthalten nur Vorname, Termin,
   Besuchszahlen und Wochenziel; das Ziel „gesundheit" ist ein grober Wert ohne Befund.

@@ -98,14 +98,14 @@ Lead-Kunden-Id zwischen −60 und +90 min.
 
 **Onboarding** (ab `CONTRACT_CREATED`): Willkommen + Einführungstraining anbieten, Tag 3
 Erinnerung ohne Einführung, erster Besuch, Tag 7/14 (höchstens einer)/21 gegen das
-Wochenziel (Tag 21 unter 4 Besuchen → Team-Aufgabe), Tag 30/60/90 Nachfrage.
+Wochenziel (Tag 21 unter 4 Besuchen → Hinweis fürs Team im Posteingang), Tag 30/60/90 Nachfrage.
 
 **Motivation** (mit `marketing`): zwei Wochen unter Wochenziel (höchstens alle 14 Tage,
 nicht in den ersten 90 Tagen, nicht direkt nach einem Comeback), 10/25/50/100/250/500
 Besuche, 4/8/12/26/52 Wochen in Folge.
 
 **Comeback** (mit `marketing`): 10 Tage weg sanft, 21 Tage Trainer-Termin, 28 Tage
-Team-Aufgabe „anrufen" – danach keine Automatik. Check-in beendet sofort („reaktiviert").
+Hinweis „anrufen" im Posteingang (Notiz + Team-Alarm am WhatsApp-Vorgang) – danach keine Automatik. Check-in beendet sofort („reaktiviert").
 
 **Einladung** (nur eingeschaltet): einmal je Nummer, nur aktive Verträge, gedrosselt.
 

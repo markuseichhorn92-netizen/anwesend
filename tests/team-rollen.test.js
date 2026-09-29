@@ -25,7 +25,7 @@ const trainer = { user: 'Anna', role: 'trainer', employeeId: 'e1' };
   // ── 1. Die Rollen selbst ──
   ok('1. Admin darf alles', Cap.ALL_CAPS.every((c) => Cap.can(admin, c)));
   ok('2. Trainer darf das Tagesgeschaeft',
-    Cap.can(trainer, 'member.read') && Cap.can(trainer, 'appointments.manage') && Cap.can(trainer, 'shifts.manage'));
+    Cap.can(trainer, 'member.read') && Cap.can(trainer, 'appointments.manage') && Cap.can(trainer, 'conversations.manage'));
   ok('3. Trainer darf KEINE Admin-Bereiche', !Cap.can(trainer, 'admin.manage'));
 
   // ── 2. Fail-closed ──
@@ -80,7 +80,7 @@ const trainer = { user: 'Anna', role: 'trainer', employeeId: 'e1' };
   // ihn serverseitig sperrt. Sonst ist das Verstecken die einzige „Sicherung".
   const screenZuDatei = {
     stats: ['stats.js'], msg: ['broadcast.js', 'message.js'], leads: ['leads.js'],
-    assist: ['assistant.js'], wb: ['winback.js', 'churn.js', 'retention.js'],
+    wb: ['winback.js', 'churn.js', 'retention.js'],
     community: ['social-mod.js'], tester: ['testers.js'],
     kassenbuch: ['kassenbuch.js'], feedback: ['feedback.js'],
     finn: ['finn.js'], journeys: ['journeys.js'],

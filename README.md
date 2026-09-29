@@ -9,7 +9,7 @@ bewusst ohne Framework und (bis auf Dev-Tools) ohne npm-Dependencies.
 | Bereich | Einstieg | Beschreibung |
 |---|---|---|
 | **Mitglieder-App** | `mitglieder.html` (`/`) | Vertrag, Termine, Check-in, Mitgliedskarte, Dokumente, Postfach, FINN-KI-Coach, Fortschritt/Vitalpunkte, Training (Technogym-Inventar), Ernährung*, Community* — läuft im Browser **und** als Capacitor-App (iOS/Android) |
-| **Team-Backend** | `team-backend.html` (`/team`) | Posteingang, Mitgliederverwaltung, Termine, Statistiken, Schichtplan, Leads, Rückholung, Moderation — rollenbasiert (admin/trainer) |
+| **Team-Backend** | `team-backend.html` (`/team`) | Posteingang, Mitgliederverwaltung, Termine, Statistiken, Leads, Rückholung, Moderation — rollenbasiert (admin/trainer) |
 | **Live-Auslastung** | `widget.html`, `auslastung.html` | Anonyme Personenzahl als einbettbares Widget + „typische Auslastung"-Kurve |
 | **APIs** | `api/**` | ~125 Serverless Functions (Mitglied, Team, Webhooks, interne Crons) |
 | **Fachlogik** | `lib/**` | Sessions/Magicline (`members.js`), Team-Auth + Capabilities, Push (FCM/APNs), Inbox, Magicline-Premium (`mlPremium.js`), KI (`ai.js`), Social, Cron-Auth … |

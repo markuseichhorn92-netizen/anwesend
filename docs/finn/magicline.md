@@ -79,8 +79,6 @@ ans Team an – genau wie die Endpunkte heute.
   Geheimnisse, Fremddaten), Ausgangsfilter, `hardenPayload`.
 - `lib/waAgent.js`: Tool-Calling-Agent für WhatsApp (Termine, Tracking); ruft die
   eigenen HTTP-Endpunkte auf – **FINN ersetzt das nicht**, sondern kann darüber liegen.
-- `api/team/assistant.js`: Team-Assistent mit Read-/Write-Tools und
-  Vorschau-Bestätigung (einziger Ort mit Bestätigungslogik).
 - `api/member/coach.js`: FINN-Chat des Mitglieds; `memberDetails(id)` als
   kanonischer Live-Block.
 - `lib/finnMemory.js`: Opt-in-Langzeitgedächtnis. `lib/help.js`: statische

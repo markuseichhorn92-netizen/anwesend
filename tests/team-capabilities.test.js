@@ -31,7 +31,7 @@ async function run() {
   const admin = { role: 'admin' }, trainer = { role: 'trainer' };
   ok('1. Admin hat admin.manage', Cap.can(admin, 'admin.manage'));
   ok('1b. Trainer hat member.read', Cap.can(trainer, 'member.read'));
-  ok('1c. Trainer hat training.manage', Cap.can(trainer, 'training.manage'));
+  ok('1c. Trainer hat checkin.manage', Cap.can(trainer, 'checkin.manage'));
   ok('1d. Trainer hat KEIN admin.manage', !Cap.can(trainer, 'admin.manage'));
   ok('1e. Alt-Session ohne role gilt als Admin (Passwort-Login)', Cap.can({}, 'admin.manage'));
   ok('1f. unbekannte Rolle hat nichts', !Cap.can({ role: 'gast' }, 'member.read'));
@@ -44,7 +44,7 @@ async function run() {
   SESSION = trainer; r = res0();
   ok('2b. Trainer + admin.manage -> 403', (await Cap.requireCapability({ headers: {} }, r, 'admin.manage')) === null && r.statusCode === 403);
   SESSION = trainer; r = res0();
-  ok('2c. Trainer + training.manage -> Session', (await Cap.requireCapability({ headers: {} }, r, 'training.manage')) === trainer);
+  ok('2c. Trainer + checkin.manage -> Session', (await Cap.requireCapability({ headers: {} }, r, 'checkin.manage')) === trainer);
 
   // 3) Verbotene Zugriffe an echten Endpunkten: Trainer -> 403 (vor jeder Logik)
   const cases = [

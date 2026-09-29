@@ -10138,13 +10138,10 @@
     }).join('');
     return '<div style="'+MO_CARD+'"><div style="font-size:15px;font-weight:800;color:var(--text);margin-bottom:2px">Alle Messungen</div>'+rows+'</div>';
   }
-  // Trainer-Freigabe (Opt-in): Team sieht nur die aggregierte Ampel, keine Rohwerte.
-  function moTeamShareCard(){
-    var d=morningData(); if(!d||!d.consent) return '';
-    var on=!!d.teamShare; var busy=S.morningShareBusy;
-    var sw='<button data-act="morningTeamShare" data-arg="'+(on?'0':'1')+'" role="switch" aria-checked="'+(on?'true':'false')+'" '+(busy?'disabled ':'')+'style="position:relative;width:50px;height:29px;border-radius:30px;border:none;cursor:pointer;background:'+(on?'var(--teal)':'var(--border-strong)')+';flex-shrink:0"><span style="position:absolute;top:3px;left:'+(on?'24px':'3px')+';width:23px;height:23px;border-radius:50%;background:#fff;transition:left .2s;box-shadow:0 1px 3px rgba(0,0,0,.3)"></span></button>';
-    return '<div style="'+MO_CARD+'"><div style="display:flex;align-items:center;gap:12px"><div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:800;color:var(--text)">🧑‍🏫 Trainer:in meine Bereitschaft zeigen</div><div style="font-size:12px;color:var(--text-soft);font-weight:500;line-height:1.5;margin-top:3px">Freiwillig: Dein:e Trainer:in sieht dann nur deine <b>Ampel</b> und ein Übertrainings-Signal – <b>keine</b> Puls- oder HRV-Rohwerte. Jederzeit abschaltbar.</div></div>'+sw+'</div></div>';
-  }
+  // Trainer-Freigabe: seit 29.09.2026 nicht mehr angeboten – das Team-Backend zeigt den
+  // Bereitschaftsstatus nicht mehr (Profil-Reiter Training entfernt). Bereits erteilte
+  // Freigaben bleiben als Nachweis gespeichert (lib/privacy vital_team_share).
+  function moTeamShareCard(){ return ''; }
   function moPremiumTeaser(){
     var cc=ernCtaCopy();
     return '<div style="'+MO_CARD+';background:linear-gradient(150deg,#12879c,#0a4958);color:#fff"><div style="font-size:17px;font-weight:900">🔒 Vital-Check ist Coach Premium</div><div style="font-size:13.5px;font-weight:600;color:#cfe8ec;line-height:1.55;margin:10px 0 14px">Verbinde deinen Herzgurt per Bluetooth: Der <b>Morgen-Check-in</b> misst 2–3 Minuten Ruhepuls &amp; HRV, der <b>Trainings-Check-in</b> prüft kurz vorm Workout deine Bereitschaft. FINN erkennt an deiner persönlichen Baseline, wie bereit du bist – grün, gelb oder rot – und passt deine Empfehlung an: Vollgas, moderat oder Erholung.</div><button data-act="ernUpgradeOpen" style="width:100%;padding:14px;border:none;border-radius:14px;background:var(--surface);color:var(--teal-ink);font-weight:800;font-size:14.5px;cursor:pointer">'+esc(cc.cta)+'</button></div>';
@@ -12299,8 +12296,6 @@
       api('/api/member/morning',{method:'POST',body:JSON.stringify({action:'consent',value:false})}).then(function(r){ if(r&&r.ok){ DATA.morning=r; S.morningAssess=null; S.morningErr=false; S.morningMsg='Einwilligung widerrufen – deine Daten wurden gelöscht.'; } rIf(['morning','fort','coach','home']); setS({}); }).catch(function(){}); },
     morningDelete:function(a){ if(!a) return; if(!window.confirm('Diese Messung wirklich löschen?')) return;
       api('/api/member/morning',{method:'POST',body:JSON.stringify({action:'delete',sel:a})}).then(function(r){ if(r&&r.ok){ DATA.morning=r; S.morningMsg=''; S.morningErr=false; } rIf(['morning','fort','coach','home']); setS({}); }).catch(function(){}); },
-    morningTeamShare:function(a){ if(S.morningShareBusy) return; S.morningShareBusy=true; render();
-      api('/api/member/morning',{method:'POST',body:JSON.stringify({action:'teamshare',value:(a==='1'||a===1||a===true)})}).then(function(r){ S.morningShareBusy=false; if(r&&r.ok&&r.list!=null){ DATA.morning=r; } setS({}); }).catch(function(){ S.morningShareBusy=false; setS({}); }); },
     // Herzgurt (Polar H9) unverbindlich an der Theke reservieren – Notiz ans Team, keine Zahlung.
     morningStrapReserve:function(){ if(S.morningStrapBusy||S.morningStrapReserved) return; S.morningStrapBusy=true; S.morningStrapErr=''; render();
       api('/api/member/morning',{method:'POST',body:JSON.stringify({action:'strapReserve'})}).then(function(r){
