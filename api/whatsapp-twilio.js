@@ -129,6 +129,12 @@ module.exports = async function handler(req, res) {
         provider: 'twilio', known: !isLead, via: isLead ? 'lead' : (linked && linked.id ? 'linked' : 'phone'),
         gate: !!(WA_ASSISTANT && AI.hasAI && WA.hasWhatsApp), flag: WA_ASSISTANT, ai: !!AI.hasAI, wa: !!WA.hasWhatsApp,
       });
+      // Interessent: FINN-Lead-Agent antwortet in Sekunden (FINN Journeys, nur mit JOURNEYS=1).
+      // Auch wenn die Nummer schon einem Magicline-Lead zugeordnet ist. Ohne Schalter wie bisher.
+      if (isLead || (await Journeys.isLeadConversation(msg.from))) {
+        const lr = await Journeys.leadTurn({ provider: 'twilio', memberId: memberId, vorgang: v, msg: msg, firstContact: firstContact, unknown: isLead });
+        if (lr && lr.handled) { handled++; continue; }
+      }
       if (isLead) {
         await SR.applyMemberReply(memberId, v.id, msg.text); handled++;
         const fresh = await Inbox.get(memberId, v.id);

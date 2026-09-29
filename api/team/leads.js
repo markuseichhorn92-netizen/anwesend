@@ -28,6 +28,8 @@ function mapLead(l) {
     createdAt: l.createdAt || 0,
     status: STATUSES.indexOf(l.status) >= 0 ? l.status : 'neu',
     assignee: l.assignee || null,
+    trialAt: l.trialAt || null,
+    hasPhone: !!l.phone,
   };
 }
 
@@ -41,6 +43,29 @@ module.exports = async function handler(req, res) {
 
   // ── GET: Liste der Interessenten (neueste zuerst) ──
   if (req.method === 'GET') {
+    // ?conv=<leadId>: Schlüssel des WhatsApp-Gesprächs (Kunden-Id oder „wa<Nummer>") für „Gespräch öffnen".
+    let cq = null; try { cq = new URL(req.url, 'http://x').searchParams.get('conv'); } catch (e) { cq = null; }
+    if (cq) {
+      let key = null;
+      try {
+        const lead = await Leads.getLead(String(cq).slice(0, 20));
+        if (lead) {
+          const Inbox = require('../../lib/inbox');
+          const Phone = require('../../lib/phone');
+          const cands = [];
+          if (lead.customerId) cands.push(String(lead.customerId));
+          const p = Phone.canon(lead.phone); if (p) cands.push('wa' + p);
+          try { const linked = p ? await Leads.resolveKnownLead(p) : null; if (linked && linked.id) cands.unshift(String(linked.id)); } catch (e) {}
+          for (const m of cands) {
+            const list = await Inbox.list(m);
+            const v = (list || []).find((x) => x.channel === 'whatsapp' && x.status !== 'abgeschlossen') || (list || []).find((x) => x.channel === 'whatsapp') || (list || [])[0];
+            if (v) { key = m + ':' + v.id; break; }
+          }
+        }
+      } catch (e) { key = null; }
+      res.statusCode = 200;
+      return res.end(JSON.stringify({ ok: true, key: key }));
+    }
     let leads = [];
     try {
       const l = await Leads.listLeads({ limit: 500 });

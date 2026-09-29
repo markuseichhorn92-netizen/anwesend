@@ -427,7 +427,7 @@ function logout(){ try{ if(window.FitInnNative&&FitInnNative.onTeamLogout) FitIn
 // Angestellte (Trainer-Login) sehen nur das Tagesgeschäft. Diese Bereiche
 // bleiben dem Admin (Passwort-Login) vorbehalten. Die eigentliche Sperre
 // sitzt serverseitig – das hier steuert nur, was in der Oberfläche erscheint.
-var ADMIN_ONLY_SCREENS={ stats:1, msg:1, leads:1, assist:1, wb:1, community:1, tester:1, kassenbuch:1, feedback:1, finn:1 };
+var ADMIN_ONLY_SCREENS={ stats:1, msg:1, leads:1, assist:1, wb:1, community:1, tester:1, kassenbuch:1, feedback:1, finn:1, journeys:1 };
 function isAdmin(){ return S.role==='admin'; }
 function canSee(k){ return !ADMIN_ONLY_SCREENS[k] || isAdmin(); }
 function meInitials(){ var n=String(S.meName||'').trim(); if(!n) return 'FI'; var p=n.split(/\s+/).filter(Boolean); var i=((p[0]&&p[0][0])||'')+((p[1]&&p[1][0])||''); return (i||n.slice(0,2)||'FI').toUpperCase(); }
@@ -628,7 +628,7 @@ async function openProfile(id){
   S.profileLoading=true; S.profile=null; syncUrl(true); render();   // URL -> /team/mitglieder/<id>
   try{ var r=await tapi('/api/team/members?id='+encodeURIComponent(id)); if(r.ok) S.profile=r.profile; }
   catch(e){} S.profileLoading=false; render();
-  if(S.profile){ loadMemberFinn(id); loadProfileTags(id); loadProfileDocs(id); loadAccessMedia(id); loadMemberCheckins(id); loadMemberCoaching(id); loadMemberVital(id); loadMemberPreview(id); loadMemberMessages(id); loadMemberNutrition(id); loadMemberTraining(id); if(isAdmin()&&!S.rhOffersLoaded) loadRetentionOffers(); }
+  if(S.profile){ loadMemberFinn(id); loadMemberJourneys(id); loadProfileTags(id); loadProfileDocs(id); loadAccessMedia(id); loadMemberCheckins(id); loadMemberCoaching(id); loadMemberVital(id); loadMemberPreview(id); loadMemberMessages(id); loadMemberNutrition(id); loadMemberTraining(id); if(isAdmin()&&!S.rhOffersLoaded) loadRetentionOffers(); }
 }
 // ---------- Mitglieder-Tags ----------
 // Tags des offenen Profils laden (GET ?memberId). Ohne Store -> leere Liste, kein Fehler.
@@ -2377,6 +2377,7 @@ function moreSheet(openCount, apptCount){
     {k:'help',        l:'Hilfe-Artikel',  ic:IC.help},
     {k:'stats',       l:'Statistiken',    ic:IC.stats},
     {k:'finn',        l:'FINN & Magicline',ic:IC.assist},
+    {k:'journeys',    l:'WhatsApp-Journeys',ic:IC.msg},
     {k:'msg',         l:'Nachrichten',    ic:IC.msg},
     {k:'leads',       l:'Leads',          ic:IC.leads},
     {k:'wb',          l:'Rückholung',     ic:IC.wb},
@@ -2490,6 +2491,7 @@ function renderShell(content, title, sub){
       navItem('help','Hilfe-Artikel',IC.help)+
       (canSee('stats')?navItem('stats','Statistiken',IC.stats):'')+
       (canSee('finn')?navItem('finn','FINN & Magicline',IC.assist):'')+
+      (canSee('journeys')?navItem('journeys','WhatsApp-Journeys',IC.msg):'')+
       (canSee('msg')?navItem('msg','Nachrichten',IC.msg):'')+
       (canSee('leads')?navItem('leads','Leads',IC.leads):'')+
       (canSee('tester')?navItem('tester','App-Tester',IC.tester):'')+
@@ -2574,7 +2576,7 @@ function renderShell(content, title, sub){
   var toApp=side.querySelector('[data-toapp]'); if(toApp) toApp.onclick=function(){ location.assign('/mitglieder'); };
   var hOpen=side.querySelector('[data-homeopen]'); if(hOpen) hOpen.onclick=function(){ S.homeSheet=true; render(); };
   var bg=head.querySelector('[data-burger]'); if(bg) bg.onclick=function(){ S.navOpen=true; render(); };
-  head.querySelector('[data-refresh]').onclick=function(){ if(S.screen==='members') loadMembers(); else if(S.screen==='appts'){ loadInbox(); apptRefreshWeek(); } else if(S.screen==='inbox') loadInbox(); else if(S.screen==='help') loadArticles(); else if(S.screen==='stats') loadStats(); else if(S.screen==='finn') loadFinn(); else if(S.screen==='msg') loadBroadcastCount(); else if(S.screen==='leads') loadLeads(); else if(S.screen==='tester') loadTesters(); else if(S.screen==='kassenbuch') loadKassenbuch(S.kbMonth); else if(S.screen==='feedback') loadFeedback(); else if(S.screen==='newmembers') loadNewMembers(); else if(S.screen==='todo') loadTodos(); else if(S.screen==='schicht'){ loadShifts(); if(S.shTab==='tausch') loadShSwaps(); } else render(); };
+  head.querySelector('[data-refresh]').onclick=function(){ if(S.screen==='members') loadMembers(); else if(S.screen==='appts'){ loadInbox(); apptRefreshWeek(); } else if(S.screen==='inbox') loadInbox(); else if(S.screen==='help') loadArticles(); else if(S.screen==='stats') loadStats(); else if(S.screen==='finn') loadFinn(); else if(S.screen==='journeys') loadJourneys(); else if(S.screen==='msg') loadBroadcastCount(); else if(S.screen==='leads') loadLeads(); else if(S.screen==='tester') loadTesters(); else if(S.screen==='kassenbuch') loadKassenbuch(S.kbMonth); else if(S.screen==='feedback') loadFeedback(); else if(S.screen==='newmembers') loadNewMembers(); else if(S.screen==='todo') loadTodos(); else if(S.screen==='schicht'){ loadShifts(); if(S.shTab==='tausch') loadShSwaps(); } else render(); };
   var bell=head.querySelector('[data-bell]'); if(bell) bell.onclick=function(){ goScreen('inbox'); };
   // Haupt-Inhalt-Scroll über Voll-Renders hinweg erhalten (sonst springt z. B. das
   // Mitgliedsprofil bei jeder Aktion/jedem Loader nach oben).
@@ -3372,7 +3374,7 @@ function membersNode(){
     '</div>';
     var tabHtml;
     if(curTab==='train'){
-      tabHtml=checkinsBlock(p)+vitalBlock(p)+coachingBlock(p)+trainingPlanBlock(p);
+      tabHtml=checkinsBlock(p)+journeyStatusCard(p)+vitalBlock(p)+coachingBlock(p)+trainingPlanBlock(p);
     } else if(curTab==='ernaehrung'){
       tabHtml=nutritionBlock(p)+nutritionPreviewBlock(p);
     } else if(curTab==='docs'){
@@ -3774,12 +3776,25 @@ function msgNode(){
 var LEADSTAT={
   neu:{l:'Neu',c:'#b53a2c',b:'#fbeae7',dot:'#e2685a'},
   kontaktiert:{l:'Kontaktiert',c:'#C77A2E',b:'#fbf0e3',dot:'#E08C53'},
+  probetraining:{l:'Probetraining',c:'#0a4958',b:'#e7f1f3',dot:'#2f8a9c'},
+  erschienen:{l:'Erschienen',c:'#1f6f8b',b:'#e6f2f7',dot:'#4aa3c2'},
+  angebot:{l:'Angebot',c:'#8a5a00',b:'#fbf3de',dot:'#e0b04a'},
   gewonnen:{l:'Gewonnen',c:'#1d7a3e',b:'#e7f6ec',dot:'#46c878'},
   verloren:{l:'Verloren',c:'#5a636a',b:'#eef1f2',dot:'#b6bfc4'}
 };
-var LEADORDER=['neu','kontaktiert','gewonnen','verloren'];
+// Pipeline-Stufen (FINN Journeys setzt probetraining/erschienen/gewonnen/verloren selbst).
+var LEADORDER=['neu','kontaktiert','probetraining','erschienen','angebot','gewonnen','verloren'];
 function lstat(s){ return LEADSTAT[s]||LEADSTAT.neu; }
-var LEADSRC={ whatsapp:'WhatsApp', magicline:'Magicline', probetraining:'Probetraining', kontakt:'Kontaktformular', portal:'Mitgliederbereich', email:'E-Mail', sonstige:'Sonstige' };
+var LEADSRC={ whatsapp:'WhatsApp', magicline:'Magicline', probetraining:'Probetraining (Website)', telefon:'Telefon-KI', 'website-chat':'Website-Chat', kontakt:'Kontaktformular', portal:'Mitgliederbereich', email:'E-Mail', sonstige:'Sonstige' };
+function leadTrialLabel(ts){ if(!ts) return ''; try{ return new Intl.DateTimeFormat('de-DE',{timeZone:'Europe/Berlin',weekday:'short',day:'numeric',month:'numeric',hour:'2-digit',minute:'2-digit'}).format(new Date(ts))+' Uhr'; }catch(e){ return ''; } }
+// Gespräch zum Lead im Posteingang öffnen (Schlüssel holt der Server: Kunden-Id oder WhatsApp-Nummer).
+async function leadOpenConv(id){
+  try{
+    var r=await tapi('/api/team/leads?conv='+encodeURIComponent(id));
+    if(r&&r.ok&&r.key){ S.screen='inbox'; syncUrl(false); if(!S.convs||!S.convs.length) loadInbox(); openConv(r.key); return; }
+    alert('Zu diesem Interessenten gibt es noch kein Gespräch.');
+  }catch(e){ alert('Verbindung fehlgeschlagen.'); }
+}
 function lsrc(s){ return LEADSRC[s]||'Sonstige'; }
 function leadInitials(nm){ var p=String(nm||'').trim().split(/\s+/).filter(Boolean); if(!p.length) return '·'; return ((p[0][0]||'')+(p.length>1?(p[p.length-1][0]||''):'')).toUpperCase(); }
 
@@ -4920,8 +4935,10 @@ function leadRowHTML(l){
     '</div>'+
     '<div style="display:flex;align-items:center;gap:8px;margin-top:11px;flex-wrap:wrap">'+
       '<span style="font-size:11px;font-weight:800;color:#5B47C9;background:#efeafb;border-radius:8px;padding:3px 9px">'+esc(lsrc(l.source))+'</span>'+
+      (l.trialAt?'<span style="font-size:11px;font-weight:800;color:#0a4958;background:#e7f1f3;border-radius:8px;padding:3px 9px">Probetraining '+esc(leadTrialLabel(l.trialAt))+'</span>':'')+
       '<span style="font-size:11.5px;color:#a9b1b6;font-weight:700">'+esc(rel(l.createdAt))+'</span>'+
       (busy?'<span class="spin" style="width:14px;height:14px;border-width:2px"></span>':'')+
+      (l.hasPhone?'<button class="miniact" data-lconv="'+esc(l.id)+'" style="margin-left:auto;padding:6px 12px;border:1.5px solid #dce3e4;background:#fff;color:'+TEAL+';border-radius:100px;font-size:12px;font-weight:800;cursor:pointer">Gespräch öffnen</button>':'')+
     '</div>'+
     '<div style="height:1px;background:#eef2f3;margin:13px 0 12px"></div>'+
     '<div><div style="font-size:10.5px;font-weight:800;color:#8a929a;text-transform:uppercase;letter-spacing:.5px;margin-bottom:7px">Status</div><div style="display:flex;flex-wrap:wrap;gap:6px">'+statusBtns+'</div></div>'+
@@ -4940,7 +4957,7 @@ function leadsNode(){
     return node;
   }
   var leads=S.leads||[];
-  var counts={neu:0,kontaktiert:0,gewonnen:0,verloren:0};
+  var counts={}; LEADORDER.forEach(function(k){ counts[k]=0; });
   leads.forEach(function(l){ if(counts[l.status]!=null) counts[l.status]++; else counts.neu++; });
   var total=leads.length;
   var tiles=LEADORDER.map(function(k){ var o=LEADSTAT[k];
@@ -4967,6 +4984,7 @@ function wireLeads(node){
   node.querySelectorAll('[data-lfilter]').forEach(function(b){ b.onclick=function(){ setLeadFilter(b.getAttribute('data-lfilter')); }; });
   node.querySelectorAll('[data-lstatus]').forEach(function(b){ b.onclick=function(){ leadSetStatus(b.getAttribute('data-lid'), b.getAttribute('data-lstatus')); }; });
   node.querySelectorAll('[data-laid]').forEach(function(b){ b.onclick=function(){ var id=b.getAttribute('data-laid'); leadAssign(b.getAttribute('data-lid'), id?{id:id,name:b.getAttribute('data-laname')}:{none:true}); }; });
+  node.querySelectorAll('[data-lconv]').forEach(function(b){ b.onclick=function(){ leadOpenConv(b.getAttribute('data-lconv')); }; });
 }
 
 // ---------- Aufgaben (interne To-do-Liste) ----------
@@ -10607,11 +10625,122 @@ function finnVerlaufCard(p){
   var rows=items.slice(0,25).map(function(e){ var col=e.kind==='handoff'?ORANGE:(e.kind==='action_failed'?'#b53a2c':(e.source==='webhook'?'#6b7780':TEAL)); return '<div style="display:flex;gap:12px;align-items:flex-start;padding:9px 0;border-top:1px solid #f0f3f4"><span style="margin-top:5px;width:8px;height:8px;border-radius:50%;background:'+col+';flex-shrink:0"></span><div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:700;color:#15171B">'+esc(e.title)+'</div>'+(e.detail?'<div style="font-size:11.5px;color:#6b7780;font-weight:600">'+esc(e.detail)+'</div>':'')+'</div><span style="font-size:11.5px;color:#8a929a;font-weight:600;flex-shrink:0">'+esc((e.agent?e.agent+' · ':'')+rel(e.at))+'</span></div>'; }).join('');
   return '<div style="margin-top:16px;background:#fff;border-radius:20px;box-shadow:0 14px 38px rgba(4,33,40,.09);padding:20px 24px"><div style="font-size:15px;font-weight:900;letter-spacing:-.2px;margin-bottom:4px;color:#15171B">FINN-Verlauf</div><div style="font-size:12px;color:#8a929a;font-weight:600;margin-bottom:12px">Aktionen der Agenten und Ereignisse aus Magicline – ohne Chat-Inhalte</div>'+sigHtml+rows+'</div>';
 }
+// ---------- WhatsApp-Journeys (Admin) ----------
+// Leads, Onboarding, Motivation, Comeback und Einladung per WhatsApp (lib/journeys).
+// Schalter und Vorlagen-Zuordnung; Kennzahlen ohne Personenbezug; Probelauf-Liste
+// mit Platzhalter statt Namen. Echtbetrieb/Testnummern stehen in Vercel (JOURNEYS_*).
+var JR_KPI=[['enrolled','aufgenommen'],['sent','gesendet'],['delivered','zugestellt'],['read','gelesen'],['replied','beantwortet'],['trial_booked','Probetrainings'],['trial_showed','erschienen'],['won','Verträge'],['reactivated','reaktiviert'],['optout','abgemeldet'],['dry','Probelauf'],['no_template','ohne Vorlage'],['failed','fehlgeschlagen']];
+async function loadJourneys(){
+  S.jrLoading=true; render();
+  try{ var r=await tapi('/api/team/journeys'); if(r&&r.ok){ S.jrData=r; S.jrErr=false; } else S.jrErr=true; }
+  catch(e){ S.jrErr=true; }
+  S.jrLoading=false; render();
+}
+async function jrPost(body,okMsg){
+  if(S.jrBusy) return;
+  S.jrBusy=true; S.jrMsg=''; render();
+  try{
+    var r=await tapi('/api/team/journeys',{method:'POST',body:body});
+    S.jrMsg=(r&&r.ok)?(okMsg||'Gespeichert.'):((r&&r.message)||'Das hat nicht geklappt.');
+  }catch(e){ S.jrMsg='Verbindung fehlgeschlagen.'; }
+  S.jrBusy=false;
+  loadJourneys();
+}
+function jrMonth(ym){ var m=/^(\d{4})(\d{2})$/.exec(String(ym||'')); if(!m) return ''; try{ return new Date(Number(m[1]),Number(m[2])-1,15).toLocaleDateString('de-DE',{month:'long',year:'numeric'}); }catch(e){ return m[2]+'/'+m[1]; } }
+function jrPill(on,labelOn,labelOff){ return '<span style="display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:800;border-radius:20px;padding:4px 10px;color:'+(on?'#1d7a3e':'#6b7780')+';background:'+(on?'#E7F6EC':'#eef1f2')+'"><span style="width:7px;height:7px;border-radius:50%;background:'+(on?'#46c878':'#b6bfc4')+'"></span>'+esc(on?labelOn:labelOff)+'</span>'; }
+function journeysNode(){
+  var node=el('<div class="scrl" style="flex:1;min-height:0;overflow-y:auto;padding:18px 18px 28px"></div>');
+  var d=S.jrData;
+  if(S.jrLoading&&!d){ node.innerHTML='<div style="padding:60px;text-align:center"><span class="spin"></span></div>'; return node; }
+  if(!d){ node.innerHTML='<div style="padding:40px 22px;text-align:center;font-size:14px;color:#42454b;font-weight:700">Konnte nicht geladen werden. <button data-jrretry="1" style="border:1.5px solid #d6dee0;background:#fff;border-radius:11px;font-size:13px;font-weight:800;padding:8px 14px;color:'+TEAL+';cursor:pointer;margin-left:8px">Erneut laden</button></div>'; setTimeout(function(){ var b=node.querySelector('[data-jrretry]'); if(b) b.onclick=loadJourneys; },0); return node; }
+  var m=d.mode||{}, k=(d.kpi&&d.kpi.data)||{}, c=d.counts||{};
+  var live=m.on&&m.mode==='auto';
+  var modeHtml=
+    '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px">'+jrPill(m.on,'Journeys an','Journeys aus')+jrPill(live,'Echtbetrieb','Probelauf – es wird nichts gesendet')+jrPill(!!m.provider,'WhatsApp: '+(m.provider||''),'kein WhatsApp-Anbieter')+jrPill(m.ai&&m.leadAi,'Lead-KI an','Lead-KI aus')+'</div>'+
+    pRow('Testnummern',m.testNumbers&&m.testNumbers.length?(m.testNumbers.join(', ')+' – nur diese bekommen echte Nachrichten'):'keine (Echtbetrieb gilt für alle)')+
+    pRow('Check-ins mitzählen',m.tracking?'ja':'nein')+
+    pRow('Fällig / Index / mit Nummer',deNum(c.due)+' / '+deNum(c.index)+' / '+deNum(c.members))+
+    pRow('Einladungen pro Tag (max.)',deNum(m.invitePerDay))+
+    '<div style="font-size:11.5px;color:#6b7780;font-weight:600;margin-top:10px;line-height:1.5">Umschalten in Vercel: <b>JOURNEYS=1</b> (an), <b>JOURNEYS_MODE=auto</b> (echt senden), <b>JOURNEYS_TEST_NUMBERS</b> (Pilot). Ohne JOURNEYS_MODE=auto läuft alles im Probelauf.</div>';
+  var jr=(d.journeys||[]).map(function(j){
+    var kk=k[j.key]||{};
+    var nums=[['gesendet',kk.sent||0],['beantwortet',kk.replied||0]].concat(j.key==='lead'?[['Probetrainings',kk.trial_booked||0],['Verträge',kk.won||0]]:(j.key==='comeback'?[['reaktiviert',kk.reactivated||0]]:(j.key==='invite'?[['Zusagen',kk.optin||0]]:[])));
+    return '<div style="padding:12px 0;border-top:1px solid #f0f3f4">'+
+      '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><div style="font-size:14px;font-weight:900;color:#15171B;flex:1;min-width:160px">'+esc(j.title)+'</div>'+
+      (j.envOff?'<span style="font-size:11px;font-weight:800;color:#b53a2c">in Vercel abgeschaltet</span>':'')+
+      '<button data-jrtoggle="'+esc(j.key)+'" data-jron="'+(j.adminOn?'0':'1')+'" '+(S.jrBusy?'disabled':'')+' style="border:1.5px solid '+(j.adminOn?'#bfe6cd':'#dce3e4')+';background:'+(j.adminOn?'#E7F6EC':'#fff')+';color:'+(j.adminOn?'#1d7a3e':'#6b7780')+';border-radius:100px;font-size:12px;font-weight:800;padding:7px 14px;cursor:pointer">'+(j.adminOn?'An':'Aus')+'</button></div>'+
+      '<div style="font-size:12px;color:#6b7780;font-weight:600;margin:4px 0 8px;line-height:1.45">'+esc(j.description)+'</div>'+
+      '<div style="display:flex;gap:14px;flex-wrap:wrap">'+nums.map(function(n){ return '<span style="font-size:12px;color:#42454b;font-weight:700"><b style="font-size:15px;color:'+TEAL+'">'+deNum(n[1])+'</b> '+esc(n[0])+'</span>'; }).join('')+'</div>'+
+    '</div>';
+  }).join('');
+  var all=k.all||{};
+  var kpiTiles='<div style="display:flex;gap:9px;flex-wrap:wrap">'+JR_KPI.filter(function(x){ return ['enrolled','sent','delivered','read','replied','optout','no_template','failed','dry'].indexOf(x[0])>=0; }).map(function(x){ var n=0; Object.keys(k).forEach(function(j){ if(j!=='all') n+=(k[j][x[0]]||0); }); if(x[0]==='optout') n=all.optout||0; return finnTile(x[1],deNum(n),x[0]==='failed'||x[0]==='optout'?'#b53a2c':(x[0]==='no_template'?'#b5631f':TEAL)); }).join('')+'</div>';
+  var tpls=(d.templates||[]).map(function(t){
+    var cat=t.category==='UTILITY'?'Service':'Marketing';
+    return '<div style="padding:12px 0;border-top:1px solid #f0f3f4">'+
+      '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span style="font-size:12.5px;font-weight:800;color:#15171B;font-family:ui-monospace,monospace">'+esc(t.key)+'</span>'+
+      '<span style="font-size:10.5px;font-weight:800;color:'+(t.category==='UTILITY'?'#0a4958':'#8a5a00')+';background:'+(t.category==='UTILITY'?'#e7f1f3':'#fbf3de')+';border-radius:7px;padding:2px 7px">'+esc(t.category+' · '+cat)+'</span>'+
+      (t.ready?'<span style="font-size:10.5px;font-weight:800;color:#1d7a3e;background:#E7F6EC;border-radius:7px;padding:2px 7px">zugeordnet</span>':'<span style="font-size:10.5px;font-weight:800;color:#b5631f;background:#FBF1E6;border-radius:7px;padding:2px 7px">fehlt</span>')+'</div>'+
+      '<div style="font-size:12.5px;color:#42454b;font-weight:600;margin:6px 0 4px;line-height:1.45;white-space:pre-wrap">'+esc(t.text)+'</div>'+
+      (t.buttons&&t.buttons.length?'<div style="font-size:11.5px;color:#6b7780;font-weight:700;margin-bottom:4px">Knöpfe: '+esc(t.buttons.join(' · '))+'</div>':'')+
+      '<div style="font-size:11.5px;color:#8a929a;font-weight:600;margin-bottom:8px">Variablen: '+esc((t.vars||[]).map(function(v,i){ return '{{'+(i+1)+'}} '+v; }).join(', ')||'—')+'</div>'+
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><input data-jrsid="'+esc(t.key)+'" placeholder="Twilio Content-SID (HX…)" value="'+esc((S.jrSid&&S.jrSid[t.key]!=null)?S.jrSid[t.key]:(t.sid||''))+'" style="flex:1;min-width:220px;height:38px;border:1.5px solid #d6dee0;border-radius:10px;padding:0 11px;font-size:12.5px;font-family:ui-monospace,monospace">'+
+      '<button data-jrsave="'+esc(t.key)+'" '+(S.jrBusy?'disabled':'')+' style="height:38px;border:none;border-radius:10px;background:'+TEAL+';color:#fff;font-size:12.5px;font-weight:800;padding:0 14px;cursor:pointer">Speichern</button>'+
+      '<button data-jrtest="'+esc(t.key)+'" '+(S.jrBusy?'disabled':'')+' style="height:38px;border:1.5px solid #d6dee0;background:#fff;color:'+TEAL+';border-radius:10px;font-size:12.5px;font-weight:800;padding:0 12px;cursor:pointer">Test senden</button></div>'+
+    '</div>';
+  }).join('');
+  var dry=(d.dry||[]);
+  var dryHtml=dry.length?dry.map(function(x){ return '<div style="padding:9px 0;border-top:1px solid #f0f3f4"><div style="display:flex;gap:10px;align-items:center;font-size:12px;flex-wrap:wrap"><span style="font-weight:800;color:'+TEAL+'">'+esc(x.j)+' · '+esc(x.s)+'</span><span style="color:#6b7780;font-weight:700">'+esc(x.action?'Aktion':((x.via==='template'?'Vorlage':'Freitext')+' · '+(x.cat||'')))+'</span><span style="margin-left:auto;color:#8a929a;font-weight:600">'+esc(rel(x.at))+'</span></div>'+(x.text?'<div style="font-size:12.5px;color:#42454b;font-weight:600;margin-top:4px;line-height:1.45">'+esc(x.text)+'</div>':'')+'</div>'; }).join(''):'<div style="font-size:12.5px;color:#a3abb0;font-weight:600">Noch nichts im Probelauf. Mit JOURNEYS=1 erscheinen hier die Nachrichten, die gesendet würden.</div>';
+  node.innerHTML='<div style="max-width:1180px">'+
+    (S.jrMsg?'<div style="margin-bottom:14px;font-size:13px;font-weight:700;color:'+(/nicht|fehl/i.test(S.jrMsg)?'#b53a2c':'#1d7a3e')+'">'+esc(S.jrMsg)+'</div>':'')+
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:18px;align-items:start">'+
+      finnCard('Betrieb','Schalter kommen aus Vercel – ohne Deployment änderbar',modeHtml)+
+      finnCard('Journeys','An/aus je Ablauf · Zahlen dieses Monats',jr)+
+      finnCard('Kennzahlen '+jrMonth((d.kpi&&d.kpi.month)||''),'Alle Journeys zusammen · ohne Personenbezug',kpiTiles)+
+      finnCard('Probelauf','Was gesendet würde – Vorname als Platzhalter',dryHtml)+
+    '</div>'+
+    '<div style="margin-top:18px">'+finnCard('Vorlagen für WhatsApp','Genau so in Twilio (Content Template Builder) anlegen und von Meta freigeben lassen. Danach die Content-SID hier eintragen. Ohne Vorlage und bei geschlossenem 24-h-Fenster wird der Schritt übersprungen.',
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:6px"><span style="font-size:12px;color:#6b7780;font-weight:700">Testnummer:</span><input data-jrtestphone placeholder="+49 151 …" value="'+esc(S.jrTestPhone||'')+'" style="height:36px;border:1.5px solid #d6dee0;border-radius:10px;padding:0 11px;font-size:13px;min-width:200px"><span style="font-size:11.5px;color:#8a929a;font-weight:600">muss in JOURNEYS_TEST_NUMBERS stehen</span></div>'+tpls)+'</div>'+
+  '</div>';
+  setTimeout(function(){
+    node.querySelectorAll('[data-jrtoggle]').forEach(function(b){ b.onclick=function(){ jrPost({action:'journey',key:b.getAttribute('data-jrtoggle'),on:b.getAttribute('data-jron')==='1'},'Journey umgeschaltet.'); }; });
+    node.querySelectorAll('[data-jrsid]').forEach(function(i){ i.oninput=function(){ S.jrSid=S.jrSid||{}; S.jrSid[i.getAttribute('data-jrsid')]=i.value.trim(); }; });
+    node.querySelectorAll('[data-jrsave]').forEach(function(b){ b.onclick=function(){ var key=b.getAttribute('data-jrsave'); var v=(S.jrSid&&S.jrSid[key]!=null)?S.jrSid[key]:((node.querySelector('[data-jrsid="'+key+'"]')||{}).value||''); jrPost({action:'template',key:key,sid:v||null},'Vorlage gespeichert.'); }; });
+    var tp=node.querySelector('[data-jrtestphone]'); if(tp) tp.oninput=function(){ S.jrTestPhone=tp.value; };
+    node.querySelectorAll('[data-jrtest]').forEach(function(b){ b.onclick=function(){ if(!S.jrTestPhone){ S.jrMsg='Bitte zuerst eine Testnummer eintragen.'; render(); return; } jrPost({action:'test',tpl:b.getAttribute('data-jrtest'),phone:S.jrTestPhone},'Test gesendet.'); }; });
+  },0);
+  return node;
+}
+// Journey-Status im Mitgliedsprofil (Reiter Training): Stufe, Besuche, WhatsApp-Einwilligung,
+// laufende Abläufe und letzte Sendungen – nur Metadaten, keine Nachrichtentexte.
+async function loadMemberJourneys(id){
+  S.memberJr=null;
+  try{ var r=await tapi('/api/team/journeys?view=member&customerId='+encodeURIComponent(id)); if(r&&r.ok&&S.profile&&String(S.profile.id)===String(id)){ S.memberJr=r; render(); } }catch(e){}
+}
+var JR_STEP={ welcome:'Willkommen', induction:'Einführung erinnern', first_visit:'Erster Besuch', week1:'Woche 1', week2:'Woche 2', week3:'Woche 3', q30:'Tag 30', q60:'Tag 60', q90:'Tag 90', below_goal:'Unter Ziel', c10:'10 Tage weg', c21:'21 Tage weg', team:'Anruf (Team)', invite:'Einladung', nudge_d1:'Nachfassen', nudge_d4:'Letzter Kontakt', trial_24h:'Erinnerung 24 h', trial_2h:'Erinnerung 2 h', after:'Nach dem Probetraining', offer_d2:'Angebot', last_d6:'Letzter Kontakt', lost:'verloren' };
+function journeyStatusCard(p){
+  var d=S.memberJr; if(!d) return '';
+  var m=d.metrics||{}, w=d.whatsapp||{};
+  var stageCol=/inaktiv|gekuendigt/.test(d.stage)?'#b53a2c':(d.stage==='rutscht_ab'?'#b5631f':(d.stage==='auf_kurs'?'#1d7a3e':TEAL));
+  var runs=(d.runs||[]).filter(function(r){ return !r.exit; }).map(function(r){
+    var steps=r.steps.map(function(s){ var lbl=JR_STEP[s.id]||s.id.replace(/^ms_/,'').replace(/^streak_/,'Serie '); var st=s.done?(/^(sent|dry)$/.test(s.done.r)?'✓':'–'):(s.due&&s.due<Date.now()+86400000?'bald':''); return '<span style="font-size:11px;font-weight:800;color:'+(s.done&&/^(sent|dry)$/.test(s.done.r)?'#1d7a3e':(s.done?'#8a929a':'#42454b'))+';background:#f4f7f7;border-radius:7px;padding:3px 7px">'+esc(lbl)+(st?' '+esc(st):'')+'</span>'; }).join(' ');
+    return '<div style="padding:9px 0;border-top:1px solid #f0f3f4"><div style="font-size:12.5px;font-weight:800;color:#15171B;margin-bottom:6px">'+esc(r.title)+' <span style="font-size:11px;color:#8a929a;font-weight:600">seit '+esc(rel(r.startedAt))+'</span></div><div style="display:flex;flex-wrap:wrap;gap:5px">'+steps+'</div></div>';
+  }).join('');
+  var sent=(d.sent||[]).slice(0,5).map(function(x){ return '<div style="display:flex;gap:10px;font-size:12px;padding:5px 0"><span style="font-weight:800;color:'+TEAL+'">'+esc(x.j)+'</span><span style="color:#42454b;font-weight:600">'+esc(JR_STEP[x.s]||x.s)+'</span><span style="color:#8a929a;font-weight:600">'+esc(x.via==='dry'?'Probelauf':(x.via==='template'?'Vorlage':'Freitext'))+'</span><span style="margin-left:auto;color:#8a929a;font-weight:600">'+esc(rel(x.at))+'</span></div>'; }).join('');
+  return '<div style="margin-top:16px;background:#fff;border-radius:20px;box-shadow:0 14px 38px rgba(4,33,40,.09);padding:20px 24px">'+
+    '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px"><div style="font-size:15px;font-weight:900;letter-spacing:-.2px;color:#15171B;flex:1">Journey-Status</div><span style="font-size:11.5px;font-weight:800;color:'+stageCol+';background:#f4f7f7;border-radius:20px;padding:4px 10px">'+esc(d.stageLabel||d.stage)+'</span></div>'+
+    '<div style="display:flex;gap:9px;flex-wrap:wrap;margin-bottom:10px">'+finnTile('Besuche 7 Tage',m.v7||0)+finnTile('Besuche 28 Tage',m.v28||0)+finnTile('Ziel / Woche',m.goal||'–')+finnTile('Tage seit Besuch',m.daysSince==null?'–':m.daysSince,(m.daysSince>=14?'#b53a2c':TEAL))+finnTile('Wochen in Folge',m.weekStreak||0)+'</div>'+
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px">'+jrPill(w.connected,'WhatsApp verbunden','keine WhatsApp-Nummer')+jrPill(w.service,'Terminerinnerungen','keine Terminerinnerungen')+jrPill(w.marketing,'Motivation & Tipps','keine Motivation/Tipps')+(w.suppressed?'<span style="font-size:11.5px;font-weight:800;color:#b53a2c;background:#FCEBEA;border-radius:20px;padding:4px 10px">STOP</span>':'')+'</div>'+
+    (runs||'<div style="font-size:12.5px;color:#a3abb0;font-weight:600;padding-top:6px">Keine laufenden Abläufe.</div>')+
+    (sent?'<div style="margin-top:8px;border-top:1px solid #f0f3f4;padding-top:6px"><div style="font-size:11px;font-weight:800;color:#8a929a;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Zuletzt gesendet</div>'+sent+'</div>':'')+
+    (m.tracked?'':'<div style="font-size:11.5px;color:#8a929a;font-weight:600;margin-top:8px">Besuchszahlen werden ab Start der Journeys bzw. nach dem Nachlauf vollständig gezählt.</div>')+
+  '</div>';
+}
 function render(){
   if(!S.token){ renderLogin(); return; }
   if(!canSee(S.screen)) S.screen='dash';   // kein Admin-Bereich für Angestellte (Sicherheitsnetz)
-  var titles={dash:'Übersicht',inbox:'Posteingang',members:'Mitglieder',newmembers:'Neue Mitglieder',appts:'Termine',trial:'Probetraining',help:'Hilfe-Artikel',stats:'Statistiken',msg:'Nachrichten',leads:'Leads',tester:'App-Tester',kassenbuch:'Kassenbuch',feedback:'App-Feedback',todo:'Aufgaben',schicht:'Schichtplan',assist:'Assistent',wb:'Rückholung',community:'Community',shoporders:'Bestellungen',finn:'FINN & Magicline'};
-  var subs={dash:'Dein Studio auf einen Blick',inbox:'Alle Vorgänge & Anfragen',members:'Mitgliederverwaltung',newmembers:'Zuletzt beigetreten – automatisch aus Magicline',appts:'Anfragen & Buchungen',trial:'Schnell ein Probetraining buchen',help:'Wissensdatenbank verwalten',stats:'Auswertungen & Trends',msg:'Rundnachricht & Direktnachricht',leads:'Interessenten-Pipeline',tester:'Anmeldungen für den geschlossenen App-Test',kassenbuch:'Barkasse führen, prüfen & Monate abschließen',feedback:'Anonymes Kunden-Feedback aus der App',todo:'Interne Aufgaben fürs Team',schicht:'Dienstplan, Tausch & Verfügbarkeiten',assist:'Sag mir, was zu tun ist – ich bereite es vor, du bestätigst',wb:'Angebots-Rahmen für die KI-Rückholung',community:'Trainingspartner moderieren',shoporders:'Bestellungen aus dem Online-Shop',finn:'Agenten, Scopes, Webhooks und Prüfpfad'};
+  var titles={dash:'Übersicht',inbox:'Posteingang',members:'Mitglieder',newmembers:'Neue Mitglieder',appts:'Termine',trial:'Probetraining',help:'Hilfe-Artikel',stats:'Statistiken',msg:'Nachrichten',leads:'Leads',tester:'App-Tester',kassenbuch:'Kassenbuch',feedback:'App-Feedback',todo:'Aufgaben',schicht:'Schichtplan',assist:'Assistent',wb:'Rückholung',community:'Community',shoporders:'Bestellungen',finn:'FINN & Magicline',journeys:'WhatsApp-Journeys'};
+  var subs={dash:'Dein Studio auf einen Blick',inbox:'Alle Vorgänge & Anfragen',members:'Mitgliederverwaltung',newmembers:'Zuletzt beigetreten – automatisch aus Magicline',appts:'Anfragen & Buchungen',trial:'Schnell ein Probetraining buchen',help:'Wissensdatenbank verwalten',stats:'Auswertungen & Trends',msg:'Rundnachricht & Direktnachricht',leads:'Interessenten-Pipeline',tester:'Anmeldungen für den geschlossenen App-Test',kassenbuch:'Barkasse führen, prüfen & Monate abschließen',feedback:'Anonymes Kunden-Feedback aus der App',todo:'Interne Aufgaben fürs Team',schicht:'Dienstplan, Tausch & Verfügbarkeiten',assist:'Sag mir, was zu tun ist – ich bereite es vor, du bestätigst',wb:'Angebots-Rahmen für die KI-Rückholung',community:'Trainingspartner moderieren',shoporders:'Bestellungen aus dem Online-Shop',finn:'Agenten, Scopes, Webhooks und Prüfpfad',journeys:'Leads, Onboarding, Motivation und Comeback per WhatsApp'};
   var content;
   if(S.screen==='inbox') content=inboxNode();
   else if(S.screen==='dash') content=dashNode();
@@ -10633,6 +10762,7 @@ function render(){
   else if(S.screen==='community') content=communityNode();
   else if(S.screen==='shoporders') content=shopOrdersNode();
   else if(S.screen==='finn') content=finnNode();
+  else if(S.screen==='journeys') content=journeysNode();
   else content=placeholderNode(titles[S.screen]||'');
   // Der Schichtplan bringt auf dem Schreibtisch seine eigene Kopfzeile mit; ohne
   // diese Marke staenden zwei uebereinander. Hier gesetzt UND geloescht, weil
@@ -10645,7 +10775,7 @@ function render(){
 // Profil zu /team/mitglieder/<interne-id>. So sind Ansichten teilbar/bookmarkbar
 // und Reload/Zurück führen wieder dorthin. Greift nur, wenn die Seite wirklich
 // unter /team ausgeliefert wird (Guard) – beim direkten Öffnen der Datei bleibt die URL unberührt.
-var SCREEN2SLUG={ dash:'', inbox:'posteingang', members:'mitglieder', newmembers:'neue-mitglieder', appts:'termine', trial:'probetraining', help:'hilfe', stats:'statistiken', msg:'nachrichten', leads:'leads', tester:'tester', kassenbuch:'kassenbuch', feedback:'feedback', todo:'aufgaben', schicht:'schichtplan', assist:'assistent', wb:'rueckholung', community:'community', finn:'finn' };
+var SCREEN2SLUG={ dash:'', inbox:'posteingang', members:'mitglieder', newmembers:'neue-mitglieder', appts:'termine', trial:'probetraining', help:'hilfe', stats:'statistiken', msg:'nachrichten', leads:'leads', tester:'tester', kassenbuch:'kassenbuch', feedback:'feedback', todo:'aufgaben', schicht:'schichtplan', assist:'assistent', wb:'rueckholung', community:'community', finn:'finn', journeys:'journeys' };
 var SLUG2SCREEN={}; Object.keys(SCREEN2SLUG).forEach(function(k){ if(SCREEN2SLUG[k]) SLUG2SCREEN[SCREEN2SLUG[k]]=k; });
 var urlRestoring=false;   // true während Boot/Popstate/Login-Restore -> replaceState statt pushState
 function underTeam(){ try{ return /^\/team(\/|$)/.test(location.pathname||''); }catch(e){ return false; } }
@@ -10705,6 +10835,7 @@ function goScreen(k){
   if(k==='wb'){ if(!S.wbLoaded){ loadWb(); return; } }
   if(k==='community'){ if(!S.commLoaded){ loadCommunity(); return; } }
   if(k==='finn'){ loadFinn(); return; }
+  if(k==='journeys'){ loadJourneys(); return; }
   render();
 }
 
