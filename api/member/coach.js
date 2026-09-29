@@ -192,7 +192,7 @@ module.exports = async function handler(req, res) {
       // sonst sieht ein Rückfall im Log aus wie ein normaler Coach-Aufruf.
       try { console.log('[finn]', JSON.stringify({ ch: 'web', path: 'fallback_coach', err: fbErr || (r && r.error) || 'unknown' })); } catch (e) {}
     }
-    if (question.length < 2) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'empty' })); }
+    if (!question) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'empty' })); }
     if (!AI.hasAI) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'no_ai', message: 'FINN ist gerade nicht verfügbar. Magst du es direkt unserem Team schreiben?' })); }
     // Live-Daten (Vertrag, Termine, Besuche, Beitragskonto) für konkrete Antworten.
     let det = { text: '', rateName: null };

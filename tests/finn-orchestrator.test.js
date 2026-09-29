@@ -144,6 +144,35 @@ const member = () => ({ actor: { kind: 'member', id: '1001' }, channel: 'web', s
   const turnAudit = await Audit.list({ customerId: '1001' });
   ok('11a. Reine Antworten stehen als „turn" im Prüfpfad', turnAudit.some((a) => a.tool === 'turn' && a.status === 'ok' && a.agent));
 
+  // ── 12. Kurze Antworten auf eine Rückfrage (WhatsApp ohne Buttons: „1) … 2) …") ──
+  const wa = () => ({ actor: { kind: 'member', id: '1001' }, channel: 'whatsapp', securityScope: 'member' });
+  calls.length = 0;
+  script = [{ content: [X('Worum geht es dir? [[antworten: Termin buchen | Öffnungszeiten | Vertrag]]')] }];
+  const q = await Orc.handle(wa(), { message: 'Ich hätte eine Frage', conversationId: 'wa:c12' });
+  ok('12. Rückfrage mit Optionen', q.ok && q.choicesExplicit && q.choices.length === 3, JSON.stringify(q.choices));
+  script = [{ content: [X('Unser Studio hat Mo–Fr 6–23 Uhr geöffnet.')] }];
+  const a2 = await Orc.handle(wa(), { message: '2', conversationId: 'wa:c12' });
+  const sent = calls[calls.length - 1] && calls[calls.length - 1].last;
+  const sentText = sent && (typeof sent.content === 'string' ? sent.content : JSON.stringify(sent.content));
+  ok('12a. „2" wird zur zweiten Option und beantwortet (nicht „leer")', a2.ok && !a2.error && /Öffnungszeiten/.test(sentText || ''), JSON.stringify({ err: a2.error, sentText: sentText }));
+  script = [{ content: [X('Alles klar.')] }];
+  const one = await Orc.handle(wa(), { message: 'j', conversationId: 'wa:c12b' });
+  ok('12b. Ein einzelnes Zeichen ist keine leere Nachricht', one.ok && one.error !== 'empty');
+  const dot = await Orc.handle(wa(), { message: ' . ', conversationId: 'wa:c12c' });
+  ok('12c. Nur Satzzeichen bleibt leer', dot.ok === false && dot.error === 'empty');
+  // Ohne gemerkte Optionen: aus der letzten FINN-Nachricht im Verlauf
+  ok('12d. Nummer aus dem Verlauf („1) … 2) …")', Orc.pickChoice('1', {}, [{ role: 'user', text: 'x' }, { role: 'assistant', text: 'Welche Zeit?\n\n1) Morgen 10 Uhr\n2) Freitag 18 Uhr' }]) === 'Morgen 10 Uhr'
+    && Orc.pickChoice('3', {}, [{ role: 'assistant', text: '1) A\n2) B' }]) === null && Orc.pickChoice('12', { choices: ['A'] }, []) === null);
+  // Bestätigung mit „1" (Text-Fallback „1) Ja, bestätigen")
+  script = [{ content: [T('book_appointment', { typeId: 't-stoff', start: '2026-10-20T10:00:00' }, 'tu12')] }, { content: [X('Soll ich das buchen?')] }];
+  const b12 = await Orc.handle(wa(), { message: 'Buch mir bitte die Stoffwechselanalyse', conversationId: 'wa:c12e' });
+  if (b12.confirm) {
+    const y12 = await Orc.handle(wa(), { message: '1', conversationId: 'wa:c12e' });
+    ok('12e. „1" bestätigt einen offenen Vorschlag', y12.error !== 'empty' && (y12.done || y12.ok !== undefined), JSON.stringify({ err: y12.error, done: y12.done }));
+  } else {
+    ok('12e. (übersprungen: kein Vorschlag im Mock)', true);
+  }
+
   Mock.reset();
   console.log(pass ? 'FINN-ORCHESTRATOR PASS' : 'FINN-ORCHESTRATOR FAIL');
   process.exit(pass ? 0 : 1);
