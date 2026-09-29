@@ -57,7 +57,7 @@ async function post(body) { const res = { statusCode: 0, setHeader() {}, body: n
   process.env.JOURNEYS = '1';
   r = await post({ id: 'e2', type: 'CONTRACT_CREATED', entityId: 3003, timestamp: '2026-10-06T10:00:00Z' });
   const st = await Store.load('3003');
-  ok('3. Onboarding + Motivation eingeschrieben', st && st.runs.onboarding && st.runs.habit && st.facts.joinAt === Date.parse('2026-10-06T10:00:00Z'));
+  ok('3. Onboarding eingeschrieben (Motivation erst mit Einwilligung)', st && st.runs.onboarding && !st.runs.habit && st.facts.joinAt === Date.parse('2026-10-06T10:00:00Z'));
   ok('3a. ab Vertrag wird vollständig mitgezählt', !!(await Eng.read('3003')).track);
   ok('3b. fällig eingeplant', R.Z.get('jr:due') && R.Z.get('jr:due').has('3003'));
 

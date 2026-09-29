@@ -16,6 +16,10 @@ Datenschutzkontakt: **ergänzen**
 | FINN über Bedrock | aktuelle Anfrage plus erforderlicher Kontext | Persönliche Trainings-/Ernährungshilfe | Art. 6 Abs. 1 a/b; Art. 9 Abs. 2 a bei Gesundheitsdaten | Vercel, AWS Bedrock | Bedrock: keine Kontodatenaufbewahrung; App nur soweit funktional nötig |
 | Einwilligungsnachweis | Zweck, Text-Hash, Version, Zeitpunkt, Status | Rechenschafts- und Nachweispflicht | Art. 6 Abs. 1 c, Art. 7 Abs. 1 DSGVO | Vercel, KV-Anbieter | 6 Jahre nach Ereignis; Frist rechtlich bestätigen |
 | Community/Support | Anzeigename, Verbindungen, Chats, Supportnachrichten | Freiwillige Vernetzung/Support | Art. 6 Abs. 1 a/b/f je Vorgang | Vercel, KV-Anbieter, Fit-Inn-Team | Community bei Deaktivierung; Support nach Vorgangs-/Nachweisfrist |
+| WhatsApp-Journeys: Terminerinnerungen (ab 29.09.2026, `lib/journeys`) | Rufnummer, Vorname, gebuchte Termine (Probetraining, Einführung) | Erinnerung an gebuchte Termine, Hinweise zur Mitgliedschaft | Art. 6 Abs. 1 a (Einwilligung `wa_service`) bzw. b | Twilio (BSP), WhatsApp Ireland/Meta, Vercel, KV-Anbieter | Zustand 400 Tage nach letzter Änderung; Einwilligungsnachweis 3 Jahre; Selbstlöschung in der App |
+| WhatsApp-Journeys: Motivation, Tipps, Angebote | Rufnummer, Vorname, Anzahl/Häufigkeit der Check-ins (Tage, Wochen), Wochenziel, Einstufung (z. B. „rutscht ab") | Mitgliederbindung, Werbung per Messenger (UWG § 7) | Art. 6 Abs. 1 a (Einwilligung `wa_marketing`, Double-Opt-in per START-Code bzw. „Ja, gern") | wie oben | Besuchstage 70 Tage, Wochenwerte 30 Wochen; Rest wie oben |
+| WhatsApp-Lead-Agent (Probetraining) | Rufnummer, Name, Geburtsdatum (Magicline-Pflicht), Ziel/Erfahrung/Tageszeit (feste Werte), Nachrichten | Anfrage beantworten, Probetraining buchen | Art. 6 Abs. 1 b (vorvertraglich); Erinnerungen/Tipps nach Einwilligung | Twilio, Meta, AWS Bedrock (EU, keine Aufbewahrung), Magicline, Vercel | Lead 1 Jahr; Gesprächsverlauf 12 h im KI-Gedächtnis; Vorgang nach Postfach-Frist |
+| STOP-Sperrliste | HMAC der Rufnummer, Zeitpunkt | Nachweis des Widerspruchs, Sperre künftiger Nachrichten | Art. 6 Abs. 1 c/f | Vercel, KV-Anbieter | 3 Jahre |
 
 ## Technische und organisatorische Maßnahmen (Art. 32)
 
@@ -27,6 +31,7 @@ Datenschutzkontakt: **ergänzen**
 - **Verfügbarkeit:** Anbieter-Backups/Notfallverfahren vertraglich prüfen; Ausfall führt zu sicherer Fehlermeldung statt unkontrolliertem Anbieterwechsel.
 - **Kontrolle:** Test-, Lint- und Secret-Scan; CloudTrail für AWS-Aufrufe; regelmäßige Rechte-, Dienstleister- und Löschprüfung.
 - **Datenschutz durch Technikgestaltung:** Datenminimierung, modulbezogene Einwilligungen, Opt-in statt vorausgewählter Zustimmung, Export und Löschung in der App.
+- **WhatsApp-Journeys:** getrennte Einwilligungen je Nummer (Service/Motivation) mit Text-Hash und Version; STOP vor jeder KI; Ruhezeiten, Kappen (höchstens 2 Motivationsnachrichten pro Woche), Sperren bei Kündigung/offenem Vorgang; Probelauf als Standard; Kennzahlen ohne Kennungen; keine Nachrichteninhalte in Logs; keine Gesundheitsdaten in Vorlagen oder Prompts.
 
 ## Incident-Ablauf
 

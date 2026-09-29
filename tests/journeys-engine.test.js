@@ -161,7 +161,7 @@ function lastOut() { return out[out.length - 1]; }
   const JOIN = berlin(2026, 10, 6, 11, 0);
   await Hooks.onContract({ cid: '5001', type: 'CONTRACT_CREATED' }, { timestamp: new Date(JOIN).toISOString() });
   let ob = await Store.load('5001');
-  ok('C1. Vertrag: Onboarding + Motivation eingeschrieben, Profil folgt', ob.runs.onboarding && ob.runs.habit && ob.facts.needsProfile && ob.facts.joinAt === JOIN);
+  ok('C1. Vertrag: Onboarding eingeschrieben (Motivation erst mit Einwilligung), Profil folgt', ob.runs.onboarding && !ob.runs.habit && ob.facts.needsProfile && ob.facts.joinAt === JOIN);
   await Tick.enrich(ob, { ml: 1 }); await Store.save(ob);
   ob = await Store.load('5001');
   ok('C2. Profil aus Magicline: Vorname + Mobilnummer', ob.firstName === 'Nina' && ob.phone === '491515001000' && (await Store.forPhone('0151 5001000')) === '5001');
@@ -177,7 +177,8 @@ function lastOut() { return out[out.length - 1]; }
   ok('C4. Einführungstraining gebucht erkannt', !!ob.facts.inductionBookedAt);
   const n3 = out.length;
   await stateAfter('5001', JOIN + 3 * DAY + 5 * MIN);
-  ok('C5. Tag 3 mit gebuchter Einführung: keine Erinnerung', out.length === n3);
+  const since3 = out.slice(n3).map((x) => x.sid);
+  ok('C5. Einwilligung kam später: Willkommen wird nachgeholt, KEINE Einführungs-Erinnerung (gebucht)', since3.indexOf('HXw') >= 0 && since3.indexOf('HXi') < 0, JSON.stringify(since3));
   const V1 = JOIN + 2 * DAY + 2 * HOUR;
   await Hooks.onCheckin({ cid: '5001', type: 'CUSTOMER_CHECKIN' }, { timestamp: new Date(V1).toISOString() });
   ob = await Store.load('5001');

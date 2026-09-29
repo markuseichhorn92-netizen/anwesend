@@ -10,7 +10,9 @@ Keine Zeile gilt allein durch dieses Dokument als vertraglich abgeschlossen. Ver
 | Magicline / Sport Alliance / EGYM | Mitglieder- und Vertragsverwaltung | Stamm-, Vertrags-, Zahlungs-, Check-in-Daten | Vertragsrolle, AVV, Exporte/Löschung, Unterauftragnehmer | offen zu belegen |
 | Google | reCAPTCHA/ggf. Karten oder OAuth | Geräte-/Netzwerk- und Sicherheitsdaten | Rechtsgrundlage, Consent/CMP soweit nötig, Transferinformation | Nutzung prüfen |
 | Apple/Google Push | Pushzustellung | Push-Token, Nachricht-Metadaten | minimale Inhalte, keine Gesundheitsdaten im Pushtext, Anbieterbedingungen | Nutzung prüfen |
-| Resend/Twilio oder sonstige Kommunikationsanbieter | E-Mail/SMS, falls aktiv | Kontakt- und Zustelldaten | AVV, Region, Löschung, Transfer | nur bei Aktivierung aufnehmen |
+| Resend | E-Mail-Versand | Kontakt- und Zustelldaten | AVV, Region, Löschung, Transfer | offen zu belegen |
+| Twilio Ireland Ltd. (Business Solution Provider) | WhatsApp-Versand und -Empfang (Team-Antworten, WhatsApp-KI, FINN Journeys, Lead-Agent) | Rufnummer, Vorname, Nachrichteninhalte, Zustellstatus | AVV/DPA, Unterauftragnehmer (Meta), Transfer USA (DPF/SCC), Speicherdauer der Nachrichten bei Twilio | offen zu belegen – vor `JOURNEYS_MODE=auto` |
+| WhatsApp Ireland Ltd. / Meta | Messenger-Plattform (über Twilio); Vorlagen-Freigabe | Rufnummer, Nachrichten, Metadaten | Business-Bedingungen, Datenverarbeitungsbedingungen, Transfer USA; KI-Richtlinie 2026 (nur zweckgebundene Bots) | Bedingungen ablegen |
 | Open Food Facts | Produktdatenabfrage | Barcode/Produktanfrage | keine Mitglieds-ID mitsenden; Datenschutzinformation | technisch prüfen |
 | Up Gesundheit GmbH (Upfit), Hamburg, HRB 197956 | Partnerportal Ernährung (`fit-inn-trier.upfit.io`); **kein** Auftragsverarbeiter – die App verlinkt nur, es fließen keine Daten in beide Richtungen | keine (Mitglied legt bei Upfit ein eigenes Konto an; Upfit ist dafür allein verantwortlich) | Partnervertrag: Rolle bestätigen (eigenständig Verantwortlicher), Nennung in der App-Datenschutzerklärung (erledigt, Karte „Partner Upfit"), keine Weitergabe von Mitgliederlisten an Upfit | Vertrag ablegen; Rolle bestätigen |
 

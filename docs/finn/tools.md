@@ -43,7 +43,10 @@ Kein Werkzeug baut eine eigene URL. Ergebnisformat überall:
 | update_address | MEDIUM | CUSTOMER_SELF_SERVICE_WRITE | `members.writeAddress` |
 | set_comm_prefs | MEDIUM | COMMUNICATION_PREFERENCES_WRITE | `mlComm.setCommPrefs` |
 | checkin_now | MEDIUM | CHECKIN_WRITE | `members.checkinCustomer` |
-| create_lead | MEDIUM | LEAD_WRITE | `members.createLead` |
+| create_lead | MEDIUM | LEAD_WRITE | `members.createLead` (+ Lead-Pipeline, Nummer → Kunde) |
+| get_trial_slots | LOW | – (Connect-API) | `lib/trialBooking.freeSlots` – nur Kanal WhatsApp/Team |
+| book_trial | MEDIUM | – (Connect-API) | `lib/journeys/leadtools.bookTrial` – nur WhatsApp; Rufnummer aus dem Webhook, Slot muss aktuell frei sein |
+| save_lead_profile | LOW | – | Ziel/Erfahrung/Tageszeit als feste Werte in `jr:st:<lead>` |
 | cancel_contract | HIGH | MEMBERSHIP_SELF_SERVICE_WRITE | Datum/Vertrag gegen `getContract` geprüft, dann `mlCancel.ordinaryCancel`; Prüfung: `cancelled` |
 | withdraw_cancellation | HIGH | MEMBERSHIP_SELF_SERVICE_WRITE | `mlCancel.withdrawCancel`; Prüfung |
 | withdraw_contract | HIGH | MEMBERSHIP_SELF_SERVICE_WRITE | nur bei `withdrawalEligible`; `mlCancel.contractWithdrawal`; Prüfung |
@@ -74,3 +77,6 @@ oder aus dem Kontext, nur Ziffern. Website-Besucher: kein Kunde.
 auf `lib/finn/mock.js`: ein Testkunde (1001), Vertrag 5001, Termin 9001, Terminarten
 301/302, Pausen-Regeln, Module, Dokumente, Zugangsmedien. Schreibende Aktionen
 verändern den Mock-Zustand, damit die Ergebnisprüfung testbar ist. `mock.reset()`.
+
+
+Werkzeuge mit `channels:[…]` sind nur in diesen Kanälen sichtbar und ausführbar (`allowedFor`). So bucht der Website-Chat kein Probetraining – dort fehlt die geprüfte Rufnummer.

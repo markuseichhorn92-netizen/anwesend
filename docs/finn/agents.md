@@ -14,7 +14,7 @@ ihn freigibt (`agents` in `lib/finn/tools.js`) – beides muss passen.
 | `access` | Check-in, Zugangsmedium | Mitglied, Team | list_access_media, block_access_medium (H), checkin_now (M), unblock (Team, H) |
 | `document` | Vertragskopie, Nachweise | Mitglied, Team | list_documents |
 | `studio` | Öffnungszeiten, Auslastung, Angebot | alle | get_studio_hours, get_utilization |
-| `lead` | Interessenten, Probetraining | Website, Team | list_appointment_types, create_lead (M) |
+| `lead` | Interessenten, Probetraining | Website, WhatsApp (FINN Journeys), Team | list_appointment_types, create_lead (M), get_trial_slots, book_trial (M, nur WhatsApp), save_lead_profile – siehe `docs/finn/journeys.md` |
 | `support` | App-Probleme, Beschwerden | alle | get_profile, Übergabe |
 | `crm` | Kundenkontext fürs Team | Team | get_profile, get_contract, get_account, list_appointments, list_checkins |
 | `retention` | Kündigungsabsicht, Inaktivität | Mitglied, Team | get_contract, list_checkins, withdraw_cancellation (H) |

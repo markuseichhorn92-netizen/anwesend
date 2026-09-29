@@ -569,6 +569,59 @@ Leitplanken dazu (zusätzlich zu den allgemeinen unten):
 - `MEMBER_LIST_READ` bleibt „nie angenommen", bis der Scope vorliegt.
 - Bestandsverarbeitung im Webhook nicht in den Bus verschieben – der Bus wrappt sie.
 
+## FINN Journeys – WhatsApp für Leads, Onboarding und Bindung (29. September 2026)
+
+Nach dem Vorbild von athleo, 360°CHAT und StudioPartner: feste Abläufe mit
+Magicline-Auslösern, KI nur fürs Gespräch, Übergabe ans Team. Doku: `docs/finn/journeys.md`.
+Entscheidungen des Betreibers: **Leads zuerst**, **automatisch senden** (keine
+Freigabe-Warteschlange – die Sicherheit tragen harte Regeln), Anbieter **Twilio**,
+Einladung an Bestandsnummern **erst nach Rechtsprüfung**.
+
+- **Schalter:** `JOURNEYS=1` (Hauptschalter), `JOURNEYS_MODE=auto` (sonst Probelauf – nichts
+  wird gesendet, Vorschau im Team-Backend), `JOURNEYS_TEST_NUMBERS` (Pilot), `JOURNEYS_TRACK=1`,
+  `JOURNEY_<KEY>=0`, `JOURNEYS_LEAD_AI=0`, `JOURNEYS_INVITE_PER_DAY`, `WA_PUBLIC_NUMBER`.
+  Team-Backend „WhatsApp-Journeys": Journeys an/aus, Content-SIDs, Kennzahlen, Probelauf,
+  Testversand (nur an Testnummern). Einladung ist standardmäßig aus.
+- **Immer aktiv** (auch ohne `JOURNEYS`): 24-h-Fenster je Nummer (Team-Antworten nehmen bei
+  geschlossenem Fenster Vorlage bzw. Mail), STOP/START vor jeder KI, Doppelzustellung,
+  Lead-Pipeline (eine Nummernform, Quelle, Termin, neue Stufen, Vertrag → „gewonnen"),
+  WhatsApp-Kästchen im Probetraining-Formular, Magicline-Werbeeinwilligung nur noch E-Mail.
+- **Abläufe** (`lib/journeys/defs.js`): Leads & Probetraining (Lead-Agent auf WhatsApp:
+  Qualifizierung, freie Termine, Buchung nach „Ja", Erinnerungen 24 h/2 h, Nachfassen,
+  nach 14 Tagen „verloren"), Onboarding (Tag 0–90), Motivation (unter Wochenziel,
+  Meilensteine, Serien), Comeback (10/21 Tage, Tag 28 Team-Anruf), Einladung.
+- **Dateien:** `lib/journeys/*` (config, consent, window, store, engagement, quiet, templates,
+  sender, defs, engine, hooks, inbound, leadchat, leadtools, status, tick, kpi, index),
+  `lib/phone.js`, `lib/trialBooking.js`, `api/journeys-tick.js` (+ `.github/workflows/journeys.yml`),
+  `api/team/journeys.js`, `api/member/whatsapp.js`; Einstellungen-Karte „WhatsApp von Fit-Inn".
+- **Tests:** `journeys-core`, `-inbound`, `-engine`, `-webhooks`, `-lead-agent`, `-onboarding`,
+  `-team-api`, `-studio-reply`; Redis-Nachbau `tests/_memredis.js`.
+
+Leitplanken dazu:
+
+- Journey-Nachrichten laufen **nur** über `lib/journeys/sender.send` (Einwilligung, Sperren,
+  Ruhezeiten, Kappen, Fenster, Probelauf). Kein direkter `WA.send*` aus Journey-Code.
+- **Kein Freitext außerhalb des 24-h-Fensters** – Vorlage oder überspringen.
+- Motivation/Tipps/Angebote nur mit `wa_marketing`; Einwilligungen hängen an der Nummer
+  (`jr:con:`), für Mitglieder zusätzlich im Datenschutz-Nachweis. Die Einladung fragt nur
+  und nur einmal je Nummer.
+- **STOP nie umgehen oder entfernen**; die gehashte Sperrliste (`jr:sup:`) bleibt auch nach
+  einer Löschung bestehen (Widerspruchsnachweis).
+- Keine Gesundheitsdaten in Vorlagen, Prompts, Kennzahlen oder Logs; die Probelauf-Liste
+  zeigt den Vornamen nur als Platzhalter.
+- Lead-Agent: `book_trial` bleibt MEDIUM (Bestätigung); die Rufnummer kommt aus dem Webhook,
+  nie vom Modell; Buchungswerkzeuge nur im Kanal WhatsApp (`channels`). Zweckbindung
+  (WhatsApp-Business-Regeln 2026) steht im System-Text – nicht zum allgemeinen Chatbot machen.
+- Der Kandidaten-Index entsteht aus unseren Webhooks – **kein** Mitgliederverzeichnis,
+  `MEMBER_LIST_READ` bleibt „nie angenommen".
+- Journey-Hooks nur in `lib/finn/automations.register()` anmelden (dort läuft `Events._reset()`).
+- Nichts an wa.me- oder Partner-Links hängen außer dem START-Code.
+
+Noch organisatorisch offen: Vorlagen in Twilio anlegen und freigeben lassen; AVV Twilio/Meta;
+Einwilligungs- und Einladungstexte rechtlich prüfen; DSFA-Nachtrag freigeben; Magicline-
+Webhooks (`CUSTOMER_CHECKIN`, `APPOINTMENT_*`, `CONTRACT_CANCELLED`) an diese App bestätigen;
+wer ruft bei „Tag 28" an.
+
 ## Verifikation
 
 Vor dem letzten Deployment wurde ausgeführt:

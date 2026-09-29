@@ -117,5 +117,7 @@ Voraussetzung: AI (Bedrock) **und** WhatsApp-Versand sind konfiguriert
 - **Datenschutz:** Antworten inkl. Trainings-/Ernährungs-(Gesundheits-)daten laufen
   über Meta/WhatsApp (USA). AVV mit Meta prüfen, Verarbeitung in DSFA/VVT ergänzen,
   Einwilligungstext rechtlich freigeben. Der Umfang ist bewusst per Flag steuerbar.
-- Widerruf: „STOP" ist im Einwilligungstext genannt – einen Opt-out-Pfad (Nummer
-  entsperren/`clearVerified`) bei Bedarf im Team-Backend ergänzen.
+- Widerruf: „STOP" ist umgesetzt (29.09.2026, `lib/journeys/inbound.js`, in beiden
+  Webhooks vor jeder KI): beide WhatsApp-Einwilligungen widerrufen, gehashte Sperrliste,
+  Bestätigung mit Hinweis auf „START". Die Verifizierung der Nummer für die WhatsApp-KI
+  (`wa:verify`) bleibt davon unberührt – Auskunft auf eigene Fragen gibt es weiterhin.
