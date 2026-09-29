@@ -16,6 +16,9 @@ name: FINN Journeys
 #  - Manuell mit „vorlagen": WhatsApp-Vorlagen bei Twilio einreichen bzw. den
 #    Stand der Freigaben abrufen (statt des Durchlaufs). Die Twilio-Schlüssel
 #    bleiben in Vercel; das Protokoll zeigt je Vorlage nur Status und Grund.
+#  - Dasselbe per Auftragsdatei .github/journeys-vorlagen.txt: ein Push, der sie
+#    ändert, startet den Workflow einmal mit dem Befehl aus ihrer ersten Zeile
+#    („einreichen" oder „status"). Für Umgebungen ohne Recht auf manuellen Start.
 
 on:
   schedule:
@@ -27,6 +30,9 @@ on:
         type: choice
         options: ['-', 'einreichen', 'status']
         default: '-'
+  push:
+    branches: ['claude/push-das-github-12dw6q']
+    paths: ['.github/journeys-vorlagen.txt']
 
 concurrency:
   group: journeys
@@ -36,11 +42,34 @@ jobs:
   tick:
     runs-on: ubuntu-latest
     steps:
+      - name: Auftragsdatei holen
+        if: ${{ github.event_name == 'push' }}
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/journeys-vorlagen.txt
+          sparse-checkout-cone-mode: false
+
+      - name: Auftrag bestimmen
+        id: auftrag
+        env:
+          EREIGNIS: ${{ github.event_name }}
+          EINGABE: ${{ inputs.vorlagen }}
+        run: |
+          a=""
+          if [ "$EREIGNIS" = "workflow_dispatch" ]; then a="$EINGABE"; fi
+          if [ "$EREIGNIS" = "push" ]; then a=$(head -n1 .github/journeys-vorlagen.txt | tr -d '[:space:]'); fi
+          echo "Auftrag: ${a:-Durchlauf}"
+          case "$a" in
+            einreichen) echo "aktion=submit" >> "$GITHUB_OUTPUT" ;;
+            status)     echo "aktion=sync" >> "$GITHUB_OUTPUT" ;;
+            *)          echo "aktion=" >> "$GITHUB_OUTPUT" ;;
+          esac
+
       - name: WhatsApp-Vorlagen
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.vorlagen != '' && inputs.vorlagen != '-' }}
+        if: ${{ steps.auftrag.outputs.aktion != '' }}
         env:
           RECORD_SECRET: ${{ secrets.RECORD_SECRET }}
-          AKTION: ${{ inputs.vorlagen == 'einreichen' && 'submit' || 'sync' }}
+          AKTION: ${{ steps.auftrag.outputs.aktion }}
         run: |
           for i in 1 2 3 4 5; do
             antwort=$(curl -sS -m 90 -X POST "https://anwesend.vercel.app/api/journeys-tick?templates=$AKTION" \
@@ -54,7 +83,7 @@ jobs:
           case "$antwort" in '{"ok":true'*) exit 0 ;; *) exit 1 ;; esac
 
       - name: Journeys-Durchlauf
-        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.vorlagen != '' && inputs.vorlagen != '-') }}
+        if: ${{ steps.auftrag.outputs.aktion == '' && github.event_name != 'push' }}
         env:
           RECORD_SECRET: ${{ secrets.RECORD_SECRET }}
         run: |

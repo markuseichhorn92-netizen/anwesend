@@ -123,6 +123,8 @@ Zugangsdaten (`TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`) bleiben in Vercel.
 - **Ohne Team-Backend:** GitHub → Actions → „FINN Journeys" → „Run workflow" → `vorlagen`:
   `einreichen` bzw. `status`. Ruft `POST /api/journeys-tick?templates=submit|sync` mit dem
   Cron-Secret; das Protokoll zeigt je Vorlage Status und Metas Grund, keine Zugangsdaten.
+  Ohne Recht auf manuellen Start: erste Zeile von `.github/journeys-vorlagen.txt` auf
+  `einreichen`/`status` setzen und pushen – der Push startet den Workflow einmal.
 - Der Tarif-Link im Angebot steht fest im Text (eine Adresse als Variable lehnt Meta oft ab).
   Wer `JOURNEYS_JOIN_URL` ändert, muss `fi_trial_offer` neu einreichen.
 

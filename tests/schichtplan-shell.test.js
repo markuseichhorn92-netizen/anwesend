@@ -2,7 +2,7 @@
 // Schichtplan-Huelle aus dem Claude-Design-Entwurf.
 // Geprueft wird, was beim Weiterbauen leicht kaputtgeht.
 const fs=require('fs'), path=require('path');
-const ROOT='/home/user/anwesend';
+const ROOT=path.resolve(__dirname,'..');
 const html=fs.readFileSync(path.join(ROOT,'team-backend.html'),'utf8');
 let pass=true;
 const ok=(l,c,e)=>{ if(!c) pass=false; console.log((c?'OK  ':'FAIL')+' '+l+(c?'':' -- '+(e||''))); };
