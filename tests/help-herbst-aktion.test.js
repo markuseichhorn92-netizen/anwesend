@@ -71,6 +71,12 @@ const OLD = /0651 308524/;
   ok('3g. Mindestalter-Migration: 16 → 18, Eltern-Satz weg', a2 && !/16 Jahren/.test(a2.body) && !/Erziehungsberechtigten/.test(a2.body) && /ab 18 Jahren möglich/.test(a2.body), a2 && a2.body);
   ok('3h. eingebaute Artikel nennen nirgends mehr 16 Jahre', !JSON.stringify(require('../lib/help')).includes('16 Jahren') && !JSON.stringify(require('../lib/helpSeed')).includes('16 Jahren'));
   await Articles.remove(alt.id);
+  const alt2 = await Articles.save({ title: 'Mitglied werden (Team 2)', cat: 'mitglied', status: 'veröffentlicht', body: 'Eine Mitgliedschaft ist ab 18 Jahren möglich. Minderjährige benötigen das Einverständnis bzw. die Unterschrift der Erziehungsberechtigten. Danach geht es los.' });
+  await P([['DEL', 'art:mig:alter18b']]); Mig._reset();
+  all = await Articles.list();
+  const a3 = all.find((a) => a.id === alt2.id);
+  ok('3i. Eltern-Satz weg, auch wenn die Zahl schon 18 war', a3 && a3.body === 'Eine Mitgliedschaft ist ab 18 Jahren möglich. Danach geht es los.', a3 && a3.body);
+  await Articles.remove(alt2.id);
 
   // 4. Team löscht bzw. setzt auf Entwurf → taucht nicht wieder auf
   await Articles.setStatus(okt.id, 'entwurf'); Mig._reset();
