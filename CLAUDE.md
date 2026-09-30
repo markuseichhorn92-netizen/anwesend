@@ -213,6 +213,11 @@ wurde nicht (mehr) gebraucht. Entscheidung des Betreibers nach einer Nutzungsüb
   die Treffer möglichst vollständig (je Artikel bis 3000 Zeichen, zusammen ~6500) – vorher fehlten
   beim Aktionsartikel Bedingungen und Leistungen, und FINN riet (erste Live-Probe).
   `search_knowledge` (Werkzeug) bleibt bei 900 Zeichen je Treffer.
+- **Aktuelle Aktion angeheftet:** Für Interessenten (Website, WhatsApp-Lead) steht jeder
+  veröffentlichte Team-Artikel mit dem Wort „Aktion" im Titel (`knowledge.promos()`, max. 2) fest
+  im Prompt – mit dem Hinweis, dass „das"/„das Angebot" ohne Bezug diese Aktion meint. Live-Probe:
+  „Kann ich das als bestehendes Mitglied nutzen?" wurde vorher als Login-Frage verstanden.
+  Auf „Entwurf" gesetzt, verschwindet die Aktion auch hier. Mitglieder bekommen sie nicht angeheftet.
 - `/api/finn/public` an (`FINN_PUBLIC=1`, `ALLOWED_ORIGIN` gesetzt). Live-Prüfung:
   `.github/finn-probe.txt` ändern → Workflow „FINN Probe" prüft CORS für die Landingpage und
   schreibt Frage/Antwort ins Job-Protokoll (nur öffentliche Auskünfte, keine Personendaten).

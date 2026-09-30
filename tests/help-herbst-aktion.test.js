@@ -105,6 +105,22 @@ const OLD = /0651 308524/;
   const dup = (await K.search('Mitgliedschaft pausieren', 4)).map((h) => h.title);
   ok('6.7 kein Artikel doppelt (Backend-Fassung ersetzt die eingebaute)', dup.length === new Set(dup).size, JSON.stringify(dup));
 
+  // 7. Interessenten: die aktuelle Aktion steht immer im Prompt (Live-Probe: „Kann ich das als
+  //    bestehendes Mitglied nutzen?" wurde sonst als Login-Frage verstanden) – Mitglieder nicht
+  const Agents = require(path.join(ROOT, 'lib/finn/agents.js'));
+  const pr = await K.promos();
+  ok('7. promos(): veröffentlichter Artikel mit „Aktion" im Titel', pr.length === 1 && pr[0].title === TITLE && pr[0].body === Mig.HERBST_BODY, JSON.stringify(pr.map((p) => p.title)));
+  const lead = await Rt.buildSystem({ actor: { kind: 'lead', id: 'v1' }, channel: 'public' }, Agents.get('lead'), 'Kann ich das als bestehendes Mitglied nutzen?');
+  ok('7a. Website-Besucher: AKTUELLE AKTION mit vollem Text im Prompt', /AKTUELLE AKTION/.test(lead) && lead.indexOf(Mig.HERBST_BODY) >= 0 && /„Heute" ist immer das Datum oben/.test(lead));
+  ok('7b. … und nicht noch einmal in der Wissensbasis', lead.split(Mig.HERBST_BODY.slice(0, 80)).length === 2);
+  const mem = await Rt.buildSystem({ actor: { kind: 'member', id: '1' }, channel: 'web', live: 'Vertrag: aktiv' }, Agents.get('concierge'), 'Wann habt ihr offen?');
+  ok('7c. Mitglied: keine angeheftete Aktion', !/AKTUELLE AKTION/.test(mem));
+  const akt2 = (await Articles.list()).find((a) => a.title === TITLE);
+  await Articles.setStatus(akt2.id, 'entwurf'); K._reset();
+  ok('7d. Aktion auf Entwurf → nicht mehr angeheftet', (await K.promos()).length === 0 && !/AKTUELLE AKTION/.test(await Rt.buildSystem({ actor: { kind: 'lead', id: 'v1' }, channel: 'public' }, Agents.get('lead'), 'Hallo')));
+  await Articles.save({ title: 'Transaktionen und Aktionen im Überblick', cat: 'studio', status: 'veröffentlicht', body: 'x' }); K._reset();
+  ok('7e. „Aktionen"/„Transaktion" im Titel zählt nicht als Aktion', (await K.promos()).length === 0);
+
   console.log(pass ? 'HELP HERBST-AKTION PASS' : 'HELP HERBST-AKTION FAIL');
   process.exit(pass ? 0 : 1);
 })().catch((e) => { console.log('FAIL Ausnahme: ' + (e && e.stack || e)); process.exit(1); });
