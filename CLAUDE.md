@@ -188,24 +188,36 @@ wurde nicht (mehr) gebraucht. Entscheidung des Betreibers nach einer Nutzungsüb
 - **Am Umstellungstag** der neuen App: `docs/APP-UMSTELLUNG.md`.
 - Mit `FEATURE_ERN=1`/`FEATURE_TRAINING=1` fehlen die Team-Werkzeuge – bei Bedarf aus Git holen.
 
-## Oktober-Aktion 2026 und FINN-Wissen (30. September 2026)
+## Aktion „5 € pro Woche bis Silvester" und FINN-Wissen (30. September 2026)
 
-- Hilfe-Artikel **„Oktober-Aktion 2026: 12 Wochen für je 5 €"** (Kategorie Mitgliedschaft,
-  veröffentlicht) – angelegt ohne Team-Login über die einmalige Migration
-  `lib/articleMigrations.js` (Marke `art:mig:okt26`, läuft beim ersten `Articles.list()`,
-  nur nach der Erstbefüllung). Danach ein normaler Backend-Artikel; gelöscht oder auf Entwurf
-  gesetzt, taucht er nicht wieder auf. Kein Ablaufdatum im Backend → **am 01.11.2026 im
-  Team-Backend auf „Entwurf" setzen** (Kalender-Erinnerung beim Betreiber).
+- Hilfe-Artikel **Aktion „5 € pro Woche bis Silvester" (Herbst 2026)** (Kategorie Mitgliedschaft,
+  veröffentlicht) für die Landingpage `fit-inn-trier-dark-landing.onepage.me/5-euro-woche`
+  (Onepage; FINN-Widget → `/api/finn/public`, eigene Probetraining-Buchung im Chat über Magicline).
+  Angelegt ohne Team-Login über die einmalige Migration `lib/articleMigrations.js` (Marke
+  `art:mig:herbst26`, läuft beim ersten `Articles.list()`, nur nach der Erstbefüllung): ersetzt den
+  am Morgen angelegten Artikel „Oktober-Aktion 2026" an Ort und Stelle (gleiche Id) und tauscht in
+  allen Backend-Artikeln die alte Telefonnummer aus. Danach normale Backend-Artikel; gelöscht oder
+  auf Entwurf gesetzt, taucht nichts wieder auf. Kein Ablaufdatum im Backend → **am 01.01.2027 (oder
+  sobald die 25 Plätze vergeben sind) im Team-Backend auf „Entwurf" setzen** (Kalender-Erinnerung).
+- **Telefonnummer neu: 0651 493 688 19** – in Hilfe-Artikeln (Backend, `lib/help.js`,
+  `lib/helpSeed.js`, App), bei FINN (`runtime` BRAND, `knowledge` rulesDoc, `lib/ai.js`), im
+  Impressum/Kontakt der App, auf den Probetraining- und Einladungsseiten, in Mail-Fußzeilen
+  (`api/offer.js`, `api/wa-verify.js`) und der Postfach-Auto-Antwort. **Bewusst unverändert:**
+  die Telefon-KI (`api/phone/*`, fonio-Doku – 0651 308524 ist dort das Weiterleitungsziel) und
+  die WhatsApp-Nummer (`wa.me/49651308524`, `WA_PUBLIC_NUMBER`).
 - Sommer-Aktion (bis 31.08.2026) aus `lib/help.js` und `mitglieder.html` `HELP_ARTICLES`
-  entfernt – FINN und die App-Hilfe nennen sie nicht mehr. „Tarife & Preise" (a16) unverändert.
-- FINN-Wissenssuche (`lib/finn/knowledge.js`): seltene Begriffe zählen stärker (IDF), und ein
-  Backend-Artikel ersetzt den eingebauten mit gleichem Titel (keine Doppeltreffer).
-  Der beste Treffer geht vollständig (bis 1600 Zeichen) in den Prompt, die übrigen mit 500 –
-  vorher fehlten beim Aktionsartikel Bedingungen und Leistungen, und FINN riet (erste Live-Probe).
-- `/api/finn/public` an (`FINN_PUBLIC=1`); `ALLOWED_ORIGIN` = Adresse der Landingpage (noch
-  offen). Live-Prüfung: `.github/finn-probe.txt` ändern → Workflow „FINN Probe" schreibt
-  Frage/Antwort ins Job-Protokoll (nur öffentliche Auskünfte, keine Personendaten).
-- `tests/help-okt-aktion.test.js`.
+  entfernt. „Tarife & Preise" (a16) unverändert.
+- FINN-Wissenssuche (`lib/finn/knowledge.js`): seltene Begriffe zählen stärker (IDF), einfache
+  Wortstamm-Kürzung („spare"/„sparst"), mehr Füllwörter („wenn", „gibt", „eure" …); ein
+  Backend-Artikel ersetzt den eingebauten mit gleichem Titel. Der Kontext für das Modell bekommt
+  die Treffer möglichst vollständig (je Artikel bis 3000 Zeichen, zusammen ~6500) – vorher fehlten
+  beim Aktionsartikel Bedingungen und Leistungen, und FINN riet (erste Live-Probe).
+  `search_knowledge` (Werkzeug) bleibt bei 900 Zeichen je Treffer.
+- `/api/finn/public` an (`FINN_PUBLIC=1`, `ALLOWED_ORIGIN` gesetzt). Live-Prüfung:
+  `.github/finn-probe.txt` ändern → Workflow „FINN Probe" prüft CORS für die Landingpage und
+  schreibt Frage/Antwort ins Job-Protokoll (nur öffentliche Auskünfte, keine Personendaten).
+  Manuell starten geht aus Claude-Sitzungen nicht (403) – nur über die Datei.
+- `tests/help-herbst-aktion.test.js`.
 
 ## Partner Upfit – Ernährung protokollieren (September 2026)
 

@@ -10,6 +10,8 @@ name: FINN Probe (Website-Chat)
 #    Keine Personendaten in die Fragen schreiben – das Protokoll ist im Repo sichtbar.
 #  - Jede Frage als neuer Besucher (ohne Verlauf), damit die Antworten unabhängig sind.
 #  - Braucht FINN_PUBLIC=1 in Vercel (sonst 404). Kein Secret nötig.
+#  - Prüft vorab per OPTIONS, ob ALLOWED_ORIGIN die Landingpage (ORIGIN unten) zulässt, und
+#    schickt die Fragen mit diesem Origin – wie der Browser auf der Aktionsseite.
 
 on:
   workflow_dispatch:
@@ -34,6 +36,9 @@ jobs:
         run: |
           set -u
           url="https://mitglieder.fit-inn-trier.de/api/finn/public"
+          origin="https://fit-inn-trier-dark-landing.onepage.me"
+          acao="$(curl -sS -o /dev/null -D - -X OPTIONS -H "Origin: $origin" -H 'Access-Control-Request-Method: POST' "$url" | tr -d '\r' | awk -F': ' 'tolower($1)=="access-control-allow-origin"{print $2}')"
+          if [ "$acao" = "$origin" ]; then echo "CORS:    $origin ist erlaubt (ALLOWED_ORIGIN passt)"; else echo "::warning::CORS: $origin ist NICHT in ALLOWED_ORIGIN – der Chat auf der Landingpage wird vom Browser blockiert"; fi
           n=0
           while IFS= read -r q || [ -n "$q" ]; do
             q="$(printf '%s' "$q" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
@@ -41,7 +46,7 @@ jobs:
             n=$((n+1))
             vid="probe$(date +%s)$n$RANDOM"
             body="$(jq -nc --arg m "$q" --arg v "$vid" '{message:$m, visitorId:$v}')"
-            res="$(curl -sS --max-time 60 -H 'content-type: application/json' -d "$body" "$url" || true)"
+            res="$(curl -sS --max-time 60 -H 'content-type: application/json' -H "Origin: $origin" -d "$body" "$url" || true)"
             echo "::group::Frage $n"
             echo "FRAGE:   $q"
             echo "ANTWORT: $(printf '%s' "$res" | jq -r '.answer // ("(keine Antwort) " + (.error // "?"))' 2>/dev/null || printf '%s' "$res" | head -c 400)"

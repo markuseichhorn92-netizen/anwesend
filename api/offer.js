@@ -16,7 +16,7 @@ const M = require('../lib/members');
 const R = require('../lib/retention');
 const Inbox = require('../lib/inbox');
 
-const STUDIO = { name: 'Fit-Inn Trier', addr: 'Auf Hirtenberg 8, 54296 Trier', mail: 'info@fit-inn-trier.de', tel: '0651 308524' };
+const STUDIO = { name: 'Fit-Inn Trier', addr: 'Auf Hirtenberg 8, 54296 Trier', mail: 'info@fit-inn-trier.de', tel: '0651 493 688 19' };
 
 function clientIp(req) { return String(req.headers['x-forwarded-for'] || '').split(',')[0].trim() || (req.socket && req.socket.remoteAddress) || 'unknown'; }
 function pub(o) {

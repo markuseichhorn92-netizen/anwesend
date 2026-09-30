@@ -18,7 +18,7 @@ const WA = require('../lib/whatsapp');
 const WAAuth = require('../lib/waAuth');
 const LF = require('../lib/leadflow');
 
-const STUDIO = { name: 'Fit-Inn Trier', tel: '0651 308524', mail: 'info@fit-inn-trier.de' };
+const STUDIO = { name: 'Fit-Inn Trier', tel: '0651 493 688 19', mail: 'info@fit-inn-trier.de' };
 
 function j(res, code, obj) { res.statusCode = code; res.end(JSON.stringify(obj)); }
 function clientIp(req) { return String(req.headers['x-forwarded-for'] || '').split(',')[0].trim() || (req.socket && req.socket.remoteAddress) || 'unknown'; }
