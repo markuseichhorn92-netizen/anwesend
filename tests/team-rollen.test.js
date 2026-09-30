@@ -119,6 +119,24 @@ const trainer = { user: 'Anna', role: 'trainer', employeeId: 'e1' };
   ok('10b. … und auch auf dem Server',
     /'admin\.manage'/.test(fs.readFileSync(path.join(dir, 'impersonate.js'), 'utf8')));
 
+  // Knoepfe im Profil, deren Endpunkt nur Admins bedient: Trainer:innen sahen sie
+  // und bekamen beim Klick 403. Verstecken ist Komfort, der Server bleibt die Sperre.
+  const nurAdminKnopf = function (attr) {
+    const stellen = Array.from(html.matchAll(new RegExp('<button ' + attr + '="1"', 'g')));
+    return stellen.length > 0 && stellen.every(function (m) {
+      return /isAdmin\(\)\)?\s*\?'(<div[^>]*>)?$/.test(html.slice(Math.max(0, m.index - 200), m.index));
+    });
+  };
+  ok('11. „Nachricht senden" nur fuer Admin in der Oberflaeche',
+    nurAdminKnopf('data-msgsend') && nurAdminKnopf('data-msgsend2'));
+  ok('11b. … und auch auf dem Server',
+    /'admin\.manage'/.test(fs.readFileSync(path.join(dir, 'message.js'), 'utf8')));
+  ok('12. „Rueckholaktion vermerken" nur fuer Admin in der Oberflaeche',
+    /var retention = \(ct\.contractId && isAdmin\(\)\)\s*\?\s*'<div[^']*'\+[^\n]*<button data-wbopen="1"/.test(html) &&
+    !/Rückholaktion vermerken – für alle/.test(html));
+  ok('12b. … und auch auf dem Server',
+    /'admin\.manage'/.test(fs.readFileSync(path.join(dir, 'winback.js'), 'utf8')));
+
   console.log(pass ? 'TEAM-ROLLEN PASS' : 'TEAM-ROLLEN FAIL');
   process.exit(pass ? 0 : 1);
 })();
