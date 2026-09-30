@@ -224,6 +224,24 @@ wurde nicht (mehr) gebraucht. Entscheidung des Betreibers nach einer Nutzungsüb
   Manuell starten geht aus Claude-Sitzungen nicht (403) – nur über die Datei.
 - `tests/help-herbst-aktion.test.js`.
 
+## Mindestalter 18 überall (30. September 2026, abends)
+
+FINN antwortete widersprüchlich („Probetraining ab 16 mit Trainer", „Mitgliedschaft ab 16 mit
+Einverständnis der Eltern"): die Sätze standen noch in den eingebauten Hilfe-Artikeln
+(`lib/help.js`, `lib/helpSeed.js`, `HELP_ARTICLES` in `mitglieder.html`) und in `probetraining.html`.
+Jetzt: **18 Jahre für Probetraining und Mitgliedschaft, ohne Ausnahme.**
+
+- Texte korrigiert; `probetraining.html` ohne „Pflicht unter 18"-Hinweis.
+- FINN-Regel in `lib/finn/knowledge.js` (`rulesDoc`): steht fest in jedem Kontext, damit ein
+  alter Backend-Artikel das Modell nicht mehr umstimmt.
+- Migration `alter18` (`lib/articleMigrations.js`): ersetzt die 16er-Sätze einmalig in allen
+  Backend-Artikeln (auch vom Team bearbeiteten) und setzt die Aktionsseite wieder auf
+  **angebot.fit-inn-trier.de** (die Onepage-Seite war nur Zwischenstand; die Aktion läuft seit
+  30.09. als Next.js auf Vercel, Repo `fitinn-30-jahre`). `LANDING`/`OLD_LANDING` entsprechend
+  gedreht.
+- Die App-Funktion „Trainingspartner erst ab 16" (`mitglieder.html`) ist davon unberührt.
+- `tests/help-herbst-aktion.test.js` (3g/3h).
+
 ## Partner Upfit – Ernährung protokollieren (September 2026)
 
 Fit-Inn hat eine Partnerschaft mit Upfit (Up Gesundheit GmbH, Hamburg). Das

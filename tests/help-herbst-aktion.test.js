@@ -41,27 +41,36 @@ const OLD = /0651 308524/;
     && /Start 1\. Oktober: Basic 92 € gespart, Premium 53 €/.test(body) && /Start 1\. November: Basic 61 €, Premium 35 €/.test(body) && /Start 1\. Dezember: Basic 31 €, Premium 18 €/.test(body)
     && /Einmalige Aufnahmegebühr 39 €/.test(body) && /Nur für Neumitglieder, ab 18 Jahren/.test(body) && /nicht auf bestehende Verträge übertragbar/.test(body)
     && /Flex-Tarif \(4 Wochen, 15 € pro Woche\) ist nicht Teil der Aktion/.test(body) && /über 100 Geräte auf zwei Etagen/.test(body)
-    && /Telefon: 0651 493 688 19/.test(body) && /fit-inn-trier-dark-landing\.onepage\.me\/5-euro-woche/.test(body) && /agbs-fit-inn-trier/.test(body));
-  ok('2b. keine alten Angaben', !OLD.test(body) && !/angebot\.fit-inn-trier/.test(body));
+    && /Telefon: 0651 493 688 19/.test(body) && /Aktionsseite: angebot\.fit-inn-trier\.de/.test(body) && /agbs-fit-inn-trier/.test(body));
+  ok('2b. keine alten Angaben', !OLD.test(body) && !/onepage\.me/.test(body) && !/16 Jahren/.test(body));
 
   // 3. Produktion: Oktober-Artikel vorhanden → gleiche Id, neuer Titel/Text; alte Nummer und alte
   //    Angebotsseite in Team-Artikeln ersetzt; nichts anderes angefasst
   await Articles.remove(akt[0].id);
   const okt = await Articles.save({ title: OKT, cat: 'mitglied', status: 'veröffentlicht', body: 'Als Neumitglied zahlst du in den ersten 12 Wochen je 5 € pro Woche.' });
-  const team = await Articles.save({ title: 'Geschenkgutscheine', cat: 'mitglied', status: 'veröffentlicht', body: 'Ruf an unter 0651 308524 oder +49 651 308524. Infos: https://angebot.fit-inn-trier.de/herbst' });
+  const team = await Articles.save({ title: 'Geschenkgutscheine', cat: 'mitglied', status: 'veröffentlicht', body: 'Ruf an unter 0651 308524 oder +49 651 308524. Infos: https://fit-inn-trier-dark-landing.onepage.me/5-euro-woche' });
   const draft = await Articles.save({ title: 'Entwurf ohne Nummer', cat: 'studio', status: 'entwurf', body: 'Nichts zu ändern.' });
-  await P([['DEL', 'art:mig:herbst26']]); Mig._reset();
+  await P([['DEL', 'art:mig:herbst26'], ['DEL', 'art:mig:alter18']]); Mig._reset();
   all = await Articles.list();
   const moved = all.find((a) => a.id === okt.id);
   ok('3. Oktober-Artikel an Ort und Stelle ersetzt (gleiche Id)', moved && moved.title === TITLE && moved.body === Mig.HERBST_BODY && moved.status === 'veröffentlicht', JSON.stringify(moved && moved.title));
   ok('3a. kein zweiter Aktionsartikel, kein Oktober-Artikel mehr', all.filter((a) => a.title === TITLE).length === 1 && !all.some((a) => a.title === OKT));
   const t2 = all.find((a) => a.id === team.id);
   ok('3b. Team-Artikel: beide Schreibweisen der alten Nummer ersetzt', t2.body.split(NEW).length === 3 && !/308\s?524/.test(t2.body), t2.body);
-  ok('3c. Team-Artikel: alte Angebotsseite → Aktionsseite', /Infos: fit-inn-trier-dark-landing\.onepage\.me\/5-euro-woche$/.test(t2.body), t2.body);
+  ok('3c. Team-Artikel: alte Onepage-Seite → Aktionsseite', /Infos: angebot\.fit-inn-trier\.de$/.test(t2.body), t2.body);
   ok('3d. Titel, Status, Kategorie bleiben', t2.title === 'Geschenkgutscheine' && t2.status === 'veröffentlicht' && t2.cat === 'mitglied');
   const d2 = all.find((a) => a.id === draft.id);
   ok('3e. Artikel ohne alte Angaben unverändert', d2.body === 'Nichts zu ändern.' && d2.updatedAt === draft.updatedAt);
   ok('3f. keine alte Nummer mehr in irgendeinem Backend-Artikel', !all.some((a) => /308\s?524/.test(a.body)));
+
+  // 3g. Mindestalter: alte 16er-Sätze in Backend-Artikeln → 18 (Migration alter18)
+  const alt = await Articles.save({ title: 'Mitglied werden (Team)', cat: 'mitglied', status: 'veröffentlicht', body: 'Mindestalter\n\nEine Mitgliedschaft ist ab 16 Jahren möglich. Minderjährige benötigen das Einverständnis bzw. die Unterschrift der Erziehungsberechtigten.\n\nProbetraining mit Trainer (ab 16 Jahren). Ohne Trainer (ab 18 Jahren).' });
+  await P([['DEL', 'art:mig:alter18']]); Mig._reset();
+  all = await Articles.list();
+  const a2 = all.find((a) => a.id === alt.id);
+  ok('3g. Mindestalter-Migration: 16 → 18, Eltern-Satz weg', a2 && !/16 Jahren/.test(a2.body) && !/Erziehungsberechtigten/.test(a2.body) && /ab 18 Jahren möglich/.test(a2.body), a2 && a2.body);
+  ok('3h. eingebaute Artikel nennen nirgends mehr 16 Jahre', !JSON.stringify(require('../lib/help')).includes('16 Jahren') && !JSON.stringify(require('../lib/helpSeed')).includes('16 Jahren'));
+  await Articles.remove(alt.id);
 
   // 4. Team löscht bzw. setzt auf Entwurf → taucht nicht wieder auf
   await Articles.setStatus(okt.id, 'entwurf'); Mig._reset();
