@@ -119,6 +119,22 @@ const trainer = { user: 'Anna', role: 'trainer', employeeId: 'e1' };
   ok('10b. … und auch auf dem Server',
     /'admin\.manage'/.test(fs.readFileSync(path.join(dir, 'impersonate.js'), 'utf8')));
 
+  // Direktnachricht und Rueckholaktion sind Admin-Bereiche (msg/wb). Die Knoepfe
+  // im Mitgliedsprofil sieht deshalb nur der Admin - sonst gibt es fuer Trainer
+  // nur ein 403. Gesperrt wird trotzdem auf dem Server.
+  ok('11. „Nachricht senden" im Profil nur fuer Admin',
+    /\(isAdmin\(\)\?'<button data-msgsend="1"/.test(html));
+  const ms2 = html.indexOf('data-msgsend2="1"');
+  ok('11b. „Neue Nachricht senden" im Nachrichtenverlauf nur fuer Admin',
+    ms2 > 0 && /\(isAdmin\(\)\?'<div[^']*><button $/.test(html.slice(Math.max(0, ms2 - 160), ms2)),
+    html.slice(Math.max(0, ms2 - 160), ms2));
+  const vc = html.slice(html.indexOf('function vertragCard('), html.indexOf('function openCancel('));
+  const retention = vc.slice(vc.indexOf('var retention'), vc.indexOf("return profileCard('Vertrag'"));
+  ok('11c. „Rueckholaktion vermerken" nur fuer Admin', /data-wbopen/.test(retention) && /isAdmin\(\)/.test(retention), retention.slice(0, 120));
+  ok('11d. … und der Kommentar sagt nicht mehr „fuer alle Rollen"', !/Rückholaktion vermerken – für alle/.test(vc));
+  ok('11e. … und auch auf dem Server gesperrt',
+    ['message.js', 'winback.js'].every((f) => /'admin\.manage'/.test(fs.readFileSync(path.join(dir, f), 'utf8'))));
+
   console.log(pass ? 'TEAM-ROLLEN PASS' : 'TEAM-ROLLEN FAIL');
   process.exit(pass ? 0 : 1);
 })();
