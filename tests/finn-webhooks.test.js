@@ -103,7 +103,16 @@ async function health() { const res = res0(); const req = { method: 'GET', url: 
   ok('8. FINN_AUTOMATIONS leer: Bestand läuft, keine Timeline', r.json.summary[0].action === 'payment_alerted' && (await Timeline.list('m6')).length === 0);
   process.env.FINN_AUTOMATIONS = 'timeline,vorgang';
   r = await post({ id: 'evt-vg', type: 'CUSTOMER_PAYMENT_REJECTED', entityId: 'm7' });
-  ok('8a. Mit „vorgang" entsteht zusätzlich ein Postfach-Vorgang', r.json.summary[0].action === 'payment_alerted' && (await require(path.join(ROOT, 'lib/inbox.js')).list('m7')).length === 1);
+  const vgl = await require(path.join(ROOT, 'lib/inbox.js')).list('m7');
+  ok('8a. Mit „vorgang" entsteht zusätzlich ein Postfach-Vorgang', r.json.summary[0].action === 'payment_alerted' && vgl.length === 1);
+  const vg = vgl[0] || {};
+  ok('8b. Mitglied sieht nur neutralen Betreff/Hinweis, kein „Bestätigen"', (vg.messages || []).every((mm) => mm.from !== 'team' && !mm.needsAction)
+    && !/Magicline|Beitragskonto|kontaktieren/.test(JSON.stringify({ s: vg.subject, m: vg.messages })), JSON.stringify(vg.messages));
+  ok('8c. Anweisung ans Team steht als FINN-Notiz', (vg.notes || []).length === 1 && vg.notes[0].author === 'FINN' && /Beitragskonto/.test(vg.notes[0].text), JSON.stringify(vg.notes));
+  r = await post({ id: 'evt-vg2', type: 'CONTRACT_CANCELLED', entityId: 'm8' });
+  const vc = (await require(path.join(ROOT, 'lib/inbox.js')).list('m8'))[0] || {};
+  ok('8d. Kündigung: kein „Rückholung" für das Mitglied, Notiz fürs Team', !/Rückhol/.test(JSON.stringify({ s: vc.subject, m: vc.messages })) && (vc.messages || []).every((mm) => !mm.needsAction)
+    && (vc.notes || []).some((n) => /Rückhol/.test(n.text)), JSON.stringify(vc));
 
   console.log(pass ? 'FINN-WEBHOOKS PASS' : 'FINN-WEBHOOKS FAIL');
   process.exit(pass ? 0 : 1);

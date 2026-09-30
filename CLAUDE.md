@@ -525,6 +525,11 @@ Leitplanken dazu (zusätzlich zu den allgemeinen unten):
   als fehlender Scope).
 - `MEMBER_LIST_READ` bleibt „nie angenommen", bis der Scope vorliegt.
 - Bestandsverarbeitung im Webhook nicht in den Bus verschieben – der Bus wrappt sie.
+- Übergabe (`lib/finn/handoff.js`) und Automations-Vorgänge (`automations.js`): Kontext fürs
+  Team nur als `Inbox.addNote` (author `FINN`); das Mitglied bekommt einen neutralen Betreff
+  und höchstens einen neutralen `systemText` – nie `teamText`/`needsAction`, nie Modelltext
+  im Betreff. `api/member/inbox.js` gibt keine `notes` aus und entschärft Altfälle (Präfix
+  `Handoff.INTERNAL_PREFIX`) nur in der Ausgabe. Seit 30.09.2026; `tests/finn-handoff-inbox.test.js`.
 
 ## WhatsApp-KI erkennt Mitglieder an der Nummer (29. September 2026)
 

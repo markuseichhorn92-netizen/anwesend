@@ -16,6 +16,22 @@ const M = require('../../lib/members');
 const Inbox = require('../../lib/inbox');
 const SR = require('../../lib/studioReply');
 const { hasMail } = require('../../lib/mail');
+const Handoff = require('../../lib/finn/handoff');
+
+// Was das Mitglied von einem Vorgang sehen darf: ohne interne Team-Notizen. Altfälle, in
+// denen FINNs Übergabe-Kontext noch als Team-Nachricht mit „Bestätigen" gespeichert wurde,
+// werden nur in der Ausgabe entschärft (neutraler Satz, kein Knopf) – der Speicher bleibt.
+function forMember(v) {
+  if (!v || typeof v !== 'object') return v;
+  const out = Object.assign({}, v);
+  delete out.notes;
+  if (Array.isArray(v.messages)) {
+    out.messages = v.messages.map((mm) => (mm && mm.from === 'team' && String(mm.text || '').indexOf(Handoff.INTERNAL_PREFIX) === 0)
+      ? Object.assign({}, mm, { text: Handoff.MEMBER_TEXT, needsAction: false })
+      : mm);
+  }
+  return out;
+}
 
 function who(m) {
   return ((m.firstName || '') + ' ' + (m.lastName || '')).trim()
@@ -50,7 +66,7 @@ module.exports = async function handler(req, res) {
     if (id) {
       const v = await Inbox.markRead(sess.id, id);
       res.statusCode = 200;
-      return res.end(JSON.stringify({ ok: !!v, vorgang: v || null }));
+      return res.end(JSON.stringify({ ok: !!v, vorgang: forMember(v) || null }));
     }
     let vorgaenge = await Inbox.list(sess.id);
     if (!vorgaenge.length) {
@@ -58,7 +74,7 @@ module.exports = async function handler(req, res) {
       vorgaenge = await Inbox.list(sess.id);
     }
     res.statusCode = 200;
-    return res.end(JSON.stringify({ ok: true, vorgaenge: vorgaenge, unread: vorgaenge.filter((v) => v.unread).length }));
+    return res.end(JSON.stringify({ ok: true, vorgaenge: vorgaenge.map(forMember), unread: vorgaenge.filter((v) => v.unread).length }));
   }
 
   if (req.method !== 'POST') { res.statusCode = 405; return res.end(JSON.stringify({ ok: false, error: 'method_not_allowed' })); }
@@ -68,12 +84,12 @@ module.exports = async function handler(req, res) {
 
   if (body.action === 'read') {
     const v = await Inbox.markRead(sess.id, id);
-    res.statusCode = 200; return res.end(JSON.stringify({ ok: !!v, vorgang: v || null }));
+    res.statusCode = 200; return res.end(JSON.stringify({ ok: !!v, vorgang: forMember(v) || null }));
   }
 
   if (body.action === 'resolve') {
     const v = await Inbox.resolve(sess.id, id);
-    res.statusCode = 200; return res.end(JSON.stringify({ ok: !!v, vorgang: v || null }));
+    res.statusCode = 200; return res.end(JSON.stringify({ ok: !!v, vorgang: forMember(v) || null }));
   }
 
   if (body.action === 'reply') {
@@ -100,7 +116,7 @@ module.exports = async function handler(req, res) {
       } catch (e) {}
     }
     res.statusCode = 200;
-    return res.end(JSON.stringify({ ok: true, vorgang: v }));
+    return res.end(JSON.stringify({ ok: true, vorgang: forMember(v) }));
   }
 
   res.statusCode = 400;
