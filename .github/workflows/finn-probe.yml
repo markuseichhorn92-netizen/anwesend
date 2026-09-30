@@ -1,0 +1,52 @@
+name: FINN Probe (Website-Chat)
+
+# Stellt FINN Fragen über den öffentlichen Website-Chat (/api/finn/public) und schreibt
+# Frage + Antwort ins Job-Protokoll. Zum Prüfen neuer Hilfe-Artikel (z. B. einer Aktion),
+# bevor eine Landingpage live geht.
+#
+#  - Fragen stehen in .github/finn-probe.txt (eine je Zeile, # = Kommentar). Ein Push, der
+#    die Datei ändert, startet den Workflow einmal; alternativ manuell starten.
+#  - Nur öffentliche Auskünfte: der Website-Chat hat keinen Zugriff auf Mitgliedsdaten.
+#    Keine Personendaten in die Fragen schreiben – das Protokoll ist im Repo sichtbar.
+#  - Jede Frage als neuer Besucher (ohne Verlauf), damit die Antworten unabhängig sind.
+#  - Braucht FINN_PUBLIC=1 in Vercel (sonst 404). Kein Secret nötig.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ['claude/push-das-github-12dw6q']
+    paths: ['.github/finn-probe.txt']
+
+concurrency:
+  group: finn-probe
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/finn-probe.txt
+          sparse-checkout-cone-mode: false
+      - name: Fragen an FINN
+        run: |
+          set -u
+          url="https://mitglieder.fit-inn-trier.de/api/finn/public"
+          n=0
+          while IFS= read -r q || [ -n "$q" ]; do
+            q="$(printf '%s' "$q" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+            case "$q" in ''|'#'*) continue ;; esac
+            n=$((n+1))
+            vid="probe$(date +%s)$n$RANDOM"
+            body="$(jq -nc --arg m "$q" --arg v "$vid" '{message:$m, visitorId:$v}')"
+            res="$(curl -sS --max-time 60 -H 'content-type: application/json' -d "$body" "$url" || true)"
+            echo "::group::Frage $n"
+            echo "FRAGE:   $q"
+            echo "ANTWORT: $(printf '%s' "$res" | jq -r '.answer // ("(keine Antwort) " + (.error // "?"))' 2>/dev/null || printf '%s' "$res" | head -c 400)"
+            echo "AGENT:   $(printf '%s' "$res" | jq -r '.agent // "-"' 2>/dev/null)"
+            echo "::endgroup::"
+            sleep 2
+          done < .github/finn-probe.txt
+          [ "$n" -gt 0 ] || { echo "Keine Fragen in .github/finn-probe.txt"; exit 1; }

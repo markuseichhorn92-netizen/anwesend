@@ -188,6 +188,23 @@ wurde nicht (mehr) gebraucht. Entscheidung des Betreibers nach einer Nutzungsüb
 - **Am Umstellungstag** der neuen App: `docs/APP-UMSTELLUNG.md`.
 - Mit `FEATURE_ERN=1`/`FEATURE_TRAINING=1` fehlen die Team-Werkzeuge – bei Bedarf aus Git holen.
 
+## Oktober-Aktion 2026 und FINN-Wissen (30. September 2026)
+
+- Hilfe-Artikel **„Oktober-Aktion 2026: 12 Wochen für je 5 €"** (Kategorie Mitgliedschaft,
+  veröffentlicht) – angelegt ohne Team-Login über die einmalige Migration
+  `lib/articleMigrations.js` (Marke `art:mig:okt26`, läuft beim ersten `Articles.list()`,
+  nur nach der Erstbefüllung). Danach ein normaler Backend-Artikel; gelöscht oder auf Entwurf
+  gesetzt, taucht er nicht wieder auf. Kein Ablaufdatum im Backend → **am 01.11.2026 im
+  Team-Backend auf „Entwurf" setzen** (Kalender-Erinnerung beim Betreiber).
+- Sommer-Aktion (bis 31.08.2026) aus `lib/help.js` und `mitglieder.html` `HELP_ARTICLES`
+  entfernt – FINN und die App-Hilfe nennen sie nicht mehr. „Tarife & Preise" (a16) unverändert.
+- FINN-Wissenssuche (`lib/finn/knowledge.js`): seltene Begriffe zählen stärker (IDF), und ein
+  Backend-Artikel ersetzt den eingebauten mit gleichem Titel (keine Doppeltreffer).
+- `/api/finn/public` an (`FINN_PUBLIC=1`); `ALLOWED_ORIGIN` = Adresse der Landingpage (noch
+  offen). Live-Prüfung: `.github/finn-probe.txt` ändern → Workflow „FINN Probe" schreibt
+  Frage/Antwort ins Job-Protokoll (nur öffentliche Auskünfte, keine Personendaten).
+- `tests/help-okt-aktion.test.js`.
+
 ## Partner Upfit – Ernährung protokollieren (September 2026)
 
 Fit-Inn hat eine Partnerschaft mit Upfit (Up Gesundheit GmbH, Hamburg). Das
