@@ -23,6 +23,14 @@ function who(m) {
     + (m.email ? ' · ' + m.email : '');
 }
 
+// Interne Team-Notizen (v.notes) gehören nie in eine Antwort ans Mitglied.
+function forMember(v) {
+  if (!v || typeof v !== 'object') return v || null;
+  const out = Object.assign({}, v);
+  delete out.notes;
+  return out;
+}
+
 async function seedWelcome(memberId, firstName) {
   return Inbox.addVorgang(memberId, {
     type: 'willkommen',
@@ -50,7 +58,7 @@ module.exports = async function handler(req, res) {
     if (id) {
       const v = await Inbox.markRead(sess.id, id);
       res.statusCode = 200;
-      return res.end(JSON.stringify({ ok: !!v, vorgang: v || null }));
+      return res.end(JSON.stringify({ ok: !!v, vorgang: forMember(v) }));
     }
     let vorgaenge = await Inbox.list(sess.id);
     if (!vorgaenge.length) {
@@ -58,7 +66,7 @@ module.exports = async function handler(req, res) {
       vorgaenge = await Inbox.list(sess.id);
     }
     res.statusCode = 200;
-    return res.end(JSON.stringify({ ok: true, vorgaenge: vorgaenge, unread: vorgaenge.filter((v) => v.unread).length }));
+    return res.end(JSON.stringify({ ok: true, vorgaenge: vorgaenge.map(forMember), unread: vorgaenge.filter((v) => v.unread).length }));
   }
 
   if (req.method !== 'POST') { res.statusCode = 405; return res.end(JSON.stringify({ ok: false, error: 'method_not_allowed' })); }
@@ -68,12 +76,12 @@ module.exports = async function handler(req, res) {
 
   if (body.action === 'read') {
     const v = await Inbox.markRead(sess.id, id);
-    res.statusCode = 200; return res.end(JSON.stringify({ ok: !!v, vorgang: v || null }));
+    res.statusCode = 200; return res.end(JSON.stringify({ ok: !!v, vorgang: forMember(v) }));
   }
 
   if (body.action === 'resolve') {
     const v = await Inbox.resolve(sess.id, id);
-    res.statusCode = 200; return res.end(JSON.stringify({ ok: !!v, vorgang: v || null }));
+    res.statusCode = 200; return res.end(JSON.stringify({ ok: !!v, vorgang: forMember(v) }));
   }
 
   if (body.action === 'reply') {
@@ -100,7 +108,7 @@ module.exports = async function handler(req, res) {
       } catch (e) {}
     }
     res.statusCode = 200;
-    return res.end(JSON.stringify({ ok: true, vorgang: v }));
+    return res.end(JSON.stringify({ ok: true, vorgang: forMember(v) }));
   }
 
   res.statusCode = 400;

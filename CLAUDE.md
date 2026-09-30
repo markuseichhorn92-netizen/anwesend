@@ -527,6 +527,12 @@ Leitplanken dazu (zusätzlich zu den allgemeinen unten):
   als fehlender Scope).
 - `MEMBER_LIST_READ` bleibt „nie angenommen", bis der Scope vorliegt.
 - Bestandsverarbeitung im Webhook nicht in den Bus verschieben – der Bus wrappt sie.
+- Übergabe (`lib/finn/handoff.js`) und Automationen (`lib/finn/automations.js`) schreiben
+  den Team-Kontext nur als Notiz (`Inbox.addNote`, Autor `FINN`). Das Mitglied sieht einen
+  neutralen Betreff („Dein Anliegen an das Team", „Deine Zahlung", „Deine Kündigung") und
+  eine Systemzeile – nie `teamText`/`needsAction`. `api/member/inbox.js` liefert keine
+  `notes` aus (`forMember`). Stand 30.09.2026, `tests/finn-handoff-privacy.test.js`.
+  Ältere Vorgänge mit sichtbarem Kontext wurden nicht nachträglich bereinigt.
 
 ## WhatsApp-KI erkennt Mitglieder an der Nummer (29. September 2026)
 
