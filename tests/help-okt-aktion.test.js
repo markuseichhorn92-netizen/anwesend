@@ -59,6 +59,15 @@ const TITLE = 'Oktober-Aktion 2026: 12 Wochen für je 5 €';
   const dup = (await K.search('Mitgliedschaft pausieren', 4)).map((h) => h.title);
   ok('5.5 kein Artikel doppelt (Backend-Fassung ersetzt die eingebaute)', dup.length === new Set(dup).size, JSON.stringify(dup));
 
+  // 6. Der Prompt-Kontext enthält den Aktionsartikel vollständig (bei 500 Zeichen fehlten
+  //    „nur für Neumitglieder", die Leistungen und der Flex-Ausschluss – FINN riet dann)
+  for (let i = 0; i < qs.length; i++) {
+    const c = await K.contextFor(qs[i], 3);
+    ok('6.' + (i + 1) + ' Kontext zu „' + qs[i] + '" vollständig', /nur für Neumitglieder/.test(c) && /In jeder Mitgliedschaft enthalten/.test(c) && /Flex-Tarif \(4 Wochen, 15 € pro Woche\) ist nicht Teil der Aktion/.test(c) && /agbs-fit-inn-trier/.test(c), c.slice(0, 300));
+  }
+  const tool = await K.search('Gibt es eine Aufnahmegebühr?', 4);
+  ok('6.5 Werkzeug search_knowledge bleibt bei 900 Zeichen je Treffer', tool.every((h) => h.snippet.length <= 900));
+
   console.log(pass ? 'HELP OKT-AKTION PASS' : 'HELP OKT-AKTION FAIL');
   process.exit(pass ? 0 : 1);
 })().catch((e) => { console.log('FAIL Ausnahme: ' + (e && e.stack || e)); process.exit(1); });

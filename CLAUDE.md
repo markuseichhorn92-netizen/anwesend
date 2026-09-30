@@ -200,6 +200,8 @@ wurde nicht (mehr) gebraucht. Entscheidung des Betreibers nach einer Nutzungsüb
   entfernt – FINN und die App-Hilfe nennen sie nicht mehr. „Tarife & Preise" (a16) unverändert.
 - FINN-Wissenssuche (`lib/finn/knowledge.js`): seltene Begriffe zählen stärker (IDF), und ein
   Backend-Artikel ersetzt den eingebauten mit gleichem Titel (keine Doppeltreffer).
+  Der beste Treffer geht vollständig (bis 1600 Zeichen) in den Prompt, die übrigen mit 500 –
+  vorher fehlten beim Aktionsartikel Bedingungen und Leistungen, und FINN riet (erste Live-Probe).
 - `/api/finn/public` an (`FINN_PUBLIC=1`); `ALLOWED_ORIGIN` = Adresse der Landingpage (noch
   offen). Live-Prüfung: `.github/finn-probe.txt` ändern → Workflow „FINN Probe" schreibt
   Frage/Antwort ins Job-Protokoll (nur öffentliche Auskünfte, keine Personendaten).
