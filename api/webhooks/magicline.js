@@ -27,7 +27,7 @@ const crypto = require('node:crypto');
 const W = require('../../lib/welcome');
 const NM = require('../../lib/newMembers');
 const MlEvents = require('../../lib/mlEvents');
-// FINN Event Bus: Idempotenz (Replay-Schutz je Event) + Automationen – liegt UM die
+// Lena Event Bus: Idempotenz (Replay-Schutz je Event) + Automationen – liegt UM die
 // bestehende Verarbeitung, ersetzt sie nicht. Ohne KV: kein Dedup, alles wie bisher.
 const FinnEvents = require('../../lib/finn/events');
 try { require('../../lib/finn/automations').register(); } catch (e) {}
@@ -189,7 +189,7 @@ async function onContractEnd(cid, kind) {
       subject: '🔄 ' + label + ' – Rückholung prüfen: ' + name,
       text: 'Magicline meldet: ' + label + ' (' + (kind === 'reversed' ? 'CONTRACT_REVERSED' : 'CONTRACT_CANCELLED') + ').\n\n'
         + 'Mitglied: ' + name + (m && m.customerNumber ? (' · Nr. ' + m.customerNumber) : '') + (m && m.email ? (' · ' + m.email) : '')
-        + '\n\nGuter Zeitpunkt für ein Rückhol-Angebot (Rückholung im Team-Backend / „Vorschlag von FINN").',
+        + '\n\nGuter Zeitpunkt für ein Rückhol-Angebot (Rückholung im Team-Backend / „Vorschlag von Lena").',
     });
     return true;
   } catch (e) { return false; }
@@ -219,7 +219,7 @@ async function handleWebhook(req, res, opts) {
       let stats = {}; try { stats = await MlEvents.readStats(); } catch (e) {}
       let appts = 0; try { const now = new Date(); const from = new Date(now.getTime() - 15 * 86400000).toISOString(); const to = new Date(now.getTime() + 15 * 86400000).toISOString(); appts = (await MlEvents.listAppointments(from, to)).length; } catch (e) {}
       let checkins = 0, present = 0; try { checkins = (await MlEvents.recentCheckins(120)).length; } catch (e) {} try { present = await MlEvents.presentCount(); } catch (e) {}
-      // FINN-Block (zusätzlich, bestehende Felder bleiben): Event-Dedup, Fehler, Duplikate, Scopes.
+      // Lena-Block (zusätzlich, bestehende Felder bleiben): Event-Dedup, Fehler, Duplikate, Scopes.
       let finn = null;
       try {
         const Cap = require('../../lib/finn/capabilities'); const ML = require('../../lib/finn/magicline');
@@ -233,7 +233,7 @@ async function handleWebhook(req, res, opts) {
   }
   if (req.method !== 'POST') { res.statusCode = 405; return res.end(JSON.stringify({ ok: false, error: 'method_not_allowed' })); }
 
-  // FINN Journeys: Durchlauf aus dem Webhook-Verkehr anstoßen (wartet nicht, siehe lib/journeys/autotick).
+  // Lena Journeys: Durchlauf aus dem Webhook-Verkehr anstoßen (wartet nicht, siehe lib/journeys/autotick).
   try { require('../../lib/journeys/autotick').maybe('magicline'); } catch (e) {}
   const body = await readBody(req);
   const events = eventsFrom(body).slice(0, MAX_EVENTS);

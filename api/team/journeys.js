@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * Team-Backend: FINN Journeys (WhatsApp-Onboarding, Motivation, Comeback, Leads).
+ * Team-Backend: Lena Journeys (WhatsApp-Onboarding, Motivation, Comeback, Leads).
  *   GET                       -> Betriebsmodus, Journeys (an/aus), Vorlagen-Katalog mit
  *                                Zuordnung, Kennzahlen des Monats, Probelauf-Liste, Zähler
  *   GET ?view=kpi&month=YYYYMM

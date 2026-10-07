@@ -1,5 +1,8 @@
 # Claude Code – Projektübergabe
 
+> **Seit 07.10.2026 heißt die KI überall „Lena“** (früher FINN). Sichtbare Texte, Labels und System-Prompts sind umgestellt; technische Bezeichner (`lib/finn/*`, `/api/finn/*`, `FINN_*`-Env, KV-Schlüssel, CSS/IDs) und die älteren Abschnitte unten behalten bewusst „FINN“. Alte Autor-Einträge „FINN“ gelten weiter als Bot (`lib/teamUsage.js`).
+
+
 Stand: 29. September 2026. Bedrock-Teil unverändert seit dem 21. Juli.
 Team-Bereich am 29.09. entrümpelt (siehe „Team-Bereich entrümpelt").
 

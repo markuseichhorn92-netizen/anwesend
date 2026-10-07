@@ -4,7 +4,7 @@
  * /api/member/nutrition-coach   (Authorization: Bearer <token>)
  * -------------------------------------------------------------------------
  * Das Coaching-Programm des Ernährungsmoduls (geführte 8-Wochen-Reise mit
- * kuratierten Lektionen + adaptiver FINN-Begleitung). Basis-Programm ist gratis;
+ * kuratierten Lektionen + adaptiver Lena-Begleitung). Basis-Programm ist gratis;
  * KI-Teile (Personalisierung, Impuls, Check-in-Auswertung) sind Premium – Gate
  * wie in nutrition.js (`premium_required`). Der Premium-Status wird NICHT hier,
  * sondern über den Magicline-Zusatzmodul-Abgleich (lib/mlPremium) gesetzt.
@@ -50,7 +50,7 @@ async function snapshot(id, st) {
   }
   let nextCheckin = null;
   if (st && st.enrolled) nextCheckin = Coaching.nextCheckinInfo(await Coaching.getCheckins(id), today);
-  // combined: jede Woche behandelt Ernährung UND Training (FINN-Trainings-Fokus in der Lektion).
+  // combined: jede Woche behandelt Ernährung UND Training (Lena-Trainings-Fokus in der Lektion).
   return Object.assign({ ok: true, available: true, combined: true }, snap, hab, { impulse: impulse, nextCheckin: nextCheckin }, tf);
 }
 
@@ -169,7 +169,7 @@ module.exports = async function handler(req, res) {
     if (week >= 2 && !premium) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'premium_required', message: PREMIUM_MSG })); }
     let ls = st.lessons && st.lessons[String(week)];
     let personalized = (ls && ls.personalized) || null;
-    // Premium: FINN personalisiert die Lektion einmalig (gecacht im State).
+    // Premium: Lena personalisiert die Lektion einmalig (gecacht im State).
     if (premium && !personalized && AI.hasAI && (await M.rateLimit('nutri-lessonai:' + id, 20, 3600))) {
       const prof = (await Coaching.kvGetJson('nutri:p:' + id)) || {};
       let firstName = ''; try { const m = await M.getMember(id); firstName = (m && m.firstName) || ''; } catch (e) {}
@@ -183,7 +183,7 @@ module.exports = async function handler(req, res) {
         ls = st.lessons[String(week)];
       }
     }
-    // FINN-Trainings-Fokus: macht die Woche zu EINEM Thema für Ernährung UND Training (passend zu Ziel + Plan).
+    // Lena-Trainings-Fokus: macht die Woche zu EINEM Thema für Ernährung UND Training (passend zu Ziel + Plan).
     // Nur Premium (KI): einmalig erzeugt und im State gecacht. Nicht-Premium -> Teaser (kein KI-Call, keine Kosten).
     let trainingFocus = (ls && ls.trainingFocus) || null;
     if (!trainingFocus) {

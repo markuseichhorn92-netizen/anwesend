@@ -1,5 +1,5 @@
 'use strict';
-// FINN-Kassenbuchprüfung: die Modellantwort muss auch bei unsauberem JSON in
+// Lena-Kassenbuchprüfung: die Modellantwort muss auch bei unsauberem JSON in
 // strukturierte Befunde (Karten) münden, statt in die Rohtext-Ansicht zu kippen.
 // Deckt die realen Bedrock/Haiku-Ausreißer ab: Codefences, typografische
 // Anführungszeichen, Trailing-Kommas, in ein Objekt gehülltes Array, einzelne

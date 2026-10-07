@@ -143,11 +143,11 @@ function run() {
   const otShort = [MO.sanitize({ rhr: 63, hrvRmssd: 48 }), MO.sanitize({ rhr: 63, hrvRmssd: 48 }), MO.sanitize({ rhr: 63, hrvRmssd: 48 }), MO.sanitize({ rhr: 55, hrvRmssd: 60 }), MO.sanitize({ rhr: 55, hrvRmssd: 60 })];
   ok('21d. overtraining alert auch bei kurzer Historie', MO.overtraining(otShort).level === 'alert' && MO.overtraining(otShort).days === 3);
 
-  // 22. FINN-Vollkontext (toPromptText) mit Kraft/Zonen, Trainings-Check-in, HRV-Alter, Übertraining
+  // 22. Lena-Vollkontext (toPromptText) mit Kraft/Zonen, Trainings-Check-in, HRV-Alter, Übertraining
   const ctx = MO.toPromptText(otAlert, { trList: [MO.sanitize({ rhr: 60, hrvRmssd: 50 })], age: 41 });
-  ok('22. FINN-Kontext nennt EIN widerspruchsfreies Fazit mit Intensität (Cardio)', /FAZIT HEUTE/.test(ctx) && /Empfohlene Intensität/.test(ctx) && /Cardio/.test(ctx));
-  ok('22b. FINN-Kontext: Übertraining fließt ins Fazit (Erholung hat Vorrang) + Gegencheck-Pflicht', /Erholung hat Vorrang/.test(ctx) && /GEGENCHECK-PFLICHT/.test(ctx));
-  ok('22c. FINN-Kontext nennt HRV-Fitnessalter + Trainings-Check-in', /HRV-Fitnessalter/.test(ctx) && /Trainings-Check-in/.test(ctx));
+  ok('22. Lena-Kontext nennt EIN widerspruchsfreies Fazit mit Intensität (Cardio)', /FAZIT HEUTE/.test(ctx) && /Empfohlene Intensität/.test(ctx) && /Cardio/.test(ctx));
+  ok('22b. Lena-Kontext: Übertraining fließt ins Fazit (Erholung hat Vorrang) + Gegencheck-Pflicht', /Erholung hat Vorrang/.test(ctx) && /GEGENCHECK-PFLICHT/.test(ctx));
+  ok('22c. Lena-Kontext nennt HRV-Fitnessalter + Trainings-Check-in', /HRV-Fitnessalter/.test(ctx) && /Trainings-Check-in/.test(ctx));
 
   // 23. Wochen-Vitalitäts-Report
   const wk = MO.weeklyReport(otAlert);

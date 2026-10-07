@@ -11,7 +11,7 @@
  * Für alle inklusive: kein Kontingent, kein Premium. Der Coach ist frei.
  *
  * Datenfluss: Der Live-Block (Vertrag, Termine, Besuche) wird SERVERSEITIG
- * gebaut – derselbe wie im FINN-Chat. Vom Client kommen nur Ziel, Wunsch-
+ * gebaut – derselbe wie im Lena-Chat. Vom Client kommen nur Ziel, Wunsch-
  * Trainingstage und die zuletzt gemessenen Körperwerte, jeweils auf das
  * Nötige beschnitten. Nichts davon wird gespeichert.
  */
@@ -49,7 +49,7 @@ module.exports = async function handler(req, res) {
   const sess = await M.getSession(M.bearer(req));
   if (!sess) return j(res, 401, { ok: false, error: 'unauthorized' });
   if (req.method !== 'POST') return j(res, 405, { ok: false, error: 'method_not_allowed' });
-  if (!AI.hasAI) return j(res, 200, { ok: false, error: 'no_ai', message: 'FINN ist gerade nicht verfügbar.' });
+  if (!AI.hasAI) return j(res, 200, { ok: false, error: 'no_ai', message: 'Lena ist gerade nicht verfügbar.' });
   if (!(await M.rateLimit('coach-insight:' + sess.id, 20, 3600))) {
     return j(res, 200, { ok: false, error: 'rate_limited', message: 'Kurz durchatmen – gleich wieder versuchen.' });
   }
@@ -62,11 +62,11 @@ module.exports = async function handler(req, res) {
     ctx.details = det.text || '';
     const r = await AI.coachInsight(ctx);
     if (!r || !r.ok || !r.text) {
-      return j(res, 200, { ok: false, error: 'gen_failed', message: 'FINN konnte gerade keine Analyse erstellen – bitte gleich noch einmal.' });
+      return j(res, 200, { ok: false, error: 'gen_failed', message: 'Lena konnte gerade keine Analyse erstellen – bitte gleich noch einmal.' });
     }
     return j(res, 200, { ok: true, text: r.text });
   } catch (e) {
-    return j(res, 200, { ok: false, error: 'action_failed', message: 'FINN ist gerade nicht erreichbar.' });
+    return j(res, 200, { ok: false, error: 'action_failed', message: 'Lena ist gerade nicht erreichbar.' });
   }
 };
 module.exports.cleanCtx = cleanCtx;

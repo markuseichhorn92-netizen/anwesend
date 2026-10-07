@@ -127,7 +127,7 @@ module.exports = async function handler(req, res) {
         lead = await LF.recordLead({ phone: b.phone, name: (String(b.firstname || '') + ' ' + String(b.lastname || '')).trim(), email: b.email,
           source: 'probetraining', customerId: Phone.customerIdFrom(r.json), trialAt: Date.parse(b.startDateTime) || null });
       } catch (e) { lead = null; }
-      // WhatsApp-Einwilligungen aus dem Formular festhalten und – wenn FINN Journeys laufen –
+      // WhatsApp-Einwilligungen aus dem Formular festhalten und – wenn Lena Journeys laufen –
       // Erinnerungen vor dem Termin einplanen. Best effort, nie buchungsrelevant.
       try {
         await require('../../lib/journeys').onTrialBooked({

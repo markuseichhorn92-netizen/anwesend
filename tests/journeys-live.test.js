@@ -1,5 +1,5 @@
 'use strict';
-// FINN Journeys – Sofortversand: ein fälliger Schritt geht direkt nach dem Ereignis raus
+// Lena Journeys – Sofortversand: ein fälliger Schritt geht direkt nach dem Ereignis raus
 // (über waitUntil, ohne Durchlauf); Ruhezeit verschiebt; Durchlauf und Sofortversand
 // gleichzeitig → genau eine Nachricht (Sperre je Person); verlorener „gesendet"-Vermerk
 // → Einmal-Marke verhindert den zweiten Versand; ohne waitUntil nichts; Opt-in per

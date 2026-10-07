@@ -50,7 +50,7 @@ module.exports = async function handler(req, res) {
   const email = String(body.email || '').trim();
   const consent = body.consent === true || body.consent === 'true' || body.consent === 1;
   if (!token || !dob || !email) return j(res, 200, { ok: false, error: 'incomplete', message: 'Bitte Geburtsdatum und E-Mail angeben.' });
-  if (!consent) return j(res, 200, { ok: false, error: 'consent_required', message: 'Bitte bestätige die Einwilligung, damit FINN dir über WhatsApp antworten darf.' });
+  if (!consent) return j(res, 200, { ok: false, error: 'consent_required', message: 'Bitte bestätige die Einwilligung, damit Lena dir über WhatsApp antworten darf.' });
 
   const chal = await WAAuth.getChallenge(token);
   if (!chal || !chal.memberId) return j(res, 200, { ok: false, error: 'expired', message: 'Der Bestätigungs-Link ist abgelaufen. Schreib uns kurz erneut auf WhatsApp, dann schicken wir dir einen neuen.' });

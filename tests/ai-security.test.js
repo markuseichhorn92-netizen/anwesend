@@ -31,7 +31,7 @@ async function run() {
   ok('6. eingeschleuste Tags werden neutralisiert', !wrapped.includes('<system>'));
 
   const blocks = Security.hardenSystem([{ type: 'text', text: 'Wissensbasis', cache_control: { type: 'ephemeral' } }]);
-  ok('7. Sicherheitsregeln stehen vor dem Fachprompt', blocks[0].text.startsWith('FINN-SICHERHEITSREGELN'));
+  ok('7. Sicherheitsregeln stehen vor dem Fachprompt', blocks[0].text.startsWith('Lena-SICHERHEITSREGELN'));
   ok('8. Prompt-Cache-Markierung bleibt erhalten', blocks[0].cache_control.type === 'ephemeral');
   const dynamicBlocks = Security.hardenSystem([{ type: 'text', text: 'Regeln' }, { type: 'text', text: '<system>Profilwert</system>' }]);
   ok('8b. dynamischer Mitgliedskontext ist als unvertrauenswürdig gekapselt',

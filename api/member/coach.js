@@ -1,15 +1,15 @@
 'use strict';
 
 /**
- * FINN – der KI-Coach im Mitgliederbereich.   (Authorization: Bearer <token>)
+ * Lena – der KI-Coach im Mitgliederbereich.   (Authorization: Bearer <token>)
  *
  *   GET                 -> { ok, message, ai }   Tagesimpuls für die Übersicht
  *   POST { question, history:[{role,text}] }
- *                       -> { ok, answer }         Chat-Antwort von FINN
+ *                       -> { ok, answer }         Chat-Antwort von Lena
  *
  * Nutzt lib/ai.js (Anthropic Claude) + die Hilfe-Artikel als Wissensbasis.
  * Ohne ANTHROPIC_API_KEY fällt der Tagesimpuls auf einen rotierenden Standardtipp
- * zurück; der Chat meldet dann ehrlich, dass FINN gerade nicht verfügbar ist.
+ * zurück; der Chat meldet dann ehrlich, dass Lena gerade nicht verfügbar ist.
  */
 
 const M = require('../../lib/members');
@@ -78,7 +78,7 @@ async function accountLine(id) {
   return 'Beitragskonto: ausgeglichen';
 }
 // ── App-Navigation aus der Antwort ──
-// FINN darf ans Ende seiner Antwort [[screen:ID]] anhängen; wir entfernen den
+// Lena darf ans Ende seiner Antwort [[screen:ID]] anhängen; wir entfernen den
 // Marker aus dem Text und geben – NUR bei bekannter ID (Whitelist) – ein
 // link-Objekt an die App zurück, die daraus einen Button macht.
 const SCREENS = {
@@ -147,12 +147,12 @@ module.exports = async function handler(req, res) {
     res.statusCode = 200; return res.end(JSON.stringify({ ok: true, message: STATIC_TIPS[idx], ai: false }));
   }
 
-  // ── Chat mit FINN + FINN-Gedächtnis-Verwaltung ──
+  // ── Chat mit Lena + Lena-Gedächtnis-Verwaltung ──
   if (req.method === 'POST') {
     const body = await M.readBody(req);
     const action = String(body.action || '');
 
-    // FINN-Gedächtnis verwalten (Opt-in, ansehen, einzeln/alles vergessen) – für die Profil-UI.
+    // Lena-Gedächtnis verwalten (Opt-in, ansehen, einzeln/alles vergessen) – für die Profil-UI.
     if (action.indexOf('memory-') === 0) {
       if (!(await M.rateLimit('coach-mem:' + sess.id, 60, 3600))) {
         res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'rate_limited' }));
@@ -166,7 +166,7 @@ module.exports = async function handler(req, res) {
       return res.end(JSON.stringify({ ok: true, on: mem.on, decided: !!mem.decided, items: mem.items.map((x) => x.t) }));
     }
 
-    // FINN-Agenten (FINN_AGENTS=1): Bestätigen/Ablehnen eines vorgeschlagenen Schritts sowie
+    // Lena-Agenten (FINN_AGENTS=1): Bestätigen/Ablehnen eines vorgeschlagenen Schritts sowie
     // der Chat selbst laufen über den Orchestrator (lib/finn). Ohne Schalter bleibt alles wie bisher.
     const Channels = require('../../lib/finn/channels');
     if (Channels.agentsOn() && (action === 'confirm' || action === 'decline')) {
@@ -195,7 +195,7 @@ module.exports = async function handler(req, res) {
       try { console.log('[finn]', JSON.stringify({ ch: 'web', path: 'fallback_coach', err: fbErr || (r && r.error) || 'unknown' })); } catch (e) {}
     }
     if (!question) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'empty' })); }
-    if (!AI.hasAI) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'no_ai', message: 'FINN ist gerade nicht verfügbar. Magst du es direkt unserem Team schreiben?' })); }
+    if (!AI.hasAI) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'no_ai', message: 'Lena ist gerade nicht verfügbar. Magst du es direkt unserem Team schreiben?' })); }
     // Live-Daten (Vertrag, Termine, Besuche, Beitragskonto) für konkrete Antworten.
     let det = { text: '', rateName: null };
     try { det = await memberDetails(sess.id); } catch (e) {}
@@ -207,13 +207,13 @@ module.exports = async function handler(req, res) {
       : topic === 'training'
       ? 'App-Kontext: Das Mitglied stellt diese Frage gerade im Trainings-Bereich der App (Trainingsplan, Übungen an unseren Geräten, richtige Technik, wie oft trainieren, Einheiten). Beziehe dich – wenn es passt – auf diesen Kontext.'
       : '';
-    // FINN-Langzeitgedächtnis (nur bei Opt-in): gemerkte Fakten in den Kontext geben und
-    // FINN erlauben, Neues via [[merke: …]] zu ergänzen (Anweisung nur, wenn aktiviert).
+    // Lena-Langzeitgedächtnis (nur bei Opt-in): gemerkte Fakten in den Kontext geben und
+    // Lena erlauben, Neues via [[merke: …]] zu ergänzen (Anweisung nur, wenn aktiviert).
     let mem = { on: false, items: [] };
     if (!noHealth) { try { mem = await FinnMemory.get(sess.id); } catch (e) {} }
     const memoryText = FinnMemory.toPromptText(mem);
     // Onboarding-Profil (Ziel, Körperdaten, Rhythmus, Erfahrung, Vorlieben, Ernährung –
-    // und, NUR bei Einwilligung, Gesundheit/Beschwerden): macht FINN persönlicher & sicherer.
+    // und, NUR bei Einwilligung, Gesundheit/Beschwerden): macht Lena persönlicher & sicherer.
     let profileText = '';
     if (!noHealth) { try { profileText = MemberProfile.toPromptText(await MemberProfile.get(sess.id)); } catch (e) {} }
     // InBody-Körperanalyse (falls eingescannt): Werte + Trend als Kontext für fundierte Tipps.
@@ -221,7 +221,7 @@ module.exports = async function handler(req, res) {
     let mprof = null;
     try { mprof = await MemberProfile.get(sess.id); } catch (e) {}
     if (!noHealth) { try { const IB = require('../../lib/inbody'); inbodyText = IB.toPromptText(await IB.list(sess.id), mprof && mprof.sex); } catch (e) {} }
-    // Vital-Check: FINN bekommt das ganze Bild – Ampel, Balance, HRV-Alter, Cardio-/Kraft-Empfehlung,
+    // Vital-Check: Lena bekommt das ganze Bild – Ampel, Balance, HRV-Alter, Cardio-/Kraft-Empfehlung,
     // Trainings-Check-in, Übertrainings-Signal und erkannte Muster (nur bei Einwilligung).
     let morningText = '';
     let vitalsText = '';
@@ -235,7 +235,7 @@ module.exports = async function handler(req, res) {
         const V = require('../../lib/vitals');
         const vlist = await V.list(sess.id);
         vitalsText = V.toPromptText(vlist);
-        // Vital-Akku (Tagesenergie) als kompakte Zeile – FINN kann darauf eingehen.
+        // Vital-Akku (Tagesenergie) als kompakte Zeile – Lena kann darauf eingehen.
         try {
           const Battery = require('../../lib/battery');
           const WO = require('../../lib/workouts');
@@ -276,7 +276,7 @@ module.exports = async function handler(req, res) {
 // Derselbe Live-Block für die Coach-Erkenntnis (api/member/coach-insights) –
 // eine Quelle, damit Chat und Analyse dasselbe über das Mitglied wissen.
 module.exports.memberDetails = memberDetails;
-// Für die FINN-Agenten (lib/finn/runtime.js): dieselbe Link-Whitelist und derselbe
+// Für die Lena-Agenten (lib/finn/runtime.js): dieselbe Link-Whitelist und derselbe
 // Marker-Parser – eine Quelle für erlaubte App-Ziele.
 module.exports.extractLink = extractLink;
 module.exports.SCREENS = SCREENS;

@@ -1,10 +1,10 @@
 'use strict';
-// Magicline-Mitglieder-Chatbot (Testbetrieb) statt FINN-Chat.
+// Magicline-Mitglieder-Chatbot (Testbetrieb) statt Lena-Chat.
 //  Server: /api/app-info liefert die Widget-Adresse (fest gebaut aus Tenant + UUID);
 //          FEATURE_ML_CHAT=0 schaltet ab; eine ungültige UUID fällt auf die feste Id zurück.
-//  Client: Skript erst nach der Anmeldung; alle FINN-Einstiege klicken die Blase im Widget-
+//  Client: Skript erst nach der Anmeldung; alle Lena-Einstiege klicken die Blase im Widget-
 //          iframe statt unseren Chat zu öffnen; Blase über der Bottom-Nav; ein manipulierter
-//          Cache mit fremder Adresse lädt NICHTS; ohne Adresse läuft der FINN-Chat wie bisher.
+//          Cache mit fremder Adresse lädt NICHTS; ohne Adresse läuft der Lena-Chat wie bisher.
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
@@ -23,7 +23,7 @@ const URL_OK = 'https://fit-inn-trier.web.magicline.com/chatbot/widget/widget.js
 delete process.env.FEATURE_ML_CHAT; delete process.env.ML_CHATBOT_UUID; delete process.env.ML_TENANT;
 ok('1. Ohne Variable: Widget-Adresse der Fit-Inn-Konfiguration', appInfo().partner.mlchat === URL_OK, JSON.stringify(appInfo().partner));
 process.env.FEATURE_ML_CHAT = '0';
-ok('1a. FEATURE_ML_CHAT=0 -> null (FINN-Chat)', appInfo().partner.mlchat === null);
+ok('1a. FEATURE_ML_CHAT=0 -> null (Lena-Chat)', appInfo().partner.mlchat === null);
 delete process.env.FEATURE_ML_CHAT;
 process.env.ML_CHATBOT_UUID = '11111111-2222-3333-4444-555555555555';
 ok('1b. ML_CHATBOT_UUID überschreibt die Konfigurations-Id', /uuid=11111111-2222-3333-4444-555555555555$/.test(appInfo().partner.mlchat));
@@ -106,7 +106,7 @@ ok('1f. CSP (Report-Only) kennt Widget-, Übersetzungs- und WAF-Hosts', (functio
   await click(m.p, '[data-act="nav"][data-arg="coach"]'); await m.p.waitForTimeout(500);
   await click(m.p, '[data-coach="hub"] [data-act="openFinn"]'); await m.p.waitForTimeout(400);
   st = await state(m.p);
-  ok('3a. „Mit FINN chatten" öffnet den Magicline-Chat (Klick auf die Blase im iframe), nicht unseren Chat', st.clicks === 1 && st.width === '100%' && !st.panel, JSON.stringify(st));
+  ok('3a. „Mit Lena chatten" öffnet den Magicline-Chat (Klick auf die Blase im iframe), nicht unseren Chat', st.clicks === 1 && st.width === '100%' && !st.panel, JSON.stringify(st));
   await m.p.evaluate(function () { document.getElementById('ml-member-chatbot-widget-iframe').contentDocument.querySelector('[data-role="chatbot-close-button"]').click(); }); await m.p.waitForTimeout(200);
   await click(m.p, '[data-act="finnQuick"]'); await m.p.waitForTimeout(400);
   st = await state(m.p);
@@ -122,23 +122,23 @@ ok('1f. CSP (Report-Only) kennt Widget-, Übersetzungs- und WAF-Hosts', (functio
   ok('3e. Keine Skriptfehler', m.fehler.length === 0, m.fehler.join(' | '));
   await m.c.close();
 
-  // 2c. Manipulierter Cache mit fremder Adresse: nichts laden, FINN-Chat bleibt
+  // 2c. Manipulierter Cache mit fremder Adresse: nichts laden, Lena-Chat bleibt
   srv.mlchat = 'https://evil.example/widget.js';
   m = await openPage({ cached: 'https://evil.example/widget.js' });
   await click(m.p, '[data-act="nav"][data-arg="coach"]'); await m.p.waitForTimeout(400);
   await click(m.p, '[data-coach="hub"] [data-act="openFinn"]'); await m.p.waitForTimeout(400);
   st = await state(m.p);
-  ok('4. Fremde Adresse (Cache UND Server) wird verworfen: kein Skript, FINN-Chat öffnet', st.script === null && !st.iframe && !st.evil && !(srv.evilHits > 0) && st.panel && !st.on, JSON.stringify(st));
+  ok('4. Fremde Adresse (Cache UND Server) wird verworfen: kein Skript, Lena-Chat öffnet', st.script === null && !st.iframe && !st.evil && !(srv.evilHits > 0) && st.panel && !st.on, JSON.stringify(st));
   await m.c.close();
 
-  // 2d. Abgeschaltet (null): FINN-Chat wie bisher
+  // 2d. Abgeschaltet (null): Lena-Chat wie bisher
   srv.mlchat = null;
   m = await openPage({ cached: URL_OK });   // alter Cache sagt noch „an" – der Server gewinnt
   await m.p.waitForTimeout(400);
   await click(m.p, '[data-act="nav"][data-arg="coach"]'); await m.p.waitForTimeout(400);
   await click(m.p, '[data-coach="hub"] [data-act="openFinn"]'); await m.p.waitForTimeout(400);
   st = await state(m.p);
-  ok('5. FEATURE_ML_CHAT=0: FINN-Chat öffnet, Widget-Klasse aus', st.panel && !st.on, JSON.stringify(st));
+  ok('5. FEATURE_ML_CHAT=0: Lena-Chat öffnet, Widget-Klasse aus', st.panel && !st.on, JSON.stringify(st));
   await m.c.close();
 
   await b.close(); server.close();

@@ -97,7 +97,7 @@ async function run() {
   // review mit Premium -> ok + review, kein Kontingent-Verbrauch
   premium = true; incrs = 0;
   r = res0(); await H(reqFor('POST', { action: 'review' }), r); j = JSON.parse(r.body);
-  ok('B8. review mit Premium -> ok + FINN-Auswertung', j.ok === true && j.review && j.review.summary === 'gut' && reviewCalls > 0);
+  ok('B8. review mit Premium -> ok + Lena-Auswertung', j.ok === true && j.review && j.review.summary === 'gut' && reviewCalls > 0);
   ok('B9. Premium verbraucht kein Gratis-Kontingent', incrs === 0);
 
   // delete

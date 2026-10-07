@@ -1,5 +1,5 @@
 'use strict';
-// FINN-Wochen-Trainings-Fokus (lib/ai.coachTrainingFocus): erzeugt aus Wochenthema + Ziel + Plan
+// Lena-Wochen-Trainings-Fokus (lib/ai.coachTrainingFocus): erzeugt aus Wochenthema + Ziel + Plan
 // einen strukturierten Trainings-Fokus (Headline, Warum, 3 To-dos, Einheitstyp, optionale Übung).
 // Macht jede Coaching-Woche zu EINEM Thema für Ernährung UND Training.
 process.env.ANTHROPIC_API_KEY = 'test-key';

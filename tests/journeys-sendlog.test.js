@@ -1,5 +1,5 @@
 'use strict';
-// FINN Journeys – Versandprotokoll: echter Versand und Fehler landen im Protokoll
+// Lena Journeys – Versandprotokoll: echter Versand und Fehler landen im Protokoll
 // (ohne Text, Nummer maskiert), der Probelauf nicht; Zustellstand aus jr:out;
 // Testversand erscheint, ohne Kennzahlen zu verfälschen; Löschung einer Person
 // entfernt ihre Einträge; Deckel 500; nur Admins sehen es.

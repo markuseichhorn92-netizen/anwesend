@@ -26,7 +26,7 @@
  *                   Es ist NUR eine Adresse: die App hängt nichts an (keine
  *                   E-Mail, keine Kennung) und bekommt von Upfit nichts zurück.
  *   mlchat          Skript-Adresse des Magicline-Mitglieder-Chatbots (Testbetrieb,
- *                   ersetzt den FINN-Chat). FEATURE_ML_CHAT=0 -> null -> FINN-Chat.
+ *                   ersetzt den Lena-Chat). FEATURE_ML_CHAT=0 -> null -> Lena-Chat.
  *                   Wird serverseitig aus ML_TENANT + ML_CHATBOT_UUID gebaut; der
  *                   Client lädt nur Adressen, die exakt diesem Muster entsprechen.
  */

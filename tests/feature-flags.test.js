@@ -32,7 +32,7 @@ async function run() {
   let j = JSON.parse(r.body);
   ok('1. ohne Env: eigenes Ernährungsmodul AUS, Social/Demo AUS', r.statusCode === 200
     && j.features && j.features.ern === false && j.features.social === false && j.features.demo === false);
-  ok('1b. … und das Abo-Modell ist AUS (FINN für alle inklusive)', j.features.abo === false);
+  ok('1b. … und das Abo-Modell ist AUS (Lena für alle inklusive)', j.features.abo === false);
 
   process.env.FEATURE_ERN = '1'; process.env.FEATURE_SOCIAL = 'true'; process.env.FEATURE_DEMO = '0';
   r = res0(); fresh('api/app-info.js')({}, r); j = JSON.parse(r.body);
@@ -87,7 +87,7 @@ async function run() {
   // ── KI-Datenminimierung ──
   const coach = fs.readFileSync(path.join(ROOT, 'api/member/coach.js'), 'utf8');
   const coachMember = coach.slice(coach.indexOf('const member = {'), coach.indexOf('const member = {') + 160);
-  ok('11. FINN-Chat: kein Nachname/keine Mitgliedsnummer im KI-Kontext',
+  ok('11. Lena-Chat: kein Nachname/keine Mitgliedsnummer im KI-Kontext',
     coachMember.indexOf('firstName') >= 0 && coachMember.indexOf('lastName') < 0 && coachMember.indexOf('customerNumber') < 0);
   const ai = fs.readFileSync(path.join(ROOT, 'lib/ai.js'), 'utf8');
   ok('12. coachSystem/draftReply: nur Vorname geht an die KI',

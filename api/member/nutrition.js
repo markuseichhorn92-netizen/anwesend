@@ -5,7 +5,7 @@
  * -------------------------------------------------------
  * Eigenständiges Ernährungs-Modul der Mitglieder-App. KEIN Fremdanbieter:
  * Tagesziel aus den eigenen Körperdaten (Mifflin-St-Jeor), Tracking per
- * Freitext + KI-Schätzung, KI-Rezepte, FINN als Ernährungscoach und ein
+ * Freitext + KI-Schätzung, KI-Rezepte, Lena als Ernährungscoach und ein
  * Verweis aufs Stoffwechsel-Coaching im Studio. Alle Daten liegen nur beim
  * Mitglied (Upstash KV), keine Weitergabe an Dritte.
  *
@@ -25,8 +25,8 @@
  * Favoriten (Punkt 3): fav-list | fav-save{name,kcal,p,c,f,portion?} | fav-delete{id} | fav-log{id,date?,factor?,meal?}
  *   POST { action:'water', delta|set, date? }
  * Rezepte/Plan: recipes | recipes-get | recipe-save | recipe-delete | recipe-log{recipe,servings?,date?} | plan-generate | plan-get | shopping-toggle | shopping-clear
- * Einkauf: store-set{store} (bevorzugter Supermarkt, ''=egal) | shopping-store-suggest{store?} (FINN-Produktvorschläge je Listenposition, global gecacht)
- *   POST { action:'coach', question, history? } -> FINN-Antwort (Punkt 4 Verlauf, Punkt 6 Schutzregeln)
+ * Einkauf: store-set{store} (bevorzugter Supermarkt, ''=egal) | shopping-store-suggest{store?} (Lena-Produktvorschläge je Listenposition, global gecacht)
+ *   POST { action:'coach', question, history? } -> Lena-Antwort (Punkt 4 Verlauf, Punkt 6 Schutzregeln)
  *   POST { action:'coaching-request' }          -> Inbox-Vorgang „Stoffwechsel-Coaching" + Studio-Mail
  * Datenschutz (Punkt 8): export | delete-day{date?} | delete-all{confirm:'LOESCHEN'}
  *
@@ -89,7 +89,7 @@ function ensureSeed() { if (!_seedPromise) _seedPromise = Recipes.seedOnce(ERN_S
 // Freemium: KI-Funktionen sind Premium. Freundliche Meldung fürs Upgrade.
 const PREMIUM_MSG = 'Das ist eine Premium-Funktion (KI). Teste Premium 7 Tage gratis – danach jederzeit kündbar.';
 // Basic-Gratis-Kontingent für diesen Monat ist aufgebraucht.
-const QUOTA_MSG = 'Dein Gratis-Kontingent für FINN ist diesen Monat aufgebraucht. Mit Premium nutzt du FINN unbegrenzt – 7 Tage gratis testen.';
+const QUOTA_MSG = 'Dein Gratis-Kontingent für Lena ist diesen Monat aufgebraucht. Mit Premium nutzt du Lena unbegrenzt – 7 Tage gratis testen.';
 
 const PKEY = (id) => 'nutri:p:' + String(id);
 const DKEY = (id, d) => 'nutri:d:' + String(id) + ':' + d;
@@ -483,7 +483,7 @@ function newEntryId() { return Date.now().toString(36) + Math.random().toString(
 
 // ── Punkt 6: deterministische Schutzprüfung für den Ernährungscoach ──
 // Erkennt Hinweise auf Krise/Selbstverletzung, Essstörung, Erbrechen/Kompensation
-// oder gefährliche Extrem-Restriktion. Trifft eine Regel zu, antwortet FINN NICHT
+// oder gefährliche Extrem-Restriktion. Trifft eine Regel zu, antwortet Lena NICHT
 // frei (KI wird übersprungen), sondern empathisch mit Verweis auf echte Hilfe.
 // Nutzertext kann diese Regeln nicht überschreiben.
 function safetyResponse(text) {
@@ -642,10 +642,10 @@ module.exports = async function handler(req, res) {
     if (!(await gateAI())) return;
     const text = cleanStr(body.text, 500);
     if (text.length < 2) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'empty', message: 'Bitte beschreibe kurz, was du gegessen hast.' })); }
-    if (!AI.hasAI) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'no_ai', message: 'FINN ist gerade nicht verfügbar.' })); }
+    if (!AI.hasAI) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'no_ai', message: 'Lena ist gerade nicht verfügbar.' })); }
     if (!(await M.rateLimit('nutri-log:' + id, 40, 3600))) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'rate_limited', message: 'Kurz durchatmen – gleich wieder versuchen.' })); }
     const est = await AI.estimateFood(text);
-    if (!est.ok) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'ai_failed', message: 'FINN kann gerade nicht schätzen. Versuch es gleich nochmal.' })); }
+    if (!est.ok) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'ai_failed', message: 'Lena kann gerade nicht schätzen. Versuch es gleich nochmal.' })); }
     const quota = await chargeAI();
     const meal = mealForHour(hour);
     const items = (est.items || []).map(function (it) { return sanitizeEntry({ name: it.name, portion: it.portion, kcal: it.kcal, p: it.p, c: it.c, f: it.f, meal: meal, estimated: true }, hour); });
@@ -655,12 +655,12 @@ module.exports = async function handler(req, res) {
   // ── Punkt 1: KI-SCHÄTZUNG per FOTO – wird NICHT gespeichert, nur zur Bestätigung ──
   if (action === 'estimate-photo' || action === 'log-photo') {
     if (!(await gateAI())) return;
-    if (!AI.hasAI) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'no_ai', message: 'FINN ist gerade nicht verfügbar.' })); }
+    if (!AI.hasAI) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'no_ai', message: 'Lena ist gerade nicht verfügbar.' })); }
     if (!(await M.rateLimit('nutri-photo:' + id, 20, 3600))) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'rate_limited', message: 'Kurz durchatmen – gleich wieder versuchen.' })); }
     const b64 = String(body.base64 || '');
     if (b64.length < 100 || b64.length > 8000000) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'bad_photo', message: 'Kein gültiges Foto empfangen.' })); }
     const est = await AI.estimateFoodPhoto(b64, body.mediaType);
-    if (!est.ok) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'ai_failed', message: 'FINN kann das Foto gerade nicht auswerten. Versuch es gleich nochmal.' })); }
+    if (!est.ok) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'ai_failed', message: 'Lena kann das Foto gerade nicht auswerten. Versuch es gleich nochmal.' })); }
     const quota = await chargeAI();
     const meal = mealForHour(hour);
     const items = (est.items || []).map(function (it) { return sanitizeEntry({ name: it.name, portion: it.portion, kcal: it.kcal, p: it.p, c: it.c, f: it.f, meal: meal, estimated: true }, hour); });
@@ -673,7 +673,7 @@ module.exports = async function handler(req, res) {
   // weil OCR bei schlechten Fotos danebenliegen kann).
   if (action === 'label-scan') {
     if (!(await gateAI())) return;
-    if (!AI.hasAI) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'no_ai', message: 'FINN ist gerade nicht verfügbar.' })); }
+    if (!AI.hasAI) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'no_ai', message: 'Lena ist gerade nicht verfügbar.' })); }
     if (!(await M.rateLimit('nutri-label:' + id, 20, 3600))) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'rate_limited', message: 'Kurz durchatmen – gleich wieder versuchen.' })); }
     const b64 = String(body.base64 || '');
     if (b64.length < 100 || b64.length > 8000000) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'bad_photo', message: 'Kein gültiges Foto empfangen.' })); }
@@ -681,7 +681,7 @@ module.exports = async function handler(req, res) {
     if (!r.ok) {
       const msg = (r.error === 'no_label')
         ? 'Auf dem Foto war keine Nährwerttabelle lesbar – bitte näher ran und auf gute Beleuchtung achten.'
-        : 'FINN kann das Foto gerade nicht auswerten. Versuch es gleich nochmal.';
+        : 'Lena kann das Foto gerade nicht auswerten. Versuch es gleich nochmal.';
       res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: r.error || 'ai_failed', message: msg }));
     }
     const quota = await chargeAI();
@@ -956,7 +956,7 @@ module.exports = async function handler(req, res) {
     const idn = await cookIdentity(id);
     if (idn.age != null && idn.age < 16) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'too_young', message: 'Gemeinsam kochen ist erst ab 16 Jahren möglich.' })); }
     // Gesamt-Nährwerte + Zutaten + Quelle: aus einem Bibliotheks-REZEPT (gekochte
-    // Portionen × Pro-Portion, serverautoritativ), aus einer FINN-Schätzung (items)
+    // Portionen × Pro-Portion, serverautoritativ), aus einer Lena-Schätzung (items)
     // oder manuell (direkte Gesamtwerte).
     let total = null, ptitle = cleanStr(body.title, 80), pingredients = [], psource = 'manual';
     if (body.recipeId) {
@@ -1034,14 +1034,14 @@ module.exports = async function handler(req, res) {
     res.statusCode = 200; return res.end(JSON.stringify({ ok: true, deleted: !!(r && r.deleted) }));
   }
 
-  // ── FINN generiert Rezepte -> in die studioweite Bibliothek + Nutri-Score ──
+  // ── Lena generiert Rezepte -> in die studioweite Bibliothek + Nutri-Score ──
   if (action === 'recipes') {
-    // „Erster Plan aufs Haus": der erste FINN-Wochenplan ist gratis. Nur PRÜFEN – eingelöst
+    // „Erster Plan aufs Haus": der erste Lena-Wochenplan ist gratis. Nur PRÜFEN – eingelöst
     // wird erst nach erfolgreicher Generierung (fehlgeschlagener Versuch verbraucht nichts).
     const welcomeFree = !!body.welcome && (await Welcome.available(id, 'ern'));
     if (!welcomeFree) { if (!(await gateAI())) return; }
     await ensureSeed();   // Startbestand einmalig übernehmen (idempotent)
-    if (!AI.hasAI) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'FINN ist gerade nicht verfügbar – schau in der Rezept-Bibliothek vorbei.' })); }
+    if (!AI.hasAI) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'Lena ist gerade nicht verfügbar – schau in der Rezept-Bibliothek vorbei.' })); }
     if (!(await M.rateLimit('nutri-recipes:' + id, 20, 3600))) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'Kurz durchatmen – gleich wieder versuchen.' })); }
     const t = targetsFor(profile || {});
     const fridge = String(body.fridge || '').trim().slice(0, 200);
@@ -1074,7 +1074,7 @@ module.exports = async function handler(req, res) {
     const count = mealsForAI.length ? mealsForAI.length : Math.max(1, Math.min(5, parseInt(body.count, 10) || 3));
     const avoidTitles = Array.isArray(body.avoidTitles) ? body.avoidTitles.slice(0, 8).map(function (x) { return cleanStr(x, 60); }).filter(Boolean) : [];
     const r = await AI.nutritionRecipes({ goal: GOALS[profile && profile.goal] || 'ausgewogen', kcalTarget: t.kcal, protein: t.protein, diet: diet, wish: wish, count: count, mealKcal: mealKcal, mealProtein: mealProtein, avoidTitles: avoidTitles, meals: mealsForAI, focus: focus, days: daysReq });
-    if (!r.ok) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'FINN kann gerade keine Rezepte erstellen. Versuch es gleich nochmal.' })); }
+    if (!r.ok) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'Lena kann gerade keine Rezepte erstellen. Versuch es gleich nochmal.' })); }
     // Jedes generierte Rezept in die gemeinsame Bibliothek übernehmen (dedupliziert) und die
     // kanonischen Rezepte inkl. berechnetem Nutri-Score zurückgeben (wachsende Datenbank).
     try { require('../../lib/handled').record('ai', id, 'nutri-recipes'); } catch (e) {}
@@ -1101,7 +1101,7 @@ module.exports = async function handler(req, res) {
     res.statusCode = 200; return res.end(JSON.stringify({ ok: true, recipes: list }));
   }
 
-  // ── FINN Ernährungscoach (Punkt 4: echter Verlauf · Punkt 6: Schutzregeln) ──
+  // ── Lena Ernährungscoach (Punkt 4: echter Verlauf · Punkt 6: Schutzregeln) ──
   if (action === 'coach') {
     const question = cleanStr(body.question, 800);
     if (question.length < 2) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'empty' })); }
@@ -1112,7 +1112,7 @@ module.exports = async function handler(req, res) {
       res.statusCode = 200; return res.end(JSON.stringify({ ok: true, answer: safe, safety: true }));
     }
     if (!(await gateAI())) return;   // Sicherheits-Antwort läuft immer, KI-Reply kostet Kontingent/Premium
-    if (!AI.hasAI) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'FINN ist gerade nicht verfügbar.' })); }
+    if (!AI.hasAI) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'Lena ist gerade nicht verfügbar.' })); }
     if (!(await M.rateLimit('nutri-coach:' + id, 30, 3600))) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'Kurz durchatmen – gleich wieder versuchen.' })); }
     let m = null; try { m = await M.getMember(id); } catch (e) {}
     const t = targetsFor(profile || {});
@@ -1130,14 +1130,14 @@ module.exports = async function handler(req, res) {
     res.statusCode = 200; return res.end(JSON.stringify(r.ok ? { ok: true, answer: r.answer, quota: cq } : { ok: false, message: 'Da komme ich gerade nicht weiter. Frag mich gleich nochmal.' }));
   }
 
-  // ── FINN bewertet die Mahlzeit, die man gerade eintragen will (Einzel-Items + Gesamt) ──
+  // ── Lena bewertet die Mahlzeit, die man gerade eintragen will (Einzel-Items + Gesamt) ──
   if (action === 'evaluate-meal') {
     if (!(await gateAI())) return;
-    if (!AI.hasAI) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'no_ai', message: 'FINN ist gerade nicht verfügbar.' })); }
+    if (!AI.hasAI) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'no_ai', message: 'Lena ist gerade nicht verfügbar.' })); }
     const items = (Array.isArray(body.items) ? body.items.slice(0, 12) : []).map(function (it) {
       it = it || {}; return { name: cleanStr(it.name, 80) || 'Eintrag', kcal: clamp(it.kcal, 0, 5000, 0), p: clamp(it.p, 0, 500, 0), c: clamp(it.c, 0, 700, 0), f: clamp(it.f, 0, 500, 0) };
     }).filter(function (it) { return it.kcal > 0 || it.p > 0 || it.c > 0 || it.f > 0; });
-    if (!items.length) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'no_items', message: 'Füge zuerst etwas hinzu, das FINN bewerten kann.' })); }
+    if (!items.length) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'no_items', message: 'Füge zuerst etwas hinzu, das Lena bewerten kann.' })); }
     if (!(await M.rateLimit('nutri-mealeval:' + id, 40, 3600))) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'rate_limited', message: 'Kurz durchatmen – gleich wieder versuchen.' })); }
     let m = null; try { m = await M.getMember(id); } catch (e) {}
     const t = targetsFor(profile || {});
@@ -1153,10 +1153,10 @@ module.exports = async function handler(req, res) {
       : { ok: false, error: r.error || 'ai_failed', message: 'Da komme ich gerade nicht weiter. Versuch es gleich nochmal.' }));
   }
 
-  // ── Produkt-Check beim Einkaufen: FINN bewertet EIN gescanntes Produkt aufs Ziel („kaufen?") ──
+  // ── Produkt-Check beim Einkaufen: Lena bewertet EIN gescanntes Produkt aufs Ziel („kaufen?") ──
   if (action === 'product-check') {
     if (!(await gateAI())) return;
-    if (!AI.hasAI) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'no_ai', message: 'FINN ist gerade nicht verfügbar.' })); }
+    if (!AI.hasAI) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'no_ai', message: 'Lena ist gerade nicht verfügbar.' })); }
     const prod = body.product || {};
     const name = cleanStr(prod.name, 100);
     if (!name) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'no_product', message: 'Kein Produkt zum Prüfen.' })); }
@@ -1178,10 +1178,10 @@ module.exports = async function handler(req, res) {
       : { ok: false, error: r.error || 'ai_failed', message: 'Da komme ich gerade nicht weiter. Versuch es gleich nochmal.' }));
   }
 
-  // ── Heißhunger-SOS: FINN spricht kurz gut zu (Soforthilfe, aufs Ziel/Auslöser zugeschnitten) ──
+  // ── Heißhunger-SOS: Lena spricht kurz gut zu (Soforthilfe, aufs Ziel/Auslöser zugeschnitten) ──
   if (action === 'craving-sos') {
     if (!(await gateAI())) return;
-    if (!AI.hasAI) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'no_ai', message: 'FINN ist gerade nicht verfügbar.' })); }
+    if (!AI.hasAI) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'no_ai', message: 'Lena ist gerade nicht verfügbar.' })); }
     if (!(await M.rateLimit('nutri-sos:' + id, 30, 3600))) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'rate_limited', message: 'Kurz durchatmen – gleich wieder versuchen.' })); }
     const crave = ['suess', 'salzig', 'herzhaft', 'unklar'].indexOf(String(body.craving)) >= 0 ? String(body.craving) : 'unklar';
     const trigger = ['hunger', 'kopf'].indexOf(String(body.trigger)) >= 0 ? String(body.trigger) : 'kopf';
@@ -1235,7 +1235,7 @@ module.exports = async function handler(req, res) {
     res.statusCode = 200; return res.end(JSON.stringify(await buildState(id, profile)));
   }
 
-  // ── Wochenplan generieren (FINN) + Einkaufsliste ableiten ──
+  // ── Wochenplan generieren (Lena) + Einkaufsliste ableiten ──
   if (action === 'plan-generate') {
     // „Erster Plan aufs Haus": einmalig gratis. Nur PRÜFEN – eingelöst wird nach Erfolg.
     const welcomeFree = !!body.welcome && (await Welcome.available(id, 'ern'));
@@ -1248,7 +1248,7 @@ module.exports = async function handler(req, res) {
     const r = await AI.nutritionWeekPlan({ goal: GOALS[planGoalKey] || 'ausgewogen', kcalTarget: t.kcal, protein: t.protein, diet: planDiet });
     if (!r.ok) {
       console.warn('[nutrition-plan-generate]', JSON.stringify({ error: r.error || 'missing_plan', status: r.status || 0 }));
-      res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'FINN kann gerade keinen Plan erstellen. Versuch es gleich nochmal.' }));
+      res.statusCode = 200; return res.end(JSON.stringify({ ok: false, message: 'Lena kann gerade keinen Plan erstellen. Versuch es gleich nochmal.' }));
     }
     const plan = { days: r.days, createdAt: Date.now() };
     const shop = (r.shopping || []).map(function (s, i) { return { i: i, name: s.name, amount: s.amount, category: s.category || 'Sonstiges', checked: false }; });
@@ -1285,7 +1285,7 @@ module.exports = async function handler(req, res) {
   }
   if (action === 'recipe-save') {
     // Rezept in die persönliche Sammlung übernehmen. Kanonische Form (mit Nutri-Score,
-    // Gramm-Zutaten, FINN-Bewertung). Nach Möglichkeit auch in die Studio-Bibliothek spiegeln.
+    // Gramm-Zutaten, Lena-Bewertung). Nach Möglichkeit auch in die Studio-Bibliothek spiegeln.
     const clean = Recipes.normalizeRecipe(body.recipe || {}, 'member');
     if (!clean.id) clean.id = newEntryId();
     const saved = await kvGetJson(RECKEY(id)); const list = Array.isArray(saved) ? saved : [];
@@ -1316,10 +1316,10 @@ module.exports = async function handler(req, res) {
     res.statusCode = 200; return res.end(JSON.stringify(Object.assign(await buildState(id, profile, targetDate), { added: [{ name: entry.name, kcal: entry.kcal }] })));
   }
   // ── Eigenes Rezept: Mitglied gibt Titel/Ziel + Zutaten (mit Nährwerten je Zutat) vor,
-  //    FINN schreibt NUR die Zubereitung. Nährwerte kommen aus den Zutaten – NICHT von der KI. ──
+  //    Lena schreibt NUR die Zubereitung. Nährwerte kommen aus den Zutaten – NICHT von der KI. ──
   if (action === 'recipe-create') {
     if (!(await gateAI())) return;
-    if (!AI.hasAI) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'no_ai', message: 'FINN ist gerade nicht verfügbar – versuch es gleich nochmal.' })); }
+    if (!AI.hasAI) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'no_ai', message: 'Lena ist gerade nicht verfügbar – versuch es gleich nochmal.' })); }
     if (!(await M.rateLimit('nutri-recipe-create:' + id, 20, 3600))) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'rate_limited', message: 'Kurz durchatmen – gleich wieder versuchen.' })); }
     const title = cleanStr(body.title, 80) || 'Mein Rezept';
     const goal = cleanStr(body.goal, 160);
@@ -1340,9 +1340,9 @@ module.exports = async function handler(req, res) {
       ingredients: ings.map(function (x) { return { name: x.name, grams: x.grams }; }),
       steps: [], utensils: [],
     };
-    // FINN schreibt die Zubereitung aus den (festen) Zutaten.
+    // Lena schreibt die Zubereitung aus den (festen) Zutaten.
     const stepsR = await AI.nutritionRecipeSteps({ title: title, goal: goal, servings: servings, diet: (profile && profile.diet) || '', ingredients: raw.ingredients });
-    if (!stepsR.ok) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'ai_failed', message: 'FINN konnte die Zubereitung gerade nicht erstellen. Versuch es gleich nochmal.' })); }
+    if (!stepsR.ok) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'ai_failed', message: 'Lena konnte die Zubereitung gerade nicht erstellen. Versuch es gleich nochmal.' })); }
     raw.steps = stepsR.steps; raw.utensils = stepsR.utensils || []; raw.minutes = stepsR.minutes || 0;
     const recipe = Recipes.normalizeRecipe(raw, 'member');
     if (!recipe.id) recipe.id = newEntryId();
@@ -1447,7 +1447,7 @@ module.exports = async function handler(req, res) {
     res.statusCode = 200; return res.end(JSON.stringify({ ok: true, cookplan: cook.items, shopping: buildShopping(cook) }));
   }
 
-  // ── FINN-Produktvorschläge für die Einkaufsliste beim gewählten Supermarkt ──
+  // ── Lena-Produktvorschläge für die Einkaufsliste beim gewählten Supermarkt ──
   // Je Position ein konkretes, dort übliches Produkt (bevorzugt Eigenmarke). Die
   // Vorschläge sind Produktwissen ohne Personenbezug -> GLOBALER Cache je
   // (Markt, Zutat), 30 Tage: erneute Anfragen (auch anderer Mitglieder) sind gratis.
@@ -1471,13 +1471,13 @@ module.exports = async function handler(req, res) {
     let quota;
     if (missing.length) {
       if (!(await gateAI())) return;
-      if (!AI.hasAI) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'no_ai', message: 'FINN ist gerade nicht verfügbar.' })); }
+      if (!AI.hasAI) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'no_ai', message: 'Lena ist gerade nicht verfügbar.' })); }
       if (!(await M.rateLimit('nutri-storesuggest:' + id, 10, 3600))) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'rate_limited', message: 'Bitte warte kurz und versuch es erneut.' })); }
       const r = await AI.nutritionStoreSuggest({
         store: st, storeLabel: STORE_LABELS[st], diet: (profile && profile.diet) || 'omnivor', goal: (profile && profile.goal) || '',
         brands: STORE_BRANDS[st] || [], items: missing.map(function (x) { return { key: x.key, name: x.name, amount: x.amount }; }),
       });
-      if (!r.ok) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: r.error || 'ai_failed', message: 'FINN konnte gerade keine Vorschläge machen – bitte später erneut.' })); }
+      if (!r.ok) { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: r.error || 'ai_failed', message: 'Lena konnte gerade keine Vorschläge machen – bitte später erneut.' })); }
       // Nur angefragte Positionen übernehmen (die KI-Schicht filtert schon – hier nochmal fail-safe).
       const wanted = {}; missing.forEach(function (x) { wanted[x.key] = true; });
       const sets = [];
@@ -1493,7 +1493,7 @@ module.exports = async function handler(req, res) {
     res.statusCode = 200; return res.end(JSON.stringify({ ok: true, store: st, suggestions: suggestions, cachedCount: items.length - missing.length, quota: quota }));
   }
 
-  // ── Verlauf: letzte 7 ODER 30 Tage (range) + FINN-Wochenreview (nur 7-Tage-Sicht) ──
+  // ── Verlauf: letzte 7 ODER 30 Tage (range) + Lena-Wochenreview (nur 7-Tage-Sicht) ──
   if (action === 'week') {
     const t = targetsFor(profile || {});
     const range = (Number(body.range) === 30) ? 30 : 7;
@@ -1555,7 +1555,7 @@ module.exports = async function handler(req, res) {
     if (String(body.confirm || '') !== 'LOESCHEN') { res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'confirm_required', message: 'Bitte bestätige das vollständige Löschen.' })); }
     const keys = [PKEY(id), FAVKEY(id), MEALKEY(id), PLANKEY(id), SHOPKEY(id), RECKEY(id), COOKKEY(id), FASTKEY(id)];
     Coaching.deleteKeys(id).forEach(function (k) { keys.push(k); });   // Coaching-Keys mitlöschen (nutri:prem bleibt bewusst außen vor)
-    try { keys.push(require('../../lib/finnMemory').MKEY(id)); } catch (e) {}   // FINN-Gedächtnis (DSGVO) mitlöschen
+    try { keys.push(require('../../lib/finnMemory').MKEY(id)); } catch (e) {}   // Lena-Gedächtnis (DSGVO) mitlöschen
     try { keys.push(require('../../lib/memberProfile').MKEY(id)); } catch (e) {}   // Onboarding-Profil inkl. Gesundheit (DSGVO) mitlöschen
     try { keys.push(require('../../lib/welcomeGift').MKEY(id)); } catch (e) {}   // Willkommensgeschenk-Status mitlöschen
     for (let i = 0; i < 400; i++) keys.push(DKEY(id, dayKeyMinus(date, i)));

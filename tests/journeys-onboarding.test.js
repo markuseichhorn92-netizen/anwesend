@@ -1,5 +1,5 @@
 'use strict';
-// FINN Journeys – Onboarding-Einstiege: WhatsApp verbinden in der App (Double-Opt-in per
+// Lena Journeys – Onboarding-Einstiege: WhatsApp verbinden in der App (Double-Opt-in per
 // START-Code), Link in der Willkommens-Mail, Einladungsaktion an bekannte Nummern
 // (nur eingeschaltet, nur aktive Verträge, Tagesdeckel, nur einmal je Nummer).
 const path = require('path');

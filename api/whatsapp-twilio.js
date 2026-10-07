@@ -20,7 +20,7 @@ const WA = require('../lib/whatsapp');
 const LF = require('../lib/leadflow');
 const AI = require('../lib/ai');
 const WAAssistant = require('../lib/waAssistant');
-// FINN Journeys: 24-h-Fenster, STOP/START, Opt-in-Codes – vor jedem anderen Routing.
+// Lena Journeys: 24-h-Fenster, STOP/START, Opt-in-Codes – vor jedem anderen Routing.
 const Journeys = require('../lib/journeys');
 
 // WhatsApp-KI (siehe api/whatsapp-webhook.js): per Flag, standardmäßig AUS,
@@ -130,7 +130,7 @@ module.exports = async function handler(req, res) {
         provider: 'twilio', known: !isLead, via: who.via,
         gate: !!(WA_ASSISTANT && AI.hasAI && WA.hasWhatsApp), flag: WA_ASSISTANT, ai: !!AI.hasAI, wa: !!WA.hasWhatsApp,
       });
-      // Interessent: FINN-Lead-Agent antwortet in Sekunden (FINN Journeys, nur mit JOURNEYS=1).
+      // Interessent: Lena-Lead-Agent antwortet in Sekunden (Lena Journeys, nur mit JOURNEYS=1).
       // Auch wenn die Nummer schon einem Magicline-Lead zugeordnet ist. Ohne Schalter wie bisher.
       if (isLead || (!choosing && (await Journeys.isLeadConversation(msg.from)))) {
         const lr = await Journeys.leadTurn({ provider: 'twilio', memberId: memberId, vorgang: v, msg: msg, firstContact: firstContact, unknown: isLead });

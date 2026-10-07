@@ -19,8 +19,8 @@ inject('lib/members.js', { readBody: async (req) => req.__body || {} });
 
 const NOW = Date.now(), DAY = 86400000;
 const CASES = [
-  { type: 'whatsapp', teamStatus: 'neu', messages: [{ from: 'member', at: NOW - 3 * DAY }, { from: 'team', author: 'FINN', at: NOW - 3 * DAY + 1000 }, { from: 'team', author: 'Kathrin', at: NOW - 2 * DAY }], notes: [{ author: 'System', at: NOW - DAY }] },
-  { type: 'allgemein', teamStatus: 'abgeschlossen', messages: [{ from: 'team', author: 'FINN · Journey', at: NOW - 1000 }], notes: [{ author: 'Tom', at: NOW - 40 * DAY }] },
+  { type: 'whatsapp', teamStatus: 'neu', messages: [{ from: 'member', at: NOW - 3 * DAY }, { from: 'team', author: 'Lena', at: NOW - 3 * DAY + 1000 }, { from: 'team', author: 'Kathrin', at: NOW - 2 * DAY }], notes: [{ author: 'System', at: NOW - DAY }] },
+  { type: 'allgemein', teamStatus: 'abgeschlossen', messages: [{ from: 'team', author: 'Lena · Journey', at: NOW - 1000 }], notes: [{ author: 'Tom', at: NOW - 40 * DAY }] },
 ];
 const ARTS = [{ title: 'A', updatedAt: new Date(NOW - 5 * DAY).toISOString() }];
 const H = require(path.join(ROOT, 'api/team/stats.js'));

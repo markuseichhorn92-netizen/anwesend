@@ -1,10 +1,10 @@
 'use strict';
 process.env.FEATURE_ABO = '1';   // Dieser Test prueft das seit 10.9.2026 abgeschaltete Abo-Modell - ohne Schalter waere alles inklusive.
-// FINN-Auto-Progression (Coach Premium): api/member/training.js action 'progress'.
+// Lena-Auto-Progression (Coach Premium): api/member/training.js action 'progress'.
 //   1. ohne aktiven Plan            -> no_plan
 //   2. mit Plan aber ohne Verlauf   -> no_history
 //   3. ohne Premium + Kontingent 0  -> premium_required
-//   4. mit Premium + Verlauf        -> ok + Plan; Plan & Protokoll gehen an FINN
+//   4. mit Premium + Verlauf        -> ok + Plan; Plan & Protokoll gehen an Lena
 const path = require('path');
 const ROOT = path.resolve(__dirname, '..');
 const inject = (rel, exports) => { const p = path.resolve(ROOT, rel); require.cache[p] = { id: p, filename: p, loaded: true, exports }; };
@@ -59,11 +59,11 @@ async function run() {
   r = res0(); await handler(reqFor({ action: 'progress' }), r); j = JSON.parse(r.body);
   ok('3. kein Premium + Kontingent 0 -> premium_required', j.ok === false && j.error === 'premium_required');
 
-  // 4. Premium -> ok, Plan, Progression-Kontext an FINN
+  // 4. Premium -> ok, Plan, Progression-Kontext an Lena
   await Ent.setEntitlement('M1', { tier: 'premium', status: 'active', source: 'magicline', updatedAt: Date.now() });
   r = res0(); await handler(reqFor({ action: 'progress' }), r); j = JSON.parse(r.body);
   ok('4. Premium -> ok, Plan, progression-Flag', j.ok === true && !!j.plan && j.progression === true);
-  ok('4b. Plan + Protokoll gehen an FINN (progression-Kontext)', !!(aiCtx && aiCtx.progression && aiCtx.progression.planText && aiCtx.progression.historyText));
+  ok('4b. Plan + Protokoll gehen an Lena (progression-Kontext)', !!(aiCtx && aiCtx.progression && aiCtx.progression.planText && aiCtx.progression.historyText));
 
   console.log(pass ? 'TRAIN-PROGRESS PASS' : 'TRAIN-PROGRESS FAIL');
   process.exit(pass ? 0 : 1);

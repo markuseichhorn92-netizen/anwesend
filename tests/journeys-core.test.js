@@ -1,5 +1,5 @@
 'use strict';
-// FINN Journeys – reine Bausteine: Nummernform, Ruhezeiten (Sommerzeit, Feiertage RLP),
+// Lena Journeys – reine Bausteine: Nummernform, Ruhezeiten (Sommerzeit, Feiertage RLP),
 // Check-in-Kennzahlen + Einstufung (inkl. Wochenserie wie lib/social.checkinVitals),
 // Vorlagen-Texte, KV-Speicher-Fallback für sortierte Mengen und Hashes.
 const path = require('path');

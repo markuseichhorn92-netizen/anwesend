@@ -1,5 +1,5 @@
 'use strict';
-// FINN-Lead-Agent auf WhatsApp (FINN Journeys) – ganzes Gespräch über den echten
+// Lena-Lead-Agent auf WhatsApp (Lena Journeys) – ganzes Gespräch über den echten
 // Twilio-Webhook mit vorgegebenen Modellantworten:
 // Erstkontakt -> Antwort in Sekunden (keine feste Begrüßung), Qualifizierung gespeichert,
 // freie Termine, Buchung NUR nach „Ja" (Bestätigung), Rufnummer aus dem Webhook statt vom
@@ -95,7 +95,7 @@ async function say(from, body, name) { const res = { statusCode: 0, setHeader() 
   ok('1c. Lead mit Quelle whatsapp, Lead-Journey gestartet', lead && lead.source === 'whatsapp' && (await Store.load(lead.id)).runs.lead);
   ok('1d. Team einmal informiert (Erstkontakt), nicht der alte Team-Weg', teamPush.length >= 1 && legacy.length === 1);
   const box = (await require(path.join(ROOT, 'lib/inbox.js')).list('wa' + P))[0];
-  ok('1e. Gespräch im Vorgang (Nachricht + FINN-Antwort)', box && box.messages.some((m) => m.from === 'member') && box.messages.some((m) => m.author === 'FINN'));
+  ok('1e. Gespräch im Vorgang (Nachricht + Lena-Antwort)', box && box.messages.some((m) => m.from === 'member') && box.messages.some((m) => m.author === 'Lena'));
 
   // 2. Qualifizierung + Termine
   script = [[TU('save_lead_profile', { goal: 'fitness', experience: 'einsteiger', daypart: 'abends' }), TU('get_trial_slots', { daypart: 'abends' })],

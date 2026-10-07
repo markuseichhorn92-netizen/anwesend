@@ -1,5 +1,5 @@
 'use strict';
-// FINN-Chat (Mitglieder-App): Umbau September 2026.
+// Lena-Chat (Mitglieder-App): Umbau September 2026.
 //
 // Was hier abgesichert wird – jeweils, weil es vorher wirklich kaputt oder unhandlich war:
 //  - Der Link-Knopf unter einer Antwort kennt ALLE Bereiche, die der Server vergeben darf
@@ -42,7 +42,7 @@ ok('1h. Handler für alle neuen Klickziele vorhanden', ['finnRetry', 'finnNew', 
     .filter(function (p) { try { return fs.existsSync(p); } catch (e) { return false; } })[0];
   if (!chromium || !bin) {
     console.log('HINWEIS Kein Browser vorhanden - die Oberflaeche wurde NICHT geprueft.');
-    console.log(pass ? 'FINN-CHAT PASS (ohne Browser)' : 'FINN-CHAT FAIL');
+    console.log(pass ? 'Lena-CHAT PASS (ohne Browser)' : 'Lena-CHAT FAIL');
     process.exit(pass ? 0 : 1);
   }
 
@@ -124,7 +124,7 @@ ok('1h. Handler für alle neuen Klickziele vorhanden', ['finnRetry', 'finnNew', 
   const sugg = await txt(m.p, '.fcSugg');
   await click(m.p, '.fcSugg'); await m.p.waitForTimeout(80);
   const mid = await m.p.evaluate(function () { return { hello: !!document.getElementById('finn_hello'), me: Array.from(document.querySelectorAll('.fcMsg.me .fcB')).map(function (e) { return e.innerText; }), think: !!document.getElementById('finn_think'), sub: document.getElementById('finn_sub').textContent }; });
-  ok('2d. Vorschlag getippt: Begrüßung weg, eigene Blase da, FINN „schreibt …"', !mid.hello && mid.me.length === 1 && mid.me[0] === sugg && mid.think && /schreibt/.test(mid.sub), JSON.stringify(mid));
+  ok('2d. Vorschlag getippt: Begrüßung weg, eigene Blase da, Lena „schreibt …"', !mid.hello && mid.me.length === 1 && mid.me[0] === sugg && mid.think && /schreibt/.test(mid.sub), JSON.stringify(mid));
   await m.p.waitForTimeout(700);
   const ans = await m.p.evaluate(function () { const a = document.querySelectorAll('.fcMsg:not(.me)'); const last = a[a.length - 1]; return { n: a.length, think: !!document.getElementById('finn_think'), bold: !!(last && last.querySelector('.fcB b')), link: !!(last && last.querySelector('.fcAct[data-act="finnGo"][data-arg="inbody"]')), sub: document.getElementById('finn_sub').textContent, neu: getComputedStyle(document.getElementById('finn_new')).display !== 'none', bottom: (function () { const s = document.getElementById('finn_scroll'); return s.scrollHeight - s.scrollTop - s.clientHeight < 4; })() }; });
   ok('2e. Antwort: fett formatiert, Link-Knopf „InBody", Kopf wieder normal, „Neu" sichtbar, unten angedockt', ans.n === 1 && !ans.think && ans.bold && ans.link && !/schreibt/.test(ans.sub) && ans.neu && ans.bottom, JSON.stringify(ans));
@@ -141,7 +141,7 @@ ok('1h. Handler für alle neuen Klickziele vorhanden', ['finnRetry', 'finnNew', 
   srv.mode = 'ok';
   await click(m.p, '[data-act="finnRetry"]'); await m.p.waitForTimeout(80);
   const rt = await m.p.evaluate(function () { return { err: document.querySelectorAll('.fcMsg.fail').length, me: document.querySelectorAll('.fcMsg.me').length, think: !!document.getElementById('finn_think') }; });
-  ok('3c. Nochmal: Fehlerblase weg, Frage nicht gedoppelt, FINN schreibt', rt.err === 0 && rt.me === 2 && rt.think, JSON.stringify(rt));
+  ok('3c. Nochmal: Fehlerblase weg, Frage nicht gedoppelt, Lena schreibt', rt.err === 0 && rt.me === 2 && rt.think, JSON.stringify(rt));
   await m.p.waitForTimeout(700);
   const rt2 = await m.p.evaluate(function () { return { a: document.querySelectorAll('.fcMsg:not(.me)').length, err: document.querySelectorAll('.fcMsg.fail').length }; });
   const histTxt = (srv.last.history || []).map(function (x) { return x.text; }).join(' | ');
@@ -202,6 +202,6 @@ ok('1h. Handler für alle neuen Klickziele vorhanden', ['finnRetry', 'finnNew', 
   await m.c.close();
 
   await b.close(); server.close();
-  console.log(pass ? 'FINN-CHAT PASS' : 'FINN-CHAT FAIL');
+  console.log(pass ? 'Lena-CHAT PASS' : 'Lena-CHAT FAIL');
   process.exit(pass ? 0 : 1);
 })();

@@ -24,7 +24,7 @@ async function run() {
   await AI.askHelp('Wann offen?', [{ t: 'Öffnungszeiten', body: 'Mo–Fr 6–23 Uhr.' }]);
   ok('1. askHelp nutzt Standard-Modell', lastModel === 'model-standard');
 
-  // FINN-Chat -> Standard
+  // Lena-Chat -> Standard
   await AI.coachReply({ firstName: 'Max' }, [], 'Hi', [{ t: 'A', body: 'x' }]);
   ok('2. coachReply nutzt Standard-Modell', lastModel === 'model-standard');
 

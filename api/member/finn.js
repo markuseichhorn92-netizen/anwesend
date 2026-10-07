@@ -3,7 +3,7 @@
 /**
  * POST /api/member/finn   (Authorization: Bearer <token>)
  * -----------------------------------------------------------------------------
- * FINN-Agenten für das angemeldete Mitglied (Web/App).
+ * Lena-Agenten für das angemeldete Mitglied (Web/App).
  *   { question|message, history:[{role,text}], conversationId? }
  *       -> { ok, answer, link, confirm:{id,preview,risk}|null, handoff, agent, traceId }
  *   { action:'confirm', id }  -> führt den vorgeschlagenen Schritt aus (nur derselbe Aktor)

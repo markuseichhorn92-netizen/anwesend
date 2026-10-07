@@ -1,5 +1,5 @@
 'use strict';
-// FINN-Kassenbuch-Prüfung: der Parser (lib/ai.js kbParseFindings) muss die
+// Lena-Kassenbuch-Prüfung: der Parser (lib/ai.js kbParseFindings) muss die
 // KI-Antwort robust zu validierten Befunden verarbeiten – auch bei Text drumherum,
 // Müll oder unerlaubten Aktionen. Keine KI-/Netzwerkaufrufe.
 const path = require('path');
@@ -85,5 +85,5 @@ const hits = ai.match(stray) || [];
 ok('10. keine „…“-Paare mit geradem Schlusszeichen mehr in lib/ai.js', hits.length === 0, hits.slice(0, 3).join(' | '));
 ok('10b. Prompt warnt ausdrücklich vor geraden Anführungszeichen', ai.indexOf('NIE gerade Anführungszeichen benutzen') > 0);
 
-console.log(pass ? 'KASSENBUCH-FINN PASS' : 'KASSENBUCH-FINN FAIL');
+console.log(pass ? 'KASSENBUCH-Lena PASS' : 'KASSENBUCH-Lena FAIL');
 process.exit(pass ? 0 : 1);

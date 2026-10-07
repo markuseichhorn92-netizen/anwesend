@@ -13,7 +13,7 @@ let pass = true;
 const ok = (l, c, extra) => { if (!c) pass = false; console.log((c ? 'OK  ' : 'FAIL') + ' ' + l + (c ? '' : ' -- ' + (extra || ''))); };
 
 // ── 1. Quelltext ──
-ok('1. Coach-Hub ohne Roboter-Emoji und ohne die zwei Zusatzlabels', !/🤖/.test(html.slice(html.indexOf('function coachFinnHub'), html.indexOf('function coachFinnHub') + 3500)) && !/KI · rund um die Uhr für dich da/.test(html) && !/FINN · Dein Blick für heute/.test(html));
+ok('1. Coach-Hub ohne Roboter-Emoji und ohne die zwei Zusatzlabels', !/🤖/.test(html.slice(html.indexOf('function coachFinnHub'), html.indexOf('function coachFinnHub') + 3500)) && !/KI · rund um die Uhr für dich da/.test(html) && !/Lena · Dein Blick für heute/.test(html));
 ok('1b. Termine: „Meine Termine" kommt vor dem Buchen (mine+out)', /return subHeader\('Termine','Buchen & verwalten'\)\+mine\+out;/.test(html));
 
 (async function () {
@@ -99,7 +99,7 @@ ok('1b. Termine: „Meine Termine" kommt vor dem Buchen (mine+out)', /return sub
   const hub = await m.p.evaluate(function () {
     const h = document.querySelector('[data-coach="hub"]'); if (!h) return null;
     const t = h.innerText;
-    return { title: /Dein Coach FINN/.test(t), blick: (h.querySelector('[data-coach="blick"]') || {}).textContent || '', cta: !!h.querySelector('[data-act="openFinn"]'), ctaH: h.querySelector('[data-act="openFinn"]').getBoundingClientRect().height, chips: h.querySelectorAll('[data-act="finnQuick"]').length, analyse: !!h.querySelector('[data-act="coachFinn"]'), emoji: /[\u{1F300}-\u{1FAFF}]/u.test(t), labels: (t.match(/RUND UM DIE UHR|BLICK FÜR HEUTE/gi) || []).length };
+    return { title: /Dein Coach Lena/.test(t), blick: (h.querySelector('[data-coach="blick"]') || {}).textContent || '', cta: !!h.querySelector('[data-act="openFinn"]'), ctaH: h.querySelector('[data-act="openFinn"]').getBoundingClientRect().height, chips: h.querySelectorAll('[data-act="finnQuick"]').length, analyse: !!h.querySelector('[data-act="coachFinn"]'), emoji: /[\u{1F300}-\u{1FAFF}]/u.test(t), labels: (t.match(/RUND UM DIE UHR|BLICK FÜR HEUTE/gi) || []).length };
   });
   ok('4. Coach-Hub: Titel, eine Aussage, Chat-Knopf ≥ 44 px, drei Schnellfragen, Analyse-Link – kein Emoji, keine Zusatzlabels', !!hub && hub.title && hub.blick.length > 10 && hub.cta && hub.ctaH >= 44 && hub.chips === 3 && hub.analyse && !hub.emoji && hub.labels === 0, JSON.stringify(hub));
   ok('4b. Keine Skriptfehler', m.fehler.length === 0, m.fehler.join(' | '));

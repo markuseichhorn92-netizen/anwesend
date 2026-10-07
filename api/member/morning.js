@@ -7,13 +7,13 @@
  * (und – falls ein stabiler R-R-Stream ankommt – HRV) gegen die persönliche
  * Baseline. Der Client misst live per Bluetooth und schickt die abgeleiteten
  * Werte; Bewertung (Ampel), Baseline und Verlauf werden serverseitig berechnet.
- * Die Daten fließen in FINN (coach.js) und in die FINN-Einschätzung.
+ * Die Daten fließen in Lena (coach.js) und in die Lena-Einschätzung.
  *
  *  GET                              -> { ok, available, premium, consent, list, latest, baseline, eval, readiness, trend, ... }
  *  POST { action:'consent', value } -> Einwilligung setzen (true=Premium) / widerrufen (false=löscht Daten)
  *  POST { action:'save', measurement } -> Messung speichern (Premium + Einwilligung)
  *  POST { action:'delete', sel }    -> Messung (date/ts) löschen
- *  POST { action:'assess' }         -> FINN-Einschätzung (Premium)
+ *  POST { action:'assess' }         -> Lena-Einschätzung (Premium)
  *
  * KOMPLETT PREMIUM: Messen/Auswerten nur mit Coach Premium. Herz-/HRV-Werte sind
  * Gesundheitsdaten (DSGVO Art. 9) -> ausdrückliche Einwilligung, jederzeit
@@ -92,7 +92,7 @@ async function readState(id) {
     effReadiness = vReady;
     dataSource = 'health';
   }
-  // EIN widerspruchsfreies Tages-Urteil – Basis für alle Tages-Karten + FINN. Im Health-
+  // EIN widerspruchsfreies Tages-Urteil – Basis für alle Tages-Karten + Lena. Im Health-
   // Fallback OHNE die (ggf. veralteten) subjektiven Gurt-Signale des letzten Check-ins.
   const verdict = MO.dayVerdict({ readiness: effReadiness, overtraining: ot, recovery: recovery, latest: (dataSource === 'health') ? null : latest });
   verdict.dataSource = dataSource;
@@ -304,12 +304,12 @@ module.exports = async function handler(req, res) {
       return j(res, 200, Object.assign({ ok: true }, await readState(id)));
     }
 
-    // FINN-Einschätzung zum Morgen-Check (Premium).
+    // Lena-Einschätzung zum Morgen-Check (Premium).
     if (action === 'assess') {
-      if (!premium) return j(res, 200, { ok: false, error: 'premium_required', message: 'Die FINN-Einschätzung ist Teil von Coach Premium.' });
+      if (!premium) return j(res, 200, { ok: false, error: 'premium_required', message: 'Die Lena-Einschätzung ist Teil von Coach Premium.' });
       const list = await MO.list(id);
       if (!list.length) return j(res, 200, { ok: false, error: 'no_data', message: 'Miss zuerst deinen Morgen-Check.' });
-      if (!AI.hasAI) return j(res, 200, { ok: false, error: 'no_ai', message: 'FINN ist gerade nicht verfügbar.' });
+      if (!AI.hasAI) return j(res, 200, { ok: false, error: 'no_ai', message: 'Lena ist gerade nicht verfügbar.' });
       const m = list[0]; const base = MO.baseline(list); const t = MO.trend(list);
       const bal = MO.balance(m, base); const ba = MO.hrvAge(m, 0, base);
       let firstName = '', goal = '', age = 0, plannedTraining = '';

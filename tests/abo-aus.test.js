@@ -4,7 +4,7 @@
 //
 // Was hier auf dem Spiel steht: Ein uebersehener Premium-Rest ist kein
 // Schoenheitsfehler, sondern eine Sperre fuer ein Mitglied, das dafuer nichts
-// mehr zahlen kann. Und ein FINN, der weiter vom Ernaehrungstagebuch oder vom
+// mehr zahlen kann. Und ein Lena, der weiter vom Ernaehrungstagebuch oder vom
 // Trainingsplan in der App spricht, schickt Menschen in Bereiche, die es nicht
 // mehr gibt. Beides prueft dieser Test - serverseitig am Hebel, im Prompt am
 // Wortlaut, in der Oberflaeche am Ergebnis.
@@ -44,22 +44,22 @@ function appInfo() {
 }
 ok('4. /api/app-info meldet abo:false', appInfo().features.abo === false);
 
-// ── 3. FINN weiss, was die App ist - und was nicht ──
+// ── 3. Lena weiss, was die App ist - und was nicht ──
 process.env.ANTHROPIC_API_KEY = 'test-key';
 const AI = frisch('lib/ai.js');
 const sys = AI.coachSystem({ firstName: 'Max' }, []);
-ok('5. FINN kennt seine drei Aufgaben', /MITGLIEDSCHAFT/.test(sys) && /TERMINE/.test(sys) && /COACHING/.test(sys));
+ok('5. Lena kennt seine drei Aufgaben', /MITGLIEDSCHAFT/.test(sys) && /TERMINE/.test(sys) && /COACHING/.test(sys));
 ok('5b. … verweist Ernaehrung an Upfit statt ans eigene Tagebuch', /Upfit/.test(sys) && /kein Ernährungstagebuch/.test(sys));
 ok('5c. … verweist Training an die Technogym-App', /Technogym-App/.test(sys) && /keine Trainingspläne in dieser App/.test(sys));
 ok('5d. … und sagt: kein Abo, kein Premium', /kein Abo, kein Premium/.test(sys));
 ok('5e. … kann auf Upfit, InBody und Figur-Check verlinken', /ern=Ernährung \(Partner Upfit\)/.test(sys) && /inbody=/.test(sys) && /figur=/.test(sys));
 ok('5f. … und nicht mehr als „Ernährungsberater" auf das eigene Modul', !/UND Ernährungsberater/.test(sys));
 
-// Schaltet jemand die Module zurueck, redet FINN wieder darueber - die Saetze
+// Schaltet jemand die Module zurueck, redet Lena wieder darueber - die Saetze
 // haengen an denselben Schaltern wie die App.
 process.env.FEATURE_ERN = '1'; process.env.FEATURE_TRAINING = '1'; process.env.FEATURE_ABO = '1';
 const sysAlt = frisch('lib/ai.js').coachSystem({ firstName: 'Max' }, []);
-ok('6. Mit den Modulen redet FINN wieder ueber das eigene Tagebuch und den Bereich Training',
+ok('6. Mit den Modulen redet Lena wieder ueber das eigene Tagebuch und den Bereich Training',
   /Bereich „Ernährung“ dieser App/.test(sysAlt) && /Bereich „Training“ dieser App/.test(sysAlt) && !/kein Abo, kein Premium/.test(sysAlt));
 delete process.env.FEATURE_ERN; delete process.env.FEATURE_TRAINING; delete process.env.FEATURE_ABO;
 
@@ -146,7 +146,7 @@ void sysWa;
   });
   ok('9. Keine Themen-Reiter mehr, dafuer Woche, Schritte und Partner',
     coach.reiter === 0 && coach.woche && coach.schritte && coach.partner, JSON.stringify(coach));
-  ok('9b. FINN-Chat und Analyse sind da - fuer alle', coach.chat && coach.analyse, JSON.stringify(coach));
+  ok('9b. Lena-Chat und Analyse sind da - fuer alle', coach.chat && coach.analyse, JSON.stringify(coach));
   ok('9c. Die Partner-Karte zeigt Technogym und Upfit', coach.technogym && coach.upfit, JSON.stringify(coach));
   ok('9d. Der Untertitel nennt die drei Zwecke', /Mitgliedschaft, Termine & Ziele/.test(t));
   ok('9e. „Deine Woche" kennt den naechsten Termin und den Besuch', /Nächster Termin: Stoffwechselanalyse/.test(t) && /Letzter Besuch/.test(t) && /gestern/.test(t), t.slice(0, 300));

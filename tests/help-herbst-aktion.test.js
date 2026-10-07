@@ -2,7 +2,7 @@
 // Hilfe-Artikel Aktion „5 € pro Woche bis Silvester" (Herbst 2026): die einmalige Migration
 // ersetzt den Oktober-Artikel an Ort und Stelle (gleiche Id) bzw. legt die Aktion an, tauscht die
 // alte Telefonnummer in allen Backend-Artikeln aus und läuft nach Löschen nicht erneut. FINNs
-// Wissenssuche findet die Aktion für die typischen Fragen oben und bekommt sie vollständig; FINN,
+// Wissenssuche findet die Aktion für die typischen Fragen oben und bekommt sie vollständig; Lena,
 // Hilfetexte und App nennen nur noch die neue Nummer (die WhatsApp-Nummer bleibt).
 const path = require('path');
 const fs = require('fs');
@@ -85,14 +85,14 @@ const OLD = /0651 308524/;
   ok('4a. nach Löschen nicht wieder angelegt', !(await Articles.list()).some((a) => a.title === TITLE));
   await Articles.save({ title: TITLE, cat: 'mitglied', status: 'veröffentlicht', body: Mig.HERBST_BODY });   // zurück für die Suche
 
-  // 5. Hilfetexte, FINN und App nennen nur die neue Nummer; WhatsApp-Link bleibt
+  // 5. Hilfetexte, Lena und App nennen nur die neue Nummer; WhatsApp-Link bleibt
   const help = require(path.join(ROOT, 'lib/help.js'));
   const seedArts = require(path.join(ROOT, 'lib/helpSeed.js'));
   const html = fs.readFileSync(path.join(ROOT, 'mitglieder.html'), 'utf8');
   ok('5. eingebaute Artikel und Erstbefüllung ohne alte Nummer', !help.some((a) => OLD.test(a.body)) && !seedArts.some((a) => OLD.test(a.body)) && help.some((a) => a.body.indexOf(NEW) >= 0));
   ok('5a. Mitglieder-App ohne alte Nummer, Impressum mit neuer, WhatsApp-Link bleibt', !OLD.test(html) && /tel:'0651 493 688 19'/.test(html) && /wa\.me\/49651308524/.test(html));
   const Rt = require(path.join(ROOT, 'lib/finn/runtime.js'));
-  ok('5b. FINN (BRAND) nennt die neue Nummer', Rt.BRAND.indexOf('Tel. ' + NEW) >= 0 && !OLD.test(Rt.BRAND));
+  ok('5b. Lena (BRAND) nennt die neue Nummer', Rt.BRAND.indexOf('Tel. ' + NEW) >= 0 && !OLD.test(Rt.BRAND));
   const ai = fs.readFileSync(path.join(ROOT, 'lib/ai.js'), 'utf8');
   ok('5c. Coach- und WhatsApp-Persona mit neuer Nummer', !OLD.test(ai) && ai.split('Tel. ' + NEW).length === 3);
   ['probetraining.html', 'probetraining-info.html', 'einladung.html', 'api/offer.js', 'api/wa-verify.js', 'api/member/contact.js'].forEach((f) => {

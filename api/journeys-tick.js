@@ -3,7 +3,7 @@
 /**
  * Vercel Serverless Function · /api/journeys-tick
  * -----------------------------------------------------------------------------
- * Durchlauf der FINN Journeys (lib/journeys/tick): fällige WhatsApp-Schritte
+ * Durchlauf der Lena Journeys (lib/journeys/tick): fällige WhatsApp-Schritte
  * senden (Ruhezeiten, Kappen, Einwilligung prüft der Sender), Mitglieder mit
  * bekannter Nummer täglich neu einstufen, Check-in-Historie nachziehen,
  * Einladung dosiert verschicken.
@@ -16,7 +16,7 @@
  * Schutz wie die übrigen Cron-Endpunkte: Secret als Authorization-Header,
  * fail-closed ohne Secret. Die Antwort enthält nur Zahlen.
  *
- * WhatsApp-Vorlagen (Workflow „FINN Journeys" → manuell starten → vorlagen):
+ * WhatsApp-Vorlagen (Workflow „Lena Journeys" → manuell starten → vorlagen):
  *   POST ?templates=submit  offene Vorlagen bei Twilio anlegen + bei Meta einreichen
  *   POST ?templates=sync    abgleichen: Vorlagen ohne SID zuordnen (nie anlegen) + Stand
  * Antwort: je Vorlage Schlüssel, Status, Metas Grund – keine Personendaten,

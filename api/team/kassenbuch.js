@@ -7,10 +7,10 @@
  *   GET ?month=YYYY-MM&pdf=1     -> gespeichertes PDF (nur abgeschlossene Monate), { ok, pdf }
  *   POST { action:'save', month, data }   -> Monat speichern (nur wenn nicht abgeschlossen)
  *   POST { action:'prices', prices }      -> Standard-Preisliste setzen
- *   POST { action:'check', month }        -> FINN prüft Plausibilität + Steuerliches
+ *   POST { action:'check', month }        -> Lena prüft Plausibilität + Steuerliches
  *   POST { action:'close', month, pdf }   -> Monat abschließen (sperren) + PDF-Beleg ablegen
  *   POST { action:'reopen', month }       -> Abschluss zurücknehmen (Korrektur)
- *   POST { action:'beleg-scan', image }        -> FINN liest einen Kassenbon/Rechnung aus (Foto/PDF)
+ *   POST { action:'beleg-scan', image }        -> Lena liest einen Kassenbon/Rechnung aus (Foto/PDF)
  *   POST { action:'beleg-save', month, day, image } -> gescannten Beleg zu einem Tag ablegen
  *   POST { action:'beleg-get',  month, day }   -> hinterlegten Beleg abrufen
  *   POST { action:'beleg-del',  month, day }   -> hinterlegten Beleg löschen
@@ -121,7 +121,7 @@ module.exports = async function handler(req, res) {
     return j(res, 200, { ok: true, imported: imported, skipped: skipped, months: list, message: imported ? (imported + ' Kassenbücher übernommen.') : 'Alle Altbestände waren bereits hinterlegt.' });
   }
 
-  // Beleg (Kassenbon/Rechnung) per Foto oder PDF von FINN auslesen lassen (kein Speichern).
+  // Beleg (Kassenbon/Rechnung) per Foto oder PDF von Lena auslesen lassen (kein Speichern).
   if (action === 'beleg-scan') {
     const img = String((body && body.image) || '');
     const mm = img.match(/^data:(image\/(?:jpeg|png|webp)|application\/pdf);base64,(.+)$/);
@@ -129,7 +129,7 @@ module.exports = async function handler(req, res) {
     if (img.length > 2.4e6) return j(res, 200, { ok: false, message: 'Datei zu groß – bitte ein kleineres Foto.' });
     const today = new Date().toISOString().slice(0, 10);
     let r; try { r = await AI.kassenbuchScanBeleg(mm[2], mm[1], { today: today }); } catch (e) { r = { ok: false }; }
-    if (!r || !r.ok) return j(res, 200, { ok: false, message: (r && r.error === 'no_ai_key') ? 'FINN ist gerade nicht verfügbar.' : 'Der Beleg konnte nicht gelesen werden – bitte Werte von Hand eintragen.' });
+    if (!r || !r.ok) return j(res, 200, { ok: false, message: (r && r.error === 'no_ai_key') ? 'Lena ist gerade nicht verfügbar.' : 'Der Beleg konnte nicht gelesen werden – bitte Werte von Hand eintragen.' });
     return j(res, 200, { ok: true, scan: { kind: r.kind, date: r.date, amount: r.amount, vendor: r.vendor, note: r.note, confidence: r.confidence } });
   }
 
@@ -181,7 +181,7 @@ module.exports = async function handler(req, res) {
     if (!totals.entriesCount) return j(res, 200, { ok: false, message: 'Für diesen Monat sind noch keine Buchungen erfasst.' });
     const text = KB.toPromptText(base, totals);
     let r; try { r = await AI.kassenbuchCheck({ text: text }); } catch (e) { r = { ok: false, error: 'ai_failed' }; }
-    if (!r || !r.ok) return j(res, 200, { ok: false, message: (r && r.error === 'no_ai_key') ? 'FINN ist gerade nicht verfügbar.' : 'Die Prüfung hat nicht geklappt – bitte später erneut.' });
+    if (!r || !r.ok) return j(res, 200, { ok: false, message: (r && r.error === 'no_ai_key') ? 'Lena ist gerade nicht verfügbar.' : 'Die Prüfung hat nicht geklappt – bitte später erneut.' });
     const findings = r.findings || [];
     try { await KB.saveCheck(month, { findings: findings, text: r.raw || '' }); } catch (e) {}
     return j(res, 200, { ok: true, findings: findings, raw: r.raw || '', checkedAt: new Date().toISOString() });

@@ -1,5 +1,5 @@
 'use strict';
-// FINN Tool-Layer, Capability-Erkennung, Bestätigungs-Engine (Mock-Modus, kein Netz).
+// Lena Tool-Layer, Capability-Erkennung, Bestätigungs-Engine (Mock-Modus, kein Netz).
 //  - Kunde / Vertrag / Zahlung / Termine über den Tool-Layer
 //  - 403 wird gemerkt und blendet Werkzeuge aus; MEMBER_LIST_READ wird nie angenommen
 //  - LOW läuft sofort, MEDIUM/HIGH nur nach Bestätigung, HIGH mit Ergebnisprüfung
@@ -136,6 +136,6 @@ const other = { actor: { kind: 'member', id: '2002' }, channel: 'web', securityS
   delete process.env.VERCEL_ENV;
 
   Mock.reset();
-  console.log(pass ? 'FINN-TOOLS PASS' : 'FINN-TOOLS FAIL');
+  console.log(pass ? 'Lena-TOOLS PASS' : 'Lena-TOOLS FAIL');
   process.exit(pass ? 0 : 1);
 })().catch((e) => { console.log('FAIL Ausnahme: ' + (e && e.stack || e)); process.exit(1); });

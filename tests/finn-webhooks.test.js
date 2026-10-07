@@ -1,5 +1,5 @@
 'use strict';
-// FINN Event Bus um den Magicline-Webhook: gültiges Event -> Bestandsaktion + Timeline,
+// Lena Event Bus um den Magicline-Webhook: gültiges Event -> Bestandsaktion + Timeline,
 // Duplikat -> keine zweite Aktion, ohne Zeitmerkmal KEIN Dedup, unbekannt -> ignored/unknown,
 // korrupt -> 200 ohne Absturz, health=1 behält stats/feed und bekommt einen finn-Block.
 const path = require('path');
@@ -105,6 +105,6 @@ async function health() { const res = res0(); const req = { method: 'GET', url: 
   r = await post({ id: 'evt-vg', type: 'CUSTOMER_PAYMENT_REJECTED', entityId: 'm7' });
   ok('8a. Mit „vorgang" entsteht zusätzlich ein Postfach-Vorgang', r.json.summary[0].action === 'payment_alerted' && (await require(path.join(ROOT, 'lib/inbox.js')).list('m7')).length === 1);
 
-  console.log(pass ? 'FINN-WEBHOOKS PASS' : 'FINN-WEBHOOKS FAIL');
+  console.log(pass ? 'Lena-WEBHOOKS PASS' : 'Lena-WEBHOOKS FAIL');
   process.exit(pass ? 0 : 1);
 })().catch((e) => { console.log('FAIL Ausnahme: ' + (e && e.stack || e)); process.exit(1); });

@@ -1,9 +1,9 @@
 'use strict';
-// FINN-Chat: Eingabe-Stabilität und Antwortvorschläge.
+// Lena-Chat: Eingabe-Stabilität und Antwortvorschläge.
 //  - Der Chat lebt in #finnhost: ein Hintergrund-Render (verzögerte Gedächtnis-Antwort) darf
 //    weder das Eingabefeld ersetzen noch getippten Text oder den Fokus verlieren.
 //  - Antwortvorschläge (choices) erscheinen über der Eingabe, ein Tipp sendet den Text,
-//    sie verschwinden während FINN schreibt und bei offener Bestätigung, überleben ein Neuladen.
+//    sie verschwinden während Lena schreibt und bei offener Bestätigung, überleben ein Neuladen.
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
@@ -20,7 +20,7 @@ ok('1a. Vorschläge: Zeile, Handler, Persistenz', /id="finn_quick"/.test(html) &
   let chromium = null;
   try { chromium = require('playwright-core').chromium; } catch (e) { chromium = null; }
   const bin = ['/opt/pw-browsers/chromium-1194/chrome-linux/chrome', '/opt/pw-browsers/chromium/chrome-linux/chrome'].filter(function (p) { try { return fs.existsSync(p); } catch (e) { return false; } })[0];
-  if (!chromium || !bin) { console.log('HINWEIS Kein Browser vorhanden - die Oberflaeche wurde NICHT geprueft.'); console.log(pass ? 'FINN-CHAT-FLUID PASS (ohne Browser)' : 'FINN-CHAT-FLUID FAIL'); process.exit(pass ? 0 : 1); }
+  if (!chromium || !bin) { console.log('HINWEIS Kein Browser vorhanden - die Oberflaeche wurde NICHT geprueft.'); console.log(pass ? 'Lena-CHAT-FLUID PASS (ohne Browser)' : 'Lena-CHAT-FLUID FAIL'); process.exit(pass ? 0 : 1); }
 
   const srv = { posts: [] };
   const server = http.createServer(function (req, res) {
@@ -37,7 +37,7 @@ ok('1a. Vorschläge: Zeile, Handler, Persistenz', /id="finn_quick"/.test(html) &
         if (/stornier/i.test(b.question || '')) return J({ ok: true, answer: 'Soll ich das so machen?\n→ Termin stornieren: Einführungstraining', confirm: { id: 'cf_med_00001', preview: 'Termin stornieren: Einführungstraining', risk: 'MEDIUM' }, choices: [] });
         if (/team/i.test(b.question || '')) return J({ ok: true, answer: 'Ich habe es ans Team übergeben.', choices: [{ label: 'Postfach öffnen', screen: 'postfach' }] });
         if (/stoffwechsel/i.test(b.question || '')) return J({ ok: true, answer: 'Wann passt es dir?', choices: [{ label: 'Morgen 10:00' }, { label: 'Freitag 16:00' }, { label: 'Andere Zeit' }] });
-        // Erste Antwort kommt mit Verzögerung, damit der „FINN schreibt"-Zustand prüfbar ist.
+        // Erste Antwort kommt mit Verzögerung, damit der „Lena schreibt"-Zustand prüfbar ist.
         return setTimeout(() => J({ ok: true, answer: 'Welche Terminart möchtest du?', choices: [{ label: 'Stoffwechselanalyse' }, { label: 'Einführungstraining' }, { label: 'Trainingsplanung' }] }), 450);
       });
     }
@@ -78,7 +78,7 @@ ok('1a. Vorschläge: Zeile, Handler, Persistenz', /id="finn_quick"/.test(html) &
   // ── 3. Vorschläge nach einer Antwort; Tipp sendet den Text ──
   await type('Ich möchte einen Termin'); await click('#finn_send'); await p.waitForTimeout(150);
   const busy = await p.evaluate(function () { return { chips: document.querySelectorAll('.fcQChip').length, think: !!document.getElementById('finn_think') }; });
-  ok('3. Während FINN schreibt: keine Vorschläge', busy.chips === 0 && busy.think, JSON.stringify(busy));
+  ok('3. Während Lena schreibt: keine Vorschläge', busy.chips === 0 && busy.think, JSON.stringify(busy));
   await p.waitForTimeout(600);
   const chips = await p.evaluate(function () { return Array.from(document.querySelectorAll('.fcQChip')).map(function (b) { return { t: b.textContent, h: b.getBoundingClientRect().height }; }); });
   ok('3a. Drei Vorschläge aus der Antwort, Tippfläche ≥ 38 px', chips.length === 3 && chips[0].t === 'Stoffwechselanalyse' && chips.every(function (x) { return x.h >= 38; }), JSON.stringify(chips));
@@ -109,6 +109,6 @@ ok('1a. Vorschläge: Zeile, Handler, Persistenz', /id="finn_quick"/.test(html) &
   ok('7. Keine Skriptfehler', fehler.length === 0, fehler.join(' | '));
 
   await c.close(); await b.close(); server.close();
-  console.log(pass ? 'FINN-CHAT-FLUID PASS' : 'FINN-CHAT-FLUID FAIL');
+  console.log(pass ? 'Lena-CHAT-FLUID PASS' : 'Lena-CHAT-FLUID FAIL');
   process.exit(pass ? 0 : 1);
 })();

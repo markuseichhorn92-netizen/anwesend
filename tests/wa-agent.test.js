@@ -48,7 +48,7 @@ function run() {
 
   // ── openingMessage(): Verlauf als Kontext-Vorspann, „2" bekommt Bezug ──
   const om = WAAgent.openingMessage([{ role: 'user', text: 'Ich möchte einen Termin zur Einweisung' }, { role: 'assistant', text: '1. Einführungstraining 2. Biocircuit 3. Trainingsplanung' }], '2');
-  ok('18. openingMessage: enthält Verlauf + aktuelle Nachricht', /Bisheriger WhatsApp-Verlauf/.test(om) && /FINN: 1\. Einführungstraining/.test(om) && /Aktuelle Nachricht des Mitglieds: 2/.test(om), om);
+  ok('18. openingMessage: enthält Verlauf + aktuelle Nachricht', /Bisheriger WhatsApp-Verlauf/.test(om) && /Lena: 1\. Einführungstraining/.test(om) && /Aktuelle Nachricht des Mitglieds: 2/.test(om), om);
   ok('19. openingMessage: ohne Verlauf nur die Frage', WAAgent.openingMessage([], 'Wie viele kcal habe ich noch?') === 'Aktuelle Nachricht des Mitglieds: Wie viele kcal habe ich noch?');
 
   console.log(pass ? 'WA-AGENT PASS' : 'WA-AGENT FAIL');

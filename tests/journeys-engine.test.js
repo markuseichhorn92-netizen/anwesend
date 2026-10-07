@@ -1,5 +1,5 @@
 'use strict';
-// FINN Journeys – Sende-Regeln und Abläufe im simulierten Zeitverlauf:
+// Lena Journeys – Sende-Regeln und Abläufe im simulierten Zeitverlauf:
 // Hauptschalter, Einwilligung, Probelauf/Testnummern, Fenster -> Freitext vs. Vorlage,
 // Ruhezeiten, Kappen, Sperren, STOP; Lead-Journey (Erinnerungen, Nachfassen, gewonnen,
 // verloren), Onboarding, Comeback (inkl. „reaktiviert"), Meilenstein, Zustellfehler 63016.
@@ -79,7 +79,7 @@ function lastOut() { return out[out.length - 1]; }
   r = await Sender.send(st, { journey: 'lead', step: 's1', tpl: 'fi_trial_24h', vars: { 1: 'Lea', 2: 'Donnerstag', 3: '18:00' } }, TUE);
   ok('A5. Auto + Fenster zu: Vorlage mit Variablen', r.status === 'sent' && r.via === 'template' && lastOut().sid === 'HX24' && lastOut().vars['1'] === 'Lea' && lastOut().vars['3'] === '18:00', JSON.stringify(lastOut()));
   const box = (await Inbox.list('wa' + P))[0];
-  ok('A5a. Im WhatsApp-Vorgang als „FINN · Journey", ohne Team-Alarm', box && box.messages.some((m) => m.author === 'FINN · Journey') && box.teamUnread === false, JSON.stringify(box && box.teamUnread));
+  ok('A5a. Im WhatsApp-Vorgang als „Lena · Journey", ohne Team-Alarm', box && box.messages.some((m) => m.author === 'Lena · Journey') && box.teamUnread === false, JSON.stringify(box && box.teamUnread));
   ok('A5b. Zustellstatus verfolgbar (jr:out)', !!R.json('jr:out:' + r.id));
   await Window.touch(P, TUE - HOUR);
   r = await Sender.send(Object.assign({}, st, { sent: [] }), { journey: 'lead', step: 's2', tpl: 'fi_trial_2h', vars: { 1: 'Lea', 2: '18:00' } }, TUE);
@@ -250,7 +250,7 @@ function lastOut() { return out[out.length - 1]; }
   await teamStep.action(tst, {}, {});
   const tl = await Inbox.list('7999');
   const tv = (tl || []).find((x) => x.channel === 'whatsapp');
-  ok('H1. Tag 28: interne Notiz am WhatsApp-Vorgang, Team alarmiert', tv && (tv.notes || []).some((n) => n.author === 'FINN · Journey' && /anrufen/.test(n.text)) && tv.teamStatus === 'neu' && tv.teamUnread === true, JSON.stringify(tv && { notes: tv.notes, ts: tv.teamStatus }));
+  ok('H1. Tag 28: interne Notiz am WhatsApp-Vorgang, Team alarmiert', tv && (tv.notes || []).some((n) => n.author === 'Lena · Journey' && /anrufen/.test(n.text)) && tv.teamStatus === 'neu' && tv.teamUnread === true, JSON.stringify(tv && { notes: tv.notes, ts: tv.teamStatus }));
   ok('H2. … ohne Nachricht an das Mitglied', tv && !(tv.messages || []).some((m) => m.from === 'team' && /anrufen/.test(m.text || '')));
 
   console.log(pass ? 'JOURNEYS ENGINE PASS' : 'JOURNEYS ENGINE FAIL');

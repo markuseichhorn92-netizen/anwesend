@@ -1,5 +1,5 @@
 'use strict';
-// FINN liest die Stoffwechselanalyse (lib/ai.js scanMetabolic): PDF geht als
+// Lena liest die Stoffwechselanalyse (lib/ai.js scanMetabolic): PDF geht als
 // document-Block an Bedrock, ein Text-Block markiert das Dokument ausdrücklich als
 // UNVERTRAUENSWÜRDIG (aiSecurity härtet nur Text-Blöcke, nicht Dokumente), der Aufruf
 // läuft im TEAM-Scope, und die vorgeschlagenen Werte werden hart gekappt.

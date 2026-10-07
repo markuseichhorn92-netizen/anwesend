@@ -4,7 +4,7 @@
  * GET/POST /api/member/training   (Mitglieds-Session erforderlich)
  * ----------------------------------------------------------------
  * Der Training-Tab im Coach: Trainingstipp, Inspiration, kuratierte
- * Trainingsplan-Bibliothek und „Mein Plan". FINN kann zusätzlich einen
+ * Trainingsplan-Bibliothek und „Mein Plan". Lena kann zusätzlich einen
  * personalisierten Plan generieren (Premium bzw. Gratis-Kontingent).
  *
  *  GET                      -> Tipp, Inspiration, Bibliothek (schlank), mein Plan, Premium/Quota
@@ -13,10 +13,10 @@
  *    plan-start-custom {plan}-> generierten Plan als „meinen Plan" speichern
  *    plan-stop              -> meinen Plan beenden
  *    plan-detail  {planId}  -> vollständigen Bibliotheks-Plan liefern
- *    generate     {…}       -> FINN erstellt einen Plan (KI, gated)
+ *    generate     {…}       -> Lena erstellt einen Plan (KI, gated)
  *
  * Datenmodell/Keys leben in lib/training.js (train:active:<id>). Ohne Store:
- * available:false. FINN-Generierung nur mit KI-Schlüssel; Gating serverseitig.
+ * available:false. Lena-Generierung nur mit KI-Schlüssel; Gating serverseitig.
  */
 
 const M = require('../../lib/members');
@@ -79,8 +79,8 @@ async function saveRot(id, rot) {
   try { await redisPipeline([['SET', RKEY(id), JSON.stringify(rot), 'EX', String(180 * 86400)]]); } catch (e) {}
 }
 
-// ── Trainings-Verlauf: abgeschlossene Einheiten protokollieren (für die FINN-Progression) ──
-// Kompakte Liste pro Mitglied (neueste zuerst), gedeckelt. Basis, aus der FINN die
+// ── Trainings-Verlauf: abgeschlossene Einheiten protokollieren (für die Lena-Progression) ──
+// Kompakte Liste pro Mitglied (neueste zuerst), gedeckelt. Basis, aus der Lena die
 // nächste Steigerung ableitet.
 const HKEY = (id) => 'train:hist:' + String(id);
 async function appendHist(id, plan, di, sessn, date) {
@@ -130,7 +130,7 @@ async function saveUnit(id, rec) {
     await redisPipeline([['SET', UKEY(id), JSON.stringify(filtered.slice(0, 40)), 'EX', String(220 * 86400)]]);
   } catch (e) {}
 }
-// Aktuellen Plan + Verlauf als kompakten Text für den FINN-Progressions-Prompt.
+// Aktuellen Plan + Verlauf als kompakten Text für den Lena-Progressions-Prompt.
 function planSummaryText(p) {
   const days = (p.days || []).map(function (d) {
     const ex = (d.exercises || []).map(function (e) { return (e.name || '') + (e.bio ? ' (Biostrength)' : (e.sets ? (' ' + e.sets + '×' + (e.reps || '')) : '')); }).join(', ');
@@ -164,8 +164,8 @@ function todayDayFor(active, sessn, rot, today) {
   return 0;
 }
 
-const PREMIUM_MSG = 'Mit Premium erstellt dir FINN unbegrenzt persönliche Trainingspläne.';
-const QUOTA_MSG = 'Dein Gratis-Kontingent für FINN ist diesen Monat aufgebraucht. Mit Premium geht’s unbegrenzt weiter – oder du nutzt die fertigen Pläne aus der Bibliothek.';
+const PREMIUM_MSG = 'Mit Premium erstellt dir Lena unbegrenzt persönliche Trainingspläne.';
+const QUOTA_MSG = 'Dein Gratis-Kontingent für Lena ist diesen Monat aufgebraucht. Mit Premium geht’s unbegrenzt weiter – oder du nutzt die fertigen Pläne aus der Bibliothek.';
 
 function berlinDate() {
   const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Berlin', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date());
@@ -275,7 +275,7 @@ module.exports = async function handler(req, res) {
       return j(res, 200, { ok: true, available: true, active: true, date: date, planId: sess.planId, items: sess.items });
     }
 
-    // Einheit abschließen: Vitalpunkte gutschreiben, kcal schätzen, (Premium) FINN-Einschätzung.
+    // Einheit abschließen: Vitalpunkte gutschreiben, kcal schätzen, (Premium) Lena-Einschätzung.
     // Setzt außerdem Rotations-Marker + Verlauf (auch ohne dass jede Übung abgehakt wurde).
     if (action === 'session-finish') {
       const date = berlinDate();
@@ -297,7 +297,7 @@ module.exports = async function handler(req, res) {
       const vpAwarded = await saveVpDay(id, date, vp);
       try { await saveRot(id, { planId: active.plan.id, day: di, date: date }); await appendHist(id, active.plan, di, sn, date); } catch (e) {}
       try { await saveUnit(id, { t: date, day: di, title: String(dayDef.name || ('Tag ' + (di + 1))).slice(0, 50), ex: unitExList(active.plan, di, sn), vp: vp, kcal: kcal, durMin: Math.round(durSec / 60) }); } catch (e) {}
-      // FINN-Einschätzung nur für Premium (kostenfreies Extra, kein Kontingent-Verbrauch).
+      // Lena-Einschätzung nur für Premium (kostenfreies Extra, kein Kontingent-Verbrauch).
       let finn = '';
       const premium = Ent.isPremium(await Ent.getEntitlement(id));
       if (premium && AI.hasAI && doneCount > 0) {
@@ -328,7 +328,7 @@ module.exports = async function handler(req, res) {
       return j(res, 200, Object.assign({ ok: true }, await readState(id)));
     }
 
-    // FINN-Plan (oder anderen Custom-Plan) als „meinen Plan" speichern.
+    // Lena-Plan (oder anderen Custom-Plan) als „meinen Plan" speichern.
     if (action === 'plan-start-custom') {
       const norm = T.normalizePlan(body.plan, 'finn');
       if (!norm) return j(res, 200, { ok: false, error: 'invalid_plan' });
@@ -357,10 +357,10 @@ module.exports = async function handler(req, res) {
       return j(res, 200, Object.assign({ ok: true }, await readState(id)));
     }
 
-    // FINN generiert einen personalisierten Plan (KI). Gated: Premium unbegrenzt,
+    // Lena generiert einen personalisierten Plan (KI). Gated: Premium unbegrenzt,
     // sonst Gratis-Kontingent (lib/nutriquota, gemeinsamer Monatszähler).
     if (action === 'generate') {
-      if (!AI.hasAI) return j(res, 200, { ok: false, error: 'no_ai', message: 'FINN ist gerade nicht verfügbar – schau in der Bibliothek vorbei.' });
+      if (!AI.hasAI) return j(res, 200, { ok: false, error: 'no_ai', message: 'Lena ist gerade nicht verfügbar – schau in der Bibliothek vorbei.' });
       const premium = Ent.isPremium(await Ent.getEntitlement(id));
       const month = Quota.monthOf(berlinDate());
       // „Erster Plan aufs Haus": einmalig gratis, ohne Premium und ohne Kontingent-Verbrauch.
@@ -393,18 +393,18 @@ module.exports = async function handler(req, res) {
       return j(res, 200, { ok: true, plan: plan, quota: Quota.publicQuota(used, premium, month), welcome: welcomeFree });
     }
 
-    // FINN plant die NÄCHSTE Steigerung aus dem Trainingsprotokoll (Premium/Kontingent).
+    // Lena plant die NÄCHSTE Steigerung aus dem Trainingsprotokoll (Premium/Kontingent).
     if (action === 'progress') {
-      if (!AI.hasAI) return j(res, 200, { ok: false, error: 'no_ai', message: 'FINN ist gerade nicht verfügbar.' });
+      if (!AI.hasAI) return j(res, 200, { ok: false, error: 'no_ai', message: 'Lena ist gerade nicht verfügbar.' });
       const active = await T.resolveActive(id);
       if (!active || !active.plan) return j(res, 200, { ok: false, error: 'no_plan', message: 'Du hast noch keinen aktiven Plan – wähle oder erstelle zuerst einen.' });
       const premium = Ent.isPremium(await Ent.getEntitlement(id));
       const month = Quota.monthOf(berlinDate());
       if (!premium && !(await Quota.canUse(id, month))) {
-        return j(res, 200, { ok: false, error: 'premium_required', quota: 'exhausted', message: 'Die automatische Progression ist eine Premium-Funktion. Mit Premium plant FINN deinen Fortschritt aus deinen Einheiten.' });
+        return j(res, 200, { ok: false, error: 'premium_required', quota: 'exhausted', message: 'Die automatische Progression ist eine Premium-Funktion. Mit Premium plant Lena deinen Fortschritt aus deinen Einheiten.' });
       }
       const hist = await loadHist(id, 24);
-      if (hist.length < 2) return j(res, 200, { ok: false, error: 'no_history', message: 'Protokolliere zuerst ein paar Einheiten – dann plant FINN daraus die nächste Steigerung.' });
+      if (hist.length < 2) return j(res, 200, { ok: false, error: 'no_history', message: 'Protokolliere zuerst ein paar Einheiten – dann plant Lena daraus die nächste Steigerung.' });
       const r = await AI.trainingPlan({
         goal: active.plan.goal || 'ganzkoerper', level: active.plan.level || 'mittel',
         daysPerWeek: (active.plan.days || []).length || 3,

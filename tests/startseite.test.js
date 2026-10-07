@@ -1,6 +1,6 @@
 'use strict';
 // Startseite (Umbau September 2026): eine Begrüßung, Einchecken im Hero, Standort-Frage
-// schmal darunter, FINN-Tipp genau einmal in der App.
+// schmal darunter, Lena-Tipp genau einmal in der App.
 //
 // Warum das abgesichert ist: Die Begrüßung stand zweimal untereinander (Leiste + Hero),
 // die Standort-Bitte war die erste Karte und füllte auf kleinen Handys den Bildschirm,
@@ -18,7 +18,7 @@ const ok = (l, c, extra) => { if (!c) pass = false; console.log((c ? 'OK  ' : 'F
 ok('1. Leiste auf der Startseite zeigt nur das Datum (keine ab-greet-Zeile mehr)', !/class="ab-greet"/.test(html) && /data-ab="date"/.test(html));
 ok('1b. Hero ist kein <button> um alles (verschachtelte Knöpfe wären ungültig)', /<div data-hero="home"/.test(html) && !/<button[^>]*data-hero="home"/.test(html));
 ok('1c. Standort-Frage steht NACH dem Hero, nicht davor', /homeContextHero\(\)\+[^\n]*\n\s*geoAskRow\(\)\+/.test(html));
-ok('1d. Fortschritt ohne FINN-Tipp-Streifen', !/subHeader\('Fortschritt'[^\n]*coachTipStrip\(\)/.test(html));
+ok('1d. Fortschritt ohne Lena-Tipp-Streifen', !/subHeader\('Fortschritt'[^\n]*coachTipStrip\(\)/.test(html));
 
 (async function () {
   let chromium = null;

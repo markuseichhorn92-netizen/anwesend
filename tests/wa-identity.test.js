@@ -70,11 +70,11 @@ const inbound = (from, text, memberId) => WAA.handleInbound({ req: { headers: { 
   // 2. Antwort ohne Link, Hotline bleibt streng
   replies.length = 0;
   await inbound('4915100000001', 'Wann ist mein nächster Termin?', '4711');
-  ok('2. erkanntes Mitglied: Antwort von FINN, kein Bestätigungs-Link', replies.some((r) => /Freitag/.test(r.text)) && !replies.some((r) => /wa-verify/.test(r.text)), JSON.stringify(replies));
+  ok('2. erkanntes Mitglied: Antwort von Lena, kein Bestätigungs-Link', replies.some((r) => /Freitag/.test(r.text)) && !replies.some((r) => /wa-verify/.test(r.text)), JSON.stringify(replies));
   ok('2a. KI-Hinweis nennt die Erkennung per Nummer', /Handynummer aus deinem Mitgliedskonto/.test(require(path.join(ROOT, 'lib/waIntro.js')).DISCLOSURE_MEMBER));
   const st = await PhoneAuth.status('015100000001');
   ok('2b. Telefon-Hotline: Nummer gilt NICHT als verifiziert', st.verified === false && !(await require(path.join(ROOT, 'lib/waAuth.js')).getVerified('4915100000001')));
-  ok('2c. ohne Einwilligung: FINN ohne Gesundheitskontext', waCalls.length === 1 && waCalls[0].noHealth === true);
+  ok('2c. ohne Einwilligung: Lena ohne Gesundheitskontext', waCalls.length === 1 && waCalls[0].noHealth === true);
 
   // 3. Geteilte Nummer: Geburtsdatum
   replies.length = 0; logs.length = 0;

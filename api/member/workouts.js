@@ -11,7 +11,7 @@
  *  GET                                   -> { ok, available, premium, consent, list, weekly, zones, activities }
  *  POST { action:'save', samples, activity, kind, outdoor } -> Einheit aggregieren + speichern
  *  POST { action:'import', workouts }    -> Einheiten aus Apple Health / Google Fit übernehmen (dedupliziert)
- *  POST { action:'assess', ts }          -> FINN-Auswertung einer Einheit (Premium)
+ *  POST { action:'assess', ts }          -> Lena-Auswertung einer Einheit (Premium)
  *  POST { action:'delete', ts }          -> Einheit löschen
  *
  * Herz-/Standortdaten sind Gesundheitsdaten (DSGVO Art. 9): Aufzeichnen nur mit
@@ -111,10 +111,10 @@ module.exports = async function handler(req, res) {
       return j(res, 200, Object.assign({ ok: r.ok !== false, imported: r.added || 0, vpAdded: (r.added || 0) * WO.VP_PER_WORKOUT }, st));
     }
 
-    // FINN-Auswertung einer Einheit (Premium).
+    // Lena-Auswertung einer Einheit (Premium).
     if (action === 'assess') {
       if (!premium) return j(res, 200, { ok: false, error: 'premium_required', message: PREMIUM_MSG });
-      if (!AI.hasAI) return j(res, 200, { ok: false, error: 'no_ai', message: 'FINN ist gerade nicht verfügbar.' });
+      if (!AI.hasAI) return j(res, 200, { ok: false, error: 'no_ai', message: 'Lena ist gerade nicht verfügbar.' });
       const list = await WO.list(id);
       const s = body.ts != null ? list.find((x) => String(x.ts) === String(body.ts)) : list[0];
       if (!s) return j(res, 200, { ok: false, error: 'not_found' });

@@ -1,5 +1,5 @@
 'use strict';
-// FINN Journeys – eingehende WhatsApp: STOP/START, Opt-in-Code, Ja/Nein auf offene
+// Lena Journeys – eingehende WhatsApp: STOP/START, Opt-in-Code, Ja/Nein auf offene
 // Frage, 24-h-Fenster, Doppelzustellung, Twilio-Status mit Fehlercode. Über den echten
 // Twilio-Webhook: STOP geht NICHT an Lead-Automatik/KI, landet still im Vorgang.
 const path = require('path');

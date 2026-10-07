@@ -1,5 +1,5 @@
 'use strict';
-// FINN Kanal-Adapter und Endpunkte: Web/App (api/member/finn, api/member/coach mit FINN_AGENTS),
+// Lena Kanal-Adapter und Endpunkte: Web/App (api/member/finn, api/member/coach mit FINN_AGENTS),
 // WhatsApp (Buttons, „Ja, bestätigen"), E-Mail-Entwurf (nur lesen), Team-Endpunkt (RBAC),
 // Website-Chat (nur mit FINN_PUBLIC). Gefälschte KI, Magicline-Mock, KV im Speicher. Kein Netz.
 const path = require('path');
@@ -105,7 +105,7 @@ async function call(handler, method, body, url, headers) { const res = res0(); B
   const WAA = require(path.join(ROOT, 'lib/waAssistant.js'));
   script = [{ content: [X('Du hast 2 Besuche in den letzten 30 Tagen.')] }];
   await WAA.handleInbound({ req: { headers: { host: 'x' } }, memberId: '1001', msg: { from: '+491700000000', text: 'Wie oft war ich da?', id: 'm1' }, vorgang: v });
-  ok('3c. handleInbound: FINN-Antwort über den bestehenden Zustellweg (Autor FINN)', sent.length === 1 && sent[0].author === 'FINN' && /Besuche/.test(sent[0].text), JSON.stringify(sent));
+  ok('3c. handleInbound: Lena-Antwort über den bestehenden Zustellweg (Autor Lena)', sent.length === 1 && sent[0].author === 'Lena' && /Besuche/.test(sent[0].text), JSON.stringify(sent));
   delete process.env.FINN_AGENTS;
 
   // ── 4. E-Mail-Entwurf: nur lesende Werkzeuge, als Notiz ──
@@ -168,6 +168,6 @@ async function call(handler, method, body, url, headers) { const res = res0(); B
   delete process.env.FINN_PUBLIC;
 
   Mock.reset();
-  console.log(pass ? 'FINN-API PASS' : 'FINN-API FAIL');
+  console.log(pass ? 'Lena-API PASS' : 'Lena-API FAIL');
   process.exit(pass ? 0 : 1);
 })().catch((e) => { console.log('FAIL Ausnahme: ' + (e && e.stack || e)); process.exit(1); });

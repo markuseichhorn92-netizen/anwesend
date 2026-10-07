@@ -76,8 +76,8 @@ ok('7b. Alarm -> Verdict ruhe', vAlert.intensity === 'ruhe' && vAlert.source ===
 
 // 8) toPromptText nennt genau EIN Fazit + Gegencheck-Pflicht, kein rohes Doppel-Signal.
 const txt = MO.toPromptText(REAL, { age: 40 });
-ok('8. FINN-Prompt enthält EIN FAZIT', txt.indexOf('FAZIT HEUTE') >= 0);
-ok('8b. FINN-Prompt enthält Gegencheck-Pflicht', txt.indexOf('GEGENCHECK-PFLICHT') >= 0);
+ok('8. Lena-Prompt enthält EIN FAZIT', txt.indexOf('FAZIT HEUTE') >= 0);
+ok('8b. Lena-Prompt enthält Gegencheck-Pflicht', txt.indexOf('GEGENCHECK-PFLICHT') >= 0);
 ok('8c. kein roher Doppel-Alarm mehr', txt.indexOf('ACHTUNG Übertrainings-Signal') < 0);
 
 console.log(pass ? 'VITAL-RECONCILE PASS' : 'VITAL-RECONCILE FAIL');

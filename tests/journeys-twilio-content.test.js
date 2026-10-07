@@ -1,5 +1,5 @@
 'use strict';
-// FINN Journeys – Vorlagen bei Twilio einreichen (Content API, nachgebaut):
+// Lena Journeys – Vorlagen bei Twilio einreichen (Content API, nachgebaut):
 // Metas Regeln vor dem Einreichen, Anlegen + Einreichen ohne Doppelte, Stand
 // abgleichen, nur freigegebene Vorlagen werden gesendet, Neu einreichen nach
 // Ablehnung, verlorener Zustand, Fehler nach dem Anlegen, von Hand zugeordnete SID,

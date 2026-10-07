@@ -1,11 +1,11 @@
 'use strict';
 
 /**
- * Team-Backend: FINN & Magicline-Integration.
+ * Team-Backend: Lena & Magicline-Integration.
  *   GET ?view=status                 -> Scopes (🟢🟡🔴), Webhook-Statistik, Event-Bus, Audit-Zähler, Metriken, Modus
  *   GET ?view=events&n=100           -> Event-Protokoll (Typ, Aktion, Klasse, Zeit – keine Personendaten)
  *   GET ?view=audit&n=100[&customerId=] -> Audit-Log der Agenten (ohne Freitext)
- *   GET ?view=timeline&customerId=   -> FINN-Verlauf einer Person (Team-Profil)
+ *   GET ?view=timeline&customerId=   -> Lena-Verlauf einer Person (Team-Profil)
  *   GET ?view=agents                 -> Agenten und ihre Werkzeuge (Dokumentation im Backend)
  *   POST { message, customerId?, history? | action:'confirm'|'decline', id }
  *                                    -> Team-Kanal des Orchestrators (Team-Guardrail)

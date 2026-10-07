@@ -1,5 +1,5 @@
 'use strict';
-// FINN-Morgen-Check (lib/ai.coachMorningCheck): wertet Ruhepuls/HRV gegen die
+// Lena-Morgen-Check (lib/ai.coachMorningCheck): wertet Ruhepuls/HRV gegen die
 // persönliche Baseline aus und liefert eine Bereitschafts-Ampel + To-dos +
 // Trainings-Empfehlung. Wellness-Signal, keine Diagnose.
 process.env.ANTHROPIC_API_KEY = 'test-key';

@@ -1,5 +1,5 @@
 'use strict';
-// FINN Journeys – Echtbetrieb-Schalter tolerant lesen, unbekannten Wert melden;
+// Lena Journeys – Echtbetrieb-Schalter tolerant lesen, unbekannten Wert melden;
 // Durchlauf aus App-Verkehr: nur mit Vercels waitUntil, höchstens alle 14 min
 // (KV „SET NX"), je Instanz höchstens eine Nachfrage pro Minute, wartet nicht auf
 // den Durchlauf; letzter Durchlauf wird vermerkt und im Team-Backend gezeigt.

@@ -33,8 +33,8 @@ assert.ok(
 assert.ok(member.includes("function finnPlanLoadingView(days,kind)"));
 assert.ok(member.includes("function trainingPlanLoadingView(days)"));
 assert.ok(member.includes("trainingPlanLoadingView(S.trainGenDays)"));
-assert.ok(member.includes("role=\"status\" aria-live=\"polite\" aria-label=\"FINN erstellt deinen Trainingsplan\""));
-assert.ok(member.includes("FINN wählt passende Übungen …"));
+assert.ok(member.includes("role=\"status\" aria-live=\"polite\" aria-label=\"Lena erstellt deinen Trainingsplan\""));
+assert.ok(member.includes("Lena wählt passende Übungen …"));
 
 // ── Android: Kopf klebt an der System-Statusleiste (Samsung) ───────────────────
 // env(safe-area-inset-top) meldet auf Android 0 -> --sat=0 -> Kopf nicht antippbar.

@@ -1,5 +1,5 @@
 'use strict';
-// FINN Orchestrator, Routing, Agent-Runtime und Sicherheit – mit gefälschter KI
+// Lena Orchestrator, Routing, Agent-Runtime und Sicherheit – mit gefälschter KI
 // (lib/ai.js wird ersetzt), Magicline im Mock-Modus, KV im Speicher. Kein Netz.
 const path = require('path');
 const ROOT = path.resolve(__dirname, '..');
@@ -160,7 +160,7 @@ const member = () => ({ actor: { kind: 'member', id: '1001' }, channel: 'web', s
   ok('12b. Ein einzelnes Zeichen ist keine leere Nachricht', one.ok && one.error !== 'empty');
   const dot = await Orc.handle(wa(), { message: ' . ', conversationId: 'wa:c12c' });
   ok('12c. Nur Satzzeichen bleibt leer', dot.ok === false && dot.error === 'empty');
-  // Ohne gemerkte Optionen: aus der letzten FINN-Nachricht im Verlauf
+  // Ohne gemerkte Optionen: aus der letzten Lena-Nachricht im Verlauf
   ok('12d. Nummer aus dem Verlauf („1) … 2) …")', Orc.pickChoice('1', {}, [{ role: 'user', text: 'x' }, { role: 'assistant', text: 'Welche Zeit?\n\n1) Morgen 10 Uhr\n2) Freitag 18 Uhr' }]) === 'Morgen 10 Uhr'
     && Orc.pickChoice('3', {}, [{ role: 'assistant', text: '1) A\n2) B' }]) === null && Orc.pickChoice('12', { choices: ['A'] }, []) === null);
   // Bestätigung mit „1" (Text-Fallback „1) Ja, bestätigen")
@@ -174,6 +174,6 @@ const member = () => ({ actor: { kind: 'member', id: '1001' }, channel: 'web', s
   }
 
   Mock.reset();
-  console.log(pass ? 'FINN-ORCHESTRATOR PASS' : 'FINN-ORCHESTRATOR FAIL');
+  console.log(pass ? 'Lena-ORCHESTRATOR PASS' : 'Lena-ORCHESTRATOR FAIL');
   process.exit(pass ? 0 : 1);
 })().catch((e) => { console.log('FAIL Ausnahme: ' + (e && e.stack || e)); process.exit(1); });

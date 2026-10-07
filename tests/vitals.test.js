@@ -1,7 +1,7 @@
 'use strict';
 // Passive Vitalwerte (lib/vitals.js): Sanitize (Apple-Health-Aliase/Klammern),
 // persönliche Baseline (Median der Vortage), Whoop/Oura-artige Erholungs-Ampel
-// aus Ruhepuls + HRV + Schlaf, Schlaf-Referenz, Trend, Prompt-Text für FINN.
+// aus Ruhepuls + HRV + Schlaf, Schlaf-Referenz, Trend, Prompt-Text für Lena.
 const V = require('../lib/vitals');
 
 function run() {
@@ -57,7 +57,7 @@ function run() {
   const tr = V.trend(list);
   ok('8. trend: Ruhepuls -1 seit gestern', tr && tr.since && tr.since.rhr === -1);
 
-  // 9. Prompt-Text für FINN
+  // 9. Prompt-Text für Lena
   const pt = V.toPromptText(list);
   ok('9. toPromptText nennt Schlaf + Erholungs-Ampel', /Schlaf letzte Nacht 7h 40m/.test(pt) && /Erholungs-Ampel/.test(pt) && /Apple Health/.test(pt));
   ok('9b. toPromptText leer bei leerer Liste', V.toPromptText([]) === '');

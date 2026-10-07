@@ -1,5 +1,5 @@
 'use strict';
-// FINN-Langzeitgedächtnis (lib/finnMemory.js): Marker-Parsing, Dedup/Cap, Prompt-Text
+// Lena-Langzeitgedächtnis (lib/finnMemory.js): Marker-Parsing, Dedup/Cap, Prompt-Text
 // und – gegen einen In-Memory-KV-Mock – das Opt-in-Gate (aus = nichts gespeichert,
 // abschalten = vergessen), Merken/Vergessen/Löschen.
 
@@ -89,7 +89,7 @@ async function run() {
   const gn = await Mem.get(NO);
   ok('11. „Nein" zählt als Entscheidung (on=false, decided=true)', gn.on === false && gn.decided === true);
 
-  console.log(pass ? 'FINN-MEMORY PASS' : 'FINN-MEMORY FAIL');
+  console.log(pass ? 'Lena-MEMORY PASS' : 'Lena-MEMORY FAIL');
   process.exit(pass ? 0 : 1);
 }
 run().catch((e) => { console.error('FAIL', e); process.exit(1); });

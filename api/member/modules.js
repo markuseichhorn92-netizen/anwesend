@@ -132,7 +132,7 @@ module.exports = async function handler(req, res) {
     // Ohne Abo-Modell wird das Premium-Modul nicht mehr verkauft – auch nicht über
     // einen direkt gebauten Request. Kündigen bleibt möglich.
     if (body.action === 'book' && !require('../../lib/features').aboOn() && Mod.isPremiumModule(body.moduleId)) {
-      res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'abo_off', message: 'Coach Premium gibt es nicht mehr – FINN und alle Coaching-Funktionen sind für dich inklusive.' }));
+      res.statusCode = 200; return res.end(JSON.stringify({ ok: false, error: 'abo_off', message: 'Coach Premium gibt es nicht mehr – Lena und alle Coaching-Funktionen sind für dich inklusive.' }));
     }
 
     // ── Premium-Zusatzmodul kündigen (Ernährungs-Premium über die Mitgliedschaft) ──

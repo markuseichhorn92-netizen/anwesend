@@ -5,13 +5,13 @@
  * -------------------------------------------------------------------------
  * Der Figur-Check: die Mess-Journey fürs Mitglied (Gewicht + Umfänge, Verlauf,
  * Vorher-Nachher). Frei für alle Mitglieder – Zahlen + Kurven kosten nichts.
- * Nur die optionale KI-Auswertung („FINN bewertet deinen Fortschritt") ist
+ * Nur die optionale KI-Auswertung („Lena bewertet deinen Fortschritt") ist
  * Premium bzw. verbraucht das gemeinsame Gratis-Kontingent (lib/nutriquota).
  *
  *  GET                         -> { available, metrics, history, summary, +Premium/Quota }
  *  POST { action:'save', <messwerte>, note? } -> Eintrag ablegen (1/Tag), Verlauf+Vergleich zurück
  *  POST { action:'delete', date }             -> Eintrag löschen
- *  POST { action:'review' }                   -> FINN-Auswertung (Premium/Kontingent)
+ *  POST { action:'review' }                   -> Lena-Auswertung (Premium/Kontingent)
  *
  * Ohne KV (hasStore=false) -> { ok:true, available:false } (UI blendet aus).
  */
@@ -106,16 +106,16 @@ module.exports = async function handler(req, res) {
       return j(res, 200, Object.assign(snap, { deleted: true }));
     }
 
-    // FINN-Auswertung des Fortschritts (Premium bzw. Gratis-Kontingent).
+    // Lena-Auswertung des Fortschritts (Premium bzw. Gratis-Kontingent).
     if (action === 'review') {
-      if (!AI.hasAI) return j(res, 200, { ok: false, error: 'no_ai', message: 'FINN ist gerade nicht verfügbar.' });
+      if (!AI.hasAI) return j(res, 200, { ok: false, error: 'no_ai', message: 'Lena ist gerade nicht verfügbar.' });
       const rec = await Figur.getRec(id);
       const sum = Figur.summary(rec);
-      if (sum.count < 2) return j(res, 200, { ok: false, error: 'no_data', message: 'Erfasse mindestens zwei Messungen – dann wertet FINN deinen Fortschritt aus.' });
+      if (sum.count < 2) return j(res, 200, { ok: false, error: 'no_data', message: 'Erfasse mindestens zwei Messungen – dann wertet Lena deinen Fortschritt aus.' });
       const premium = Ent.isPremium(await Ent.getEntitlement(id));
       const month = Quota.monthOf(Figur.berlinToday());
       if (!premium && !(await Quota.canUse(id, month))) {
-        return j(res, 200, { ok: false, error: 'premium_required', quota: 'exhausted', message: 'Die FINN-Auswertung ist eine Premium-Funktion. Teste Premium 7 Tage gratis – danach jederzeit kündbar.' });
+        return j(res, 200, { ok: false, error: 'premium_required', quota: 'exhausted', message: 'Die Lena-Auswertung ist eine Premium-Funktion. Teste Premium 7 Tage gratis – danach jederzeit kündbar.' });
       }
       if (!(await M.rateLimit('figur-review:' + id, 10, 86400))) {
         return j(res, 200, { ok: false, error: 'rate_limited', message: 'Kurz warten und erneut versuchen.' });

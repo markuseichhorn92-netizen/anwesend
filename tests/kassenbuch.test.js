@@ -106,7 +106,7 @@ ok('13c. belegOk fließt in die Zeile', tBeleg.rows[4].belegOk === true && tBele
 ok('13d. sanitizeMonth behält Tag mit nur belegOk+Ausgabe', !!KB.sanitizeMonth('2026-07', { days: { '5': { ausgaben: 30, belegOk: true } } }).days['5']);
 
 // 14) toPromptText: vollständiges Datum + Rahmenregeln (Datum/USt/Beleg/Kassensturz),
-//     damit FINN diese – vom Studio bereits geklärten – Punkte nicht mehr bemängelt.
+//     damit Lena diese – vom Studio bereits geklärten – Punkte nicht mehr bemängelt.
 const txtB = KB.toPromptText(mBeleg, tBeleg);
 ok('14. vollständiges Datum je Buchung (05.07.2026 / 06.07.2026)', /05\.07\.2026/.test(txtB) && /06\.07\.2026/.test(txtB));
 ok('14b. USt pauschal 19 % genannt', /pauschal 19 %/.test(txtB));

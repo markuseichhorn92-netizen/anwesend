@@ -6,13 +6,13 @@
  * InBody-Körperanalyse (InBody 270) als Erfolgskontrolle. Das Mitglied
  * fotografiert den Ergebnisbogen; die KI liest die Werte aus (scan), das
  * Mitglied prüft/korrigiert und speichert (save). Bewertung + Verlauf werden
- * serverseitig berechnet; die Daten fließen in FINN (coach.js) ein.
+ * serverseitig berechnet; die Daten fließen in Lena (coach.js) ein.
  *
  *  GET                          -> { ok, available, list, latest, eval, trend, premium, quota }
  *  POST { action:'scan', photo, mediaType }  -> KI liest den Bogen aus (gated) -> { ok, parsed }
  *  POST { action:'save', measurement }        -> Messung speichern -> Zustand
  *  POST { action:'delete', sel }              -> Messung (date/ts) löschen
- *  POST { action:'assess' }                   -> FINN-Einschätzung (Premium, kostenfrei)
+ *  POST { action:'assess' }                   -> Lena-Einschätzung (Premium, kostenfrei)
  *
  * Ohne KV-Store: available:false. Scan nur mit KI-Schlüssel; Gating serverseitig
  * (Premium unbegrenzt, sonst gemeinsames Gratis-Kontingent lib/nutriquota).
@@ -113,17 +113,17 @@ module.exports = async function handler(req, res) {
       return j(res, 200, Object.assign({ ok: true }, await readState(id)));
     }
 
-    // FINN-Einschätzung zur InBody-Analyse (Premium, kostenfreies Extra).
+    // Lena-Einschätzung zur InBody-Analyse (Premium, kostenfreies Extra).
     if (action === 'assess') {
       const list = await IB.list(id);
       if (!list.length) return j(res, 200, { ok: false, error: 'no_data', message: 'Scanne zuerst eine InBody-Analyse ein.' });
       const premium = Ent.isPremium(await Ent.getEntitlement(id));
-      if (!premium) return j(res, 200, { ok: false, error: 'premium_required', message: 'Die persönliche FINN-Einschätzung zur InBody-Analyse ist eine Premium-Funktion.' });
-      if (!AI.hasAI) return j(res, 200, { ok: false, error: 'no_ai', message: 'FINN ist gerade nicht verfügbar.' });
+      if (!premium) return j(res, 200, { ok: false, error: 'premium_required', message: 'Die persönliche Lena-Einschätzung zur InBody-Analyse ist eine Premium-Funktion.' });
+      if (!AI.hasAI) return j(res, 200, { ok: false, error: 'no_ai', message: 'Lena ist gerade nicht verfügbar.' });
       let goal = '', sex = '';
       try { const p = await Profile.get(id); if (p) { goal = p.goal || ''; sex = p.sex || ''; } } catch (e) {}
       const ctx = IB.toPromptText(list, sex);
-      const sys = 'Du bist FINN, der persönliche Coach von Fit-Inn Trier. Ein Mitglied hat seine InBody-Körperanalyse eingescannt. Erkläre die wichtigsten Werte kurz und verständlich (per du, warmherzig, 3–5 Sätze), ordne den Trend ein und gib 1–2 konkrete, sichere Empfehlungen passend zum Ziel. Kein Namensgruß, keine Aufzählung, kein Markdown. Stelle KEINE Diagnosen; verweise bei Auffälligkeiten auf ärztlichen Rat.';
+      const sys = 'Du bist Lena, die persönliche Coachin von Fit-Inn Trier. Ein Mitglied hat seine InBody-Körperanalyse eingescannt. Erkläre die wichtigsten Werte kurz und verständlich (per du, warmherzig, 3–5 Sätze), ordne den Trend ein und gib 1–2 konkrete, sichere Empfehlungen passend zum Ziel. Kein Namensgruß, keine Aufzählung, kein Markdown. Stelle KEINE Diagnosen; verweise bei Auffälligkeiten auf ärztlichen Rat.';
       const user = ctx + (goal ? ('\nZiel des Mitglieds: ' + String(goal).slice(0, 40)) : '') + '\n\nGib deine Einschätzung.';
       const cc = await AI.messagesRaw({ system: sys, messages: [{ role: 'user', content: user }], maxTokens: 340, temperature: 0.75, model: AI.MODEL_ANALYSIS });
       const text = (cc && cc.ok && Array.isArray(cc.content)) ? cc.content.filter((b) => b && b.type === 'text').map((b) => b.text).join('').trim() : '';

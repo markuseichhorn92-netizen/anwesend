@@ -76,7 +76,7 @@ async function run() {
   await call('cassandra', prof);
   await call('florian', prof);
 
-  // ── 1) Cassandra erstellt den Topf aus einer FINN-Schätzung (items summieren) ──
+  // ── 1) Cassandra erstellt den Topf aus einer Lena-Schätzung (items summieren) ──
   let r = await call('cassandra', { action: 'pot-create', title: 'Chili con Carne (ganzer Topf)', items: [
     { name: 'Hackfleisch', kcal: 600, p: 60, c: 0, f: 40, grams: 500 },
     { name: 'Kidneybohnen + Reis', kcal: 400, p: 40, c: 100, f: 0, grams: 600 },

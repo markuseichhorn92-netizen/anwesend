@@ -1,6 +1,6 @@
 'use strict';
-// FINN in der Oberfläche: Bestätigungskarte im Mitglieder-Chat (Vorschlag -> Bestätigen/Abbrechen,
-// nichts passiert ohne Klick, Zustand überlebt ein Neuladen) und die Team-Seite „FINN & Magicline"
+// Lena in der Oberfläche: Bestätigungskarte im Mitglieder-Chat (Vorschlag -> Bestätigen/Abbrechen,
+// nichts passiert ohne Klick, Zustand überlebt ein Neuladen) und die Team-Seite „Lena & Magicline"
 // (nur Admin, Scope-Ampel, Reiter). Fake-Server, kein Netz.
 const fs = require('fs');
 const path = require('path');
@@ -15,7 +15,7 @@ const ok = (l, c, extra) => { if (!c) pass = false; console.log((c ? 'OK  ' : 'F
 // ── 1. Quelltext ──
 ok('1. Chat kennt Bestätigen/Abbrechen als Handler', /finnConfirm:function/.test(html) && /finnDecline:function/.test(html) && /data-act="finnConfirm"/.test(html));
 ok('1a. Team-Seite ist Admin-only und verdrahtet (Slug, Nav, Dispatch, Lader)', /finn:1/.test(team.slice(team.indexOf('var ADMIN_ONLY_SCREENS'), team.indexOf('var ADMIN_ONLY_SCREENS') + 200)) && /finn:'finn'/.test(team) && /content=finnNode\(\)/.test(team) && /if\(k==='finn'\)\{ loadFinn\(\); return; \}/.test(team) && /navItem\('finn'/.test(team));
-ok('1b. FINN-Verlauf im Profil (Reiter Nachrichten & Vorgänge)', /finnVerlaufCard\(p\)/.test(team) && /loadMemberFinn\(id\)/.test(team));
+ok('1b. Lena-Verlauf im Profil (Reiter Nachrichten & Vorgänge)', /finnVerlaufCard\(p\)/.test(team) && /loadMemberFinn\(id\)/.test(team));
 
 (async function () {
   let chromium = null;
@@ -23,7 +23,7 @@ ok('1b. FINN-Verlauf im Profil (Reiter Nachrichten & Vorgänge)', /finnVerlaufCa
   const bin = ['/opt/pw-browsers/chromium-1194/chrome-linux/chrome', '/opt/pw-browsers/chromium/chrome-linux/chrome'].filter(function (p) { try { return fs.existsSync(p); } catch (e) { return false; } })[0];
   if (!chromium || !bin) {
     console.log('HINWEIS Kein Browser vorhanden - die Oberflaeche wurde NICHT geprueft.');
-    console.log(pass ? 'FINN-UI PASS (ohne Browser)' : 'FINN-UI FAIL');
+    console.log(pass ? 'Lena-UI PASS (ohne Browser)' : 'Lena-UI FAIL');
     process.exit(pass ? 0 : 1);
   }
   const srv = { posts: [], confirmed: 0, declined: 0 };
@@ -102,7 +102,7 @@ ok('1b. FINN-Verlauf im Profil (Reiter Nachrichten & Vorgänge)', /finnVerlaufCa
   ok('2g. Keine Skriptfehler', fehler.length === 0, fehler.join(' | '));
   await c.close();
 
-  // ── 3. Team-Backend: Seite „FINN & Magicline" ──
+  // ── 3. Team-Backend: Seite „Lena & Magicline" ──
   async function teamPage(role) {
     srv.role = role;
     const ctx = await b.newContext({ viewport: { width: 1280, height: 900 } });
@@ -114,7 +114,7 @@ ok('1b. FINN-Verlauf im Profil (Reiter Nachrichten & Vorgänge)', /finnVerlaufCa
     return { ctx: ctx, pg: pg, errs: errs };
   }
   let t = await teamPage('admin');
-  const st = await t.pg.evaluate(function () { const txt = document.body.innerText; const lights = document.querySelectorAll('[data-light="green"]').length + document.querySelectorAll('[data-light="red"]').length + document.querySelectorAll('[data-light="yellow"]').length; return { title: /FINN & Magicline/.test(txt), scopes: /CUSTOMER_READ/.test(txt) && /APPOINTMENTS_WRITE/.test(txt) && /403 gemerkt/.test(txt) && /wird nie angenommen/.test(txt), mode: /MOCK|live/.test(txt), tabs: document.querySelectorAll('[data-finnview]').length, lights: lights, nav: !!document.querySelector('[data-nav="finn"]') }; });
+  const st = await t.pg.evaluate(function () { const txt = document.body.innerText; const lights = document.querySelectorAll('[data-light="green"]').length + document.querySelectorAll('[data-light="red"]').length + document.querySelectorAll('[data-light="yellow"]').length; return { title: /Lena & Magicline/.test(txt), scopes: /CUSTOMER_READ/.test(txt) && /APPOINTMENTS_WRITE/.test(txt) && /403 gemerkt/.test(txt) && /wird nie angenommen/.test(txt), mode: /MOCK|live/.test(txt), tabs: document.querySelectorAll('[data-finnview]').length, lights: lights, nav: !!document.querySelector('[data-nav="finn"]') }; });
   ok('3. Admin sieht Status: Titel, Scope-Ampel mit 403-Hinweis, vier Reiter, Nav-Eintrag', st.title && st.scopes && st.mode && st.tabs === 4 && st.lights >= 3 && st.nav, JSON.stringify(st));
   // Scope-Probe: Kunden-Id eintippen, prüfen, Ergebniszeile erscheint, Status wird neu geladen
   await t.pg.evaluate(function () { const i = document.querySelector('[data-finnprobe-cid]'); i.value = '12x34'; i.dispatchEvent(new Event('input', { bubbles: true })); document.querySelector('[data-finnprobe]').click(); }); await t.pg.waitForTimeout(900);
@@ -129,11 +129,11 @@ ok('1b. FINN-Verlauf im Profil (Reiter Nachrichten & Vorgänge)', /finnVerlaufCa
   ok('3b. Keine Skriptfehler (Admin)', t.errs.length === 0, t.errs.join(' | '));
   await t.ctx.close();
   t = await teamPage('trainer');
-  const tr = await t.pg.evaluate(function () { return { nav: !!document.querySelector('[data-nav="finn"]'), title: /FINN & Magicline/.test(document.body.innerText) }; });
+  const tr = await t.pg.evaluate(function () { return { nav: !!document.querySelector('[data-nav="finn"]'), title: /Lena & Magicline/.test(document.body.innerText) }; });
   ok('3c. Angestellte: kein Nav-Eintrag, Seite nicht erreichbar (Umleitung)', !tr.nav && !tr.title, JSON.stringify(tr));
   await t.ctx.close();
 
   await b.close(); server.close();
-  console.log(pass ? 'FINN-UI PASS' : 'FINN-UI FAIL');
+  console.log(pass ? 'Lena-UI PASS' : 'Lena-UI FAIL');
   process.exit(pass ? 0 : 1);
 })();

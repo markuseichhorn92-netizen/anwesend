@@ -8,7 +8,7 @@ bewusst ohne Framework und (bis auf Dev-Tools) ohne npm-Dependencies.
 
 | Bereich | Einstieg | Beschreibung |
 |---|---|---|
-| **Mitglieder-App** | `mitglieder.html` (`/`) | Vertrag, Termine, Check-in, Mitgliedskarte, Dokumente, Postfach, FINN-KI-Coach, Fortschritt/Vitalpunkte, Training (Technogym-Inventar), Ernährung*, Community* — läuft im Browser **und** als Capacitor-App (iOS/Android) |
+| **Mitglieder-App** | `mitglieder.html` (`/`) | Vertrag, Termine, Check-in, Mitgliedskarte, Dokumente, Postfach, Lena-KI-Coach, Fortschritt/Vitalpunkte, Training (Technogym-Inventar), Ernährung*, Community* — läuft im Browser **und** als Capacitor-App (iOS/Android) |
 | **Team-Backend** | `team-backend.html` (`/team`) | Posteingang, Mitgliederverwaltung, Termine, Statistiken, Leads, Rückholung, Moderation — rollenbasiert (admin/trainer) |
 | **Live-Auslastung** | `widget.html`, `auslastung.html` | Anonyme Personenzahl als einbettbares Widget + „typische Auslastung"-Kurve |
 | **APIs** | `api/**` | ~125 Serverless Functions (Mitglied, Team, Webhooks, interne Crons) |
@@ -28,7 +28,7 @@ Vercel Serverless Functions (api/**)          ← Security-Header via vercel.jso
    │            │              │
    ▼            ▼              ▼
 lib/** ──► Upstash Redis   Magicline Open API   Dritt-Dienste (nur wo nötig):
-(Fach-     (Sessions,      (Mitglieder,          Anthropic-KI (FINN),
+(Fach-     (Sessions,      (Mitglieder,          Anthropic-KI (Lena),
  logik)     Push-Tokens,    Verträge,            Resend (E-Mail),
             Inbox, Flags,   Check-ins,           Twilio/WA,
             Historie)       Termine)             Open Food Facts, FCM/APNs

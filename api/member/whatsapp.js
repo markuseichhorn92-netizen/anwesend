@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * WhatsApp von Fit-Inn (FINN Journeys) – Einwilligung in der App.
+ * WhatsApp von Fit-Inn (Lena Journeys) – Einwilligung in der App.
  *   GET  -> { ok, enabled, connected, service, marketing, suppressed, number }
  *   POST { action:'connect', marketing:boolean } -> { ok, link, code }
  *          Die Einwilligung gilt erst, wenn „START <CODE>" von der eigenen Nummer

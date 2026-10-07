@@ -1,5 +1,5 @@
 'use strict';
-// Prompt Caching (lib/ai.js): FINN-Chat, Hilfe-Q&A und Team-Antwort-Entwurf
+// Prompt Caching (lib/ai.js): Lena-Chat, Hilfe-Q&A und Team-Antwort-Entwurf
 // senden die große, über alle Anfragen IDENTISCHE Wissensbasis als gecachten
 // System-Vorspann (cache_control:ephemeral). Der mitgliedsspezifische Teil
 // (Vorname/Live-Daten/Frage) bleibt UNgecacht im dynamischen Block bzw. User-Turn.
@@ -21,7 +21,7 @@ async function run() {
     { t: 'Kündigung', body: ('Kündigungsfrist beträgt 3 Monate zum Laufzeitende. ').repeat(40) },
   ];
 
-  // 1. coachReply (FINN-Chat)
+  // 1. coachReply (Lena-Chat)
   await AI.coachReply({ firstName: 'Max', details: 'Vertrag läuft bis 2027' }, [], 'Wann habt ihr offen?', articles);
   const sys = lastBody.system;
   ok('1. coachReply: system ist Block-Array', Array.isArray(sys) && sys.length >= 1);

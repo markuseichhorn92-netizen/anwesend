@@ -14,7 +14,7 @@ module.exports = async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
   const sess = await M.getSession(M.bearer(req));
   if (!sess) { res.statusCode = 401; return res.end(JSON.stringify({ error: 'unauthorized' })); }
-  // FINN Journeys: Durchlauf aus App-Verkehr anstoßen (wartet nicht, siehe lib/journeys/autotick).
+  // Lena Journeys: Durchlauf aus App-Verkehr anstoßen (wartet nicht, siehe lib/journeys/autotick).
   try { require('../../lib/journeys/autotick').maybe('account'); } catch (e) {}
   const id = encodeURIComponent(sess.id);
 

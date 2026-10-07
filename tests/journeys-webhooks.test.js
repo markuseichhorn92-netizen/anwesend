@@ -1,5 +1,5 @@
 'use strict';
-// FINN Journeys am echten Magicline-Webhook: Bestandsverarbeitung bleibt, Journeys
+// Lena Journeys am echten Magicline-Webhook: Bestandsverarbeitung bleibt, Journeys
 // hängen sich über den Event-Bus an. Vertrag -> Lead „gewonnen" (auch ohne JOURNEYS),
 // Check-in zählt (einmal je Tag, Duplikat nicht), Onboarding startet, Termin-Storno
 // wird über jr:bk gefunden, obwohl der Bestand den Termin vorher löscht.

@@ -1,5 +1,5 @@
 'use strict';
-// FINN Journeys – Vorlagen, die woanders angelegt wurden (Twilio-Konsole, Claude in
+// Lena Journeys – Vorlagen, die woanders angelegt wurden (Twilio-Konsole, Claude in
 // Chrome), sicher mit der App verknüpfen: Abgleich über Namen oder gleichen Text,
 // über mehrere Listenseiten, legt nie etwas an. Danach reicht „Fehlende einreichen"
 // nur die wirklich fehlende ein; eine anders benannte, verknüpfte Vorlage wird nicht

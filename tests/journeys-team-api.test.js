@@ -1,5 +1,5 @@
 'use strict';
-// Team-Backend-Endpunkt der FINN Journeys: nur Admin (Übersicht, Schalter, Vorlagen,
+// Team-Backend-Endpunkt der Lena Journeys: nur Admin (Übersicht, Schalter, Vorlagen,
 // Testversand), Mitglieds-Status mit member.read; Content-SID wird geprüft; Testversand
 // nur an JOURNEYS_TEST_NUMBERS; Antworten ohne Klarnummern.
 const path = require('path');
