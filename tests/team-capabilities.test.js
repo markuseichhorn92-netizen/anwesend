@@ -73,7 +73,11 @@ async function run() {
   //    Mitgliedsdaten, kein Lesen, kein Schreiben ausser einer Logzeile. Ein
   //    Rechte-Gate wuerde dort ausgerechnet die Fehler verschlucken, die es zu
   //    sehen gilt; begrenzt wird stattdessen per Rate-Limit.
-  const exempt = new Set(['login.js', 'logout.js', 'me.js', 'push.js', 'client-error.js']);
+  //    mitarbeiter-termine.js ist Maschine-zu-Maschine (Familien-Hub) ohne Team-Sitzung:
+  //    geschützt per Bearer HUB_FEED_KEY (zeitkonstant), ohne Variable AUS – wird unten geprüft.
+  const exempt = new Set(['login.js', 'logout.js', 'me.js', 'push.js', 'client-error.js', 'mitarbeiter-termine.js']);
+  { const src = fs.readFileSync(path.join(ROOT, 'api/team/mitarbeiter-termine.js'), 'utf8');
+    ok('4b. mitarbeiter-termine.js: Bearer HUB_FEED_KEY + timingSafeEqual + 503 ohne Variable', /HUB_FEED_KEY/.test(src) && /timingSafeEqual/.test(src) && /503/.test(src)); }
   const missing = fs.readdirSync(path.join(ROOT, 'api/team'))
     .filter((f) => f.endsWith('.js') && !exempt.has(f))
     .filter((f) => !fs.readFileSync(path.join(ROOT, 'api/team', f), 'utf8').includes('lib/capabilities'));

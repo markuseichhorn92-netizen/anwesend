@@ -93,6 +93,9 @@ function payloadOf(e) { return (e && (e.content || e.payload || e.data)) || {}; 
 // APPOINTMENT_BOOKING_*: bei diesen Events ist entityId die bookingId (NICHT die
 // customerId). Fehlen Start/Titel im Event, laden wir den Termin über die API nach
 // (best effort), damit der studioweite Feed vollständig ist.
+// Magicline-Kalender (Familien-Hub): zusätzlich GET /appointments/booking/{id} für
+// Mitarbeiter (instructorIds), Kategorie und Status; Mitgliedsname nur „Vorname N.".
+// Klappt das Detail nicht, bleiben frühere Detailwerte erhalten (upsert führt zusammen).
 async function onAppointmentUpsert(e) {
   const p = payloadOf(e);
   const bid = e.entityId || p.bookingId || p.id || e.objectId;
@@ -100,7 +103,19 @@ async function onAppointmentUpsert(e) {
   let start = p.startDateTime || p.start || null;
   let end = p.endDateTime || p.end || null;
   let title = p.title || p.name || null;
-  const cid = p.customerId || (p.customer && p.customer.id) || null;
+  let cid = p.customerId || (p.customer && p.customer.id) || null;
+  let extra = {};
+  try {
+    const B = require('../../lib/mlBooking');
+    const d = await B.bookingDetail(bid);
+    if (d.ok) {
+      const x = d.data;
+      start = x.start || start; end = x.end || end; title = x.title || title; cid = x.customerId || cid;
+      extra = { instructorIds: x.instructorIds, category: x.category, bookingStatus: x.bookingStatus, appointmentStatus: x.appointmentStatus, detailAt: Date.now() };
+    }
+    const prev = await MlEvents.getAppointment(bid);
+    if (!(prev && prev.memberName) && cid) { const nm = await B.memberShortName(cid); if (nm) extra.memberName = nm; }
+  } catch (e1) {}
   if (!start && cid) {
     try {
       const M = require('../../lib/members');
@@ -111,7 +126,7 @@ async function onAppointmentUpsert(e) {
     } catch (e2) {}
   }
   if (!start) return false;
-  return MlEvents.upsertAppointment({ bookingId: bid, title: title || 'Termin', start: start, end: end, customerId: cid });
+  return MlEvents.upsertAppointment(Object.assign({ bookingId: bid, title: title || 'Termin', start: start, end: end, customerId: cid }, extra));
 }
 
 // CUSTOMER_PAYMENT_REJECTED: Team benachrichtigen (E-Mail), damit Beitragskonto/

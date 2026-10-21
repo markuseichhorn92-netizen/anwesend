@@ -665,6 +665,22 @@ Einwilligungs- und Einladungstexte rechtlich prüfen; DSFA-Nachtrag freigeben; M
 Webhooks (`CUSTOMER_CHECKIN`, `APPOINTMENT_*`, `CONTRACT_CANCELLED`) an diese App bestätigen;
 wer ruft bei „Tag 28" an.
 
+## Magicline-Kalender für den Familien-Hub (21. Oktober 2026, Branch `magicline-kalender`)
+
+Markus' ihm in Magicline zugewiesene Termine (Mitarbeiter = Instructor) erscheinen im Familien-Hub
+(iCloud-Kalender „Fit-Inn Termine"). Die Open API kennt keinen mitarbeiterweiten Terminabruf → Quelle
+ist der Webhook-Termin-Feed (`lib/mlEvents.js`, füllt sich vorwärts seit ≈ 14.10.2026).
+
+- Webhook `onAppointmentUpsert` holt zusätzlich `GET /appointments/booking/{id}` (`lib/mlBooking.js`):
+  `instructorIds`, `category`, `bookingStatus`/`appointmentStatus`, `detailAt`; Mitglied nur „Vorname N."
+  (`getMember`). Fehlt das Detail, bleiben frühere Werte erhalten (`upsertAppointment` führt zusammen).
+- `GET /api/team/mitarbeiter-termine?employeeId=&days=60` (Bearer `HUB_FEED_KEY`, ohne → 503): nur Termine
+  dieses Mitarbeiters ab heute, ohne Stornos; Altbestand ohne Details wird nachgeladen (max. 40/Aufruf,
+  `pending` = Rest). `?email=` → nur die Mitarbeiter-ID. `POST {action:'nachlauf', customerIds}` ist
+  vorbereitet (Termine vor Webhook-Start), nur auf Freigabe.
+- `tests/mitarbeiter-termine.test.js`. Der Magicline-Schlüssel bleibt nur hier (Vercel); der Hub liest
+  ausschließlich über diesen Endpunkt.
+
 ## Verifikation
 
 Vor dem letzten Deployment wurde ausgeführt:

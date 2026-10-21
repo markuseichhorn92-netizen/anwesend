@@ -50,7 +50,8 @@ const trainer = { user: 'Anna', role: 'trainer', employeeId: 'e1' };
   const dateien = fs.readdirSync(dir).filter((f) => f.endsWith('.js'));
   // Identitaet und Geraeteanmeldung brauchen keine - sie geben nichts preis,
   // was ueber die eigene Sitzung hinausgeht.
-  const ohnePruefungOk = { 'login.js': 1, 'logout.js': 1, 'me.js': 1, 'push.js': 1, 'client-error.js': 1 };
+  // mitarbeiter-termine.js: Familien-Hub, Bearer HUB_FEED_KEY statt Team-Sitzung (team-capabilities 4b prüft das)
+  const ohnePruefungOk = { 'login.js': 1, 'logout.js': 1, 'me.js': 1, 'push.js': 1, 'client-error.js': 1, 'mitarbeiter-termine.js': 1 };
   const ungeschuetzt = dateien.filter(function (f) {
     if (ohnePruefungOk[f]) return false;
     const src = fs.readFileSync(path.join(dir, f), 'utf8');
