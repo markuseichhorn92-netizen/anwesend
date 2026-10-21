@@ -680,6 +680,16 @@ ist der Webhook-Termin-Feed (`lib/mlEvents.js`, füllt sich vorwärts seit ≈ 1
   vorbereitet (Termine vor Webhook-Start), nur auf Freigabe.
 - `tests/mitarbeiter-termine.test.js`. Der Magicline-Schlüssel bleibt nur hier (Vercel); der Hub liest
   ausschließlich über diesen Endpunkt.
+- **Rollierende Abfrage (21.10.2026, `lib/mlPoll.js`)** – die Webhooks liefern nicht (seit 14.10. nur ein
+  Test-Ping). Jeder Feed-Aufruf (Hub alle 15 Min.) macht vorher einen Schritt: Kundenliste MEMBER +
+  FORMER_MEMBER + PROSPECT (Interessenten mit `createdDateTime` der letzten `ML_POLL_PROSPECT_DAYS`=60 Tage),
+  höchstens stündlich neu geladen (KV `mlx:poll:state`); je Aufruf ≤ 300 Kunden per
+  `GET /appointments/booking?customerId=`, Details nur für neue/geänderte Buchungen (Signatur je Kunde,
+  `mlx:poll:c:<id>`). Verschwundene künftige Buchungen nur bei erfolgreich geprüftem Kunden: Detail 404 →
+  löschen, sonst Status übernehmen. ≤ 350 Abrufe und 15 s je Aufruf (Hub-Timeout 25 s), Abbruch bei
+  `x-ratelimit-remaining` < 150, KV-Lock. Nur GET. `ML_POLL=off` schaltet ab. Antwort enthält `poll`
+  (nur Zahlen). Grenze: Magicline liefert je Kunde nur ±2 Wochen; neue Buchungen erscheinen mit bis zu
+  ~1 h Verzug. Der Diagnose-Aufruf `?diag=` (lib/mlDiag) ist wieder entfernt. `tests/ml-poll.test.js`.
 
 ## Verifikation
 

@@ -9,6 +9,8 @@
  *   Detail-Abruf) werden per GET /appointments/booking/{id} nachgeladen und zurückgeschrieben –
  *   höchstens MAX_ENRICH je Aufruf, der Rest beim nächsten Mal (pending = noch offen).
  *   member = „Vorname N." (datensparsam). Nutzer: Familien-Hub (Kalender „Fit-Inn Termine").
+ *   Vorher läuft je Aufruf ein Schritt der rollierenden Magicline-Abfrage (lib/mlPoll: ~300 Kunden,
+ *   ≤ 350 Abrufe), weil die Webhooks nicht liefern. poll = Fortschritt (nur Zahlen).
  *
  * GET /api/team/mitarbeiter-termine?email=<adresse>
  *   -> { ok, employeeId }  NUR die Mitarbeiter-ID (Einrichtung), Abgleich über GET /employees.
@@ -25,6 +27,7 @@
 const crypto = require('node:crypto');
 const MlEvents = require('../../lib/mlEvents');
 const B = require('../../lib/mlBooking');
+const Poll = require('../../lib/mlPoll');
 
 const MAX_ENRICH = 40;
 const MAX_NACHLAUF = 25;
@@ -102,15 +105,6 @@ async function handler(req, res) {
   const url = new URL(req.url, 'http://x');
 
   if (req.method === 'GET') {
-    // Nur-Lese-Diagnose der Magicline-API (21.10.2026): ?diag=customers|trial|markus|scan
-    const diag = url.searchParams.get('diag');
-    if (diag != null) {
-      const q = { employeeId: url.searchParams.get('employeeId'), customerId: url.searchParams.get('customerId'),
-        emails: url.searchParams.getAll('email').slice(0, 3), offset: url.searchParams.get('offset'),
-        limit: url.searchParams.get('limit'), status: url.searchParams.get('status') };
-      const r = await require('../../lib/mlDiag').run(String(diag), q);
-      return send(res, r.ok ? 200 : 400, r);
-    }
     const email = url.searchParams.get('email');
     if (email != null) {
       const e = String(email).trim();
@@ -125,9 +119,12 @@ async function handler(req, res) {
     let days = parseInt(url.searchParams.get('days') || '60', 10);
     if (!(days > 0)) days = 60; if (days > 90) days = 90;
     if (!MlEvents.hasStore) return send(res, 503, { ok: false, error: 'no_store' });
+    // Rollierende Abfrage: ein Schritt je Aufruf (Hub alle 15 Min.), Fehler dürfen den Feed nicht stören
+    let poll = null;
+    try { poll = await Poll.step(); } catch (e) { poll = { skipped: 'fehler' }; }
     const r = await mitarbeiterTermine(employeeId, days);
-    try { console.log('[mitarbeiter-termine]', JSON.stringify({ n: r.appointments.length, scanned: r.scanned, pending: r.pending })); } catch (e) {}
-    return send(res, 200, { ok: true, employeeId: employeeId, days: days, pending: r.pending, appointments: r.appointments });
+    try { console.log('[mitarbeiter-termine]', JSON.stringify({ n: r.appointments.length, scanned: r.scanned, pending: r.pending, poll: poll })); } catch (e) {}
+    return send(res, 200, { ok: true, employeeId: employeeId, days: days, pending: r.pending, poll: poll, appointments: r.appointments });
   }
 
   if (req.method === 'POST') {
