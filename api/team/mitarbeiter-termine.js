@@ -102,6 +102,15 @@ async function handler(req, res) {
   const url = new URL(req.url, 'http://x');
 
   if (req.method === 'GET') {
+    // Nur-Lese-Diagnose der Magicline-API (21.10.2026): ?diag=customers|trial|markus|scan
+    const diag = url.searchParams.get('diag');
+    if (diag != null) {
+      const q = { employeeId: url.searchParams.get('employeeId'), customerId: url.searchParams.get('customerId'),
+        emails: url.searchParams.getAll('email').slice(0, 3), offset: url.searchParams.get('offset'),
+        limit: url.searchParams.get('limit'), status: url.searchParams.get('status') };
+      const r = await require('../../lib/mlDiag').run(String(diag), q);
+      return send(res, r.ok ? 200 : 400, r);
+    }
     const email = url.searchParams.get('email');
     if (email != null) {
       const e = String(email).trim();
