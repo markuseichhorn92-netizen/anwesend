@@ -86,6 +86,14 @@ const OLD = /0651 308524|0651 493 688 19|49368819/;
   ok('3j. nummer26: beide alten Nummern ersetzt, Geschäftsnummer bleibt', n2 && n2.body === 'Ruf 0651 603 443 42 oder 0651 603 443 42 an (tel:+4965160344342). Büro: 0651 603 442 05.', n2 && n2.body);
   await Articles.remove(num.id);
 
+  // 3k. WhatsApp-Link (Migration wa26): wa.me/49651308524 → Bot-Nummer
+  const wa = await Articles.save({ title: 'WhatsApp (Team)', cat: 'studio', status: 'veröffentlicht', body: 'Schreib uns: https://wa.me/49651308524 oder wa.me/49651308524?text=Hallo' });
+  await P([['DEL', 'art:mig:wa26']]); Mig._reset();
+  all = await Articles.list();
+  const w2 = all.find((a) => a.id === wa.id);
+  ok('3k. wa26: WhatsApp-Link auf Bot-Nummer', w2 && w2.body === 'Schreib uns: https://wa.me/4951328533010 oder https://wa.me/4951328533010?text=Hallo', w2 && w2.body);
+  await Articles.remove(wa.id);
+
   // 4. Team löscht bzw. setzt auf Entwurf → taucht nicht wieder auf
   await Articles.setStatus(okt.id, 'entwurf'); Mig._reset();
   ok('4. Entwurf bleibt Entwurf', (await Articles.list()).find((a) => a.id === okt.id).status === 'entwurf');
@@ -93,12 +101,12 @@ const OLD = /0651 308524|0651 493 688 19|49368819/;
   ok('4a. nach Löschen nicht wieder angelegt', !(await Articles.list()).some((a) => a.title === TITLE));
   await Articles.save({ title: TITLE, cat: 'mitglied', status: 'veröffentlicht', body: Mig.HERBST_BODY });   // zurück für die Suche
 
-  // 5. Hilfetexte, Lena und App nennen nur die neue Nummer; WhatsApp-Link bleibt
+  // 5. Hilfetexte, Lena und App nennen nur die neue Nummer; WhatsApp-Link auf Bot-Nummer
   const help = require(path.join(ROOT, 'lib/help.js'));
   const seedArts = require(path.join(ROOT, 'lib/helpSeed.js'));
   const html = fs.readFileSync(path.join(ROOT, 'mitglieder.html'), 'utf8');
   ok('5. eingebaute Artikel und Erstbefüllung ohne alte Nummer', !help.some((a) => OLD.test(a.body)) && !seedArts.some((a) => OLD.test(a.body)) && help.some((a) => a.body.indexOf(NEW) >= 0));
-  ok('5a. Mitglieder-App ohne alte Nummer, Impressum mit neuer, WhatsApp-Link bleibt', !OLD.test(html) && /tel:'0651 603 443 42'/.test(html) && /wa\.me\/49651308524/.test(html));
+  ok('5a. Mitglieder-App ohne alte Nummer, Impressum mit neuer, WhatsApp-Link auf Bot-Nummer', !OLD.test(html) && /tel:'0651 603 443 42'/.test(html) && /wa\.me\/4951328533010/.test(html));
   const Rt = require(path.join(ROOT, 'lib/finn/runtime.js'));
   ok('5b. Lena (BRAND) nennt die neue Nummer', Rt.BRAND.indexOf('Tel. ' + NEW) >= 0 && !OLD.test(Rt.BRAND));
   const ai = fs.readFileSync(path.join(ROOT, 'lib/ai.js'), 'utf8');
