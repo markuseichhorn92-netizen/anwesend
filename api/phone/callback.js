@@ -90,7 +90,7 @@ module.exports = async function handler(req, res) {
     delivered: sent,
     text: sent
       ? ('Alles notiert, ' + name.split(' ')[0] + '. Das Team meldet sich bei Ihnen unter der genannten Nummer.')
-      : 'Ich habe es notiert. Falls Sie es eilig haben, erreichen Sie uns direkt unter 0651 308524.',
+      : 'Ich habe es notiert. Falls Sie es eilig haben, erreichen Sie uns direkt unter 0651 603 443 42.',
     topic: topic,
   });
 };

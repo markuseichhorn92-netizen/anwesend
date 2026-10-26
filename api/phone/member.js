@@ -43,7 +43,7 @@ const MM = require('../../lib/mlMembership');
 const { sendLoginCode } = require('../../lib/loginCode');
 const SR = require('../../lib/studioReply');
 
-const STUDIO_PHONE = '0651 308524';
+const STUDIO_PHONE = '0651 603 443 42';
 
 /**
  * Was am Telefon NICHT ausgeführt wird, sondern an einen Menschen geht.

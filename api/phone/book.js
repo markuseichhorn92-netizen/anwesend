@@ -38,7 +38,7 @@ const crypto = require('node:crypto');
 const P = require('../../lib/phoneApi');
 const C = require('../../lib/connect');
 
-const STUDIO_PHONE = '0651 308524';
+const STUDIO_PHONE = '0651 603 443 42';
 
 /**
  * Platzhalter-Adresse, wenn der Anrufer keine E-Mail nennt.

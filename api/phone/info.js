@@ -21,7 +21,7 @@ const { fetchHours } = require('../../lib/studioHours');
 const STUDIO = {
   name: 'Fit-Inn Trier',
   address: 'Auf Hirtenberg 8, 54296 Trier',
-  phone: '0651 308524',
+  phone: '0651 603 443 42',
   email: 'info@fit-inn-trier.de',
 };
 

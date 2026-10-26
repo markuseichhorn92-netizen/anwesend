@@ -16,8 +16,8 @@ const Articles = require(path.join(ROOT, 'lib/articles.js'));
 const Mig = require(path.join(ROOT, 'lib/articleMigrations.js'));
 const TITLE = Mig.HERBST_TITLE;
 const OKT = 'Oktober-Aktion 2026: 12 Wochen für je 5 €';
-const NEW = '0651 493 688 19';
-const OLD = /0651 308524/;
+const NEW = '0651 603 443 42';
+const OLD = /0651 308524|0651 493 688 19|49368819/;
 
 (async function () {
   let pass = true; const ok = (l, c, x) => { if (!c) pass = false; console.log((c ? 'OK  ' : 'FAIL') + ' ' + l + (c ? '' : ' -- ' + (x || ''))); };
@@ -41,7 +41,7 @@ const OLD = /0651 308524/;
     && /Start 1\. Oktober: Basic 92 € gespart, Premium 53 €/.test(body) && /Start 1\. November: Basic 61 €, Premium 35 €/.test(body) && /Start 1\. Dezember: Basic 31 €, Premium 18 €/.test(body)
     && /Einmalige Aufnahmegebühr 39 €/.test(body) && /Nur für Neumitglieder, ab 18 Jahren/.test(body) && /nicht auf bestehende Verträge übertragbar/.test(body)
     && /Flex-Tarif \(4 Wochen, 15 € pro Woche\) ist nicht Teil der Aktion/.test(body) && /über 100 Geräte auf zwei Etagen/.test(body)
-    && /Telefon: 0651 493 688 19/.test(body) && /Aktionsseite: angebot\.fit-inn-trier\.de/.test(body) && /agbs-fit-inn-trier/.test(body));
+    && /Telefon: 0651 603 443 42/.test(body) && /Aktionsseite: angebot\.fit-inn-trier\.de/.test(body) && /agbs-fit-inn-trier/.test(body));
   ok('2b. keine alten Angaben', !OLD.test(body) && !/onepage\.me/.test(body) && !/16 Jahren/.test(body));
 
   // 3. Produktion: Oktober-Artikel vorhanden → gleiche Id, neuer Titel/Text; alte Nummer und alte
@@ -78,6 +78,14 @@ const OLD = /0651 308524/;
   ok('3i. Eltern-Satz weg, auch wenn die Zahl schon 18 war', a3 && a3.body === 'Eine Mitgliedschaft ist ab 18 Jahren möglich. Danach geht es los.', a3 && a3.body);
   await Articles.remove(alt2.id);
 
+  // 3j. Neue Kundennummer (Migration nummer26): 0651 493 688 19 und 0651 308524 → 0651 603 443 42
+  const num = await Articles.save({ title: 'Kontakt (Team)', cat: 'studio', status: 'veröffentlicht', body: 'Ruf 0651 493 688 19 oder 0651/308524 an (tel:+4965149368819). Büro: 0651 603 442 05.' });
+  await P([['DEL', 'art:mig:nummer26']]); Mig._reset();
+  all = await Articles.list();
+  const n2 = all.find((a) => a.id === num.id);
+  ok('3j. nummer26: beide alten Nummern ersetzt, Geschäftsnummer bleibt', n2 && n2.body === 'Ruf 0651 603 443 42 oder 0651 603 443 42 an (tel:+4965160344342). Büro: 0651 603 442 05.', n2 && n2.body);
+  await Articles.remove(num.id);
+
   // 4. Team löscht bzw. setzt auf Entwurf → taucht nicht wieder auf
   await Articles.setStatus(okt.id, 'entwurf'); Mig._reset();
   ok('4. Entwurf bleibt Entwurf', (await Articles.list()).find((a) => a.id === okt.id).status === 'entwurf');
@@ -90,7 +98,7 @@ const OLD = /0651 308524/;
   const seedArts = require(path.join(ROOT, 'lib/helpSeed.js'));
   const html = fs.readFileSync(path.join(ROOT, 'mitglieder.html'), 'utf8');
   ok('5. eingebaute Artikel und Erstbefüllung ohne alte Nummer', !help.some((a) => OLD.test(a.body)) && !seedArts.some((a) => OLD.test(a.body)) && help.some((a) => a.body.indexOf(NEW) >= 0));
-  ok('5a. Mitglieder-App ohne alte Nummer, Impressum mit neuer, WhatsApp-Link bleibt', !OLD.test(html) && /tel:'0651 493 688 19'/.test(html) && /wa\.me\/49651308524/.test(html));
+  ok('5a. Mitglieder-App ohne alte Nummer, Impressum mit neuer, WhatsApp-Link bleibt', !OLD.test(html) && /tel:'0651 603 443 42'/.test(html) && /wa\.me\/49651308524/.test(html));
   const Rt = require(path.join(ROOT, 'lib/finn/runtime.js'));
   ok('5b. Lena (BRAND) nennt die neue Nummer', Rt.BRAND.indexOf('Tel. ' + NEW) >= 0 && !OLD.test(Rt.BRAND));
   const ai = fs.readFileSync(path.join(ROOT, 'lib/ai.js'), 'utf8');

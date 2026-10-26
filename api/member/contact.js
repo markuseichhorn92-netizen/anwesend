@@ -43,7 +43,7 @@ async function sendMemberContactMail(m, question, memberId, vorgangId) {
       headline: 'Wir haben deine Nachricht erhalten',
       intro: [
         'Danke für deine Nachricht! Unser Team schaut sie sich an und meldet sich so schnell wie möglich persönlich bei dir – in der Regel innerhalb eines Werktags.',
-        'Brauchst du es dringend? Ruf uns gerne direkt an unter 0651 493 688 19.',
+        'Brauchst du es dringend? Ruf uns gerne direkt an unter 0651 603 443 42.',
       ],
       panel: question ? [{ label: 'Deine Frage', value: String(question).slice(0, 120) }] : null,
       button: { label: 'Zum Mitgliederbereich', href: portal },

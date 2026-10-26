@@ -43,7 +43,7 @@ const M = require('../../lib/members');
 const Leads = require('../../lib/leadflow');
 const B = require('../../lib/bookable');
 
-const STUDIO_PHONE = '0651 308524';
+const STUDIO_PHONE = '0651 603 443 42';
 
 // Eine Antwort fuer „Nummer unbekannt" UND „zweites Merkmal passt nicht".
 // Bewusst identisch: der Unterschied waere sonst die Auskunft selbst.
