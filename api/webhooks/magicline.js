@@ -219,8 +219,13 @@ async function handleWebhook(req, res, opts) {
 
   // ── Auth ── Schlüssel aus (Reihenfolge): Pfad -> Header x-api-key -> Query ?key=.
   if (!SECRET) { res.statusCode = 503; return res.end(JSON.stringify({ ok: false, error: 'not_configured' })); }
-  let key = opts.key || req.headers['x-api-key'] || req.headers['x-webhook-secret'] || req.headers['x-magicline-secret'] || (req.query && req.query.key) || '';
-  if (!key) { try { key = new URL(req.url, 'http://x').searchParams.get('key') || ''; } catch (e) {} }
+  // Jeder mitgeschickte Schlüssel wird einzeln geprüft (einer muss passen). Magicline sendet
+  // seinen eigenen Webhook-Key im Header x-api-key – der darf den richtigen Pfad-Schlüssel
+  // (/api/webhooks/ml/<key> → ?key=) nicht mehr überstimmen (27.10.2026).
+  let qkey = (req.query && req.query.key) || '';
+  if (!qkey) { try { qkey = new URL(req.url, 'http://x').searchParams.get('key') || ''; } catch (e) {} }
+  const kandidaten = [opts.key, qkey, req.headers['x-api-key'], req.headers['x-webhook-secret'], req.headers['x-magicline-secret']].filter(Boolean);
+  const key = kandidaten.find(keyOk) || '';
   if (!keyOk(key)) {
     // Nicht-personenbezogener Zähler: „Traffic kommt an, wird aber wg. Auth abgelehnt"
     // vs. „gar kein Traffic". Nur bei tatsächlich falschem/fehlendem Key.
