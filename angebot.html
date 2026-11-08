@@ -105,10 +105,13 @@
   }).catch(function(){ state('⚠️','Verbindungsproblem','Die Seite konnte nicht geladen werden. Bitte versuch es gleich noch einmal.'); });
 })();
 </script>
-<script>/* Fit-Inn Chat-Launcher v2: eigener leichter Knopf im Hauptdokument, kein Iframe, erscheint sofort.
-   Nach ca. 1,2 s fährt er zur Pille "Fragen? Frag Lena" auf (clip-path/opacity/transform), hält ~4 s, fährt zu (max. 3x pro Besuch).
-   Das Magicline-Widget (~1,9 MB) lädt erst bei Tipp/Hover oder im Leerlauf (~5 s nach Load); sein eigener Knopf bleibt unsichtbar.
-   Fällt etwas aus, führt der Knopf zur Kontaktseite. Konfig optional über window.FILAUNCH. */
+<script>/* Fit-Inn Chat-Launcher v3: eigener leichter Knopf im Hauptdokument, kein Iframe, erscheint sofort.
+   NEU v3: Einmal pro Sitzung erscheint ueber dem Knopf eine Begruessungs-Sprechblase (Avatar "Lena", Tipp-Punkte ~0,8 s, dann Text),
+   Feder-Animation von der Knopf-Ecke aus (nur transform/opacity). Text = Magicline-Teaser, wenn das Widget schon geladen ist
+   (sonst Fallback; in sessionStorage gemerkt). X schliesst fuer die Sitzung, Tipp auf die Blase oeffnet den Chat.
+   Statt der Pille in dieser Sitzung; die Pille "Fragen? Frag Lena" laeuft nur noch bei greet:false (max. 3x pro Besuch).
+   Das Magicline-Widget (~1,9 MB) lädt erst bei Tipp/Hover oder im Leerlauf (~5 s nach Load); sein eigener Knopf und seine
+   Begruessung bleiben unsichtbar. Fällt etwas aus, führt der Knopf zur Kontaktseite. Konfig optional über window.FILAUNCH. */
 (function () {
   try {
     if (window.__fiLaunch) return; window.__fiLaunch = 1;
@@ -119,13 +122,24 @@
     var CONTACT = C.contact || 'https://hilfe.fit-inn-trier.de/kontakt';
     var FIRST = C.first != null ? C.first : 1200, HOLD = C.hold != null ? C.hold : 4000;
     var GAP = C.gap != null ? C.gap : 25000, MAX = C.max != null ? C.max : 3, IDLE = C.idle != null ? C.idle : 5000;
+    var GREET = C.greet !== false, GTEXT = C.greetText || 'Hallo, ich bin Lena, wie kann ich dir helfen?', GNAME = C.greetName || 'Lena';
+    var GFIRST = C.greetFirst != null ? C.greetFirst : 1800, GTYPE = C.greetTyping != null ? C.greetTyping : 800, GHOLD = C.greetHold != null ? C.greetHold : 14000;
+    var GKEY = 'fiGreetDone', TKEY = 'fiGreetText';
     var reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
-    var root = document.documentElement, wrap, ln, txt, timer, want = false, failed = false, asked = false, ready = false, expanded = false;
+    var root = document.documentElement, wrap, ln, txt, timer, want = false, failed = false, asked = false, ready = false, expanded = false, gb = null, gtimer;
 
     function shown() { try { return +sessionStorage.getItem(KEY) || 0; } catch (e) { return 0; } }
     function bump() { try { sessionStorage.setItem(KEY, shown() + 1); } catch (e) { } }
     function doc() { try { var f = document.getElementById(IID); return f && (f.contentDocument || f.contentWindow.document); } catch (e) { return null; } }
     function isOpen() { var d = doc(); return !!(d && d.querySelector('[data-role="chatbot-container"]')); }
+    function greeted() { try { return !!sessionStorage.getItem(GKEY); } catch (e) { return false; } }
+    // Begruessungstext des Magicline-Widgets (Teaser im Iframe) lesen und fuer die Sitzung merken
+    function teaser() {
+      var d = doc(), el = d && d.querySelector('[data-role="chatbot-teaser-message"]'), t = el && el.textContent.replace(/\s+/g, ' ').trim();
+      if (t && t.length < 200) { try { sessionStorage.setItem(TKEY, t); } catch (e) { } return t; }
+      return '';
+    }
+    function greetText() { var s = ''; try { s = sessionStorage.getItem(TKEY) || ''; } catch (e) { } return C.greetText || teaser() || s || GTEXT; }
 
     // Eigener Knopf des Widgets bleibt unsichtbar (Iframe versteckt), solange der Chat zu ist
     var st = document.createElement('style');
@@ -148,7 +162,33 @@
       '#fi-ln .sp{position:absolute;opacity:0}' +
       '#fi-ln.ld .ch{opacity:0}#fi-ln.ld .sp{opacity:1;animation:fi-spin .8s linear infinite}' +
       '@keyframes fi-spin{to{transform:rotate(360deg)}}' +
-      '@media (prefers-reduced-motion:reduce){#fi-lw,#fi-ln,#fi-ln .t{transition:none}#fi-ln.ld .sp{animation-duration:1.6s}}';
+      // Begruessungsblase: nur transform/opacity, Ursprung unten rechts (Knopf-Ecke)
+      '#fi-gb{position:fixed;right:14px;bottom:calc(90px + env(safe-area-inset-bottom,0px));z-index:2147482999;box-sizing:border-box;max-width:min(300px,calc(100vw - 32px));pointer-events:none;' +
+      'font:400 15px/1.35 "Source Sans Pro",-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:#10242b}' +
+      '#fi-gb .bb{background:#fff;border-radius:18px;box-shadow:0 8px 28px rgba(10,73,88,.22),0 1px 4px rgba(10,73,88,.12);transform-origin:100% 100%}' +
+      '#fi-gb .dt{position:absolute;right:0;bottom:0;display:flex;gap:5px;align-items:center;padding:14px 16px;opacity:0;transform:scale(.4) translateY(8px);' +
+      'transition:opacity .2s ease,transform .45s cubic-bezier(.34,1.56,.5,1)}' +
+      '#fi-gb .dt i{width:7px;height:7px;border-radius:50%;background:#107E97;opacity:.45;animation:fi-dot 1s ease-in-out infinite}' +
+      '#fi-gb .dt i:nth-child(2){animation-delay:.15s}#fi-gb .dt i:nth-child(3){animation-delay:.3s}' +
+      '@keyframes fi-dot{0%,60%,100%{transform:none;opacity:.35}30%{transform:translateY(-4px);opacity:1}}' +
+      '#fi-gb.d .dt{opacity:1;transform:none}' +
+      '#fi-gb.m .dt{opacity:0;transform:scale(.7);transition-duration:.15s}' +
+      '#fi-gb .cd{position:relative;display:block;width:max-content;max-width:100%;box-sizing:border-box;margin-left:auto;padding:10px 14px 12px;cursor:pointer;outline:0;opacity:0;transform:scale(.6) translateY(10px);' +
+      '-webkit-tap-highlight-color:transparent;transition:opacity .3s ease,transform .5s cubic-bezier(.34,1.56,.5,1)}' +
+      '#fi-gb.m .cd{opacity:1;transform:none;pointer-events:auto}' +
+      '#fi-gb.o .cd{opacity:0;transform:scale(.85) translateY(6px);pointer-events:none;transition:opacity .2s ease,transform .25s ease}' +
+      '#fi-gb .cd:focus-visible{box-shadow:0 0 0 3px #FFB54F,0 8px 28px rgba(10,73,88,.22)}' +
+      '#fi-gb .cd:after{content:"";position:absolute;right:22px;bottom:-5px;width:12px;height:12px;background:#fff;border-radius:0 0 3px 0;transform:rotate(45deg);z-index:-1}' +
+      '#fi-gb .hd{display:flex;align-items:center;gap:7px;margin-bottom:4px;padding-right:18px;font-size:13px;font-weight:600;line-height:1;color:#0A4958}' +
+      '#fi-gb .av{width:24px;height:24px;border-radius:50%;background:linear-gradient(135deg,#0A4958,#107E97);color:#fff;font-size:13px;font-weight:700;line-height:24px;text-align:center}' +
+      '#fi-gb .tx{display:block;text-wrap:balance;opacity:0;transition:opacity .35s ease .12s}' +
+      '#fi-gb.m .tx{opacity:1}' +
+      '#fi-gb .xb{position:absolute;right:-6px;top:-10px;width:26px;height:26px;padding:0;border:0;border-radius:50%;background:#fff;color:#0A4958;font:400 18px/26px Arial,sans-serif;text-align:center;' +
+      'box-shadow:0 1px 6px rgba(10,73,88,.28);cursor:pointer;opacity:0;transform:scale(.5);pointer-events:none;transition:opacity .25s ease .2s,transform .4s cubic-bezier(.34,1.56,.5,1) .2s;-webkit-tap-highlight-color:transparent}' +
+      '#fi-gb .xb:before{content:"";position:absolute;inset:-9px}' +
+      '#fi-gb.m .xb{opacity:1;transform:none;pointer-events:auto}#fi-gb.o .xb{opacity:0;transform:scale(.5);pointer-events:none;transition-delay:0s}' +
+      '#fi-gb .xb:focus-visible{box-shadow:0 0 0 3px #FFB54F}' +
+      '@media (prefers-reduced-motion:reduce){#fi-lw,#fi-ln,#fi-ln .t,#fi-gb .cd,#fi-gb .tx,#fi-gb .xb,#fi-gb .dt{transition:none!important}#fi-gb .dt i{animation:none}#fi-ln.ld .sp{animation-duration:1.6s}}';
     root.appendChild(st);
     root.classList.add('fi-c');
 
@@ -165,7 +205,7 @@
     measure();
     requestAnimationFrame(function () { wrap.classList.add('v'); });
 
-    function measure() { ln.style.setProperty('--o', Math.max(0, Math.ceil(ln.getBoundingClientRect().width) - 62) + 'px'); }
+    function measure() { ln.style.setProperty('--o', Math.max(0, ln.offsetWidth - 62) + 'px'); }
     function expand(label) { if (label) txt.textContent = label; measure(); expanded = true; ln.classList.add('on'); }
     function collapse() { expanded = false; ln.classList.remove('on'); }
 
@@ -176,7 +216,49 @@
       bump(); expand();
       timer = setTimeout(function () { collapse(); timer = setTimeout(cycle, GAP); }, HOLD);
     }
-    if (!reduce) timer = setTimeout(cycle, FIRST);
+    // Begruessung (v3): einmal pro Sitzung, nur wenn Chat zu, nichts ausgefallen. Statt der Pille.
+    function greetClose() {
+      clearTimeout(gtimer);
+      var g = gb; if (!g) return; gb = null;
+      g.classList.add('o');
+      setTimeout(function () { if (g.parentNode) g.parentNode.removeChild(g); }, reduce ? 0 : 400);
+    }
+    function greet() {
+      if (gb || want || failed || isOpen() || greeted()) return;
+      if (document.hidden) { gtimer = setTimeout(greet, 3000); return; }
+      try { sessionStorage.setItem(GKEY, '1'); } catch (e) { }
+      var name = GNAME, text = greetText();
+      gb = document.createElement('div'); gb.id = 'fi-gb'; gb.setAttribute('role', 'status');
+      gb.innerHTML =
+        '<div class="bb dt" aria-hidden="true"><i></i><i></i><i></i></div>' +
+        '<div class="bb cd" role="button" tabindex="0" aria-hidden="true"><div class="hd"><span class="av"></span><span class="nm"></span></div><span class="tx"></span></div>' +
+        '<button type="button" class="xb" aria-label="Begrüßung schließen">×</button>';
+      var g = gb, cd = g.querySelector('.cd'), xb = g.querySelector('.xb');
+      g.querySelector('.av').textContent = name.charAt(0).toUpperCase();
+      g.querySelector('.nm').textContent = name;
+      g.querySelector('.tx').textContent = text;
+      cd.setAttribute('aria-label', 'Chat öffnen: ' + text);
+      root.appendChild(g);
+      var show = function () {
+        if (gb !== g) return;
+        g.classList.add('m'); cd.removeAttribute('aria-hidden');
+        if (GHOLD > 0) gtimer = setTimeout(greetClose, GHOLD);
+      };
+      if (reduce) show(); else {
+        g.getBoundingClientRect(); g.classList.add('d');
+        gtimer = setTimeout(show, GTYPE);
+      }
+      cd.addEventListener('click', function () { greetClose(); window.fiChatOpen && window.fiChatOpen(); });
+      cd.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); cd.click(); } });
+      xb.addEventListener('click', function (e) { e.stopPropagation(); greetClose(); });
+      g.addEventListener('keydown', function (e) { if (e.key === 'Escape') greetClose(); });
+      // Hover/Fokus haelt die Blase offen
+      g.addEventListener('pointerenter', function () { clearTimeout(gtimer); });
+      g.addEventListener('pointerleave', function () { if (gb === g && g.classList.contains('m') && GHOLD > 0) gtimer = setTimeout(greetClose, 4000); });
+    }
+    var pillOn = !GREET || C.pill === true;
+    if (GREET && !greeted()) gtimer = setTimeout(greet, GFIRST);
+    else if (!reduce && pillOn) timer = setTimeout(cycle, FIRST);
 
     // Widget nachladen (einmalig)
     function loadWidget() {
@@ -189,16 +271,18 @@
       var tries = 0, poll = setInterval(function () {
         var d = doc();
         if (d && d.querySelector('[data-role="chatbot-bubble"]')) {
-          clearInterval(poll); ready = true; watch(d); if (want) openChat();
+          clearInterval(poll); ready = true; watch(d); remember(); if (want) openChat();
         } else if (++tries > 200) { clearInterval(poll); asked = false; if (want) fail(); }
       }, 100);
     }
+    function remember() { var n = 0, iv = setInterval(function () { if (teaser() || ++n > 12) clearInterval(iv); }, 500); }
     function watch(d) {
       var sync = function () {
         var open = isOpen();
         root.classList.toggle('fi-c', !open);
         wrap.classList.toggle('h', open);
         if (open && expanded) collapse();
+        if (open) greetClose();
       };
       try { new MutationObserver(sync).observe(d.body, { childList: true, subtree: true }); } catch (e) { setInterval(sync, 300); }
       sync();
@@ -227,7 +311,7 @@
     ln.addEventListener('touchstart', loadWidget, { passive: true });
     ln.addEventListener('focus', loadWidget);
     function go() {
-      clearTimeout(timer); collapse();
+      clearTimeout(timer); collapse(); greetClose();
       if (ready) { openChat(); return; }
       want = true; ln.classList.add('ld');
       loadWidget();
