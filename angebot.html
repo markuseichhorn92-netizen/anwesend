@@ -105,96 +105,138 @@
   }).catch(function(){ state('⚠️','Verbindungsproblem','Die Seite konnte nicht geladen werden. Bitte versuch es gleich noch einmal.'); });
 })();
 </script>
-<script src="https://fit-inn-trier.web.magicline.com/chatbot/widget/widget.js?uuid=a48084fc-8418-4bb1-b987-4bf4d852398f&studioId=1210005460&studioName=Fit-Inn%20Trier" id="ml-member-chatbot-widget-script"></script>
-<script>/* Fit-Inn Chat-Knopf: Intercom-Pille. Ersetzt groesser/snippet.js (Größe 125 % ist enthalten).
-   Der runde Magicline-Knopf fährt nach links zu einer Pille mit Text auf und schließt sich wieder.
-   Robust: fehlt etwas im Widget, passiert nichts. Konfig optional über window.MLPILL. */
+<script>/* Fit-Inn Chat-Launcher v2: eigener leichter Knopf im Hauptdokument, kein Iframe, erscheint sofort.
+   Nach ca. 1,2 s fährt er zur Pille "Fragen? Frag Lena" auf (clip-path/opacity/transform), hält ~4 s, fährt zu (max. 3x pro Besuch).
+   Das Magicline-Widget (~1,9 MB) lädt erst bei Tipp/Hover oder im Leerlauf (~5 s nach Load); sein eigener Knopf bleibt unsichtbar.
+   Fällt etwas aus, führt der Knopf zur Kontaktseite. Konfig optional über window.FILAUNCH. */
 (function () {
   try {
-    var ID = 'ml-member-chatbot-widget-iframe', SCALE = 1.25, BASE = 60;
-    var C = window.MLPILL || {};
-    var TEXT = C.text || 'Fragen? Frag Lena 👋';
-    var FIRST = C.first != null ? C.first : 4000, HOLD = C.hold != null ? C.hold : 6000;
-    var GAP = C.gap != null ? C.gap : 30000, MAX = C.max != null ? C.max : 3;
+    if (window.__fiLaunch) return; window.__fiLaunch = 1;
+    var C = window.FILAUNCH || {};
+    var SRC = C.src || 'https://fit-inn-trier.web.magicline.com/chatbot/widget/widget.js?uuid=a48084fc-8418-4bb1-b987-4bf4d852398f&studioId=1210005460&studioName=Fit-Inn%20Trier';
+    var SID = 'ml-member-chatbot-widget-script', IID = 'ml-member-chatbot-widget-iframe', KEY = 'fiLaunchShown';
+    var TEXT = C.text || 'Fragen? Frag Lena 👋', FAIL = C.fail || 'Chat nicht erreichbar – zum Kontakt';
+    var CONTACT = C.contact || 'https://hilfe.fit-inn-trier.de/kontakt';
+    var FIRST = C.first != null ? C.first : 1200, HOLD = C.hold != null ? C.hold : 4000;
+    var GAP = C.gap != null ? C.gap : 25000, MAX = C.max != null ? C.max : 3, IDLE = C.idle != null ? C.idle : 5000;
     var reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
-    var shown = 0, timer, pill, span, ready = false, expanded = false, pillW = 0;
+    var root = document.documentElement, wrap, ln, txt, timer, want = false, failed = false, asked = false, ready = false, expanded = false;
 
-    function frame() { return document.getElementById(ID); }
-    function doc(f) { try { return f && (f.contentDocument || f.contentWindow.document); } catch (e) { return null; } }
-    function isOpen(d) { return !!(d && d.querySelector('[data-role="chatbot-container"]')); }
-    function setI(f, p, v) { if (f.style.getPropertyValue(p) !== v || f.style.getPropertyPriority(p) !== 'important') f.style.setProperty(p, v, 'important'); }
+    function shown() { try { return +sessionStorage.getItem(KEY) || 0; } catch (e) { return 0; } }
+    function bump() { try { sessionStorage.setItem(KEY, shown() + 1); } catch (e) { } }
+    function doc() { try { var f = document.getElementById(IID); return f && (f.contentDocument || f.contentWindow.document); } catch (e) { return null; } }
+    function isOpen() { var d = doc(); return !!(d && d.querySelector('[data-role="chatbot-container"]')); }
 
-    // Größe/Position des Iframes: geschlossen = Knopf (+ ggf. Pille), offen = Widget bestimmt selbst
-    function layout() {
-      var f = frame(), d = doc(f); if (!f || !d) return;
-      if (isOpen(d)) {
-        if (expanded) collapse(true);
-        ['width', 'height', 'transform', 'transform-origin'].forEach(function (p) { if (f.style.getPropertyPriority(p) === 'important') f.style.removeProperty(p); });
-        return;
-      }
-      setI(f, 'transform-origin', '100% 100%'); setI(f, 'transform', 'scale(' + SCALE + ')');
-      if (reduce) return;
-      setI(f, 'height', BASE + 'px'); setI(f, 'width', (expanded ? pillW + 18 : BASE) + 'px');
-    }
+    // Eigener Knopf des Widgets bleibt unsichtbar (Iframe versteckt), solange der Chat zu ist
+    var st = document.createElement('style');
+    st.textContent =
+      'html.fi-c #' + IID + '{visibility:hidden!important;pointer-events:none!important}' +
+      '#fi-lw{position:fixed;right:14px;bottom:calc(14px + env(safe-area-inset-bottom,0px));z-index:2147483000;filter:drop-shadow(0 4px 12px rgba(10,73,88,.38));' +
+      'opacity:0;transform:scale(.6);transform-origin:100% 100%;pointer-events:none;transition:opacity .3s ease,transform .45s cubic-bezier(.34,1.56,.5,1)}' +
+      '#fi-lw.v{opacity:1;transform:none;pointer-events:auto}' +
+      '#fi-lw.h{opacity:0;transform:scale(.8);pointer-events:none}' +
+      '#fi-ln{position:relative;display:flex;align-items:center;box-sizing:border-box;height:62px;padding:0 62px 0 20px;border-radius:31px;color:#fff;text-decoration:none;' +
+      'background:linear-gradient(135deg,#0A4958,#107E97);clip-path:inset(0 0 0 var(--o,9999px) round 31px);' +
+      'transition:clip-path .7s cubic-bezier(.34,1.35,.5,1);-webkit-tap-highlight-color:transparent;cursor:pointer;outline:0}' +
+      '#fi-ln.on{clip-path:inset(0 0 0 0 round 31px)}' +
+      '#fi-ln:focus-visible{box-shadow:inset 0 0 0 3px #FFB54F}' +
+      '#fi-ln .t{white-space:nowrap;font:600 16px/1 "Source Sans Pro",-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;opacity:0;transform:translateX(10px);' +
+      'transition:opacity .25s ease,transform .4s ease}' +
+      '#fi-ln.on .t{opacity:1;transform:none;transition-delay:.2s}' +
+      '#fi-ln .i{position:absolute;right:0;top:0;width:62px;height:62px;display:flex;align-items:center;justify-content:center}' +
+      '#fi-ln .i svg{width:30px;height:30px;transition:opacity .2s ease}' +
+      '#fi-ln .sp{position:absolute;opacity:0}' +
+      '#fi-ln.ld .ch{opacity:0}#fi-ln.ld .sp{opacity:1;animation:fi-spin .8s linear infinite}' +
+      '@keyframes fi-spin{to{transform:rotate(360deg)}}' +
+      '@media (prefers-reduced-motion:reduce){#fi-lw,#fi-ln,#fi-ln .t{transition:none}#fi-ln.ld .sp{animation-duration:1.6s}}';
+    root.appendChild(st);
+    root.classList.add('fi-c');
 
-    function build(d) {
-      var st = d.createElement('style');
-      st.textContent =
-        '[data-role="chatbot-teaser"]{display:none!important}' +
-        '#fi-pill{position:fixed;right:2px;bottom:2px;height:45px;width:45px;border-radius:23px;z-index:-1;opacity:0;overflow:hidden;cursor:pointer;' +
-        'background:linear-gradient(135deg,#0A4958,#107E97);color:#fff;font:600 15px/45px "Source Sans Pro",Oxygen-Sans,Ubuntu,Cantarell,"Helvetica Neue",Arial,sans-serif;' +
-        'white-space:nowrap;box-shadow:0 2px 10px rgba(10,73,88,.35);transition:width .6s cubic-bezier(.34,1.45,.5,1),opacity .25s ease;-webkit-tap-highlight-color:transparent}' +
-        '#fi-pill.on{opacity:1}' +
-        '#fi-pill span{position:absolute;right:56px;top:0;opacity:0;transform:translateX(8px);transition:opacity .25s ease,transform .35s ease}' +
-        '#fi-pill.on span{opacity:1;transform:none;transition-delay:.18s}';
-      d.head.appendChild(st);
-      pill = d.createElement('div'); pill.id = 'fi-pill'; pill.setAttribute('role', 'button'); pill.setAttribute('aria-label', 'Chat öffnen');
-      span = d.createElement('span'); span.textContent = TEXT; pill.appendChild(span); d.body.appendChild(pill);
-      pill.addEventListener('click', function () {
-        var b = d.querySelector('[data-role="chatbot-bubble"]'); if (b) b.click();
-      });
-      pillW = Math.ceil(span.getBoundingClientRect().width) + 56 + 20;
-    }
+    wrap = document.createElement('div'); wrap.id = 'fi-lw';
+    wrap.innerHTML =
+      '<a id="fi-ln" href="' + CONTACT + '" role="button" aria-label="Chat öffnen: Fragen? Frag Lena">' +
+      '<span class="t"></span><span class="i">' +
+      '<svg class="ch" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 4h14a3 3 0 0 1 3 3v8a3 3 0 0 1-3 3h-6.2l-4.3 3.4c-.5.4-1.3 0-1.3-.7V18H5a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3z" fill="#fff"/>' +
+      '<circle cx="8.2" cy="11" r="1.4" fill="#0A4958"/><circle cx="12" cy="11" r="1.4" fill="#0A4958"/><circle cx="15.8" cy="11" r="1.4" fill="#0A4958"/></svg>' +
+      '<svg class="sp" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="rgba(255,255,255,.3)" stroke-width="3"/>' +
+      '<path d="M12 3a9 9 0 0 1 9 9" stroke="#fff" stroke-width="3" stroke-linecap="round"/></svg></span></a>';
+    root.appendChild(wrap);
+    ln = wrap.firstChild; txt = ln.firstChild; txt.textContent = TEXT;
+    measure();
+    requestAnimationFrame(function () { wrap.classList.add('v'); });
 
-    function expand() {
-      var f = frame(), d = doc(f); if (!pill || !d || isOpen(d) || document.hidden) return false;
-      pillW = Math.ceil(span.getBoundingClientRect().width) + 56 + 20;
-      expanded = true; layout();
-      requestAnimationFrame(function () { requestAnimationFrame(function () { pill.classList.add('on'); pill.style.width = pillW + 'px'; }); });
-      return true;
-    }
-    function collapse(instant) {
-      if (!pill) return; expanded = false;
-      pill.classList.remove('on'); pill.style.width = '45px';
-      if (instant) { layout(); return; }
-      setTimeout(layout, 650);
-    }
+    function measure() { ln.style.setProperty('--o', Math.max(0, Math.ceil(ln.getBoundingClientRect().width) - 62) + 'px'); }
+    function expand(label) { if (label) txt.textContent = label; measure(); expanded = true; ln.classList.add('on'); }
+    function collapse() { expanded = false; ln.classList.remove('on'); }
 
     function cycle() {
       clearTimeout(timer);
-      if (shown >= MAX) return;
-      var f = frame(), d = doc(f);
-      if (!d || isOpen(d) || document.hidden || !expand()) { timer = setTimeout(cycle, 5000); return; }
-      shown++;
+      if (want || failed || isOpen() || shown() >= MAX) return;
+      if (document.hidden) { timer = setTimeout(cycle, 3000); return; }
+      bump(); expand();
       timer = setTimeout(function () { collapse(); timer = setTimeout(cycle, GAP); }, HOLD);
     }
+    if (!reduce) timer = setTimeout(cycle, FIRST);
 
-    function init() {
-      var f = frame(), d = doc(f);
-      if (!f || !d || !d.body || !d.head) return false;
-      if (!d.querySelector('[data-role="chatbot-bubble"]')) return false;
-      if (!ready) {
-        ready = true;
-        if (!reduce) { build(d); timer = setTimeout(cycle, FIRST); }
-        new MutationObserver(layout).observe(f, { attributes: true, attributeFilter: ['style'] });
-        setInterval(layout, 500);
+    // Widget nachladen (einmalig)
+    function loadWidget() {
+      if (asked) return; asked = true;
+      if (!document.getElementById(SID)) {
+        var s = document.createElement('script'); s.id = SID; s.src = SRC; s.async = true;
+        s.onerror = function () { fail(); };
+        document.head.appendChild(s);
       }
-      layout(); return true;
+      var tries = 0, poll = setInterval(function () {
+        var d = doc();
+        if (d && d.querySelector('[data-role="chatbot-bubble"]')) {
+          clearInterval(poll); ready = true; watch(d); if (want) openChat();
+        } else if (++tries > 200) { clearInterval(poll); asked = false; if (want) fail(); }
+      }, 100);
+    }
+    function watch(d) {
+      var sync = function () {
+        var open = isOpen();
+        root.classList.toggle('fi-c', !open);
+        wrap.classList.toggle('h', open);
+        if (open && expanded) collapse();
+      };
+      try { new MutationObserver(sync).observe(d.body, { childList: true, subtree: true }); } catch (e) { setInterval(sync, 300); }
+      sync();
+    }
+    function openChat() {
+      var d = doc(), b = d && d.querySelector('[data-role="chatbot-bubble"]');
+      if (!b) return;
+      want = false; ln.classList.remove('ld');
+      root.classList.remove('fi-c'); b.click();
+    }
+    function fail() {
+      failed = true; want = false; ln.classList.remove('ld');
+      root.classList.remove('fi-c');
+      clearTimeout(timer); expand(FAIL);
     }
 
-    var tries = 0, poll = setInterval(function () {
-      try { if (init() || ++tries > 240) clearInterval(poll); } catch (e) { clearInterval(poll); }
-    }, 250);
+    // Leerlauf: 5 s nach Load, dann wenn der Browser frei ist
+    function idleLoad() {
+      setTimeout(function () {
+        if (window.requestIdleCallback) requestIdleCallback(loadWidget, { timeout: 3000 }); else loadWidget();
+      }, IDLE);
+    }
+    if (document.readyState === 'complete') idleLoad(); else window.addEventListener('load', idleLoad);
+
+    ln.addEventListener('pointerenter', loadWidget);
+    ln.addEventListener('touchstart', loadWidget, { passive: true });
+    ln.addEventListener('focus', loadWidget);
+    function go() {
+      clearTimeout(timer); collapse();
+      if (ready) { openChat(); return; }
+      want = true; ln.classList.add('ld');
+      loadWidget();
+    }
+    window.fiChatOpen = function () { if (!failed) go(); }; // z. B. fuer /chat-Seiten
+    ln.addEventListener('click', function (e) {
+      if (failed) return; // Fallback: normaler Link zur Kontaktseite
+      e.preventDefault(); go();
+    });
   } catch (e) { /* nichts kaputt machen */ }
 })();</script>
 </body>
