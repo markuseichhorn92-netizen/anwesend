@@ -106,7 +106,7 @@ const OLD = /0651 308524|0651 493 688 19|49368819/;
   const seedArts = require(path.join(ROOT, 'lib/helpSeed.js'));
   const html = fs.readFileSync(path.join(ROOT, 'mitglieder.html'), 'utf8');
   ok('5. eingebaute Artikel und Erstbefüllung ohne alte Nummer', !help.some((a) => OLD.test(a.body)) && !seedArts.some((a) => OLD.test(a.body)) && help.some((a) => a.body.indexOf(NEW) >= 0));
-  ok('5a. Mitglieder-App ohne alte Nummer, Impressum mit neuer, WhatsApp-Link auf Bot-Nummer', !OLD.test(html) && /tel:'0651 603 443 42'/.test(html) && /wa\.me\/4951328533010/.test(html));
+  ok('5a. Mitglieder-App ohne alte Nummer, Impressum mit neuer, kein öffentlicher WhatsApp-Link (16.11.2026)', !OLD.test(html) && /tel:'0651 603 443 42'/.test(html) && !/wa\.me\//.test(html));
   const Rt = require(path.join(ROOT, 'lib/finn/runtime.js'));
   ok('5b. Lena (BRAND) nennt die neue Nummer', Rt.BRAND.indexOf('Tel. ' + NEW) >= 0 && !OLD.test(Rt.BRAND));
   const ai = fs.readFileSync(path.join(ROOT, 'lib/ai.js'), 'utf8');
