@@ -209,6 +209,7 @@ wurde nicht (mehr) gebraucht. Entscheidung des Betreibers nach einer Nutzungsüb
   die Telefon-KI (`api/phone/*`, fonio-Doku – 0651 308524 ist dort das Weiterleitungsziel) und
   die WhatsApp-Nummer (`wa.me/49651308524`, `WA_PUBLIC_NUMBER`).
   **Nachtrag 26.10.2026:** Kundennummer jetzt 0651 603 443 42 (Migration `nummer26`, auch Telefon-KI-Ansagen).
+  **Nachtrag 17.11.2026:** Kundennummer jetzt 0651 308524 (tel:+49651308524), Migration `nummer1711` ersetzt 0651 603 443 42 in Backend-Artikeln; WhatsApp-Bot bleibt wa.me/4951328533010.
   Öffentlicher WhatsApp-Knopf (Hilfe-Seite der App) → Bot-Nummer `wa.me/4951328533010`, Team-Artikel per
   Migration `wa26`. `WA_PUBLIC_NUMBER` (Twilio-Absender, START-Code-Links der Journeys) bewusst unverändert.
 - Sommer-Aktion (bis 31.08.2026) aus `lib/help.js` und `mitglieder.html` `HELP_ARTICLES`
